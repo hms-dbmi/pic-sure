@@ -126,7 +126,7 @@ public class RASAuthenticationServiceTest {
         User user = createTestUser();
         user.setSubject("okta-ras|adfadfaf");
         when(userService.createRasUser(any(), any())).thenReturn(Optional.of(user));
-        when(userService.updateUserRoles(any(), any())).thenReturn(user);
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
         when(userService.updateUserConsents(any(), any())).thenReturn(user);
 
         ArgumentCaptor<UserClaims> claimsCaptor = ArgumentCaptor.forClass(UserClaims.class);
@@ -188,18 +188,16 @@ public class RASAuthenticationServiceTest {
         assertTrue(passport.isPresent());
 
         Set<RasDbgapPermission> dbgapPermissions = new HashSet<>();
-        Set<String> dbgapRoleNames = new HashSet<>();
 
         when(rasPassPortService.ga4ghPassportToRasDbgapPermissions(any())).thenReturn(dbgapPermissions);
-        when(roleService.getRoleNamesForDbgapPermissions(any())).thenReturn(dbgapRoleNames);
-        when(userService.updateUserRoles(any(), any())).thenReturn(user);
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
         when(userService.updateUserConsents(any(), any())).thenReturn(user);
 
         user = this.rasAuthenticationService.updateRasUserRoles(code, user, passport.get());
         assertNotNull(user);
 
         // We are verifying that we attempt to update a users roles even if no dbgap roles are present.
-        verify(userService, times(1)).updateUserRoles(user, dbgapRoleNames);
+        verify(userService, times(1)).ensureBaselineRoles(user);
     }
 
     private void mockTokenAndIntrospectionResponses(String introspectionResponse) {

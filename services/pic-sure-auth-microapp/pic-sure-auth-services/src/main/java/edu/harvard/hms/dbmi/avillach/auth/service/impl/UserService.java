@@ -70,20 +70,15 @@ public class UserService {
     private final LoggingClient loggingClient;
 
     @Autowired
-    public UserService(BasicMailService basicMailService, TOSService tosService,
-                       UserRepository userRepository,
-                       ConnectionRepository connectionRepository,
-                       ApplicationRepository applicationRepository,
-                       RoleService roleService,
-                       UserConsentsRepository userConsentsRepository,
-                       FenceMappingUtility fenceMappingUtility,
-                       @Value("${application.token.expiration.time}") long tokenExpirationTime,
-                       @Value("${application.default.uuid}") String applicationUUID,
-                       @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime,
-                       JWTUtil jwtUtil,
-                       @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled,
-                       @Value("${application.token.inclusionRoles}") String tokenInclusionRoles,
-                       LoggingClient loggingClient) {
+    public UserService(
+        BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
+        ApplicationRepository applicationRepository, RoleService roleService, UserConsentsRepository userConsentsRepository,
+        FenceMappingUtility fenceMappingUtility, @Value("${application.token.expiration.time}") long tokenExpirationTime,
+        @Value("${application.default.uuid}") String applicationUUID,
+        @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
+        @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled,
+        @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
+    ) {
         this.basicMailService = basicMailService;
         this.tosService = tosService;
         this.userRepository = userRepository;
@@ -116,13 +111,8 @@ public class UserService {
 
         HashMap<String, Object> claimsMap = userClaims.toHashMap();
         logger.debug("getUserProfileResponse() using claims:{}", claimsMap.toString());
-        String token = this.jwtUtil.createJwtToken(
-                "whatever",
-                "edu.harvard.hms.dbmi.psama",
-                claimsMap,
-                userClaims.getSub(),
-                this.tokenExpirationTime
-        );
+        String token =
+            this.jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claimsMap, userClaims.getSub(), this.tokenExpirationTime);
 
         responseMap.put("token", token);
         logger.debug("getUserProfileResponse() .usedId field is set");
@@ -148,10 +138,7 @@ public class UserService {
 
     public List<String> addRoleClaims(User user) {
         if (user != null && user.getRoles() != null) {
-            return user.getRoles().stream()
-                    .map(Role::getName)
-                    .filter(tokenInclusionRoles::contains)
-                    .collect(Collectors.toList());
+            return user.getRoles().stream().map(Role::getName).filter(tokenInclusionRoles::contains).collect(Collectors.toList());
         }
 
         return List.of();
@@ -573,11 +560,9 @@ public class UserService {
         claimsMap.put("roles", addRoleClaims(user));
 
         return this.jwtUtil.createJwtToken(
-                claims.getId(),
-                claims.getIssuer(),
-                claimsMap,
-                AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
-                this.longTermTokenExpirationTime);
+            claims.getId(), claims.getIssuer(), claimsMap, AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
+            this.longTermTokenExpirationTime
+        );
     }
 
     public User changeRole(User currentUser, Set<Role> roles) {
@@ -651,16 +636,17 @@ public class UserService {
         user.setEmail(user.getUuid() + "@open_access.com");
         user = save(user);
 
-        logger.info("createOpenAccessUser() created user, uuid: {}, subject: {}, role: {}, privilege: {}",
-                user.getUuid(), user.getSubject(), user.getRoleString(), user.getPrivilegeString());
+        logger.info(
+            "createOpenAccessUser() created user, uuid: {}, subject: {}, role: {}, privilege: {}", user.getUuid(), user.getSubject(),
+            user.getRoleString(), user.getPrivilegeString()
+        );
 
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                loggingClient.send(LoggingEvent.builder("AUTHZ").action("user.open_access_created")
-                    .metadata(Map.of(
-                        "user_uuid", user.getUuid().toString(),
-                        "assigned_role", "MANAGED_OPEN_ACCESS"
-                    )).build());
+                loggingClient.send(
+                    LoggingEvent.builder("AUTHZ").action("user.open_access_created")
+                        .metadata(Map.of("user_uuid", user.getUuid().toString(), "assigned_role", "MANAGED_OPEN_ACCESS")).build()
+                );
             } catch (Exception e) {
                 logger.warn("Failed to send open access user creation logging event", e);
             }
@@ -714,88 +700,48 @@ public class UserService {
     }
 
     /**
-     * Update the provided users roles based on the list of roleNames provided. This method will update the roles in place. Adding and
-     * removing roles from the current list of roles.
+     * Attach the roles every authenticated user receives. Study-level authorization is carried by {@code user_consents} (see
+     * {@link #updateUserConsents}), not by roles, so no per-study role is derived here.
      *
      * @param current_user User to be updated
-     * @param roleNames Roles that should be assigned to the user.
      */
-    public User updateUserRoles(User current_user, Set<String> roleNames) {
-        Set<String> currentRoleNames = current_user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
+    public User ensureBaselineRoles(User current_user) {
+        Set<String> baselineRoleNames = Set.of(MANAGED_AUTH_ACCESS_ROLE_NAME, MANAGED_OPEN_ACCESS_ROLE_NAME, MANAGED_ROLE_NAMED_DATASET);
 
-        Set<Role> rolesToRemove = current_user.getRoles().stream()
-            .filter(
-                role -> !roleNames.contains(role.getName()) && !role.getName().equals(MANAGED_OPEN_ACCESS_ROLE_NAME)
-                    && !role.getName().equals(MANAGED_AUTH_ACCESS_ROLE_NAME) && !role.getName().startsWith("MANUAL_")
-                    && !role.getName().equals("PIC-SURE Top Admin") && !role.getName().equals("Admin")
-            ).collect(Collectors.toSet());
+        Map<String, Role> found = roleService.findByNames(baselineRoleNames);
+        baselineRoleNames.stream().filter(name -> !found.containsKey(name))
+            .forEach(name -> logger.warn("ensureBaselineRoles() unable to find role named {}", name));
 
-        if (!rolesToRemove.isEmpty()) {
-            current_user.getRoles().removeAll(rolesToRemove);
-            logger.debug("upsertRole() removed {} roles from user", rolesToRemove.size());
-            logger.debug("User roles after removal: {}", current_user.getRoles().size());
-        }
-
-        // Bulk lookup for existing roles. By using a hashmap we avoid having to iterate over the set of roles each time.
-        Map<String, Role> existingRoles = roleService.findByNames(roleNames);
-        List<Role> newRoles = roleNames.stream().filter(roleName -> !currentRoleNames.contains(roleName)).map(existingRoles::get)
-            .filter(Objects::nonNull).collect(Collectors.toList());
-
-        if (!newRoles.isEmpty()) {
-            logger.debug("upsertRole() updated {} roles from user", newRoles.size());
-            newRoles = roleService.persistAll(newRoles);
-            current_user.getRoles().addAll(newRoles);
-        }
-
-        Role authAccessRole = roleService.findByName(MANAGED_AUTH_ACCESS_ROLE_NAME);
-        if (authAccessRole != null) {
-            current_user.getRoles().add(authAccessRole);
-        } else {
-            logger.warn("Unable to find fence AUTH ACCESS role");
-        }
+        Set<Role> currentRoles = current_user.getRoles();
+        Set<Role> added = found.values().stream().filter(role -> !currentRoles.contains(role)).collect(Collectors.toSet());
+        currentRoles.addAll(found.values());
 
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                String addedNames = newRoles.stream().map(Role::getName).collect(Collectors.joining(","));
-                String removedNames = rolesToRemove.stream().map(Role::getName).collect(Collectors.joining(","));
-                loggingClient.send(LoggingEvent.builder("AUTHZ").action("role.sync")
-                    .metadata(Map.of(
-                        "user_id", current_user.getUuid().toString(),
-                        "user_email", current_user.getEmail() != null ? current_user.getEmail() : "",
-                        "roles_added", addedNames,
-                        "roles_removed", removedNames
-                    )).build());
+                loggingClient.send(
+                    LoggingEvent.builder("AUTHZ").action("role.sync")
+                        .metadata(
+                            Map.of(
+                                "user_id", current_user.getUuid().toString(), "user_email",
+                                current_user.getEmail() != null ? current_user.getEmail() : "", "roles_added",
+                                added.stream().map(Role::getName).collect(Collectors.joining(",")), "roles_removed", ""
+                            )
+                        ).build()
+                );
             } catch (Exception e) {
                 logger.warn("Failed to send role sync logging event", e);
             }
         }
-
-        Role openAccessRole = roleService.findByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
-        if (openAccessRole != null) {
-            current_user.getRoles().add(openAccessRole);
-        } else {
-            logger.warn("Unable to find fence OPEN ACCESS role");
-        }
-
-        Role role = roleService.findByName(MANAGED_ROLE_NAMED_DATASET);
-        if (role != null) {
-            current_user.getRoles().add(role);
-        } else {
-            logger.warn("upsertRole() Unable to find role named {}", MANAGED_ROLE_NAMED_DATASET);
-        }
-
-        // Every user has access to public datasets by default.
-        current_user.getRoles().addAll(roleService.getPublicAccessRoles());
 
         logger.debug(
             "User roles: {}", current_user.getRoles().stream().filter(Objects::nonNull).map(Role::getName).collect(Collectors.joining(", "))
         );
         try {
             current_user = this.changeRole(current_user, current_user.getRoles());
-            logger.debug("upsertRole() updated user, who now has {} roles.", current_user.getRoles().size());
+            logger.debug("ensureBaselineRoles() updated user, who now has {} roles.", current_user.getRoles().size());
             return current_user;
         } catch (Exception ex) {
-            logger.error("upsertRole() Could not add roles to user, because {}", ex.getMessage());
+            logger.error("ensureBaselineRoles() Could not add roles to user, because {}", ex.getMessage());
         }
 
         return null;
@@ -822,13 +768,12 @@ public class UserService {
     }
 
     public User updateUserConsents(User user, Set<String> userConsentStrings) {
-        Map<String, Set<String>> consents = new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
+        Map<String, Set<String>> consents =
+            new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
         UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
         if (userConsents == null) {
             logger.info("Creating user consents");
-            userConsents = new UserConsents()
-                .setConsents(consents)
-                .setUserId(user.getUuid());
+            userConsents = new UserConsents().setConsents(consents).setUserId(user.getUuid());
             logger.info("{} User consents created", userConsents.getConsents().size());
         }
         userConsents.setConsents(consents);

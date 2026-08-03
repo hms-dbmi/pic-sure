@@ -185,8 +185,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         Set<Optional<Ga4ghPassportV1>> ga4ghPassports = rasPassport.getGa4ghPassportV1().stream().map(JWTUtil::parseGa4ghPassportV1)
             .filter(Optional::isPresent).collect(Collectors.toSet());
         Set<RasDbgapPermission> dbgapPermissions = this.rasPassPortService.ga4ghPassportToRasDbgapPermissions(ga4ghPassports);
-        Set<String> dbgapRoleNames = this.roleService.getRoleNamesForDbgapPermissions(dbgapPermissions);
-        user = userService.updateUserRoles(user, dbgapRoleNames);
+        user = userService.ensureBaselineRoles(user);
 
         Set<String> userConsentStrings = dbgapPermissions.stream()
             .map(permission -> permission.getPhsId() + "." + permission.getConsentGroup()).collect(Collectors.toSet());
