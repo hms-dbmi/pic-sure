@@ -13,10 +13,8 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
-import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.*;
-import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,8 +47,6 @@ public class RASAuthenticationServiceTest {
     @MockBean
     private CacheEvictionService cacheEvictionService;
     @MockBean
-    private RoleService roleService;
-    @MockBean
     private UserRepository userRepository;
     @MockBean
     private ApplicationContext applicationContext;
@@ -72,16 +68,12 @@ public class RASAuthenticationServiceTest {
     @BeforeEach
     public void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
-        RoleService roleService = new RoleService(
-            mock(UserRepository.class), mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class),
-            mock(ApplicationContext.class), null
-        );
         this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, "", cacheEvictionService, null));
         doReturn(false).when(rasPassPortService).isExpired(any());
 
         rasAuthenticationService = new RASAuthenticationService(
-            userService, restClientUtil, true, "test.com", "", "", "", "https://stsstg.nih.gov", roleService, rasPassPortService,
-            connectionService, cacheEvictionService
+            userService, restClientUtil, true, "test.com", "", "", "", "https://stsstg.nih.gov", rasPassPortService, connectionService,
+            cacheEvictionService
         );
 
         Connection rasConnection = new Connection();

@@ -1,20 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
-import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,151 +18,16 @@ import java.util.stream.Collectors;
 public class RoleService {
 
     private final Logger logger = LoggerFactory.getLogger(RoleService.class);
-    private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PrivilegeService privilegeService;
-    private final FenceMappingUtility fenceMappingUtility;
     public static final String MANAGED_OPEN_ACCESS_ROLE_NAME = "MANUAL_ROLE_OPEN_ACCESS";
     public static final String MANAGED_AUTH_ACCESS_ROLE_NAME = "MANUAL_ROLE_AUTH_ACCESS";
     public static final String MANAGED_ROLE_NAMED_DATASET = "MANUAL_ROLE_NAMED_DATASET";
 
-    private final ApplicationContext applicationContext;
-    private final LoggingClient loggingClient;
-
     @Autowired
-    public RoleService(
-        UserRepository userRepository, RoleRepository roleRepository, PrivilegeService privilegeService,
-        FenceMappingUtility fenceMappingUtility, ApplicationContext applicationContext, LoggingClient loggingClient
-    ) {
-        this.userRepository = userRepository;
+    public RoleService(RoleRepository roleRepository, PrivilegeService privilegeService) {
         this.roleRepository = roleRepository;
         this.privilegeService = privilegeService;
-        this.fenceMappingUtility = fenceMappingUtility;
-        this.applicationContext = applicationContext;
-        this.loggingClient = loggingClient;
-    }
-
-    @EventListener(ContextRefreshedEvent.class)
-    public void createPermissionsForFenceMapping() {
-        if (
-            this.fenceMappingUtility.getFENCEMapping() != null && this.fenceMappingUtility.getFenceMappingByAuthZ() != null
-                && !this.fenceMappingUtility.getFENCEMapping().isEmpty() && !this.fenceMappingUtility.getFenceMappingByAuthZ().isEmpty()
-        ) {
-            // Create all potential access rules using the fence mapping
-            Set<Role> roles = this.fenceMappingUtility.getFenceMappingByAuthZ().values().parallelStream().filter(this::projectMetaIsValid)
-                .map(this::extractRole).collect(Collectors.toSet());
-
-            RoleService roleService = applicationContext.getBean(RoleService.class);
-            roleService.cleanupRolesNotInMapping(roles);
-
-            this.persistAll(roles);
-
-            if (loggingClient != null && loggingClient.isEnabled()) {
-                try {
-                    loggingClient.send(
-                        LoggingEvent.builder("AUTHZ").action("role.fence_sync")
-                            .metadata(Map.of("roles_synced_count", String.valueOf(roles.size()))).build()
-                    );
-                } catch (Exception e) {
-                    logger.warn("Failed to send FENCE role sync logging event", e);
-                }
-            }
-        } else {
-            logger.error("createPermissionsForFenceMapping() -> createAndUpsertRole could not find any studies in FENCE mapping");
-        }
-
-        logger.info("RoleService initialized...");
-    }
-
-    @Transactional
-    protected void cleanupRolesNotInMapping(Set<Role> roles) {
-        try {
-            // We only want to update MANAGED_ roles
-            Set<String> roleNamesInMapping =
-                roles.stream().map(Role::getName).filter(roleName -> roleName.startsWith("MANAGED_")).collect(Collectors.toSet());
-            Set<Role> byNameNotIn = this.roleRepository.findByNameNotIn(roleNamesInMapping);
-            Set<Role> managedRoles = byNameNotIn.stream().filter(role -> role.getName().startsWith("MANAGED_")).collect(Collectors.toSet());
-            logger.info(
-                "List of roles not in the fence mapping: {}", managedRoles.stream().map(Role::getName).collect(Collectors.joining(", "))
-            );
-
-            // First, delete the user-role associations
-            List<UUID> roleIDs = managedRoles.stream().map(Role::getUuid).collect(Collectors.toList());
-            if (!roleIDs.isEmpty()) {
-                this.userRepository.deleteUserRoles(roleIDs);
-                logger.info("Deleted user-role associations for {} roles", roleIDs.size());
-            }
-
-            // Then clear privileges from each role and delete them one by one
-            if (!managedRoles.isEmpty()) {
-                for (Role role : managedRoles) {
-                    try {
-                        // Clear privileges to remove entries from role_privilege table
-                        if (role.getPrivileges() != null && !role.getPrivileges().isEmpty()) {
-                            role.setPrivileges(new HashSet<>());
-                            roleRepository.save(role);
-                            logger.debug("Cleared privileges for role: {}", role.getName());
-                        }
-
-                        // Now delete the role
-                        roleRepository.delete(role);
-                        logger.debug("Deleted role: {}", role.getName());
-                    } catch (Exception e) {
-                        logger.error("Error deleting role {}: {}", role.getName(), e.getMessage(), e);
-                    }
-                }
-                logger.info("Deleted {} roles", managedRoles.size());
-            }
-
-            if (loggingClient != null && loggingClient.isEnabled()) {
-                try {
-                    loggingClient.send(
-                        LoggingEvent.builder("AUTHZ").action("role.cleanup")
-                            .metadata(
-                                Map.of(
-                                    "roles_deleted", managedRoles.stream().map(Role::getName).collect(Collectors.joining(", ")), "trigger",
-                                    "fence_mapping_sync"
-                                )
-                            ).build()
-                    );
-                } catch (Exception e) {
-                    logger.warn("Failed to send role cleanup logging event", e);
-                }
-            }
-        } catch (Exception e) {
-            logger.error("Error cleaning up roles not in mapping", e);
-            throw e;
-        }
-    }
-
-    private boolean projectMetaIsValid(StudyMetaData projectMetadata) {
-        if (projectMetadata == null) {
-            logger.error("createPermissionsForFenceMapping() -> createAndUpsertRole could not find study in FENCE mapping SKIPPING: NULL");
-            return false;
-        }
-        if (projectMetadata.getStudyIdentifier() == null || projectMetadata.getStudyIdentifier().isEmpty()) {
-            logger.error(
-                "createPermissionsForFenceMapping() -> createAndUpsertRole could not find study identifier in FENCE mapping SKIPPING: {}",
-                projectMetadata
-            );
-            return false;
-        }
-        if (projectMetadata.getAuthZ() == null || projectMetadata.getAuthZ().isEmpty()) {
-            logger.error(
-                "createPermissionsForFenceMapping() -> createAndUpsertRole could not find authZ in FENCE mapping SKIPPING: {}",
-                projectMetadata
-            );
-            return false;
-        }
-        return true;
-    }
-
-    public Role extractRole(StudyMetaData projectMetadata) {
-        String projectId = projectMetadata.getStudyIdentifier();
-        String consentCode = projectMetadata.getConsentGroupCode();
-        String newRoleName = org.apache.commons.lang3.StringUtils.isNotBlank(consentCode) ? "MANAGED_" + projectId + "_" + consentCode
-            : "MANAGED_" + projectId;
-        return this.createRole(newRoleName, "MANAGED role " + newRoleName);
     }
 
     public Optional<Role> getRoleById(String roleId) {
@@ -256,10 +113,6 @@ public class RoleService {
         return this.roleRepository.saveAll(newRoles);
     }
 
-    private List<Role> persistAll(Set<Role> newRoles) {
-        return this.roleRepository.saveAll(newRoles);
-    }
-
     public Role findByName(String roleName) {
         return this.roleRepository.findByName(roleName);
     }
@@ -283,21 +136,13 @@ public class RoleService {
         if (role != null) {
             // Role already exists
             logger.trace("upsertRole() role: {} already exists", role.getName());
-        } else {
-            logger.info("createRole() New PSAMA role name:{}", roleName);
-            // This is a new Role
-            role = new Role();
-            role.setName(roleName);
-            role.setDescription(roleDescription);
-            logger.info("createRole() created new role");
+            return role;
         }
 
-        /*
-         * Even if a role already exists, there is a chance the privileges have changed. We need to update all roles' privileges out of
-         * precaution.
-         */
-        role.setPrivileges(privilegeService.addPrivileges(role, this.fenceMappingUtility.getFENCEMapping()));
-
+        logger.info("createRole() New PSAMA role name:{}", roleName);
+        role = new Role();
+        role.setName(roleName);
+        role.setDescription(roleDescription);
         return role;
     }
 
@@ -328,9 +173,6 @@ public class RoleService {
                 r = new Role();
                 r.setName(roleName);
                 r.setDescription(roleDescription);
-                // Since this is a new Role, we need to ensure that the
-                // corresponding Privilege (with gates) and AccessRule is added.
-                r.setPrivileges(privilegeService.addPrivileges(r, this.fenceMappingUtility.getFENCEMapping()));
                 this.save(r);
                 logger.info("upsertRole() created new role");
             }

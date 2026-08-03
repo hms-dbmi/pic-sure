@@ -30,7 +30,6 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
     private final UserService userService;
     private final boolean isEnabled;
-    private final RoleService roleService;
     private final RASPassPortService rasPassPortService;
     private final CacheEvictionService cacheEvictionService;
     private Connection rasConnection;
@@ -50,14 +49,13 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         UserService userService, RestClientUtil restClientUtil, @Value("${ras.okta.idp.provider.is.enabled}") boolean isEnabled,
         @Value("${ras.okta.idp.provider.uri}") String idp_provider_uri, @Value("${ras.okta.connection.id}") String connectionId,
         @Value("${ras.okta.client.id}") String clientId, @Value("${ras.okta.client.secret}") String clientSecret,
-        @Value("${ras.passport.issuer}") String rasPassportIssuer, RoleService roleService, RASPassPortService rasPassPortService,
+        @Value("${ras.passport.issuer}") String rasPassportIssuer, RASPassPortService rasPassPortService,
         ConnectionWebService connectionService, CacheEvictionService cacheEvictionService
     ) {
         super(idp_provider_uri, clientId, clientSecret, restClientUtil);
 
         this.userService = userService;
         this.isEnabled = isEnabled;
-        this.roleService = roleService;
         this.rasPassPortService = rasPassPortService;
         this.rasPassportIssuer = rasPassportIssuer;
 

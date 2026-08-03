@@ -1,13 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
-import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
@@ -26,11 +23,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@ContextConfiguration(classes = {RoleService.class, PrivilegeService.class, UserRepository.class})
+@ContextConfiguration(classes = {RoleService.class, PrivilegeService.class})
 public class RoleServiceTest {
-
-    @MockBean
-    private UserRepository userRepository;
 
     @MockBean
     private ApplicationService applicationService;
@@ -49,12 +43,6 @@ public class RoleServiceTest {
 
     @MockBean
     private Authentication authentication;
-
-    @MockBean
-    private FenceMappingUtility fenceMappingUtility;
-
-    @MockBean
-    private LoggingClient loggingClient;
 
     @Autowired
     private RoleService roleService;
