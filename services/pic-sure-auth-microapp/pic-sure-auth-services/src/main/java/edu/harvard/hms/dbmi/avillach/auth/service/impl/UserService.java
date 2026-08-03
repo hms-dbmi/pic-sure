@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
-import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
@@ -17,7 +16,6 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsents
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
-import edu.harvard.hms.dbmi.avillach.auth.utils.JsonUtils;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.mail.MessagingException;
@@ -27,8 +25,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -52,18 +48,14 @@ public class UserService {
     private final TOSService tosService;
     private final UserRepository userRepository;
     private final ConnectionRepository connectionRepository;
-    private final ApplicationRepository applicationRepository;
     private final RoleService roleService;
     private final long tokenExpirationTime;
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
-    private final boolean openAccessIsEnabled;
     private final UserConsentsRepository userConsentsRepository;
     private final FenceMappingUtility fenceMappingUtility;
 
     public long longTermTokenExpirationTime;
 
-    private final String applicationUUID;
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private final JWTUtil jwtUtil;
 
     private final List<String> tokenInclusionRoles;
@@ -72,11 +64,9 @@ public class UserService {
     @Autowired
     public UserService(
         BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
-        ApplicationRepository applicationRepository, RoleService roleService, UserConsentsRepository userConsentsRepository,
-        FenceMappingUtility fenceMappingUtility, @Value("${application.token.expiration.time}") long tokenExpirationTime,
-        @Value("${application.default.uuid}") String applicationUUID,
+        RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
+        @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
-        @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled,
         @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
     ) {
         this.basicMailService = basicMailService;
@@ -88,14 +78,11 @@ public class UserService {
         this.fenceMappingUtility = fenceMappingUtility;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         logger.info("Token Expiration Time : {}", tokenExpirationTime);
-        this.applicationRepository = applicationRepository;
-        this.applicationUUID = applicationUUID;
         this.jwtUtil = jwtUtil;
 
         long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24 * 30;
         this.longTermTokenExpirationTime =
             longTermTokenExpirationTime > 0 ? longTermTokenExpirationTime : defaultLongTermTokenExpirationTime;
-        this.openAccessIsEnabled = openIdpProviderIsEnabled;
         this.tokenInclusionRoles = Arrays.asList(tokenInclusionRoles.split(","));
         this.loggingClient = loggingClient;
     }
@@ -365,23 +352,6 @@ public class UserService {
         User.UserForDisplay userForDisplay = new User.UserForDisplay().setEmail(user.getEmail()).setPrivileges(user.getPrivilegeNameSet())
             .setUuid(user.getUuid().toString()).setAcceptedTOS(this.tosService.hasUserAcceptedLatest(user.getSubject()));
 
-        // currently, the queryScopes are simple combination of queryScope string together as a set.
-        // We are expecting the queryScope string as plain string. If it is a JSON, we could change the
-        // code to use JsonUtils.mergeTemplateMap(Map, Map)
-        Set<Privilege> privileges = user.getTotalPrivilege();
-        if (privileges != null && !privileges.isEmpty()) {
-            Set<String> scopes = new TreeSet<>();
-            privileges.stream().filter(privilege -> privilege.getQueryScope() != null).forEach(privilege -> {
-                try {
-                    Arrays.stream(objectMapper.readValue(privilege.getQueryScope(), String[].class)).filter(Objects::nonNull)
-                        .forEach(scopes::add);
-                } catch (IOException e) {
-                    logger.error("Parsing issue for privilege {} queryScope", privilege.getUuid(), e);
-                }
-            });
-            userForDisplay.setQueryScopes(scopes);
-        }
-
         if (user.getToken() != null && !user.getToken().isEmpty()) {
             userForDisplay.setToken(user.getToken());
         } else {
@@ -391,123 +361,6 @@ public class UserService {
         }
 
         return userForDisplay;
-    }
-
-    public Optional<String> getQueryTemplate(String applicationId) {
-        if (applicationId == null || applicationId.trim().isEmpty()) {
-            logger.error("getQueryTemplate() input application UUID is null or empty.");
-            throw new IllegalArgumentException("Input application UUID is incorrect.");
-        }
-
-        SecurityContext securityContext = SecurityContextHolder.getContext();
-        Optional<CustomUserDetails> customUserDetails =
-            Optional.ofNullable((CustomUserDetails) securityContext.getAuthentication().getPrincipal());
-        if ((customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) && openAccessIsEnabled) {
-            Optional<Application> application = this.applicationRepository.findById(UUID.fromString(applicationId));
-            if (application.isEmpty()) {
-                logger.error("getQueryTemplate() cannot find corresponding application by UUID: {}", UUID.fromString(applicationId));
-                throw new IllegalArgumentException("Cannot find application by input UUID: " + UUID.fromString(applicationId));
-            }
-
-            return Optional.ofNullable(openMergeTemplate(application.orElse(null)));
-        } else {
-            if (customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) {
-                logger.error("Security context didn't have a user stored.");
-                return Optional.empty();
-            }
-
-            User user = customUserDetails.get().getUser();
-            Optional<Application> application = this.applicationRepository.findById(UUID.fromString(applicationId));
-            if (application.isEmpty()) {
-                logger.error("getQueryTemplate() cannot find corresponding application by UUID: {}", UUID.fromString(applicationId));
-                throw new IllegalArgumentException("Cannot find application by input UUID: " + UUID.fromString(applicationId));
-            }
-
-            return Optional.ofNullable(mergeTemplate(user, application.orElse(null)));
-        }
-    }
-
-    private String openMergeTemplate(Application application) {
-        Set<Privilege> applicationPrivileges = application.getPrivileges();
-        Role openAccessRole = roleService.findByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
-        Set<Privilege> privileges = openAccessRole.getPrivileges();
-        privileges.addAll(applicationPrivileges);
-        Map mergedTemplateMap = getMergedQueryTemplateMap(privileges);
-        String resultJSON;
-        try {
-            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
-        } catch (JsonProcessingException ex) {
-            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: {}", mergedTemplateMap);
-            throw new IllegalArgumentException("Inner application error, please contact admin.");
-        }
-
-        return resultJSON;
-    }
-
-    public Map<String, String> getDefaultQueryTemplate() {
-        Optional<String> mergedTemplate = getQueryTemplate(this.applicationUUID);
-
-        if (mergedTemplate.isEmpty()) {
-            logger.error("getDefaultQueryTemplate() cannot find corresponding application by UUID: {}", this.applicationUUID);
-            return null;
-        }
-
-        return Map.of("queryTemplate", mergedTemplate.orElse(null));
-    }
-
-    @Cacheable(value = "mergedTemplateCache", keyGenerator = "customKeyGenerator")
-    public String mergeTemplate(User user, Application application) {
-        String resultJSON;
-        Set<Privilege> privileges = user.getPrivilegesByApplication(application);
-        Map mergedTemplateMap = getMergedQueryTemplateMap(privileges);
-
-        try {
-            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
-        } catch (JsonProcessingException ex) {
-            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: {}", mergedTemplateMap);
-            throw new IllegalArgumentException("Inner application error, please contact admin.");
-        }
-
-        return resultJSON;
-    }
-
-    private Map getMergedQueryTemplateMap(Set<Privilege> privileges) {
-        Map mergedTemplateMap = null;
-        for (Privilege privilege : privileges) {
-            String template = privilege.getQueryTemplate();
-            logger.debug("mergeTemplate() processing template:{}", template);
-            if (template == null || template.trim().isEmpty()) {
-                continue;
-            }
-            Map<String, Object> templateMap = null;
-            try {
-                templateMap = objectMapper.readValue(template, Map.class);
-            } catch (IOException ex) {
-                logger.error("mergeTemplate() cannot convert stored queryTemplate using Jackson, the queryTemplate is: {}", template);
-                throw new IllegalArgumentException("Inner application error, please contact admin.");
-            }
-
-            if (templateMap == null) {
-                continue;
-            }
-
-            if (mergedTemplateMap == null) {
-                mergedTemplateMap = templateMap;
-                continue;
-            }
-
-            mergedTemplateMap = JsonUtils.mergeTemplateMap(mergedTemplateMap, templateMap);
-        }
-        return mergedTemplateMap;
-    }
-
-    @CacheEvict(value = "mergedTemplateCache")
-    public void evictFromCache(String userSubject) {
-        if (userSubject == null || userSubject.isEmpty()) {
-            logger.warn("evictFromCache() was called with a null or empty email");
-            return;
-        }
-        logger.info("evictFromCache() evicting cache for user: {}", userSubject);
     }
 
     @Transactional

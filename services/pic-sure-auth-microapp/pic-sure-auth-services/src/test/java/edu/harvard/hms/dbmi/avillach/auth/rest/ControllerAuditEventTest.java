@@ -51,10 +51,6 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "updateUser", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "user.modify");
         // getCurrentUser(String authorizationHeader, Boolean hasToken)
         assertAuditEvent(c, "getCurrentUser", new Class[] {String.class, Boolean.class}, "ACCESS", "user.profile");
-        // getQueryTemplate(String applicationId)
-        assertAuditEvent(c, "getQueryTemplate", new Class[] {String.class}, "ACCESS", "user.profile");
-        // getQueryTemplate() - no params
-        assertAuditEvent(c, "getQueryTemplate", new Class[] {}, "ACCESS", "user.profile");
         // refreshUserToken(HttpHeaders httpHeaders, HttpServletRequest request)
         assertAuditEvent(c, "refreshUserToken", new Class[] {HttpHeaders.class, HttpServletRequest.class}, "ACCESS", "user.profile");
     }

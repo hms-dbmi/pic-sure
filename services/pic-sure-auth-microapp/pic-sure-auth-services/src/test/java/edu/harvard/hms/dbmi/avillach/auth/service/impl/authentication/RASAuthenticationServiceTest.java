@@ -230,19 +230,7 @@ public class RASAuthenticationServiceTest {
         Privilege privilege = new Privilege();
         privilege.setName("TEST_PRIVILEGE");
         privilege.setUuid(UUID.randomUUID());
-        privilege.setQueryTemplate(
-            createQueryTemplate(
-                "consent_concept_path_" + privilege.getUuid(), "project_name_" + privilege.getUuid(), "consent_group_" + privilege.getUuid()
-            )
-        );
 
         return privilege;
-    }
-
-    private String createQueryTemplate(String consent_concept_path, String project_name, String consent_group) {
-        return "{\"categoryFilters\": {\"" + consent_concept_path + "\":\"" + project_name + "." + consent_group + "\"},"
-            + "\"numericFilters\":{},\"requiredFields\":[],"
-            + "\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
-            + "\"expectedResultType\": \"COUNT\"" + "}";
     }
 }
