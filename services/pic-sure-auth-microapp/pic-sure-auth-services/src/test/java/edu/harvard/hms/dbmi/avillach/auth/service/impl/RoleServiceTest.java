@@ -27,9 +27,6 @@ import static org.mockito.Mockito.*;
 public class RoleServiceTest {
 
     @MockBean
-    private ApplicationService applicationService;
-
-    @MockBean
     private AccessRuleService accessRuleService;
 
     @MockBean
@@ -46,9 +43,6 @@ public class RoleServiceTest {
 
     @Autowired
     private RoleService roleService;
-
-    @Autowired
-    private PrivilegeService privilegeService;
 
     @BeforeEach
     public void setUp() {
