@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
-import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -115,78 +114,6 @@ public class RoleService {
 
     public Role findByName(String roleName) {
         return this.roleRepository.findByName(roleName);
-    }
-
-    public Role getOrCreateRole(String roleName, String roleDescription) {
-        Role existingRole = this.roleRepository.findByName(roleName);
-        if (existingRole != null) {
-            return existingRole;
-        }
-
-        return createRole(roleName, roleDescription);
-    }
-
-    public Role createRole(String roleName, String roleDescription) {
-        if (roleName.isEmpty()) {
-            logger.info("createRole() roleName is empty");
-            return null;
-        }
-
-        Role role = findByName(roleName);
-        if (role != null) {
-            // Role already exists
-            logger.trace("upsertRole() role: {} already exists", role.getName());
-            return role;
-        }
-
-        logger.info("createRole() New PSAMA role name:{}", roleName);
-        role = new Role();
-        role.setName(roleName);
-        role.setDescription(roleDescription);
-        return role;
-    }
-
-    /**
-     * Insert or Update the User object's list of Roles in the database.
-     *
-     * @param u The User object the generated Role will be added to
-     * @param roleName Name of the Role
-     * @param roleDescription Description of the Role
-     * @return boolean Whether the Role was successfully added to the User or not
-     */
-    public boolean upsertRole(User u, String roleName, String roleDescription) {
-        boolean status = false;
-
-        // Get the User's list of Roles. The first time, this will be an empty Set.
-        // This method is called for every Role, and the User's list of Roles will
-        // be updated for all subsequent calls.
-        try {
-            Role r = null;
-            // Create the Role in the Servicesitory, if it does not exist. Otherwise, add it.
-            Role existing_role = this.getRoleByName(roleName);
-            if (existing_role != null) {
-                // Role already exists
-                logger.info("upsertRole() role already exists");
-                r = existing_role;
-            } else {
-                // This is a new Role
-                r = new Role();
-                r.setName(roleName);
-                r.setDescription(roleDescription);
-                this.save(r);
-                logger.info("upsertRole() created new role");
-            }
-            if (u != null) {
-                u.getRoles().add(r);
-            }
-            status = true;
-        } catch (Exception ex) {
-            logger.error("upsertRole() Could not inser/update role {} to Service", roleName, ex);
-        }
-
-
-        logger.debug("upsertRole() finished");
-        return status;
     }
 
     public Set<Role> findByNameIn(Set<String> roleNames) {
