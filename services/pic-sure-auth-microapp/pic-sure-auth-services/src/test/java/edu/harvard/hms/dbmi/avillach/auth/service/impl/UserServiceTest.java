@@ -22,7 +22,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -608,6 +610,57 @@ public class UserServiceTest {
         ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
         verify(userConsentsRepository).save(userConsentsCaptor.capture());
         assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), userConsentsCaptor.getValue().getConsents());
+    }
+
+    @Test
+    public void getUserConsents_returnsStoredConsentsOfAuthenticatedUser() {
+        User user = createTestUser();
+        configureUserSecurityContext(user);
+        UserConsents stored = new UserConsents().setUserId(user.getUuid()).setConsents(Map.of("\\_consents\\", Set.of("phs1234.c1")));
+        when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(stored);
+
+        UserConsents result = userService.getUserConsents();
+
+        assertNotNull(result);
+        assertEquals(user.getUuid(), result.getUserId());
+        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), result.getConsents());
+    }
+
+    @Test
+    public void getUserConsents_returnsEmptyConsentsWhenNoRecordStored() {
+        User user = createTestUser();
+        configureUserSecurityContext(user);
+        when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(null);
+
+        UserConsents result = userService.getUserConsents();
+
+        assertNotNull(result);
+        assertEquals(user.getUuid(), result.getUserId());
+        assertEquals(Map.of(), result.getConsents());
+    }
+
+    @Test
+    public void getUserConsents_returnsNullWhenNoAuthenticationPresent() {
+        when(securityContext.getAuthentication()).thenReturn(null);
+
+        // Must return null rather than NPE on the unguarded getAuthentication() dereference.
+        UserConsents result = assertDoesNotThrow(() -> userService.getUserConsents());
+
+        assertNull(result);
+        verify(userConsentsRepository, never()).findByUserId(any(UUID.class));
+    }
+
+    @Test
+    public void getUserConsents_returnsNullForAnonymousPrincipal() {
+        // Spring's anonymous principal is the String "anonymousUser", which is not a CustomUserDetails.
+        when(securityContext.getAuthentication())
+            .thenReturn(new AnonymousAuthenticationToken("key", "anonymousUser", AuthorityUtils.createAuthorityList("ROLE_ANONYMOUS")));
+
+        // Must return null rather than ClassCastException on the cast to CustomUserDetails.
+        UserConsents result = assertDoesNotThrow(() -> userService.getUserConsents());
+
+        assertNull(result);
+        verify(userConsentsRepository, never()).findByUserId(any(UUID.class));
     }
 
     private UserClaims buildTestUserClaims(User user) {

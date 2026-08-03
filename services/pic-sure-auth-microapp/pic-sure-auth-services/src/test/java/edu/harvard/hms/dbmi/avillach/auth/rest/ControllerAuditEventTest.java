@@ -53,6 +53,8 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getCurrentUser", new Class[] {String.class, Boolean.class}, "ACCESS", "user.profile");
         // refreshUserToken(HttpHeaders httpHeaders, HttpServletRequest request)
         assertAuditEvent(c, "refreshUserToken", new Class[] {HttpHeaders.class, HttpServletRequest.class}, "ACCESS", "user.profile");
+        // getUserConsents()
+        assertAuditEvent(c, "getUserConsents", new Class[] {}, "ACCESS", "user.profile");
     }
 
     @Test

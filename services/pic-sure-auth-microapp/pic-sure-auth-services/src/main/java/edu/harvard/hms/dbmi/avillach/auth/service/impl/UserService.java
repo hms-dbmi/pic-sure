@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -636,16 +637,34 @@ public class UserService {
         return user;
     }
 
-    public UserConsents getUserConsents(UUID userId) {
+    /**
+     * Returns the consents of the currently authenticated user. The user is taken from the security context, so a caller can only ever read
+     * its own consents.
+     *
+     * @return the user's consents, an empty set of consents if none are stored, or null if no user is authenticated
+     */
+    public UserConsents getUserConsents() {
         SecurityContext securityContext = SecurityContextHolder.getContext();
-        CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
-        if (customUserDetails == null || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null) {
+        Authentication authentication = securityContext.getAuthentication();
+        // An unauthenticated request has either no Authentication at all or an AnonymousAuthenticationToken, whose principal is the
+        // String "anonymousUser". Testing the type rather than casting keeps both cases on the documented null-returning path.
+        if (
+            authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)
+                || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null
+        ) {
             logger.error("Security context didn't have a user stored.");
             return null;
-        } else if (customUserDetails.getUser().getUuid() != userId) {
-            logger.error("User " + customUserDetails.getUser().getUuid() + " tried to access consents for user " + userId);
-            return null;
         }
-        return userConsentsRepository.findByUserId(userId);
+
+        UUID userId = customUserDetails.getUser().getUuid();
+        UserConsents userConsents = userConsentsRepository.findByUserId(userId);
+        if (userConsents == null) {
+            // Not an error: a user with no stored record simply has no authorized studies. Returning an empty set lets clients treat
+            // this as "nothing authorized" instead of failing outright.
+            logger.info("No consents stored for user {}", userId);
+            return new UserConsents().setUserId(userId).setConsents(Map.of());
+        }
+
+        return userConsents;
     }
 }
