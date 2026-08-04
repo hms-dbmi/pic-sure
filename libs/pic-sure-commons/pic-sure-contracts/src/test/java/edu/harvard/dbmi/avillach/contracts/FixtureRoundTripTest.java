@@ -184,7 +184,8 @@ class FixtureRoundTripTest {
     }
 
     /**
-     * PSAMA copies every JWT claim into the introspection response, so unknown properties must not break deserialization.
+     * The body carries more than this record models -- PSAMA's TokenIntrospectionResponse adds an unmodelled {@code message} -- and a
+     * future PSAMA may add fields before this contract learns them. Unknown properties must not break deserialization.
      */
     @Test
     void shouldIgnoreUnknownIntrospectionResponseProperties() throws IOException {

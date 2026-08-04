@@ -463,6 +463,71 @@ class PsamaIntrospectionFilterTest {
         assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isNull();
     }
 
+    /**
+     * SECURITY: the contract's userId used to also bind from a legacy {@code uuid} key. That alias is gone, so a gateway talking to a PSAMA
+     * old enough to still emit {@code uuid} -- a rolling deploy caught mid-flight, or a PSAMA rolled back under a new gateway -- reads
+     * userId as null. Stashing that null as X-User-Id while marking the request successful makes every downstream service reject it on
+     * header authn: a total outage presenting as scattered 401s, with nothing in the gateway log naming the cause. A loud 502 here is the
+     * whole difference between a five-minute diagnosis and an afternoon.
+     */
+    @Test
+    void failsClosedWhenAnActiveVerdictCarriesNoUserId() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(any(), any()))
+            .thenReturn(new IntrospectionResponse(true, null, "s-1", "a@b", List.of("ADMIN"), List.of("SUPER_ADMIN"), false, null, null));
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{\"expectedResultType\":\"COUNT\"}".getBytes(), "/query");
+        StringWriter written = new StringWriter();
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(new PrintWriter(written, true));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        verify(resp).setStatus(502);
+        assertThat(written.toString()).contains("\"errorType\":\"introspection_malformed\"");
+        // A distinct audit reason from the malformed-query denial above: same client-facing errorType, different operator remedy.
+        assertThat(ctx.getMetadata()).containsEntry("auth_failure_reason", "introspection_missing_user_id");
+        assertThat(ctx.getMetadata()).containsEntry("auth_result", "failure");
+        verify(chain, never()).doFilter(any(), any());
+        // Nothing identity-bearing may survive the denial -- least of all the null user id that started it.
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_ID)).isNull();
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_SUBJECT)).isNull();
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_EMAIL)).isNull();
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_ROLES)).isNull();
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_PRIVILEGES)).isNull();
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).isNull();
+        assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isNull();
+    }
+
+    /** A blank user id is the same failure wearing a different mask: an empty X-User-Id fails downstream authn exactly as a null does. */
+    @Test
+    void failsClosedWhenAnActiveVerdictCarriesABlankUserId() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(any(), any()))
+            .thenReturn(new IntrospectionResponse(true, "   ", "s-1", "a@b", List.of("ADMIN"), List.of(), false, null, null));
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{\"expectedResultType\":\"COUNT\"}".getBytes(), "/query");
+        StringWriter written = new StringWriter();
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(new PrintWriter(written, true));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        verify(resp).setStatus(502);
+        assertThat(ctx.getMetadata()).containsEntry("auth_failure_reason", "introspection_missing_user_id");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_ID)).isNull();
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).isNull();
+    }
+
     @Test
     void systemStatusGetIsAllowListedAsSystemMonitor() throws Exception {
         PsamaClient client = mock(PsamaClient.class);

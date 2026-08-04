@@ -46,7 +46,8 @@ import jakarta.servlet.http.HttpServletResponse;
  * this filter does NOT mutate the body itself. {@code active:false} denies with a 401 additive error body.
  * {@link QueryAuthFetcher}/introspection infrastructure failures ({@link PicsureException}, or any introspection transport error) are
  * fail-closed: the mapped status/error body is written and the request is never forwarded, as is a consent-mutated query that is not a JSON
- * object.
+ * object and an active verdict carrying no {@code userId} (the shape a PSAMA older than the typed contract produces -- see the guard for
+ * why that must be loud rather than silently propagated as an empty {@code X-User-Id}).
  */
 public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
@@ -202,6 +203,24 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             GatewayErrors.write(
                 resp, HttpStatus.BAD_GATEWAY, "introspection_malformed", "Token introspection returned an unusable consent-filtered query."
             );
+            return;
+        }
+
+        // An active verdict with no user id is a broken PSAMA, and denying is the only safe reading. The contract's userId used to also
+        // bind from a legacy "uuid" key; that alias is gone, so a gateway talking to a PSAMA old enough to still emit "uuid" -- a rolling
+        // deploy caught mid-flight, or a PSAMA rolled back under a new gateway -- reads userId as null. Without this, that null is stashed
+        // as X-User-Id, the request is marked auth_result=success, and every downstream service's header-based authn rejects it: a total
+        // outage presenting as scattered 401s with nothing in the gateway log pointing at the version skew. Fail closed, loudly, and
+        // resolve it before any identity attribute is stashed so the denial path leaves none behind.
+        if (intro.userId() == null || intro.userId().isBlank()) {
+            audit.put("auth_result", "failure");
+            audit.put("auth_failure_reason", "introspection_missing_user_id");
+            log.error(
+                "Introspection returned an active token with no userId; denying. The gateway and PSAMA are a lockstep pair -- this is what "
+                    + "a version skew looks like (a PSAMA predating the typed introspection contract emits the user uuid under the legacy "
+                    + "\"uuid\" key, which this gateway no longer binds). Redeploy PSAMA to match this gateway."
+            );
+            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "introspection_malformed", "Token introspection returned no user identity.");
             return;
         }
 

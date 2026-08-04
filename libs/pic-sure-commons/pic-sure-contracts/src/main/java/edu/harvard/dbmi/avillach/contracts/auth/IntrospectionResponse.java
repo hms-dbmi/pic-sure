@@ -9,9 +9,10 @@ import java.util.List;
 
 /**
  * PSAMA's answer to {@link IntrospectionRequest}: whether the token is usable, who it belongs to, and -- when consent evaluation rewrote it
- * -- the query the caller is actually allowed to run. <p> Unknown properties are ignored because PSAMA copies every JWT claim into this
- * response ({@code TokenInspection#addAllFields}), so the payload carries {@code exp}, {@code iat}, {@code jti}, {@code message} and
- * whatever else the token happened to hold. Only the fields below are contractual; nothing may start depending on the rest.
+ * -- the query the caller is actually allowed to run. <p> Unknown properties are ignored because the body carries more than this record
+ * models: PSAMA wraps it in {@code TokenIntrospectionResponse}, which {@code @JsonUnwrapped}s these fields and adds its own unmodelled
+ * {@code message}. Tolerant reading also absorbs additive fields a future PSAMA sends before this contract learns about them, which is what
+ * lets the two deploy without a flag day. Only the fields below are contractual; nothing may start depending on the rest.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 // SECURITY: absence and null are NOT interchangeable on this record, because Jackson deserializes an explicit JSON null into a JsonNode

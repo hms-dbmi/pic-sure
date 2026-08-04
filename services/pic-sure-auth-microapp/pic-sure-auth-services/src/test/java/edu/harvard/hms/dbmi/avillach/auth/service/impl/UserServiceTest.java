@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
@@ -642,8 +643,11 @@ public class UserServiceTest {
         assertEquals(user.getUuid().toString(), result.userId());
         assertEquals(Map.of(), result.consents());
         // The persisted row's uuid is a storage detail of user_consents; the contract record has no component for it, so no client can
-        // start depending on PSAMA's schema through this endpoint.
-        assertFalse(new ObjectMapper().writeValueAsString(result).contains("uuid"));
+        // start depending on PSAMA's schema through this endpoint. Asserted as the exact key set rather than a substring search for
+        // "uuid": the only other value here IS a uuid, but its hex spelling can never contain that literal, so the search would pass
+        // whether or not the key was there.
+        Map<String, Object> body = new ObjectMapper().convertValue(result, new TypeReference<Map<String, Object>>() {});
+        assertEquals(Set.of("userId", "consents"), body.keySet(), "the wire carries these two keys and nothing else");
     }
 
     @Test

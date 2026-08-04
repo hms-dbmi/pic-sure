@@ -91,7 +91,7 @@ class PsamaClientTest {
     }
 
     /**
-     * PSAMA copies every JWT claim into the inspect response and adds an unmodelled {@code message}; the contract is a tolerant reader so
+     * PSAMA's TokenIntrospectionResponse adds an unmodelled {@code message} to the inspect response; the contract is a tolerant reader so
      * none of that may break binding.
      */
     @Test
