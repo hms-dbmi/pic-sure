@@ -326,7 +326,7 @@
             "type" : "string"
           },
           "privileges" : {
-            "description" : "Names of the privileges the user holds in the calling application, plus their application-independent ones",
+            "description" : "Names of the BASELINE privileges the user holds in the calling application, plus their application-independent ones. PSAMA no longer mints per-study PRIV_MANAGED_* privileges or FENCE-derived names at login, so nothing here describes which studies the user may query: study access flows exclusively through user_consents, read via GET /user/me/consents.",
             "items" : {
               "type" : "string"
             },
@@ -337,7 +337,7 @@
             "description" : "Consent-mutated v3 Query as a JSON OBJECT (never a string). Present only when access-rule evaluation rewrote the submitted query; the caller must run this one instead of the query it sent"
           },
           "roles" : {
-            "description" : "Names of the roles held by the user",
+            "description" : "Names of the BASELINE roles held by the user. PSAMA no longer mints per-study MANAGED_* roles or FENCE-derived role names at login, so nothing here describes which studies the user may query: study access flows exclusively through user_consents, read via GET /user/me/consents.",
             "items" : {
               "type" : "string"
             },
@@ -356,7 +356,7 @@
             "type" : "boolean"
           },
           "userId" : {
-            "description" : "PSAMA's UUID for the authenticated user; also read from the legacy \"uuid\" key",
+            "description" : "PSAMA's UUID for the authenticated user",
             "type" : "string"
           }
         },
@@ -423,7 +423,8 @@
         },
         "type" : "object"
       },
-      "UserConsents" : {
+      "UserConsentsResponse" : {
+        "description" : "The study authorizations of the caller, keyed by concept path",
         "properties" : {
           "consents" : {
             "additionalProperties" : {
@@ -433,14 +434,11 @@
               "type" : "array",
               "uniqueItems" : true
             },
+            "description" : "Authorized consent identifiers, keyed by CONCEPT PATH -- not by study accession. The values are the consent identifiers verbatim (\"phs000007.c1\", \"open_access-1000Genomes\"); clients match them against dictionary values and put them in a v3 query's authorizationFilters as-is, never parsing or reformatting them. The producer is PSAMA's BdcConsentsBuilder, and the keys it writes today are \"\\_consents\\\" (every authorized consent identifier plus every public study), \"\\_harmonized_consent\\\" (the harmonized subset) and \"\\_topmed_consents\\\" (the subset whose study dataType contains G). Those are the KNOWN keys, not the complete set: consumers must treat every key as optional and tolerate ones they do not recognise. Empty when nothing is authorized.",
             "type" : "object"
           },
           "userId" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "uuid" : {
-            "format" : "uuid",
+            "description" : "PSAMA's UUID for the user these consents belong to",
             "type" : "string"
           }
         },
@@ -2069,7 +2067,7 @@
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/UserConsents"
+                  "$ref" : "#/components/schemas/UserConsentsResponse"
                 }
               }
             },

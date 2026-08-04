@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
+import edu.harvard.dbmi.avillach.contracts.auth.UserConsentsResponse;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
@@ -642,9 +643,13 @@ public class UserService {
      * reached it. The caller cannot name a user at all now: {@code /user/me/consents} is a self endpoint, and deriving the subject from the
      * security context is what makes the check unnecessary rather than merely correct.
      *
-     * @return the user's consents, an empty set of consents if none are stored, or null if no user is authenticated
+     * <p>The answer is the {@link UserConsentsResponse} contract, not the {@code user_consents} JPA entity: the entity carries the
+     * persisted row's own uuid, which is a storage detail no client has a use for, and shipping it invites one to bind to PSAMA's schema.
+     * Only the user id and the consent map cross the wire.
+     *
+     * @return the user's consents, an empty map of consents if none are stored, or null if no user is authenticated
      */
-    public UserConsents getUserConsents() {
+    public UserConsentsResponse getUserConsents() {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         Authentication authentication = securityContext.getAuthentication();
         // An unauthenticated request has either no Authentication at all or an AnonymousAuthenticationToken, whose principal is the
@@ -660,12 +665,12 @@ public class UserService {
         UUID userId = customUserDetails.getUser().getUuid();
         UserConsents userConsents = userConsentsRepository.findByUserId(userId);
         if (userConsents == null) {
-            // Not an error: a user with no stored record simply has no authorized studies. Returning an empty set lets clients treat
+            // Not an error: a user with no stored record simply has no authorized studies. Returning an empty map lets clients treat
             // this as "nothing authorized" instead of failing outright.
             logger.info("No consents stored for user {}", userId);
-            return new UserConsents().setUserId(userId).setConsents(Map.of());
+            return new UserConsentsResponse(userId.toString(), Map.of());
         }
 
-        return userConsents;
+        return new UserConsentsResponse(userId.toString(), userConsents.getConsents());
     }
 }

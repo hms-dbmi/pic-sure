@@ -61,5 +61,12 @@ class OpenApiExportTest {
             document, "TokenIntrospectionResponse",
             List.of("active", "email", "message", "privileges", "query", "roles", "sub", "token", "tokenRefreshed", "userId")
         );
+
+        // /user/me/consents answers the contract record, not the user_consents JPA entity. The entity put the persisted row's own uuid on
+        // the wire alongside userId; that is a storage detail of PSAMA's schema and dropping it is the point of the change, so the document
+        // must show exactly two properties and no uuid among them.
+        OpenApiExport
+            .assertRespondsWith(OpenApiExport.operation(document, "/user/me/consents", "get"), "application/json", "UserConsentsResponse");
+        OpenApiExport.assertSchemaProperties(document, "UserConsentsResponse", List.of("consents", "userId"));
     }
 }

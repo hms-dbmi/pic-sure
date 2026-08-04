@@ -17,6 +17,7 @@ import edu.harvard.dbmi.avillach.contracts.audit.AuditEvent;
 import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
 import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionRequest;
 import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionResponse;
+import edu.harvard.dbmi.avillach.contracts.auth.UserConsentsResponse;
 import edu.harvard.dbmi.avillach.contracts.info.QueryFormat;
 import edu.harvard.dbmi.avillach.contracts.info.ResourceInfo;
 import edu.harvard.dbmi.avillach.contracts.internal.DispatchResponse;
@@ -35,6 +36,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -117,16 +119,33 @@ class FixtureRoundTripTest {
     }
 
     /**
-     * PSAMA writes this record now, so the UUID goes out as "userId" -- but any PSAMA that has not been redeployed still sends it as
-     * "uuid". Losing this alias silently drops X-User-Id and every downstream service rejects the request, so the alias is contractual and
-     * not a convenience.
+     * The user's study authorizations. The map is keyed by CONCEPT PATH -- the escaped {@code \_consents\} form the query layer uses -- and
+     * its values are the consent identifiers verbatim. An earlier client was documented against {@code {"phs000001": ["c1"]}}, which is
+     * wrong on both counts; this fixture is the byte-for-byte copy both clients test against, so the shape cannot drift again.
      */
     @Test
-    void shouldAcceptUuidAliasForUserId() throws IOException {
-        IntrospectionResponse response =
-            MAPPER.readValue("{\"active\":true,\"uuid\":\"6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11\"}", IntrospectionResponse.class);
+    void shouldRoundTripUserConsentsResponse() throws IOException {
+        UserConsentsResponse response = assertRoundTrip("user-consents-response.json", UserConsentsResponse.class);
 
         assertEquals("6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11", response.userId());
+        assertEquals(
+            Set.of("phs000007.c1", "phs000179.c2", "open_access-1000Genomes"), response.consents().get("\\_consents\\"),
+            "consent identifiers ride verbatim, keyed by the escaped concept path"
+        );
+        assertEquals(Set.of("phs000007.c1"), response.consents().get("\\_harmonized_consent\\"));
+        assertEquals(Set.of("phs000179.c2", "open_access-1000Genomes"), response.consents().get("\\_topmed_consents\\"));
+    }
+
+    /**
+     * The persisted row's uuid is a storage detail of PSAMA's {@code user_consents} table, never part of the answer. It came off the wire
+     * with this record and must not creep back: a client that starts reading it would bind to PSAMA's schema.
+     */
+    @Test
+    void shouldNotCarryThePersistedRowUuid() throws IOException {
+        String json = MAPPER.writeValueAsString(new UserConsentsResponse("user-1", Map.of()));
+
+        assertFalse(json.contains("uuid"), "the user_consents row id must not be on the wire: " + json);
+        assertEquals("{\"userId\":\"user-1\",\"consents\":{}}", json);
     }
 
     /**
@@ -173,6 +192,20 @@ class FixtureRoundTripTest {
             MAPPER.readValue("{\"active\":true,\"exp\":1893456000,\"iat\":1893452400,\"message\":\"ok\"}", IntrospectionResponse.class);
 
         assertTrue(response.active());
+    }
+
+    /**
+     * {@code userId} carried a {@code @JsonAlias("uuid")} while PSAMA and the gateway could be at different versions. They deploy as one
+     * unit, PSAMA writes this record, and nothing in the introspection flow emits a {@code uuid} key any more -- the JWT claim of that name
+     * is read by {@code TokenService#userId} and written out as {@code userId}. The alias is gone, so a stray {@code uuid} is just another
+     * unmodelled property on a tolerant reader: ignored, never bound.
+     */
+    @Test
+    void shouldNotBindTheLegacyUuidKeyToUserId() throws IOException {
+        IntrospectionResponse response =
+            MAPPER.readValue("{\"active\":true,\"uuid\":\"6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11\"}", IntrospectionResponse.class);
+
+        assertNull(response.userId(), "the uuid alias is gone; only the userId key names the user");
     }
 
     @Test
@@ -312,6 +345,7 @@ class FixtureRoundTripTest {
         assertRejectsUnknownProperty("{\"signedUrl\":\"https://x\",\"typo\":1}", SignedUrlResponse.class);
         assertRejectsUnknownProperty("{\"name\":\"x\",\"typo\":1}", QueryFormat.class);
         assertRejectsUnknownProperty("{\"name\":\"x\",\"typo\":1}", ResourceInfo.class);
+        assertRejectsUnknownProperty("{\"userId\":\"u\",\"typo\":1}", UserConsentsResponse.class);
     }
 
     @Test
@@ -319,6 +353,7 @@ class FixtureRoundTripTest {
         assertEquals(Map.of(), new QueryStatusResponse(null, null, null, null, 0L, 0L, 0L, 0L, null).resultMetadata());
         assertEquals(List.of(), new PaginatedResponse<String>(null, 0, 0).results());
         assertEquals(List.of(), new ResourceInfo(null, null, null).queryFormats());
+        assertEquals(Map.of(), new UserConsentsResponse(null, null).consents());
     }
 
     /**

@@ -72,9 +72,10 @@ class PsamaClientTest {
     }
 
     @Test
-    void bindsUserIdFromPsamaUuidField() {
-        // A PSAMA that has not been redeployed still carries the user UUID as "uuid" (UserService/UserClaims).
-        // X-User-Id propagation (and thus query/operations-service authn) depends on this alias.
+    void doesNotBindUserIdFromTheLegacyUuidField() {
+        // "uuid" was the pre-contract spelling of this field, tolerated by a @JsonAlias while the gateway and PSAMA could be at different
+        // versions. They ship as one unit and PSAMA writes the contract record, so "uuid" is now just an unmodelled key on a tolerant
+        // reader. Binding it would resurrect a wire name nothing emits.
         psama.stubFor(
             post(urlEqualTo("/token/introspect")).willReturn(
                 okJson(
@@ -86,7 +87,7 @@ class PsamaClientTest {
 
         IntrospectionResponse resp = client().introspect("user-token", new TargetedRequest("/hpds/auth/query/sync", null));
         assertThat(resp.active()).isTrue();
-        assertThat(resp.userId()).isEqualTo("7c5e0618-0000-0000-0000-000000000000");
+        assertThat(resp.userId()).isNull();
     }
 
     /**

@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
@@ -8,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
+import edu.harvard.dbmi.avillach.contracts.auth.UserConsentsResponse;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
@@ -621,24 +623,27 @@ public class UserServiceTest {
         UserConsents stored = new UserConsents().setUserId(user.getUuid()).setConsents(Map.of("\\_consents\\", Set.of("phs1234.c1")));
         when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(stored);
 
-        UserConsents result = userService.getUserConsents();
+        UserConsentsResponse result = userService.getUserConsents();
 
         assertNotNull(result);
-        assertEquals(user.getUuid(), result.getUserId());
-        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), result.getConsents());
+        assertEquals(user.getUuid().toString(), result.userId());
+        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), result.consents());
     }
 
     @Test
-    public void getUserConsents_returnsEmptyConsentsWhenNoRecordStored() {
+    public void getUserConsents_returnsEmptyConsentsWhenNoRecordStored() throws Exception {
         User user = createTestUser();
         configureUserSecurityContext(user);
         when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(null);
 
-        UserConsents result = userService.getUserConsents();
+        UserConsentsResponse result = userService.getUserConsents();
 
         assertNotNull(result);
-        assertEquals(user.getUuid(), result.getUserId());
-        assertEquals(Map.of(), result.getConsents());
+        assertEquals(user.getUuid().toString(), result.userId());
+        assertEquals(Map.of(), result.consents());
+        // The persisted row's uuid is a storage detail of user_consents; the contract record has no component for it, so no client can
+        // start depending on PSAMA's schema through this endpoint.
+        assertFalse(new ObjectMapper().writeValueAsString(result).contains("uuid"));
     }
 
     @Test
@@ -646,7 +651,7 @@ public class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(null);
 
         // Must return null rather than NPE on the unguarded getAuthentication() dereference.
-        UserConsents result = assertDoesNotThrow(() -> userService.getUserConsents());
+        UserConsentsResponse result = assertDoesNotThrow(() -> userService.getUserConsents());
 
         assertNull(result);
         verify(userConsentsRepository, never()).findByUserId(any(UUID.class));
@@ -659,7 +664,7 @@ public class UserServiceTest {
             .thenReturn(new AnonymousAuthenticationToken("key", "anonymousUser", AuthorityUtils.createAuthorityList("ROLE_ANONYMOUS")));
 
         // Must return null rather than ClassCastException on the cast to CustomUserDetails.
-        UserConsents result = assertDoesNotThrow(() -> userService.getUserConsents());
+        UserConsentsResponse result = assertDoesNotThrow(() -> userService.getUserConsents());
 
         assertNull(result);
         verify(userConsentsRepository, never()).findByUserId(any(UUID.class));

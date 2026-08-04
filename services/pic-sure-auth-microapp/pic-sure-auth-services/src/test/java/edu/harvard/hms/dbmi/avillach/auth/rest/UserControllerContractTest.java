@@ -26,7 +26,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
+import edu.harvard.dbmi.avillach.contracts.auth.UserConsentsResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentsBuilder;
@@ -53,7 +53,8 @@ class UserControllerContractTest {
     /**
      * {@code /user/me/consents} declared {@code @PathVariable("userId")} against a path with no {@code {userId}} template, so Spring could
      * never resolve the argument: the endpoint answered 500 for every caller. The user now comes from the security context like every other
-     * {@code /me} endpoint, and the body is the bare record.
+     * {@code /me} endpoint, and the body is the bare {@link UserConsentsResponse} contract -- two keys, nothing else. The JPA entity it
+     * used to serialize carried the {@code user_consents} row's own uuid; that is storage, not answer, and it is off the wire deliberately.
      *
      * <p>The fixture is keyed by {@link BdcConsentsBuilder}'s own constants on purpose. This map is keyed by CONCEPT PATH -- not by phs
      * accession -- and its values are the consent identifiers verbatim ({@code phs000007.c1}, {@code open_access-1000Genomes}). An earlier
@@ -63,7 +64,8 @@ class UserControllerContractTest {
     @Test
     void consentsResolvesTheUserFromTheSecurityContextAndReturnsTheRecordBare() throws Exception {
         UUID userId = UUID.randomUUID();
-        UserConsents consents = new UserConsents().setUserId(userId).setConsents(
+        UserConsentsResponse consents = new UserConsentsResponse(
+            userId.toString(),
             Map.of(
                 BdcConsentsBuilder.CONSENTS_KEY, Set.of("phs000007.c1", "open_access-1000Genomes"),
                 BdcConsentsBuilder.HARMONIZED_CONSENTS_KEY, Set.of("phs000007.c1")
@@ -76,7 +78,7 @@ class UserControllerContractTest {
         JsonNode body = MAPPER.readTree(result.getResponse().getContentAsString());
         assertEquals(userId.toString(), body.get("userId").asText());
         JsonNode consentsNode = body.get("consents");
-        assertTrue(consentsNode.get(BdcConsentsBuilder.CONSENTS_KEY).isArray(), "consents must serialize as the map the entity holds");
+        assertTrue(consentsNode.get(BdcConsentsBuilder.CONSENTS_KEY).isArray(), "consents must serialize as the map the record holds");
         assertTrue(consentsNode.get(BdcConsentsBuilder.HARMONIZED_CONSENTS_KEY).isArray(), "every concept path serializes the same way");
         assertEquals(
             Set.of("phs000007.c1", "open_access-1000Genomes"),
@@ -86,6 +88,8 @@ class UserControllerContractTest {
         );
         assertFalse(body.has("content"), "the response envelope must be gone");
         assertFalse(body.has("message"), "the response envelope must be gone");
+        assertFalse(body.has("uuid"), "the user_consents row id is storage, not contract: " + body);
+        assertEquals(2, body.size(), "userId and consents, and nothing else");
     }
 
     /** No {@code userId} argument survives: taking one from the caller is what made the endpoint unresolvable in the first place. */

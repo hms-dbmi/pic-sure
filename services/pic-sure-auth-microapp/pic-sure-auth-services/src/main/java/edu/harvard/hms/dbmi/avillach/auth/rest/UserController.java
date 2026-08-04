@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.dbmi.avillach.contracts.auth.UserConsentsResponse;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
@@ -153,12 +154,15 @@ public class UserController {
      * The consents of the caller. This declared {@code @PathVariable("userId")} against a path with no {@code {userId}} template, so Spring
      * could not resolve the argument and the endpoint answered 500 to everyone; the user now comes from the security context, exactly as
      * {@link #getCurrentUser} does.
+     *
+     * <p>The body is the {@link UserConsentsResponse} contract, not the {@code user_consents} row: the persisted uuid is a storage detail
+     * and never belonged on the wire.
      */
     @Operation(description = "Retrieve consents of current user")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
-    public UserConsents getUserConsents() {
-        UserConsents userConsents = this.userService.getUserConsents();
+    public UserConsentsResponse getUserConsents() {
+        UserConsentsResponse userConsents = this.userService.getUserConsents();
 
         if (userConsents == null) {
             throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", INTERNAL_ERROR);

@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
+import edu.harvard.dbmi.avillach.contracts.auth.UserConsentsResponse;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentsBuilder;
@@ -39,14 +39,14 @@ public class UserControllerTest {
     public void consentsEndpointDispatchesAndReturnsConsents() throws Exception {
         UUID userId = UUID.randomUUID();
         when(userService.getUserConsents()).thenReturn(
-            new UserConsents().setUserId(userId)
-                .setConsents(Map.of(BdcConsentsBuilder.CONSENTS_KEY, Set.of("phs000007.c1", "open_access-1000Genomes")))
+            new UserConsentsResponse(
+                userId.toString(), Map.of(BdcConsentsBuilder.CONSENTS_KEY, Set.of("phs000007.c1", "open_access-1000Genomes"))
+            )
         );
 
         mockMvc.perform(get("/user/me/consents")).andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(userId.toString()))
-            .andExpect(
-                jsonPath(consentsAt(BdcConsentsBuilder.CONSENTS_KEY), containsInAnyOrder("phs000007.c1", "open_access-1000Genomes"))
-            );
+            .andExpect(jsonPath(consentsAt(BdcConsentsBuilder.CONSENTS_KEY), containsInAnyOrder("phs000007.c1", "open_access-1000Genomes")))
+            .andExpect(jsonPath("$.uuid").doesNotExist());
     }
 
     /**

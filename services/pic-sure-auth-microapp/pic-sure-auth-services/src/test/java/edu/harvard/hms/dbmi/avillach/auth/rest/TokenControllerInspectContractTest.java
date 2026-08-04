@@ -125,9 +125,13 @@ class TokenControllerInspectContractTest {
         assertNull(response.userId());
     }
 
-    /** The user UUID is emitted under the contract's own name; its {@code uuid} alias keeps older readers working. */
+    /**
+     * The user UUID is emitted under the contract's own name and under no other. The {@code uuid} key it used to also answer to was a
+     * pre-contract tolerance for a gateway and a PSAMA at different versions; they ship as one unit, so the alias is gone and this asserts
+     * the key never comes back.
+     */
     @Test
-    void userIdIsEmittedAndReadableUnderBothNames() throws Exception {
+    void userIdIsEmittedOnlyUnderTheContractName() throws Exception {
         when(tokenService.inspectToken(any())).thenReturn(new TokenIntrospectionResponse(granted(null)));
 
         MvcResult result =
@@ -136,10 +140,7 @@ class TokenControllerInspectContractTest {
 
         JsonNode body = MAPPER.readTree(result.getResponse().getContentAsString());
         assertEquals("11111111-2222-3333-4444-555555555555", body.get("userId").asText());
-
-        IntrospectionResponse viaAlias =
-            MAPPER.readValue("{\"active\":true,\"uuid\":\"11111111-2222-3333-4444-555555555555\"}", IntrospectionResponse.class);
-        assertEquals("11111111-2222-3333-4444-555555555555", viaAlias.userId());
+        assertFalse(body.has("uuid"), "the legacy uuid key must not be on the introspection wire: " + body);
     }
 
     /**
