@@ -92,8 +92,8 @@
                  ${maven.multiModuleProjectDirectory}: this repo has no .mvn directory, so that property resolves
                  to whatever directory `mvn` was invoked from and would silently copy nothing when the module is
                  built on its own. ../.. is this module's distance from the reactor root (services/<module>);
-                 OpenApiDocumentsResourceTest fails the build if the copy ever produces nothing, so a move of
-                 this module cannot go unnoticed.
+                 OpenApiDocumentsTest#everyContractDocumentIsOnTheClasspathAndServable fails the build if the
+                 copy ever produces nothing, so a move of this module cannot go unnoticed.
 
                  Packaging: spring-boot-maven-plugin:repackage rewrites this same target/classes tree into
                  BOOT-INF/classes of the executable jar, and the Dockerfile COPYs that jar — so the documents

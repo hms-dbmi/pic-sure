@@ -1,10 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.gateway.config;
 
+import java.time.Duration;
+
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.RouterFunctions;
@@ -32,6 +35,21 @@ import edu.harvard.hms.dbmi.avillach.gateway.docs.SwaggerUiAssets;
 @Configuration
 @ConditionalOnProperty(name = "picsure.gateway.docs.enabled", havingValue = "true", matchIfMissing = true)
 public class DocsConfig {
+
+    /**
+     * How long a browser may reuse a viewer asset. The bundle alone is 1.4 MB and is otherwise re-fetched on every page load, so it must be
+     * cacheable -- but deliberately NOT for a year, and not {@code immutable}: these URLs are NOT content-addressed. The webjar's version
+     * lives in the classpath directory {@code SwaggerUiAssets} resolves, not in {@code /swagger-ui/swagger-ui-bundle.js}, so a version bump
+     * changes the bytes behind an unchanged URL. A day bounds how long a returning user can keep a stale viewer after an upgrade while
+     * still eliminating the repeat download that motivated caching at all.
+     */
+    static final CacheControl ASSET_CACHE = CacheControl.maxAge(Duration.ofDays(1)).cachePublic();
+
+    /**
+     * The initializer and the documents are the whole point of a console that "always matches what is deployed", so they are revalidated
+     * every time. {@code no-cache} still permits a conditional request and a 304 -- it forbids serving from cache blind, not caching.
+     */
+    static final CacheControl CONTENT_CACHE = CacheControl.noCache();
 
     @Bean
     public OpenApiDocuments openApiDocuments(ObjectMapper json) {
@@ -71,17 +89,19 @@ public class DocsConfig {
     @Order(Ordered.HIGHEST_PRECEDENCE)
     public RouterFunction<ServerResponse> swaggerUiRoute(SwaggerUiAssets assets) {
         return RouterFunctions.route()
-            .GET("/swagger-ui", request -> ServerResponse.ok().contentType(MediaType.TEXT_HTML).body(assets.initializer()))
-            .GET("/swagger-ui/", request -> ServerResponse.status(302).header("Location", "../swagger-ui").build())
+            .GET(
+                "/swagger-ui",
+                request -> ServerResponse.ok().cacheControl(CONTENT_CACHE).contentType(MediaType.TEXT_HTML).body(assets.initializer())
+            ).GET("/swagger-ui/", request -> ServerResponse.status(302).header("Location", "../swagger-ui").build())
             .GET(
                 "/swagger-ui/{asset}",
                 request -> assets.asset(request.pathVariable("asset"))
-                    .map(asset -> ServerResponse.ok().contentType(asset.contentType()).body(asset.resource()))
+                    .map(asset -> ServerResponse.ok().cacheControl(ASSET_CACHE).contentType(asset.contentType()).body(asset.resource()))
                     .orElseGet(() -> ServerResponse.notFound().build())
             ).build();
     }
 
     private static ServerResponse json(String body) {
-        return ServerResponse.ok().contentType(MediaType.APPLICATION_JSON).body(body);
+        return ServerResponse.ok().cacheControl(CONTENT_CACHE).contentType(MediaType.APPLICATION_JSON).body(body);
     }
 }

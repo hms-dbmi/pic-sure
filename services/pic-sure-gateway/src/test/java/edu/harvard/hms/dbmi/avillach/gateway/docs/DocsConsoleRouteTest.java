@@ -136,6 +136,20 @@ class DocsConsoleRouteTest {
         assertThat(bundle.getBody()).isNotEmpty();
     }
 
+    /**
+     * The 1.4 MB bundle must not be re-fetched on every page load, but these URLs carry no version segment -- the webjar version lives in
+     * the classpath directory, not the URL -- so a year-long or {@code immutable} cache would strand returning users on a stale viewer
+     * after an upgrade. A day is the bound. The documents and the page itself always revalidate, which is what "the console matches what is
+     * deployed" means.
+     */
+    @Test
+    void assetsAreCacheableForADayAndContentAlwaysRevalidates() {
+        assertThat(get("/swagger-ui/swagger-ui-bundle.js").getHeaders().getCacheControl()).isEqualTo("max-age=86400, public");
+        assertThat(get("/swagger-ui").getHeaders().getCacheControl()).isEqualTo("no-cache");
+        assertThat(get("/openapi").getHeaders().getCacheControl()).isEqualTo("no-cache");
+        assertThat(get("/openapi/" + ContractDocument.DICTIONARY.fileName()).getHeaders().getCacheControl()).isEqualTo("no-cache");
+    }
+
     @Test
     void anAssetOutsideTheAllowListIs404() {
         assertThat(get("/swagger-ui/swagger-ui.js").getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
