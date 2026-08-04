@@ -34,8 +34,7 @@ class TypedEndpointSurfaceTest {
     private static final List<Class<?>> CONTROLLERS = List.of(
         AccessRuleController.class, ApplicationController.class, AuthenticationController.class, CacheController.class,
         ConnectionWebController.class, OpenAccessController.class, PrivilegeController.class, RoleController.class,
-        StudyAccessController.class, TermsOfServiceController.class, TokenController.class, UserController.class,
-        UserMetadataMappingWebController.class
+        TermsOfServiceController.class, TokenController.class, UserController.class, UserMetadataMappingWebController.class
     );
 
     /** Bare bodies need {@code @ResponseBody} semantics; a plain {@code @Controller} would treat a returned String as a view name. */

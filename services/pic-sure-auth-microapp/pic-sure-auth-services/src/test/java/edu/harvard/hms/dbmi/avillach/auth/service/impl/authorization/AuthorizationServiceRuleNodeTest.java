@@ -51,8 +51,7 @@ class AuthorizationServiceRuleNodeTest {
     /** Wired by hand: nothing under test reads the Spring container, so a context would only slow the guard down. */
     @BeforeEach
     void setUp() {
-        AccessRuleService accessRuleService =
-            new AccessRuleService(mock(AccessRuleRepository.class), "false", "false", "false", "false", "false", "false");
+        AccessRuleService accessRuleService = new AccessRuleService(mock(AccessRuleRepository.class), "false");
         authorizationService = new AuthorizationService(
             accessRuleService, mock(SessionService.class), mock(RoleService.class), mock(BdcConsentBasedAccessRuleEvaluator.class),
             "fence,okta,open", mock(UserConsentsRepository.class)

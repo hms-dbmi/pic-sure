@@ -1,14 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.config.CustomKeyGenerator;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.repository.*;
-import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
-import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,9 +32,7 @@ import static org.mockito.Mockito.*;
 
 @SpringBootTest
 @ExtendWith(MockitoExtension.class)
-@ContextConfiguration(classes = {UserService.class, AccessRuleService.class, CustomKeyGenerator.class, CacheEvictionService.class
-
-})
+@ContextConfiguration(classes = {AccessRuleService.class, CustomKeyGenerator.class, CacheEvictionService.class})
 @Import(CacheTest.TestCacheConfig.class)
 public class CacheTest {
 
@@ -45,43 +40,10 @@ public class CacheTest {
     private AccessRuleRepository accessRuleRepository;
 
     @MockBean
-    private BasicMailService basicMailService;
-
-    @MockBean
-    private TOSService tosService;
-
-    @MockBean
-    private UserRepository userRepository;
-
-    @MockBean
-    private ConnectionRepository connectionRepository;
-
-    @MockBean
-    private ApplicationRepository applicationRepository;
-
-    @MockBean
-    private RoleService roleService;
-
-    @MockBean
-    private JWTUtil jwtUtil;
-
-    @MockBean
     private SessionService sessionService;
-
-    @MockBean
-    private UserConsentsRepository userConsentsRepository;
-
-    @MockBean
-    private FenceMappingUtility fenceMappingUtility;
-
-    @MockBean
-    private LoggingClient loggingClient;
 
     @Autowired
     private AccessRuleService accessRuleService;
-
-    @Autowired
-    private UserService userService;
 
     @Autowired
     private CacheEvictionService cacheEvictionService;
@@ -100,7 +62,6 @@ public class CacheTest {
         MockitoAnnotations.openMocks(this);
         Objects.requireNonNull(cacheManager.getCache("mergedRulesCache")).clear();
         Objects.requireNonNull(cacheManager.getCache("preProcessedAccessRules")).clear();
-        Objects.requireNonNull(cacheManager.getCache("mergedTemplateCache")).clear();
     }
 
     @Test
@@ -167,52 +128,11 @@ public class CacheTest {
     }
 
     @Test
-    public void testMergedTemplateCache() {
-        when(mockUser.getSubject()).thenReturn("test_subject");
-
-        Set<Privilege> mockPrivileges = new HashSet<>();
-        when(mockUser.getPrivilegesByApplication(mockApplication)).thenReturn(mockPrivileges);
-
-        // First call to the method - should execute the method logic and add the mergeTemplate
-        userService.mergeTemplate(mockUser, mockApplication);
-        verify(mockUser, times(1)).getPrivilegesByApplication(mockApplication);
-
-        // Second call to the method - should be handled by the cache and getPrivilegesByApplication should not be called again
-        userService.mergeTemplate(mockUser, mockApplication);
-        verify(mockUser, times(1)).getPrivilegesByApplication(mockApplication);
-    }
-
-    @Test
-    public void testCacheEvictMergedTemplateCache() {
-        when(mockUser.getSubject()).thenReturn("test_subject");
-
-        Set<Privilege> mockPrivileges = new HashSet<>();
-        when(mockUser.getPrivilegesByApplication(mockApplication)).thenReturn(mockPrivileges);
-
-        // First call to the method - should execute the method logic and add the mergeTemplate
-        userService.mergeTemplate(mockUser, mockApplication);
-        verify(mockUser, times(1)).getPrivilegesByApplication(mockApplication);
-
-        Cache cache = cacheManager.getCache("mergedTemplateCache");
-        assertThat(cache.get("test_subject")).isNotNull();
-
-        userService.evictFromCache("test_subject");
-        assertThat(cache.get("test_subject")).isNull();
-    }
-
-    @Test
     public void testCacheEvictionService() {
         when(mockUser.getSubject()).thenReturn("test_subject");
         Set<Privilege> mockPrivileges = new HashSet<>();
 
         when(mockUser.getPrivilegesByApplication(mockApplication)).thenReturn(mockPrivileges);
-
-        // Initialize mergedTemplateCache
-        userService.mergeTemplate(mockUser, mockApplication);
-
-        // Verify the cache contains mergedTemplateCache has test_subject
-        Cache mergedTemplateCache = cacheManager.getCache("mergedTemplateCache");
-        assertThat(mergedTemplateCache.get("test_subject")).isNotNull();
 
         // Initialize preProcessedAccessRules
         when(mockUser.getSubject()).thenReturn("test_subject");
@@ -235,7 +155,6 @@ public class CacheTest {
         cacheEvictionService.evictCache(mockUser);
         assertThat(mergedRulesCache.get("test_subject")).isNull();
         assertThat(preProcessedAccessRules.get("test_subject")).isNull();
-        assertThat(mergedTemplateCache.get("test_subject")).isNull();
     }
 
     @Configuration
@@ -244,7 +163,7 @@ public class CacheTest {
 
         @Bean
         public CacheManager cacheManager() {
-            return new ConcurrentMapCacheManager("mergedRulesCache", "preProcessedAccessRules", "mergedTemplateCache");
+            return new ConcurrentMapCacheManager("mergedRulesCache", "preProcessedAccessRules");
         }
     }
 

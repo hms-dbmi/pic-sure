@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,17 +15,17 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
-import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.*;
-import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ContextConfiguration;
 
@@ -47,8 +49,6 @@ public class RASAuthenticationServiceTest {
     @MockBean
     private CacheEvictionService cacheEvictionService;
     @MockBean
-    private RoleService roleService;
-    @MockBean
     private UserRepository userRepository;
     @MockBean
     private ApplicationContext applicationContext;
@@ -57,6 +57,8 @@ public class RASAuthenticationServiceTest {
 
     private RASPassPortService rasPassPortService;
     private RASAuthenticationService rasAuthenticationService;
+    private ch.qos.logback.classic.Logger rasAuthenticationLogger;
+    private ListAppender<ILoggingEvent> logAppender;
 
     private final String testAccessToken = "someRandomAccessToken";
     private final String code = "123123123";
@@ -68,16 +70,12 @@ public class RASAuthenticationServiceTest {
     @BeforeEach
     public void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
-        RoleService roleService = new RoleService(
-            mock(UserRepository.class), mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class),
-            mock(ApplicationContext.class), null
-        );
         this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, "", cacheEvictionService, null));
         doReturn(false).when(rasPassPortService).isExpired(any());
 
         rasAuthenticationService = new RASAuthenticationService(
-            userService, restClientUtil, true, "test.com", "", "", "", "https://stsstg.nih.gov", roleService, rasPassPortService,
-            connectionService, cacheEvictionService
+            userService, restClientUtil, true, "test.com", "", "", "", "https://stsstg.nih.gov", rasPassPortService, connectionService,
+            cacheEvictionService
         );
 
         Connection rasConnection = new Connection();
@@ -88,6 +86,16 @@ public class RASAuthenticationServiceTest {
         rasAuthenticationService.setRasConnection(rasConnection);
 
         authRequest = new AuthenticationRequest(code, null, testDomain);
+
+        rasAuthenticationLogger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(RASAuthenticationService.class);
+        logAppender = new ListAppender<>();
+        logAppender.start();
+        rasAuthenticationLogger.addAppender(logAppender);
+    }
+
+    @AfterEach
+    public void tearDown() {
+        rasAuthenticationLogger.detachAppender(logAppender);
     }
 
     @Test
@@ -96,22 +104,21 @@ public class RASAuthenticationServiceTest {
         String payload = "token_type_hint=access_token&token=" + testAccessToken;
         String redirectUri = "https://" + testDomain + "/login/loading";
         String queryString = "grant_type=authorization_code" + "&code=" + code + "&redirect_uri=" + redirectUri;
-        String introspectionResponse = "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\","
-            + "\"userid\":\"test_userid\",\"preferred_username\":\"testuser\","
-            + "\"email\":\"okta_email@test.com\",\"firstName\":\"Test\",\"lastName\":\"User\"," + "\"passport_jwt_v11\":\""
-            + exampleRasPassport + "\"}";
+        String introspectionResponse = "{\"active\":true,\"client_id\":\"test_client_id\",\"user_mapping_id\":\"mapping-123\","
+            + "\"sub\":\"example_email@test.com\",\"userid\":\"test_userid\",\"preferred_username\":\"testuser\","
+            + "\"email\":\"okta_email@test.com\",\"firstName\":\"Test\",\"lastName\":\"User\",\"passport_jwt_v11\":\"" + exampleRasPassport
+            + "\"}";
 
         // token exchange
         when(restClientUtil.retrievePostResponse(anyString(), any(), eq(queryString))).thenReturn(ResponseEntity.ok(data));
         // introspect
         when(restClientUtil.retrievePostResponse(anyString(), any(), eq(payload))).thenReturn(ResponseEntity.ok(introspectionResponse));
-
         doNothing().when(cacheEvictionService).evictCache(any(User.class));
 
         User user = createTestUser();
         user.setSubject("okta-ras|adfadfaf");
         when(userService.createRasUser(any(), any())).thenReturn(Optional.of(user));
-        when(userService.updateUserRoles(any(), any())).thenReturn(user);
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
         when(userService.updateUserConsents(any(), any())).thenReturn(user);
 
         ArgumentCaptor<UserClaims> claimsCaptor = ArgumentCaptor.forClass(UserClaims.class);
@@ -128,6 +135,40 @@ public class RASAuthenticationServiceTest {
         assertEquals("test@email.com", capturedClaims.getEmail());
         assertEquals("RAS", capturedClaims.getIdp());
         assertEquals("https://ncbi.nlm.nih.gov/gap", capturedClaims.getUser_permission_group());
+        assertEquals("mapping-123", capturedClaims.getUser_mapping_id());
+        assertEquals("mapping-123", capturedClaims.toHashMap().get("user_mapping_id"));
+
+        ArgumentCaptor<JsonNode> userDataCaptor = ArgumentCaptor.forClass(JsonNode.class);
+        verify(userService).createRasUser(userDataCaptor.capture(), any(Connection.class));
+        assertTrue(userDataCaptor.getValue().get("active").asBoolean());
+        assertEquals("mapping-123", userDataCaptor.getValue().get("user_mapping_id").asText());
+        assertEquals("test_userid", userDataCaptor.getValue().get("userid").asText());
+
+        verify(restClientUtil, never()).retrieveGetResponse(anyString(), any(HttpHeaders.class));
+    }
+
+    @Test
+    public void testAuthorizationCodeFlow_InactiveTokenRejectsBeforeLoadingUser() {
+        mockTokenAndIntrospectionResponses("{\"active\":false}");
+
+        AuthenticationResponse authenticate = rasAuthenticationService.authenticate(authRequest, testDomain);
+
+        assertNull(authenticate);
+        verifyNoInteractions(userService);
+        verify(restClientUtil, never()).retrieveGetResponse(anyString(), any(HttpHeaders.class));
+        assertTrue(hasLogMessage("LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE"));
+    }
+
+    @Test
+    public void testAuthorizationCodeFlow_MissingActiveClaimRejectsBeforeLoadingUser() {
+        mockTokenAndIntrospectionResponses("{\"client_id\":\"test_client_id\"}");
+
+        AuthenticationResponse authenticate = rasAuthenticationService.authenticate(authRequest, testDomain);
+
+        assertNull(authenticate);
+        verifyNoInteractions(userService);
+        verify(restClientUtil, never()).retrieveGetResponse(anyString(), any(HttpHeaders.class));
+        assertTrue(hasLogMessage("LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM"));
     }
 
     @Test
@@ -141,18 +182,30 @@ public class RASAuthenticationServiceTest {
         assertTrue(passport.isPresent());
 
         Set<RasDbgapPermission> dbgapPermissions = new HashSet<>();
-        Set<String> dbgapRoleNames = new HashSet<>();
 
         when(rasPassPortService.ga4ghPassportToRasDbgapPermissions(any())).thenReturn(dbgapPermissions);
-        when(roleService.getRoleNamesForDbgapPermissions(any())).thenReturn(dbgapRoleNames);
-        when(userService.updateUserRoles(any(), any())).thenReturn(user);
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
         when(userService.updateUserConsents(any(), any())).thenReturn(user);
 
         user = this.rasAuthenticationService.updateRasUserRoles(code, user, passport.get());
         assertNotNull(user);
 
         // We are verifying that we attempt to update a users roles even if no dbgap roles are present.
-        verify(userService, times(1)).updateUserRoles(user, dbgapRoleNames);
+        verify(userService, times(1)).ensureBaselineRoles(user);
+    }
+
+    private void mockTokenAndIntrospectionResponses(String introspectionResponse) {
+        String tokenResponse = "{\"access_token\":\"" + testAccessToken + "\",\"id_token\":\"SomeRandomToken\"}";
+        String payload = "token_type_hint=access_token&token=" + testAccessToken;
+        String redirectUri = "https://" + testDomain + "/login/loading";
+        String queryString = "grant_type=authorization_code" + "&code=" + code + "&redirect_uri=" + redirectUri;
+
+        when(restClientUtil.retrievePostResponse(anyString(), any(), eq(queryString))).thenReturn(ResponseEntity.ok(tokenResponse));
+        when(restClientUtil.retrievePostResponse(anyString(), any(), eq(payload))).thenReturn(ResponseEntity.ok(introspectionResponse));
+    }
+
+    private boolean hasLogMessage(String expectedMessage) {
+        return logAppender.list.stream().map(ILoggingEvent::getFormattedMessage).anyMatch(message -> message.contains(expectedMessage));
     }
 
     private User createTestUser() {
@@ -179,19 +232,7 @@ public class RASAuthenticationServiceTest {
         Privilege privilege = new Privilege();
         privilege.setName("TEST_PRIVILEGE");
         privilege.setUuid(UUID.randomUUID());
-        privilege.setQueryTemplate(
-            createQueryTemplate(
-                "consent_concept_path_" + privilege.getUuid(), "project_name_" + privilege.getUuid(), "consent_group_" + privilege.getUuid()
-            )
-        );
 
         return privilege;
-    }
-
-    private String createQueryTemplate(String consent_concept_path, String project_name, String consent_group) {
-        return "{\"categoryFilters\": {\"" + consent_concept_path + "\":\"" + project_name + "." + consent_group + "\"},"
-            + "\"numericFilters\":{},\"requiredFields\":[],"
-            + "\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
-            + "\"expectedResultType\": \"COUNT\"" + "}";
     }
 }

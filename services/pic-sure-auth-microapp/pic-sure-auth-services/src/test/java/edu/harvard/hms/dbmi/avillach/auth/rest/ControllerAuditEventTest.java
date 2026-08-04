@@ -6,7 +6,6 @@ import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionRequest;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
-import edu.harvard.hms.dbmi.avillach.auth.model.request.StudyAccessRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -59,10 +58,6 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "updateUser", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "user.modify");
         // getCurrentUser(String authorizationHeader, Boolean hasToken)
         assertAuditEvent(c, "getCurrentUser", new Class[] {String.class, Boolean.class}, "ACCESS", "user.profile");
-        // getQueryTemplate(String applicationId)
-        assertAuditEvent(c, "getQueryTemplate", new Class[] {String.class}, "ACCESS", "user.profile");
-        // getQueryTemplate() - no params
-        assertAuditEvent(c, "getQueryTemplate", new Class[] {}, "ACCESS", "user.profile");
         // refreshUserToken(HttpHeaders httpHeaders, HttpServletRequest request)
         assertAuditEvent(c, "refreshUserToken", new Class[] {HttpHeaders.class, HttpServletRequest.class}, "ACCESS", "user.profile");
         // getUserConsents() - the only /me endpoint that was never audited
@@ -154,15 +149,6 @@ class ControllerAuditEventTest {
         // validate(OpenAccessValidationRequest validationRequest, HttpServletRequest request)
         assertAuditEvent(
             c, "validate", new Class[] {OpenAccessValidationRequest.class, HttpServletRequest.class}, "ACCESS", "open.validate"
-        );
-    }
-
-    @Test
-    void studyAccessController() throws Exception {
-        Class<?> c = StudyAccessController.class;
-        // addStudyAccess(StudyAccessRequest studyAccessRequest, HttpServletRequest request)
-        assertAuditEvent(
-            c, "addStudyAccess", new Class[] {StudyAccessRequest.class, HttpServletRequest.class}, "ADMIN", "study_access.create"
         );
     }
 

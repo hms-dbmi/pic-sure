@@ -63,8 +63,7 @@ class AuthorizationServiceConsentEvaluationTest {
     @BeforeEach
     void setUp() {
         userConsentsRepository = mock(UserConsentsRepository.class);
-        AccessRuleService accessRuleService =
-            new AccessRuleService(mock(AccessRuleRepository.class), "false", "false", "false", "false", "false", "false");
+        AccessRuleService accessRuleService = new AccessRuleService(mock(AccessRuleRepository.class), "false");
         authorizationService = new AuthorizationService(
             accessRuleService, mock(SessionService.class), mock(RoleService.class), new BdcConsentBasedAccessRuleEvaluator(),
             "fence,okta,open", userConsentsRepository

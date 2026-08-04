@@ -214,7 +214,7 @@ public class AuthorizationServiceTest {
         SecurityContextHolder.setContext(securityContext);
 
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
-        accessRuleService = new AccessRuleService(accessRuleRepository, "false", "false", "false", "false", "false", "false");
+        accessRuleService = new AccessRuleService(accessRuleRepository, "false");
         authorizationService = new AuthorizationService(
             accessRuleService, sessionService, roleService, bdcConsentBasedAccessRuleEvaluator, "fence,okta", userConsentsRepository
         );

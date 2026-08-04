@@ -130,48 +130,6 @@ public class UserController {
     }
 
     /**
-     * @deprecated Frozen, not retyped. The value is a JSON document carried as a String inside a one-key map, which no schema can usefully
-     *             describe, and privileges merge those documents textually. Retyping it means retyping the stored
-     *             {@code Privilege#queryTemplate} with it, so the shape stays exactly as it is until a successor endpoint ships and the
-     *             clients move. Do not build anything new on this.
-     */
-    @Deprecated
-    @Operation(
-        description = "Retrieve the queryTemplate of certain application by given application Id for the currentUser ", deprecated = true
-    )
-    @AuditEvent(type = "ACCESS", action = "user.profile")
-    @GetMapping(path = "/me/queryTemplate/{applicationId}", produces = "application/json")
-    public Map<String, String> getQueryTemplate(
-        @Parameter(description = "Application Id for the returning queryTemplate") @PathVariable("applicationId") String applicationId
-    ) {
-        Optional<String> mergedTemplate = this.userService.getQueryTemplate(applicationId);
-
-        if (mergedTemplate.isEmpty()) {
-            logger.error("getDefaultQueryTemplate() cannot find corresponding application by UUID: {}", applicationId);
-            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", INTERNAL_ERROR);
-        }
-
-        return Collections.singletonMap("queryTemplate", mergedTemplate.get());
-    }
-
-    /**
-     * @deprecated See {@link #getQueryTemplate(String)}; same frozen shape, default application.
-     */
-    @Deprecated
-    @Operation(description = "Retrieve the queryTemplate of default application", deprecated = true)
-    @AuditEvent(type = "ACCESS", action = "user.profile")
-    @GetMapping(value = {"/me/queryTemplate", "/me/queryTemplate/"}, produces = "application/json")
-    public Map<String, String> getQueryTemplate() {
-        Map<String, String> defaultQueryTemplate = userService.getDefaultQueryTemplate();
-
-        if (defaultQueryTemplate == null) {
-            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", INTERNAL_ERROR);
-        }
-
-        return defaultQueryTemplate;
-    }
-
-    /**
      * For the long term token, current logic is, every time a user hit this endpoint /me with the query parameter ?hasToken presented, it
      * will refresh the long term token.
      *

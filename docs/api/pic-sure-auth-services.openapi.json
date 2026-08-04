@@ -253,12 +253,6 @@
           "name" : {
             "type" : "string"
           },
-          "queryScope" : {
-            "type" : "string"
-          },
-          "queryTemplate" : {
-            "type" : "string"
-          },
           "uuid" : {
             "format" : "uuid",
             "type" : "string"
@@ -283,17 +277,6 @@
           },
           "uuid" : {
             "format" : "uuid",
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "StudyAccessRequest" : {
-        "description" : "The Study Identifier of the new study from the metadata.json",
-        "properties" : {
-          "studyIdentifier" : {
-            "description" : "Study identifier from the FENCE metadata mapping",
-            "example" : "phs000001.c1",
             "type" : "string"
           }
         },
@@ -472,13 +455,6 @@
             "type" : "string"
           },
           "privileges" : {
-            "items" : {
-              "type" : "string"
-            },
-            "type" : "array",
-            "uniqueItems" : true
-          },
-          "queryScopes" : {
             "items" : {
               "type" : "string"
             },
@@ -1800,37 +1776,6 @@
         ]
       }
     },
-    "/studyAccess" : {
-      "post" : {
-        "description" : "POST a single study and it creates the role, privs, and rules for it, requires SUPER_ADMIN role",
-        "operationId" : "addStudyAccess",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/StudyAccessRequest"
-              }
-            }
-          },
-          "required" : true
-        },
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "type" : "string"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [
-          "study-access-controller"
-        ]
-      }
-    },
     "/token/inspect" : {
       "post" : {
         "description" : "Token introspection endpoint for user to retrieve a valid token",
@@ -2125,92 +2070,6 @@
               "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/UserConsents"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [
-          "User Management"
-        ]
-      }
-    },
-    "/user/me/queryTemplate" : {
-      "get" : {
-        "deprecated" : true,
-        "description" : "Retrieve the queryTemplate of default application",
-        "operationId" : "getQueryTemplate_2",
-        "responses" : {
-          "200" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "additionalProperties" : {
-                    "type" : "string"
-                  },
-                  "type" : "object"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [
-          "User Management"
-        ]
-      }
-    },
-    "/user/me/queryTemplate/" : {
-      "get" : {
-        "deprecated" : true,
-        "description" : "Retrieve the queryTemplate of default application",
-        "operationId" : "getQueryTemplate_1",
-        "responses" : {
-          "200" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "additionalProperties" : {
-                    "type" : "string"
-                  },
-                  "type" : "object"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [
-          "User Management"
-        ]
-      }
-    },
-    "/user/me/queryTemplate/{applicationId}" : {
-      "get" : {
-        "deprecated" : true,
-        "description" : "Retrieve the queryTemplate of certain application by given application Id for the currentUser ",
-        "operationId" : "getQueryTemplate",
-        "parameters" : [
-          {
-            "description" : "Application Id for the returning queryTemplate",
-            "in" : "path",
-            "name" : "applicationId",
-            "required" : true,
-            "schema" : {
-              "type" : "string"
-            }
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "additionalProperties" : {
-                    "type" : "string"
-                  },
-                  "type" : "object"
                 }
               }
             },

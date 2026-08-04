@@ -32,7 +32,6 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
     private final UserService userService;
     private final boolean isEnabled;
-    private final RoleService roleService;
     private final RASPassPortService rasPassPortService;
     private final CacheEvictionService cacheEvictionService;
     private Connection rasConnection;
@@ -52,14 +51,13 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         UserService userService, RestClientUtil restClientUtil, @Value("${ras.okta.idp.provider.is.enabled}") boolean isEnabled,
         @Value("${ras.okta.idp.provider.uri}") String idp_provider_uri, @Value("${ras.okta.connection.id}") String connectionId,
         @Value("${ras.okta.client.id}") String clientId, @Value("${ras.okta.client.secret}") String clientSecret,
-        @Value("${ras.passport.issuer}") String rasPassportIssuer, RoleService roleService, RASPassPortService rasPassPortService,
+        @Value("${ras.passport.issuer}") String rasPassportIssuer, RASPassPortService rasPassPortService,
         ConnectionWebService connectionService, CacheEvictionService cacheEvictionService
     ) {
         super(idp_provider_uri, clientId, clientSecret, restClientUtil);
 
         this.userService = userService;
         this.isEnabled = isEnabled;
-        this.roleService = roleService;
         this.rasPassPortService = rasPassPortService;
         this.rasPassportIssuer = rasPassportIssuer;
 
@@ -84,12 +82,15 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     public AuthenticationResponse authenticate(AuthenticationRequest authRequest, String host) {
         logger.info("RAS OKTA LOGIN ATTEMPT ___ CODE {}", authRequest.code());
 
+        JsonNode userToken = null;
         JsonNode introspectResponse = null;
         String idToken = null;
         if (StringUtils.isNotBlank(authRequest.code())) {
-            JsonNode userToken = handleCodeTokenExchange(host, authRequest.code());
+            userToken = handleCodeTokenExchange(host, authRequest.code());
             introspectResponse = introspectToken(userToken);
-            idToken = userToken.get("id_token").asText();
+            if (userToken != null && userToken.hasNonNull("id_token")) {
+                idToken = userToken.get("id_token").asText();
+            }
             logger.debug("RAS OKTA LOGIN ATTEMPT ___ INTROSPECTION RESPONSE {}", introspectResponse);
         }
 
@@ -97,6 +98,10 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
             logger.info(
                 "LOGIN FAILED ___ USER NOT AUTHENTICATED ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse, authRequest.code()
             );
+            return null;
+        }
+
+        if (!isActiveIntrospectionResponse(introspectResponse, authRequest.code())) {
             return null;
         }
 
@@ -129,6 +134,26 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         return profile;
     }
 
+    private boolean isActiveIntrospectionResponse(JsonNode introspectResponse, String code) {
+        if (!introspectResponse.has("active") || introspectResponse.get("active").isNull()) {
+            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM ___ CODE {}", code);
+            return false;
+        }
+
+        JsonNode activeClaim = introspectResponse.get("active");
+        if (!activeClaim.isBoolean()) {
+            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION ACTIVE CLAIM IS NOT BOOLEAN ___ VALUE {} ___ CODE {}", activeClaim, code);
+            return false;
+        }
+
+        if (!activeClaim.booleanValue()) {
+            logger.info("LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE ___ CODE {}", code);
+            return false;
+        }
+
+        return true;
+    }
+
     private Optional<Passport> extractAndVerifyPassport(AuthenticationRequest authRequest, JsonNode introspectResponse, User user) {
         Optional<Passport> rasPassport = this.rasPassPortService.extractPassport(introspectResponse);
         if (rasPassport.isEmpty()) {
@@ -159,8 +184,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         Set<Optional<Ga4ghPassportV1>> ga4ghPassports = rasPassport.getGa4ghPassportV1().stream().map(JWTUtil::parseGa4ghPassportV1)
             .filter(Optional::isPresent).collect(Collectors.toSet());
         Set<RasDbgapPermission> dbgapPermissions = this.rasPassPortService.ga4ghPassportToRasDbgapPermissions(ga4ghPassports);
-        Set<String> dbgapRoleNames = this.roleService.getRoleNamesForDbgapPermissions(dbgapPermissions);
-        user = userService.updateUserRoles(user, dbgapRoleNames);
+        user = userService.ensureBaselineRoles(user);
 
         Set<String> userConsentStrings = dbgapPermissions.stream()
             .map(permission -> permission.getPhsId() + "." + permission.getConsentGroup()).collect(Collectors.toSet());
@@ -206,6 +230,10 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         userClaims.setPreferred_username(introspectResponse.get("preferred_username").asText());
         userClaims.setUser_permission_group(extractPermissionGroupFromPassport(rasPassport));
         userClaims.setRoles(userService.addRoleClaims(user));
+
+        if (introspectResponse.has("user_mapping_id") && !introspectResponse.get("user_mapping_id").isNull()) {
+            userClaims.setUser_mapping_id(introspectResponse.get("user_mapping_id").asText());
+        }
 
         return userClaims;
     }

@@ -92,27 +92,18 @@ class UserControllerContractTest {
      * queryTemplate is frozen, not retyped: its value is a JSON document carried as a String, and the successor endpoint has not shipped.
      * The annotations are the contract -- consumers have to be able to see it is going away.
      */
+    /**
+     * The {@code /me/queryTemplate} endpoints are gone. They were frozen rather than retyped because their value was a JSON document
+     * carried as a String inside a one-key map; the v2 query removal deleted the stored {@code Privilege#queryTemplate} they merged, so
+     * there is nothing left to serve. Callers of the old shape must move to a successor endpoint.
+     */
     @Test
-    void queryTemplateEndpointsAreDeprecatedAndKeepTheirFrozenShape() throws Exception {
-        for (
-            Method method : new Method[] {UserController.class.getMethod("getQueryTemplate", String.class),
-                UserController.class.getMethod("getQueryTemplate")}
-        ) {
-            assertNotNull(method.getAnnotation(Deprecated.class), method + " must be @Deprecated");
-            Operation operation = method.getAnnotation(Operation.class);
-            assertNotNull(operation, method + " must carry @Operation");
-            assertTrue(operation.deprecated(), method + " must be marked deprecated in the OpenAPI document");
-            assertEquals(Map.class, method.getReturnType(), method + " keeps its frozen JSON-in-String map shape");
+    void queryTemplateEndpointsAreGone() {
+        for (Method method : UserController.class.getDeclaredMethods()) {
+            assertFalse(
+                method.getName().toLowerCase().contains("querytemplate"),
+                "UserController must not expose a queryTemplate handler: " + method
+            );
         }
-    }
-
-    @Test
-    void queryTemplateStillAnswersTheHistoricalBody() throws Exception {
-        when(userService.getQueryTemplate("app-1")).thenReturn(java.util.Optional.of("{\"categoryFilters\":{}}"));
-
-        MvcResult result = mockMvc.perform(get("/user/me/queryTemplate/app-1")).andExpect(status().isOk()).andReturn();
-
-        JsonNode body = MAPPER.readTree(result.getResponse().getContentAsString());
-        assertEquals("{\"categoryFilters\":{}}", body.get("queryTemplate").asText(), "the JSON-in-String shape is frozen");
     }
 }

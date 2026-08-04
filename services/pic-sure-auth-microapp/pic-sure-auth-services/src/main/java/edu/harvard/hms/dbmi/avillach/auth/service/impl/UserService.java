@@ -9,7 +9,6 @@ import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
-import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
@@ -19,7 +18,6 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsents
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
-import edu.harvard.hms.dbmi.avillach.auth.utils.JsonUtils;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.mail.MessagingException;
@@ -29,9 +27,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -54,18 +51,14 @@ public class UserService {
     private final TOSService tosService;
     private final UserRepository userRepository;
     private final ConnectionRepository connectionRepository;
-    private final ApplicationRepository applicationRepository;
     private final RoleService roleService;
     private final long tokenExpirationTime;
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
-    private final boolean openAccessIsEnabled;
     private final UserConsentsRepository userConsentsRepository;
     private final FenceMappingUtility fenceMappingUtility;
 
     public long longTermTokenExpirationTime;
 
-    private final String applicationUUID;
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private final JWTUtil jwtUtil;
 
     private final List<String> tokenInclusionRoles;
@@ -74,11 +67,9 @@ public class UserService {
     @Autowired
     public UserService(
         BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
-        ApplicationRepository applicationRepository, RoleService roleService, UserConsentsRepository userConsentsRepository,
-        FenceMappingUtility fenceMappingUtility, @Value("${application.token.expiration.time}") long tokenExpirationTime,
-        @Value("${application.default.uuid}") String applicationUUID,
+        RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
+        @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
-        @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled,
         @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
     ) {
         this.basicMailService = basicMailService;
@@ -90,14 +81,11 @@ public class UserService {
         this.fenceMappingUtility = fenceMappingUtility;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         logger.info("Token Expiration Time : {}", tokenExpirationTime);
-        this.applicationRepository = applicationRepository;
-        this.applicationUUID = applicationUUID;
         this.jwtUtil = jwtUtil;
 
         long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24 * 30;
         this.longTermTokenExpirationTime =
             longTermTokenExpirationTime > 0 ? longTermTokenExpirationTime : defaultLongTermTokenExpirationTime;
-        this.openAccessIsEnabled = openIdpProviderIsEnabled;
         this.tokenInclusionRoles = Arrays.asList(tokenInclusionRoles.split(","));
         this.loggingClient = loggingClient;
     }
@@ -361,23 +349,6 @@ public class UserService {
         User.UserForDisplay userForDisplay = new User.UserForDisplay().setEmail(user.getEmail()).setPrivileges(user.getPrivilegeNameSet())
             .setUuid(user.getUuid().toString()).setAcceptedTOS(this.tosService.hasUserAcceptedLatest(user.getSubject()));
 
-        // currently, the queryScopes are simple combination of queryScope string together as a set.
-        // We are expecting the queryScope string as plain string. If it is a JSON, we could change the
-        // code to use JsonUtils.mergeTemplateMap(Map, Map)
-        Set<Privilege> privileges = user.getTotalPrivilege();
-        if (privileges != null && !privileges.isEmpty()) {
-            Set<String> scopes = new TreeSet<>();
-            privileges.stream().filter(privilege -> privilege.getQueryScope() != null).forEach(privilege -> {
-                try {
-                    Arrays.stream(objectMapper.readValue(privilege.getQueryScope(), String[].class)).filter(Objects::nonNull)
-                        .forEach(scopes::add);
-                } catch (IOException e) {
-                    logger.error("Parsing issue for privilege {} queryScope", privilege.getUuid(), e);
-                }
-            });
-            userForDisplay.setQueryScopes(scopes);
-        }
-
         if (user.getToken() != null && !user.getToken().isEmpty()) {
             userForDisplay.setToken(user.getToken());
         } else {
@@ -387,123 +358,6 @@ public class UserService {
         }
 
         return userForDisplay;
-    }
-
-    public Optional<String> getQueryTemplate(String applicationId) {
-        if (applicationId == null || applicationId.trim().isEmpty()) {
-            logger.error("getQueryTemplate() input application UUID is null or empty.");
-            throw new IllegalArgumentException("Input application UUID is incorrect.");
-        }
-
-        SecurityContext securityContext = SecurityContextHolder.getContext();
-        Optional<CustomUserDetails> customUserDetails =
-            Optional.ofNullable((CustomUserDetails) securityContext.getAuthentication().getPrincipal());
-        if ((customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) && openAccessIsEnabled) {
-            Optional<Application> application = this.applicationRepository.findById(UUID.fromString(applicationId));
-            if (application.isEmpty()) {
-                logger.error("getQueryTemplate() cannot find corresponding application by UUID: {}", UUID.fromString(applicationId));
-                throw new IllegalArgumentException("Cannot find application by input UUID: " + UUID.fromString(applicationId));
-            }
-
-            return Optional.ofNullable(openMergeTemplate(application.orElse(null)));
-        } else {
-            if (customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) {
-                logger.error("Security context didn't have a user stored.");
-                return Optional.empty();
-            }
-
-            User user = customUserDetails.get().getUser();
-            Optional<Application> application = this.applicationRepository.findById(UUID.fromString(applicationId));
-            if (application.isEmpty()) {
-                logger.error("getQueryTemplate() cannot find corresponding application by UUID: {}", UUID.fromString(applicationId));
-                throw new IllegalArgumentException("Cannot find application by input UUID: " + UUID.fromString(applicationId));
-            }
-
-            return Optional.ofNullable(mergeTemplate(user, application.orElse(null)));
-        }
-    }
-
-    private String openMergeTemplate(Application application) {
-        Set<Privilege> applicationPrivileges = application.getPrivileges();
-        Role openAccessRole = roleService.findByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
-        Set<Privilege> privileges = openAccessRole.getPrivileges();
-        privileges.addAll(applicationPrivileges);
-        Map mergedTemplateMap = getMergedQueryTemplateMap(privileges);
-        String resultJSON;
-        try {
-            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
-        } catch (JsonProcessingException ex) {
-            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: {}", mergedTemplateMap);
-            throw new IllegalArgumentException("Inner application error, please contact admin.");
-        }
-
-        return resultJSON;
-    }
-
-    public Map<String, String> getDefaultQueryTemplate() {
-        Optional<String> mergedTemplate = getQueryTemplate(this.applicationUUID);
-
-        if (mergedTemplate.isEmpty()) {
-            logger.error("getDefaultQueryTemplate() cannot find corresponding application by UUID: {}", this.applicationUUID);
-            return null;
-        }
-
-        return Map.of("queryTemplate", mergedTemplate.orElse(null));
-    }
-
-    @Cacheable(value = "mergedTemplateCache", keyGenerator = "customKeyGenerator")
-    public String mergeTemplate(User user, Application application) {
-        String resultJSON;
-        Set<Privilege> privileges = user.getPrivilegesByApplication(application);
-        Map mergedTemplateMap = getMergedQueryTemplateMap(privileges);
-
-        try {
-            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
-        } catch (JsonProcessingException ex) {
-            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: {}", mergedTemplateMap);
-            throw new IllegalArgumentException("Inner application error, please contact admin.");
-        }
-
-        return resultJSON;
-    }
-
-    private Map getMergedQueryTemplateMap(Set<Privilege> privileges) {
-        Map mergedTemplateMap = null;
-        for (Privilege privilege : privileges) {
-            String template = privilege.getQueryTemplate();
-            logger.debug("mergeTemplate() processing template:{}", template);
-            if (template == null || template.trim().isEmpty()) {
-                continue;
-            }
-            Map<String, Object> templateMap = null;
-            try {
-                templateMap = objectMapper.readValue(template, Map.class);
-            } catch (IOException ex) {
-                logger.error("mergeTemplate() cannot convert stored queryTemplate using Jackson, the queryTemplate is: {}", template);
-                throw new IllegalArgumentException("Inner application error, please contact admin.");
-            }
-
-            if (templateMap == null) {
-                continue;
-            }
-
-            if (mergedTemplateMap == null) {
-                mergedTemplateMap = templateMap;
-                continue;
-            }
-
-            mergedTemplateMap = JsonUtils.mergeTemplateMap(mergedTemplateMap, templateMap);
-        }
-        return mergedTemplateMap;
-    }
-
-    @CacheEvict(value = "mergedTemplateCache")
-    public void evictFromCache(String userSubject) {
-        if (userSubject == null || userSubject.isEmpty()) {
-            logger.warn("evictFromCache() was called with a null or empty email");
-            return;
-        }
-        logger.info("evictFromCache() evicting cache for user: {}", userSubject);
     }
 
     @Transactional
@@ -696,57 +550,31 @@ public class UserService {
     }
 
     /**
-     * Update the provided users roles based on the list of roleNames provided. This method will update the roles in place. Adding and
-     * removing roles from the current list of roles.
+     * Attach the roles every authenticated user receives. Study-level authorization is carried by {@code user_consents} (see
+     * {@link #updateUserConsents}), not by roles, so no per-study role is derived here.
      *
      * @param current_user User to be updated
-     * @param roleNames Roles that should be assigned to the user.
      */
-    public User updateUserRoles(User current_user, Set<String> roleNames) {
-        Set<String> currentRoleNames = current_user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
+    public User ensureBaselineRoles(User current_user) {
+        Set<String> baselineRoleNames = Set.of(MANAGED_AUTH_ACCESS_ROLE_NAME, MANAGED_OPEN_ACCESS_ROLE_NAME, MANAGED_ROLE_NAMED_DATASET);
 
-        Set<Role> rolesToRemove = current_user.getRoles().stream()
-            .filter(
-                role -> !roleNames.contains(role.getName()) && !role.getName().equals(MANAGED_OPEN_ACCESS_ROLE_NAME)
-                    && !role.getName().equals(MANAGED_AUTH_ACCESS_ROLE_NAME) && !role.getName().startsWith("MANUAL_")
-                    && !role.getName().equals("PIC-SURE Top Admin") && !role.getName().equals("Admin")
-            ).collect(Collectors.toSet());
+        Map<String, Role> found = roleService.findByNames(baselineRoleNames);
+        baselineRoleNames.stream().filter(name -> !found.containsKey(name))
+            .forEach(name -> logger.warn("ensureBaselineRoles() unable to find role named {}", name));
 
-        if (!rolesToRemove.isEmpty()) {
-            current_user.getRoles().removeAll(rolesToRemove);
-            logger.debug("upsertRole() removed {} roles from user", rolesToRemove.size());
-            logger.debug("User roles after removal: {}", current_user.getRoles().size());
-        }
-
-        // Bulk lookup for existing roles. By using a hashmap we avoid having to iterate over the set of roles each time.
-        Map<String, Role> existingRoles = roleService.findByNames(roleNames);
-        List<Role> newRoles = roleNames.stream().filter(roleName -> !currentRoleNames.contains(roleName)).map(existingRoles::get)
-            .filter(Objects::nonNull).collect(Collectors.toList());
-
-        if (!newRoles.isEmpty()) {
-            logger.debug("upsertRole() updated {} roles from user", newRoles.size());
-            newRoles = roleService.persistAll(newRoles);
-            current_user.getRoles().addAll(newRoles);
-        }
-
-        Role authAccessRole = roleService.findByName(MANAGED_AUTH_ACCESS_ROLE_NAME);
-        if (authAccessRole != null) {
-            current_user.getRoles().add(authAccessRole);
-        } else {
-            logger.warn("Unable to find fence AUTH ACCESS role");
-        }
+        Set<Role> currentRoles = current_user.getRoles();
+        Set<Role> added = found.values().stream().filter(role -> !currentRoles.contains(role)).collect(Collectors.toSet());
+        currentRoles.addAll(found.values());
 
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                String addedNames = newRoles.stream().map(Role::getName).collect(Collectors.joining(","));
-                String removedNames = rolesToRemove.stream().map(Role::getName).collect(Collectors.joining(","));
                 loggingClient.send(
                     LoggingEvent.builder("AUTHZ").action("role.sync")
                         .metadata(
                             Map.of(
                                 "user_id", current_user.getUuid().toString(), "user_email",
-                                current_user.getEmail() != null ? current_user.getEmail() : "", "roles_added", addedNames, "roles_removed",
-                                removedNames
+                                current_user.getEmail() != null ? current_user.getEmail() : "", "roles_added",
+                                added.stream().map(Role::getName).collect(Collectors.joining(",")), "roles_removed", ""
                             )
                         ).build()
                 );
@@ -755,32 +583,15 @@ public class UserService {
             }
         }
 
-        Role openAccessRole = roleService.findByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
-        if (openAccessRole != null) {
-            current_user.getRoles().add(openAccessRole);
-        } else {
-            logger.warn("Unable to find fence OPEN ACCESS role");
-        }
-
-        Role role = roleService.findByName(MANAGED_ROLE_NAMED_DATASET);
-        if (role != null) {
-            current_user.getRoles().add(role);
-        } else {
-            logger.warn("upsertRole() Unable to find role named {}", MANAGED_ROLE_NAMED_DATASET);
-        }
-
-        // Every user has access to public datasets by default.
-        current_user.getRoles().addAll(roleService.getPublicAccessRoles());
-
         logger.debug(
             "User roles: {}", current_user.getRoles().stream().filter(Objects::nonNull).map(Role::getName).collect(Collectors.joining(", "))
         );
         try {
             current_user = this.changeRole(current_user, current_user.getRoles());
-            logger.debug("upsertRole() updated user, who now has {} roles.", current_user.getRoles().size());
+            logger.debug("ensureBaselineRoles() updated user, who now has {} roles.", current_user.getRoles().size());
             return current_user;
         } catch (Exception ex) {
-            logger.error("upsertRole() Could not add roles to user, because {}", ex.getMessage());
+            logger.error("ensureBaselineRoles() Could not add roles to user, because {}", ex.getMessage());
         }
 
         return null;
@@ -823,22 +634,38 @@ public class UserService {
     }
 
     /**
-     * The consents of the user behind the current token.
+     * The consents of the user behind the current token. The user is taken from the security context, so a caller can only ever read its
+     * own consents.
      *
      * <p>This used to take the target user's uuid and compare it to the caller's with {@code !=} -- reference identity on two {@code UUID}
      * objects, which is false for equal uuids read from different places, so the "is this your own record" check rejected everyone who
      * reached it. The caller cannot name a user at all now: {@code /user/me/consents} is a self endpoint, and deriving the subject from the
      * security context is what makes the check unnecessary rather than merely correct.
      *
-     * @return the caller's consents, or {@code null} when the security context carries no user
+     * @return the user's consents, an empty set of consents if none are stored, or null if no user is authenticated
      */
     public UserConsents getUserConsents() {
         SecurityContext securityContext = SecurityContextHolder.getContext();
-        CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
-        if (customUserDetails == null || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null) {
+        Authentication authentication = securityContext.getAuthentication();
+        // An unauthenticated request has either no Authentication at all or an AnonymousAuthenticationToken, whose principal is the
+        // String "anonymousUser". Testing the type rather than casting keeps both cases on the documented null-returning path.
+        if (
+            authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)
+                || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null
+        ) {
             logger.error("Security context didn't have a user stored.");
             return null;
         }
-        return userConsentsRepository.findByUserId(customUserDetails.getUser().getUuid());
+
+        UUID userId = customUserDetails.getUser().getUuid();
+        UserConsents userConsents = userConsentsRepository.findByUserId(userId);
+        if (userConsents == null) {
+            // Not an error: a user with no stored record simply has no authorized studies. Returning an empty set lets clients treat
+            // this as "nothing authorized" instead of failing outright.
+            logger.info("No consents stored for user {}", userId);
+            return new UserConsents().setUserId(userId).setConsents(Map.of());
+        }
+
+        return userConsents;
     }
 }

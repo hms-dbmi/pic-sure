@@ -7,7 +7,6 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
-import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
@@ -25,7 +24,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -33,6 +34,7 @@ import org.springframework.test.context.ContextConfiguration;
 
 import java.security.SecureRandom;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -51,8 +53,6 @@ public class UserServiceTest {
     private UserRepository userRepository;
     @MockBean
     private ConnectionRepository connectionRepository;
-    @MockBean
-    private ApplicationRepository applicationRepository;
     @MockBean
     private RoleService roleService;
     @MockBean
@@ -79,11 +79,9 @@ public class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
 
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
-        String applicationUUID = UUID.randomUUID().toString();
         userService = new UserService(
-            basicMailService, tosService, userRepository, connectionRepository, applicationRepository, roleService, userConsentsRepository,
-            fenceMappingUtility, defaultTokenExpirationTime, applicationUUID, longTermTokenExpirationTime, mockJwtUtil, false,
-            "ADMIN,SUPER_ADMIN", null
+            basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, fenceMappingUtility,
+            defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null
         );
     }
 
@@ -401,13 +399,6 @@ public class UserServiceTest {
     }
 
     @Test
-    public void testGetQueryTemplate_invalidApplicationId() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            userService.getQueryTemplate(null);
-        });
-    }
-
-    @Test
     public void testGetUserProfileResponse_withoutAcceptedTOS() {
         User user = createTestUser();
         when(tosService.hasUserAcceptedLatest(anyString())).thenReturn(false);
@@ -425,34 +416,6 @@ public class UserServiceTest {
         UserClaims userClaims = buildTestUserClaims(user);
         AuthenticationResponse result = userService.getUserProfileResponse(userClaims);
         assertEquals("true", result.acceptedTOS());
-    }
-
-    @Test
-    public void testGetQueryTemplate_validApplicationId() {
-        User user = createTestUser();
-        configureUserSecurityContext(user);
-        Application application = createTestApplication();
-
-
-        when(applicationRepository.findById(any(UUID.class))).thenReturn(Optional.of(application));
-        when(applicationRepository.findById(application.getUuid())).thenReturn(Optional.of(application));
-
-        Optional<String> result = userService.getQueryTemplate(application.getUuid().toString());
-        assertTrue(result.isPresent());
-    }
-
-    @Test
-    public void testGetDefaultQueryTemplate() {
-        User user = createTestUser();
-        configureUserSecurityContext(user);
-        Application application = createTestApplication();
-
-        when(applicationRepository.findById(any(UUID.class))).thenReturn(Optional.of(application));
-        when(applicationRepository.findById(application.getUuid())).thenReturn(Optional.of(application));
-
-        Map<String, String> result = userService.getDefaultQueryTemplate();
-        assertTrue(result.containsKey("queryTemplate"));
-        assertNotNull(result.get("queryTemplate"));
     }
 
     @Test
@@ -527,6 +490,83 @@ public class UserServiceTest {
         assertEquals(newRoles, user1.getRoles());
     }
 
+    /**
+     * The exact set of role names ensureBaselineRoles is required to ask the database for. Asserting on this set is what catches a baseline
+     * role being dropped from the lookup: a role that is never requested is never found, never attached, and nothing else in the method
+     * would fail.
+     */
+    private static final Set<String> EXPECTED_BASELINE_ROLE_NAMES = Set
+        .of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME, RoleService.MANAGED_ROLE_NAMED_DATASET);
+
+    /**
+     * Every user reaches authorized data through the baseline roles alone now that dbGaP-derived roles are gone. MANUAL_ROLE_AUTH_ACCESS in
+     * particular carries USER_CONSENT_ACCESS, so if it stops being attached here the user is silently left with no consent-based access.
+     */
+    @Test
+    public void ensureBaselineRoles_allBaselineRolesExist_allAreAttachedAndPersisted() {
+        User user = createTestUser();
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(roleService.findByNames(anySet())).thenReturn(
+            Map.of(
+                RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME),
+                RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME),
+                RoleService.MANAGED_ROLE_NAMED_DATASET, createRoleNamed(RoleService.MANAGED_ROLE_NAMED_DATASET)
+            )
+        );
+
+        User result = userService.ensureBaselineRoles(user);
+
+        assertNotNull(result);
+        // Every baseline role must actually be requested. Without this, dropping a name from the lookup set leaves the stub returning all
+        // three regardless, and the attachment assertions below stay green while the role is silently lost in production.
+        verify(roleService).findByNames(EXPECTED_BASELINE_ROLE_NAMES);
+        ArgumentCaptor<User> savedUser = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(savedUser.capture());
+        assertEquals(
+            Set.of(
+                "TEST_ROLE", RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME,
+                RoleService.MANAGED_ROLE_NAMED_DATASET
+            ), roleNamesOf(savedUser.getValue()),
+            "all three baseline roles must be attached and persisted, alongside the user's pre-existing roles"
+        );
+    }
+
+    @Test
+    public void ensureBaselineRoles_oneBaselineRoleMissing_stillAttachesTheRolesThatWereFound() {
+        User user = createTestUser();
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // MANUAL_ROLE_NAMED_DATASET is absent from the database; the warn path must not cost the user the other two.
+        when(roleService.findByNames(anySet())).thenReturn(
+            Map.of(
+                RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME),
+                RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME)
+            )
+        );
+
+        User result = userService.ensureBaselineRoles(user);
+
+        assertNotNull(result);
+        verify(roleService).findByNames(EXPECTED_BASELINE_ROLE_NAMES);
+        ArgumentCaptor<User> savedUser = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(savedUser.capture());
+        assertEquals(
+            Set.of("TEST_ROLE", RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME),
+            roleNamesOf(savedUser.getValue()),
+            "the baseline roles that do exist must still be attached, and the user's pre-existing roles kept"
+        );
+    }
+
+    private Set<String> roleNamesOf(User user) {
+        return user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
+    }
+
+    private Role createRoleNamed(String name) {
+        Role role = new Role();
+        role.setName(name);
+        role.setUuid(UUID.randomUUID());
+        return role;
+    }
+
     @Test
     public void testFindUserBySubject() {
         User user = createTestUser();
@@ -574,6 +614,57 @@ public class UserServiceTest {
         assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), userConsentsCaptor.getValue().getConsents());
     }
 
+    @Test
+    public void getUserConsents_returnsStoredConsentsOfAuthenticatedUser() {
+        User user = createTestUser();
+        configureUserSecurityContext(user);
+        UserConsents stored = new UserConsents().setUserId(user.getUuid()).setConsents(Map.of("\\_consents\\", Set.of("phs1234.c1")));
+        when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(stored);
+
+        UserConsents result = userService.getUserConsents();
+
+        assertNotNull(result);
+        assertEquals(user.getUuid(), result.getUserId());
+        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), result.getConsents());
+    }
+
+    @Test
+    public void getUserConsents_returnsEmptyConsentsWhenNoRecordStored() {
+        User user = createTestUser();
+        configureUserSecurityContext(user);
+        when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(null);
+
+        UserConsents result = userService.getUserConsents();
+
+        assertNotNull(result);
+        assertEquals(user.getUuid(), result.getUserId());
+        assertEquals(Map.of(), result.getConsents());
+    }
+
+    @Test
+    public void getUserConsents_returnsNullWhenNoAuthenticationPresent() {
+        when(securityContext.getAuthentication()).thenReturn(null);
+
+        // Must return null rather than NPE on the unguarded getAuthentication() dereference.
+        UserConsents result = assertDoesNotThrow(() -> userService.getUserConsents());
+
+        assertNull(result);
+        verify(userConsentsRepository, never()).findByUserId(any(UUID.class));
+    }
+
+    @Test
+    public void getUserConsents_returnsNullForAnonymousPrincipal() {
+        // Spring's anonymous principal is the String "anonymousUser", which is not a CustomUserDetails.
+        when(securityContext.getAuthentication())
+            .thenReturn(new AnonymousAuthenticationToken("key", "anonymousUser", AuthorityUtils.createAuthorityList("ROLE_ANONYMOUS")));
+
+        // Must return null rather than ClassCastException on the cast to CustomUserDetails.
+        UserConsents result = assertDoesNotThrow(() -> userService.getUserConsents());
+
+        assertNull(result);
+        verify(userConsentsRepository, never()).findByUserId(any(UUID.class));
+    }
+
     private UserClaims buildTestUserClaims(User user) {
         UserClaims userClaims = new UserClaims();
         userClaims.setUuid(user.getUuid().toString());
@@ -595,22 +686,6 @@ public class UserServiceTest {
         return user;
     }
 
-    private Application createTestApplication() {
-        Application application = new Application();
-        application.setUuid(UUID.randomUUID());
-        application.setName("TEST_APPLICATION");
-        application.setToken(createValidApplicationTestToken(application));
-        application.setPrivileges(new HashSet<>());
-        return application;
-    }
-
-    private String createValidApplicationTestToken(Application application) {
-        return this.jwtUtil.createJwtToken(
-            null, null, new HashMap<>(Map.of("user_id", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getName())),
-            AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getUuid().toString(), 365L * 1000 * 60 * 60 * 24
-        );
-    }
-
     private Role createTestRole() {
         Role role = new Role();
         role.setName("TEST_ROLE");
@@ -623,11 +698,6 @@ public class UserServiceTest {
         Privilege privilege = new Privilege();
         privilege.setName("TEST_PRIVILEGE");
         privilege.setUuid(UUID.randomUUID());
-        privilege.setQueryTemplate(
-            createQueryTemplate(
-                "consent_concept_path_" + privilege.getUuid(), "project_name_" + privilege.getUuid(), "consent_group_" + privilege.getUuid()
-            )
-        );
 
         return privilege;
     }
@@ -665,13 +735,6 @@ public class UserServiceTest {
         byte[] secret = new byte[32];
         random.nextBytes(secret);
         return Base64.getEncoder().encodeToString(secret);
-    }
-
-    private String createQueryTemplate(String consent_concept_path, String project_name, String consent_group) {
-        return "{\"categoryFilters\": {\"" + consent_concept_path + "\":\"" + project_name + "." + consent_group + "\"},"
-            + "\"numericFilters\":{},\"requiredFields\":[],"
-            + "\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
-            + "\"expectedResultType\": \"COUNT\"" + "}";
     }
 
 }
