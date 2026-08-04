@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -28,7 +27,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
-import io.swagger.v3.oas.annotations.Operation;
 
 /**
  * The wire contract of the {@code /user/me/**} surface, exercised through real Jackson binding. The mapper is {@code new ObjectMapper()}
@@ -88,10 +86,6 @@ class UserControllerContractTest {
         assertEquals(1, body.size(), "no envelope, no extra keys");
     }
 
-    /**
-     * queryTemplate is frozen, not retyped: its value is a JSON document carried as a String, and the successor endpoint has not shipped.
-     * The annotations are the contract -- consumers have to be able to see it is going away.
-     */
     /**
      * The {@code /me/queryTemplate} endpoints are gone. They were frozen rather than retyped because their value was a JSON document
      * carried as a String inside a one-key map; the v2 query removal deleted the stored {@code Privilege#queryTemplate} they merged, so
