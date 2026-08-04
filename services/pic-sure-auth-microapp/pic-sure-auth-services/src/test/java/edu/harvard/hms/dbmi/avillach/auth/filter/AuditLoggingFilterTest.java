@@ -256,21 +256,6 @@ class AuditLoggingFilterTest {
     }
 
     @Test
-    void shouldCategorizeStudyAccessCreate() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/studyAccess");
-        request.setAttribute(AuditAttributes.EVENT_TYPE, "ADMIN");
-        request.setAttribute(AuditAttributes.ACTION, "study_access.create");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, filterChain);
-
-        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
-        verify(loggingClient).send(captor.capture());
-        assertEquals("ADMIN", captor.getValue().getEventType());
-        assertEquals("study_access.create", captor.getValue().getAction());
-    }
-
-    @Test
     void shouldCategorizeMappingDelete() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("DELETE", "/mapping/some-uuid");
         request.setAttribute(AuditAttributes.EVENT_TYPE, "ADMIN");

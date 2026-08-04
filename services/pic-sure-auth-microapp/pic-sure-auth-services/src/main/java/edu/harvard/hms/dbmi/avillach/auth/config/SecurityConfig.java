@@ -57,13 +57,12 @@ public class SecurityConfig {
             .authorizeHttpRequests(
                 (authorizeRequests) -> authorizeRequests.requestMatchers(
                     "/actuator/health", "/actuator/info", "/authentication", "/authentication/**", "/swagger.yaml", "/swagger.json",
-                    "/user/me/queryTemplate", "/user/me/queryTemplate/**", "/tos/latest", "/open/validate", "/logout", "/cache/**"
+                    "/tos/latest", "/open/validate", "/logout", "/cache/**"
                 ).permitAll().anyRequest().authenticated()
             ).httpBasic(AbstractHttpConfigurer::disable).formLogin(AbstractHttpConfigurer::disable)
             // AuditLoggingFilter must wrap the entire chain (including LogoutFilter and JWTFilter)
             // so its try/finally captures events even when JWTFilter short-circuits or LogoutFilter handles /logout
-            .addFilterBefore(auditLoggingFilter, LogoutFilter.class)
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(auditLoggingFilter, LogoutFilter.class).addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
             .logout(
                 (logout) -> logout.logoutUrl("/logout").addLogoutHandler(customLogoutHandler())
                     .logoutSuccessHandler((request, response, authentication) -> {
