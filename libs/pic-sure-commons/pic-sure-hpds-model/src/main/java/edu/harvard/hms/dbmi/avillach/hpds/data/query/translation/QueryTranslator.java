@@ -22,9 +22,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 
 /**
  * Translates a legacy (v1) {@link edu.harvard.hms.dbmi.avillach.hpds.data.query.Query} into the v3 {@link Query} shape. Pure function, no
- * I/O. Faithful to v1 semantics: each any-record-of list is an OR of its paths, and the whole query is an AND of every filter family.
- * Multiple non-empty {@code variantInfoFilters} groups (an OR the flat v3 genomic list cannot express) raise
- * {@link UntranslatableQueryException} rather than being silently merged.
+ * I/O. Preserves the v1 boolean structure: each any-record-of group is an OR of its paths, and the whole query is an AND of every filter
+ * family. One deliberate semantic deviation: any-record-of paths adopt v3 subtree matching (every concept whose path starts with the filter
+ * path), where v1 matched each path as an exact concept lookup, so a non-leaf path now matches its descendants too. Multiple non-empty
+ * {@code variantInfoFilters} groups (an OR the flat v3 genomic list cannot express) raise {@link UntranslatableQueryException} rather than
+ * being silently merged.
  */
 public class QueryTranslator {
 
@@ -94,15 +96,35 @@ public class QueryTranslator {
         return groups;
     }
 
+    /**
+     * Emits one {@code ANY_RECORD_OF} filter per maximal path in the group, OR'd together (adopted from review, ramari16 on PR #265). v3
+     * HPDS evaluates {@code ANY_RECORD_OF} by matching every concept whose path starts with the filter path, so a path that starts with
+     * another listed path matches a subset of what that other path matches and can be dropped without changing the result. An ancestor plus
+     * its own descendants collapses to just the ancestor; unrelated branches all survive. Domination is the same raw
+     * {@link String#startsWith} relation the v3 evaluator uses, which keeps the collapse exact even where string prefix and path-segment
+     * ancestry disagree.
+     */
     private static PhenotypicClause anyRecordOfClause(List<String> paths) {
         List<PhenotypicClause> filters = new ArrayList<>();
-        for (String path : paths) {
+        for (String path : maximalPrefixes(paths)) {
             filters.add(new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, path, null, null, null, false));
         }
         if (filters.size() == 1) {
             return filters.get(0);
         }
         return new PhenotypicSubquery(false, filters, Operator.OR);
+    }
+
+    private static List<String> maximalPrefixes(List<String> paths) {
+        LinkedHashSet<String> distinct = new LinkedHashSet<>(paths);
+        List<String> maximal = new ArrayList<>();
+        for (String path : distinct) {
+            boolean dominated = distinct.stream().anyMatch(other -> !other.equals(path) && path.startsWith(other));
+            if (!dominated) {
+                maximal.add(path);
+            }
+        }
+        return maximal;
     }
 
     private static List<GenomicFilter> buildGenomicFilters(edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1)

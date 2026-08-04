@@ -106,6 +106,22 @@ class QueryServiceTest {
     }
 
     @Test
+    void createNeverPersistsResourceCredentials() {
+        // SECURITY: credentials ride the in-memory request to HPDS only; the payload sent to operations-service for storage must not
+        // carry them (they would otherwise sit at rest and echo back through /metadata queryJson).
+        UUID picsureId = UUID.randomUUID();
+        QueryRequest request = req();
+        request.setResourceCredentials(Map.of("BEARER_TOKEN", "secret"));
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
+        when(operationsClient.save(any())).thenReturn(picsureId);
+
+        service.query("auth", request);
+
+        verify(operationsClient)
+            .save(argThat((SaveQueryRequest r) -> !r.query().contains("resourceCredentials") && !r.query().contains("secret")));
+    }
+
+    @Test
     void createEchoesResourceUuidFromRequest() {
         UUID picsureId = UUID.randomUUID();
         QueryRequest request = req();

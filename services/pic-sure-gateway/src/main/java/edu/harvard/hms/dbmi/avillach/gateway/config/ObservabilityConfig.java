@@ -8,6 +8,7 @@ import org.springframework.core.Ordered;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.AccessLogFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter;
 
 @Configuration
 public class ObservabilityConfig {
@@ -37,6 +38,17 @@ public class ObservabilityConfig {
         FilterRegistrationBean<InboundIdentityHeaderSanitizingFilter> registration =
             new FilterRegistrationBean<>(new InboundIdentityHeaderSanitizingFilter());
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 2);
+        return registration;
+    }
+
+    /**
+     * Also registered UNCONDITIONALLY, right after the sanitizer: {@code /operations/internal/**} is service-to-service only and must never
+     * be reachable through the public gateway. See {@link InternalEndpointGuardFilter}'s Javadoc.
+     */
+    @Bean
+    public FilterRegistrationBean<InternalEndpointGuardFilter> internalEndpointGuardFilter() {
+        FilterRegistrationBean<InternalEndpointGuardFilter> registration = new FilterRegistrationBean<>(new InternalEndpointGuardFilter());
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 3);
         return registration;
     }
 }

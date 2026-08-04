@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "picsure.gateway.security")
 public record GatewaySecurityProperties(
-    List<String> allowListPrefixes, boolean openAccessEnabled, String userIdClaim,
+    List<String> allowListPrefixes, boolean openAccessEnabled,
     // GATEWAY_AUTH_MAX_BODY_BYTES -- auth-buffering cap; 413 over it
     int maxBodyBytes, String introspectionUrl, String openAccessValidateUrl, String serviceToken,
     // OPERATIONS_SERVICE_URL -- for QueryAuthFetcher dispatch (dispatch lives on operations-service,
@@ -21,9 +21,6 @@ public record GatewaySecurityProperties(
 ) {
     public GatewaySecurityProperties {
         allowListPrefixes = allowListPrefixes == null ? List.of() : List.copyOf(allowListPrefixes);
-        if (userIdClaim == null) {
-            userIdClaim = "userId";
-        }
         if (maxBodyBytes <= 0) {
             maxBodyBytes = 10_485_760; // 10 MiB default (GATEWAY_AUTH_MAX_BODY_BYTES)
         }
