@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentsBuilder;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -30,14 +31,31 @@ public class UserControllerTest {
     private final MockMvc mockMvc =
         MockMvcBuilders.standaloneSetup(new UserController(userService)).setControllerAdvice(new GlobalExceptionHandler()).build();
 
+    /**
+     * The fixture uses {@link BdcConsentsBuilder}'s constants because the map is keyed by CONCEPT PATH, not by a bare word or a phs
+     * accession, and its values are the consent identifiers verbatim.
+     */
     @Test
     public void consentsEndpointDispatchesAndReturnsConsents() throws Exception {
         UUID userId = UUID.randomUUID();
-        when(userService.getUserConsents())
-            .thenReturn(new UserConsents().setUserId(userId).setConsents(Map.of("consents", Set.of("phs1234.c1", "phs5678.c2"))));
+        when(userService.getUserConsents()).thenReturn(
+            new UserConsents().setUserId(userId)
+                .setConsents(Map.of(BdcConsentsBuilder.CONSENTS_KEY, Set.of("phs000007.c1", "open_access-1000Genomes")))
+        );
 
         mockMvc.perform(get("/user/me/consents")).andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(userId.toString()))
-            .andExpect(jsonPath("$.consents.consents", containsInAnyOrder("phs1234.c1", "phs5678.c2")));
+            .andExpect(
+                jsonPath(consentsAt(BdcConsentsBuilder.CONSENTS_KEY), containsInAnyOrder("phs000007.c1", "open_access-1000Genomes"))
+            );
+    }
+
+    /**
+     * A JsonPath selector for one concept path inside the consents map. The key contains backslashes and JsonPath treats a backslash as an
+     * escape character inside a bracketed name, so each one has to be doubled -- {@code $.consents['\_consents\']} is an unterminated
+     * property and throws {@code InvalidPathException}.
+     */
+    private static String consentsAt(String conceptPath) {
+        return "$.consents['" + conceptPath.replace("\\", "\\\\") + "']";
     }
 
     /**

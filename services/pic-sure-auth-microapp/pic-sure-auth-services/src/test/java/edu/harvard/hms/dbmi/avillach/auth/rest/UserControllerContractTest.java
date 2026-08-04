@@ -12,6 +12,8 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentsBuilder;
 
 /**
  * The wire contract of the {@code /user/me/**} surface, exercised through real Jackson binding. The mapper is {@code new ObjectMapper()}
@@ -51,18 +54,36 @@ class UserControllerContractTest {
      * {@code /user/me/consents} declared {@code @PathVariable("userId")} against a path with no {@code {userId}} template, so Spring could
      * never resolve the argument: the endpoint answered 500 for every caller. The user now comes from the security context like every other
      * {@code /me} endpoint, and the body is the bare record.
+     *
+     * <p>The fixture is keyed by {@link BdcConsentsBuilder}'s own constants on purpose. This map is keyed by CONCEPT PATH -- not by phs
+     * accession -- and its values are the consent identifiers verbatim ({@code phs000007.c1}, {@code open_access-1000Genomes}). An earlier
+     * fixture here read {@code Map.of("phs000001", Set.of("c1", "c2"))}, which is wrong on both counts, and a downstream client was
+     * documented against that shape; referencing the producer's constants means the fixture cannot drift from what the builder writes.
      */
     @Test
     void consentsResolvesTheUserFromTheSecurityContextAndReturnsTheRecordBare() throws Exception {
         UUID userId = UUID.randomUUID();
-        UserConsents consents = new UserConsents().setUserId(userId).setConsents(Map.of("phs000001", Set.of("c1", "c2")));
+        UserConsents consents = new UserConsents().setUserId(userId).setConsents(
+            Map.of(
+                BdcConsentsBuilder.CONSENTS_KEY, Set.of("phs000007.c1", "open_access-1000Genomes"),
+                BdcConsentsBuilder.HARMONIZED_CONSENTS_KEY, Set.of("phs000007.c1")
+            )
+        );
         when(userService.getUserConsents()).thenReturn(consents);
 
         MvcResult result = mockMvc.perform(get("/user/me/consents")).andExpect(status().isOk()).andReturn();
 
         JsonNode body = MAPPER.readTree(result.getResponse().getContentAsString());
         assertEquals(userId.toString(), body.get("userId").asText());
-        assertTrue(body.get("consents").get("phs000001").isArray(), "consents must serialize as the map the entity holds");
+        JsonNode consentsNode = body.get("consents");
+        assertTrue(consentsNode.get(BdcConsentsBuilder.CONSENTS_KEY).isArray(), "consents must serialize as the map the entity holds");
+        assertTrue(consentsNode.get(BdcConsentsBuilder.HARMONIZED_CONSENTS_KEY).isArray(), "every concept path serializes the same way");
+        assertEquals(
+            Set.of("phs000007.c1", "open_access-1000Genomes"),
+            StreamSupport.stream(consentsNode.get(BdcConsentsBuilder.CONSENTS_KEY).spliterator(), false).map(JsonNode::asText)
+                .collect(Collectors.toSet()),
+            "consent identifiers ride verbatim -- the client matches them against dictionary values as-is"
+        );
         assertFalse(body.has("content"), "the response envelope must be gone");
         assertFalse(body.has("message"), "the response envelope must be gone");
     }
