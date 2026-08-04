@@ -4,20 +4,22 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
+import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 
 /**
  * Ports the legacy WildFly {@code NamedDatasetService}. User-scoping is pushed into SQL via {@code NamedDatasetRepository}'s
- * {@code findByUser}/{@code findByUuidAndUser}, replacing the WAR's in-Java owner check; the owner key is the caller's EMAIL. Because the
- * lookup is scoped at the SQL layer, a caller reading/mutating another user's dataset gets exactly the same 404 as a genuinely-missing uuid
- * -- there is no separate 403 branch, and existence is never leaked to a non-owning caller (same posture as {@code ConfigurationService}'s
- * not-found handling).
+ * {@code findByUser}/{@code findByUuidAndUser}, replacing the WAR's in-Java owner check; the owner key is the caller's EMAIL, derived here
+ * from the {@link GatewayUser} via {@link #requireEmail} (the identity-completeness check lives in this service, not the controller).
+ * Because the lookup is scoped at the SQL layer, a caller reading/mutating another user's dataset gets exactly the same 404 as a
+ * genuinely-missing uuid -- there is no separate 403 branch, and existence is never leaked to a non-owning caller (same posture as
+ * {@code ConfigurationService}'s not-found handling).
  *
  * <p>{@code archived} is not a list filter -- {@code findByUser} returns archived and non-archived rows alike; there is no soft-delete.
  *
@@ -43,42 +45,55 @@ public class NamedDatasetService {
     }
 
     @Transactional(readOnly = true)
-    public List<NamedDatasetDto> listForUser(String user) {
-        return repo.findByUser(user).stream().map(mapper::toDto).toList();
+    public List<NamedDatasetDto> listForUser(GatewayUser user) {
+        return repo.findByUser(requireEmail(user)).stream().map(mapper::toDto).toList();
     }
 
     @Transactional(readOnly = true)
-    public NamedDatasetDto getForUser(String user, UUID id) {
-        NamedDataset e = repo.findByUuidAndUser(id, user).orElseThrow(() -> notFound(id));
+    public NamedDatasetDto getForUser(GatewayUser user, UUID id) {
+        NamedDataset e = repo.findByUuidAndUser(id, requireEmail(user)).orElseThrow(() -> notFound(id));
         return mapper.toDto(e);
     }
 
     @Transactional
-    public NamedDatasetDto create(String user, NamedDatasetRequestDto req) {
+    public NamedDatasetDto create(GatewayUser user, NamedDatasetRequestDto req) {
+        String email = requireEmail(user);
         Query query = resolveQuery(req.queryId());
-        NamedDataset saved = saveOrConflict(mapper.toEntity(user, query, req), req.queryId(), user);
+        NamedDataset saved = saveOrConflict(mapper.toEntity(email, query, req), req.queryId(), email);
         return mapper.toDto(saved);
     }
 
     @Transactional
-    public NamedDatasetDto update(String user, UUID id, NamedDatasetRequestDto req) {
-        NamedDataset existing = repo.findByUuidAndUser(id, user).orElseThrow(() -> notFound(id));
+    public NamedDatasetDto update(GatewayUser user, UUID id, NamedDatasetRequestDto req) {
+        String email = requireEmail(user);
+        NamedDataset existing = repo.findByUuidAndUser(id, email).orElseThrow(() -> notFound(id));
         if (existing.getQuery() == null || !existing.getQuery().getUuid().equals(req.queryId())) {
             existing.setQuery(resolveQuery(req.queryId()));
         }
         existing.setName(req.name()).setArchived(req.archived()).setMetadata(req.metadata());
-        return mapper.toDto(saveOrConflict(existing, req.queryId(), user));
+        return mapper.toDto(saveOrConflict(existing, req.queryId(), email));
     }
 
     @Transactional
-    public void delete(String user, UUID id) {
-        NamedDataset existing = repo.findByUuidAndUser(id, user).orElseThrow(() -> notFound(id));
+    public void delete(GatewayUser user, UUID id) {
+        NamedDataset existing = repo.findByUuidAndUser(id, requireEmail(user)).orElseThrow(() -> notFound(id));
         repo.delete(existing);
     }
 
+    /**
+     * Returns the caller's email owner key. {@code WebSecurityConfig} already rejects unauthenticated requests to {@code /dataset/**}
+     * before any controller method runs, so this is a defensive guard against a gateway that authenticated the caller (sent
+     * {@code X-User-Id}) but omitted {@code X-User-Email} -- not the primary auth gate.
+     */
+    private static String requireEmail(GatewayUser user) {
+        if (user == null || user.getEmail() == null || user.getEmail().isBlank()) {
+            throw PicsureExceptions.unauthorized("User identity (email) not present in request");
+        }
+        return user.getEmail();
+    }
+
     private Query resolveQuery(UUID queryId) {
-        return queryRepo.findById(queryId)
-            .orElseThrow(() -> new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Query " + queryId + " not found"));
+        return queryRepo.findById(queryId).orElseThrow(() -> PicsureExceptions.notFound("Query", queryId));
     }
 
     /**
@@ -90,17 +105,11 @@ public class NamedDatasetService {
         try {
             return repo.saveAndFlush(entity);
         } catch (DataIntegrityViolationException e) {
-            throw conflict(queryId, user);
+            throw PicsureExceptions.conflict("A NamedDataset for query " + queryId + " and user '" + user + "' already exists");
         }
     }
 
     private static PicsureException notFound(UUID id) {
-        return new PicsureException(HttpStatus.NOT_FOUND, "not_found", "NamedDataset " + id + " not found");
-    }
-
-    private static PicsureException conflict(UUID queryId, String user) {
-        return new PicsureException(
-            HttpStatus.CONFLICT, "conflict", "A NamedDataset for query " + queryId + " and user '" + user + "' already exists"
-        );
+        return PicsureExceptions.notFound("NamedDataset", id);
     }
 }

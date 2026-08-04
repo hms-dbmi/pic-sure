@@ -17,6 +17,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.client.RestClientException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -151,6 +153,24 @@ class OpenAccessFilterTest {
         verify(resp).setStatus(401);
         verify(chain, never()).doFilter(any(), any());
         assertThat(ctx.getMetadata()).containsEntry("auth_action", "open_access.denied");
+    }
+
+    @Test
+    void psamaTransportFailureYields502StructuredErrorWithoutPropagating() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenThrow(new RestClientException("connection refused"));
+        AuditContext ctx = new AuditContext();
+        OpenAccessFilter f = filter(client, ctx, true);
+
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(wrap(null), resp, chain); // must not propagate the RestClientException
+
+        assertThat(resp.getStatus()).isEqualTo(502);
+        assertThat(resp.getContentAsString()).contains("\"errorType\":\"open_access_unreachable\"");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(ctx.getMetadata()).containsEntry("auth_result", "failure")
+            .containsEntry("auth_failure_reason", "open_access_unreachable");
     }
 
     private static BufferedRequestWrapper wrap(String authHeader) {

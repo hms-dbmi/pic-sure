@@ -165,8 +165,7 @@ public class AggregateService {
         Map<String, String> crossCounts = objectMapper.readValue(crossCountJson, new TypeReference<>() {});
         int generatedVariance = obfuscation.generateVarianceWithCrossCounts(crossCounts);
 
-        if (obfuscation.canShowContinuousCrossCounts(crossCounts)) {
-            // NOTE: despite the name, this signals SUPPRESSION -- ported verbatim from ObfuscationService/the WAR.
+        if (obfuscation.shouldSuppressContinuousCrossCounts(crossCounts)) {
             return null;
         }
 

@@ -278,6 +278,102 @@ class QueryTranslatorTest {
         assertThat(asFilter(top.phenotypicClauses().get(1)).conceptPath()).isEqualTo("\\x\\");
     }
 
+    /**
+     * Pins the collapse adopted from review (ramari16, PR #265): v3 HPDS evaluates ANY_RECORD_OF by matching every concept whose path
+     * starts with the filter path, so within a group any path that starts with another listed path is redundant. An ancestor plus its own
+     * descendants collapses to just the ancestor.
+     */
+    @Test
+    void anyRecordOfAncestorPlusDescendantsCollapsesToAncestor() throws Exception {
+        Query q = v1();
+        q.setAnyRecordOf(List.of("\\lab\\", "\\lab\\blood\\", "\\lab\\blood\\type\\"));
+        PhenotypicFilter f = asFilter(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(f.phenotypicFilterType()).isEqualTo(PhenotypicFilterType.ANY_RECORD_OF);
+        assertThat(f.conceptPath()).isEqualTo("\\lab\\");
+        assertThat(f.values()).isNull();
+        assertThat(f.min()).isNull();
+        assertThat(f.max()).isNull();
+    }
+
+    /**
+     * Duplicate paths and paths dominated by another listed path are dropped; survivors keep first-appearance order.
+     */
+    @Test
+    void anyRecordOfDominatedAndDuplicatePathsAreDropped() throws Exception {
+        Query q = v1();
+        q.setAnyRecordOf(List.of("\\lab\\blood\\", "\\demographics\\", "\\lab\\", "\\lab\\", "\\demographics\\age\\"));
+        PhenotypicSubquery sub = asSub(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(sub.operator()).isEqualTo(Operator.OR);
+        assertThat(sub.phenotypicClauses()).extracting(c -> asFilter(c).conceptPath()).containsExactly("\\demographics\\", "\\lab\\");
+    }
+
+    /**
+     * Domination is raw string prefix, mirroring v3 evaluation exactly (PhenotypeMetaStore matches concepts by startsWith), not tree-aware
+     * path segmentation.
+     */
+    @Test
+    void anyRecordOfStringPrefixDominationMirrorsV3Matching() throws Exception {
+        Query q = v1();
+        q.setAnyRecordOf(List.of("\\lab\\hgb", "\\lab\\hgb_adjusted\\"));
+        PhenotypicFilter f = asFilter(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(f.conceptPath()).isEqualTo("\\lab\\hgb");
+    }
+
+    /**
+     * The collapse is per group only. Groups are AND'd, so a path in one group must never be dropped because of a path in another.
+     */
+    @Test
+    void anyRecordOfCollapseAppliesPerGroup() throws Exception {
+        Query q = v1();
+        q.setAnyRecordOfMulti(List.of(List.of("\\a\\", "\\a\\b\\"), List.of("\\a\\c\\", "\\d\\")));
+        PhenotypicSubquery top = asSub(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(top.operator()).isEqualTo(Operator.AND);
+        assertThat(asFilter(top.phenotypicClauses().get(0)).conceptPath()).isEqualTo("\\a\\");
+        PhenotypicSubquery g2 = asSub(top.phenotypicClauses().get(1));
+        assertThat(g2.phenotypicClauses()).extracting(c -> asFilter(c).conceptPath()).containsExactly("\\a\\c\\", "\\d\\");
+    }
+
+    /**
+     * Unrelated branches are all maximal, so each survives as its own OR'd filter; no single path covers the union.
+     */
+    @Test
+    void anyRecordOfUnrelatedBranchesEachGetOwnFilter() throws Exception {
+        Query q = v1();
+        q.setAnyRecordOf(List.of("\\demographics\\age\\", "\\lab\\blood\\", "\\imaging\\mri\\"));
+        PhenotypicSubquery sub = asSub(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(sub.operator()).isEqualTo(Operator.OR);
+        assertThat(sub.phenotypicClauses()).extracting(c -> asFilter(c).conceptPath())
+            .containsExactly("\\demographics\\age\\", "\\lab\\blood\\", "\\imaging\\mri\\");
+    }
+
+    @Test
+    void anyRecordOfMultiNullInnerListIsSkipped() throws Exception {
+        Query q = v1();
+        List<List<String>> multi = new ArrayList<>();
+        multi.add(null);
+        multi.add(List.of("\\kept\\"));
+        q.setAnyRecordOfMulti(multi);
+        // null group skipped -> only the single-path group survives -> bare filter, no wrapper
+        PhenotypicFilter f = asFilter(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(f.phenotypicFilterType()).isEqualTo(PhenotypicFilterType.ANY_RECORD_OF);
+        assertThat(f.conceptPath()).isEqualTo("\\kept\\");
+    }
+
+    @Test
+    void multipleAnyRecordOfMultiGroupsFormAndOfOrsInListOrder() throws Exception {
+        Query q = v1();
+        q.setAnyRecordOfMulti(List.of(List.of("\\g1a\\", "\\g1b\\"), List.of("\\g2a\\", "\\g2b\\")));
+        PhenotypicSubquery top = asSub(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(top.operator()).isEqualTo(Operator.AND);
+        assertThat(top.phenotypicClauses()).hasSize(2);
+        PhenotypicSubquery first = asSub(top.phenotypicClauses().get(0));
+        PhenotypicSubquery second = asSub(top.phenotypicClauses().get(1));
+        assertThat(first.operator()).isEqualTo(Operator.OR);
+        assertThat(first.phenotypicClauses()).extracting(c -> asFilter(c).conceptPath()).containsExactly("\\g1a\\", "\\g1b\\");
+        assertThat(second.operator()).isEqualTo(Operator.OR);
+        assertThat(second.phenotypicClauses()).extracting(c -> asFilter(c).conceptPath()).containsExactly("\\g2a\\", "\\g2b\\");
+    }
+
     @Test
     void anyRecordOfGroupCombinesWithCategoryUnderAnd() throws Exception {
         Query q = v1();
@@ -287,6 +383,25 @@ class QueryTranslatorTest {
         assertThat(top.operator()).isEqualTo(Operator.AND);
         assertThat(asFilter(top.phenotypicClauses().get(0)).phenotypicFilterType()).isEqualTo(PhenotypicFilterType.FILTER);
         assertThat(asSub(top.phenotypicClauses().get(1)).operator()).isEqualTo(Operator.OR);
+    }
+
+    @Test
+    void categoryFilterWithNullValuesArrayYieldsNullValues() throws Exception {
+        Query q = v1();
+        Map<String, String[]> cats = new TreeMap<>();
+        cats.put("\\nullvals\\", null);
+        q.setCategoryFilters(cats);
+        PhenotypicFilter f = asFilter(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(f.phenotypicFilterType()).isEqualTo(PhenotypicFilterType.FILTER);
+        assertThat(f.values()).isNull();
+    }
+
+    @Test
+    void categoryValuesAreDedupedPreservingFirstOccurrenceOrder() throws Exception {
+        Query q = v1();
+        q.setCategoryFilters(Map.of("\\sex\\", new String[] {"M", "F", "M"}));
+        PhenotypicFilter f = asFilter(QueryTranslator.translate(q).phenotypicClause());
+        assertThat(f.values()).containsExactly("M", "F");
     }
 
     // ---------- genomic ----------

@@ -126,10 +126,16 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * Takes the RIGHTMOST X-Forwarded-For entry, not the leftmost: clients can send an arbitrary XFF header of their own, and the trusted
+     * front proxy (AIO httpd) APPENDS the address it saw -- so the rightmost entry is the nearest trusted hop and cannot be client-forged,
+     * while the leftmost is whatever the client chose to send.
+     */
     private String resolveSourceIp(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
+            String[] hops = forwardedFor.split(",");
+            return hops[hops.length - 1].trim();
         }
         return request.getRemoteAddr();
     }
