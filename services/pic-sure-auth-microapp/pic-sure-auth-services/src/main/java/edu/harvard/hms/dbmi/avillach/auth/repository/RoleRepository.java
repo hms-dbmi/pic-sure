@@ -21,6 +21,4 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
     Set<Role> findByUuidIn(Set<UUID> uuids);
 
     Set<Role> findByNameIn(Set<String> names);
-
-    Set<Role> findByNameNotIn(Set<String> names);
 }
