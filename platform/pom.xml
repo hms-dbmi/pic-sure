@@ -36,6 +36,11 @@
              dependencyConvergence rule requires. -->
         <springdoc.version>2.8.13</springdoc.version>
         <swagger-api.version>2.2.36</swagger-api.version>
+        <!-- Swagger UI viewer assets (org.webjars:swagger-ui), consumed ONLY by the gateway's /swagger-ui docs
+             console. Pinned to the exact version springdoc-openapi 2.8.13 resolves, so the viewer the gateway
+             bundles is the same one the document generators are built against — even though the gateway
+             deliberately does NOT depend on springdoc (no live /v3/api-docs surface anywhere). -->
+        <swagger-ui.version>5.28.1</swagger-ui.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -134,6 +139,14 @@
                 <groupId>io.swagger.core.v3</groupId>
                 <artifactId>swagger-core-jakarta</artifactId>
                 <version>${swagger-api.version}</version>
+            </dependency>
+            <!-- The bundled Swagger UI assets the gateway serves at /swagger-ui. A webjar: static files only,
+                 no classes and no transitive dependencies, so it adds nothing to any runtime classpath but the
+                 gateway's own. -->
+            <dependency>
+                <groupId>org.webjars</groupId>
+                <artifactId>swagger-ui</artifactId>
+                <version>${swagger-ui.version}</version>
             </dependency>
             <!-- Convergence pin: the auth0 SDK pulls okio 3.5.0 directly but 3.6.0 via its
                  own OkHttp transitive (dependencyConvergence enforcement, spec §17.4). -->

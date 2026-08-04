@@ -111,6 +111,14 @@ picsure:
     token: ${PICSURE_APPLICATION_TOKEN:}
     header-name: X-Application-Token
   gateway:
+    # Same-origin API docs console (DocsConfig): GET /openapi[/{document}] serves the six committed
+    # docs/api/*.openapi.json contract documents, GET /swagger-ui serves a bundled Swagger UI over them.
+    # Both prefixes are already on allow-list-prefixes below, so the console needs no token. Setting this
+    # false removes both routes entirely (404, since the gateway has no catch-all) -- the switch a
+    # FISMA-constrained or production environment flips to stop publishing an API console, with no image
+    # change. Publicly reachable at ${PUBLIC_URL}/picsure/swagger-ui.
+    docs:
+      enabled: ${GATEWAY_DOCS_ENABLED:true}
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       user-id-claim: sub
@@ -127,7 +135,8 @@ picsure:
       operations-service-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
       query-service-internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
       # Allowed list of prefixes that do not require authentication. The logging service has its own access key
-      # for security. The other paths are publicly available.
+      # for security. The other paths are publicly available. /openapi and /swagger-ui are the docs console
+      # (picsure.gateway.docs above); when that is disabled they simply have nothing behind them.
       allow-list-prefixes:
         - /logging
         - /actuator

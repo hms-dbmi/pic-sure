@@ -52,9 +52,25 @@
             <groupId>edu.harvard.dbmi.avillach</groupId>
             <artifactId>pic-sure-logging-client</artifactId>
         </dependency>
+        <!-- Swagger UI viewer assets for the /swagger-ui docs console. A pure webjar (static files, no classes,
+             no transitives); the gateway serves an allow-listed handful of them itself rather than exposing
+             Boot's default /webjars/** static handler, which is NOT on the auth allow-list. springdoc is
+             deliberately absent: the gateway serves the COMMITTED docs/api documents, it never generates one. -->
+        <dependency>
+            <groupId>org.webjars</groupId>
+            <artifactId>swagger-ui</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- OpenApiExport.repoRoot(): the docs-route tests diff what the gateway SERVES against the committed
+             docs/api document, and need the same walk-up-to-the-reactor-root locator the exporters use. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-spring-commons</artifactId>
+            <type>test-jar</type>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -66,6 +82,46 @@
 
     <build>
         <plugins>
+            <!-- Bakes the six committed contract documents into the artifact as classpath resources under
+                 /openapi, which is what OpenApiDocuments reads at startup. Deliberately a BUILD-TIME copy, not a
+                 filesystem read at runtime: docs/api is a source tree that does not exist inside the container,
+                 and going through target/classes makes the same code path work for `mvn spring-boot:run`, the
+                 Docker image, and a plain classpath unit test.
+
+                 The source directory is resolved from ${project.basedir}, NOT from
+                 ${maven.multiModuleProjectDirectory}: this repo has no .mvn directory, so that property resolves
+                 to whatever directory `mvn` was invoked from and would silently copy nothing when the module is
+                 built on its own. ../.. is this module's distance from the reactor root (services/<module>);
+                 OpenApiDocumentsResourceTest fails the build if the copy ever produces nothing, so a move of
+                 this module cannot go unnoticed.
+
+                 Packaging: spring-boot-maven-plugin:repackage rewrites this same target/classes tree into
+                 BOOT-INF/classes of the executable jar, and the Dockerfile COPYs that jar — so the documents
+                 ride along into the image with no Dockerfile change. -->
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-contract-documents</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/openapi</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/../../docs/api</directory>
+                                    <includes>
+                                        <include>*.openapi.json</include>
+                                    </includes>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
