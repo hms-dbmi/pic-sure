@@ -21,6 +21,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(SpringExtension.class)
 @EnableAutoConfiguration
+// this test is specifically testing when authorization filters are required, which is not the default for integration tests
 @SpringBootTest(
     classes = edu.harvard.hms.dbmi.avillach.hpds.service.HpdsApplication.class, properties = {"hpds.requireAuthorizationFilter=true"}
 )
