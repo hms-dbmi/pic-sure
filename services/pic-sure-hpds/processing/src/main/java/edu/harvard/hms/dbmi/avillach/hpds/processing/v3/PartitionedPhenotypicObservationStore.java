@@ -1,11 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.MissingConsentsException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import org.jspecify.annotations.NonNull;
@@ -20,8 +18,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -36,11 +33,15 @@ public class PartitionedPhenotypicObservationStore {
 
     private final Map<String, SummaryColumnMeta> allPartitionMetaStore;
 
+    private final boolean requireAuthorizationFilter;
+
     @Autowired
     public PartitionedPhenotypicObservationStore(
-        UserRequestContext userRequestContext, @Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory
+        UserRequestContext userRequestContext, @Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory,
+        @Value("${hpds.requireAuthorizationFilter:true}") boolean requireAuthorizationFilter
     ) {
         this.userRequestContext = userRequestContext;
+        this.requireAuthorizationFilter = requireAuthorizationFilter;
 
         try (Stream<Path> stream = Files.list(Path.of(hpdsDataDirectory))) {
             List<Path> subdirectories = stream.filter(Files::isDirectory)
@@ -64,60 +65,23 @@ public class PartitionedPhenotypicObservationStore {
     }
 
     public Set<Integer> getKeysForRange(String conceptPath, Double min, Double max) {
-        // todo: disallow this by default
-        if (userRequestContext.getUserConsents().isEmpty()) {
-            Set<Integer> patientIds = phenotypicPartitions.values().stream()
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getKeysForRange(conceptPath, min, max).stream())
-                .collect(Collectors.toSet());
-            return patientIds;
-        } else {
-            Set<Integer> patientIds = userRequestContext.getUserConsents().stream().map(phenotypicPartitions::get)
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getKeysForRange(conceptPath, min, max).stream())
-                .collect(Collectors.toSet());
-            return patientIds;
-        }
+        return aggregateForPartition(phenotypicObservationStore -> phenotypicObservationStore.getKeysForRange(conceptPath, min, max))
+            .collect(Collectors.toSet());
     }
 
     public Set<Integer> getKeysForValues(String conceptPath, Collection<String> values) {
-        // todo: disallow this by default
-        if (userRequestContext.getUserConsents().isEmpty()) {
-            Set<Integer> patientIds = phenotypicPartitions.values().stream()
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getKeysForValues(conceptPath, values).stream())
-                .collect(Collectors.toSet());
-            return patientIds;
-        } else {
-            Set<Integer> patientIds = userRequestContext.getUserConsents().stream().map(phenotypicPartitions::get)
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getKeysForValues(conceptPath, values).stream())
-                .collect(Collectors.toSet());
-            return patientIds;
-        }
+        return aggregateForPartition((phenotypicObservationStore -> phenotypicObservationStore.getKeysForValues(conceptPath, values)))
+            .collect(Collectors.toSet());
     }
 
     public List<Integer> getAllKeys(String conceptPath) {
-        // todo: disallow this by default
-        if (userRequestContext.getUserConsents().isEmpty()) {
-            List<Integer> patientIds = phenotypicPartitions.values().stream()
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getAllKeys(conceptPath).stream())
-                .collect(Collectors.toList());
-            return patientIds;
-        } else {
-            List<Integer> patientIds = userRequestContext.getUserConsents().stream().map(phenotypicPartitions::get)
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getAllKeys(conceptPath).stream())
-                .collect(Collectors.toList());
-            return patientIds;
-        }
+        return aggregateForPartition(phenotypicObservationStore -> phenotypicObservationStore.getAllKeys(conceptPath))
+            .collect(Collectors.toList());
     }
 
     public Optional<PhenoCube<?>> getCube(String path) {
-        Set<PhenoCube<?>> phenoCubes;
-        // todo: disallow this by default
-        if (userRequestContext.getUserConsents().isEmpty()) {
-            phenoCubes = phenotypicPartitions.values().stream()
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getCube(path).stream()).collect(Collectors.toSet());
-        } else {
-            phenoCubes = userRequestContext.getUserConsents().stream().map(phenotypicPartitions::get)
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getCube(path).stream()).collect(Collectors.toSet());
-        }
+        Set<PhenoCube<?>> phenoCubes = getPartitionsForUser()
+            .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getCube(path).stream()).collect(Collectors.toSet());
         PhenoCube<?> result = phenoCubes.stream().reduce((phenoCube, phenoCube2) -> {
             if (phenoCube.vType.equals(String.class)) {
                 return ((PhenoCube<String>) phenoCube).merge((PhenoCube<String>) phenoCube2);
@@ -133,16 +97,7 @@ public class PartitionedPhenotypicObservationStore {
     }
 
     public Set<Integer> getPatientIds() {
-        // todo: disallow this by default
-        if (userRequestContext.getUserConsents().isEmpty()) {
-            Set<Integer> patientIds = phenotypicPartitions.values().stream()
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getPatientIds().stream()).collect(Collectors.toSet());
-            return patientIds;
-        } else {
-            Set<Integer> patientIds = userRequestContext.getUserConsents().stream().map(phenotypicPartitions::get)
-                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getPatientIds().stream()).collect(Collectors.toSet());
-            return patientIds;
-        }
+        return aggregateForPartition(PhenotypicObservationStore::getPatientIds).collect(Collectors.toSet());
     }
 
     @Cacheable("PartitionedPhenotypicObservationStore.getMetaStore")
@@ -166,6 +121,29 @@ public class PartitionedPhenotypicObservationStore {
             }
         }
         return Map.copyOf(mergedColumnMeta);
+    }
+
+    private <T> Stream<T> aggregateForPartition(Function<PhenotypicObservationStore, Collection<T>> partitionFunction) {
+        return getPartitionsForUser().map(partitionFunction).flatMap(Collection::stream);
+    }
+
+    private @NonNull Stream<PhenotypicObservationStore> getPartitionsForUser() {
+        if (userRequestContext.getUserConsents().isEmpty()) {
+            if (requireAuthorizationFilter) {
+                throw new MissingConsentsException(
+                    "User consents must be specified. To allow users access to all data set hpds.requireAuthorizationFilter=false"
+                );
+            }
+            return phenotypicPartitions.values().stream();
+        } else {
+            return userRequestContext.getUserConsents().stream().map(consent -> {
+                PhenotypicObservationStore phenotypicObservationStore = phenotypicPartitions.get(consent);
+                if (phenotypicObservationStore == null) {
+                    log.debug("No partition found for consent {}", consent);
+                }
+                return phenotypicObservationStore;
+            }).filter(Objects::nonNull);
+        }
     }
 
 
