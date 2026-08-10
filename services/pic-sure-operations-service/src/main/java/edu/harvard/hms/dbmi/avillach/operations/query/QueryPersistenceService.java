@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import java.sql.Date;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -55,11 +56,12 @@ public class QueryPersistenceService {
     @Transactional
     public UUID save(SaveQueryRequest req) {
         Query entity = new Query();
-        entity.setQuery(req.query());
+        entity.setQuery(stripResourceCredentials(req.query()));
         entity.setResourceResultId(req.resourceResultId());
         entity.setStatus(req.status());
         entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
+        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned, like the legacy WAR's create path
         return repo.save(entity).getUuid();
     }
 
@@ -72,6 +74,12 @@ public class QueryPersistenceService {
     public void update(UUID picsureId, UpdateQueryRequest req) {
         Query entity = load(picsureId);
         if (req.status() != null) {
+            // FIRST transition to AVAILABLE only: re-reporting AVAILABLE must not move the timestamp, or a
+            // client that polls after completion would keep pushing readyTime forward. No parseStatus hop --
+            // UpdateQueryRequest.status() is already a typed PicSureStatus on this branch.
+            if (req.status() == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
+                entity.setReadyTime(new Date(System.currentTimeMillis()));
+            }
             entity.setStatus(req.status());
         }
         if (req.resourceResultId() != null) {
@@ -154,8 +162,43 @@ public class QueryPersistenceService {
     private static StoredQuery toDto(Query entity) {
         return new StoredQuery(
             entity.getUuid(), withoutCredentials(entity.getQuery(), entity.getUuid()), entity.getResourceResultId(), entity.getStatus(),
-            entity.getVersion(), encodeMetadata(entity.getMetadata())
+            entity.getVersion(), encodeMetadata(entity.getMetadata()), toEpochMillis(entity.getStartTime()),
+            toEpochMillis(entity.getReadyTime())
         );
+    }
+
+    /**
+     * Epoch millis off the entity's legacy {@code DATE} columns; null stays null. The columns are a storage detail -- the wire carries
+     * numbers so no client has to agree with the store on a date format.
+     */
+    private static Long toEpochMillis(Date date) {
+        return date == null ? null : date.getTime();
+    }
+
+    /**
+     * SECURITY, write side (mainline #277): {@code resourceCredentials} must never reach the table. Writers already strip before sending,
+     * so this is defence in depth against a writer that forgets -- credentials that land here would sit at rest and echo back through
+     * {@code /metadata}'s queryJson.
+     *
+     * <p><b>Deliberately more lenient than {@link #withoutCredentials(String, UUID)}</b>, which serves the READ path. Here an unparseable
+     * body passes through unchanged: it cannot carry a parseable credentials field, and refusing to persist it would fail the write
+     * outright over a body the caller may legitimately own. On the read path the same input is dropped to {@code null} instead, because raw
+     * bytes we cannot parse may still spell out a secret and no reader needs them. Same field, opposite failure postures, on purpose.
+     */
+    private static String stripResourceCredentials(String json) {
+        if (json == null || json.isBlank()) {
+            return json;
+        }
+        try {
+            JsonNode node = MAPPER.readTree(json);
+            if (node instanceof ObjectNode obj && obj.has("resourceCredentials")) {
+                obj.remove("resourceCredentials");
+                return MAPPER.writeValueAsString(node);
+            }
+            return json;
+        } catch (JsonProcessingException e) {
+            return json;
+        }
     }
 
     private static String withoutCredentials(String json, UUID picsureId) {

@@ -40,7 +40,7 @@ class PsamaIntrospectionFilterTest {
 
     private PsamaIntrospectionFilter filter(PsamaClient client, AuditContext ctx, QueryAuthFetcher fetcher) {
         return new PsamaIntrospectionFilter(
-            client, ctx, new ObjectMapper(), fetcher, List.of("/actuator", "/openapi", "/swagger-ui", "/logging"), "userId"
+            client, ctx, new ObjectMapper(), fetcher, List.of("/actuator", "/openapi", "/swagger-ui", "/logging")
         );
     }
 
@@ -541,6 +541,24 @@ class PsamaIntrospectionFilterTest {
         verifyNoInteractions(client);
         verify(chain).doFilter(eq(req), any());
         assertThat(ctx.getMetadata()).containsEntry("username", "SYSTEM_MONITOR");
+    }
+
+    @Test
+    void v3SystemStatusIsNotAllowListed() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, mock(QueryAuthFetcher.class));
+
+        BufferedRequestWrapper req = wrap(null, new byte[0], "/v3/system/status", "GET");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        verifyNoInteractions(client);
+        verify(chain, never()).doFilter(any(), any());
+        verify(resp).setStatus(401);
+        assertThat(ctx.getMetadata()).doesNotContainEntry("username", "SYSTEM_MONITOR");
     }
 
     @Test

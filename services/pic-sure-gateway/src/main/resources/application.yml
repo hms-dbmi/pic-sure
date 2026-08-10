@@ -121,7 +121,6 @@ picsure:
       enabled: ${GATEWAY_DOCS_ENABLED:true}
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
-      user-id-claim: sub
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}
       introspection-url: ${TOKEN_INTROSPECTION_URL:}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}

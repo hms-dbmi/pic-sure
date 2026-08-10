@@ -4,5 +4,7 @@
   "resourceResultId": "hpds-result-4471",
   "status": "AVAILABLE",
   "version": "v3",
-  "metadata": "eyJyZXNvdXJjZVV1aWQiOiI2YWMxYjFkZi0xYzY2LTRiNWMifQ=="
+  "metadata": "eyJyZXNvdXJjZVV1aWQiOiI2YWMxYjFkZi0xYzY2LTRiNWMifQ==",
+  "startTime": 1785873600000,
+  "readyTime": 1785873612000
 }

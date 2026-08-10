@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -132,6 +133,22 @@ class InternalQueryControllerTest {
             patch("/internal/queries/{id}", UUID.randomUUID()).header(InternalTokenFilter.HEADER, validToken)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"AVAILABLE\"}")
         ).andExpect(status().isNotFound());
+    }
+
+    /**
+     * SECURITY, ported from mainline #277: the FULL row read must strip credentials too, not just {@code /dispatch}. The service layer is
+     * covered thoroughly in {@code QueryPersistenceServiceTest}; this pins the HTTP boundary, so a controller that started answering with
+     * the entity instead of the DTO would fail here rather than quietly serve secrets.
+     */
+    @Test
+    void getStripsResourceCredentialsLikeDispatchDoes() throws Exception {
+        Query saved = new Query();
+        saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
+        saved = queryRepo.save(saved);
+
+        mockMvc.perform(get("/internal/queries/{picsureId}", saved.getUuid()).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isOk()).andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain("secret"))
+            .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain("resourceCredentials"));
     }
 
     /**

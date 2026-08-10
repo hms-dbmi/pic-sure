@@ -96,6 +96,50 @@ class QueryPersistenceServiceTest {
             .satisfies(e -> assertThat(((PicsureException) e).getStatus().value()).isEqualTo(404));
     }
 
+    // --- server-owned timings (ported from mainline #277) ---
+
+    @Test
+    void saveStampsStartTimeAndFirstAvailableTransitionStampsReadyTime() {
+        UUID picsureId = service.save(new SaveQueryRequest("{}", null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery afterSave = service.get(picsureId);
+        assertThat(afterSave.startTime()).isNotNull();
+        assertThat(afterSave.readyTime()).isNull();
+
+        service.update(picsureId, new UpdateQueryRequest(PicSureStatus.AVAILABLE, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery ready = service.get(picsureId);
+        assertThat(ready.startTime()).isEqualTo(afterSave.startTime());
+        assertThat(ready.readyTime()).isNotNull();
+
+        // A later AVAILABLE update must NOT move readyTime: a client polling after completion would otherwise
+        // keep pushing the completion timestamp forward for as long as it kept asking.
+        service.update(picsureId, new UpdateQueryRequest(PicSureStatus.AVAILABLE, "rr-later", null));
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(service.get(picsureId).readyTime()).isEqualTo(ready.readyTime());
+    }
+
+    /** Rows migrated from the legacy schema already carry timing; the internal API must return it rather than null it out. */
+    @Test
+    void timingFieldsOnMigratedRowsRoundTripThroughGet() {
+        Query legacy = new Query();
+        legacy.setQuery("{}");
+        legacy.setStartTime(java.sql.Date.valueOf("2024-01-02"));
+        legacy.setReadyTime(java.sql.Date.valueOf("2024-01-03"));
+        UUID picsureId = repo.save(legacy).getUuid();
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery stored = service.get(picsureId);
+        assertThat(stored.startTime()).isEqualTo(java.sql.Date.valueOf("2024-01-02").getTime());
+        assertThat(stored.readyTime()).isEqualTo(java.sql.Date.valueOf("2024-01-03").getTime());
+    }
+
     // --- dispatch: one node shape out, whatever the row's age ---
 
     /** A row written since Task 15 is already bare; dispatch hands it back untouched. */

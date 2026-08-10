@@ -256,6 +256,23 @@ class AggregateServiceTest {
     }
 
     @Test
+    void continuousCrossCountSuppressedWhenStudyConsentsIsRawBelowThresholdCount() {
+        // regression: the consents lookup returns the RAW backend body; a raw "5" (below threshold, nonzero) must suppress the
+        // whole continuous response, not just floor the individual bins
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        // Ported from mainline #277: its AggregateVariant.V1 selector went with the v1 aggregate surface this
+        // branch retired (80dee8c0), so both calls lose the variant argument. The behaviour under test -- a raw,
+        // below-threshold study-consents count suppressing the whole continuous response -- is unchanged.
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"5\"}"));
+        AggregateService svc = service(backend, new AggregateProperties());
+
+        ResponseEntity<String> out = svc.querySync(query(ResultType.CONTINUOUS_CROSS_COUNT));
+        assertThat(out.getBody()).isNull();
+    }
+
+    @Test
     void continuousCrossCountObfuscatesRawWhenNoVisualizationConfigured() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());

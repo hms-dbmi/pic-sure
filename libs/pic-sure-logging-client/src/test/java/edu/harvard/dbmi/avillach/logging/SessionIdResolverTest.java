@@ -51,6 +51,27 @@ class SessionIdResolverTest {
     }
 
     @Test
+    void truncatesOverlongHeaderValues() {
+        String longId = "a".repeat(500);
+        String result = SessionIdResolver.resolve(longId, "10.0.0.1", "Mozilla/5.0");
+        assertEquals(SessionIdResolver.MAX_SESSION_ID_LENGTH, result.length());
+        assertEquals("a".repeat(SessionIdResolver.MAX_SESSION_ID_LENGTH), result);
+    }
+
+    @Test
+    void stripsControlCharactersFromHeaderValue() {
+        String result = SessionIdResolver.resolve("abc\r\n123\txyz", "10.0.0.1", "Mozilla/5.0");
+        assertEquals("abc123xyz", result);
+    }
+
+    @Test
+    void fallsBackToHashWhenHeaderIsOnlyControlCharacters() {
+        String result = SessionIdResolver.resolve("\r\n\t", "10.0.0.1", "Mozilla/5.0");
+        assertEquals(SessionIdResolver.resolve(null, "10.0.0.1", "Mozilla/5.0"), result);
+        assertEquals(16, result.length());
+    }
+
+    @Test
     void hashIsLowercaseHex() {
         String result = SessionIdResolver.resolve(null, "10.0.0.1", "Mozilla/5.0");
         assertTrue(result.matches("[0-9a-f]{16}"), "Hash should be 16 lowercase hex characters, got: " + result);

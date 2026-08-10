@@ -238,6 +238,21 @@ class FixtureRoundTripTest {
         assertEquals(PicSureStatus.AVAILABLE, stored.status());
         assertEquals(UUID.fromString("0f0d1d5c-6b3f-4d51-9a1e-2c9b6f7f8a10"), stored.picsureId());
         assertTrue(read("stored-query.json").contains("\"status\": \"AVAILABLE\""), "status must be the enum name on the wire");
+        // Server-owned epoch millis, stamped on save and on the first transition to AVAILABLE. They travel as
+        // NUMBERS, not formatted dates: the entity's legacy DATE columns are a storage detail and no client
+        // should have to agree with the store on a date format.
+        assertEquals(1785873600000L, stored.startTime());
+        assertEquals(1785873612000L, stored.readyTime());
+    }
+
+    /** Both timings are nullable: a queued row has no readyTime, and a row written before the columns existed has neither. */
+    @Test
+    void storedQueryTimingsAreOptional() throws IOException {
+        StoredQuery stored = MAPPER.readValue("""
+            {"picsureId":"0f0d1d5c-6b3f-4d51-9a1e-2c9b6f7f8a10","status":"QUEUED"}""", StoredQuery.class);
+
+        assertNull(stored.startTime());
+        assertNull(stored.readyTime());
     }
 
     @Test

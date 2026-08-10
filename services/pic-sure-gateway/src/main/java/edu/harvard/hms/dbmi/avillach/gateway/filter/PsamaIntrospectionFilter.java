@@ -66,18 +66,15 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     private final ObjectMapper json;
     private final QueryAuthFetcher queryAuthFetcher;
     private final List<String> allowListPrefixes;
-    private final String userIdClaim;
 
     public PsamaIntrospectionFilter(
-        PsamaClient psama, AuditContext audit, ObjectMapper json, QueryAuthFetcher queryAuthFetcher, List<String> allowListPrefixes,
-        String userIdClaim
+        PsamaClient psama, AuditContext audit, ObjectMapper json, QueryAuthFetcher queryAuthFetcher, List<String> allowListPrefixes
     ) {
         this.psama = psama;
         this.audit = audit;
         this.json = json;
         this.queryAuthFetcher = queryAuthFetcher;
         this.allowListPrefixes = List.copyOf(allowListPrefixes);
-        this.userIdClaim = userIdClaim;
     }
 
     @Override
@@ -110,7 +107,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         String path = req.getRequestURI() == null ? "" : req.getRequestURI();
         String method = req.getMethod();
 
-        if ("GET".equals(method) && (path.equals("/system/status") || path.equals("/v3/system/status"))) {
+        if ("GET".equals(method) && path.equals("/system/status")) {
             audit.put("username", "SYSTEM_MONITOR");
             chain.doFilter(req, resp);
             return;

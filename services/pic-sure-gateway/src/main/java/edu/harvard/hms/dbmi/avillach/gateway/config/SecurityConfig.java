@@ -128,9 +128,7 @@ public class SecurityConfig {
     FilterRegistrationBean<PsamaIntrospectionFilter> introspectionFilter(
         PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewaySecurityProperties props
     ) {
-        var r = new FilterRegistrationBean<>(
-            new PsamaIntrospectionFilter(client, audit, json, fetcher, props.allowListPrefixes(), props.userIdClaim())
-        );
+        var r = new FilterRegistrationBean<>(new PsamaIntrospectionFilter(client, audit, json, fetcher, props.allowListPrefixes()));
         r.setOrder(30);
         r.addUrlPatterns("/*");
         return r;

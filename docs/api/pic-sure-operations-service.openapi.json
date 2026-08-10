@@ -225,9 +225,21 @@
             "description" : "Canonical bare v3 Query JSON; opaque to the store",
             "type" : "string"
           },
+          "readyTime" : {
+            "description" : "Epoch millis of the first transition to AVAILABLE; server-owned, null until then",
+            "example" : 1785873612000,
+            "format" : "int64",
+            "type" : "integer"
+          },
           "resourceResultId" : {
             "description" : "Result id assigned by the backing resource; null until the query has been dispatched",
             "type" : "string"
+          },
+          "startTime" : {
+            "description" : "Epoch millis when the row was saved; server-owned, null if unset",
+            "example" : 1785873600000,
+            "format" : "int64",
+            "type" : "integer"
           },
           "status" : {
             "description" : "PIC-SURE status; travels as the enum NAME, never its ordinal",

@@ -64,8 +64,14 @@ public record Query(
     }
 
     /**
-     * Creates a UUID for this query if it does not already exist. Note: this behavior is different than previously, I do not believe there
-     * is ever a valid reason to change the id once it is set, we should verify this with full regression testing in all environments.
+     * Returns this query with a non-null {@link #id()}, generating one only when absent.
+     *
+     * <p>Semantics: the v3 {@code id} is a per-query-instance RANDOM identifier, not a stable content-derived key. It is assigned at most
+     * once — an existing id (e.g. one carried through from v1 translation by {@code QueryTranslator}) is never replaced — and is used for
+     * correlation only: HPDS log lines and file-sharing result lookup. It is deliberately NOT a dedup/caching key: HPDS derives its
+     * result-cache key separately as a UUIDv5 content hash of the query (see {@code QueryV3Service.initializeResult} in pic-sure-hpds),
+     * matching v1's {@code QueryDecorator#setId} behavior. Two identical query bodies submitted without ids therefore get different
+     * {@code id}s but the same content-hash cache key.
      *
      * @return this query or a copy of this query with the UUID set
      */

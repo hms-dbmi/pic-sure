@@ -19,6 +19,18 @@ public record StoredQuery(
         description = "PIC-SURE status; travels as the enum NAME, never its ordinal", allowableValues = {
             "QUEUED", "PENDING", "ERROR", "AVAILABLE"}
     ) PicSureStatus status, @Schema(description = "Query-format version this query was written against, e.g. \"v3\"") String version,
-    @Schema(description = "base64-encoded metadata bytes; callers that need the JSON therein decode it themselves") String metadata
+    @Schema(description = "base64-encoded metadata bytes; callers that need the JSON therein decode it themselves") String metadata,
+    @Schema(description = "Epoch millis when the row was saved; server-owned, null if unset", example = "1785873600000") Long startTime,
+    @Schema(
+        description = "Epoch millis of the first transition to AVAILABLE; server-owned, null until then", example = "1785873612000"
+    ) Long readyTime
 ){
+
+    /**
+     * Convenience for callers that carry no timing. {@code startTime}/{@code readyTime} are server-owned, so only the store itself has a
+     * reason to set them.
+     */
+    public StoredQuery(UUID picsureId, String query, String resourceResultId, PicSureStatus status, String version, String metadata) {
+        this(picsureId, query, resourceResultId, status, version, metadata, null, null);
+    }
 }

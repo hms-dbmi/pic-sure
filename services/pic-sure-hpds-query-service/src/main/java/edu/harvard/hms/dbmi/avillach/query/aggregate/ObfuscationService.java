@@ -136,11 +136,26 @@ public class ObfuscationService {
         return generateRequestVariance(crossCountsString.toString());
     }
 
-    /** Suppress continuous when the study-consents cross-count is below threshold or zero. */
-    public boolean canShowContinuousCrossCounts(Map<String, String> crossCounts) {
-        String lessThanThresholdStr = "< " + this.threshold;
-        String v = crossCounts.get(STUDIES_CONSENTS_KEY);
-        return v.contains(lessThanThresholdStr) || v.equals("0");
+    /**
+     * Suppress continuous when the study-consents cross-count is below threshold or zero. The WAR ran this check on an already-obfuscated
+     * map, so only the display forms "&lt; threshold" and "0" could appear; here the caller passes the RAW backend cross-count, so raw
+     * numerics (e.g. "5") must be compared numerically or a below-threshold cohort's distribution leaks. Missing or unparseable counts fail
+     * closed (suppress).
+     */
+    public boolean shouldSuppressContinuousCrossCounts(Map<String, String> crossCounts) {
+        String v = crossCounts == null ? null : crossCounts.get(STUDIES_CONSENTS_KEY);
+        if (v == null) {
+            return true;
+        }
+        if (v.contains("< " + this.threshold)) {
+            return true;
+        }
+        try {
+            return Integer.parseInt(v.trim()) < this.threshold;
+        } catch (NumberFormatException nfe) {
+            logger.warn("Study-consents cross-count was not a number ({}); suppressing continuous response", v);
+            return true;
+        }
     }
 
     /** CATEGORICAL case: bucket via the formatter, then obfuscate. Null inputs short-circuit to null. */

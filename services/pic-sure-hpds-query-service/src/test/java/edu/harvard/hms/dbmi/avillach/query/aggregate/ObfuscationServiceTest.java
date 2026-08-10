@@ -67,9 +67,26 @@ class ObfuscationServiceTest {
     @Test
     void continuousSuppressedWhenStudyConsentsBelowThresholdOrZero() {
         ObfuscationService s = svc("fixed");
-        assertThat(s.canShowContinuousCrossCounts(Map.of("\\_studies_consents\\", "< 10"))).isTrue();
-        assertThat(s.canShowContinuousCrossCounts(Map.of("\\_studies_consents\\", "0"))).isTrue();
-        assertThat(s.canShowContinuousCrossCounts(Map.of("\\_studies_consents\\", "500"))).isFalse();
+        assertThat(s.shouldSuppressContinuousCrossCounts(Map.of("\\_studies_consents\\", "< 10"))).isTrue();
+        assertThat(s.shouldSuppressContinuousCrossCounts(Map.of("\\_studies_consents\\", "0"))).isTrue();
+        assertThat(s.shouldSuppressContinuousCrossCounts(Map.of("\\_studies_consents\\", "500"))).isFalse();
+    }
+
+    @Test
+    void continuousSuppressedForRawBelowThresholdCounts() {
+        // the caller passes the RAW backend cross-count, so plain numerics 1..threshold-1 must suppress too
+        ObfuscationService s = svc("fixed");
+        assertThat(s.shouldSuppressContinuousCrossCounts(Map.of("\\_studies_consents\\", "5"))).isTrue();
+        assertThat(s.shouldSuppressContinuousCrossCounts(Map.of("\\_studies_consents\\", "9"))).isTrue();
+        assertThat(s.shouldSuppressContinuousCrossCounts(Map.of("\\_studies_consents\\", "10"))).isFalse();
+    }
+
+    @Test
+    void continuousSuppressionFailsClosedOnMissingOrUnparseableCount() {
+        ObfuscationService s = svc("fixed");
+        assertThat(s.shouldSuppressContinuousCrossCounts(Map.of())).isTrue();
+        assertThat(s.shouldSuppressContinuousCrossCounts(null)).isTrue();
+        assertThat(s.shouldSuppressContinuousCrossCounts(Map.of("\\_studies_consents\\", "not-a-number"))).isTrue();
     }
 
     @Test
