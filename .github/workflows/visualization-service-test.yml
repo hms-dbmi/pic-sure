@@ -1,24 +1,33 @@
 name: visualization-service tests
 on:
   pull_request:
-    paths: ['services/pic-sure-visualization-service/**']
+    paths:
+      - 'services/pic-sure-visualization-service/**'
+      - 'pom.xml'
+      - 'platform/**'
+      - 'libs/**'
+      - 'scripts/ci/**'
+      - '.github/workflows/visualization-service-test.yml'
   push:
     branches: [pic_sure_api_mono_repo, pic_sure_api_rewrite, main]
-    paths: ['services/pic-sure-visualization-service/**']
-defaults:
-  run:
-    working-directory: services/pic-sure-visualization-service
+    paths:
+      - 'services/pic-sure-visualization-service/**'
+      - 'pom.xml'
+      - 'platform/**'
+      - 'libs/**'
+      - 'scripts/ci/**'
+      - '.github/workflows/visualization-service-test.yml'
 jobs:
   test:
+    name: Verify visualization service
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up JDK 25
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
-          distribution: corretto
           java-version: '25'
+          distribution: 'temurin'
           cache: maven
-      - name: Test
-        run: mvn -B verify
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify with Maven
+        run: scripts/ci/run-maven-reactor.sh -pl services/pic-sure-visualization-service -am verify
