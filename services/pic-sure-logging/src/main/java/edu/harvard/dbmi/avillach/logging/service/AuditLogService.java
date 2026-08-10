@@ -1,6 +1,6 @@
 package edu.harvard.dbmi.avillach.logging.service;
 
-import edu.harvard.dbmi.avillach.logging.config.AppConfig;
+import edu.harvard.dbmi.avillach.logging.config.LoggingProperties;
 import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.model.RequestInfo;
 import org.slf4j.Logger;
@@ -18,10 +18,10 @@ public class AuditLogService {
     private static final Logger appLog = LoggerFactory.getLogger(AuditLogService.class);
     private static final int MAX_STRING_LENGTH = 2000;
 
-    private final AppConfig config;
+    private final LoggingProperties config;
     private final JwtDecodeService jwtDecodeService;
 
-    public AuditLogService(AppConfig config, JwtDecodeService jwtDecodeService) {
+    public AuditLogService(LoggingProperties config, JwtDecodeService jwtDecodeService) {
         this.config = config;
         this.jwtDecodeService = jwtDecodeService;
     }

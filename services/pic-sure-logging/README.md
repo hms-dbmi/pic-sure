@@ -33,14 +33,14 @@ curl -X POST http://localhost:8080/audit \
 
 ### Local Development
 
-Requires Java 21 and Maven 3.9+.
+Requires Java 25 and Maven 3.9+.
 
 ```bash
 # Build and run tests
 mvn clean package
 
 # Run directly
-LOGGING_API_KEY=my-secret-key java -jar target/pic-sure-logging-1.0-SNAPSHOT.jar
+LOGGING_API_KEY=my-secret-key java -jar target/pic-sure-logging-3.0.0.jar
 ```
 
 ## API
@@ -54,7 +54,7 @@ Accepts an audit event, enriches it with JWT claims and platform config, and wri
 | Header | Required | Description |
 |---|---|---|
 | `X-API-Key` | Yes | Must match the configured `LOGGING_API_KEY` |
-| `Content-Type` | Yes | Must be `application/json` |
+| `Content-Type` | No | Optional for valid JSON; `application/json` is recommended |
 | `Authorization` | No | `Bearer <jwt>` -- claims are extracted and included in the log |
 | `X-Request-Id` | No | Fallback request ID if not provided in the body |
 
@@ -100,7 +100,16 @@ Only `event_type` is required. All other fields are optional. Unknown fields are
 | `202 Accepted` | Event logged successfully |
 | `400 Bad Request` | Invalid JSON or missing `event_type` |
 | `401 Unauthorized` | Missing or invalid API key |
+| `413 Content Too Large` | Request body exceeds 1 MiB (1,048,576 bytes) |
 | `500 Internal Server Error` | Unexpected failure |
+
+### POST /info
+
+No authentication required. Returns the stable PIC-SURE resource descriptor with `200 OK`:
+
+```json
+{"id":"50585be4-e315-3a71-8874-c590d2ba12ec","name":"Logging Service","queryFormats":[]}
+```
 
 ### GET /health
 
@@ -170,8 +179,12 @@ All configuration is via environment variables.
 | `ALLOWED_ORIGIN` | No | `*` | CORS allowed origin (`*` for any) |
 | `LOG_DIR` | No | `logs` | Directory for rolling log files (`audit.log`, `app.log`) |
 | `JWT_CLAIM_MAPPING` | No | See below | JSON object mapping JWT claims to output field names |
+| `PICSURE_ACTUATOR_EXPOSURE` | No | `none` | Comma-separated Actuator endpoint IDs to expose, such as `health,prometheus` |
+| `PICSURE_ACTUATOR_DETAILS` | No | `never` | Actuator health detail policy (`never`, `when-authorized`, or `always`) |
 
 **Startup validation:** The service fails fast with a clear error message if `LOGGING_API_KEY` is missing, `PORT` is not a valid integer in range 1-65535, or `JWT_CLAIM_MAPPING` is not valid JSON.
+
+Actuator endpoints are disabled by default. Any endpoints enabled through `PICSURE_ACTUATOR_EXPOSURE` are unauthenticated because this service does not configure Spring Security; expose them only on a trusted network or behind an authenticating proxy.
 
 ## JWT Claim Extraction
 
@@ -192,18 +205,20 @@ JWT_CLAIM_MAPPING='{"sub":"subject","email":"user_email","name":"user_name","rol
 | `sub` | `subject` |
 | `email` | `user_email` |
 | `name` | `user_name` |
-| `user_id` | `user_id` |
+| `userid` | `user_id` |
+| `preferred_username` | `preferred_username` |
 | `org` | `user_org` |
 | `country_name` | `user_country_name` |
 | `nih_ico` | `nih_ico` |
 | `eRA_commons_id` | `eRA_commons_id` |
-| `permission_group` | `user_permission_group` |
-| `session_id` | `session_id` |
+| `user_permission_group` | `user_permission_group` |
 | `uuid` | `uuid` |
 | `roles` | `roles` |
-| `logged_in` | `logged_in` |
 | `idp` | `user_id_provider` |
 | `cadr_name` | `cadr_name` |
+
+There is no `session_id` or `logged_in` entry: `session_id` is read from the request
+body, and `logged_in` is emitted unconditionally by `JwtDecodeService`.
 
 ### Type Handling
 
@@ -214,7 +229,7 @@ JWT_CLAIM_MAPPING='{"sub":"subject","email":"user_email","name":"user_name","rol
 
 ### No JWT Present
 
-When no `Authorization` header is provided (or the token is blank/malformed), the output includes `"logged_in": false` and no other user fields. Malformed tokens log a warning to stderr but never cause request failures.
+When no `Authorization` header is provided, the header is blank, or only the `Bearer` prefix is present, the output includes `"logged_in": false` and no other user fields without logging a warning. Malformed or oversized tokens also degrade to `"logged_in": false`, but log a warning to stderr. JWT decoding never causes the audit request to fail.
 
 ## Request ID
 
@@ -229,32 +244,40 @@ If neither is present, the field is omitted from the output. Request IDs are exp
 
 ```
 PIC-SURE-Logging/
-├── pom.xml                          # Maven build, Java 21, fat JAR via shade plugin
-├── Dockerfile                       # Multi-stage: Maven build → JRE Alpine runtime
+├── pom.xml                          # Maven build, Java 25, Spring Boot 3.5.16, executable jar
+├── Dockerfile                       # Single-stage: amazoncorretto:25 runtime
 ├── docker-compose.yml               # Local development
 └── src/main/java/edu/harvard/dbmi/avillach/logging/
-    ├── App.java                     # Entry point, Javalin setup, route wiring
+    ├── LoggingServiceApplication.java  # @SpringBootApplication entry point
     ├── config/
-    │   └── AppConfig.java           # Environment variable loading and validation
-    ├── handler/
-    │   ├── AuditHandler.java        # POST /audit — deserialize, validate, delegate
-    │   └── HealthHandler.java       # GET /health — returns 200
-    ├── middleware/
-    │   └── ApiKeyAuthMiddleware.java # Constant-time API key comparison
-    ├── model/
-    │   ├── AuditEvent.java          # POST body record
-    │   └── RequestInfo.java         # Nested request object record
+    │   ├── LoggingProperties.java      # @ConfigurationProperties, fail-fast validation
+    │   ├── JwtClaimMappingConverter.java # JWT_CLAIM_MAPPING parsing + default map
+    │   ├── BeanConfig.java             # Service beans
+    │   ├── WebConfig.java              # CORS
+    │   └── FilterConfig.java           # Filter registrations and ordering
+    ├── filter/
+    │   ├── ApiKeyAuthFilter.java       # Constant-time API key comparison -> 401
+    │   └── RequestSizeLimitFilter.java # 1MB body cap -> 413
+    ├── web/
+    │   ├── AuditController.java        # POST /audit -> 202
+    │   ├── HealthController.java       # GET /health -> 200/503
+    │   ├── InfoController.java         # POST /info -> 200
+    │   └── ApiExceptionHandler.java    # 400 / 500
+    ├── model/                          # AuditEvent, RequestInfo, InfoResponse
     └── service/
-        ├── AuditLogService.java     # Core logic: assemble fields, emit JSON
-        └── JwtDecodeService.java    # JWT decode with configurable claim mapping
+        ├── AuditLogService.java        # Core logic: assemble fields, emit JSON
+        ├── JwtDecodeService.java       # JWT decode with configurable claim mapping
+        └── ReadinessState.java         # Readiness flag driven by lifecycle events
 ```
 
 **Design decisions:**
-- No dependency injection framework -- constructor injection, plain Java
+- Spring Boot 3.5.16, no Spring Security -- the API key is a servlet filter
+- Actuator is off by default (`PICSURE_ACTUATOR_EXPOSURE=none`); opted-in endpoints are unauthenticated
 - No database or persistent state -- pure log enrichment and forwarding
 - JWT decode-only (no verification) -- trusts upstream authentication
 - Constant-time API key comparison via `MessageDigest.isEqual()` to prevent timing attacks
 - Logging failures never cause HTTP errors -- catch-all wraps the entire log assembly
+- `spring.main.banner-mode: off` keeps stdout a pure JSON stream for log shippers
 
 ## Logging Architecture
 
@@ -277,9 +300,9 @@ This separation allows log shippers to capture clean JSON from stdout while oper
 docker build -t pic-sure-logging .
 ```
 
-The multi-stage Dockerfile:
-1. **Build stage** -- Uses `maven:3.9-eclipse-temurin-21-alpine`, caches dependencies via `mvn dependency:go-offline`
-2. **Runtime stage** -- Uses `eclipse-temurin:21-jre-alpine`, runs as non-root `appuser`
+The Dockerfile is single-stage: it copies the jar that the Maven reactor has already
+built into `target/`. The base image is `amazoncorretto:25`, matching
+`pic-sure-gateway` and `pic-sure-operations-service`.
 
 ### Running
 
@@ -292,8 +315,6 @@ docker run -d \
   -e ENVIRONMENT=production \
   pic-sure-logging
 ```
-
-The container includes a `HEALTHCHECK` that polls `GET /health` every 30 seconds.
 
 ## Log Shipping
 
@@ -332,7 +353,7 @@ Sidecar that reads Docker JSON log files and forwards to your destination. Well-
 
 ### Prerequisites
 
-- Java 21
+- Java 25
 - Maven 3.9+
 - Docker (for container builds)
 
@@ -343,8 +364,8 @@ mvn test
 ```
 
 The test suite includes:
-- **Unit tests** -- `AppConfigTest`, `JwtDecodeServiceTest`, `AuditLogServiceTest`, `ApiKeyAuthMiddlewareTest`, `AuditHandlerTest`
-- **Integration tests** -- `AppIntegrationTest` (full HTTP round-trips using javalin-testtools)
+- **Unit tests** -- Configuration, service, and filter tests (`LoggingPropertiesTest`, `JwtDecodeServiceTest`, `AuditLogServiceTest`, `ApiKeyAuthFilterTest`, `RequestSizeLimitFilterTest`)
+- **Integration tests** -- Controller tests and application startup (`AuditControllerTest`, `HealthControllerTest`, `InfoControllerTest`, `LoggingServiceApplicationTest`)
 
 Tests use a `ListAppender` on the `AUDIT` logger to capture and assert on structured log output, and a `TestJwtBuilder` helper to create JWTs signed with a test secret.
 
@@ -354,7 +375,7 @@ Tests use a `ListAppender` on the `AUDIT` logger to capture and assert on struct
 mvn clean package
 ```
 
-Produces `target/pic-sure-logging-1.0-SNAPSHOT.jar` (~9 MB) containing all dependencies.
+Produces `target/pic-sure-logging-3.0.0.jar` (~25 MB) containing all dependencies.
 
 ## Error Handling
 
@@ -366,7 +387,9 @@ Produces `target/pic-sure-logging-1.0-SNAPSHOT.jar` (~9 MB) containing all depen
 | HTTP | Missing/wrong API key | `401 Unauthorized` |
 | HTTP | Malformed JSON body | `400 Bad Request` with detail |
 | HTTP | Missing `event_type` | `400 Bad Request` |
-| JWT | Null/blank/malformed token | Warning to stderr, `logged_in: false` in output |
+| HTTP | Authenticated body over 1 MiB | `413 Content Too Large` |
+| JWT | Missing/blank token or bare `Bearer` prefix | No warning, `logged_in: false` in output |
+| JWT | Malformed or oversized token | Warning to stderr, `logged_in: false` in output |
 | JWT | Missing individual claim | Omit that field |
 | Logging | Any exception during log assembly | Catch-all logs error to stderr, HTTP still returns `202` |
 | Global | Unexpected exception | `500 Internal Server Error` |
@@ -393,10 +416,11 @@ The `docker-compose.yml` binds the port to `127.0.0.1` by default, which is appr
 
 ## Security Considerations
 
-- **API key auth** -- All `/audit` requests require a valid `X-API-Key` header. The `/health` endpoint is unauthenticated.
+- **API key auth** -- All `/audit` requests require a valid `X-API-Key` header. `/health`, `/info`, and any opted-in Actuator endpoints are unauthenticated.
 - **Constant-time comparison** -- API key validation uses `MessageDigest.isEqual()` to prevent timing-based attacks.
 - **No JWT verification** -- This service does not verify JWT signatures. It is designed to run on an internal network where tokens have already been validated by an upstream service or API gateway.
-- **Non-root container** -- The Docker image runs as an unprivileged `appuser`.
+- **Container user** -- The image runs as root, consistent with the other PIC-SURE
+  services. Container hardening is tracked as a separate, repo-wide change.
 - **Request size limit** -- HTTP request bodies are capped at 1 MB.
 - **No secrets in logs** -- The raw JWT token is never written to the audit log; only extracted claims appear.
 

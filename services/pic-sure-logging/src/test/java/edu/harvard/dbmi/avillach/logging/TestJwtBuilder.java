@@ -35,8 +35,7 @@ public class TestJwtBuilder {
     }
 
     public static String buildExpiredToken(Map<String, Object> claims) {
-        var builder = JWT.create()
-            .withExpiresAt(Date.from(Instant.now().minusSeconds(3600)));
+        var builder = JWT.create().withExpiresAt(Date.from(Instant.now().minusSeconds(3600)));
         for (Map.Entry<String, Object> entry : claims.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();

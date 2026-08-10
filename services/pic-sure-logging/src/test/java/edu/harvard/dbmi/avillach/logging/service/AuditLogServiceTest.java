@@ -4,7 +4,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import edu.harvard.dbmi.avillach.logging.TestJwtBuilder;
-import edu.harvard.dbmi.avillach.logging.config.AppConfig;
+import edu.harvard.dbmi.avillach.logging.config.LoggingProperties;
 import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.model.RequestInfo;
 import org.junit.jupiter.api.AfterEach;
@@ -24,9 +24,8 @@ class AuditLogServiceTest {
 
     @BeforeEach
     void setUp() {
-        AppConfig config = new AppConfig(
-            "test-key", "myapp", "myplatform", "staging", "myhost",
-            8080, "*",
+        LoggingProperties config = new LoggingProperties(
+            "test-key", "myapp", "myplatform", "staging", "myhost", "*",
             Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
         );
         JwtDecodeService jwtService = new JwtDecodeService(config.jwtClaimMapping());
@@ -46,16 +45,11 @@ class AuditLogServiceTest {
     @Test
     void fullEventWithAllFields() {
         RequestInfo request = new RequestInfo(
-            "req-123", "POST", "/api/query", "limit=10",
-            "192.168.1.1", "10.0.0.5", 8443,
-            "Mozilla/5.0", "application/json", 200, 1024L, 150L,
-            "https://example.com"
+            "req-123", "POST", "/api/query", "limit=10", "192.168.1.1", "10.0.0.5", 8443, "Mozilla/5.0", "application/json", 200, 1024L,
+            150L, "https://example.com"
         );
         AuditEvent event = new AuditEvent(
-            "QUERY", "execute", "web", null, null,
-            request,
-            Map.of("query_id", "q1"),
-            Map.of("code", "500", "message", "Internal error")
+            "QUERY", "execute", "web", null, null, request, Map.of("query_id", "q1"), Map.of("code", "500", "message", "Internal error")
         );
 
         String token = TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com"));
