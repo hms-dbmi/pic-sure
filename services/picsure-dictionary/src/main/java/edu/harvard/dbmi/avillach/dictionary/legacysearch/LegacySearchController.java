@@ -34,9 +34,6 @@ public class LegacySearchController {
     @RequestMapping(path = "/search")
     public ResponseEntity<LegacyResponse> legacySearch(@RequestBody String jsonString) throws IOException {
         LegacySearchQuery legacySearchQuery = legacySearchQueryMapper.mapFromJson(jsonString);
-        // Preserve mapper-produced tsquery metadata as a dashboard-safe parity value until
-        // docs/superpowers/api_contract_followups/audit-label-accuracy.md; see
-        // docs/superpowers/specs/2026-08-04-audit-splunk-parity-design.md.
         AuditAttributes.putMetadata(
             httpRequest, "search_term", legacySearchQuery.filter().search() != null ? legacySearchQuery.filter().search() : ""
         );
