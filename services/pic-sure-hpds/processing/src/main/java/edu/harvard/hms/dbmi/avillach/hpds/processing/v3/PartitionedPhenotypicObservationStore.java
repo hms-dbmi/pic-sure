@@ -136,7 +136,13 @@ public class PartitionedPhenotypicObservationStore {
             }
             return phenotypicPartitions.values().stream();
         } else {
-            return userRequestContext.getUserConsents().stream().map(phenotypicPartitions::get).filter(Objects::nonNull);
+            return userRequestContext.getUserConsents().stream().map(consent -> {
+                PhenotypicObservationStore phenotypicObservationStore = phenotypicPartitions.get(consent);
+                if (phenotypicObservationStore == null) {
+                    log.debug("No partition found for consent {}", consent);
+                }
+                return phenotypicObservationStore;
+            }).filter(Objects::nonNull);
         }
     }
 
