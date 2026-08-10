@@ -8,15 +8,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -144,6 +153,32 @@ class OpenAccessControllerContractTest {
         JsonNode body = MAPPER.readTree(result.getResponse().getContentAsString());
         assertTrue(body.isObject(), "the body is now an object, not a bare boolean -- the gateway reads {valid}");
         assertTrue(body.get("valid").asBoolean());
+    }
+
+    /**
+     * POST is the only verb. The endpoint was declared with a bare {@code @RequestMapping} carrying no {@code method=}, which maps EVERY
+     * HTTP verb -- so this unauthenticated endpoint answered GET, PUT, PATCH and DELETE too, and the committed contract document published
+     * all of them. The gateway's {@code PsamaClient#validateOpenAccess} only ever POSTs, so nothing legitimate needs the others.
+     */
+    @Test
+    void answersOnlyPost() throws Exception {
+        AuthorizationService authorizationService = mock(AuthorizationService.class);
+        when(authorizationService.openAccessRequestIsValid(any())).thenReturn(true);
+        MockMvc mockMvc = mockMvc(authorizationService, true);
+
+        for (
+            MockHttpServletRequestBuilder other : List
+                .of(get("/open/validate"), put("/open/validate"), patch("/open/validate"), delete("/open/validate"))
+        ) {
+            // The Allow header is not decoration: a 405 without it tells a client nothing about what to send
+            // instead. GlobalExceptionHandler does NOT handle HttpRequestMethodNotSupportedException, so Spring's
+            // DefaultHandlerExceptionResolver sets this -- pinned because a future @ControllerAdvice that DID
+            // handle it would silently drop the header.
+            mockMvc.perform(other.contentType("application/json").content(GATEWAY_BODY)).andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string("Allow", "POST"));
+        }
+
+        verifyNoInteractions(authorizationService);
     }
 
     /** With the open IdP disabled the answer is a denial, and it must be the same shape as every other answer. */

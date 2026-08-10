@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,9 +39,14 @@ public class OpenAccessController {
      * {@code PsamaClient#validateOpenAccess}, which now reads either shape -- so the gateway must be deployed first. See
      * {@link ValidationResponse}.
      */
+    /**
+     * POST only. This was a bare {@code @RequestMapping} with no {@code method=}, which maps EVERY HTTP verb -- so an unauthenticated
+     * {@code GET /open/validate} carrying a body ran the full authorization and answered 200, and the committed contract document published
+     * five verbs for one endpoint. {@code PsamaClient#validateOpenAccess} POSTs and always has.
+     */
     @Operation(description = "Validates an open-access request against the open-access rule set")
     @AuditEvent(type = "ACCESS", action = "open.validate")
-    @RequestMapping(value = "/validate", produces = "application/json")
+    @PostMapping(value = "/validate", produces = "application/json")
     public ValidationResponse validate(
         @Parameter(
             required = true, description = "The request being authorized, plus the caller's open-access marker"
