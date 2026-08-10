@@ -67,6 +67,8 @@ class ControllerAuditEventTest {
     @Test
     void legacySearchController() throws Exception {
         Class<?> c = LegacySearchController.class;
+        // Pin dashboard-safe search.legacy parity until docs/superpowers/api_contract_followups/audit-label-accuracy.md;
+        // see docs/superpowers/specs/2026-08-04-audit-splunk-parity-design.md.
         assertAuditEvent(c, "legacySearch", new Class[] {String.class}, "SEARCH", "search.legacy");
     }
 }
