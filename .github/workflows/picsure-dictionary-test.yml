@@ -1,54 +1,47 @@
 name: picsure-dictionary tests
 on:
   pull_request:
-    paths: ['services/picsure-dictionary/**']
+    paths:
+      - 'services/picsure-dictionary/**'
+      - 'pom.xml'
+      - 'platform/**'
+      - 'libs/**'
+      - 'scripts/ci/**'
+      - '.github/workflows/picsure-dictionary-test.yml'
   push:
     branches: [pic_sure_api_mono_repo, pic_sure_api_rewrite, main]
-    paths: ['services/picsure-dictionary/**']
-defaults:
-  run:
-    working-directory: services/picsure-dictionary
+    paths:
+      - 'services/picsure-dictionary/**'
+      - 'pom.xml'
+      - 'platform/**'
+      - 'libs/**'
+      - 'scripts/ci/**'
+      - '.github/workflows/picsure-dictionary-test.yml'
 jobs:
   build:
+    name: Verify dictionary modules
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up JDK 25
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: maven
-      - name: Build with Maven
-        run: mvn -B package --file pom.xml
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-  build-aggregate:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/picsure-dictionary/aggregate
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
-      - name: Build with Maven
-        run: mvn -B package --file pom.xml
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+      - name: Verify with Maven
+        run: scripts/ci/run-maven-reactor.sh -pl services/picsure-dictionary,services/picsure-dictionary/aggregate,services/picsure-dictionary/dictionaryweights -am verify
+
   lint:
+    name: Spotless
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up JDK 25
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: 'temurin'
           cache: maven
-      - name: Lint Project
-        run: mvn spotless:check && cd aggregate && mvn spotless:check
+      - name: Check formatting
+        run: scripts/ci/run-maven-reactor.sh -pl services/picsure-dictionary,services/picsure-dictionary/aggregate,services/picsure-dictionary/dictionaryweights spotless:check
