@@ -1,9 +1,10 @@
-# amazoncorretto:25 matches pic-sure-gateway and pic-sure-operations-service.
-FROM amazoncorretto:25
+# Digest-pinned Corretto 25 multi-architecture runtime image.
+FROM amazoncorretto:25@sha256:397edfaaa0fdfc95001d4c4a4ab82174073277a5d630fd9375c94dca25b5991d
 WORKDIR /app
 # spring-boot-maven-plugin:repackage also emits *.jar.original, which this glob excludes.
 COPY target/pic-sure-logging-*.jar app.jar
-RUN mkdir -p /app/logs
+RUN mkdir -p /app/logs && chown -R 10001:10001 /app
+USER 10001:10001
 # logging.env sets PORT=80; the gateway reaches this service on port 80.
 EXPOSE 80
 # No HEALTHCHECK: the base image has no wget/curl, and gateway/operations-service

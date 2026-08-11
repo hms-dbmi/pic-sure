@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.logging;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.logging.config.JwtClaimMappingConverter;
 import edu.harvard.dbmi.avillach.logging.config.LoggingProperties;
+import edu.harvard.dbmi.avillach.logging.service.AuditAppenderFailureMonitor;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +20,9 @@ class LoggingServiceApplicationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private AuditAppenderFailureMonitor auditAppenderFailureMonitor;
 
     @Test
     void contextLoadsAndBindsProperties() {
@@ -40,5 +44,10 @@ class LoggingServiceApplicationTest {
         // hand-built ObjectMapper bean suppresses it, this throws InvalidDefinitionException
         // ("Java 8 date/time type ... not supported").
         assertThat(objectMapper.writeValueAsString(Instant.EPOCH)).contains("1970-01-01");
+    }
+
+    @Test
+    void contextRegistersAuditAppenderFailureMonitor() {
+        assertThat(auditAppenderFailureMonitor).isNotNull();
     }
 }

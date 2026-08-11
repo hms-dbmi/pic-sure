@@ -260,10 +260,10 @@ class LogbackConfigTest {
     }
 
     @Test
-    void auditAsyncAppenderNeverBlocks() {
+    void auditAsyncAppenderAppliesBackpressure() {
         Logger auditLogger = context.getLogger("AUDIT");
         AsyncAppender asyncAppender = findAppender(auditLogger, "ASYNC_AUDIT_FILE");
-        assertTrue(asyncAppender.isNeverBlock());
+        assertFalse(asyncAppender.isNeverBlock());
     }
 
     @Test

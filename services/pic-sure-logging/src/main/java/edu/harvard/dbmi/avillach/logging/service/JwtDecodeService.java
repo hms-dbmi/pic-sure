@@ -57,13 +57,8 @@ public class JwtDecodeService {
                 }
             }
 
-            // Always emit logged_in
-            String loggedInOutputField = claimMapping.get("logged_in");
-            if (loggedInOutputField != null && !result.containsKey(loggedInOutputField)) {
-                result.put(loggedInOutputField, true);
-            } else if (loggedInOutputField == null) {
-                result.put("logged_in", true);
-            }
+            // Always emit the canonical field, even if direct construction bypasses mapping validation.
+            result.put("logged_in", true);
 
             return result;
         } catch (Exception e) {

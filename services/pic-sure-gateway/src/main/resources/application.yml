@@ -8,7 +8,7 @@ spring:
           routes:
             # Explicit clean-prefix route for the logging service, replacing the
             # legacy /proxy/pic-sure-logging relay. StripPrefix=1 drops the leading /logging segment
-            # because the logging service (Javalin) serves its API at root (/audit,
+            # because the logging service serves its API at root (/audit,
             # /health, /info) — mirroring the old /proxy relay's prefix strip. /logging is
             # on the introspection allow-list, so it is not authenticated.
             # /dictionary and /visualization are AUTHENTICATED (not on the

@@ -114,6 +114,17 @@ class JwtDecodeServiceTest {
         assertEquals("test@test.com", result.get("my_email"));
     }
 
+    @Test
+    void customLoggedInMappingCannotSuppressCanonicalLoggedIn() {
+        JwtDecodeService customService = new JwtDecodeService(Map.of("logged_in", "custom_login"));
+        String token = TestJwtBuilder.buildToken(Map.of("logged_in", false));
+
+        Map<String, Object> result = customService.extractClaims("Bearer " + token);
+
+        assertEquals(false, result.get("custom_login"));
+        assertEquals(true, result.get("logged_in"));
+    }
+
     // --- JWT size check tests (Change 4) ---
 
     @Test

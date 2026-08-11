@@ -7,6 +7,8 @@ import org.springframework.core.convert.converter.Converter;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Component
@@ -14,13 +16,26 @@ import java.util.Map;
 public class JwtClaimMappingConverter implements Converter<String, Map<String, String>> {
 
     /** Must match the historic AppConfig.DEFAULT_JWT_CLAIM_MAPPING exactly. */
-    public static final Map<String, String> DEFAULT_MAPPING = Map.ofEntries(
-        Map.entry("sub", "subject"), Map.entry("email", "user_email"), Map.entry("name", "user_name"), Map.entry("userid", "user_id"),
-        Map.entry("preferred_username", "preferred_username"), Map.entry("org", "user_org"), Map.entry("country_name", "user_country_name"),
-        Map.entry("nih_ico", "nih_ico"), Map.entry("eRA_commons_id", "eRA_commons_id"),
-        Map.entry("user_permission_group", "user_permission_group"), Map.entry("uuid", "uuid"), Map.entry("roles", "roles"),
-        Map.entry("idp", "user_id_provider"), Map.entry("cadr_name", "cadr_name")
-    );
+    public static final Map<String, String> DEFAULT_MAPPING;
+
+    static {
+        LinkedHashMap<String, String> defaultMapping = new LinkedHashMap<>();
+        defaultMapping.put("sub", "subject");
+        defaultMapping.put("email", "user_email");
+        defaultMapping.put("name", "user_name");
+        defaultMapping.put("userid", "user_id");
+        defaultMapping.put("preferred_username", "preferred_username");
+        defaultMapping.put("org", "user_org");
+        defaultMapping.put("country_name", "user_country_name");
+        defaultMapping.put("nih_ico", "nih_ico");
+        defaultMapping.put("eRA_commons_id", "eRA_commons_id");
+        defaultMapping.put("user_permission_group", "user_permission_group");
+        defaultMapping.put("uuid", "uuid");
+        defaultMapping.put("roles", "roles");
+        defaultMapping.put("idp", "user_id_provider");
+        defaultMapping.put("cadr_name", "cadr_name");
+        DEFAULT_MAPPING = Collections.unmodifiableMap(defaultMapping);
+    }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -35,8 +50,8 @@ public class JwtClaimMappingConverter implements Converter<String, Map<String, S
         } catch (Exception e) {
             throw new IllegalStateException("JWT_CLAIM_MAPPING must be valid JSON object, got: " + source, e);
         }
-        // Fail here with the variable's name; otherwise the immutable copy in LoggingProperties
-        // dies later with a bare NullPointerException that names nothing.
+        // Fail at the binding boundary with the variable's name; LoggingProperties independently
+        // validates mappings supplied through direct construction.
         if (parsed.containsValue(null)) {
             throw new IllegalStateException("JWT_CLAIM_MAPPING must not contain null values, got: " + source);
         }

@@ -7,12 +7,15 @@ import edu.harvard.dbmi.avillach.logging.TestJwtBuilder;
 import edu.harvard.dbmi.avillach.logging.config.LoggingProperties;
 import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.model.RequestInfo;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.util.AbstractMap;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,15 +24,16 @@ class AuditLogServiceTest {
     private AuditLogService service;
     private ListAppender<ILoggingEvent> listAppender;
     private Logger auditLogger;
+    private SimpleMeterRegistry registry;
 
     @BeforeEach
     void setUp() {
         LoggingProperties config = new LoggingProperties(
-            "test-key", "myapp", "myplatform", "staging", "myhost", "*",
-            Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
+            "test-key", "myapp", "myplatform", "staging", "myhost", "*", Map.of("sub", "subject", "email", "user_email", "roles", "roles")
         );
         JwtDecodeService jwtService = new JwtDecodeService(config.jwtClaimMapping());
-        service = new AuditLogService(config, jwtService);
+        registry = new SimpleMeterRegistry();
+        service = new AuditLogService(config, jwtService, registry);
 
         auditLogger = (Logger) LoggerFactory.getLogger("AUDIT");
         listAppender = new ListAppender<>();
@@ -62,6 +66,34 @@ class AuditLogServiceTest {
         assertTrue(message.contains("action=execute"));
         assertTrue(message.contains("request_id=req-123"));
         assertTrue(message.contains("app=myapp"));
+    }
+
+    @Test
+    void successfulSubmissionIncrementsSubmittedCounter() {
+        AuditEvent event = new AuditEvent("LOGIN", null, null, null, null, null, null, null);
+
+        service.logEvent(event, null, null);
+
+        assertEquals(1.0, registry.get("picsure.audit.submitted").counter().count());
+        assertEquals(0.0, registry.get("picsure.audit.submission.failed").counter().count());
+    }
+
+    @Test
+    void assemblyFailureIncrementsFailureCounterAndPropagates() {
+        Map<String, Object> failingMetadata = new AbstractMap<>() {
+            @Override
+            public Set<Entry<String, Object>> entrySet() {
+                throw new IllegalStateException("synthetic assembly failure");
+            }
+        };
+        AuditEvent event = new AuditEvent("LOGIN", null, null, null, null, null, failingMetadata, null);
+
+        AuditLogException exception = assertThrows(AuditLogException.class, () -> service.logEvent(event, null, null));
+
+        assertEquals("synthetic assembly failure", exception.getCause().getMessage());
+        assertTrue(exception.getMessage().contains("synthetic assembly failure"));
+        assertEquals(0.0, registry.get("picsure.audit.submitted").counter().count());
+        assertEquals(1.0, registry.get("picsure.audit.submission.failed").counter().count());
     }
 
     @Test
@@ -164,6 +196,7 @@ class AuditLogServiceTest {
     void exceptionSafety() {
         // Service should never throw, even with a null event
         assertDoesNotThrow(() -> service.logEvent(null, null, null));
+        assertEquals(0.0, registry.get("picsure.audit.submitted").counter().count());
     }
 
     // --- String truncation tests (Change 3) ---

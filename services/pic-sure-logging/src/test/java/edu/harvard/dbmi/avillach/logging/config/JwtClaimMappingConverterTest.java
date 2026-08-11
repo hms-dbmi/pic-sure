@@ -27,6 +27,14 @@ class JwtClaimMappingConverterTest {
     }
 
     @Test
+    void defaultMappingPreservesDocumentedDeclarationOrder() {
+        assertThat(JwtClaimMappingConverter.DEFAULT_MAPPING.keySet()).containsExactly(
+            "sub", "email", "name", "userid", "preferred_username", "org", "country_name", "nih_ico", "eRA_commons_id",
+            "user_permission_group", "uuid", "roles", "idp", "cadr_name"
+        );
+    }
+
+    @Test
     void validJsonIsParsed() {
         assertThat(converter.convert("{\"custom_claim\":\"output_field\"}")).isEqualTo(Map.of("custom_claim", "output_field"));
     }

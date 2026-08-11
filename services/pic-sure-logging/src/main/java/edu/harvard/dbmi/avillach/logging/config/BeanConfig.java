@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.logging.config;
 
 import edu.harvard.dbmi.avillach.logging.service.AuditLogService;
 import edu.harvard.dbmi.avillach.logging.service.JwtDecodeService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -14,7 +15,7 @@ public class BeanConfig {
     }
 
     @Bean
-    public AuditLogService auditLogService(LoggingProperties properties, JwtDecodeService jwtDecodeService) {
-        return new AuditLogService(properties, jwtDecodeService);
+    public AuditLogService auditLogService(LoggingProperties properties, JwtDecodeService jwtDecodeService, MeterRegistry meterRegistry) {
+        return new AuditLogService(properties, jwtDecodeService, meterRegistry);
     }
 }

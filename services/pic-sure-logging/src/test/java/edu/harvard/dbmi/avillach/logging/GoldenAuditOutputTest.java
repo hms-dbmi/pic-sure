@@ -12,6 +12,7 @@ import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.model.RequestInfo;
 import edu.harvard.dbmi.avillach.logging.service.AuditLogService;
 import edu.harvard.dbmi.avillach.logging.service.JwtDecodeService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import net.logstash.logback.encoder.LogstashEncoder;
 import net.logstash.logback.fieldnames.LogstashFieldNames;
 import org.junit.jupiter.api.AfterEach;
@@ -44,10 +45,9 @@ class GoldenAuditOutputTest {
     @BeforeEach
     void setUp() {
         LoggingProperties config = new LoggingProperties(
-            "test-key", "myapp", "myplatform", "staging", "myhost", "*",
-            Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
+            "test-key", "myapp", "myplatform", "staging", "myhost", "*", Map.of("sub", "subject", "email", "user_email", "roles", "roles")
         );
-        service = new AuditLogService(config, new JwtDecodeService(config.jwtClaimMapping()));
+        service = new AuditLogService(config, new JwtDecodeService(config.jwtClaimMapping()), new SimpleMeterRegistry());
 
         auditLogger = (Logger) LoggerFactory.getLogger("AUDIT");
         listAppender = new ListAppender<>();
@@ -133,7 +133,7 @@ class GoldenAuditOutputTest {
         Map<String, String> claimMapping = new JwtClaimMappingConverter()
             .convert("{\"claim_c\":\"custom_c\",\"claim_a\":\"custom_a\",\"claim_d\":\"custom_d\",\"claim_b\":\"custom_b\"}");
         LoggingProperties config = new LoggingProperties("test-key", "myapp", "myplatform", "staging", "myhost", "*", claimMapping);
-        service = new AuditLogService(config, new JwtDecodeService(config.jwtClaimMapping()));
+        service = new AuditLogService(config, new JwtDecodeService(config.jwtClaimMapping()), new SimpleMeterRegistry());
         String token = TestJwtBuilder.buildToken(Map.of("claim_a", "a", "claim_b", "b", "claim_c", "c", "claim_d", "d"));
 
         service.logEvent(new AuditEvent("QUERY", null, null, null, null, null, null, null), "Bearer " + token, null);
