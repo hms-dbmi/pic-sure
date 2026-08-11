@@ -7,7 +7,6 @@ only: CI runs them on a bare runner with no pip install step.
 """
 
 import os
-import shutil
 import subprocess
 import tempfile
 import unittest
@@ -17,13 +16,23 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 HELPER = REPO_ROOT / "scripts" / "ci" / "run-maven-reactor.sh"
 
 # Each fake-mvn invocation appends one TAB-separated record:
-#   <cwd>\t<MAVEN_OPTS>\t<args>
+#   <cwd>\t<MAVEN_OPTS>\t<arg>|<arg>|...|
+#
+# The argument field is pipe-terminated per argument rather than "$*"-joined:
+# "$*" flattens argv into one space-separated string, which cannot tell
+# `mvn "a b"` from `mvn a b` -- and so would pass just as happily if the
+# helper forwarded an unquoted $@ and let the shell re-split the caller's
+# arguments. The delimiter keeps the boundaries observable.
 FAKE_MVN_OK = """#!/bin/sh
-printf '%s\\t%s\\t%s\\n' "$PWD" "${MAVEN_OPTS-}" "$*" >> "$MVN_LOG"
+printf '%s\\t%s\\t' "$PWD" "${MAVEN_OPTS-}" >> "$MVN_LOG"
+printf '%s|' "$@" >> "$MVN_LOG"
+printf '\\n' >> "$MVN_LOG"
 """
 
 FAKE_MVN_FAIL_ON_BOM = """#!/bin/sh
-printf '%s\\t%s\\t%s\\n' "$PWD" "${MAVEN_OPTS-}" "$*" >> "$MVN_LOG"
+printf '%s\\t%s\\t' "$PWD" "${MAVEN_OPTS-}" >> "$MVN_LOG"
+printf '%s|' "$@" >> "$MVN_LOG"
+printf '\\n' >> "$MVN_LOG"
 case "$*" in
   *platform/pom.xml*) exit 17 ;;
 esac
@@ -70,13 +79,25 @@ class HelperTestCase(unittest.TestCase):
         )
 
     def records(self):
+        """Each fake-mvn call as (cwd, maven_opts, argv), argv unflattened.
+
+        Arguments are recovered from the '|'-terminated field, so a single
+        argument containing a space stays a single element. (No test argument
+        contains a '|' or a newline; those would need a richer encoding.)
+        """
         if not self.log.exists():
             return []
-        return [
-            line.split("\t")
-            for line in self.log.read_text().splitlines()
-            if line.strip()
-        ]
+        parsed = []
+        for line in self.log.read_text().splitlines():
+            if not line.strip():
+                continue
+            cwd, maven_opts, packed = line.split("\t")
+            argv = packed.split("|")
+            self.assertEqual(
+                argv[-1], "", f"malformed fake-mvn record, not '|'-terminated: {line!r}"
+            )
+            parsed.append((cwd, maven_opts, argv[:-1]))
+        return parsed
 
 
 class TestHelperShape(HelperTestCase):
@@ -97,17 +118,20 @@ class TestTwoStageBootstrap(HelperTestCase):
 
         records = self.records()
         self.assertEqual(len(records), 2, f"expected exactly 2 Maven calls, got {records}")
-        self.assertEqual(records[0][2].split(), ["-B", "-f", "platform/pom.xml", "install"])
+        self.assertEqual(records[0][2], ["-B", "-f", "platform/pom.xml", "install"])
 
     def test_requested_arguments_are_forwarded_unchanged(self):
+        # The last argument embeds a space on purpose: it must arrive as one
+        # argument, which is what fails if the helper forwards $@ unquoted.
         args = ["-pl", "services/pic-sure-logging", "-am", "verify", "-Dfoo=bar baz"]
         result = self.run_helper(*args)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-        second = self.records()[1][2].split()
+        second = self.records()[1][2]
         # The helper may prefix batch mode; the caller's arguments must survive
-        # verbatim, in order, as the tail of the command line.
-        self.assertEqual(second[-6:], ["-pl", "services/pic-sure-logging", "-am", "verify", "-Dfoo=bar", "baz"])
+        # verbatim, in order, and with their boundaries intact, as the tail of
+        # the command line.
+        self.assertEqual(second[-len(args):], args)
         self.assertIn("-B", second)
 
     def test_both_calls_run_from_the_repository_root(self):
