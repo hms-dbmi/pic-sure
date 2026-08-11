@@ -4,6 +4,14 @@ on:
   push:
   pull_request:
 
+# Supersede in-flight runs of the full 26-module reactor for the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   ci-contract:
     name: CI bootstrap and workflow contract
@@ -25,4 +33,4 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Verify with Maven
-        run: scripts/ci/run-maven-reactor.sh --update-snapshots verify
+        run: scripts/ci/run-maven-reactor.sh verify
