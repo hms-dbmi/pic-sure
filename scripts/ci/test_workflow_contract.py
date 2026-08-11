@@ -87,6 +87,86 @@ def normalise_run_blocks(text):
     return re.sub(r"\\\s*\n\s*", " ", text)
 
 
+def trigger_blocks(text):
+    """Yield (trigger_name, block_lines) for the pull_request: and push: keys
+    nested directly under the top-level `on:` mapping.
+
+    This is a minimal, indentation-aware scan -- not a full YAML parser --
+    sufficient for this repo's flat `on: / <trigger>: / paths:` shape. It
+    exists so path-filter checks survive either YAML sequence style below.
+    """
+    lines = text.splitlines()
+    on_idx = None
+    for i, line in enumerate(lines):
+        if line.rstrip() == "on:":
+            on_idx = i
+            break
+    if on_idx is None:
+        return
+    trigger_indent = None
+    i = on_idx + 1
+    while i < len(lines):
+        line = lines[i]
+        if not line.strip():
+            i += 1
+            continue
+        indent = len(line) - len(line.lstrip())
+        if trigger_indent is None:
+            trigger_indent = indent
+        if indent < trigger_indent:
+            break
+        if indent == trigger_indent:
+            match = re.match(r"(pull_request|push):", line.strip())
+            if match:
+                block_lines = []
+                j = i + 1
+                while j < len(lines):
+                    candidate = lines[j]
+                    if not candidate.strip():
+                        j += 1
+                        continue
+                    candidate_indent = len(candidate) - len(candidate.lstrip())
+                    if candidate_indent <= trigger_indent:
+                        break
+                    block_lines.append(candidate)
+                    j += 1
+                yield match.group(1), block_lines
+                i = j
+                continue
+        i += 1
+
+
+def extract_paths(block_lines):
+    """Return the `paths:` filter entries from a trigger block's lines.
+
+    Handles both the YAML block-list form:
+        paths:
+          - 'a'
+          - 'b'
+    and the flow-sequence form:
+        paths: ['a', 'b']
+    Returns [] if the block has no `paths:` key at all.
+    """
+    text = "\n".join(block_lines)
+    flow = re.search(r"paths:[ \t]*\[([^\]]*)\]", text)
+    if flow:
+        return [
+            item.strip().strip("'\"")
+            for item in flow.group(1).split(",")
+            if item.strip()
+        ]
+    block = re.search(r"paths:[ \t]*\n((?:[ \t]+-[ \t].*\n?)+)", text + "\n")
+    if not block:
+        return []
+    items = []
+    for line in block.group(1).splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("-"):
+            continue
+        items.append(stripped[1:].strip().strip("'\""))
+    return items
+
+
 class TestActiveWorkflows(unittest.TestCase):
     def test_all_active_workflows_exist(self):
         for name in ACTIVE_MAVEN_WORKFLOWS:
@@ -121,15 +201,44 @@ class TestActiveWorkflows(unittest.TestCase):
                 )
 
     def test_maven_cache_is_enabled_wherever_java_is_set_up(self):
+        # Positional, not whole-file count parity: a stray `cache: maven`
+        # elsewhere in the file must not be able to balance out a setup-java
+        # step that has no cache of its own. Each setup-java step's own
+        # `with:` block (the mapping at its own indentation, immediately
+        # following) must itself contain `cache: maven`.
         for name in ACTIVE_MAVEN_WORKFLOWS:
             with self.subTest(workflow=name):
-                text = read(name)
-                setups = text.count(SETUP_JAVA_SHA)
-                caches = len(re.findall(r"cache:\s*maven", text))
-                self.assertEqual(
-                    setups, caches,
-                    f"{name} has {setups} setup-java step(s) but {caches} maven cache(s)",
-                )
+                lines = read(name).splitlines()
+                setup_java_lines = [
+                    i for i, line in enumerate(lines) if SETUP_JAVA_SHA in line
+                ]
+                self.assertTrue(setup_java_lines, f"{name} sets up no Java")
+                for i in setup_java_lines:
+                    uses_line = lines[i]
+                    uses_indent = len(uses_line) - len(uses_line.lstrip())
+                    with_block = []
+                    j = i + 1
+                    if j < len(lines):
+                        nxt = lines[j]
+                        nxt_indent = len(nxt) - len(nxt.lstrip())
+                        if nxt.strip() == "with:" and nxt_indent == uses_indent:
+                            j += 1
+                            while j < len(lines):
+                                candidate = lines[j]
+                                if not candidate.strip():
+                                    j += 1
+                                    continue
+                                candidate_indent = len(candidate) - len(candidate.lstrip())
+                                if candidate_indent <= uses_indent:
+                                    break
+                                with_block.append(candidate)
+                                j += 1
+                    with self.subTest(workflow=name, step_line=i + 1):
+                        self.assertTrue(
+                            any(re.search(r"cache:\s*maven", entry) for entry in with_block),
+                            f"{name}: setup-java step at line {i + 1} has no "
+                            "cache: maven in its own with: block",
+                        )
 
     def test_no_service_level_working_directory(self):
         for name in ACTIVE_MAVEN_WORKFLOWS:
@@ -185,19 +294,35 @@ class TestTriggerCoverage(unittest.TestCase):
         )
 
     def test_shared_build_inputs_cannot_evade_service_workflows(self):
+        # Extracted as data (via trigger_blocks/extract_paths), not matched by
+        # a form-specific text pattern, so this survives either YAML sequence
+        # style. Each of the four service workflows is expected to be
+        # path-filtered on both triggers; a workflow that yields zero path
+        # entries for a trigger is a vacuous check and must fail loudly
+        # rather than silently pass.
         for name in ACTIVE_MAVEN_WORKFLOWS:
             if name == FULL_REACTOR_WORKFLOW:
                 continue
             text = read(name)
-            if "paths:" not in text:
-                continue
-            for filter_block in re.findall(r"paths:\s*\n((?:\s+-\s.*\n)+)", text):
-                for shared in (*SHARED_BUILD_INPUTS, f".github/workflows/{name}"):
-                    with self.subTest(workflow=name, shared=shared):
-                        self.assertIn(
-                            shared, filter_block,
-                            f"{name} filters out changes to {shared}",
-                        )
+            triggers = dict(trigger_blocks(text))
+            for trigger_name in ("pull_request", "push"):
+                with self.subTest(workflow=name, trigger=trigger_name):
+                    self.assertIn(
+                        trigger_name, triggers,
+                        f"{name} declares no {trigger_name} trigger",
+                    )
+                    paths = extract_paths(triggers[trigger_name])
+                    self.assertTrue(
+                        paths,
+                        f"{name}: {trigger_name} trigger has no path filter "
+                        "entries to check -- this would be a vacuous pass",
+                    )
+                    for shared in (*SHARED_BUILD_INPUTS, f".github/workflows/{name}"):
+                        with self.subTest(workflow=name, trigger=trigger_name, shared=shared):
+                            self.assertIn(
+                                shared, paths,
+                                f"{name} ({trigger_name}) filters out changes to {shared}",
+                            )
 
     def test_ci_regression_tests_run_in_the_full_reactor_workflow(self):
         text = normalise_run_blocks(read(FULL_REACTOR_WORKFLOW))
