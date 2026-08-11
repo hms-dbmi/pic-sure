@@ -31,16 +31,6 @@
 		<aws.version>2.20.153</aws.version>
 		<spotless.version>2.46.1</spotless.version>
 	</properties>
-	<repositories>
-		<repository>
-			<id>github</id>
-			<name>GitHub HMS-DBMI Apache Maven Packages</name>
-			<url>https://maven.pkg.github.com/hms-dbmi/pic-sure-common</url>
-			<snapshots>
-				<enabled>true</enabled>
-			</snapshots>
-		</repository>
-	</repositories>
 	<build>
 		<pluginManagement>
 			<plugins>
