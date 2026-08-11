@@ -32,7 +32,13 @@ FULL_REACTOR_WORKFLOW = "github-actions-test.yml"
 
 # Shared build inputs: a change to any of these must not be able to slip past a
 # path-filtered service workflow.
-SHARED_BUILD_INPUTS = ("pom.xml", "platform/**", "libs/**", "scripts/ci/**")
+SHARED_BUILD_INPUTS = (
+    "pom.xml",
+    "platform/**",
+    "libs/**",
+    "scripts/ci/**",
+    "code-formatting/**",
+)
 
 # workflow filename -> the reactor selection its Maven step must use
 REQUIRED_SELECTIONS = {
@@ -52,7 +58,7 @@ REQUIRED_SELECTIONS = {
         "-pl services/pic-sure-visualization-service -am verify",
     ],
     FULL_REACTOR_WORKFLOW: [
-        "--update-snapshots verify",
+        "verify",
     ],
 }
 
@@ -80,6 +86,31 @@ RETIRED_PACKAGE_REPO = "https://maven.pkg.github.com/hms-dbmi/pic-sure-common"
 
 def read(name):
     return (WORKFLOWS / name).read_text()
+
+
+def pom_files():
+    """Every tracked POM in the repository, ignoring build output."""
+    return sorted(
+        path
+        for path in REPO_ROOT.rglob("pom.xml")
+        if "target" not in path.parts and ".git" not in path.parts
+    )
+
+
+def resolution_source_blocks(pom_text):
+    """Return the body of every <repositories>/<pluginRepositories> block.
+
+    These are the blocks Maven downloads *from*. <distributionManagement> --
+    where a repository the project publishes *to* is named, and where the
+    retired pic-sure-common URL is deliberately retained -- is not matched, so
+    a check built on this is context-aware rather than a substring sweep.
+    """
+    return [
+        body
+        for _, body in re.findall(
+            r"<(repositories|pluginRepositories)>(.*?)</\1>", pom_text, re.DOTALL
+        )
+    ]
 
 
 def normalise_run_blocks(text):
@@ -136,6 +167,19 @@ def trigger_blocks(text):
         i += 1
 
 
+def strip_inline_comment(value):
+    """Return a YAML scalar with any trailing comment removed.
+
+    A '#' opens a comment only when it follows whitespace, and never inside a
+    quoted scalar -- so `'a#b/**'` and `- 'x/**'  # note` both yield the path.
+    """
+    value = value.strip()
+    quoted = re.match(r"(['\"])(.*?)\1", value)
+    if quoted:
+        return quoted.group(2)
+    return re.split(r"\s+#", " " + value)[0].strip()
+
+
 def extract_paths(block_lines):
     """Return the `paths:` filter entries from a trigger block's lines.
 
@@ -151,7 +195,7 @@ def extract_paths(block_lines):
     flow = re.search(r"paths:[ \t]*\[([^\]]*)\]", text)
     if flow:
         return [
-            item.strip().strip("'\"")
+            strip_inline_comment(item)
             for item in flow.group(1).split(",")
             if item.strip()
         ]
@@ -163,7 +207,7 @@ def extract_paths(block_lines):
         stripped = line.strip()
         if not stripped.startswith("-"):
             continue
-        items.append(stripped[1:].strip().strip("'\""))
+        items.append(strip_inline_comment(stripped[1:]))
     return items
 
 
@@ -281,6 +325,32 @@ class TestActiveWorkflows(unittest.TestCase):
                     )
 
 
+    def test_no_workflow_forces_snapshot_updates(self):
+        # The reactor has no SNAPSHOT dependencies, so -U only defeats Maven's
+        # caching of failed lookups.
+        for name in ACTIVE_MAVEN_WORKFLOWS:
+            with self.subTest(workflow=name):
+                text = normalise_run_blocks(read(name))
+                self.assertNotIn("--update-snapshots", text)
+                self.assertNotRegex(text, r"(?m)^.*run:.*\s-U(\s|$)")
+
+
+class TestPathFilterParsing(unittest.TestCase):
+    """Self-tests for the path-filter extractor the trigger checks depend on."""
+
+    def test_trailing_comments_are_not_part_of_the_path(self):
+        block = ["    paths:", "      - 'code-formatting/**'  # shared spotless config"]
+        self.assertEqual(extract_paths(block), ["code-formatting/**"])
+
+    def test_a_hash_inside_a_quoted_entry_survives(self):
+        block = ["    paths:", "      - 'services/odd#name/**'"]
+        self.assertEqual(extract_paths(block), ["services/odd#name/**"])
+
+    def test_flow_sequences_are_extracted(self):
+        block = ["    paths: ['pom.xml', 'libs/**']"]
+        self.assertEqual(extract_paths(block), ["pom.xml", "libs/**"])
+
+
 class TestTriggerCoverage(unittest.TestCase):
     def test_full_reactor_runs_on_pull_requests_and_pushes(self):
         text = read(FULL_REACTOR_WORKFLOW)
@@ -364,6 +434,51 @@ class TestRootPom(unittest.TestCase):
         text = (REPO_ROOT / "pom.xml").read_text()
         self.assertIn("<distributionManagement>", text)
         self.assertIn("https://maven.pkg.github.com/hms-dbmi/pic-sure", text)
+
+
+class TestRetiredPackageRepository(unittest.TestCase):
+    """No POM may resolve from the retired pic-sure-common package repository.
+
+    Fork runners have no credentials for it, and every artifact it once served
+    now comes from the reactor or from Central. Publishing *to* it stays legal:
+    <distributionManagement> entries are deliberately untouched.
+    """
+
+    def test_no_pom_resolves_from_the_retired_package_repository(self):
+        poms = pom_files()
+        self.assertTrue(poms, "found no POMs to check -- this would be a vacuous pass")
+        for pom in poms:
+            with self.subTest(pom=str(pom.relative_to(REPO_ROOT))):
+                for block in resolution_source_blocks(pom.read_text()):
+                    self.assertNotIn(
+                        RETIRED_PACKAGE_REPO, block,
+                        f"{pom.relative_to(REPO_ROOT)} still declares the retired "
+                        "pic-sure-common repository as a resolution source",
+                    )
+
+    def test_the_check_distinguishes_resolution_from_publication(self):
+        # Guards the guard: a naive substring search over either POM below
+        # would treat them identically. The extractor must see the URL in the
+        # first and not in the second.
+        resolves = f"""<project>
+          <repositories>
+            <repository><url>{RETIRED_PACKAGE_REPO}</url></repository>
+          </repositories>
+        </project>"""
+        publishes = f"""<project>
+          <distributionManagement>
+            <repository><url>{RETIRED_PACKAGE_REPO}</url></repository>
+          </distributionManagement>
+        </project>"""
+        self.assertIn(RETIRED_PACKAGE_REPO, "".join(resolution_source_blocks(resolves)))
+        self.assertEqual(resolution_source_blocks(publishes), [])
+
+    def test_publication_targets_are_left_intact(self):
+        # The live counterpart of the synthetic case above: this POM keeps the
+        # retired URL under <distributionManagement>, and must keep passing.
+        text = (REPO_ROOT / "libs" / "pic-sure-commons" / "pom.xml").read_text()
+        self.assertIn(RETIRED_PACKAGE_REPO, text)
+        self.assertIn("<distributionManagement>", text)
 
 
 class TestWorkflowSyntax(unittest.TestCase):
