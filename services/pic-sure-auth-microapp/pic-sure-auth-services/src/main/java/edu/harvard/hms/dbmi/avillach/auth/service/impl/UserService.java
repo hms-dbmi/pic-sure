@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsOverrideRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
@@ -53,6 +54,7 @@ public class UserService {
     private final long tokenExpirationTime;
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
     private final UserConsentsRepository userConsentsRepository;
+    private final UserConsentsOverrideRepository userConsentsOverrideRepository;
     private final FenceMappingUtility fenceMappingUtility;
 
     public long longTermTokenExpirationTime;
@@ -65,7 +67,7 @@ public class UserService {
     @Autowired
     public UserService(
         BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
-        RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
+        RoleService roleService, UserConsentsRepository userConsentsRepository, UserConsentsOverrideRepository userConsentsOverrideRepository, FenceMappingUtility fenceMappingUtility,
         @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
         @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
@@ -76,6 +78,7 @@ public class UserService {
         this.connectionRepository = connectionRepository;
         this.roleService = roleService;
         this.userConsentsRepository = userConsentsRepository;
+        this.userConsentsOverrideRepository = userConsentsOverrideRepository;
         this.fenceMappingUtility = fenceMappingUtility;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         logger.info("Token Expiration Time : {}", tokenExpirationTime);
@@ -623,7 +626,8 @@ public class UserService {
 
     public User updateUserConsents(User user, Set<String> userConsentStrings) {
         Map<String, Set<String>> consents =
-            new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
+                getUserConsents(user, userConsentStrings);
+
         UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
         if (userConsents == null) {
             logger.info("Creating user consents");
@@ -635,6 +639,15 @@ public class UserService {
         userConsentsRepository.save(userConsents);
 
         return user;
+    }
+
+    private Map<String, Set<String>> getUserConsents(User user, Set<String> userConsentStrings) {
+        UserConsentsOverride overrideConsents = userConsentsOverrideRepository.findByUserId(user.getUuid());
+        if (overrideConsents != null && overrideConsents.isEnabled()) {
+            return overrideConsents.getConsents();
+        } else {
+            return new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
+        }
     }
 
     /**
