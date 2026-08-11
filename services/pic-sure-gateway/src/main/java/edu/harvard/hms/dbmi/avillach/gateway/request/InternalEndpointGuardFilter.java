@@ -12,11 +12,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Edge guard, registered UNCONDITIONALLY right after {@link InboundIdentityHeaderSanitizingFilter} (see {@code ObservabilityConfig}):
- * rejects any request targeting {@code /operations/internal/**} (any depth) with the structured gateway 404 BEFORE routing or the auth
- * chain ever sees it. Those endpoints (e.g. the query-auth dispatch API {@code QueryAuthFetcher} calls) are service-to-service only, gated
- * by {@code X-PIC-SURE-INTERNAL-TOKEN} -- they must not be reachable through the public gateway even with a stolen token. A 404 (rather
- * than 403) deliberately does not confirm the endpoint exists.
+ * Edge guard, registered UNCONDITIONALLY before the DB-free authentication filters (see {@code ObservabilityConfig}): rejects any request
+ * targeting {@code /operations/internal/**} (any depth) with the structured gateway 404 BEFORE routing or the auth chain can call PSAMA.
+ * Those endpoints (e.g. the query-auth dispatch API {@code QueryAuthFetcher} calls) are service-to-service only, gated by
+ * {@code X-PIC-SURE-INTERNAL-TOKEN} -- they must not be reachable through the public gateway even with a stolen token. A 404 (rather than
+ * 403) deliberately does not confirm the endpoint exists.
  */
 public class InternalEndpointGuardFilter extends OncePerRequestFilter {
 
