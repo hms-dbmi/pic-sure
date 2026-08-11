@@ -1,7 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.config;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
+
+import java.time.Instant;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.interceptor.KeyGenerator;
@@ -42,6 +46,8 @@ public class ApplicationConfig {
 
     @Bean
     public ObjectMapper objectMapper() {
-        return new ObjectMapper();
+        ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        objectMapper.configOverride(Instant.class).setFormat(JsonFormat.Value.forShape(JsonFormat.Shape.STRING));
+        return objectMapper;
     }
 }
