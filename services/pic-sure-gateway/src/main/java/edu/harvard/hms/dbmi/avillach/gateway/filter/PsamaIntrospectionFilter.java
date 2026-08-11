@@ -1,9 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -17,11 +15,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionResponse;
+import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
@@ -35,17 +34,20 @@ import jakarta.servlet.http.HttpServletResponse;
  * short-circuit) and {@code BufferingFilter} (body buffering). Allow-lists {@code GET /system/status} (audited as {@code SYSTEM_MONITOR}),
  * any path ending in {@code /openapi.json}, and any configured prefix — none of these call PSAMA. Every other request must carry a real
  * {@code Bearer} token (open access is handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the REAL
- * request path as the root-level {@code "Target Service"} (no canonical-mapping table) and the buffered body (or, for the result/signed-url
- * paths once the gateway owns query-read auth, the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with
+ * request path as the root-level {@code "Target Service"} (no canonical-mapping table) and the buffered body (or, for the bodyless
+ * stored-query reads — result/signed-url/status/metadata — the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with
  * {@code resourceCredentials} stripped and NEVER a {@code formattedQuery} field (PSAMA only ever uses it for logging, never authorization).
  * If the body is not valid JSON, {@code "query"} is omitted entirely rather than forwarding the raw, unstripped bytes (which could still
- * textually contain {@code resourceCredentials}). On success this filter stashes {@code X-User-*} request attributes — including
- * privileges, the real {@code @RolesAllowed} signal — for {@code IdentityPropagationFilter} to turn into outbound headers; on
- * {@code tokenRefreshed} it stashes {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}; on a returned {@code query} it
- * stashes {@code BodyMutationFilter.ATTR_MUTATED_QUERY} for {@code BodyMutationFilter} to apply — this filter does NOT mutate the body
- * itself. {@code active:false} denies with a 401 additive error body. {@link QueryAuthFetcher}/introspection infrastructure failures
- * ({@link PicsureException}, or any introspection transport error) are fail-closed: the mapped status/error body is written and the request
- * is never forwarded.
+ * textually contain {@code resourceCredentials}). Both directions speak the shared {@code contracts.auth} records ({@link TargetedRequest},
+ * {@link IntrospectionResponse}), so PSAMA and the gateway bind one declaration of this wire. On success this filter stashes
+ * {@code X-User-*} request attributes — including privileges, the real {@code @RolesAllowed} signal — for {@code IdentityPropagationFilter}
+ * to turn into outbound headers; on {@code tokenRefreshed} it stashes {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter};
+ * on a returned {@code query} OBJECT it stashes {@code BodyMutationFilter.ATTR_MUTATED_QUERY} for {@code BodyMutationFilter} to apply —
+ * this filter does NOT mutate the body itself. {@code active:false} denies with a 401 additive error body.
+ * {@link QueryAuthFetcher}/introspection infrastructure failures ({@link PicsureException}, or any introspection transport error) are
+ * fail-closed: the mapped status/error body is written and the request is never forwarded, as is a consent-mutated query that is not a JSON
+ * object and an active verdict carrying no {@code userId} (the shape a PSAMA older than the typed contract produces -- see the guard for
+ * why that must be loud rather than silently propagated as an empty {@code X-User-Id}).
  */
 public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
@@ -144,9 +146,9 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             return;
         }
 
-        Map<String, Object> requestMeta;
+        TargetedRequest targeted;
         try {
-            requestMeta = buildIntrospectionRequest(req, path);
+            targeted = buildTargetedRequest(req, path);
         } catch (PicsureException e) {
             // QueryAuthFetcher fail-closed: honest status + additive error body.
             mapPicsureException(resp, e);
@@ -168,7 +170,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
         IntrospectionResponse intro;
         try {
-            intro = psama.introspect(token, requestMeta);
+            intro = psama.introspect(token, targeted);
         } catch (PicsureException e) {
             // Preserve the existing PicsureException mapping (status/errorType from the exception) rather than
             // flattening it into a generic 502 below.
@@ -187,10 +189,45 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             return;
         }
 
+        // A present-but-non-object query is a broken PSAMA, and the ONLY safe reading of it is a denial: the
+        // alternative -- ignoring it as if no mutation happened -- forwards the caller's ORIGINAL, unfiltered
+        // query. Resolve it before any identity attribute is stashed so the denial path leaves none behind.
+        JsonNode mutatedQuery = mutatedQueryOrNull(intro);
+        if (mutatedQuery != null && !mutatedQuery.isObject()) {
+            audit.put("auth_result", "failure");
+            audit.put("auth_failure_reason", "introspection_malformed");
+            log.error("Introspection returned a consent-mutated query that is not a JSON object ({}); denying", mutatedQuery.getNodeType());
+            GatewayErrors.write(
+                resp, HttpStatus.BAD_GATEWAY, "introspection_malformed", "Token introspection returned an unusable consent-filtered query."
+            );
+            return;
+        }
+
+        // An active verdict with no user id is a broken PSAMA, and denying is the only safe reading. The contract's userId used to also
+        // bind from a legacy "uuid" key; that alias is gone, so a gateway talking to a PSAMA old enough to still emit "uuid" -- a rolling
+        // deploy caught mid-flight, or a PSAMA rolled back under a new gateway -- reads userId as null. Without this, that null is stashed
+        // as X-User-Id, the request is marked auth_result=success, and every downstream service's header-based authn rejects it: a total
+        // outage presenting as scattered 401s with nothing in the gateway log pointing at the version skew. Fail closed, loudly, and
+        // resolve it before any identity attribute is stashed so the denial path leaves none behind.
+        if (intro.userId() == null || intro.userId().isBlank()) {
+            audit.put("auth_result", "failure");
+            audit.put("auth_failure_reason", "introspection_missing_user_id");
+            log.error(
+                "Introspection returned an active token with no userId; denying. The gateway and PSAMA are a lockstep pair -- this is what "
+                    + "a version skew looks like (a PSAMA predating the typed introspection contract emits the user uuid under the legacy "
+                    + "\"uuid\" key, which this gateway no longer binds). Redeploy PSAMA to match this gateway."
+            );
+            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "introspection_malformed", "Token introspection returned no user identity.");
+            return;
+        }
+
         req.setAttribute(GatewayUserResolver.HEADER_USER_ID, intro.userId());
         req.setAttribute(GatewayUserResolver.HEADER_USER_SUBJECT, intro.sub());
         req.setAttribute(GatewayUserResolver.HEADER_USER_EMAIL, intro.email());
-        req.setAttribute(GatewayUserResolver.HEADER_USER_ROLES, intro.roles() == null ? "" : intro.roles());
+        // PSAMA sends roles as a JSON array; X-User-Roles stays the opaque, comma-joined string downstream already
+        // parses (GatewayUser#roles). Bare comma, no space, source order preserved -- byte-identical to the header
+        // PSAMA used to comma-join itself, so nothing downstream changes and the header budget is unaffected.
+        req.setAttribute(GatewayUserResolver.HEADER_USER_ROLES, intro.roles() == null ? "" : String.join(",", intro.roles()));
         // privileges are the real @RolesAllowed signal — propagate them.
         req.setAttribute(
             GatewayUserResolver.HEADER_USER_PRIVILEGES, intro.privileges() == null ? "" : String.join(",", intro.privileges())
@@ -200,14 +237,24 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         req.setAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED);
         audit.put("auth_result", "success");
 
-        if (Boolean.TRUE.equals(intro.tokenRefreshed()) && intro.token() != null) {
+        if (intro.tokenRefreshed() && intro.token() != null) {
             req.setAttribute(ATTR_REFRESHED_TOKEN, intro.token());
         }
-        if (intro.query() != null) {
-            req.setAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY, intro.query());
+        if (mutatedQuery != null) {
+            req.setAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY, mutatedQuery);
         }
 
         chain.doFilter(req, resp);
+    }
+
+    /**
+     * The consent-mutated query PSAMA returned, or {@code null} when it did not rewrite anything. PSAMA omits the key entirely in that case
+     * (the contract's NON_NULL include), but an explicit {@code "query": null} binds to NullNode rather than Java null, and that means the
+     * same thing -- so both collapse to {@code null} here. Anything else is returned as-is for the caller to reject.
+     */
+    private static JsonNode mutatedQueryOrNull(IntrospectionResponse intro) {
+        JsonNode query = intro.query();
+        return (query == null || query.isNull()) ? null : query;
     }
 
     private void denied(HttpServletResponse resp, String reason, String message) throws IOException {
@@ -222,23 +269,27 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         GatewayErrors.write(resp, e.getStatus(), e.getErrorType(), e.getMessage());
     }
 
-    private Map<String, Object> buildIntrospectionRequest(HttpServletRequest req, String path) {
-        Map<String, Object> requestMeta = new HashMap<>();
+    /**
+     * SECURITY: the returned record IS the node deployed FISMA access rules are evaluated against ({@code $.['Target Service']},
+     * {@code $.query.<field>}). {@link TargetedRequest} omits a null component rather than emitting it, which is what keeps "no body to
+     * authorize" distinguishable from "a null body" on PSAMA's side.
+     */
+    private TargetedRequest buildTargetedRequest(HttpServletRequest req, String path) {
         // Send the REAL request path verbatim, root-level. No canonical-mapping table.
-        requestMeta.put("Target Service", path);
 
-        // result/signed-url: fetch the stored query over HTTP (DB-free) so PSAMA can authorize these
-        // bodyless reads using the original query shape.
+        // result/signed-url/status/metadata: fetch the stored query over HTTP (DB-free) so PSAMA can authorize
+        // these bodyless reads using the original query shape.
         Optional<String> storedQuery = queryAuthFetcher.queryJsonForPath(path); // may throw PicsureException (fail-closed)
         try {
             if (storedQuery.isPresent()) {
                 JsonNode stored = json.readTree(storedQuery.get());
                 stripResourceCredentials(stored);
-                requestMeta.put("query", stored);
-            } else if (req instanceof BufferedRequestWrapper buffered && buffered.getBody().length > 0) {
+                return new TargetedRequest(path, stored);
+            }
+            if (req instanceof BufferedRequestWrapper buffered && buffered.getBody().length > 0) {
                 JsonNode body = json.readTree(buffered.getBody());
                 stripResourceCredentials(body);
-                requestMeta.put("query", body);
+                return new TargetedRequest(path, body);
             }
         } catch (IOException e) {
             // Do NOT forward the raw, unstripped body: a malformed body may still textually contain
@@ -247,7 +298,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             log.debug("request body was not valid JSON; omitting query from introspection payload");
         }
         // NO formattedQuery: PSAMA uses it only for access-log strings, never for authorization.
-        return requestMeta;
+        return new TargetedRequest(path, null);
     }
 
     private void stripResourceCredentials(JsonNode node) {

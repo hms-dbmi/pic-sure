@@ -40,6 +40,17 @@ public class ApplicationConfig {
         return new CustomKeyGenerator();
     }
 
+    /**
+     * PSAMA's MVC message converters bind with THIS mapper, not Spring Boot's. A user-defined {@code ObjectMapper} bean makes
+     * {@code JacksonAutoConfiguration} back off, which also means {@code pic-sure-spring-commons}' {@code StrictWebDeserializationConfig}
+     * -- a {@code Jackson2ObjectMapperBuilderCustomizer}, and so reachable only through Boot's builder -- never applies here.
+     *
+     * <p>That is not a gap: {@code new ObjectMapper()} already has {@code FAIL_ON_UNKNOWN_PROPERTIES} enabled by Jackson default, so PSAMA
+     * has always been the strict service the customizer is trying to produce elsewhere. It is Boot that relaxes the setting. The
+     * consequence worth knowing is the inverse of the usual one: request types that need to tolerate unknown keys must say so themselves
+     * with {@code @JsonIgnoreProperties(ignoreUnknown = true)} -- see {@code OpenAccessValidationRequest} and
+     * {@code AuthenticationRequest}, where a strict rejection would be an outage rather than a diagnostic.
+     */
     @Bean
     public ObjectMapper objectMapper() {
         return new ObjectMapper();

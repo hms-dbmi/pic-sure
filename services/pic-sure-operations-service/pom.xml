@@ -51,10 +51,10 @@
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-spring-commons</artifactId>
         </dependency>
-        <!-- Shared DTO/domain types (e.g. PicSureStatus) for the config/dataset/query surfaces (later tasks). -->
+        <!-- Shared wire contracts (PicSureStatus, the internal query-store DTOs) for the dataset/query surfaces. -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-            <artifactId>pic-sure-api-model</artifactId>
+            <artifactId>pic-sure-contracts</artifactId>
         </dependency>
 
         <dependency>
@@ -77,6 +77,12 @@
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>test</scope>
+        </dependency>
+        <!-- @Schema/@Parameter/@ApiResponse are used directly by this module's controllers and models; declared
+             rather than inherited transitively from pic-sure-contracts. -->
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
         </dependency>
     </dependencies>
 

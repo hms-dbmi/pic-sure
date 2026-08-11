@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.dictionary.info;
 
+import edu.harvard.dbmi.avillach.contracts.info.ResourceInfo;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,9 +22,9 @@ class InfoControllerTest {
 
     @Test
     void shouldGetInfo() {
-        ResponseEntity<InfoResponse> actual = infoController.getInfo(new Object());
+        ResponseEntity<ResourceInfo> actual = infoController.getInfo();
 
         Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
-        Assertions.assertEquals(new InfoResponse(UUID.nameUUIDFromBytes(":)".getBytes()), ":)", List.of()), actual.getBody());
+        Assertions.assertEquals(new ResourceInfo(UUID.nameUUIDFromBytes(":)".getBytes()), ":)", List.of()), actual.getBody());
     }
 }

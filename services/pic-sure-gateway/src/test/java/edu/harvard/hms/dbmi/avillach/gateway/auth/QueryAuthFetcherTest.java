@@ -68,10 +68,32 @@ class QueryAuthFetcherTest {
         assertThat(fetcher().queryJsonForPath("/v3/query/q9/signed-url")).contains("{\"v3\":1}");
     }
 
+    /**
+     * A consent-governed user's {@code GET /query/{id}/status} is as bodyless as {@code /result}: without the dispatched stored query PSAMA
+     * has no query node for a USER_CONSENT_ACCESS rule to evaluate, so the rule fails closed and every such user gets a 401. The stored
+     * query must be fetched for status reads too.
+     */
+    @Test
+    void fetchesStoredQueryForStatusPath() {
+        qs.stubFor(
+            get(urlEqualTo("/operations/internal/queries/s1/dispatch")).willReturn(okJson("{\"queryJson\":\"{\\\"status\\\":1}\"}"))
+        );
+        assertThat(fetcher().queryJsonForPath("/hpds/auth/v3/query/s1/status")).contains("{\"status\":1}");
+    }
+
+    /** Same for {@code /metadata}, the other bodyless GET read on the stored query. */
+    @Test
+    void fetchesStoredQueryForMetadataPath() {
+        qs.stubFor(get(urlEqualTo("/operations/internal/queries/m1/dispatch")).willReturn(okJson("{\"queryJson\":\"{\\\"meta\\\":1}\"}")));
+        assertThat(fetcher().queryJsonForPath("/hpds/auth/v3/query/m1/metadata")).contains("{\"meta\":1}");
+    }
+
     @Test
     void returnsEmptyForNonStoredQueryPaths() {
         assertThat(fetcher().queryJsonForPath("/query")).isEmpty();
-        assertThat(fetcher().queryJsonForPath("/query/abc/status")).isEmpty();
+        // The query-lifecycle reads are exactly result/signed-url/status/metadata -- a sibling segment is not one of them.
+        assertThat(fetcher().queryJsonForPath("/query/abc/sync")).isEmpty();
+        assertThat(fetcher().queryJsonForPath("/query/abc/status/extra")).isEmpty();
     }
 
     @Test

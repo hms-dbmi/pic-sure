@@ -115,4 +115,20 @@ class QueryAuthFetcherDispatchWiringTest {
         operationsStub.verify(1, getRequestedFor(urlEqualTo("/operations/internal/queries/abc-123/dispatch")));
         queryServiceStub.verify(0, anyRequestedFor(anyUrl()));
     }
+
+    /**
+     * REGRESSION: the bodyless GET reads ({@code status}, {@code metadata}) need the dispatched stored query just as much as
+     * {@code result}/{@code signed-url} do -- PSAMA's consent rules have nothing to evaluate without it, so every consent-governed user was
+     * 401ing on status polling. Through the real filter chain, both must reach the same dispatch endpoint.
+     */
+    @Test
+    void dispatchIsAlsoFetchedForTheBodylessStatusAndMetadataReads() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer user-token");
+
+        rest.exchange(url("/hpds/auth/v3/query/abc-123/status"), HttpMethod.GET, new HttpEntity<>(headers), String.class);
+        rest.exchange(url("/hpds/auth/v3/query/abc-123/metadata"), HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+        operationsStub.verify(2, getRequestedFor(urlEqualTo("/operations/internal/queries/abc-123/dispatch")));
+    }
 }

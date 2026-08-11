@@ -2,7 +2,8 @@ package edu.harvard.dbmi.avillach.visualization.logging;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
-import edu.harvard.dbmi.avillach.logging.RequestInfo;
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
+import edu.harvard.dbmi.avillach.logging.RequestInfoBuilder;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -94,7 +95,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     }
 
     private static RequestInfo requestInfo(HttpServletRequest request, HttpServletResponse response, String requestId, long duration) {
-        return RequestInfo.builder().requestId(requestId).method(request.getMethod()).url(request.getRequestURI())
+        return new RequestInfoBuilder().requestId(requestId).method(request.getMethod()).url(request.getRequestURI())
             .queryString(request.getQueryString()).srcIp(sourceIp(request)).httpUserAgent(request.getHeader("User-Agent"))
             .httpContentType(request.getContentType()).status(response.getStatus()).duration(duration)
             .referrer(request.getHeader("Referer")).build();

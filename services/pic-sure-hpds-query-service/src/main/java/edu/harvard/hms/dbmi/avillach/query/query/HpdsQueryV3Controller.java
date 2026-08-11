@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.query.query;
 
 import java.util.UUID;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,18 +10,26 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
+import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 
 /**
  * The sole HPDS query lifecycle ingress: {@code /hpds/{backend}/v3/query/**}. {@code {backend}} is {@code auth} or {@code open} (validated
  * downstream by {@link QueryService} via {@code HpdsBackendSelector}). The legacy v1 ingress ({@code /hpds/{backend}/query/**}) was
  * removed; new queries are always stored as version {@code "3"}. Read ops still dispatch HPDS-side on the STORED query's version, so
  * previously stored v1 rows remain retrievable via their v1 routes.
+ *
+ * <p><b>The contract is bare and typed.</b> Submissions bind the v3 {@link Query} record itself -- exactly the shape the gateway forwards
+ * after consent mutation -- with no {@code QueryRequest} envelope: no {@code resourceUUID}, no {@code resourceCredentials}, no
+ * {@code @type} discriminator. Strict deserialization (pic-sure-spring-commons) turns a leftover envelope field into a 400 instead of a
+ * silently-dropped value. Reads carry no body at all: the stored query is their only input, and the response's identity is
+ * {@code picsureId} -- the {@code resourceID} echo is gone with the envelope that carried it.
+ *
+ * <p>{@code ?isInstitute} and its 410 guard are also gone: federated queries were removed and, with the envelope, so was the
+ * {@code FederatedQueryRequest} subtype that Jackson could silently reinterpret. There is no longer anything to guard against.
  */
 @RestController
 @RequestMapping("/hpds/{backend}/v3")
@@ -35,55 +42,36 @@ public class HpdsQueryV3Controller {
     }
 
     @PostMapping("/query")
-    public QueryStatus query(
-        @PathVariable("backend") String backend, @RequestBody QueryRequest req,
-        @RequestParam(name = "isInstitute", required = false) Boolean isInstitute
-    ) {
-        rejectInstitutionalQuery(isInstitute);
-        return service.queryV3(backend, req);
+    public QueryStatusResponse query(@PathVariable("backend") String backend, @RequestBody Query query) {
+        return service.queryV3(backend, query);
     }
 
     @PostMapping("/query/sync")
     public ResponseEntity<byte[]> querySync(
-        @PathVariable("backend") String backend, @RequestBody QueryRequest req,
+        @PathVariable("backend") String backend, @RequestBody Query query,
         @RequestHeader(name = "request-source", required = false) String requestSource
     ) {
-        return syncResponse(service.querySync(backend, req, requestSource));
+        return syncResponse(service.querySync(backend, query, requestSource));
     }
 
-    @PostMapping("/query/{id}/status")
-    public QueryStatus status(@PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req) {
-        return service.queryStatus(backend, id, req);
+    @GetMapping("/query/{id}/status")
+    public QueryStatusResponse status(@PathVariable("backend") String backend, @PathVariable("id") UUID id) {
+        return service.status(backend, id);
     }
 
     @PostMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public ResponseEntity<byte[]> result(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req
-    ) {
-        return service.queryResult(backend, id, req);
+    public ResponseEntity<byte[]> result(@PathVariable("backend") String backend, @PathVariable("id") UUID id) {
+        return service.result(backend, id);
     }
 
     @PostMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> signedUrl(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req
-    ) {
-        return service.queryResultSignedUrl(backend, id, req);
+    public SignedUrlResponse signedUrl(@PathVariable("backend") String backend, @PathVariable("id") UUID id) {
+        return service.signedUrl(backend, id);
     }
 
     @GetMapping("/query/{id}/metadata")
-    public QueryStatus metadata(@PathVariable("backend") String backend, @PathVariable("id") UUID id) {
-        return service.queryMetadata(id); // DB-only, backend irrelevant
-    }
-
-    /**
-     * Federated/GIC queries were removed. The parameter stays bound on purpose: {@code QueryRequest}'s {@code defaultImpl} silently
-     * reinterprets a {@code "@type":"FederatedQueryRequest"} body as a {@code GeneralQueryRequest}, so this flag is the only surviving
-     * signal of federated intent. Accepting it would return 200 for a query whose federation had been quietly discarded.
-     */
-    static void rejectInstitutionalQuery(Boolean isInstitute) {
-        if (Boolean.TRUE.equals(isInstitute)) {
-            throw new PicsureException(HttpStatus.GONE, "gone", "Institutional (federated) queries are no longer supported");
-        }
+    public QueryStatusResponse metadata(@PathVariable("backend") String backend, @PathVariable("id") UUID id) {
+        return service.metadata(id); // DB-only, backend irrelevant
     }
 
     /**

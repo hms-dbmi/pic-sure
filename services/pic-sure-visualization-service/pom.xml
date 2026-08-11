@@ -36,10 +36,10 @@
             <artifactId>pic-sure-hpds-model</artifactId>
         </dependency>
 
-        <!-- PIC-SURE domain model (GeneralQueryRequest, QueryFormat, ResourceInfo) -->
+        <!-- Typed cross-service contracts: the shared /info records (ResourceInfo, QueryFormat) -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-            <artifactId>pic-sure-api-model</artifactId>
+            <artifactId>pic-sure-contracts</artifactId>
         </dependency>
 
         <!-- Gateway identity/access-type header-name contract (GatewayUserResolver) -->

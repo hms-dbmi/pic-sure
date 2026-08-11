@@ -15,25 +15,9 @@ curl --location 'https://nhanes-dev.hms.harvard.edu/picsure/proxy/dictionary-api
 Response:
 ```json
 {
-    "totalPages": 9,
-    "totalElements": 90,
-    "pageable": {
-        "pageNumber": 0,
-        "pageSize": 10,
-        "sort": {
-            "unsorted": true,
-            "sorted": false,
-            "empty": true
-        },
-        "offset": 0,
-        "unpaged": false,
-        "paged": true
-    },
-    "numberOfElements": 10,
-    "first": true,
-    "last": false,
-    "size": 10,
-    "content": [
+    "page": 0,
+    "total": 90,
+    "results": [
         {
             "conceptPath": "\\ACT Diagnosis ICD-10\\",
             "name": "",
@@ -124,14 +108,7 @@ Response:
             "children": null,
             "meta": null
         }
-    ],
-    "number": 0,
-    "sort": {
-        "unsorted": true,
-        "sorted": false,
-        "empty": true
-    },
-    "empty": false
+    ]
 }
 ```
 
@@ -148,25 +125,9 @@ curl --location 'https://nhanes-dev.hms.harvard.edu/picsure/proxy/dictionary-api
 Response:
 ```json
 {
-    "totalPages": 18,
-    "totalElements": 90,
-    "pageable": {
-        "pageNumber": 10,
-        "pageSize": 5,
-        "sort": {
-            "unsorted": true,
-            "sorted": false,
-            "empty": true
-        },
-        "offset": 50,
-        "unpaged": false,
-        "paged": true
-    },
-    "numberOfElements": 5,
-    "first": false,
-    "last": false,
-    "size": 5,
-    "content": [
+    "page": 10,
+    "total": 90,
+    "results": [
         {
             "conceptPath": "\\phs000007\\pht000022\\",
             "name": "pht000022",
@@ -212,14 +173,7 @@ Response:
             "children": null,
             "meta": null
         }
-    ],
-    "number": 10,
-    "sort": {
-        "unsorted": true,
-        "sorted": false,
-        "empty": true
-    },
-    "empty": false
+    ]
 }
 ```
 
@@ -240,25 +194,9 @@ curl --location 'https://nhanes-dev.hms.harvard.edu/picsure/proxy/dictionary-api
 Response:
 ```json
 {
-    "totalPages": 1,
-    "totalElements": 3,
-    "pageable": {
-        "pageNumber": 0,
-        "pageSize": 10,
-        "sort": {
-            "unsorted": true,
-            "sorted": false,
-            "empty": true
-        },
-        "offset": 0,
-        "paged": true,
-        "unpaged": false
-    },
-    "numberOfElements": 3,
-    "first": true,
-    "last": true,
-    "size": 10,
-    "content": [
+    "page": 0,
+    "total": 3,
+    "results": [
         {
             "conceptPath": "\\phs002715\\",
             "name": "",
@@ -286,14 +224,7 @@ Response:
             "children": null,
             "meta": null
         }
-    ],
-    "number": 0,
-    "sort": {
-        "unsorted": true,
-        "sorted": false,
-        "empty": true
-    },
-    "empty": false
+    ]
 }
 ```
 
@@ -304,7 +235,7 @@ Request:
 curl --location 'https://nhanes-dev.hms.harvard.edu/picsure/proxy/dictionary-api/concepts/detail/1' \
 --header 'Content-Type: application/json' \
 --header 'Authorization: Token ADD_TOKEN_HERE' \
---data '\ACT Diagnosis ICD-10\J00-J99 Diseases of the respiratory system (J00-J99)\J40-J47 Chronic lower respiratory diseases (J40-J47)\J45 Asthma\J45.5 Severe persistent asthma\J45.52 Severe persistent asthma with status asthmaticus\'
+--data '{"conceptPath": "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.5 Severe persistent asthma\\J45.52 Severe persistent asthma with status asthmaticus\\"}'
 ```
 
 Response:
@@ -331,7 +262,7 @@ Request:
 curl --location 'https://nhanes-dev.hms.harvard.edu/picsure/proxy/dictionary-api/concepts/detail/phs000007' \
 --header 'Content-Type: application/json' \
 --header 'Authorization: Token ADD_TOKEN_HERE' \
---data '\phs000007\pht000033\phv00008849\D080\'
+--data '{"conceptPath": "\\phs000007\\pht000033\\phv00008849\\D080\\"}'
 ```
 
 Response:

@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
@@ -78,11 +80,11 @@ public class FENCEAuthenticationService implements AuthenticationService {
     }
 
     @Override
-    public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
+    public AuthenticationResponse authenticate(AuthenticationRequest authRequest, String host) {
         String callBackUrl = "https://" + host + "/login/loading/";
 
         logger.debug("getFENCEProfile() starting...");
-        String fence_code = authRequest.get("code");
+        String fence_code = authRequest.code();
 
         // Validate that the fence code is alphanumeric
         if (!fence_code.matches("[a-zA-Z0-9]+")) {
@@ -166,20 +168,20 @@ public class FENCEAuthenticationService implements AuthenticationService {
         userClaims.setName(fence_user_profile.has("name") ? fence_user_profile.get("name").asText() : currentUser.getName());
         userClaims.setIdp(this.fenceConnection.getLabel());
         userClaims.setRoles(userService.addRoleClaims(currentUser));
-        HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
+        AuthenticationResponse profile = userService.getUserProfileResponse(userClaims);
 
-        if (responseMap != null) {
+        if (profile != null) {
             logger.info(
                 "LOGIN SUCCESS ___ {}:{}:{} ___ WITH ROLES ___ {} ___ Authorization will expire at  ___ {}___", currentUser.getEmail(),
                 currentUser.getUuid().toString(), currentUser.getSubject(),
                 currentUser.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                responseMap.get("expirationDate")
+                profile.expirationDate()
             );
             logger.debug("getFENCEProfile() UserProfile response object has been generated");
             logger.debug("getFENCEToken() finished");
         }
 
-        return responseMap;
+        return profile;
     }
 
 

@@ -29,8 +29,7 @@ class AppIntegrationTest {
 
     private AppConfig createTestConfig() {
         return new AppConfig(
-            API_KEY, "testapp", "testplatform", "test", "testhost",
-            0, "*",
+            API_KEY, "testapp", "testplatform", "test", "testhost", 0, "*",
             Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
         );
     }
@@ -53,14 +52,12 @@ class AppIntegrationTest {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
             RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\",\"action\":\"execute\"}", JSON);
-            Response response = client.request("/audit", builder ->
-                builder.post(body)
-                    .header("X-API-Key", API_KEY)
-                    .header("Content-Type", "application/json")
-            );
+            Response response = client
+                .request("/audit", builder -> builder.post(body).header("X-API-Key", API_KEY).header("Content-Type", "application/json"));
 
             assertEquals(202, response.code());
-            assertTrue(response.body().string().contains("accepted"));
+            // The 202 body is the shared AuditAccepted record; emitters key off "status".
+            assertEquals("{\"status\":\"accepted\"}", response.body().string());
             assertEquals(1, listAppender.list.size());
         });
     }
@@ -70,10 +67,7 @@ class AppIntegrationTest {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
             RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\"}", JSON);
-            Response response = client.request("/audit", builder ->
-                builder.post(body)
-                    .header("Content-Type", "application/json")
-            );
+            Response response = client.request("/audit", builder -> builder.post(body).header("Content-Type", "application/json"));
 
             assertEquals(401, response.code());
         });
@@ -84,10 +78,8 @@ class AppIntegrationTest {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
             RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\"}", JSON);
-            Response response = client.request("/audit", builder ->
-                builder.post(body)
-                    .header("X-API-Key", "wrong-key")
-                    .header("Content-Type", "application/json")
+            Response response = client.request(
+                "/audit", builder -> builder.post(body).header("X-API-Key", "wrong-key").header("Content-Type", "application/json")
             );
 
             assertEquals(401, response.code());
@@ -99,11 +91,8 @@ class AppIntegrationTest {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
             RequestBody body = RequestBody.create("not-json", JSON);
-            Response response = client.request("/audit", builder ->
-                builder.post(body)
-                    .header("X-API-Key", API_KEY)
-                    .header("Content-Type", "application/json")
-            );
+            Response response = client
+                .request("/audit", builder -> builder.post(body).header("X-API-Key", API_KEY).header("Content-Type", "application/json"));
 
             assertEquals(400, response.code());
         });
@@ -114,11 +103,8 @@ class AppIntegrationTest {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
             RequestBody body = RequestBody.create("{\"action\":\"execute\"}", JSON);
-            Response response = client.request("/audit", builder ->
-                builder.post(body)
-                    .header("X-API-Key", API_KEY)
-                    .header("Content-Type", "application/json")
-            );
+            Response response = client
+                .request("/audit", builder -> builder.post(body).header("X-API-Key", API_KEY).header("Content-Type", "application/json"));
 
             assertEquals(400, response.code());
         });
@@ -139,16 +125,12 @@ class AppIntegrationTest {
     void jwtClaimsAppearInLog() {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
-            String token = TestJwtBuilder.buildToken(Map.of(
-                "sub", "user123",
-                "email", "user@example.com"
-            ));
+            String token = TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com"));
 
             RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\"}", JSON);
-            Response response = client.request("/audit", builder ->
-                builder.post(body)
-                    .header("X-API-Key", API_KEY)
-                    .header("Authorization", "Bearer " + token)
+            Response response = client.request(
+                "/audit",
+                builder -> builder.post(body).header("X-API-Key", API_KEY).header("Authorization", "Bearer " + token)
                     .header("Content-Type", "application/json")
             );
 
@@ -165,10 +147,9 @@ class AppIntegrationTest {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
             RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\"}", JSON);
-            Response response = client.request("/audit", builder ->
-                builder.post(body)
-                    .header("X-API-Key", API_KEY)
-                    .header("X-Request-Id", "req-abc-123")
+            Response response = client.request(
+                "/audit",
+                builder -> builder.post(body).header("X-API-Key", API_KEY).header("X-Request-Id", "req-abc-123")
                     .header("Content-Type", "application/json")
             );
 
@@ -198,15 +179,14 @@ class AppIntegrationTest {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
             RequestBody body = RequestBody.create("{}", JSON);
-            Response response = client.request("/info", builder ->
-                builder.post(body)
-                    .header("Content-Type", "application/json")
-            );
+            Response response = client.request("/info", builder -> builder.post(body).header("Content-Type", "application/json"));
 
             assertEquals(200, response.code());
-            String responseBody = response.body().string();
-            assertTrue(responseBody.contains("Logging Service"));
-            assertTrue(responseBody.contains("queryFormats"));
+            // /info speaks the shared ResourceInfo shape every other PIC-SURE service answers with.
+            assertEquals(
+                "{\"id\":\"50585be4-e315-3a71-8874-c590d2ba12ec\",\"name\":\"Logging Service\",\"queryFormats\":[]}",
+                response.body().string()
+            );
         });
     }
 

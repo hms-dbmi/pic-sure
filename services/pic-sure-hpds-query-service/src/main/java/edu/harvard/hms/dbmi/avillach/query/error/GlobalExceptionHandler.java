@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -53,6 +55,27 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Map<String, Object>> noRoute(NoResourceFoundException e) {
         return body(HttpStatus.NOT_FOUND, "not_found", "No such resource: " + e.getResourcePath());
+    }
+
+    /**
+     * An unbindable request body is the CALLER's error, so it must be a 400. This mapping is what makes strict deserialization
+     * (pic-sure-spring-commons' {@code StrictWebDeserializationConfig}) observable at the ingress: without it, the
+     * {@link HttpMessageNotReadableException} raised for an unknown field would be swallowed by the {@link #unknown} catch-all below --
+     * {@code @ExceptionHandler(Exception.class)} in this same advice wins over Spring's own {@code DefaultHandlerExceptionResolver} -- and
+     * a client typo would look like a server fault.
+     *
+     * <p>The message is deliberately generic: the exception's text can quote the offending body, which may carry credentials.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> unreadableBody(HttpMessageNotReadableException e) {
+        logger.warn("Rejected an unreadable request body: {}", e.getMostSpecificCause().getMessage());
+        return body(HttpStatus.BAD_REQUEST, "bad_request", "Malformed or unrecognized request body");
+    }
+
+    /** Same reasoning as {@link #noRoute}: a wrong verb on a real route is a 405, not the {@link #unknown} 500. */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> wrongMethod(HttpRequestMethodNotSupportedException e) {
+        return body(HttpStatus.METHOD_NOT_ALLOWED, "method_not_allowed", e.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.logging.handler;
 
-import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
+import edu.harvard.dbmi.avillach.contracts.audit.AuditAccepted;
+import edu.harvard.dbmi.avillach.contracts.audit.AuditEvent;
 import edu.harvard.dbmi.avillach.logging.service.AuditLogService;
 import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
@@ -38,6 +39,7 @@ class AuditHandlerTest {
         handler.handle(ctx);
 
         verify(ctx).status(202);
+        verify(ctx).json(new AuditAccepted("accepted"));
         ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
         verify(auditLogService).logEvent(captor.capture(), eq("Bearer token"), eq("req-123"));
         assertEquals("QUERY", captor.getValue().eventType());
@@ -116,9 +118,7 @@ class AuditHandlerTest {
 
     @Test
     void metadataExceeding50KeysRejected() {
-        Map<String, String> metadata = IntStream.rangeClosed(1, 51)
-            .boxed()
-            .collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
+        Map<String, String> metadata = IntStream.rangeClosed(1, 51).boxed().collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
         String metadataJson = mapToJson(metadata);
         String json = "{\"event_type\":\"TEST\",\"metadata\":" + metadataJson + "}";
 
@@ -131,9 +131,7 @@ class AuditHandlerTest {
 
     @Test
     void errorExceeding20KeysRejected() {
-        Map<String, String> error = IntStream.rangeClosed(1, 21)
-            .boxed()
-            .collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
+        Map<String, String> error = IntStream.rangeClosed(1, 21).boxed().collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
         String errorJson = mapToJson(error);
         String json = "{\"event_type\":\"TEST\",\"error\":" + errorJson + "}";
 
@@ -146,9 +144,7 @@ class AuditHandlerTest {
 
     @Test
     void metadataAtExactly50KeysAccepted() {
-        Map<String, String> metadata = IntStream.rangeClosed(1, 50)
-            .boxed()
-            .collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
+        Map<String, String> metadata = IntStream.rangeClosed(1, 50).boxed().collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
         String metadataJson = mapToJson(metadata);
         String json = "{\"event_type\":\"TEST\",\"metadata\":" + metadataJson + "}";
 
@@ -162,9 +158,7 @@ class AuditHandlerTest {
 
     @Test
     void errorAtExactly20KeysAccepted() {
-        Map<String, String> error = IntStream.rangeClosed(1, 20)
-            .boxed()
-            .collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
+        Map<String, String> error = IntStream.rangeClosed(1, 20).boxed().collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
         String errorJson = mapToJson(error);
         String json = "{\"event_type\":\"TEST\",\"error\":" + errorJson + "}";
 

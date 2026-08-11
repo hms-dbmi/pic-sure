@@ -49,13 +49,8 @@ public class AccessRuleEvaluationNode {
         String resultStr = result ? "✓ PASS" : "✗ FAIL";
         String failureInfo = failureReason != null ? " - Reason: " + failureReason : "";
 
-        sb.append(prefix)
-          .append(isTail ? "└── " : "├── ")
-          .append("[").append(nodeType).append("|").append(relationshipType).append("] ")
-          .append(nodeName)
-          .append(" (").append(resultStr).append(")")
-          .append(failureInfo)
-          .append("\n");
+        sb.append(prefix).append(isTail ? "└── " : "├── ").append("[").append(nodeType).append("|").append(relationshipType).append("] ")
+            .append(nodeName).append(" (").append(resultStr).append(")").append(failureInfo).append("\n");
 
         for (int i = 0; i < children.size(); i++) {
             boolean isLastChild = (i == children.size() - 1);
@@ -63,8 +58,19 @@ public class AccessRuleEvaluationNode {
         }
     }
 
-    public AccessRule getRule() { return rule; }
-    public boolean isResult() { return result; }
-    public List<AccessRuleEvaluationNode> getChildren() { return children; }
-    public String getFailureReason() { return failureReason; }
+    public AccessRule getRule() {
+        return rule;
+    }
+
+    public boolean isResult() {
+        return result;
+    }
+
+    public List<AccessRuleEvaluationNode> getChildren() {
+        return children;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
 }

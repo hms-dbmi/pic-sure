@@ -13,21 +13,16 @@
 	<packaging>pom</packaging>
 	<name>pic-sure-common</name>
 	<modules>
-		<module>pic-sure-api-model</module>
 		<module>pic-sure-hpds-model</module>
+		<module>pic-sure-contracts</module>
     </modules>
 	<dependencyManagement>
 		<dependencies>
-			<dependency>
-				<groupId>io.swagger.core.v3</groupId>
-				<artifactId>swagger-annotations</artifactId>
-				<version>2.2.40</version>
-			</dependency>
-			<dependency>
-				<groupId>com.fasterxml.jackson.core</groupId>
-				<artifactId>jackson-databind</artifactId>
-				<version>2.19.4</version>
-			</dependency>
+			<!-- swagger-annotations-jakarta is NOT pinned here: the platform BOM owns the single swagger-api
+			     version so every module's annotations converge. -->
+			<!-- jackson-databind is NOT pinned here: the platform BOM (Spring Boot) owns the single Jackson version,
+			     so pic-sure-contracts' wire-compatibility tests (RuleCompatibilityTest, FixtureRoundTripTest) prove the
+			     contract against the exact Jackson the gateway and PSAMA serialize with, not a stale local pin. -->
 			<dependency>
 				<groupId>org.slf4j</groupId>
 				<artifactId>slf4j-api</artifactId>
@@ -37,6 +32,14 @@
 				<groupId>org.junit.jupiter</groupId>
 				<artifactId>junit-jupiter</artifactId>
 				<version>5.12.2</version>
+				<scope>test</scope>
+			</dependency>
+			<!-- Same version PSAMA resolves via the Spring Boot BOM, so the rule-compatibility test evaluates deployed
+			     FISMA access rules with the exact JsonPath implementation that runs in production. -->
+			<dependency>
+				<groupId>com.jayway.jsonpath</groupId>
+				<artifactId>json-path</artifactId>
+				<version>2.9.0</version>
 				<scope>test</scope>
 			</dependency>
 		</dependencies>

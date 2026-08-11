@@ -1,0 +1,7 @@
+{
+  "query": "{\"expectedResultType\":\"COUNT\",\"consents\":[\"phs000007.c1\"]}",
+  "resourceResultId": "hpds-result-4471",
+  "status": "QUEUED",
+  "version": "v3",
+  "metadata": "eyJyZXNvdXJjZVV1aWQiOiI2YWMxYjFkZi0xYzY2LTRiNWMifQ=="
+}

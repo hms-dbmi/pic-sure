@@ -1,10 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenController;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
@@ -27,12 +30,12 @@ import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.*;
 /**
  * This class handles authorization activities in the project. It decides if a user can send a request to certain applications based on what
  * endpoint they are trying to hit and the content of the request body (in HTTP POST method). <h3>Thoughts on design:</h3> The core
- * technology used here is jsonpath. In the {@link TokenController#inspectToken(Map)} class, other registered applications can hit the
- * tokenIntrospection endpoint with a token they want PSAMA to introspect along with the URL the token holder is trying to hit and what data
- * this token holder is trying to send. After checking if the token is valid or not, the authorization check in this class will start.
- * <br><br> <p> Whether users are allowed access or not depends on their privileges, which depends on the accessRules underneath.
- * AuthorizationService class will eventually use jsonpath to check if certain places in the incoming JSON meet the requirement of the
- * preset rules in accessRules to determine if the token holder is authorized or not. </p>
+ * technology used here is jsonpath. In the {@link TokenController} class, other registered applications can hit the tokenIntrospection
+ * endpoint with a token they want PSAMA to introspect along with the URL the token holder is trying to hit and what data this token holder
+ * is trying to send. After checking if the token is valid or not, the authorization check in this class will start. <br><br> <p> Whether
+ * users are allowed access or not depends on their privileges, which depends on the accessRules underneath. AuthorizationService class will
+ * eventually use jsonpath to check if certain places in the incoming JSON meet the requirement of the preset rules in accessRules to
+ * determine if the token holder is authorized or not. </p>
  */
 @Service
 public class AuthorizationService {
@@ -47,6 +50,16 @@ public class AuthorizationService {
      * {@code /hpds/auth/v3-query}.
      */
     private static final Pattern HPDS_V3_TARGET_SERVICE_PATTERN = Pattern.compile("^/hpds/auth/v3(/.*)?$");
+
+    /**
+     * SECURITY: this mapper only ever turns a {@link TargetedRequest} back into the plain {@code Map} the JsonPath evaluator has always
+     * been handed, and turns the request's query node into a typed {@code Query}. It must not be configured with a naming strategy, an
+     * inclusion policy, or anything else that would change the serialized shape -- deployed FISMA access rules are JsonPath strings stored
+     * in the database and are evaluated against that map.
+     */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private static final TypeReference<Map<String, Object>> RULE_NODE_TYPE = new TypeReference<>() {};
 
     protected AccessRuleService accessRuleService;
     protected SessionService sessionService;
@@ -87,16 +100,14 @@ public class AuthorizationService {
      * the accessRule be checked. <br> The accessRule and subAccessRules are an AND relationship.
      *
      * @param application
-     * @param requestBody
+     * @param request the request being authorized, exactly as the caller sent it
      * @param isLongTermToken
      * @return
      * @see Privilege
      * @see AccessRule
      */
-    public EvaluateAccessRuleResult isAuthorized(Application application, Object requestBody, User user, boolean isLongTermToken) {
+    public EvaluateAccessRuleResult isAuthorized(Application application, TargetedRequest request, User user, boolean isLongTermToken) {
         String applicationName = application.getName();
-        String resourceId = "null";
-        String targetService = "null";
 
         if (user == null) {
             logger.error("isAuthorized() User cannot be null");
@@ -114,7 +125,7 @@ public class AuthorizationService {
         }
 
         // in some cases, we don't go through the evaluation
-        if (requestBody == null) {
+        if (request == null) {
             logger.debug(
                 "ACCESS_LOG ___ {},{},{} ___ has been granted access to application ___ {} ___ NO REQUEST BODY FORWARDED BY APPLICATION",
                 user.getUuid().toString(), user.getEmail(), user.getName(), applicationName
@@ -122,32 +133,8 @@ public class AuthorizationService {
             return new EvaluateAccessRuleResult(true, Set.of(), null, Optional.empty());
         }
 
-        try {
-            Map requestBodyMap = (Map) requestBody;
-            Map queryMap = (Map) requestBodyMap.get("query");
-            resourceId = (String) queryMap.get("resourceUUID");
-            targetService = (String) queryMap.get("Target Service");
-        } catch (RuntimeException e) {
-            logger.debug("Error parsing resource and target service from request body.");
-        }
-
-        String formattedQuery;
-        try {
-            formattedQuery = (String) ((Map) requestBody).get("formattedQuery");
-
-            if (formattedQuery == null) {
-                // fallback in case no formatted query info present
-                formattedQuery = new ObjectMapper().writeValueAsString(requestBody);
-            }
-
-        } catch (ClassCastException | JsonProcessingException e1) {
-            logger.debug(
-                "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ UNABLE TO PARSE REQUEST",
-                user.getUuid().toString(), user.getEmail(), user.getName(), requestBody, applicationName
-            );
-            logger.debug("isAuthorized() Stack Trace: ", e1);
-            return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
-        }
+        // Access-log text only: never read for an authorization decision.
+        String formattedQuery = describe(request);
 
         Set<AccessRule> accessRules;
         String label = "";
@@ -195,7 +182,7 @@ public class AuthorizationService {
             accessRules.stream().map(AccessRule::toString).collect(Collectors.joining(", "))
         );
 
-        EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(requestBody, accessRules, user);
+        EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(request, accessRules, user);
         boolean result = evaluationResult.result();
         String passRuleName = evaluationResult.passRuleName();
         Set<AccessRule> failedRules = evaluationResult.failedRules();
@@ -211,34 +198,42 @@ public class AuthorizationService {
         return evaluationResult;
     }
 
-    private EvaluateAccessRuleResult passesAccessRuleEvaluation(Object requestBody, Set<AccessRule> accessRules, User user) {
+    private EvaluateAccessRuleResult passesAccessRuleEvaluation(TargetedRequest request, Set<AccessRule> accessRules, User user) {
         // Current logic here is: among all accessRules, they are OR relationship
         Set<AccessRule> failedRules = new HashSet<>();
         AccessRule passByRule = null;
         boolean result = false;
         Query returnQuery = null;
 
+        // The exact node deployed JsonPath rules are evaluated against, built once. See toRuleEvaluationNode.
+        Map<String, Object> ruleEvaluationNode = toRuleEvaluationNode(request);
+
         for (AccessRule accessRule : accessRules) {
             try {
                 if (AccessRule.TypeNaming.USER_CONSENT_ACCESS == accessRule.getType()) {
                     UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
 
-                    // This is an HPDS query inside a PIC-SURE query
-                    Map queryMap = (Map) ((Map) requestBody).get("query");
-                    if (queryMap == null) {
+                    JsonNode queryNode = request.query();
+                    if (queryNode == null || queryNode.isNull()) {
                         // Non-query request bodies (e.g. {Target Service=/operations/...}) carry no
                         // query for a consent rule to evaluate: deny by this rule rather than NPE
                         // into a 500, which the gateway would surface as a 502.
                         failedRules.add(accessRule);
                         continue;
                     }
-                    Object queryObject = queryMap.get("query");
-                    Query query;
 
-                    if (queryObject instanceof String) {
-                        query = new ObjectMapper().readValue((String) queryObject, Query.class);
-                    } else {
-                        query = new ObjectMapper().convertValue(queryObject, Query.class);
+                    Query query;
+                    try {
+                        query = OBJECT_MAPPER.convertValue(queryNode, Query.class);
+                    } catch (IllegalArgumentException e) {
+                        // Anything that is not a v3 Query -- a legacy {query, resourceUUID} envelope, a dictionary
+                        // search body, a field this PSAMA does not know -- fails conversion on the strict mapper.
+                        // A consent rule cannot decide about a body it cannot read, so deny by this rule. Letting the
+                        // IllegalArgumentException escape would be a 500 the gateway surfaces as a 502, i.e. an
+                        // unreadable body would take the whole endpoint down instead of failing one rule closed.
+                        logger.info("Consent rule {} denied: request query is not a v3 Query ({})", accessRule.getName(), e.getMessage());
+                        failedRules.add(accessRule);
+                        continue;
                     }
 
                     if (consentBasedAccessRuleEvaluator.evaluateAccessRule(query, accessRule, userConsents)) {
@@ -251,11 +246,11 @@ public class AuthorizationService {
                         failedRules.add(accessRule);
                     }
                 } else {
-                    String targetService = (String) ((Map) requestBody).get("Target Service");
-                    logger.debug("Target service = " + targetService);
+                    String targetService = request.targetService();
+                    logger.debug("Target service = {}", targetService);
                     if (targetService != null && (targetService.startsWith("/v3") || isHpdsV3TargetService(targetService))) {
                         logger.debug("Skipping access rule {}", accessRule.getName());
-                    } else if (this.accessRuleService.evaluateAccessRule(requestBody, accessRule)) {
+                    } else if (this.accessRuleService.evaluateAccessRule(ruleEvaluationNode, accessRule)) {
                         result = true;
                         passByRule = accessRule;
                         break;
@@ -270,8 +265,6 @@ public class AuthorizationService {
                         }
                     }
                 }
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
             } finally {
                 // Clear the evaluation tree to prevent memory leaks
                 this.accessRuleService.clearEvaluationTree();
@@ -290,6 +283,29 @@ public class AuthorizationService {
     }
 
     /**
+     * SECURITY: turns the typed request back into the plain {@code Map} that {@code JsonPath.parse(...)} has always been handed. <p> Two
+     * things make this conversion load-bearing rather than incidental. First, the deployed FISMA access rules are JsonPath expressions
+     * stored in PSAMA's database -- {@code $.['Target Service']}, {@code $.query.expectedResultType} -- and they resolve against whatever
+     * this method returns; the key names, the nesting depth, and the query staying an object rather than a string are all part of the
+     * production authorization decision. Second, json-path's default provider walks {@code Map}/{@code List}, not Jackson nodes: handing it
+     * a {@code TargetedRequest} or a {@code JsonNode} would make every rule unresolvable. {@code AuthorizationServiceRuleNodeTest} pins the
+     * result against the raw map shape the gateway used to send.
+     */
+    static Map<String, Object> toRuleEvaluationNode(TargetedRequest request) {
+        return OBJECT_MAPPER.convertValue(request, RULE_NODE_TYPE);
+    }
+
+    /** Access-log text for a request. Never used to decide anything. */
+    private String describe(TargetedRequest request) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(request);
+        } catch (JsonProcessingException e) {
+            logger.debug("isAuthorized() could not render the request for the access log", e);
+            return String.valueOf(request);
+        }
+    }
+
+    /**
      * Returns true only when {@code targetService} is a clean HPDS-v3 (auth-backend) target service path, i.e. exactly
      * {@code /hpds/auth/v3} or {@code /hpds/auth/v3/**}. Open-access requests never reach this method (they are authorized via a separate
      * endpoint), so the {@code open} backend is not matched. <p> This is intentionally segment/prefix-aware (not a loose
@@ -303,16 +319,23 @@ public class AuthorizationService {
         return HPDS_V3_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
     }
 
-    public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
+    /**
+     * Evaluates an unauthenticated request against the open-access rule set.
+     *
+     * <p>The {@code request} node arrives as the same {@link TargetedRequest} introspection binds, so the JsonPath rules stored in the
+     * database resolve identically on both paths. Absence of a body is granted rather than denied, unchanged: the gateway omits it for
+     * requests that carry nothing to authorize.
+     */
+    public boolean openAccessRequestIsValid(OpenAccessValidationRequest validationRequest) {
 
-        if (inputMap == null || inputMap.isEmpty()) {
+        if (validationRequest == null) {
             logger.info(
                 "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION"
             );
             return true;
         }
 
-        Object requestBody = inputMap.get("request");
+        TargetedRequest requestBody = validationRequest.request();
         // If there is no request body, we can assume the request is valid
         if (requestBody == null) {
             logger.info(
@@ -355,4 +378,5 @@ public class AuthorizationService {
 
         return result;
     }
+
 }

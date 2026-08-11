@@ -1,0 +1,15 @@
+{
+  "active": true,
+  "userId": "6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11",
+  "sub": "saml|foo",
+  "email": "researcher@example.edu",
+  "roles": ["PIC-SURE Top Admin", "MANAGED_phs000007_c1"],
+  "privileges": ["ADMIN", "PRIV_MANAGED_phs000007_c1"],
+  "tokenRefreshed": false,
+  "query": {
+    "expectedResultType": "COUNT",
+    "select": [],
+    "requiredFields": ["\\demographics\\SEX\\"],
+    "consents": ["phs000007.c1"]
+  }
+}

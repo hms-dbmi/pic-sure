@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
-import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;

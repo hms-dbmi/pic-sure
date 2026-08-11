@@ -1,0 +1,8 @@
+{
+  "userId": "6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11",
+  "consents": {
+    "\\_consents\\": ["phs000007.c1", "phs000179.c2", "open_access-1000Genomes"],
+    "\\_harmonized_consent\\": ["phs000007.c1"],
+    "\\_topmed_consents\\": ["phs000179.c2", "open_access-1000Genomes"]
+  }
+}

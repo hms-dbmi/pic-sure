@@ -1,0 +1,29 @@
+{
+  "event_type": "api_request",
+  "action": "query.sync",
+  "client_type": "gateway",
+  "caller": "researcher@example.edu",
+  "session_id": "1f5c8c1e-0a11-4b5c-8f5a-6ac1b1df1c66",
+  "request": {
+    "request_id": "b7f0c1a2-3d4e-4f50-8a6b-9c0d1e2f3a4b",
+    "method": "POST",
+    "url": "/picsure/query/sync",
+    "query_string": "format=json",
+    "src_ip": "10.1.2.3",
+    "dest_ip": "10.4.5.6",
+    "dest_port": 8080,
+    "http_user_agent": "picsure-client/3.0.0",
+    "http_content_type": "application/json",
+    "status": 200,
+    "bytes": 2048,
+    "duration": 137,
+    "referrer": "https://picsure.example.edu/explorer"
+  },
+  "metadata": {
+    "resourceId": "70c9c1ed-8fbf-4b6b-a1a1-1c1c1c1c1c1c"
+  },
+  "error": {
+    "type": "UpstreamFailure",
+    "message": "HPDS returned 502"
+  }
+}

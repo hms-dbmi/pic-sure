@@ -2,7 +2,10 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionRequest;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -25,15 +28,19 @@ class ControllerAuditEventTest {
     @Test
     void authenticationController() throws Exception {
         Class<?> c = AuthenticationController.class;
-        // authentication(String idpProvider, Map<String, String> authRequest, HttpServletRequest request)
-        assertAuditEvent(c, "authentication", new Class[] {String.class, Map.class, HttpServletRequest.class}, "AUTH", "auth.login");
+        // authentication(String idpProvider, AuthenticationRequest authRequest, HttpServletRequest request)
+        assertAuditEvent(
+            c, "authentication", new Class[] {String.class, AuthenticationRequest.class, HttpServletRequest.class}, "AUTH", "auth.login"
+        );
     }
 
     @Test
     void tokenController() throws Exception {
         Class<?> c = TokenController.class;
-        // inspectToken(Map<String, Object> inputMap, HttpServletRequest request)
-        assertAuditEvent(c, "inspectToken", new Class[] {Map.class, HttpServletRequest.class}, "ACCESS", "token.introspect");
+        // inspectToken(IntrospectionRequest introspectionRequest, HttpServletRequest request)
+        assertAuditEvent(
+            c, "inspectToken", new Class[] {IntrospectionRequest.class, HttpServletRequest.class}, "ACCESS", "token.introspect"
+        );
         // refreshToken(String authorizationHeader, HttpServletRequest request)
         assertAuditEvent(c, "refreshToken", new Class[] {String.class, HttpServletRequest.class}, "ACCESS", "token.refresh");
     }
@@ -53,7 +60,7 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getCurrentUser", new Class[] {String.class, Boolean.class}, "ACCESS", "user.profile");
         // refreshUserToken(HttpHeaders httpHeaders, HttpServletRequest request)
         assertAuditEvent(c, "refreshUserToken", new Class[] {HttpHeaders.class, HttpServletRequest.class}, "ACCESS", "user.profile");
-        // getUserConsents()
+        // getUserConsents() - the only /me endpoint that was never audited
         assertAuditEvent(c, "getUserConsents", new Class[] {}, "ACCESS", "user.profile");
     }
 
@@ -139,8 +146,10 @@ class ControllerAuditEventTest {
     @Test
     void openAccessController() throws Exception {
         Class<?> c = OpenAccessController.class;
-        // validate(Map<String, Object> inputMap, HttpServletRequest request)
-        assertAuditEvent(c, "validate", new Class[] {Map.class, HttpServletRequest.class}, "ACCESS", "open.validate");
+        // validate(OpenAccessValidationRequest validationRequest, HttpServletRequest request)
+        assertAuditEvent(
+            c, "validate", new Class[] {OpenAccessValidationRequest.class, HttpServletRequest.class}, "ACCESS", "open.validate"
+        );
     }
 
     @Test

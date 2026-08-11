@@ -73,16 +73,18 @@ class HpdsCallIntegrationTest {
             // The caller's Bearer token is NOT forwarded: query-service authorizes from the gateway's identity headers,
             // which is what must reach it for its /hpds/** .authenticated() rule to pass.
             .andExpect(headerDoesNotExist("Authorization")).andExpect(header("X-User-Id", "test-user"))
-            .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
+            // Bare v3 Query on the wire -- the query-service ingress binds Query itself and 400s on envelope keys.
+            .andExpect(content().json("{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}")).andExpect(jsonPath("$.query").doesNotExist())
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
-        // Build a v3 query with a categorical filter
+        // The request body IS the v3 query -- the same bare shape this service forwards to query-service, and the same
+        // shape the gateway's consent mutation writes back over the body on the authorized path.
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White", "Black")),
             "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -104,6 +106,52 @@ class HpdsCallIntegrationTest {
     }
 
     @Test
+    void distributions_authorized_carriesAuthorizationFiltersOntoEverySubQuery() throws Exception {
+        // SECURITY-CRITICAL, and the reason it is pinned at THIS hop: on the authorized path the consent filters in
+        // authorizationFilters are PSAMA's, written over the whole body by the gateway's BodyMutationFilter. Now that
+        // the body binds as a bare Query, this test is the only thing standing between a decomposer regression and
+        // authorized distributions computed across consents the caller does not hold -- every sub-query the decomposer
+        // fans out to must carry them verbatim, not just the first.
+        Map<String, Map<String, Integer>> categoricalResponse =
+            new LinkedHashMap<>(Map.of("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000))));
+        Map<String, Map<String, Integer>> continuousResponse =
+            new LinkedHashMap<>(Map.of("\\measurements\\bmi\\", new LinkedHashMap<>(Map.of("18.0", 100, "30.0", 200))));
+
+        // The decomposer emits the categorical sub-query first, then the continuous one; both must be consent-scoped.
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
+            .andExpect(content().json("{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}"))
+            .andExpect(jsonPath("$.authorizationFilters[0].conceptPath").value("\\_consents\\"))
+            .andExpect(jsonPath("$.authorizationFilters[0].values[0]").value("phs000001.c1"))
+            .andRespond(withSuccess(objectMapper.writeValueAsString(categoricalResponse), MediaType.APPLICATION_JSON));
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
+            .andExpect(content().json("{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}"))
+            .andExpect(jsonPath("$.authorizationFilters[0].conceptPath").value("\\_consents\\"))
+            .andExpect(jsonPath("$.authorizationFilters[0].values[0]").value("phs000001.c1"))
+            .andRespond(withSuccess(objectMapper.writeValueAsString(continuousResponse), MediaType.APPLICATION_JSON));
+
+        // One categorical and one numeric filter, so the decomposer fans out to BOTH sub-queries.
+        Map<String, Object> query = Map.of(
+            "phenotypicClause",
+            Map.of(
+                "operator", "AND", "phenotypicClauses",
+                List.of(
+                    Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")),
+                    Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0)
+                )
+            ), "authorizationFilters", List.of(Map.of("conceptPath", "\\_consents\\", "values", List.of("phs000001.c1"))), "select",
+            List.of(), "genomicFilters", List.of()
+        );
+
+        mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
+                .content(objectMapper.writeValueAsString(query))
+        ).andExpect(status().isOk());
+
+        mockServer.verify();
+    }
+
+    @Test
     void distributions_authorized_continuousFilter_callsHpdsAndReturnsHistogram() throws Exception {
         // Simulate HPDS response for continuous cross-counts (raw values, not yet binned)
         Map<String, Map<String, Integer>> hpdsResponse = new LinkedHashMap<>();
@@ -116,14 +164,14 @@ class HpdsCallIntegrationTest {
         hpdsResponse.put("\\measurements\\bmi\\", bmiValues);
 
         mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
-            .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}"))
+            .andExpect(content().json("{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
             "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -165,7 +213,7 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON)
@@ -193,7 +241,7 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -219,7 +267,7 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -250,7 +298,7 @@ class HpdsCallIntegrationTest {
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
             "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON)

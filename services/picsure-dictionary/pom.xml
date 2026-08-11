@@ -73,6 +73,26 @@
 			<groupId>edu.harvard.dbmi.avillach</groupId>
 			<artifactId>pic-sure-logging-client</artifactId>
 		</dependency>
+
+		<!-- Typed cross-service contracts: SearchRequest, PaginatedResponse, ResourceInfo/QueryFormat -->
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-contracts</artifactId>
+		</dependency>
+
+		<!-- Auto-configures FAIL_ON_UNKNOWN_PROPERTIES for @RequestBody binding (StrictWebDeserializationConfig).
+		     Nothing else in this library is auto-registered: the audit filter, exception advice and identity
+		     resolver are @Import-only, so the dictionary keeps its own AuditLoggingFilter/AuditInterceptor. -->
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-spring-commons</artifactId>
+		</dependency>
+		<!-- @Schema/@Parameter/@ApiResponse are used directly by this module's controllers and models; declared
+		     rather than inherited transitively from pic-sure-contracts. -->
+		<dependency>
+			<groupId>io.swagger.core.v3</groupId>
+			<artifactId>swagger-annotations-jakarta</artifactId>
+		</dependency>
 	</dependencies>
 
 	<build>

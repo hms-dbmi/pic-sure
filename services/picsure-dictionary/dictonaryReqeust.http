@@ -9,11 +9,19 @@ Content-Type: application/json
 
 ###
 
-POST http://localhost:80/search
+# /search binds the shared contracts SearchRequest: a bare {"query": "<term>"}. The old
+# {"query":{"searchTerm":...,"limit":...}} envelope is rejected; paging moved to the query string.
+POST http://localhost:80/search?page_number=0&page_size=100
 Content-Type: application/json
 
-{"@type":"GeneralQueryRequest","resourceCredentials":{},"query":{"searchTerm":"throat sore acute #8","includedTags":[],
-  "excludedTags":[],"returnTags":"true","offset":0,"limit":100000},"resourceUUID":null}
+{"query":"throat sore acute #8"}
+
+###
+# Concept lookups that POST a path now name it: {"conceptPath": "..."}, not a bare string body.
+POST http://localhost:80/concepts/detail/phs000993
+Content-Type: application/json
+
+{"conceptPath":"\\phs000993\\pht005015\\phv00253191\\BODY_SITE\\"}
 
 ###
 

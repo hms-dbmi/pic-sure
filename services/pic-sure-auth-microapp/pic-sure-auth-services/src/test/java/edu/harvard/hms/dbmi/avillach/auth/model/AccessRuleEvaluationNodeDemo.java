@@ -8,8 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Demonstration class for AccessRuleEvaluationNode.
- * This class provides examples of how AccessRuleEvaluationNode is used to build and print
+ * Demonstration class for AccessRuleEvaluationNode. This class provides examples of how AccessRuleEvaluationNode is used to build and print
  * the access rule and gate evaluation tree.
  */
 public class AccessRuleEvaluationNodeDemo {

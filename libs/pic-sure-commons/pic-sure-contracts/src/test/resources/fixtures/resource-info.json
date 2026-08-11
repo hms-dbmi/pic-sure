@@ -1,0 +1,1 @@
+{"id":"70dc8b74-6b0e-4a5d-9c3e-7a6c1c2f8b41","name":"HPDS Resource","queryFormats":[{"name":"HPDS Query Format","description":"Query format supported by the HPDS resource","specification":{"expectedResultType":"One of COUNT, DATAFRAME, CROSS_COUNT","select":"A list of concept paths to return"},"examples":[{"expectedResultType":"COUNT","select":["\\demographics\\AGE\\"]}]}]}

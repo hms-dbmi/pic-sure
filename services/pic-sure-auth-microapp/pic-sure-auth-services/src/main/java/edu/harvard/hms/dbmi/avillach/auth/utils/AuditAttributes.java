@@ -32,6 +32,27 @@ public final class AuditAttributes {
         return result;
     }
 
+    /**
+     * The resource an authorization decision was about, derived from the target-service path -- {@code /hpds/auth/v3/query} is a decision
+     * about {@code hpds}, {@code /picsure/proxy/dictionary/search} one about {@code picsure}. <p> This replaces digging
+     * {@code resourceUUID} out of the request body: v3 query bodies do not carry one, so that lookup produced a null {@code resource_id} on
+     * every audit record it still applied to. The path is the only resource identity the request actually has.
+     *
+     * @return the first path segment, or null when there is nothing to derive a label from
+     */
+    public static String resourceLabelForPath(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        String[] segments = path.split("/");
+        for (String segment : segments) {
+            if (!segment.isBlank()) {
+                return segment;
+            }
+        }
+        return null;
+    }
+
     public static String extractClientIp(HttpServletRequest request) {
         String xff = request.getHeader("X-Forwarded-For");
         if (xff != null && !xff.isEmpty()) {

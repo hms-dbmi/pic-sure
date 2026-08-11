@@ -11,9 +11,9 @@ pic-sure/                       root pom — PARENT + aggregator
 ├── platform/                   pic-sure-bom — the single version catalog (STANDALONE; no parent)
 ├── libs/
 │   ├── pic-sure-commons/       pic-sure-common aggregator (subtree of hms-dbmi/pic-sure-common)
-│   │   ├── pic-sure-api-model/     domain DTOs   (pkg edu.harvard.dbmi.avillach.{domain,util})
-│   │   └── pic-sure-hpds-model/    HPDS query model (groupId …avillach.hpds)
-│   ├── pic-sure-logging-client/ audit/logging client (groupId edu.harvard.dbmi.avillach)
+│   │   ├── pic-sure-contracts/     shared wire contracts (pkg edu.harvard.dbmi.avillach.contracts)
+│   │   └── pic-sure-hpds-model/    HPDS query model (groupId …avillach.hpds — frozen)
+│   ├── pic-sure-logging-client/ audit/logging client (groupId edu.harvard.dbmi.avillach — frozen)
 │   └── pic-sure-spring-commons/ DB-free shared Spring library
 └── services/
 │   ├── pic-sure-gateway/       Spring Cloud Gateway MVC front door
@@ -55,7 +55,7 @@ historical external consumers.
 |---|---|
 | `3.0.0` (`${revision}`) | The monorepo line — Java 25, everything in the new reactor. Never publish it from the sibling repos. |
 | `2.x` | Historical legacy-WAR releases; those modules are no longer in this repository. |
-| `1.x` | Historical Java 11 shared-library releases (e.g. `pic-sure-api-model:1.0.0`, `pic-sure-logging-client:1.0.0`). Immutable — the `1.x` and `3.0.0` lines must never share a coordinate+version. |
+| `1.x` | Historical Java 11 shared-library releases (e.g. `pic-sure-api-model:1.0.0`, `pic-sure-logging-client:1.0.0`). Immutable — the `1.x` and `3.0.0` lines must never share a coordinate+version. Note `pic-sure-api-model` is a historical artifact only: the module was retired from this reactor, its role taken by `pic-sure-contracts`. |
 
 Versions are CI-friendly (`${revision}` + `flatten-maven-plugin`). Dependency versions come from the `platform` BOM (`pic-sure-bom`), which imports the Spring Boot 3.5.x and Spring Cloud 2025.0.x BOMs. Internal modules inherit everything through the root parent; **external consumers import the published `pic-sure-bom` directly** instead of inheriting the parent (see `platform/README.md`).
 

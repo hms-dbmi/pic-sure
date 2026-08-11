@@ -41,6 +41,12 @@
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-spring-commons</artifactId>
         </dependency>
+        <!-- Wire contracts: the introspection request/response the gateway shares with PSAMA, and the
+             dispatch response it shares with operations-service. One declaration per wire, not two. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-contracts</artifactId>
+        </dependency>
         <!-- audit emission -->
         <dependency>
             <groupId>edu.harvard.dbmi.avillach</groupId>
@@ -59,8 +65,7 @@
     </dependencies>
 
     <build>
-        <plugins>
-            <plugin>
+        <plugins>            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <executions>

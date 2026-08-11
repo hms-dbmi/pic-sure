@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
@@ -77,14 +79,14 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
      * @return The response from the authentication attempt
      */
     @Override
-    public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
-        logger.info("RAS OKTA LOGIN ATTEMPT ___ CODE {}", authRequest.get("code"));
+    public AuthenticationResponse authenticate(AuthenticationRequest authRequest, String host) {
+        logger.info("RAS OKTA LOGIN ATTEMPT ___ CODE {}", authRequest.code());
 
         JsonNode userToken = null;
         JsonNode introspectResponse = null;
         String idToken = null;
-        if (authRequest.containsKey("code") && StringUtils.isNotBlank(authRequest.get("code"))) {
-            userToken = handleCodeTokenExchange(host, authRequest.get("code"));
+        if (StringUtils.isNotBlank(authRequest.code())) {
+            userToken = handleCodeTokenExchange(host, authRequest.code());
             introspectResponse = introspectToken(userToken);
             if (userToken != null && userToken.hasNonNull("id_token")) {
                 idToken = userToken.get("id_token").asText();
@@ -94,42 +96,42 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         if (introspectResponse == null) {
             logger.info(
-                "LOGIN FAILED ___ USER NOT AUTHENTICATED ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse,
-                authRequest.get("code")
+                "LOGIN FAILED ___ USER NOT AUTHENTICATED ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse, authRequest.code()
             );
             return null;
         }
 
-        if (!isActiveIntrospectionResponse(introspectResponse, authRequest.get("code"))) {
+        if (!isActiveIntrospectionResponse(introspectResponse, authRequest.code())) {
             return null;
         }
 
         Optional<User> initializedUser = initializeUser(introspectResponse);
         if (initializedUser.isEmpty()) {
-            logger.info("LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA INTROSPECTION DATA ___ CODE {}", authRequest.get("code"));
+            logger.info(
+                "LOGIN FAILED ___ COULD NOT CREATE USER ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse, authRequest.code()
+            );
             return null;
         }
 
         User user = initializedUser.get();
         Optional<Passport> rasPassport = extractAndVerifyPassport(authRequest, introspectResponse, user);
         if (rasPassport.isEmpty()) return null;
-        user = updateRasUserRoles(authRequest.get("code"), user, rasPassport.get());
+        user = updateRasUserRoles(authRequest.code(), user, rasPassport.get());
         setUserPassport(authRequest, introspectResponse, user);
         UserClaims userClaims = buildUserClaims(user, introspectResponse, rasPassport.get());
+        AuthenticationResponse profile = userService.getUserProfileResponse(userClaims);
 
-        HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
-
-        if (responseMap != null) {
-            responseMap.put("oktaIdToken", idToken);
+        if (profile != null) {
             logger.info(
                 "LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
                 user.getSubject(), user.getUuid().toString(),
                 user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                responseMap.get("expirationDate"), authRequest.get("code")
+                profile.expirationDate(), authRequest.code()
             );
+            profile = profile.withOktaIdToken(idToken);
         }
 
-        return responseMap;
+        return profile;
     }
 
     private boolean isActiveIntrospectionResponse(JsonNode introspectResponse, String code) {
@@ -152,17 +154,16 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         return true;
     }
 
-    private Optional<Passport> extractAndVerifyPassport(Map<String, String> authRequest, JsonNode introspectResponse, User user) {
+    private Optional<Passport> extractAndVerifyPassport(AuthenticationRequest authRequest, JsonNode introspectResponse, User user) {
         Optional<Passport> rasPassport = this.rasPassPortService.extractPassport(introspectResponse);
         if (rasPassport.isEmpty()) {
-            logger.info("LOGIN FAILED ___ NO RAS PASSPORT FOUND ___ USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
+            logger.info("LOGIN FAILED ___ NO RAS PASSPORT FOUND ___ USER: {} ___ CODE {}", user.getSubject(), authRequest.code());
             return Optional.empty();
         }
 
         if (rasPassPortService.isExpired(rasPassport.get())) {
             logger.error(
-                "validateRASPassport() LOGIN FAILED ___ PASSPORT IS EXPIRED ___ USER: {} ___ CODE {}", user.getSubject(),
-                authRequest.get("code")
+                "validateRASPassport() LOGIN FAILED ___ PASSPORT IS EXPIRED ___ USER: {} ___ CODE {}", user.getSubject(), authRequest.code()
             );
             return Optional.empty();
         }
@@ -171,7 +172,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
             logger.error(
                 "validateRASPassport() LOGIN FAILED ___ PASSPORT ISSUER IS NOT CORRECT ___ USER: {} ___ "
                     + "EXPECTED ISSUER {} ___ ACTUAL ISSUER {} ___ CODE {}",
-                user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss(), authRequest.get("code")
+                user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss(), authRequest.code()
             );
             return Optional.empty();
         }
@@ -274,11 +275,11 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         return objectNode;
     }
 
-    private void setUserPassport(Map<String, String> authRequest, JsonNode introspectResponse, User user) {
+    private void setUserPassport(AuthenticationRequest authRequest, JsonNode introspectResponse, User user) {
         String passport = introspectResponse.get("passport_jwt_v11").toString();
         user.setPassport(passport);
         userService.save(user);
-        logger.info("RAS PASSPORT SUCCESSFULLY ADDED TO USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
+        logger.info("RAS PASSPORT SUCCESSFULLY ADDED TO USER: {} ___ CODE {}", user.getSubject(), authRequest.code());
     }
 
     @Override

@@ -133,7 +133,7 @@ class AuditLoggingFilterTest {
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient).send(captor.capture());
-        assertEquals("203.0.113.50", captor.getValue().getRequest().getSrcIp());
+        assertEquals("203.0.113.50", captor.getValue().getRequest().srcIp());
     }
 
     @Test
@@ -147,7 +147,7 @@ class AuditLoggingFilterTest {
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient).send(captor.capture());
-        assertEquals("203.0.113.50", captor.getValue().getRequest().getSrcIp());
+        assertEquals("203.0.113.50", captor.getValue().getRequest().srcIp());
     }
 
     @Test
@@ -160,7 +160,7 @@ class AuditLoggingFilterTest {
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient).send(captor.capture());
-        assertEquals("192.168.1.1", captor.getValue().getRequest().getSrcIp());
+        assertEquals("192.168.1.1", captor.getValue().getRequest().srcIp());
     }
 
     // ---- Session ID ----
@@ -342,15 +342,15 @@ class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
 
-        assertEquals("POST", event.getRequest().getMethod());
-        assertEquals("/PIC-SURE/query", event.getRequest().getUrl());
-        assertEquals("192.168.1.1", event.getRequest().getSrcIp());
-        assertEquals("10.0.0.1", event.getRequest().getDestIp());
-        assertEquals(Integer.valueOf(8080), event.getRequest().getDestPort());
-        assertEquals("TestAgent/2.0", event.getRequest().getHttpUserAgent());
-        assertEquals(Integer.valueOf(200), event.getRequest().getStatus());
-        assertEquals("application/json", event.getRequest().getHttpContentType());
-        assertNotNull(event.getRequest().getDuration());
+        assertEquals("POST", event.getRequest().method());
+        assertEquals("/PIC-SURE/query", event.getRequest().url());
+        assertEquals("192.168.1.1", event.getRequest().srcIp());
+        assertEquals("10.0.0.1", event.getRequest().destIp());
+        assertEquals(Integer.valueOf(8080), event.getRequest().destPort());
+        assertEquals("TestAgent/2.0", event.getRequest().httpUserAgent());
+        assertEquals(Integer.valueOf(200), event.getRequest().status());
+        assertEquals("application/json", event.getRequest().httpContentType());
+        assertNotNull(event.getRequest().duration());
     }
 
 }

@@ -53,9 +53,9 @@ class AuditLoggingFilterTest {
         LoggingEvent event = eventCaptor.getValue();
         assertEquals("QUERY", event.getEventType());
         assertEquals("visualization.distributions", event.getAction());
-        assertEquals(response.getHeader("X-Request-Id"), event.getRequest().getRequestId());
-        assertEquals("POST", event.getRequest().getMethod());
-        assertEquals("/distributions", event.getRequest().getUrl());
+        assertEquals(response.getHeader("X-Request-Id"), event.getRequest().requestId());
+        assertEquals("POST", event.getRequest().method());
+        assertEquals("/distributions", event.getRequest().url());
     }
 
     @Test

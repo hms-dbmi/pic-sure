@@ -79,16 +79,16 @@ public class DumpRepository {
         return roots;
     }
 
-    public List<? extends DumpRow> getAllConceptNodeMetas() {
+    public List<DumpRow> getAllConceptNodeMetas() {
         String sql = """
             SELECT CONCEPT_PATH, KEY, VALUE
             FROM concept_node_meta
                 INNER JOIN concept_node ON concept_node_meta.CONCEPT_NODE_ID = concept_node.CONCEPT_NODE_ID
             """;
-        return template.query(sql, NO_PARAMS, conceptMetaMapper);
+        return template.query(sql, NO_PARAMS, conceptMetaMapper::mapRow);
     }
 
-    public List<? extends DumpRow> getAllFacets() {
+    public List<FacetDump> getAllFacets() {
         String sql = """
             SELECT
                 facet.NAME, facet.DISPLAY, facet.DESCRIPTION,
@@ -121,34 +121,34 @@ public class DumpRepository {
         return roots;
     }
 
-    public List<? extends DumpRow> getAllFacetCategories() {
+    public List<DumpRow> getAllFacetCategories() {
         String sql = """
             SELECT NAME, DISPLAY, DESCRIPTION
             FROM facet_category
             """;
-        return template.query(sql, NO_PARAMS, facetCategoryMapper);
+        return template.query(sql, NO_PARAMS, facetCategoryMapper::mapRow);
     }
 
-    public List<? extends DumpRow> getAllFacetMetas() {
+    public List<DumpRow> getAllFacetMetas() {
         String sql = """
             SELECT facet.NAME AS FACET, facet_category.NAME AS FACET_CATEGORY, KEY, VALUE
             FROM facet_meta
                 JOIN facet ON facet.facet_id = facet_meta.facet_id
                 JOIN facet_category ON facet.facet_category_id = facet_category.facet_category_id
             """;
-        return template.query(sql, NO_PARAMS, facetMetaMapper);
+        return template.query(sql, NO_PARAMS, facetMetaMapper::mapRow);
     }
 
-    public List<? extends DumpRow> getAllFacetCategoryMetas() {
+    public List<DumpRow> getAllFacetCategoryMetas() {
         String sql = """
             SELECT NAME, KEY, VALUE
             FROM facet_category_meta
                 JOIN facet_category ON facet_category.facet_category_id = facet_category_meta.facet_category_id
             """;
-        return template.query(sql, NO_PARAMS, facetCategoryMetaMapper);
+        return template.query(sql, NO_PARAMS, facetCategoryMetaMapper::mapRow);
     }
 
-    public List<? extends DumpRow> getAllFacetConceptPairs() {
+    public List<DumpRow> getAllFacetConceptPairs() {
         String sql = """
             SELECT
                 facet.name AS FACET,
@@ -160,7 +160,7 @@ public class DumpRepository {
                 JOIN facet_category ON facet.facet_category_id = facet_category.facet_category_id
                 JOIN concept_node ON fcn.concept_node_id = concept_node.concept_node_id
             """;
-        return template.query(sql, NO_PARAMS, facetConceptPairMapper);
+        return template.query(sql, NO_PARAMS, facetConceptPairMapper::mapRow);
     }
 
     public Integer getDatabaseVersion() {

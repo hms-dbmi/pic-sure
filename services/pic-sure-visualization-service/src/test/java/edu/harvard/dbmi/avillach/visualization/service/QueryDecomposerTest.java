@@ -59,6 +59,22 @@ class QueryDecomposerTest {
     }
 
     @Test
+    void decompose_carriesAuthorizationFiltersOntoEverySubQuery() {
+        // The consent filters PSAMA injected are the ONLY thing scoping an authorized distribution to the studies the
+        // caller holds. Dropping them from any sub-query does not fail loudly -- HPDS answers the unscoped query -- so
+        // both sub-queries are asserted to carry them verbatim rather than merely non-empty.
+        AuthorizationFilter consents = new AuthorizationFilter("\\_consents\\", Set.of("phs000001.c1", "phs000002.c2"));
+        PhenotypicFilter required = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\demographics\\AGE\\", null, null, null, null);
+        Query query = new Query(List.of(), List.of(consents), required, List.of(), null, null, null);
+
+        List<QueryDecomposer.SubQueryDescriptor> result = decomposer.decompose(query);
+
+        assertEquals(2, result.size());
+        assertEquals(List.of(consents), result.get(0).query().authorizationFilters());
+        assertEquals(List.of(consents), result.get(1).query().authorizationFilters());
+    }
+
+    @Test
     void decompose_withNoFilters_returnsEmpty() {
         Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
 

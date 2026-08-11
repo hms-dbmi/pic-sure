@@ -18,7 +18,7 @@
         <spring-cloud.version>2025.0.0</spring-cloud.version>
         <!-- Internal artifacts: the 3.0.0 Java 25 line published from this repo.
              Legacy stays pinned to the frozen Java 11 releases and never resolves these. -->
-        <pic-sure-api-model.version>3.0.0</pic-sure-api-model.version>
+        <pic-sure-contracts.version>3.0.0</pic-sure-contracts.version>
         <pic-sure-hpds-model.version>3.0.0</pic-sure-hpds-model.version>
         <pic-sure-logging-client.version>3.0.0</pic-sure-logging-client.version>
         <pic-sure-spring-commons.version>3.0.0</pic-sure-spring-commons.version>
@@ -30,6 +30,10 @@
         <httpclient5.version>5.5.2</httpclient5.version>
         <!-- Structured logging encoder (not governed by the Spring BOMs) -->
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+        <!-- OpenAPI annotations (@Schema, @Operation, @Parameter). Pinning here keeps every module on ONE
+             swagger annotations artifact and ONE version, which the reactor's dependencyConvergence rule
+             requires. -->
+        <swagger-api.version>2.2.36</swagger-api.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -52,8 +56,8 @@
                  distinct groupId on pic-sure-hpds-model. -->
             <dependency>
                 <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-                <artifactId>pic-sure-api-model</artifactId>
-                <version>${pic-sure-api-model.version}</version>
+                <artifactId>pic-sure-contracts</artifactId>
+                <version>${pic-sure-contracts.version}</version>
             </dependency>
             <dependency>
                 <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
@@ -98,6 +102,15 @@
                 <groupId>net.logstash.logback</groupId>
                 <artifactId>logstash-logback-encoder</artifactId>
                 <version>${logstash-logback-encoder.version}</version>
+            </dependency>
+            <!-- The ONE swagger annotations artifact for the platform. The jakarta classifier is the current
+                 line; the non-jakarta io.swagger.core.v3:swagger-annotations ships the same
+                 io.swagger.v3.oas.annotations.* classes, so declaring both would put duplicate classes on every
+                 service classpath. -->
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-annotations-jakarta</artifactId>
+                <version>${swagger-api.version}</version>
             </dependency>
             <!-- Convergence pin: the auth0 SDK pulls okio 3.5.0 directly but 3.6.0 via its
                  own OkHttp transitive (dependencyConvergence enforcement, spec §17.4). -->

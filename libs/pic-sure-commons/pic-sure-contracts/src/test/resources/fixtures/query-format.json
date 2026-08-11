@@ -1,0 +1,1 @@
+{"name":"HPDS Query Format","description":"Query format supported by the HPDS resource","specification":{"expectedResultType":"One of COUNT, DATAFRAME, CROSS_COUNT","select":"A list of concept paths to return"},"examples":[{"expectedResultType":"COUNT","select":["\\demographics\\AGE\\"]}]}

@@ -106,7 +106,7 @@ class AuditLoggingFilterTest {
         assertThat(event.getEventType()).isEqualTo("QUERY");
         assertThat(event.getAction()).isEqualTo("query.sync");
         assertThat(event.getSessionId()).isEqualTo("session-123");
-        assertThat(event.getRequest().getReferrer()).isEqualTo("https://picsure.example.org/explore");
+        assertThat(event.getRequest().referrer()).isEqualTo("https://picsure.example.org/explore");
     }
 
     void srcIpIsTheRightmostXffEntrySoAClientSuppliedLeadingEntryIsNeverUsed() throws Exception {
@@ -125,7 +125,7 @@ class AuditLoggingFilterTest {
 
         ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client, times(1)).send(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("203.0.113.9");
+        assertThat(eventCaptor.getValue().getRequest().srcIp()).isEqualTo("203.0.113.9");
     }
 
     @Test
@@ -143,7 +143,7 @@ class AuditLoggingFilterTest {
 
         ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client, times(1)).send(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("192.0.2.44");
+        assertThat(eventCaptor.getValue().getRequest().srcIp()).isEqualTo("192.0.2.44");
     }
 
     @Test

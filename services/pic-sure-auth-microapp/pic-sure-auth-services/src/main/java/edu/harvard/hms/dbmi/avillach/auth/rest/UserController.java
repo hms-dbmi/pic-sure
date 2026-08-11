@@ -1,10 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.dbmi.avillach.contracts.auth.UserConsentsResponse;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
-import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,8 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Controller;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -27,11 +28,13 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  * <p>Endpoint for service handling business logic for users.</p>
  */
 @Tag(name = "User Management")
-@Controller
+@RestController
 @RequestMapping("/user")
 public class UserController {
 
     private final static Logger logger = LoggerFactory.getLogger(UserController.class);
+
+    private static final String INTERNAL_ERROR = "Inner application error, please contact admin.";
 
     private final UserService userService;
 
@@ -45,62 +48,63 @@ public class UserController {
     @AuditEvent(type = "OTHER", action = "user.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{userId}", produces = "application/json")
-    public ResponseEntity<User> getUserById(
+    public User getUserById(
         @Parameter(required = true, description = "The UUID of the user to fetch information about") @PathVariable("userId") String userId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_id", userId);
-        User userById = this.userService.getUserById(userId);
-        return PICSUREResponse.success(userById);
+        return this.userService.getUserById(userId);
     }
 
     @Operation(description = "GET a list of existing users, requires ADMIN or SUPER_ADMIN roles")
     @AuditEvent(type = "OTHER", action = "user.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json")
-    public ResponseEntity<List<User>> getUserAll() {
-        List<User> entityAll = this.userService.getAllUsers();
-        return PICSUREResponse.success(entityAll);
+    public List<User> getUserAll() {
+        return this.userService.getAllUsers();
     }
 
+    /**
+     * The body is the saved users, always. It used to be either that list or a {@code {message, content}} envelope depending on whether an
+     * email failed to send -- one endpoint, two shapes, decided by an unrelated side effect. The email warning is logged instead.
+     */
     @Operation(description = "POST a list of users, requires ADMIN role")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @RolesAllowed({ADMIN})
     @PostMapping(produces = "application/json")
-    public ResponseEntity<?> addUser(
+    public List<User> addUser(
         @Parameter(required = true, description = "A list of user in JSON format") @RequestBody List<User> users, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
         List<User> addedUsers = this.userService.addUsers(users);
         if (addedUsers == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", INTERNAL_ERROR);
         }
 
-        String message = this.userService.sendUserUpdateEmailsFromResponse(addedUsers);
-        if (message != null) {
-            return PICSUREResponse.success(message, addedUsers);
-        }
-
-        return PICSUREResponse.success(addedUsers);
+        logEmailWarning(addedUsers);
+        return addedUsers;
     }
 
     @Operation(description = "Update a list of users, will only update the fields listed, requires ADMIN role")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @RolesAllowed({ADMIN})
     @PutMapping(produces = "application/json")
-    public ResponseEntity<?> updateUser(@RequestBody List<User> users, HttpServletRequest request) {
+    public List<User> updateUser(@RequestBody List<User> users, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
         List<User> updatedUsers = this.userService.updateUser(users);
         if (updatedUsers == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", INTERNAL_ERROR);
         }
 
-        String message = this.userService.sendUserUpdateEmailsFromResponse(updatedUsers);
+        logEmailWarning(updatedUsers);
+        return updatedUsers;
+    }
+
+    private void logEmailWarning(List<User> users) {
+        String message = this.userService.sendUserUpdateEmailsFromResponse(users);
         if (message != null) {
-            return PICSUREResponse.success(message, updatedUsers);
+            logger.warn("User update email(s) did not send: {}", message);
         }
-
-        return PICSUREResponse.success(updatedUsers);
     }
 
     /**
@@ -111,20 +115,19 @@ public class UserController {
     @Operation(description = "Retrieve information of current user")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
-    public ResponseEntity<?> getCurrentUser(
+    public User.UserForDisplay getCurrentUser(
         @RequestHeader("Authorization") String authorizationHeader,
         @Parameter(description = "Attribute that represents if a long term token will attach to the response") @RequestParam(
             name = "hasToken", required = false
         ) Boolean hasToken
     ) {
-        logger.info("getCurrentUser() authorizationHeader: {}, hasToken {}", authorizationHeader, hasToken);
         User.UserForDisplay currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
 
         if (currentUser == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", INTERNAL_ERROR);
         }
 
-        return PICSUREResponse.success(currentUser);
+        return currentUser;
     }
 
     /**
@@ -134,30 +137,38 @@ public class UserController {
      * @param httpHeaders the http headers
      * @return the refreshed long term token
      */
-    @Operation(description = "refresh the long term tokne of current user")
+    @Operation(description = "refresh the long term token of current user")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
-    public ResponseEntity<?> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
+    public LongTermTokenResponse refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "token_type", "long_term");
-        Map<String, String> stringStringMap = this.userService.refreshUserToken(httpHeaders);
-        if (stringStringMap != null) {
-            return PICSUREResponse.success(stringStringMap);
+        LongTermTokenResponse refreshed = this.userService.refreshUserToken(httpHeaders);
+        if (refreshed == null) {
+            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", INTERNAL_ERROR);
         }
 
-        return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        return refreshed;
     }
 
+    /**
+     * The consents of the caller. This declared {@code @PathVariable("userId")} against a path with no {@code {userId}} template, so Spring
+     * could not resolve the argument and the endpoint answered 500 to everyone; the user now comes from the security context, exactly as
+     * {@link #getCurrentUser} does.
+     *
+     * <p>The body is the {@link UserConsentsResponse} contract, not the {@code user_consents} row: the persisted uuid is a storage detail
+     * and never belonged on the wire.
+     */
     @Operation(description = "Retrieve consents of current user")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
-    public ResponseEntity<?> getUserConsents() {
-        UserConsents userConsents = this.userService.getUserConsents();
+    public UserConsentsResponse getUserConsents() {
+        UserConsentsResponse userConsents = this.userService.getUserConsents();
 
         if (userConsents == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", INTERNAL_ERROR);
         }
 
-        return PICSUREResponse.success(userConsents);
+        return userConsents;
     }
 
 }

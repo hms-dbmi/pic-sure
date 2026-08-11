@@ -48,15 +48,16 @@
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-spring-commons</artifactId>
         </dependency>
-        <!-- Shared DTO/domain types. -->
-        <dependency>
-            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-            <artifactId>pic-sure-api-model</artifactId>
-        </dependency>
-        <!-- v1/v3 query models + QueryTranslator (used by queryMetadata to convert stored v1 bodies to v3). -->
+        <!-- v1/v3 query models + QueryTranslator: the v3 Query record IS the public query ingress contract; the
+             translator is used by /metadata to convert stored v1 bodies to v3. -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
             <artifactId>pic-sure-hpds-model</artifactId>
+        </dependency>
+        <!-- Typed cross-service contracts: QueryStatusResponse, SearchRequest, PaginatedResponse, SignedUrlResponse. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-contracts</artifactId>
         </dependency>
 
         <!-- Pooled RestClient backing (HPDS + operations-service HTTP clients). Version managed by the
@@ -75,6 +76,12 @@
             <groupId>org.wiremock</groupId>
             <artifactId>wiremock-standalone</artifactId>
             <scope>test</scope>
+        </dependency>
+        <!-- @Schema/@Parameter/@ApiResponse are used directly by this module's controllers and models; declared
+             rather than inherited transitively from pic-sure-contracts. -->
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
         </dependency>
     </dependencies>
 

@@ -68,8 +68,9 @@ class QueryServiceClientTest {
             .andExpect(header("X-User-Roles", "ROLE_X")).andExpect(header("X-User-Privileges", "PRIV_A,PRIV_B"))
             .andExpect(header("X-Request-Id", "request-1")).andExpect(header("Accept", MediaType.ALL_VALUE))
             .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-            .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
-            .andExpect(content().json("{\"resourceCredentials\":{}}"))
+            // The BARE v3 Query is the whole body: the query-service v3 ingress binds Query itself and 400s on envelope keys.
+            .andExpect(content().json("{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}")).andExpect(jsonPath("$.query").doesNotExist())
+            .andExpect(jsonPath("$.resourceCredentials").doesNotExist())
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
         Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
@@ -129,8 +130,8 @@ class QueryServiceClientTest {
         // into the body before this service sees it. Auth HPDS defaults hpds.requireAuthorizationFilter=true, so
         // dropping them here makes every authorized distribution fail with "Authorization filter is required".
         mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync"))
-            .andExpect(jsonPath("$.query.authorizationFilters[0].conceptPath").value("\\_consents\\"))
-            .andExpect(jsonPath("$.query.authorizationFilters[0].values[0]").value("phs000001.c1"))
+            .andExpect(jsonPath("$.authorizationFilters[0].conceptPath").value("\\_consents\\"))
+            .andExpect(jsonPath("$.authorizationFilters[0].values[0]").value("phs000001.c1"))
             .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
         Query query = new Query(
@@ -158,10 +159,10 @@ class QueryServiceClientTest {
         assertEquals("QUERY", event.getEventType());
         assertEquals("visualization.query-service.query", event.getAction());
         // The destination recorded must be the hop actually made, not the HPDS hop this service no longer performs.
-        assertEquals("/hpds/auth/v3/query/sync", event.getRequest().getUrl());
-        assertEquals("localhost", event.getRequest().getDestIp());
-        assertEquals(9999, event.getRequest().getDestPort());
-        assertEquals(200, event.getRequest().getStatus());
+        assertEquals("/hpds/auth/v3/query/sync", event.getRequest().url());
+        assertEquals("localhost", event.getRequest().destIp());
+        assertEquals(9999, event.getRequest().destPort());
+        assertEquals(200, event.getRequest().status());
         assertEquals("authorized", event.getMetadata().get("access_type"));
         assertEquals("categorical", event.getMetadata().get("distribution_kind"));
         assertNull(event.getMetadata().get("resource_uuid"));
@@ -177,7 +178,7 @@ class QueryServiceClientTest {
         expected.put("\\Nhanes\\demographics\\AGE\\", ageValues);
 
         mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync"))
-            .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}"))
+            .andExpect(content().json("{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
         Query query = new Query(List.of("\\Nhanes\\demographics\\AGE\\"), List.of(), null, List.of(), null, null, null);

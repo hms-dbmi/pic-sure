@@ -7,17 +7,24 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
+import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 
 /**
- * Ports the legacy WAR's {@code PicsureRS}/{@code PicsureRSv3} search endpoints. Mapped under BOTH the v1 and v3 ingress prefixes for a
- * given {@code {backend}} (multi-path {@code @RequestMapping} arrays) because search behaves identically either way -- unlike the query
- * lifecycle, {@link SearchService} always resolves the backend's non-versioned base (see its class javadoc): search is never versioned
- * downstream on HPDS. The legacy WAR's {@code {resourceId}} path segment is GONE (it was a registry-era placeholder that clients filled
- * with a nil UUID once the registry was removed): the well-defined ingress is {@code /hpds/{backend}[/v3]/search} and
- * {@code /hpds/{backend}[/v3]/search/values}.
+ * Ports the legacy WAR's {@code PicsureRS}/{@code PicsureRSv3} search endpoints, v3-only: {@code /hpds/{backend}/v3/search} and
+ * {@code /hpds/{backend}/v3/search/values}. The legacy WAR's {@code {resourceId}} path segment is GONE (it was a registry-era placeholder
+ * that clients filled with a nil UUID once the registry was removed), and so are the unversioned v1 aliases.
+ *
+ * <p>Both endpoints are typed and minimal: {@code /search} binds a {@link SearchRequest} (the search term, nothing else -- strict
+ * deserialization rejects leftover envelope fields), and {@code /search/values} is a pure query-parameter GET returning a
+ * {@link PaginatedResponse} of concept values. It previously declared a {@code @RequestBody} on a GET, which no HTTP client sends and no
+ * downstream call read.
+ *
+ * <p>Search is versioned downstream too (see {@link SearchService}): HPDS serves {@code /search} and {@code /search/values/} only under
+ * {@code PIC-SURE/v3} now that its v1 controller is gone, so this ingress resolves the backend's {@code /v3} base. The legacy WAR's
+ * {@code PicsureSearchService} hit the unversioned base instead -- that path no longer exists.
  */
 @RestController
 public class HpdsSearchController {
@@ -28,18 +35,29 @@ public class HpdsSearchController {
         this.service = service;
     }
 
-    @PostMapping({"/hpds/{backend}/search", "/hpds/{backend}/v3/search"})
-    public SearchResults search(@PathVariable("backend") String backend, @RequestBody QueryRequest req) {
+    @PostMapping("/hpds/{backend}/v3/search")
+    public SearchResults search(@PathVariable("backend") String backend, @RequestBody SearchRequest req) {
         return service.search(backend, req);
     }
 
-    @GetMapping(value = {"/hpds/{backend}/search/values", "/hpds/{backend}/v3/search/values"}, consumes = "*/*")
-    public PaginatedSearchResult<?> values(
-        @PathVariable("backend") String backend,
-        @RequestBody(required = false) QueryRequest req, @RequestParam(name = "genomicConceptPath", required = false) String conceptPath,
-        @RequestParam(name = "query", required = false) String query, @RequestParam(name = "page", required = false) Integer page,
-        @RequestParam(name = "size", required = false) Integer size
+    /**
+     * Straight passthrough of HPDS's {@code /search/values/}, including its <b>1-based</b> paging: this service neither rebases the request
+     * nor rewrites the {@code page} HPDS echoes back. The dictionary's {@code /concepts} endpoints page from 0; the shared
+     * {@code PaginatedResponse} record deliberately does not fix a base.
+     */
+    @Operation(
+        summary = "Search genomic concept values",
+        description = "Passthrough to HPDS. Paging is 1-based here: page 1 is the first page, and HPDS rejects page < 1."
+    )
+    @GetMapping("/hpds/{backend}/v3/search/values")
+    public PaginatedResponse<String> values(
+        @PathVariable("backend") String backend, @RequestParam(name = "genomicConceptPath", required = false) String conceptPath,
+        @RequestParam(name = "query", required = false) String query,
+        @Parameter(
+            description = "ONE-BASED page index, passed through to HPDS unchanged. The first page is 1 and HPDS rejects anything "
+                + "below 1. Omit to let HPDS apply its own default."
+        ) @RequestParam(name = "page", required = false) Integer page, @RequestParam(name = "size", required = false) Integer size
     ) {
-        return service.searchConceptValues(backend, req, conceptPath, query, page, size);
+        return service.searchConceptValues(backend, conceptPath, query, page, size);
     }
 }

@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
+import edu.harvard.dbmi.avillach.contracts.auth.UserConsentsResponse;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
@@ -88,40 +91,34 @@ public class UserService {
         this.loggingClient = loggingClient;
     }
 
-    public HashMap<String, String> getUserProfileResponse(UserClaims userClaims) {
+    /**
+     * Mints the PIC-SURE token and assembles the profile every identity provider hands back from {@code /authentication/{idpProvider}}. The
+     * field names are the endpoint's wire contract, so {@link AuthenticationResponse} carries them verbatim -- including
+     * {@code acceptedTOS} as a string, which is what the map has always put on the wire.
+     *
+     * @return the profile, or {@code null} when the claims carry no subject and no token can be minted
+     */
+    public AuthenticationResponse getUserProfileResponse(UserClaims userClaims) {
         if (StringUtils.isBlank(userClaims.getSub())) {
             logger.warn("User subject is blank, cannot generate profile response");
             return null;
         }
 
         logger.debug("getUserProfileResponse() started");
-        HashMap<String, String> responseMap = new HashMap<String, String>();
 
         HashMap<String, Object> claimsMap = userClaims.toHashMap();
         logger.debug("getUserProfileResponse() using claims:{}", claimsMap.toString());
         String token =
             this.jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claimsMap, userClaims.getSub(), this.tokenExpirationTime);
 
-        responseMap.put("token", token);
-        logger.debug("getUserProfileResponse() .usedId field is set");
-        responseMap.put("userId", userClaims.getSub());
-
-        logger.debug("getUserProfileResponse() .email field is set");
-        responseMap.put("email", userClaims.getEmail());
-
-        logger.debug("getUserProfileResponse() acceptedTOS is set");
         boolean acceptedTOS = tosService.hasUserAcceptedLatest(userClaims.getSub());
-        responseMap.put("acceptedTOS", "" + acceptedTOS);
-
-        logger.debug("getUserProfileResponse() expirationDate is set");
         Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + this.tokenExpirationTime);
-        responseMap.put("expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());
-
-        logger.debug("getUserProfileResponse() uuid field is set");
-        responseMap.put("uuid", userClaims.getUuid());
 
         logger.debug("getUserProfileResponse() finished");
-        return responseMap;
+        return new AuthenticationResponse(
+            token, userClaims.getSub(), userClaims.getEmail(), Boolean.toString(acceptedTOS),
+            ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString(), userClaims.getUuid(), null
+        );
     }
 
     public List<String> addRoleClaims(User user) {
@@ -365,7 +362,7 @@ public class UserService {
     }
 
     @Transactional
-    public Map<String, String> refreshUserToken(HttpHeaders httpHeaders) {
+    public LongTermTokenResponse refreshUserToken(HttpHeaders httpHeaders) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
         if (customUserDetails == null || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null) {
@@ -379,7 +376,7 @@ public class UserService {
         user.setToken(longTermToken);
         this.userRepository.save(user);
 
-        return Map.of("userLongTermToken", longTermToken);
+        return new LongTermTokenResponse(longTermToken);
     }
 
     /**
@@ -638,12 +635,21 @@ public class UserService {
     }
 
     /**
-     * Returns the consents of the currently authenticated user. The user is taken from the security context, so a caller can only ever read
-     * its own consents.
+     * The consents of the user behind the current token. The user is taken from the security context, so a caller can only ever read its
+     * own consents.
      *
-     * @return the user's consents, an empty set of consents if none are stored, or null if no user is authenticated
+     * <p>This used to take the target user's uuid and compare it to the caller's with {@code !=} -- reference identity on two {@code UUID}
+     * objects, which is false for equal uuids read from different places, so the "is this your own record" check rejected everyone who
+     * reached it. The caller cannot name a user at all now: {@code /user/me/consents} is a self endpoint, and deriving the subject from the
+     * security context is what makes the check unnecessary rather than merely correct.
+     *
+     * <p>The answer is the {@link UserConsentsResponse} contract, not the {@code user_consents} JPA entity: the entity carries the
+     * persisted row's own uuid, which is a storage detail no client has a use for, and shipping it invites one to bind to PSAMA's schema.
+     * Only the user id and the consent map cross the wire.
+     *
+     * @return the user's consents, an empty map of consents if none are stored, or null if no user is authenticated
      */
-    public UserConsents getUserConsents() {
+    public UserConsentsResponse getUserConsents() {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         Authentication authentication = securityContext.getAuthentication();
         // An unauthenticated request has either no Authentication at all or an AnonymousAuthenticationToken, whose principal is the
@@ -659,12 +665,12 @@ public class UserService {
         UUID userId = customUserDetails.getUser().getUuid();
         UserConsents userConsents = userConsentsRepository.findByUserId(userId);
         if (userConsents == null) {
-            // Not an error: a user with no stored record simply has no authorized studies. Returning an empty set lets clients treat
+            // Not an error: a user with no stored record simply has no authorized studies. Returning an empty map lets clients treat
             // this as "nothing authorized" instead of failing outright.
             logger.info("No consents stored for user {}", userId);
-            return new UserConsents().setUserId(userId).setConsents(Map.of());
+            return new UserConsentsResponse(userId.toString(), Map.of());
         }
 
-        return userConsents;
+        return new UserConsentsResponse(userId.toString(), userConsents.getConsents());
     }
 }

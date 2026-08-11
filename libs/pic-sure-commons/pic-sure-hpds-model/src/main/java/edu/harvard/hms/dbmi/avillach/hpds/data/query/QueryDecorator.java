@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.query;
 
-import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genomic.VariantUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

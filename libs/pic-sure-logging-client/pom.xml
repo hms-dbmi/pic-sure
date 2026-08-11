@@ -19,34 +19,34 @@
     <name>PIC-SURE Logging Client</name>
     <description>Lightweight client library for sending logging events to the PIC-SURE Logging service</description>
 
-    <properties>
-        <jackson.version>2.16.0</jackson.version>
-        <slf4j.version>1.7.36</slf4j.version>
-    </properties>
-
     <dependencies>
+        <!-- The audit wire model. This library used to carry its own copy of AuditEvent/RequestInfo
+             alongside the logging service's; both sides now compile against the one record.
+             Sharing a reactor artifact means the platform BOM governs the versions below too:
+             the local jackson/slf4j/junit pins this module used to carry (2.16.0, 1.7.36, 5.10.1)
+             would not converge with what pic-sure-contracts pulls in. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-contracts</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
         </dependency>
 
         <!-- Test dependencies -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>5.10.1</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
-            <version>${slf4j.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

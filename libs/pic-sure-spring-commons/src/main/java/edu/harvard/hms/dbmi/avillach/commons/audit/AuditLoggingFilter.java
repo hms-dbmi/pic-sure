@@ -12,7 +12,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
-import edu.harvard.dbmi.avillach.logging.RequestInfo;
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
+import edu.harvard.dbmi.avillach.logging.RequestInfoBuilder;
 import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -97,8 +98,8 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         String userAgent = request.getHeader("User-Agent");
         String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, userAgent);
 
-        RequestInfo requestInfo = RequestInfo.builder().requestId(requestId).method(method).url(path).queryString(request.getQueryString())
-            .srcIp(srcIp).status(response.getStatus()).duration(duration).httpUserAgent(userAgent)
+        RequestInfo requestInfo = new RequestInfoBuilder().requestId(requestId).method(method).url(path)
+            .queryString(request.getQueryString()).srcIp(srcIp).status(response.getStatus()).duration(duration).httpUserAgent(userAgent)
             .httpContentType(response.getContentType()).referrer(request.getHeader("Referer")).build();
 
         Map<String, Object> metadata = new LinkedHashMap<>();

@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -44,6 +45,13 @@ class InternalQueryControllerTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** The canonical bare v3 body a row written since Task 15 carries. */
+    private static final String BARE_V3_QUERY = "{\"select\":[\"\\\\age\\\\\"],\"expectedResultType\":\"COUNT\"}";
+
+    /** The same query as it was stored BEFORE Task 15: the legacy QueryRequest envelope, credentials and all. */
+    private static final String LEGACY_ENVELOPE_ROW = "{\"@type\":\"GeneralQueryRequest\","
+        + "\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"}," + "\"query\":" + BARE_V3_QUERY + ",\"resourceUUID\":null}";
+
     @Test
     void missingTokenIsForbiddenWithTheExactErrorBody() throws Exception {
         mockMvc.perform(get("/internal/queries/{id}", UUID.randomUUID())).andExpect(status().isForbidden())
@@ -63,6 +71,18 @@ class InternalQueryControllerTest {
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\"}")
         ).andExpect(status().isCreated()).andExpect(jsonPath("$.picsureId").exists());
+    }
+
+    /**
+     * {@code status} binds as the {@code PicSureStatus} enum now that the body is the shared contract record, so an unknown NAME is a
+     * binding failure. That must stay a caller error (400), not a 500 -- the ordinal is never accepted on the wire either way.
+     */
+    @Test
+    void saveWithAnUnknownStatusNameReturns400() throws Exception {
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"{\\\"q\\\":1}\",\"status\":\"NOT_A_REAL_STATUS\"}")
+        ).andExpect(status().isBadRequest());
     }
 
     @Test
@@ -115,28 +135,50 @@ class InternalQueryControllerTest {
         ).andExpect(status().isNotFound());
     }
 
+    /**
+     * SECURITY, ported from mainline #277: the FULL row read must strip credentials too, not just {@code /dispatch}. The service layer is
+     * covered thoroughly in {@code QueryPersistenceServiceTest}; this pins the HTTP boundary, so a controller that started answering with
+     * the entity instead of the DTO would fail here rather than quietly serve secrets.
+     */
     @Test
     void getStripsResourceCredentialsLikeDispatchDoes() throws Exception {
-        // the full GET must not be a credential side door around dispatch's stripping
         Query saved = new Query();
         saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
         saved = queryRepo.save(saved);
 
         mockMvc.perform(get("/internal/queries/{picsureId}", saved.getUuid()).header(InternalTokenFilter.HEADER, validToken))
-            .andExpect(status().isOk()).andExpect(
-                result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString()).doesNotContain("secret")
-                    .doesNotContain("resourceCredentials")
-            );
+            .andExpect(status().isOk()).andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain("secret"))
+            .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain("resourceCredentials"));
     }
 
+    /**
+     * A row written since Task 15 stores the BARE v3 query; dispatch hands back exactly that, as a JSON STRING (never a nested object --
+     * the gateway's {@code QueryAuthFetcher} parses {@code queryJson} as a string).
+     */
     @Test
-    void dispatchReturnsQueryJsonWithResourceCredentialsStripped() throws Exception {
+    void dispatchOfABareRowReturnsTheBareQueryAsAString() throws Exception {
         Query saved = new Query();
-        saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
+        saved.setQuery(BARE_V3_QUERY);
         saved = queryRepo.save(saved);
 
         mockMvc.perform(get("/internal/queries/{picsureId}/dispatch", saved.getUuid()).header(InternalTokenFilter.HEADER, validToken))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.queryJson").isString()).andExpect(
+            .andExpect(status().isOk()).andExpect(jsonPath("$.queryJson").isString())
+            .andExpect(jsonPath("$.queryJson").value(BARE_V3_QUERY));
+    }
+
+    /**
+     * A row written BEFORE Task 15 stores the legacy {@code QueryRequest} envelope. Dispatch unwraps it (and strips the credentials it
+     * carries) so the gateway sees the SAME node shape as for a new row -- the authorization rules must not depend on a row's age.
+     */
+    @Test
+    void dispatchOfALegacyEnvelopeRowReturnsTheSameBareQueryWithCredentialsStripped() throws Exception {
+        Query saved = new Query();
+        saved.setQuery(LEGACY_ENVELOPE_ROW);
+        saved = queryRepo.save(saved);
+
+        mockMvc.perform(get("/internal/queries/{picsureId}/dispatch", saved.getUuid()).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.queryJson").isString())
+            .andExpect(jsonPath("$.queryJson").value(BARE_V3_QUERY)).andExpect(
                 result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString()).doesNotContain("secret")
                     .doesNotContain("resourceCredentials")
             );

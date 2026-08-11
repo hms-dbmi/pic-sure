@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.controller;
 
 import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
+import edu.harvard.dbmi.avillach.visualization.model.BinnedDistribution;
 import edu.harvard.dbmi.avillach.visualization.model.ContinuousBinningRequest;
 import edu.harvard.dbmi.avillach.visualization.service.VisualizationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,12 +23,12 @@ public class BinningController {
     }
 
     @PostMapping({"/bin/continuous", "/v3/bin/continuous"})
-    public ResponseEntity<Map<String, Map<String, Integer>>> binContinuous(
+    public ResponseEntity<BinnedDistribution> binContinuous(
         @Valid @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
     ) {
-        AuditLoggingContext.addBinningRequestMetadata(servletRequest, request.query());
-        Map<String, Map<String, Integer>> response = visualizationService.binContinuousData(request.query());
-        AuditLoggingContext.addBinningResponseMetadata(servletRequest, response);
-        return ResponseEntity.ok(response);
+        AuditLoggingContext.addBinningRequestMetadata(servletRequest, request.continuousData());
+        Map<String, Map<String, Integer>> bins = visualizationService.binContinuousData(request.continuousData());
+        AuditLoggingContext.addBinningResponseMetadata(servletRequest, bins);
+        return ResponseEntity.ok(new BinnedDistribution(bins));
     }
 }

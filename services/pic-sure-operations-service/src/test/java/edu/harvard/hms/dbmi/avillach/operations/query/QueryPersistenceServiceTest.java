@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,10 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
 
-import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import edu.harvard.dbmi.avillach.contracts.internal.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.contracts.internal.StoredQuery;
+import edu.harvard.dbmi.avillach.contracts.internal.UpdateQueryRequest;
+import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
@@ -24,6 +28,13 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 @AutoConfigureTestDatabase(replace = Replace.NONE)
 @Import(QueryPersistenceService.class)
 class QueryPersistenceServiceTest {
+
+    /** The canonical bare v3 body a row written since Task 15 carries -- no envelope, no credentials. */
+    private static final String BARE_V3_QUERY = "{\"select\":[\"\\\\age\\\\\"],\"expectedResultType\":\"COUNT\"}";
+
+    /** The same query as it was stored BEFORE Task 15: wrapped in the legacy QueryRequest envelope, credentials and all. */
+    private static final String LEGACY_ENVELOPE_ROW = "{\"@type\":\"GeneralQueryRequest\","
+        + "\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"}," + "\"query\":" + BARE_V3_QUERY + ",\"resourceUUID\":null}";
 
     @Autowired
     private QueryPersistenceService service;
@@ -37,7 +48,7 @@ class QueryPersistenceServiceTest {
     @Test
     void saveThenGetRoundTripsTheGzipQueryStatusAndVersion() {
         SaveQueryRequest req = new SaveQueryRequest(
-            "{\"select\":[\"foo\"]}", "resource-result-1", "QUEUED", "3", Base64.getEncoder().encodeToString("meta".getBytes())
+            "{\"select\":[\"foo\"]}", "resource-result-1", PicSureStatus.QUEUED, "3", Base64.getEncoder().encodeToString("meta".getBytes())
         );
 
         UUID picsureId = service.save(req);
@@ -48,7 +59,7 @@ class QueryPersistenceServiceTest {
         assertThat(stored.picsureId()).isEqualTo(picsureId);
         assertThat(stored.query()).isEqualTo("{\"select\":[\"foo\"]}");
         assertThat(stored.resourceResultId()).isEqualTo("resource-result-1");
-        assertThat(stored.status()).isEqualTo("QUEUED");
+        assertThat(stored.status()).isEqualTo(PicSureStatus.QUEUED);
         assertThat(stored.version()).isEqualTo("3");
         assertThat(new String(Base64.getDecoder().decode(stored.metadata()))).isEqualTo("meta");
     }
@@ -62,16 +73,16 @@ class QueryPersistenceServiceTest {
 
     @Test
     void updateChangesOnlyThePresentFields() {
-        UUID picsureId = service.save(new SaveQueryRequest("{\"q\":1}", "orig-result-id", "QUEUED", "1", null));
+        UUID picsureId = service.save(new SaveQueryRequest("{\"q\":1}", "orig-result-id", PicSureStatus.QUEUED, "1", null));
         entityManager.flush();
         entityManager.clear();
 
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null));
+        service.update(picsureId, new UpdateQueryRequest(PicSureStatus.AVAILABLE, null, null));
         entityManager.flush();
         entityManager.clear();
 
         StoredQuery stored = service.get(picsureId);
-        assertThat(stored.status()).isEqualTo("AVAILABLE");
+        assertThat(stored.status()).isEqualTo(PicSureStatus.AVAILABLE);
         // resourceResultId/metadata were not part of the update -> unchanged.
         assertThat(stored.resourceResultId()).isEqualTo("orig-result-id");
         assertThat(stored.version()).isEqualTo("1");
@@ -80,14 +91,16 @@ class QueryPersistenceServiceTest {
     @Test
     void updateUnknownIdThrowsNotFound() {
         UUID unknown = UUID.randomUUID();
-        UpdateQueryRequest req = new UpdateQueryRequest("AVAILABLE", null, null);
+        UpdateQueryRequest req = new UpdateQueryRequest(PicSureStatus.AVAILABLE, null, null);
         assertThatThrownBy(() -> service.update(unknown, req)).isInstanceOf(PicsureException.class)
             .satisfies(e -> assertThat(((PicsureException) e).getStatus().value()).isEqualTo(404));
     }
 
+    // --- server-owned timings (ported from mainline #277) ---
+
     @Test
     void saveStampsStartTimeAndFirstAvailableTransitionStampsReadyTime() {
-        UUID picsureId = service.save(new SaveQueryRequest("{}", null, "QUEUED", null, null));
+        UUID picsureId = service.save(new SaveQueryRequest("{}", null, PicSureStatus.QUEUED, "3", null));
         entityManager.flush();
         entityManager.clear();
 
@@ -95,7 +108,7 @@ class QueryPersistenceServiceTest {
         assertThat(afterSave.startTime()).isNotNull();
         assertThat(afterSave.readyTime()).isNull();
 
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null));
+        service.update(picsureId, new UpdateQueryRequest(PicSureStatus.AVAILABLE, null, null));
         entityManager.flush();
         entityManager.clear();
 
@@ -103,16 +116,17 @@ class QueryPersistenceServiceTest {
         assertThat(ready.startTime()).isEqualTo(afterSave.startTime());
         assertThat(ready.readyTime()).isNotNull();
 
-        // a later status update must not move the original readyTime
-        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", "rr-later", null));
+        // A later AVAILABLE update must NOT move readyTime: a client polling after completion would otherwise
+        // keep pushing the completion timestamp forward for as long as it kept asking.
+        service.update(picsureId, new UpdateQueryRequest(PicSureStatus.AVAILABLE, "rr-later", null));
         entityManager.flush();
         entityManager.clear();
         assertThat(service.get(picsureId).readyTime()).isEqualTo(ready.readyTime());
     }
 
+    /** Rows migrated from the legacy schema already carry timing; the internal API must return it rather than null it out. */
     @Test
     void timingFieldsOnMigratedRowsRoundTripThroughGet() {
-        // rows migrated from the legacy schema already carry timing; the internal API must return it
         Query legacy = new Query();
         legacy.setQuery("{}");
         legacy.setStartTime(java.sql.Date.valueOf("2024-01-02"));
@@ -126,45 +140,81 @@ class QueryPersistenceServiceTest {
         assertThat(stored.readyTime()).isEqualTo(java.sql.Date.valueOf("2024-01-03").getTime());
     }
 
+    // --- dispatch: one node shape out, whatever the row's age ---
+
+    /** A row written since Task 15 is already bare; dispatch hands it back untouched. */
     @Test
-    void saveStripsResourceCredentialsBeforePersisting() {
-        UUID picsureId = service.save(
-            new SaveQueryRequest(
-                "{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}", null, "QUEUED", null, null
-            )
-        );
+    void dispatchOfABareRowReturnsTheStoredQueryUnchanged() {
+        UUID picsureId = service.save(new SaveQueryRequest(BARE_V3_QUERY, null, PicSureStatus.QUEUED, "3", null));
         entityManager.flush();
         entityManager.clear();
 
-        Query entity = repo.findById(picsureId).orElseThrow();
-        assertThat(entity.getQuery()).doesNotContain("resourceCredentials").doesNotContain("secret").contains("\"query\":\"q\"");
+        assertThat(service.dispatchQueryJson(picsureId)).isEqualTo(BARE_V3_QUERY);
     }
 
+    /**
+     * The whole point of normalizing at dispatch: an old envelope row and a new bare row carrying the SAME query must produce
+     * byte-identical dispatch payloads, so the gateway's JsonPath authorization rules see one node shape regardless of when the row was
+     * written.
+     */
     @Test
-    void getStripsResourceCredentialsFromRowsStoredBeforeWritersStripped() {
-        Query legacy = new Query();
-        legacy.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
-        UUID picsureId = repo.save(legacy).getUuid();
+    void dispatchOfALegacyEnvelopeRowReturnsTheSamePayloadAsABareRow() {
+        UUID legacy = service.save(new SaveQueryRequest(LEGACY_ENVELOPE_ROW, null, PicSureStatus.QUEUED, "3", null));
+        UUID bare = service.save(new SaveQueryRequest(BARE_V3_QUERY, null, PicSureStatus.QUEUED, "3", null));
         entityManager.flush();
         entityManager.clear();
 
-        StoredQuery stored = service.get(picsureId);
-        assertThat(stored.query()).doesNotContain("resourceCredentials").doesNotContain("secret").contains("\"query\":\"q\"");
+        assertThat(service.dispatchQueryJson(legacy)).isEqualTo(service.dispatchQueryJson(bare)).isEqualTo(BARE_V3_QUERY);
     }
 
+    /** The legacy envelope is where stored credentials actually live -- unwrapping must not be the only thing that removes them. */
     @Test
-    void dispatchStripsResourceCredentialsAndReturnsAString() {
-        UUID picsureId = service.save(
-            new SaveQueryRequest(
-                "{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}", null, "QUEUED", null, null
-            )
-        );
+    void dispatchStripsResourceCredentialsFromALegacyEnvelopeRow() {
+        UUID picsureId = service.save(new SaveQueryRequest(LEGACY_ENVELOPE_ROW, null, PicSureStatus.QUEUED, "3", null));
         entityManager.flush();
         entityManager.clear();
 
-        String dispatchJson = service.dispatchQueryJson(picsureId);
+        assertThat(service.dispatchQueryJson(picsureId)).doesNotContain("resourceCredentials").doesNotContain("secret");
+    }
 
-        assertThat(dispatchJson).doesNotContain("resourceCredentials").doesNotContain("secret").contains("\"query\":\"q\"");
+    /** Defensive: credentials smuggled INSIDE the envelope's query member are stripped too, not carried out by the unwrap. */
+    @Test
+    void dispatchStripsResourceCredentialsNestedInsideTheEnvelopesQuery() {
+        String row = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"outer\"},"
+            + "\"query\":{\"expectedResultType\":\"COUNT\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"inner\"}}}";
+        UUID picsureId = service.save(new SaveQueryRequest(row, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.dispatchQueryJson(picsureId)).doesNotContain("resourceCredentials").doesNotContain("outer")
+            .doesNotContain("inner").isEqualTo("{\"expectedResultType\":\"COUNT\"}");
+    }
+
+    /**
+     * A legacy row whose {@code query} member is not an object is not an envelope worth unwrapping -- the root is returned (credentials
+     * stripped), exactly as before Task 15. Unwrapping it would hand the gateway a bare JSON string where it expects a query object.
+     */
+    @Test
+    void dispatchOfARowWhoseQueryMemberIsNotAnObjectKeepsTheRoot() {
+        String row = "{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}";
+        UUID picsureId = service.save(new SaveQueryRequest(row, null, PicSureStatus.QUEUED, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.dispatchQueryJson(picsureId)).doesNotContain("resourceCredentials").doesNotContain("secret")
+            .contains("\"query\":\"q\"");
+    }
+
+    /** A {@code "query":null} row must not unwrap to a NullNode -- that would dispatch the literal string {@code "null"} to the gateway. */
+    @Test
+    void dispatchOfARowWithANullQueryMemberDoesNotEmitTheLiteralNull() {
+        UUID picsureId = service
+            .save(new SaveQueryRequest("{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":null}", null, null, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.dispatchQueryJson(picsureId)).isNotEqualTo("null").doesNotContain("resourceCredentials")
+            .isEqualTo("{\"query\":null}");
     }
 
     @Test
@@ -176,7 +226,7 @@ class QueryPersistenceServiceTest {
 
     @Test
     void dispatchOfBlankStoredQueryReturnsNull() {
-        UUID picsureId = service.save(new SaveQueryRequest(null, null, "QUEUED", null, null));
+        UUID picsureId = service.save(new SaveQueryRequest(null, null, PicSureStatus.QUEUED, null, null));
         entityManager.flush();
         entityManager.clear();
 
@@ -184,22 +234,92 @@ class QueryPersistenceServiceTest {
     }
 
     @Test
-    void invalidStatusOnSaveThrowsBadRequest() {
-        SaveQueryRequest req = new SaveQueryRequest("{}", null, "NOT_A_REAL_STATUS", null, null);
-        assertThatThrownBy(() -> service.save(req)).isInstanceOf(PicsureException.class)
-            .satisfies(e -> assertThat(((PicsureException) e).getStatus().value()).isEqualTo(400));
+    void dispatchOfAnUnparseableStoredQueryReturnsNullRatherThanTheRawBody() {
+        UUID picsureId =
+            service.save(new SaveQueryRequest("{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"", null, null, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.dispatchQueryJson(picsureId)).isNull();
+    }
+
+    // --- get: the same credential strip, defense in depth (GET /internal/queries/{id} is internal-token gated, not public) ---
+
+    /**
+     * DEFENSE IN DEPTH: {@code get} is what {@code GET /internal/queries/{id}} returns, and legacy envelope rows really do carry
+     * {@code resourceCredentials} at the root. The internal-token filter is the gate; stripping here means a gate failure still cannot leak
+     * a stored bearer token. Mirrors {@link #dispatchStripsResourceCredentialsFromALegacyEnvelopeRow}.
+     */
+    @Test
+    void getStripsResourceCredentialsFromALegacyEnvelopeRow() {
+        UUID picsureId = service.save(new SaveQueryRequest(LEGACY_ENVELOPE_ROW, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.get(picsureId).query()).doesNotContain("resourceCredentials").doesNotContain("secret");
+    }
+
+    /** Same strip, nested: credentials inside the envelope's {@code query} member must not survive either. */
+    @Test
+    void getStripsResourceCredentialsNestedInsideTheEnvelopesQuery() {
+        String row = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"outer\"},"
+            + "\"query\":{\"expectedResultType\":\"COUNT\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"inner\"}}}";
+        UUID picsureId = service.save(new SaveQueryRequest(row, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.get(picsureId).query()).doesNotContain("resourceCredentials").doesNotContain("outer").doesNotContain("inner");
+    }
+
+    /**
+     * The strip must NOT normalize the shape: unlike dispatch, {@code get} keeps the stored envelope, because query-service's
+     * {@code buildQueryJson}/{@code tryTranslate} does its own envelope-tolerant unwrap and decides v1-vs-v3 translation from what it
+     * receives. Only the credentials go.
+     */
+    @Test
+    void getKeepsTheStoredEnvelopeShapeAndOnlyRemovesCredentials() {
+        UUID picsureId = service.save(new SaveQueryRequest(LEGACY_ENVELOPE_ROW, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        String query = service.get(picsureId).query();
+        assertThat(query).contains("\"@type\":\"GeneralQueryRequest\"").contains("\"query\":").contains("\"expectedResultType\":\"COUNT\"")
+            .contains("\"resourceUUID\":null");
+    }
+
+    /** A bare v3 row has nothing to strip and comes back as stored. */
+    @Test
+    void getOfABareRowReturnsTheStoredQueryUnchanged() {
+        UUID picsureId = service.save(new SaveQueryRequest(BARE_V3_QUERY, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.get(picsureId).query()).isEqualTo(BARE_V3_QUERY);
+    }
+
+    /**
+     * Unparseable stored JSON has no parsed tree to strip, so it is dropped rather than returned raw -- it may still spell out a secret.
+     */
+    @Test
+    void getOfAnUnparseableStoredQueryReturnsNullRatherThanTheRawBody() {
+        UUID picsureId =
+            service.save(new SaveQueryRequest("{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"", null, null, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.get(picsureId).query()).isNull();
     }
 
     @Test
     void invalidBase64MetadataOnSaveThrowsBadRequest() {
-        SaveQueryRequest req = new SaveQueryRequest("{}", null, "QUEUED", null, "not-valid-base64!!!");
+        SaveQueryRequest req = new SaveQueryRequest("{}", null, PicSureStatus.QUEUED, null, "not-valid-base64!!!");
         assertThatThrownBy(() -> service.save(req)).isInstanceOf(PicsureException.class)
             .satisfies(e -> assertThat(((PicsureException) e).getStatus().value()).isEqualTo(400));
     }
 
     @Test
     void invalidBase64MetadataOnUpdateThrowsBadRequest() {
-        UUID picsureId = service.save(new SaveQueryRequest("{}", null, "QUEUED", null, null));
+        UUID picsureId = service.save(new SaveQueryRequest("{}", null, PicSureStatus.QUEUED, null, null));
         entityManager.flush();
         entityManager.clear();
 
@@ -209,13 +329,33 @@ class QueryPersistenceServiceTest {
     }
 
     @Test
-    void savedStatusEnumRoundTripsThroughOrdinalMapping() {
+    void savedStatusEnumRoundTripsThroughStringMapping() {
         for (PicSureStatus status : PicSureStatus.values()) {
-            UUID picsureId = service.save(new SaveQueryRequest("{}", null, status.name(), null, null));
+            UUID picsureId = service.save(new SaveQueryRequest("{}", null, status, null, null));
             entityManager.flush();
             entityManager.clear();
 
-            assertThat(service.get(picsureId).status()).isEqualTo(status.name());
+            assertThat(service.get(picsureId).status()).isEqualTo(status);
         }
+    }
+
+    /**
+     * The mapping flip itself: {@code status} must reach the COLUMN as the enum NAME, not its ordinal. A round trip alone cannot tell the
+     * two apart (either mapping round-trips), so this reads the raw column back. This is the in-code half of
+     * {@code V9__ALTER_QUERY_STATUS_TO_STRING.sql}, which moves the existing MySQL rows the same way.
+     */
+    @Test
+    void statusIsPersistedAsTheEnumNameNotItsOrdinal() {
+        repo.deleteAll();
+        for (PicSureStatus status : PicSureStatus.values()) {
+            service.save(new SaveQueryRequest("{}", null, status, null, null));
+        }
+        entityManager.flush();
+        entityManager.clear();
+
+        @SuppressWarnings("unchecked")
+        List<Object> persisted = entityManager.getEntityManager().createNativeQuery("select status from query").getResultList();
+
+        assertThat(persisted).containsExactlyInAnyOrder("QUEUED", "PENDING", "ERROR", "AVAILABLE");
     }
 }

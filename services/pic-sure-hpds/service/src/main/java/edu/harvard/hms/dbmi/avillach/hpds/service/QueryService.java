@@ -22,7 +22,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import edu.harvard.dbmi.avillach.util.UUIDv5;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult.Status;
