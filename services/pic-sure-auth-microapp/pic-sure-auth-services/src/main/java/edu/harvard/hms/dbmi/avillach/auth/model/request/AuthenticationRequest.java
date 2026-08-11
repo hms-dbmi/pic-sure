@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.model.request;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * The body of {@code POST /authentication/{idpProvider}}, replacing the untyped {@code Map<String, String>} the endpoint used to bind.
@@ -18,5 +19,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * client sends (a provider-specific field, a stale UI parameter) into a 400 that locks users out; login is not a place to discover that.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record AuthenticationRequest(String code, @JsonProperty("access_token") String accessToken, String redirectURI) {
+@Schema(description = "Credentials handed to an identity provider by POST /authentication/{idpProvider}")
+public record AuthenticationRequest(
+    @Schema(description = "OIDC authorization code (Okta/AIM-AHEAD, RAS, FENCE)") String code,
+    @JsonProperty("access_token") @Schema(name = "access_token", description = "Auth0 access token") String accessToken,
+    @Schema(description = "Auth0 redirect URI the code was issued against") String redirectURI
+) {
 }

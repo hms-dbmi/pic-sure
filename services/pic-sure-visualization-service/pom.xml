@@ -73,6 +73,27 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- @Schema/@Parameter/@ApiResponse are used directly by this module's controllers and models; declared
+             rather than inherited transitively from pic-sure-contracts. -->
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
+        </dependency>
+        <!-- OpenAPI document generation for OpenApiExportTest, which writes docs/api/{art}.openapi.json.
+             TEST SCOPE ON PURPOSE: the committed document is the artifact of record, so this service gains no live
+             /v3/api-docs endpoint and therefore no new unauthenticated surface. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- OpenApiExport: the shared document canonicalizer + cross-service contract invariants. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-spring-commons</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

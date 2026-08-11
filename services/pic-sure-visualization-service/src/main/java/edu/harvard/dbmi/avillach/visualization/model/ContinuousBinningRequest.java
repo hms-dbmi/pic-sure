@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.Map;
@@ -15,6 +16,9 @@ import java.util.Map;
  * <p>The nested maps stay maps by design: both key levels are dynamic (concept paths, then value labels), so there is nothing to name.
  */
 public record ContinuousBinningRequest(
-    @NotNull(message = "Request must contain a 'continuousData' field") Map<String, Map<String, Integer>> continuousData
+    @Schema(
+        description = "Per-concept continuous value counts to bin. Outer key: concept path. Inner map: value label -> count.",
+        example = "{\"\\\\demographics\\\\age\\\\\": {\"18.0\": 100, \"19.0\": 250}}"
+    ) @NotNull(message = "Request must contain a 'continuousData' field") Map<String, Map<String, Integer>> continuousData
 ) {
 }

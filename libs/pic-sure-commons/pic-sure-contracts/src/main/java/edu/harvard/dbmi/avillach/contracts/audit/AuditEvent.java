@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.contracts.audit;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Map;
 
@@ -19,10 +20,18 @@ import java.util.Map;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record AuditEvent(@JsonProperty("event_type") //
-String eventType, @JsonProperty("action") String action, @JsonProperty("client_type") String clientType,
-    @JsonProperty("caller") String caller, @JsonProperty("session_id") String sessionId, @JsonProperty("request") RequestInfo request,
-    @JsonProperty("metadata") Map<String, Object> metadata, @JsonProperty("error") //
+@Schema(description = "A single audit record posted to the logging service; unknown properties are dropped, never rejected")
+public record AuditEvent(
+    @JsonProperty("event_type") @Schema(description = "Category of the event, e.g. \"api_request\"; required by the collector") //
+    String eventType, @JsonProperty("action") @Schema(description = "The operation that took place, e.g. \"query.sync\"") String action,
+    @JsonProperty("client_type") @Schema(description = "Which kind of caller produced the event, e.g. \"gateway\"") String clientType,
+    @JsonProperty("caller") @Schema(description = "Identity the event is attributed to") String caller,
+    @JsonProperty("session_id") @Schema(description = "Session the event belongs to") String sessionId,
+    @JsonProperty("request") @Schema(description = "HTTP details of the request that produced the event") RequestInfo request,
+    @JsonProperty(
+        "metadata"
+    ) @Schema(description = "Open-ended event detail; the collector caps this at 50 keys") Map<String, Object> metadata,
+    @JsonProperty("error") @Schema(description = "Failure detail when the audited operation failed; the collector caps this at 20 keys") //
     Map<String, Object> error
 ) {
 }

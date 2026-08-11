@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.query.search;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * HPDS's dictionary-search payload as this service sees it: {@code {"results": ..., "searchQuery": "..."}}. Byte-identical to the retired
@@ -12,5 +13,9 @@ package edu.harvard.hms.dbmi.avillach.query.search;
  * {@code pic-sure-contracts} would weaken the shared module for a shape only HPDS defines, so HPDS keeps its own mirror of this record and
  * the two are pinned against each other by {@code ResourceWebClientTest} on this side.
  */
-public record SearchResults(Object results, String searchQuery) {
+@Schema(description = "Results of a dictionary search, plus the term that produced them")
+public record SearchResults(
+    @Schema(description = "Matching concepts, keyed by \"phenotypes\" and \"info\"") Object results,
+    @Schema(description = "The search term these results answer") String searchQuery
+) {
 }

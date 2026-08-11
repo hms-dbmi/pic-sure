@@ -80,7 +80,8 @@
         </dependency>
         <!-- Annotations only. The swagger-jaxrs2-jakarta scanner and its servlet initializer used to be declared here
              as leftovers from the JAX-RS WAR; nothing imports io.swagger.v3.jaxrs2 and the scanner never runs under
-             Spring MVC, so they produced no document. Version comes from the platform BOM. -->
+             Spring MVC, so they produced no document. springdoc (test scope, below) is what reads these annotations
+             now. Version comes from the platform BOM so PSAMA converges with springdoc's swagger-core-jakarta. -->
         <dependency>
             <groupId>io.swagger.core.v3</groupId>
             <artifactId>swagger-annotations-jakarta</artifactId>
@@ -157,6 +158,14 @@
             <groupId>org.apache.httpcomponents.core5</groupId>
             <artifactId>httpcore5</artifactId>
         </dependency>
+        <!-- OpenApiExportTest boots the WHOLE PSAMA context to describe its HTTP surface, and several services run
+             DB-touching @PostConstruct/@EventListener startup work, so an unreachable datasource is not enough:
+             the context needs a real, empty schema. H2 in MySQL mode supplies one in memory. Test scope only. -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
@@ -184,6 +193,21 @@
         <dependency>
             <groupId>edu.harvard.dbmi.avillach</groupId>
             <artifactId>pic-sure-logging-client</artifactId>
+        </dependency>
+        <!-- OpenAPI document generation for OpenApiExportTest, which writes docs/api/{art}.openapi.json.
+             TEST SCOPE ON PURPOSE: the committed document is the artifact of record, so this service gains no live
+             /v3/api-docs endpoint and therefore no new unauthenticated surface. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- OpenApiExport: the shared document canonicalizer + cross-service contract invariants. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-spring-commons</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

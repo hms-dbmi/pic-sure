@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.contracts.query.v3;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * PIC-SURE-wide status of a query, normalized across every backing resource.
@@ -10,6 +11,7 @@ package edu.harvard.dbmi.avillach.contracts.query.v3;
  * translates them with a fixed {@code CASE} mapping ({@code 0 -> QUEUED, 1 -> PENDING, 2 -> ERROR, 3 -> AVAILABLE}). Reordering or
  * inserting a constant here would put that mapping, and so every legacy row it has yet to convert, out of step with this enum.
  */
+@Schema(description = "PIC-SURE-wide status of a query, normalized across every backing resource")
 public enum PicSureStatus {
     QUEUED, PENDING, ERROR, AVAILABLE
 }

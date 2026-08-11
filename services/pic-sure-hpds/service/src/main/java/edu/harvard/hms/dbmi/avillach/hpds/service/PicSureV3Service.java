@@ -31,6 +31,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.servlet.http.HttpServletRequest;
@@ -380,7 +381,20 @@ public class PicSureV3Service {
     @ApiResponses(
         {@ApiResponse(
             responseCode = "200", description = "The result, in the media type the expectedResultType implies (see the description).",
-            content = {@Content(mediaType = MediaType.APPLICATION_JSON_VALUE), @Content(mediaType = MediaType.TEXT_PLAIN_VALUE)}
+            content = {@Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                // type MUST be stated. A @Schema carrying only a description makes springdoc fall back to
+                // type: string, which would document a CROSS_COUNT map as a JSON string -- a precise lie, and
+                // worse for a client than saying nothing. additionalProperties keeps the map open, since the
+                // keys are concept paths and are not enumerable here.
+                schema = @Schema(
+                    type = "object", additionalProperties = Schema.AdditionalPropertiesValue.TRUE,
+                    description = "A JSON object keyed by concept path: the cross-count maps (CROSS_COUNT, "
+                        + "CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT, OBSERVATION_CROSS_COUNT) and the "
+                        + "VARIANT_COUNT_FOR_QUERY count map. INFO_COLUMN_LISTING is the one exception on this "
+                        + "media type: it returns a JSON ARRAY of InfoColumnMeta rather than an object."
+                )
+            ), @Content(mediaType = MediaType.TEXT_PLAIN_VALUE, schema = @Schema(type = "string", description = "Count, variant list, VCF excerpt or CSV dataframe, per expectedResultType"))}
         ), @ApiResponse(responseCode = "400", description = "The async result backing a DATAFRAME-family query did not succeed; the body is the " + "backing status as a diagnostic string.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)), @ApiResponse(responseCode = "403", description = "The resource is locked (no encryption key loaded).", content = @Content(mediaType = MediaType.TEXT_PLAIN_VALUE)), @ApiResponse(responseCode = "500", description = "The expectedResultType is not one this endpoint serves, or the result could not be read.", content = @Content)}
     )
     @AuditEvent(type = "QUERY", action = "query.sync")
@@ -413,8 +427,12 @@ public class PicSureV3Service {
         @RequestParam("genomicConceptPath") String genomicConceptPath, @RequestParam("query") String query,
         @Parameter(
             description = "ONE-BASED page index. The first page is 1; a value below 1 is a 400. The dictionary's /concepts "
-                + "endpoints page from 0 -- these two surfaces do not share a base."
-        ) @RequestParam("page") int page, @Parameter(description = "Page size; must be at least 1.") @RequestParam("size") int size
+                + "endpoints page from 0 -- these two surfaces do not share a base.",
+            schema = @Schema(type = "integer", format = "int32", minimum = "1", example = "1")
+        ) @RequestParam("page") int page,
+        @Parameter(
+            description = "Page size; must be at least 1.", schema = @Schema(type = "integer", format = "int32", minimum = "1")
+        ) @RequestParam("size") int size
     ) {
         AuditAttributes.putMetadata(httpRequest, "genomic_concept_path", genomicConceptPath);
         if (page < 1) {

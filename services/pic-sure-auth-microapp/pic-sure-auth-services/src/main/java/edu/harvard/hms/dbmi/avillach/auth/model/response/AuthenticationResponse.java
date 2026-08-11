@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.model.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * The body of {@code POST /authentication/{idpProvider}}, replacing the {@code HashMap<String, String>} every identity provider used to
@@ -16,8 +17,15 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * and stays absent here rather than appearing as {@code null}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(description = "The authenticated user's PIC-SURE token and profile")
 public record AuthenticationResponse(
-    String token, String userId, String email, String acceptedTOS, String expirationDate, String uuid, String oktaIdToken
+    @Schema(description = "The PIC-SURE JWT the client sends as its bearer token") String token,
+    @Schema(description = "The user's subject claim; also the session key") String userId,
+    @Schema(description = "The user's email address") String email,
+    @Schema(description = "Whether the user accepted the latest terms of service, as the string \"true\"/\"false\"") String acceptedTOS,
+    @Schema(description = "ISO-8601 UTC instant at which the token expires") String expirationDate,
+    @Schema(description = "The user's PSAMA uuid") String uuid,
+    @Schema(description = "Okta id_token, present only for the Okta-brokered providers (AIM-AHEAD, RAS)") String oktaIdToken
 ) {
 
     /** The Okta-brokered providers mint the profile first and attach the IdP's id token afterwards. */

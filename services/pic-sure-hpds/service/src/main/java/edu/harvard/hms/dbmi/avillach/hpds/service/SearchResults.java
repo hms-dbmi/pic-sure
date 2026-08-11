@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * HPDS's dictionary-search response: {@code {"results": ..., "searchQuery": "..."}}. Identical on the wire to the retired
@@ -11,5 +12,9 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
  * {@code Object} into the shared contract module and pull HPDS's internal metadata into everyone else's compile path; the query-service
  * ingress that fronts this endpoint treats the payload as passthrough and has its own equally-local mirror of this shape.
  */
-public record SearchResults(Object results, String searchQuery) {
+@Schema(description = "Results of a dictionary search, plus the term that produced them")
+public record SearchResults(
+    @Schema(description = "Matching concepts, keyed by \"phenotypes\" and \"info\"") Object results,
+    @Schema(description = "The search term these results answer") String searchQuery
+) {
 }

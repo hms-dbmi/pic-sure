@@ -19,7 +19,7 @@
 	<dependencyManagement>
 		<dependencies>
 			<!-- swagger-annotations-jakarta is NOT pinned here: the platform BOM owns the single swagger-api
-			     version so every module's annotations converge. -->
+			     version so springdoc's swagger-core-jakarta and these modules' annotations converge. -->
 			<!-- jackson-databind is NOT pinned here: the platform BOM (Spring Boot) owns the single Jackson version,
 			     so pic-sure-contracts' wire-compatibility tests (RuleCompatibilityTest, FixtureRoundTripTest) prove the
 			     contract against the exact Jackson the gateway and PSAMA serialize with, not a stale local pin. -->

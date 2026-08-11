@@ -65,6 +65,27 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <!-- Publishes src/test/java as a test-jar so every service's OpenApiExportTest shares ONE copy of the
+                 document canonicalizer and the cross-service contract invariants. Six copies would drift: a
+                 formatting difference would show up as a spurious diff in six committed documents, and a dropped
+                 invariant would go unnoticed in whichever service dropped it. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>test-jar</id>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
     <distributionManagement>
         <repository>
             <id>github</id>

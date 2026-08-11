@@ -13,6 +13,10 @@
   <url>https://avillach-lab.hms.harvard.edu/pic-sure</url>
   <dependencies>
     <dependency>
+      <groupId>io.swagger.core.v3</groupId>
+      <artifactId>swagger-annotations-jakarta</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>

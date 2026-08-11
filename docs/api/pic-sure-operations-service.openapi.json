@@ -1,0 +1,774 @@
+{
+  "components" : {
+    "schemas" : {
+      "ConfigurationDto" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "kind" : {
+            "type" : "string"
+          },
+          "markForDelete" : {
+            "type" : "boolean"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "value" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ConfigurationRequestDto" : {
+        "properties" : {
+          "description" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "kind" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "pattern" : "^[\\w\\d\\-?\\[\\].():]+$",
+            "type" : "string"
+          },
+          "markForDelete" : {
+            "type" : "boolean"
+          },
+          "name" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "pattern" : "^[\\w\\d\\-?\\[\\].():]+$",
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "value" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "DispatchResponse" : {
+        "description" : "The stored query, ready to dispatch, with resource credentials stripped",
+        "properties" : {
+          "queryJson" : {
+            "description" : "Bare v3 Query JSON as a STRING (never a nested object); null when the stored query was blank",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "GatewayUser" : {
+        "properties" : {
+          "email" : {
+            "type" : "string"
+          },
+          "privileges" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "roles" : {
+            "type" : "string"
+          },
+          "subject" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "NamedDatasetDto" : {
+        "properties" : {
+          "archived" : {
+            "type" : "boolean"
+          },
+          "metadata" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "query" : {
+            "$ref" : "#/components/schemas/NamedDatasetQueryDto"
+          },
+          "user" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "NamedDatasetQueryDto" : {
+        "properties" : {
+          "query" : {
+            "type" : "string"
+          },
+          "startTime" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "status" : {
+            "description" : "PIC-SURE-wide status of a query, normalized across every backing resource",
+            "enum" : [
+              "QUEUED",
+              "PENDING",
+              "ERROR",
+              "AVAILABLE"
+            ],
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "NamedDatasetRequestDto" : {
+        "properties" : {
+          "archived" : {
+            "type" : "boolean"
+          },
+          "metadata" : {
+            "additionalProperties" : { },
+            "type" : "object"
+          },
+          "name" : {
+            "pattern" : "^[\\w\\d \\-\\\\/?+=\\[\\].():\"']+$",
+            "type" : "string"
+          },
+          "queryId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "name",
+          "queryId"
+        ],
+        "type" : "object"
+      },
+      "SaveQueryRequest" : {
+        "description" : "Request to persist a new query in the internal query store",
+        "properties" : {
+          "metadata" : {
+            "description" : "base64-encoded metadata bytes",
+            "type" : "string"
+          },
+          "query" : {
+            "description" : "Canonical bare v3 Query JSON; opaque to the store",
+            "type" : "string"
+          },
+          "resourceResultId" : {
+            "description" : "Result id assigned by the backing resource; null when the query has not been dispatched yet",
+            "type" : "string"
+          },
+          "status" : {
+            "description" : "Initial PIC-SURE status; travels as the enum NAME, never its ordinal",
+            "enum" : [
+              "QUEUED",
+              "PENDING",
+              "ERROR",
+              "AVAILABLE"
+            ],
+            "type" : "string"
+          },
+          "version" : {
+            "description" : "Query-format version this query was written against, e.g. \"v3\"",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "SaveQueryResponse" : {
+        "description" : "Identifier minted by the internal query store for a newly persisted query",
+        "properties" : {
+          "picsureId" : {
+            "description" : "PIC-SURE-wide id of the persisted query",
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "StoredQuery" : {
+        "description" : "A query as persisted by the internal query store",
+        "properties" : {
+          "metadata" : {
+            "description" : "base64-encoded metadata bytes; callers that need the JSON therein decode it themselves",
+            "type" : "string"
+          },
+          "picsureId" : {
+            "description" : "PIC-SURE-wide id of this query",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "query" : {
+            "description" : "Canonical bare v3 Query JSON; opaque to the store",
+            "type" : "string"
+          },
+          "readyTime" : {
+            "description" : "Epoch millis of the first transition to AVAILABLE; server-owned, null until then",
+            "example" : 1785873612000,
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "resourceResultId" : {
+            "description" : "Result id assigned by the backing resource; null until the query has been dispatched",
+            "type" : "string"
+          },
+          "startTime" : {
+            "description" : "Epoch millis when the row was saved; server-owned, null if unset",
+            "example" : 1785873600000,
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "status" : {
+            "description" : "PIC-SURE status; travels as the enum NAME, never its ordinal",
+            "enum" : [
+              "QUEUED",
+              "PENDING",
+              "ERROR",
+              "AVAILABLE"
+            ],
+            "type" : "string"
+          },
+          "version" : {
+            "description" : "Query-format version this query was written against, e.g. \"v3\"",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UpdateQueryRequest" : {
+        "description" : "Partial update of a stored query; every field is optional and null means \"leave unchanged\"",
+        "properties" : {
+          "metadata" : {
+            "description" : "base64-encoded metadata bytes",
+            "type" : "string"
+          },
+          "resourceResultId" : {
+            "description" : "Result id assigned by the backing resource",
+            "type" : "string"
+          },
+          "status" : {
+            "description" : "New PIC-SURE status; travels as the enum NAME, never its ordinal",
+            "enum" : [
+              "QUEUED",
+              "PENDING",
+              "ERROR",
+              "AVAILABLE"
+            ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      }
+    }
+  },
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/configuration" : {
+      "get" : {
+        "operationId" : "getConfigurations",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "kind",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/ConfigurationDto"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "configuration-controller"
+        ]
+      }
+    },
+    "/configuration/admin" : {
+      "post" : {
+        "operationId" : "addConfiguration",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ConfigurationRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ConfigurationDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "configuration-controller"
+        ]
+      }
+    },
+    "/configuration/admin/{id}" : {
+      "delete" : {
+        "operationId" : "deleteConfiguration",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ConfigurationDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "configuration-controller"
+        ]
+      },
+      "patch" : {
+        "operationId" : "updateConfiguration",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ConfigurationRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ConfigurationDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "configuration-controller"
+        ]
+      }
+    },
+    "/configuration/{identifier}" : {
+      "get" : {
+        "operationId" : "getConfigurationById",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "identifier",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ConfigurationDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "configuration-controller"
+        ]
+      }
+    },
+    "/dataset/named" : {
+      "get" : {
+        "operationId" : "list",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "arg0",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/components/schemas/GatewayUser"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/NamedDatasetDto"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "named-dataset-controller"
+        ]
+      },
+      "post" : {
+        "operationId" : "create",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "arg0",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/components/schemas/GatewayUser"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/NamedDatasetRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NamedDatasetDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "named-dataset-controller"
+        ]
+      }
+    },
+    "/dataset/named/{id}" : {
+      "delete" : {
+        "operationId" : "delete",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "arg0",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/components/schemas/GatewayUser"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "named-dataset-controller"
+        ]
+      },
+      "get" : {
+        "operationId" : "get",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "arg0",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/components/schemas/GatewayUser"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NamedDatasetDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "named-dataset-controller"
+        ]
+      },
+      "put" : {
+        "operationId" : "update",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "arg0",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/components/schemas/GatewayUser"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/NamedDatasetRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NamedDatasetDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "named-dataset-controller"
+        ]
+      }
+    },
+    "/internal/queries" : {
+      "post" : {
+        "operationId" : "save",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SaveQueryRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SaveQueryResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "internal-query-controller"
+        ]
+      }
+    },
+    "/internal/queries/{picsureId}" : {
+      "get" : {
+        "operationId" : "get_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "picsureId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StoredQuery"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "internal-query-controller"
+        ]
+      },
+      "patch" : {
+        "operationId" : "update_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "picsureId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateQueryRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "internal-query-controller"
+        ]
+      }
+    },
+    "/internal/queries/{picsureId}/dispatch" : {
+      "get" : {
+        "operationId" : "dispatch",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "picsureId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DispatchResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "internal-query-controller"
+        ]
+      }
+    }
+  },
+  "servers" : [
+    {
+      "description" : "Generated server url",
+      "url" : "http://localhost"
+    }
+  ]
+}

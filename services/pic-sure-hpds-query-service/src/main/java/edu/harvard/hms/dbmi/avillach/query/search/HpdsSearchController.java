@@ -11,6 +11,7 @@ import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Ports the legacy WAR's {@code PicsureRS}/{@code PicsureRSv3} search endpoints, v3-only: {@code /hpds/{backend}/v3/search} and
@@ -55,7 +56,8 @@ public class HpdsSearchController {
         @RequestParam(name = "query", required = false) String query,
         @Parameter(
             description = "ONE-BASED page index, passed through to HPDS unchanged. The first page is 1 and HPDS rejects anything "
-                + "below 1. Omit to let HPDS apply its own default."
+                + "below 1. Omit to let HPDS apply its own default.",
+            schema = @Schema(type = "integer", format = "int32", minimum = "1", example = "1")
         ) @RequestParam(name = "page", required = false) Integer page, @RequestParam(name = "size", required = false) Integer size
     ) {
         return service.searchConceptValues(backend, conceptPath, query, page, size);

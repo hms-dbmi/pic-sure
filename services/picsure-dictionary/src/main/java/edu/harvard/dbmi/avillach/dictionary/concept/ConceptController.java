@@ -8,6 +8,7 @@ import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,7 +49,8 @@ public class ConceptController {
         @RequestBody Filter filter,
         @Parameter(
             description = "ZERO-BASED page index; the first page is 0. HPDS's /search/values/ pages from 1 -- these two surfaces "
-                + "do not share a base."
+                + "do not share a base.",
+            schema = @Schema(type = "integer", format = "int32", minimum = "0", defaultValue = "0")
         ) @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
@@ -82,7 +84,8 @@ public class ConceptController {
     public ResponseEntity<PaginatedResponse<Concept>> dumpConcepts(
         @Parameter(
             description = "ZERO-BASED page index; the first page is 0. HPDS's /search/values/ pages from 1 -- these two surfaces "
-                + "do not share a base."
+                + "do not share a base.",
+            schema = @Schema(type = "integer", format = "int32", minimum = "0", defaultValue = "0")
         ) @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {

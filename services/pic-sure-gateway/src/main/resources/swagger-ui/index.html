@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PIC-SURE API documents</title>
+  <!--
+    Every URL on this page is RELATIVE, and that is load-bearing. httpd serves the gateway under /picsure and
+    strips that prefix before the gateway sees the request, so the gateway cannot know its own public URL. From
+    this page's canonical URL (.../swagger-ui, no trailing slash) "swagger-ui/x" and "openapi" resolve to
+    .../swagger-ui/x and .../openapi under whatever prefix the environment actually mounts. An absolute path
+    would work only in a deployment with no prefix at all.
+  -->
+  <link rel="stylesheet" href="swagger-ui/swagger-ui.css">
+  <link rel="stylesheet" href="swagger-ui/index.css">
+  <link rel="icon" type="image/png" href="swagger-ui/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="swagger-ui/favicon-16x16.png" sizes="16x16">
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="swagger-ui/swagger-ui-bundle.js"></script>
+<script src="swagger-ui/swagger-ui-standalone-preset.js"></script>
+<script>
+  // The picker is built from the gateway's own /openapi index rather than hard-coded here, so this page can
+  // never list a document the gateway does not serve (or miss one it does). ContractDocument is the single
+  // source of truth for both.
+  fetch('openapi')
+    .then(function (response) { return response.json(); })
+    .then(function (index) {
+      window.ui = SwaggerUIBundle({
+        dom_id: '#swagger-ui',
+        urls: index.documents.map(function (entry) {
+          return { name: entry.title, url: 'openapi/' + entry.file };
+        }),
+        'urls.primaryName': index.documents[0].title,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: 'StandaloneLayout',
+        deepLinking: true,
+        // The topbar's free-text spec URL box invites pasting a third-party document into a same-origin page;
+        // the picker built above is the whole intended navigation surface.
+        queryConfigEnabled: false
+      });
+    })
+    .catch(function (error) {
+      document.getElementById('swagger-ui').textContent =
+        'Could not load the API document index from ' + new URL('openapi', window.location.href) + ': ' + error;
+    });
+</script>
+</body>
+</html>

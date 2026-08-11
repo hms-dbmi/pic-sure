@@ -1,0 +1,706 @@
+{
+  "components" : {
+    "schemas" : {
+      "AuthorizationFilter" : {
+        "properties" : {
+          "conceptPath" : {
+            "description" : "A concept path this filter must match",
+            "type" : "string"
+          },
+          "values" : {
+            "description" : "Values for this concept path. Patients returned by this query must match at least one value for this concept path",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          }
+        },
+        "type" : "object"
+      },
+      "GenomicFilter" : {
+        "properties" : {
+          "key" : {
+            "description" : "The genomic filter to query",
+            "example" : "Gene_with_variant",
+            "type" : "string"
+          },
+          "max" : {
+            "description" : "Maximum value for a given key. Cannot be combined with `values`",
+            "example" : 100,
+            "format" : "float",
+            "type" : "number"
+          },
+          "min" : {
+            "description" : "Minimum value for a given key. Cannot be combined with `values`",
+            "example" : 0.5,
+            "format" : "float",
+            "type" : "number"
+          },
+          "values" : {
+            "description" : "Values that must match for a given key. Cannot be combined with `min` or `max`",
+            "example" : "APOE",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [
+          "key"
+        ],
+        "type" : "object"
+      },
+      "PaginatedResponseString" : {
+        "description" : "A single page of results, plus the paging metadata needed to request the rest",
+        "properties" : {
+          "page" : {
+            "description" : "Index of this page. The base is defined by the serving endpoint, not by this record: HPDS's GET /PIC-SURE/v3/search/values/ (and the query-service passthrough in front of it) is 1-based and rejects page < 1, while the dictionary's /concepts endpoints are 0-based. See the page parameter on the endpoint you are calling.",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "results" : {
+            "description" : "The results on this page",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "total" : {
+            "description" : "Total number of results across all pages",
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "PhenotypicClause" : { },
+      "PhenotypicFilter" : {
+        "allOf" : [
+          {
+            "$ref" : "#/components/schemas/PhenotypicClause"
+          },
+          {
+            "properties" : {
+              "conceptPath" : {
+                "description" : "A concept path this filter must match",
+                "type" : "string"
+              },
+              "max" : {
+                "description" : "Maximum value to filter for a given `conceptPath`. Cannot be combined with `values`",
+                "format" : "double",
+                "type" : "number"
+              },
+              "min" : {
+                "description" : "Minimum value to filter for a given `conceptPath`. Cannot be combined with `values`",
+                "format" : "double",
+                "type" : "number"
+              },
+              "not" : {
+                "type" : "boolean"
+              },
+              "phenotypicFilterType" : {
+                "enum" : [
+                  "REQUIRED",
+                  "FILTER",
+                  "ANY_RECORD_OF"
+                ],
+                "type" : "string"
+              },
+              "values" : {
+                "description" : "Values to match on for a given `conceptPath`. Cannot be combined with `min` or `max`",
+                "items" : {
+                  "type" : "string"
+                },
+                "type" : "array",
+                "uniqueItems" : true
+              }
+            },
+            "type" : "object"
+          }
+        ],
+        "required" : [
+          "phenotypicFilterType"
+        ]
+      },
+      "PhenotypicSubquery" : {
+        "allOf" : [
+          {
+            "$ref" : "#/components/schemas/PhenotypicClause"
+          },
+          {
+            "properties" : {
+              "not" : {
+                "description" : "Not implemented yet",
+                "type" : "boolean"
+              },
+              "operator" : {
+                "description" : "Specifies logic to combine `phenotypicClauses` in this subquery",
+                "enum" : [
+                  "AND",
+                  "OR"
+                ],
+                "type" : "string"
+              },
+              "phenotypicClauses" : {
+                "description" : "A list of phenotypic clauses to be evaluated and combined using the `operator`",
+                "items" : { },
+                "type" : "array"
+              }
+            },
+            "type" : "object"
+          }
+        ]
+      },
+      "Query" : {
+        "properties" : {
+          "authorizationFilters" : {
+            "description" : "A list of filters specifically applied for authorization purposes",
+            "items" : {
+              "$ref" : "#/components/schemas/AuthorizationFilter"
+            },
+            "type" : "array"
+          },
+          "expectedResultType" : {
+            "description" : "An object specifying the result type",
+            "enum" : [
+              "COUNT",
+              "DATAFRAME",
+              "SECRET_ADMIN_DATAFRAME",
+              "CROSS_COUNT",
+              "CATEGORICAL_CROSS_COUNT",
+              "CONTINUOUS_CROSS_COUNT",
+              "INFO_COLUMN_LISTING",
+              "OBSERVATION_CROSS_COUNT",
+              "VARIANT_COUNT_FOR_QUERY",
+              "VARIANT_LIST_FOR_QUERY",
+              "VCF_EXCERPT",
+              "AGGREGATE_VCF_EXCERPT",
+              "DATAFRAME_TIMESERIES",
+              "DATAFRAME_PFB",
+              "PATIENTS"
+            ],
+            "type" : "string"
+          },
+          "genomicFilters" : {
+            "description" : "A list of genomic filters",
+            "items" : {
+              "$ref" : "#/components/schemas/GenomicFilter"
+            },
+            "type" : "array"
+          },
+          "id" : {
+            "description" : "An internally generated UUID identifying this query",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "phenotypicClause" : {
+            "description" : "An object specifying phenotypic filters",
+            "oneOf" : [
+              {
+                "$ref" : "#/components/schemas/PhenotypicFilter"
+              },
+              {
+                "$ref" : "#/components/schemas/PhenotypicSubquery"
+              }
+            ]
+          },
+          "picsureId" : {
+            "description" : "An externally passed UUID to assign to this query",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "select" : {
+            "description" : "A list of concept paths to select. Ignored for expectedResultType that do not return fields, such as COUNT",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "QueryFormat" : {
+        "description" : "Information about a query format supported by a resource",
+        "properties" : {
+          "description" : {
+            "description" : "What this query format is for",
+            "type" : "string"
+          },
+          "examples" : {
+            "description" : "Example queries in this format",
+            "items" : {
+              "additionalProperties" : { },
+              "type" : "object"
+            },
+            "type" : "array"
+          },
+          "name" : {
+            "description" : "Name of this query format",
+            "type" : "string"
+          },
+          "specification" : {
+            "additionalProperties" : { },
+            "description" : "Free-form resource documentation",
+            "type" : "object"
+          }
+        },
+        "type" : "object"
+      },
+      "QueryStatusResponse" : {
+        "description" : "Status of a single query, as reported by PIC-SURE and by the resource backing it",
+        "properties" : {
+          "duration" : {
+            "description" : "Milliseconds elapsed between the query being queued and completing; 0 while it is still running",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "expiration" : {
+            "description" : "Epoch milliseconds at which the results expire; 0 when the backing resource reports no expiration",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "picsureId" : {
+            "description" : "PIC-SURE-wide id of this query",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "resourceResultId" : {
+            "description" : "Result id assigned by the backing resource",
+            "type" : "string"
+          },
+          "resourceStatus" : {
+            "description" : "Raw status string reported by the backing resource",
+            "type" : "string"
+          },
+          "resultMetadata" : {
+            "additionalProperties" : { },
+            "description" : "Open-ended resource metadata; the producing endpoint decides the keys. HPDS emits picsureQueryId from POST /PIC-SURE/v3/query and GET /PIC-SURE/v3/query/{id}/status; the query-service emits queryJson and queryResultMetadata from GET /hpds/{backend}/v3/query/{id}/metadata and passes HPDS's map through unchanged elsewhere. Consumers must treat every key as optional.",
+            "type" : "object"
+          },
+          "sizeInBytes" : {
+            "description" : "Size of the result in bytes. Populated only once the query has succeeded; 0 otherwise",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "startTime" : {
+            "description" : "Epoch milliseconds at which the query was queued",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "status" : {
+            "description" : "Real status values",
+            "enum" : [
+              "QUEUED",
+              "PENDING",
+              "ERROR",
+              "AVAILABLE"
+            ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ResourceInfo" : {
+        "description" : "Information about a resource and the query formats it accepts",
+        "properties" : {
+          "id" : {
+            "description" : "PIC-SURE id of this resource",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "description" : "Display name of this resource",
+            "type" : "string"
+          },
+          "queryFormats" : {
+            "description" : "Query formats this resource accepts",
+            "items" : {
+              "$ref" : "#/components/schemas/QueryFormat"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "SearchRequest" : {
+        "description" : "A free-text search over the concepts exposed by a resource",
+        "properties" : {
+          "query" : {
+            "description" : "Free-text search term",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "SearchResults" : {
+        "description" : "Results of a dictionary search, plus the term that produced them",
+        "properties" : {
+          "results" : {
+            "description" : "Matching concepts, keyed by \"phenotypes\" and \"info\""
+          },
+          "searchQuery" : {
+            "description" : "The search term these results answer",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "SignedUrlResponse" : {
+        "description" : "A time-limited URL from which query results can be downloaded directly",
+        "properties" : {
+          "signedUrl" : {
+            "description" : "Time-limited URL the caller can download results from",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      }
+    }
+  },
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/PIC-SURE/v3/info" : {
+      "post" : {
+        "operationId" : "info",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResourceInfo"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    },
+    "/PIC-SURE/v3/query" : {
+      "post" : {
+        "operationId" : "query",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Query"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/QueryStatusResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    },
+    "/PIC-SURE/v3/query/sync" : {
+      "post" : {
+        "description" : "The response body shape is selected by the request's expectedResultType, so this endpoint has no single response schema. JSON object/array bodies: CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT return a map of concept path to counts; VARIANT_COUNT_FOR_QUERY returns a count map; INFO_COLUMN_LISTING returns an array of InfoColumnMeta. text/plain bodies: COUNT returns a bare integer as text; VARIANT_LIST_FOR_QUERY, VCF_EXCERPT and AGGREGATE_VCF_EXCERPT return tab-separated text; DATAFRAME, SECRET_ADMIN_DATAFRAME, DATAFRAME_TIMESERIES and PATIENTS block until the async result completes and then return the CSV payload. Successful responses also carry the queryMetadata response header.",
+        "operationId" : "querySync",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Query"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "additionalProperties" : true,
+                  "description" : "A JSON object keyed by concept path: the cross-count maps (CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT, OBSERVATION_CROSS_COUNT) and the VARIANT_COUNT_FOR_QUERY count map. INFO_COLUMN_LISTING is the one exception on this media type: it returns a JSON ARRAY of InfoColumnMeta rather than an object.",
+                  "type" : "object"
+                }
+              },
+              "text/plain" : {
+                "schema" : {
+                  "description" : "Count, variant list, VCF excerpt or CSV dataframe, per expectedResultType",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "The result, in the media type the expectedResultType implies (see the description)."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : { }
+            },
+            "description" : "The async result backing a DATAFRAME-family query did not succeed; the body is the backing status as a diagnostic string."
+          },
+          "403" : {
+            "content" : {
+              "text/plain" : { }
+            },
+            "description" : "The resource is locked (no encryption key loaded)."
+          },
+          "500" : {
+            "description" : "The expectedResultType is not one this endpoint serves, or the result could not be read."
+          }
+        },
+        "summary" : "Run a query and return its result inline",
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    },
+    "/PIC-SURE/v3/query/{resourceQueryId}/result" : {
+      "post" : {
+        "operationId" : "queryResult",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "resourceQueryId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    },
+    "/PIC-SURE/v3/query/{resourceQueryId}/signed-url" : {
+      "post" : {
+        "operationId" : "querySignedURL",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "resourceQueryId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SignedUrlResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    },
+    "/PIC-SURE/v3/query/{resourceQueryId}/status" : {
+      "get" : {
+        "operationId" : "queryStatus",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "resourceQueryId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/QueryStatusResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    },
+    "/PIC-SURE/v3/search" : {
+      "post" : {
+        "operationId" : "search",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SearchResults"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    },
+    "/PIC-SURE/v3/search/values/" : {
+      "get" : {
+        "description" : "Paging is 1-based on this endpoint: page 1 is the first page and page < 1 is rejected.",
+        "operationId" : "searchGenomicConceptValues",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "genomicConceptPath",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "query",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "description" : "ONE-BASED page index. The first page is 1; a value below 1 is a 400. The dictionary's /concepts endpoints page from 0 -- these two surfaces do not share a base.",
+            "in" : "query",
+            "name" : "page",
+            "required" : true,
+            "schema" : {
+              "example" : 1,
+              "format" : "int32",
+              "minimum" : 1,
+              "type" : "integer"
+            }
+          },
+          {
+            "description" : "Page size; must be at least 1.",
+            "in" : "query",
+            "name" : "size",
+            "required" : true,
+            "schema" : {
+              "format" : "int32",
+              "minimum" : 1,
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PaginatedResponseString"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Search genomic concept values",
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    },
+    "/PIC-SURE/v3/write/{dataType}" : {
+      "post" : {
+        "operationId" : "writeQueryResult",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "dataType",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Query"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "pic-sure-v-3-service"
+        ]
+      }
+    }
+  },
+  "servers" : [
+    {
+      "description" : "Generated server url",
+      "url" : "http://localhost"
+    }
+  ]
+}

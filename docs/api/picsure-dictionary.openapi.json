@@ -1,0 +1,993 @@
+{
+  "components" : {
+    "schemas" : {
+      "CategoricalConcept" : {
+        "allOf" : [
+          {
+            "$ref" : "#/components/schemas/Concept"
+          },
+          {
+            "properties" : {
+              "allowFiltering" : {
+                "type" : "boolean"
+              },
+              "conceptPath" : {
+                "type" : "string"
+              },
+              "dataset" : {
+                "type" : "string"
+              },
+              "description" : {
+                "type" : "string"
+              },
+              "display" : {
+                "type" : "string"
+              },
+              "meta" : {
+                "additionalProperties" : {
+                  "type" : "string"
+                },
+                "type" : "object"
+              },
+              "name" : {
+                "type" : "string"
+              },
+              "study" : {
+                "$ref" : "#/components/schemas/Dataset"
+              },
+              "studyAcronym" : {
+                "type" : "string"
+              },
+              "table" : { },
+              "type" : {
+                "enum" : [
+                  "Categorical",
+                  "Continuous"
+                ],
+                "type" : "string"
+              },
+              "values" : {
+                "items" : {
+                  "type" : "string"
+                },
+                "type" : "array"
+              }
+            },
+            "type" : "object"
+          }
+        ]
+      },
+      "Concept" : {
+        "discriminator" : {
+          "propertyName" : "type"
+        },
+        "properties" : {
+          "type" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "type"
+        ]
+      },
+      "ConceptPathRequest" : {
+        "description" : "A single concept path to look up",
+        "properties" : {
+          "conceptPath" : {
+            "description" : "Concept path; POSTed because paths contain slashes",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ContinuousConcept" : {
+        "allOf" : [
+          {
+            "$ref" : "#/components/schemas/Concept"
+          },
+          {
+            "properties" : {
+              "allowFiltering" : {
+                "type" : "boolean"
+              },
+              "children" : {
+                "items" : {
+                  "oneOf" : [
+                    {
+                      "$ref" : "#/components/schemas/CategoricalConcept"
+                    },
+                    {
+                      "$ref" : "#/components/schemas/ContinuousConcept"
+                    }
+                  ]
+                },
+                "type" : "array"
+              },
+              "conceptPath" : {
+                "type" : "string"
+              },
+              "dataset" : {
+                "type" : "string"
+              },
+              "description" : {
+                "type" : "string"
+              },
+              "display" : {
+                "type" : "string"
+              },
+              "max" : {
+                "format" : "double",
+                "type" : "number"
+              },
+              "meta" : {
+                "additionalProperties" : {
+                  "type" : "string"
+                },
+                "type" : "object"
+              },
+              "min" : {
+                "format" : "double",
+                "type" : "number"
+              },
+              "name" : {
+                "type" : "string"
+              },
+              "study" : {
+                "$ref" : "#/components/schemas/Dataset"
+              },
+              "studyAcronym" : {
+                "type" : "string"
+              },
+              "table" : {
+                "oneOf" : [
+                  {
+                    "$ref" : "#/components/schemas/CategoricalConcept"
+                  },
+                  {
+                    "$ref" : "#/components/schemas/ContinuousConcept"
+                  }
+                ]
+              },
+              "type" : {
+                "enum" : [
+                  "Categorical",
+                  "Continuous"
+                ],
+                "type" : "string"
+              }
+            },
+            "type" : "object"
+          }
+        ]
+      },
+      "Dashboard" : {
+        "description" : "A configuration-driven table of studies: the columns to render, and the rows to render in them",
+        "properties" : {
+          "columns" : {
+            "description" : "Columns to render, in order",
+            "items" : {
+              "$ref" : "#/components/schemas/DashboardColumn"
+            },
+            "type" : "array"
+          },
+          "rows" : {
+            "description" : "One map per study, keyed by the dataElement of the columns above",
+            "items" : {
+              "additionalProperties" : {
+                "type" : "string"
+              },
+              "type" : "object"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "DashboardColumn" : {
+        "description" : "One column of the study dashboard",
+        "properties" : {
+          "dataElement" : {
+            "description" : "Key this column's value is stored under in each dashboard row",
+            "type" : "string"
+          },
+          "label" : {
+            "description" : "Human-readable column heading",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "DashboardDrawer" : {
+        "description" : "The expanded detail panel for a single study on the dashboard",
+        "properties" : {
+          "consentGroups" : {
+            "description" : "Consent groups available within this study",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "datasetId" : {
+            "description" : "Internal dataset id this drawer describes",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "sponsor" : {
+            "description" : "Funding or sponsoring organization",
+            "type" : "string"
+          },
+          "studyAbbreviation" : {
+            "description" : "Short study abbreviation, e.g. COPDGene",
+            "type" : "string"
+          },
+          "studyDesign" : {
+            "description" : "Study design, e.g. Case-Control",
+            "type" : "string"
+          },
+          "studyFocus" : {
+            "description" : "Research areas the study focuses on",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "studyFullname" : {
+            "description" : "Full study name",
+            "type" : "string"
+          },
+          "studySummary" : {
+            "description" : "Prose summary of the study",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Dataset" : {
+        "properties" : {
+          "abbreviation" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "fullName" : {
+            "type" : "string"
+          },
+          "meta" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "ref" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Facet" : {
+        "properties" : {
+          "category" : {
+            "type" : "string"
+          },
+          "count" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "display" : {
+            "type" : "string"
+          },
+          "fullName" : {
+            "type" : "string"
+          },
+          "meta" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "FacetCategory" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "display" : {
+            "type" : "string"
+          },
+          "facets" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Facet"
+            },
+            "type" : "array"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Filter" : {
+        "properties" : {
+          "consents" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "facets" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Facet"
+            },
+            "type" : "array"
+          },
+          "search" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "LegacyResponse" : {
+        "description" : "Concepts matching a free-text search",
+        "properties" : {
+          "results" : {
+            "description" : "Concepts matching the search term, best match first",
+            "items" : {
+              "oneOf" : [
+                {
+                  "$ref" : "#/components/schemas/CategoricalConcept"
+                },
+                {
+                  "$ref" : "#/components/schemas/ContinuousConcept"
+                }
+              ]
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "PaginatedResponseConcept" : {
+        "description" : "A single page of results, plus the paging metadata needed to request the rest",
+        "properties" : {
+          "page" : {
+            "description" : "Index of this page. The base is defined by the serving endpoint, not by this record: HPDS's GET /PIC-SURE/v3/search/values/ (and the query-service passthrough in front of it) is 1-based and rejects page < 1, while the dictionary's /concepts endpoints are 0-based. See the page parameter on the endpoint you are calling.",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "results" : {
+            "description" : "The results on this page",
+            "items" : {
+              "oneOf" : [
+                {
+                  "$ref" : "#/components/schemas/CategoricalConcept"
+                },
+                {
+                  "$ref" : "#/components/schemas/ContinuousConcept"
+                }
+              ]
+            },
+            "type" : "array"
+          },
+          "total" : {
+            "description" : "Total number of results across all pages",
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "QueryFormat" : {
+        "description" : "Information about a query format supported by a resource",
+        "properties" : {
+          "description" : {
+            "description" : "What this query format is for",
+            "type" : "string"
+          },
+          "examples" : {
+            "description" : "Example queries in this format",
+            "items" : {
+              "additionalProperties" : { },
+              "type" : "object"
+            },
+            "type" : "array"
+          },
+          "name" : {
+            "description" : "Name of this query format",
+            "type" : "string"
+          },
+          "specification" : {
+            "additionalProperties" : { },
+            "description" : "Free-form resource documentation",
+            "type" : "object"
+          }
+        },
+        "type" : "object"
+      },
+      "ResourceInfo" : {
+        "description" : "Information about a resource and the query formats it accepts",
+        "properties" : {
+          "id" : {
+            "description" : "PIC-SURE id of this resource",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "name" : {
+            "description" : "Display name of this resource",
+            "type" : "string"
+          },
+          "queryFormats" : {
+            "description" : "Query formats this resource accepts",
+            "items" : {
+              "$ref" : "#/components/schemas/QueryFormat"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "SearchRequest" : {
+        "description" : "A free-text search over the concepts exposed by a resource",
+        "properties" : {
+          "query" : {
+            "description" : "Free-text search term",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      }
+    }
+  },
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/concepts" : {
+      "post" : {
+        "description" : "Paging is 0-based on this endpoint: page_number=0 is the first page.",
+        "operationId" : "listConcepts",
+        "parameters" : [
+          {
+            "description" : "ZERO-BASED page index; the first page is 0. HPDS's /search/values/ pages from 1 -- these two surfaces do not share a base.",
+            "in" : "query",
+            "name" : "page_number",
+            "required" : false,
+            "schema" : {
+              "default" : 0,
+              "format" : "int32",
+              "minimum" : 0,
+              "type" : "integer"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "page_size",
+            "required" : false,
+            "schema" : {
+              "default" : 10,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Filter"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PaginatedResponseConcept"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Search concepts",
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    },
+    "/concepts/detail" : {
+      "post" : {
+        "operationId" : "conceptsDetail",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "type" : "string"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "oneOf" : [
+                      {
+                        "$ref" : "#/components/schemas/CategoricalConcept"
+                      },
+                      {
+                        "$ref" : "#/components/schemas/ContinuousConcept"
+                      }
+                    ]
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    },
+    "/concepts/detail/{dataset}" : {
+      "post" : {
+        "operationId" : "conceptDetail",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "dataset",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ConceptPathRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "oneOf" : [
+                    {
+                      "$ref" : "#/components/schemas/CategoricalConcept"
+                    },
+                    {
+                      "$ref" : "#/components/schemas/ContinuousConcept"
+                    }
+                  ]
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    },
+    "/concepts/dump" : {
+      "get" : {
+        "description" : "Paging is 0-based on this endpoint: page_number=0 is the first page.",
+        "operationId" : "dumpConcepts",
+        "parameters" : [
+          {
+            "description" : "ZERO-BASED page index; the first page is 0. HPDS's /search/values/ pages from 1 -- these two surfaces do not share a base.",
+            "in" : "query",
+            "name" : "page_number",
+            "required" : false,
+            "schema" : {
+              "default" : 0,
+              "format" : "int32",
+              "minimum" : 0,
+              "type" : "integer"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "page_size",
+            "required" : false,
+            "schema" : {
+              "default" : 10,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PaginatedResponseConcept"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Dump concepts with detail",
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    },
+    "/concepts/hierarchy/{dataset}" : {
+      "post" : {
+        "operationId" : "conceptHierarchy",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "dataset",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ConceptPathRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "oneOf" : [
+                      {
+                        "$ref" : "#/components/schemas/CategoricalConcept"
+                      },
+                      {
+                        "$ref" : "#/components/schemas/ContinuousConcept"
+                      }
+                    ]
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    },
+    "/concepts/tree" : {
+      "get" : {
+        "operationId" : "allConceptTrees",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "depth",
+            "required" : false,
+            "schema" : {
+              "default" : 2,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "oneOf" : [
+                      {
+                        "$ref" : "#/components/schemas/CategoricalConcept"
+                      },
+                      {
+                        "$ref" : "#/components/schemas/ContinuousConcept"
+                      }
+                    ]
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    },
+    "/concepts/tree/{dataset}" : {
+      "post" : {
+        "operationId" : "conceptTree",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "dataset",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "depth",
+            "required" : false,
+            "schema" : {
+              "default" : 2,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ConceptPathRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "oneOf" : [
+                    {
+                      "$ref" : "#/components/schemas/CategoricalConcept"
+                    },
+                    {
+                      "$ref" : "#/components/schemas/ContinuousConcept"
+                    }
+                  ]
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    },
+    "/dashboard" : {
+      "get" : {
+        "operationId" : "getDashboard",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Dashboard"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "dashboard-controller"
+        ]
+      }
+    },
+    "/dashboard-drawer" : {
+      "get" : {
+        "operationId" : "findAll",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/DashboardDrawer"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "dashboard-drawer-controller"
+        ]
+      }
+    },
+    "/dashboard-drawer/{id}" : {
+      "get" : {
+        "operationId" : "findByDatasetId",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DashboardDrawer"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "dashboard-drawer-controller"
+        ]
+      }
+    },
+    "/facets" : {
+      "post" : {
+        "operationId" : "getFacets",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Filter"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/FacetCategory"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "facet-controller"
+        ]
+      }
+    },
+    "/facets/{facetCategory}/{facet}" : {
+      "get" : {
+        "operationId" : "facetDetails",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Facet"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "facet-controller"
+        ]
+      }
+    },
+    "/info" : {
+      "post" : {
+        "operationId" : "getInfo",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResourceInfo"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "info-controller"
+        ]
+      }
+    },
+    "/search" : {
+      "post" : {
+        "operationId" : "legacySearch",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "page_number",
+            "required" : false,
+            "schema" : {
+              "default" : 0,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "page_size",
+            "required" : false,
+            "schema" : {
+              "default" : 10,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LegacyResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "legacy-search-controller"
+        ]
+      }
+    }
+  },
+  "servers" : [
+    {
+      "description" : "Generated server url",
+      "url" : "http://localhost"
+    }
+  ]
+}

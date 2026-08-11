@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * The body of {@code POST /open/validate}: the same {@code request} node introspection carries, plus the {@code ipAddress} marker the
@@ -27,7 +28,11 @@ import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
  * is the safer failure.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record OpenAccessValidationRequest(TargetedRequest request, String ipAddress) {
+@Schema(description = "Open-access validation request sent by the gateway to PSAMA for unauthenticated traffic")
+public record OpenAccessValidationRequest(
+    @Schema(description = "The request being authorized; identical node to token introspection") TargetedRequest request,
+    @Schema(description = "Open-access caller marker, \"OPEN_ACCESS:<host>\"") String ipAddress
+) {
 
     /**
      * Binds {@code request} through a raw node so that a non-object cannot fail the bind. This reproduces exactly what

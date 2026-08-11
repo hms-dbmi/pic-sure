@@ -1,0 +1,1968 @@
+{
+  "components" : {
+    "schemas" : {
+      "AccessRule" : {
+        "properties" : {
+          "checkMapKeyOnly" : {
+            "type" : "boolean"
+          },
+          "checkMapNode" : {
+            "type" : "boolean"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "evaluateOnlyByGates" : {
+            "type" : "boolean"
+          },
+          "gateAnyRelation" : {
+            "type" : "boolean"
+          },
+          "gates" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AccessRule"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "mergedName" : {
+            "type" : "string"
+          },
+          "mergedValues" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "rule" : {
+            "type" : "string"
+          },
+          "subAccessRule" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AccessRule"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "type" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "value" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Application" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "enable" : {
+            "type" : "boolean"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "privileges" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Privilege"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "token" : {
+            "type" : "string"
+          },
+          "url" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApplicationForDisplay" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "enable" : {
+            "type" : "boolean"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "url" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApplicationRefreshTokenResponse" : {
+        "description" : "A newly minted application token",
+        "properties" : {
+          "token" : {
+            "description" : "The new application token",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "AuthenticationRequest" : {
+        "description" : "The credentials the identity provider needs: an OIDC code, or an Auth0 access token plus redirect URI",
+        "properties" : {
+          "access_token" : {
+            "description" : "Auth0 access token",
+            "type" : "string"
+          },
+          "code" : {
+            "description" : "OIDC authorization code (Okta/AIM-AHEAD, RAS, FENCE)",
+            "type" : "string"
+          },
+          "redirectURI" : {
+            "description" : "Auth0 redirect URI the code was issued against",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "AuthenticationResponse" : {
+        "description" : "The authenticated user's PIC-SURE token and profile",
+        "properties" : {
+          "acceptedTOS" : {
+            "description" : "Whether the user accepted the latest terms of service, as the string \"true\"/\"false\"",
+            "type" : "string"
+          },
+          "email" : {
+            "description" : "The user's email address",
+            "type" : "string"
+          },
+          "expirationDate" : {
+            "description" : "ISO-8601 UTC instant at which the token expires",
+            "type" : "string"
+          },
+          "oktaIdToken" : {
+            "description" : "Okta id_token, present only for the Okta-brokered providers (AIM-AHEAD, RAS)",
+            "type" : "string"
+          },
+          "token" : {
+            "description" : "The PIC-SURE JWT the client sends as its bearer token",
+            "type" : "string"
+          },
+          "userId" : {
+            "description" : "The user's subject claim; also the session key",
+            "type" : "string"
+          },
+          "uuid" : {
+            "description" : "The user's PSAMA uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Connection" : {
+        "properties" : {
+          "id" : {
+            "type" : "string"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "requiredFields" : {
+            "type" : "string"
+          },
+          "subPrefix" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "IntrospectionRequest" : {
+        "description" : "The token to validate plus the request being authorized",
+        "properties" : {
+          "request" : {
+            "$ref" : "#/components/schemas/TargetedRequest",
+            "description" : "The request PSAMA is being asked to authorize"
+          },
+          "token" : {
+            "description" : "The end user's bearer token, without the Bearer prefix",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "JsonNode" : { },
+      "LongTermTokenResponse" : {
+        "description" : "The current user's refreshed long-term token",
+        "properties" : {
+          "userLongTermToken" : {
+            "description" : "The long-term token, prefixed LONG_TERM_TOKEN|",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "OpenAccessValidationRequest" : {
+        "description" : "The request being authorized, plus the caller's open-access marker",
+        "properties" : {
+          "ipAddress" : {
+            "description" : "Open-access caller marker, \"OPEN_ACCESS:<host>\"",
+            "type" : "string"
+          },
+          "request" : {
+            "$ref" : "#/components/schemas/TargetedRequest",
+            "description" : "The request being authorized; identical node to token introspection"
+          }
+        },
+        "type" : "object"
+      },
+      "Privilege" : {
+        "properties" : {
+          "accessRules" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AccessRule"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "application" : {
+            "$ref" : "#/components/schemas/ApplicationForDisplay"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Role" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "privileges" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Privilege"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TargetedRequest" : {
+        "description" : "What the gateway asks PSAMA to authorize: the request path plus, when there is one, the body being authorized. Deployed JsonPath access rules bind to this node",
+        "properties" : {
+          "Target Service" : {
+            "description" : "Verbatim request path; deployed JsonPath access rules bind $.['Target Service']",
+            "type" : "string"
+          },
+          "query" : {
+            "$ref" : "#/components/schemas/JsonNode",
+            "description" : "The request body being authorized; bare v3 Query on query paths. Absent when the request has no body to authorize"
+          }
+        },
+        "type" : "object"
+      },
+      "TermsOfService" : {
+        "properties" : {
+          "content" : {
+            "type" : "string"
+          },
+          "dateUpdated" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TokenIntrospectionResponse" : {
+        "properties" : {
+          "active" : {
+            "description" : "False whenever the token is unusable for any reason: invalid, expired, unknown user, or unauthorized",
+            "type" : "boolean"
+          },
+          "email" : {
+            "description" : "Email address of the authenticated user",
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "privileges" : {
+            "description" : "Names of the BASELINE privileges the user holds in the calling application, plus their application-independent ones. PSAMA no longer mints per-study PRIV_MANAGED_* privileges or FENCE-derived names at login, so nothing here describes which studies the user may query: study access flows exclusively through user_consents, read via GET /user/me/consents.",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "query" : {
+            "$ref" : "#/components/schemas/JsonNode",
+            "description" : "Consent-mutated v3 Query as a JSON OBJECT (never a string). Present only when access-rule evaluation rewrote the submitted query; the caller must run this one instead of the query it sent"
+          },
+          "roles" : {
+            "description" : "Names of the BASELINE roles held by the user. PSAMA no longer mints per-study MANAGED_* roles or FENCE-derived role names at login, so nothing here describes which studies the user may query: study access flows exclusively through user_consents, read via GET /user/me/consents.",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "sub" : {
+            "description" : "Token subject, i.e. the identity-provider-scoped user identifier",
+            "type" : "string"
+          },
+          "token" : {
+            "description" : "The refreshed token; populated only when tokenRefreshed is true",
+            "type" : "string"
+          },
+          "tokenRefreshed" : {
+            "description" : "True when PSAMA issued a fresh token because the presented one was close to expiring",
+            "type" : "boolean"
+          },
+          "userId" : {
+            "description" : "PSAMA's UUID for the authenticated user",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "TokenRefreshResponse" : {
+        "description" : "A refreshed PIC-SURE token and its expiry",
+        "properties" : {
+          "expirationDate" : {
+            "description" : "ISO-8601 UTC instant at which the token expires",
+            "type" : "string"
+          },
+          "token" : {
+            "description" : "The refreshed PIC-SURE JWT",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "User" : {
+        "properties" : {
+          "acceptedTOS" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "active" : {
+            "type" : "boolean"
+          },
+          "auth0metadata" : {
+            "type" : "string"
+          },
+          "connection" : {
+            "$ref" : "#/components/schemas/Connection"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "generalMetadata" : {
+            "type" : "string"
+          },
+          "matched" : {
+            "type" : "boolean"
+          },
+          "passport" : {
+            "type" : "string"
+          },
+          "roles" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Role"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "subject" : {
+            "type" : "string"
+          },
+          "token" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UserConsentsResponse" : {
+        "description" : "The study authorizations of the caller, keyed by concept path",
+        "properties" : {
+          "consents" : {
+            "additionalProperties" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array",
+              "uniqueItems" : true
+            },
+            "description" : "Authorized consent identifiers, keyed by CONCEPT PATH -- not by study accession. The values are the consent identifiers verbatim (\"phs000007.c1\", \"open_access-1000Genomes\"); clients match them against dictionary values and put them in a v3 query's authorizationFilters as-is, never parsing or reformatting them. The producer is PSAMA's BdcConsentsBuilder, and the keys it writes today are \"\\_consents\\\" (every authorized consent identifier plus every public study), \"\\_harmonized_consent\\\" (the harmonized subset) and \"\\_topmed_consents\\\" (the subset whose study dataType contains G). Those are the KNOWN keys, not the complete set: consumers must treat every key as optional and tolerate ones they do not recognise. Empty when nothing is authorized.",
+            "type" : "object"
+          },
+          "userId" : {
+            "description" : "PSAMA's UUID for the user these consents belong to",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UserForDisplay" : {
+        "properties" : {
+          "acceptedTOS" : {
+            "type" : "boolean"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "privileges" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array",
+            "uniqueItems" : true
+          },
+          "token" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UserMetadataMapping" : {
+        "properties" : {
+          "auth0MetadataJsonPath" : {
+            "type" : "string"
+          },
+          "connection" : {
+            "$ref" : "#/components/schemas/Connection"
+          },
+          "generalMetadataJsonPath" : {
+            "type" : "string"
+          },
+          "uuid" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ValidationResponse" : {
+        "description" : "Whether the open-access request passed the open-access rule set",
+        "properties" : {
+          "valid" : {
+            "description" : "true when the request is authorized",
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      }
+    }
+  },
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/accessRule" : {
+      "get" : {
+        "description" : "GET a list of existing AccessRules, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getAccessRuleAll",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/AccessRule"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Access Rule Management"
+        ]
+      },
+      "post" : {
+        "description" : "POST a list of AccessRules, requires SUPER_ADMIN role",
+        "operationId" : "addAccessRule",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of AccessRule in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/AccessRule"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/AccessRule"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Access Rule Management"
+        ]
+      },
+      "put" : {
+        "description" : "Update a list of AccessRules, will only update the fields listed, requires SUPER_ADMIN role",
+        "operationId" : "updateAccessRule",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of AccessRule with fields to be updated in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/AccessRule"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/AccessRule"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Access Rule Management"
+        ]
+      }
+    },
+    "/accessRule/allTypes" : {
+      "get" : {
+        "description" : "GET all types listed for the rule in accessRule that could be used, requires SUPER_ADMIN role",
+        "operationId" : "getAllTypes",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "additionalProperties" : {
+                    "format" : "int32",
+                    "type" : "integer"
+                  },
+                  "type" : "object"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Access Rule Management"
+        ]
+      }
+    },
+    "/accessRule/{accessRuleId}" : {
+      "delete" : {
+        "description" : "DELETE an AccessRule by Id only if the accessRule is not associated by others, requires SUPER_ADMIN role",
+        "operationId" : "removeById_4",
+        "parameters" : [
+          {
+            "description" : "A valid accessRule Id",
+            "in" : "path",
+            "name" : "accessRuleId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/AccessRule"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Access Rule Management"
+        ]
+      },
+      "get" : {
+        "description" : "GET information of one AccessRule with the UUID, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getAccessRuleById",
+        "parameters" : [
+          {
+            "description" : "The UUID of the accessRule to fetch information about",
+            "in" : "path",
+            "name" : "accessRuleId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AccessRule"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Access Rule Management"
+        ]
+      }
+    },
+    "/application" : {
+      "get" : {
+        "description" : "GET a list of existing Applications, no role restrictions",
+        "operationId" : "getApplicationAll",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Application"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Application Management"
+        ]
+      },
+      "post" : {
+        "description" : "POST a list of Applications, requires SUPER_ADMIN role",
+        "operationId" : "addApplication",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of AccessRule in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/Application"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Application"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Application Management"
+        ]
+      },
+      "put" : {
+        "description" : "Update a list of Applications, will only update the fields listed, requires SUPER_ADMIN role",
+        "operationId" : "updateApplication",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of AccessRule with fields to be updated in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/Application"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Application"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Application Management"
+        ]
+      }
+    },
+    "/application/refreshToken/{applicationId}" : {
+      "get" : {
+        "description" : "Refresh a token of an application by application Id, requires SUPER_ADMIN role",
+        "operationId" : "refreshApplicationToken",
+        "parameters" : [
+          {
+            "description" : "A valid application Id",
+            "in" : "path",
+            "name" : "applicationId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApplicationRefreshTokenResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Application Management"
+        ]
+      }
+    },
+    "/application/{applicationId}" : {
+      "delete" : {
+        "description" : "DELETE an Application by Id only if the application is not associated by others, requires SUPER_ADMIN role",
+        "operationId" : "removeById_3",
+        "parameters" : [
+          {
+            "description" : "A valid accessRule Id",
+            "in" : "path",
+            "name" : "applicationId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Application"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Application Management"
+        ]
+      },
+      "get" : {
+        "description" : "GET information of one Application with the UUID, no role restrictions",
+        "operationId" : "getApplicationById",
+        "parameters" : [
+          {
+            "description" : "The UUID of the application to fetch information about",
+            "in" : "path",
+            "name" : "applicationId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Application"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Application Management"
+        ]
+      }
+    },
+    "/authentication/{idpProvider}" : {
+      "post" : {
+        "description" : "The authentication endpoint for retrieving a valid user token",
+        "operationId" : "authentication",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "idpProvider",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AuthenticationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthenticationResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Authentication"
+        ]
+      }
+    },
+    "/connection" : {
+      "get" : {
+        "description" : "GET a list of existing Connection, requires SUPER_ADMIN or ADMIN role",
+        "operationId" : "getAllConnections",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Connection"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Connection Management"
+        ]
+      },
+      "post" : {
+        "description" : "POST a list of Connections, requires SUPER_ADMIN role",
+        "operationId" : "addConnection",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of Connections in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/Connection"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Connection"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Connection Management"
+        ]
+      },
+      "put" : {
+        "description" : "Update a list of Connections, will only update the fields listed, requires SUPER_ADMIN role",
+        "operationId" : "updateConnection",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of Connection with fields to be updated in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/Connection"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Connection"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Connection Management"
+        ]
+      }
+    },
+    "/connection/{connectionId}" : {
+      "delete" : {
+        "description" : "DELETE an Connection by Id only if the Connection is not associated by others, requires SUPER_ADMIN role",
+        "operationId" : "removeById_2",
+        "parameters" : [
+          {
+            "description" : "A valid connection Id",
+            "in" : "path",
+            "name" : "connectionId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Connection"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Connection Management"
+        ]
+      },
+      "get" : {
+        "description" : "GET information of one Connection with the UUID, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getConnectionById",
+        "parameters" : [
+          {
+            "description" : "The UUID of the Connection to fetch information about",
+            "in" : "path",
+            "name" : "connectionId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Connection"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Connection Management"
+        ]
+      }
+    },
+    "/mapping" : {
+      "get" : {
+        "description" : "GET a list of existing UserMetadataMappings, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getAllMappings",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/UserMetadataMapping"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Metadata Mapping Management"
+        ]
+      },
+      "post" : {
+        "description" : "POST a list of UserMetadataMappings, requires SUPER_ADMIN role",
+        "operationId" : "addMapping",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of UserMetadataMapping in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/UserMetadataMapping"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/UserMetadataMapping"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Metadata Mapping Management"
+        ]
+      },
+      "put" : {
+        "description" : "Update a list of UserMetadataMappings, will only update the fields listed, requires SUPER_ADMIN role",
+        "operationId" : "updateMapping",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of UserMetadataMapping with fields to be updated in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/UserMetadataMapping"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/UserMetadataMapping"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Metadata Mapping Management"
+        ]
+      }
+    },
+    "/mapping/{connectionId}" : {
+      "get" : {
+        "description" : "GET information of one UserMetadataMapping with the UUID, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getMappingsForConnection",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "connectionId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Connection"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Metadata Mapping Management"
+        ]
+      }
+    },
+    "/mapping/{mappingId}" : {
+      "delete" : {
+        "description" : "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others, requires SUPER_ADMIN role",
+        "operationId" : "removeById_5",
+        "parameters" : [
+          {
+            "description" : "A valid UserMetadataMapping Id",
+            "in" : "path",
+            "name" : "mappingId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/UserMetadataMapping"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Metadata Mapping Management"
+        ]
+      }
+    },
+    "/open/validate" : {
+      "post" : {
+        "description" : "Validates an open-access request against the open-access rule set",
+        "operationId" : "validate",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OpenAccessValidationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "open-access-controller"
+        ]
+      }
+    },
+    "/privilege" : {
+      "get" : {
+        "description" : "GET a list of existing privileges, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getPrivilegeAll",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Privilege"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Privilege Management"
+        ]
+      },
+      "post" : {
+        "description" : "POST a list of privileges, requires SUPER_ADMIN role",
+        "operationId" : "addPrivilege",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of privileges in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/Privilege"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Privilege"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Privilege Management"
+        ]
+      },
+      "put" : {
+        "description" : "Update a list of privileges, will only update the fields listed, requires SUPER_ADMIN role",
+        "operationId" : "updatePrivilege",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of privilege with fields to be updated in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/Privilege"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Privilege"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Privilege Management"
+        ]
+      }
+    },
+    "/privilege/{privilegeId}" : {
+      "delete" : {
+        "description" : "DELETE an privilege by Id only if the privilege is not associated by others, requires SUPER_ADMIN role",
+        "operationId" : "removeById_1",
+        "parameters" : [
+          {
+            "description" : "A valid privilege Id",
+            "in" : "path",
+            "name" : "privilegeId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Privilege"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Privilege Management"
+        ]
+      },
+      "get" : {
+        "description" : "GET information of one Privilege with the UUID, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getPrivilegeById",
+        "parameters" : [
+          {
+            "description" : "The UUID of the privilege to fetch information about",
+            "in" : "path",
+            "name" : "privilegeId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Privilege"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Privilege Management"
+        ]
+      }
+    },
+    "/role" : {
+      "get" : {
+        "description" : "GET a list of existing Roles, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getRoleAll",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Role"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Role Management"
+        ]
+      },
+      "post" : {
+        "description" : "POST a list of Roles, requires SUPER_ADMIN role",
+        "operationId" : "addRole",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of Roles in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/Role"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Role"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Role Management"
+        ]
+      },
+      "put" : {
+        "description" : "Update a list of Roles, will only update the fields listed, requires SUPER_ADMIN role",
+        "operationId" : "updateRole",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of Roles with fields to be updated in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/Role"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Role"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Role Management"
+        ]
+      }
+    },
+    "/role/{roleId}" : {
+      "delete" : {
+        "description" : "DELETE an Role by Id only if the Role is not associated by others, requires SUPER_ADMIN role",
+        "operationId" : "removeById",
+        "parameters" : [
+          {
+            "description" : "A valid Role Id",
+            "in" : "path",
+            "name" : "roleId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Role"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Role Management"
+        ]
+      },
+      "get" : {
+        "description" : "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role",
+        "operationId" : "getRoleById",
+        "parameters" : [
+          {
+            "description" : "The UUID of the Role to fetch information about",
+            "in" : "path",
+            "name" : "roleId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Role"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Role Management"
+        ]
+      }
+    },
+    "/token/inspect" : {
+      "post" : {
+        "description" : "Token introspection endpoint for user to retrieve a valid token",
+        "operationId" : "inspectToken",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/IntrospectionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TokenIntrospectionResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Token Management"
+        ]
+      }
+    },
+    "/token/refresh" : {
+      "get" : {
+        "description" : "To refresh current user's token if the user is an active user",
+        "operationId" : "refreshToken",
+        "parameters" : [
+          {
+            "in" : "header",
+            "name" : "Authorization",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TokenRefreshResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Token Management"
+        ]
+      }
+    },
+    "/tos" : {
+      "get" : {
+        "description" : "GET if current user has accepted their TOS or not",
+        "operationId" : "hasUserAcceptedTOS",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "boolean"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Terms of Service Management"
+        ]
+      }
+    },
+    "/tos/accept" : {
+      "post" : {
+        "description" : "Endpoint for current user to accept his terms of service",
+        "operationId" : "acceptTermsOfService",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Terms of Service Management"
+        ]
+      }
+    },
+    "/tos/latest" : {
+      "get" : {
+        "description" : "GET the latest Terms of Service",
+        "operationId" : "getLatestTermsOfService",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "text/html" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Terms of Service Management"
+        ]
+      }
+    },
+    "/tos/update" : {
+      "post" : {
+        "description" : "Update the Terms of Service html body",
+        "operationId" : "updateTermsOfService",
+        "requestBody" : {
+          "content" : {
+            "text/html" : {
+              "schema" : {
+                "type" : "string"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TermsOfService"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "Terms of Service Management"
+        ]
+      }
+    },
+    "/user" : {
+      "get" : {
+        "description" : "GET a list of existing users, requires ADMIN or SUPER_ADMIN roles",
+        "operationId" : "getUserAll",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/User"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Management"
+        ]
+      },
+      "post" : {
+        "description" : "POST a list of users, requires ADMIN role",
+        "operationId" : "addUser",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "description" : "A list of user in JSON format",
+                "items" : {
+                  "$ref" : "#/components/schemas/User"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/User"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Management"
+        ]
+      },
+      "put" : {
+        "description" : "Update a list of users, will only update the fields listed, requires ADMIN role",
+        "operationId" : "updateUser",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "$ref" : "#/components/schemas/User"
+                },
+                "type" : "array"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/User"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Management"
+        ]
+      }
+    },
+    "/user/me" : {
+      "get" : {
+        "description" : "Retrieve information of current user",
+        "operationId" : "getCurrentUser",
+        "parameters" : [
+          {
+            "in" : "header",
+            "name" : "Authorization",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "description" : "Attribute that represents if a long term token will attach to the response",
+            "in" : "query",
+            "name" : "hasToken",
+            "required" : false,
+            "schema" : {
+              "type" : "boolean"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserForDisplay"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Management"
+        ]
+      }
+    },
+    "/user/me/consents" : {
+      "get" : {
+        "description" : "Retrieve consents of current user",
+        "operationId" : "getUserConsents",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserConsentsResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Management"
+        ]
+      }
+    },
+    "/user/me/refresh_long_term_token" : {
+      "get" : {
+        "description" : "refresh the long term token of current user",
+        "operationId" : "refreshUserToken",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LongTermTokenResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Management"
+        ]
+      }
+    },
+    "/user/{userId}" : {
+      "get" : {
+        "description" : "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles",
+        "operationId" : "getUserById",
+        "parameters" : [
+          {
+            "description" : "The UUID of the user to fetch information about",
+            "in" : "path",
+            "name" : "userId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/User"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "User Management"
+        ]
+      }
+    }
+  },
+  "servers" : [
+    {
+      "description" : "Generated server url",
+      "url" : "http://localhost"
+    }
+  ]
+}
