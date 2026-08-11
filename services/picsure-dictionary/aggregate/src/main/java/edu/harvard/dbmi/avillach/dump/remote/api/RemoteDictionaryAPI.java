@@ -55,7 +55,9 @@ public class RemoteDictionaryAPI {
     }
 
     public Optional<List<ConceptNodeMetaDump>> fetchConceptMetas(String siteName) {
-        return runRequest(new TypeReference<List<ConceptNodeMetaDump>>() {}, rootURL + siteName + "/dump/" + DumpTable.ConceptNodeMeta.name());
+        return runRequest(
+            new TypeReference<List<ConceptNodeMetaDump>>() {}, rootURL + siteName + "/dump/" + DumpTable.ConceptNodeMeta.name()
+        );
     }
 
     public Optional<List<FacetCategoryMetaDump>> fetchFacetCategoryMetas(String siteName) {
@@ -69,7 +71,9 @@ public class RemoteDictionaryAPI {
     }
 
     public Optional<List<FacetConceptPair>> fetchFacetConceptPairs(String siteName) {
-        return runRequest(new TypeReference<List<FacetConceptPair>>() {}, rootURL + siteName + "/dump/" + DumpTable.FacetConceptNode.name());
+        return runRequest(
+            new TypeReference<List<FacetConceptPair>>() {}, rootURL + siteName + "/dump/" + DumpTable.FacetConceptNode.name()
+        );
     }
 
     @SuppressWarnings("unchecked")

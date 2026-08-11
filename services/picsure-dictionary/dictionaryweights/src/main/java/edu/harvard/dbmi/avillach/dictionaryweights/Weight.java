@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dictionaryweights;
 import java.util.Set;
 
 public record Weight(String key, String tier) {
+
     private static final Set<String> VALID_TIERS = Set.of("A", "B", "C", "D");
 
     public Weight {
