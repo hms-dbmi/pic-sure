@@ -36,8 +36,8 @@ import io.micrometer.core.instrument.MeterRegistry;
  * permit-all: the introspection filter above is the real auth boundary, matching the WAR's JWTFilter model rather than Spring Security's
  * authentication machinery.
  *
- * <p><b>Always enforced:</b> all SEVEN filters register unconditionally and enforce every route -- there is no mode switch or
- * pass-through/transparent path.
+ * <p><b>Always registered:</b> all SEVEN filters are installed unconditionally. The shared {@link PublicEndpointPolicy} defines the
+ * intentional public-route bypasses used by both authentication filters; all other routes traverse the normal auth chain.
  */
 @Configuration
 @EnableConfigurationProperties(GatewaySecurityProperties.class)
