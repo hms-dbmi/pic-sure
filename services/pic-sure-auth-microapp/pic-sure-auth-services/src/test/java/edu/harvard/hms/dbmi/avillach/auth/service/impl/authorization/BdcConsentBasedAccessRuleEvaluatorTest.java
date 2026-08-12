@@ -26,7 +26,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_validPhenotypicFilters_accept() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2")));
         Query query = new Query(
-            List.of(), List.of(),
+            List.of(), List.of(), Set.of(),
             new PhenotypicSubquery(
                 null,
                 List.of(
@@ -45,7 +45,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_phenotypicFiltersOneWrongConsent_reject() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2")));
         Query query = new Query(
-                List.of(), List.of(),
+                List.of(), List.of(), Set.of(),
                 new PhenotypicSubquery(
                         null,
                         List.of(
@@ -64,7 +64,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_nestedInvalidPhenotypicFiltersConsent_reject() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2")));
         Query query = new Query(
-                List.of(), List.of(),
+                List.of(), List.of(), Set.of(),
                 new PhenotypicSubquery(
                         null,
                         List.of(
@@ -84,7 +84,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_userNoConsents_reject() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of());
         Query query = new Query(
-            List.of(), List.of(),
+            List.of(), List.of(), Set.of(),
             new PhenotypicSubquery(
                 null,
                 List.of(
@@ -105,7 +105,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
             Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2"), "\\_topmed_consents\\", Set.of("phs123.c1", "phs456.c2"));
         UserConsents userConsents = new UserConsents().setConsents(consents);
         Query query = new Query(
-            List.of(), List.of(),
+            List.of(), List.of(), Set.of(),
             new PhenotypicSubquery(
                 null,
                 List.of(
@@ -125,7 +125,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_genomicFiltersNoTopmedConsents_reject() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2")));
         Query query = new Query(
-            List.of(), List.of(),
+            List.of(), List.of(), Set.of(),
             new PhenotypicSubquery(
                 null,
                 List.of(
@@ -145,7 +145,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_validHarmonizedPhenotypicFilters_accept() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2"), "\\_harmonized_consent\\", Set.of("phs789.c1", "phs789.c2")));
         Query query = new Query(
-                List.of(), List.of(),
+                List.of(), List.of(), Set.of(),
                 new PhenotypicSubquery(
                         null,
                         List.of(
@@ -164,7 +164,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_invalidNestedHarmonizedPhenotypicFilters_reject() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2")));
         Query query = new Query(
-                List.of(), List.of(),
+                List.of(), List.of(), Set.of(),
                 new PhenotypicSubquery(
                         null,
                         List.of(
@@ -183,7 +183,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_harmonizedPhenotypicFiltersEmptyUserConsent_reject() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2"), "\\_harmonized_consent\\", Set.of()));
         Query query = new Query(
-                List.of(), List.of(),
+                List.of(), List.of(), Set.of(),
                 new PhenotypicSubquery(
                         null,
                         List.of(
@@ -202,7 +202,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void setAuthorizationFiltersForQuery_normalConsents_addOnlyConsents() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2"), "\\_harmonized_consent\\", Set.of("phs789.c1", "phs789.c2")));
         Query query = new Query(
-                List.of(), List.of(),
+                List.of(), List.of(), Set.of(),
                 new PhenotypicSubquery(
                         null,
                         List.of(
@@ -221,7 +221,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
     public void evaluateAccessRule_filterIncludesTopmedAndParentStudyId_accept() {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2")));
         Query query = new Query(
-                List.of(), List.of(),
+                List.of(), List.of(), Set.of(),
                 new PhenotypicSubquery(
                         null,
                         List.of(
@@ -242,6 +242,7 @@ class BdcConsentBasedAccessRuleEvaluatorTest {
         UserConsents userConsents = new UserConsents().setConsents(Map.of("\\_consents\\", Set.of("phs123.c1", "phs456.c2")));
         Query query = new Query(
                 List.of("\\_Topmed Study Accession with Subject ID\\", "\\_Parent Study Accession with Subject ID\\", "\\_consents\\", "\\_harmonized_consent\\", "\\_topmed_consents\\"), List.of(),
+                Set.of(),
                 new PhenotypicSubquery(
                         null,
                         List.of(
