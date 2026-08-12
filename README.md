@@ -75,11 +75,11 @@ mvn verify
 mvn -pl services/pic-sure-gateway -am verify
 ```
 
-Those commands need `pic-sure-bom` already in the local repository. Maven resolves an imported
-BOM while building the root *model*, before any reactor module exists, so on an empty `~/.m2` it
-looks the BOM up remotely and fails. Build it from the checkout first — `mvn -f platform/pom.xml
-install` — or use `scripts/ci/run-maven-reactor.sh <maven args…>`, which does that install and then
-runs the given command from the repository root. CI takes the latter route, which is why the build
-needs no package-registry credentials.
+Run Maven **from the repository root**. The reactor satisfies the `pic-sure-bom` import by
+itself — even on an empty `~/.m2`, with no package-registry credentials — which is exactly how
+CI builds. The one mode that cannot resolve the BOM is starting Maven *inside* a service
+directory: that single-module build has no `platform` in its reactor, and no repository serves
+the artifact. If you need service-directory builds (e.g. for a Docker context), install the BOM
+once first: `mvn -f platform/pom.xml install`.
 
 Formatting: Spotless (Eclipse formatter, config inherited from the root) — `mvn spotless:apply`.
