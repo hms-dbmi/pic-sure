@@ -24,9 +24,8 @@ public class HttpClientConfig {
         CloseableHttpClient httpClient;
         if (!StringUtils.hasLength(proxyUser)) {
             LOG.info("No proxy user found, making default client.");
-            httpClient =
-                HttpClients.custom().setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create().setMaxConnTotal(100).build())
-                    .build();
+            httpClient = HttpClients.custom()
+                .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create().setMaxConnTotal(100).build()).build();
         } else {
             LOG.info("Found proxy user {}, will configure proxy from system properties", proxyUser);
             httpClient = HttpClients.custom().useSystemProperties().build();
