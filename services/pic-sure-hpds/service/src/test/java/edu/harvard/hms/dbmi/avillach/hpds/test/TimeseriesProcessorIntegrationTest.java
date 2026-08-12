@@ -1,10 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.hpds.test;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicClause;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries.TimeseriesProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.TimeseriesV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.test.util.BuildIntegrationTestEnvironment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -20,6 +23,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -30,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class TimeseriesProcessorIntegrationTest {
 
     @Autowired
-    private TimeseriesProcessor timeseriesProcessor;
+    private TimeseriesV3Processor timeseriesProcessor;
 
     @BeforeAll
     public static void beforeAll() {
@@ -39,15 +44,18 @@ public class TimeseriesProcessorIntegrationTest {
 
     @Test
     public void runQueryForTimestamp() throws IOException, InterruptedException {
-        Query query = new Query();
-        query.setCrossCountFields(List.of());
-        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\", new String[] {"American Ancestry"}));
-        query.setFields(List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"));
-        query.setExpectedResultType(ResultType.DATAFRAME_TIMESERIES);
+        PhenotypicClause phenotypicClause = new PhenotypicFilter(
+            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\", Set.of("American Ancestry"), null, null,
+            null
+        );
+        Query query = new Query(
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), phenotypicClause, null,
+            ResultType.DATAFRAME_TIMESERIES, UUID.randomUUID(), UUID.randomUUID()
+        );
 
         AsyncResult result =
             new AsyncResult(query, timeseriesProcessor, new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp")))
-                .setStatus(AsyncResult.Status.PENDING);
+                .setStatus(AsyncResult.Status.PENDING).setId(UUID.randomUUID().toString());
         result.run();
         System.out.println(result.getStatus());
         Thread.sleep(1000);
@@ -62,15 +70,16 @@ public class TimeseriesProcessorIntegrationTest {
 
     @Test
     public void runQueryForNullTimestamp() throws IOException, InterruptedException {
-        Query query = new Query();
-        query.setCrossCountFields(List.of());
-        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\SEX\\", new String[] {"male"}));
-        query.setFields(List.of("\\open_access-1000Genomes\\data\\SEX\\"));
-        query.setExpectedResultType(ResultType.DATAFRAME_TIMESERIES);
+        PhenotypicClause phenotypicClause =
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("male"), null, null, null);
+        Query query = new Query(
+            List.of("\\open_access-1000Genomes\\data\\SEX\\"), List.of(), phenotypicClause, null, ResultType.DATAFRAME_TIMESERIES,
+            UUID.randomUUID(), UUID.randomUUID()
+        );
 
         AsyncResult result =
             new AsyncResult(query, timeseriesProcessor, new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp")))
-                .setStatus(AsyncResult.Status.PENDING);
+                .setStatus(AsyncResult.Status.PENDING).setId(UUID.randomUUID().toString());
         result.run();
         System.out.println(result.getStatus());
         Thread.sleep(1000);

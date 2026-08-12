@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
@@ -136,7 +137,7 @@ public class QueryExecutor {
         return phenotypicQueryExecutor.useResidentCubesFirst(paths, columnCount);
     }
 
-    public Map<String, ColumnMeta> getDictionary() {
+    public Map<String, SummaryColumnMeta> getDictionary() {
         return phenotypicQueryExecutor.getMetaStore();
     }
 
@@ -158,7 +159,7 @@ public class QueryExecutor {
         List<String> allFilterPaths =
             query.allFilters().stream().flatMap(phenotypicFilter -> (switch (phenotypicFilter.phenotypicFilterType()) {
                 case FILTER, REQUIRED -> List.of(phenotypicFilter.conceptPath());
-                case ANY_RECORD_OF -> phenotypeMetaStore.getChildConceptPaths(phenotypicFilter.conceptPath());
+                case ANY_RECORD_OF -> phenotypicQueryExecutor.getChildConceptPaths(phenotypicFilter.conceptPath());
             }).stream()).toList();
         allConceptPaths.addAll(allFilterPaths);
         return allConceptPaths;

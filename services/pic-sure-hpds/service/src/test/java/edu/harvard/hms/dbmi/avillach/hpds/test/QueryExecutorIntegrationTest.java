@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.test;
 import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.QueryExecutor;
 import edu.harvard.hms.dbmi.avillach.hpds.test.util.BuildIntegrationTestEnvironment;
 import org.junit.jupiter.api.BeforeAll;
@@ -12,24 +13,31 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(SpringExtension.class)
 @EnableAutoConfiguration
 @SpringBootTest(classes = edu.harvard.hms.dbmi.avillach.hpds.service.HpdsApplication.class)
 @ActiveProfiles("integration-test")
+@AutoConfigureMockMvc
 public class QueryExecutorIntegrationTest {
 
     private static final Logger log = LoggerFactory.getLogger(QueryExecutorIntegrationTest.class);
 
     @Autowired
     private QueryExecutor queryExecutor;
+
+    @MockitoBean
+    private UserRequestContext userRequestContext;
 
     @BeforeAll
     public static void beforeAll() {
@@ -53,6 +61,20 @@ public class QueryExecutorIntegrationTest {
     }
 
     @Test
+    public void getPatientSubsetForQuery_validEmptyQuerySomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(), null, List.of(new GenomicFilter("Gene_with_variant", List.of("LOC102723996"), null, null)),
+            ResultType.COUNT, null, null
+        );
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(3, idList.size());
+        assertEquals(Set.of(198024, 198206, 198476), new HashSet<>(idList));
+    }
+
+    @Test
     public void getPatientSubsetForQuery_validGeneWithMultipleVariantQuery() {
         Query query = new Query(
             List.of(), List.of(), null,
@@ -62,6 +84,21 @@ public class QueryExecutorIntegrationTest {
 
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(22, idList.size());
+    }
+
+    @Test
+    public void getPatientSubsetForQuery_validGeneWithMultipleVariantQuerySomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(), null,
+            List.of(new GenomicFilter("Gene_with_variant", List.of("LOC102723996", "LOC101928576"), null, null)), ResultType.COUNT, null,
+            null
+        );
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+
+        assertEquals(4, idList.size());
+        assertEquals(Set.of(198024, 198206, 198717, 198476), new HashSet<>(idList));
     }
 
     @Test
@@ -76,7 +113,23 @@ public class QueryExecutorIntegrationTest {
         assertEquals(4, idList.size());
     }
 
+    @Test
+    public void getPatientSubsetForQuery_validGeneWithVariantQueryAndNumericQuerySomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(),
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null),
+            List.of(new GenomicFilter("Gene_with_variant", List.of("LOC102723996"), null, null)), ResultType.COUNT, null, null
+        );
 
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(0, idList.size());
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition4"));
+        idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(4, idList.size());
+    }
 
     @Test
     public void getPatientSubsetForQuery_validNumericPhenotypicQuery() {
@@ -88,6 +141,43 @@ public class QueryExecutorIntegrationTest {
 
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(562, idList.size());
+    }
+
+    @Test
+    public void getPatientSubsetForQuery_validNumericPhenotypicQuerySomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(),
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null),
+            null, ResultType.COUNT, null, null
+        );
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(151, idList.size());
+        idList.forEach(id -> assertTrue(id >= 198000 && id < 200000));
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition1", "partition4"));
+        idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(411, idList.size());
+        idList.forEach(id -> assertTrue(id < 198000 || id >= 200000));
+    }
+
+    @Test
+    public void getPatientSubsetForQuery_validNumericPhenotypicQueryInvalidPartitions() {
+        Query query = new Query(
+            List.of(), List.of(),
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null),
+            null, ResultType.COUNT, null, null
+        );
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3452345", "partition3"));
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(151, idList.size());
+        idList.forEach(id -> assertTrue(id >= 198000 && id < 200000));
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition3452345"));
+        idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(0, idList.size());
     }
 
     @Test
@@ -103,6 +193,24 @@ public class QueryExecutorIntegrationTest {
     }
 
     @Test
+    public void getPatientSubsetForQuery_validCategoricalPhenotypicQuerySomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(),
+            new PhenotypicFilter(
+                PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\POPULATION NAME\\", Set.of("Finnish"), null, null, null
+            ), null, ResultType.COUNT, null, null
+        );
+
+        // note: all of the patients in this population are in partition 4
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(0, idList.size());
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition4"));
+        idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(102, idList.size());
+    }
+
+    @Test
     public void getPatientSubsetForQuery_nonExistentCategoricalPhenotypicQuery() {
         Query query = new Query(
             List.of(), List.of(),
@@ -110,6 +218,21 @@ public class QueryExecutorIntegrationTest {
                 PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\NOTAREAL_CONCEPT\\", Set.of("Finnish"), null, null, null
             ), null, ResultType.COUNT, null, null
         );
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(0, idList.size());
+    }
+
+
+    @Test
+    public void getPatientSubsetForQuery_nonExistentCategoricalPhenotypicQuerySomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(),
+            new PhenotypicFilter(
+                PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\NOTAREAL_CONCEPT\\", Set.of("Finnish"), null, null, null
+            ), null, ResultType.COUNT, null, null
+        );
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(0, idList.size());
     }
@@ -144,6 +267,25 @@ public class QueryExecutorIntegrationTest {
         Set<Integer> bothIdList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(255, bothIdList.size());
         assertEquals(Sets.union(finnishIdList, columbianIdList), bothIdList);
+    }
+
+    @Test
+    public void getPatientSubsetForQuery_validMultipleValueCategoricalPhenotypicQuerySomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(),
+            new PhenotypicFilter(
+                PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\POPULATION NAME\\", Set.of("Finnish", "Colombian"), null,
+                null, null
+            ), null, ResultType.COUNT, null, null
+        );
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        Set<Integer> bothIdList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(0, bothIdList.size());
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition4"));
+        bothIdList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(255, bothIdList.size());
     }
 
     @Test
@@ -190,6 +332,29 @@ public class QueryExecutorIntegrationTest {
     }
 
     @Test
+    public void getPatientSubsetForQuery_validMultiplePhenotypicQuerySomePartitions() {
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+
+        PhenotypicFilter ageFilter =
+                new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null);
+        Query query = new Query(List.of(), List.of(), ageFilter, null, ResultType.COUNT, null, null);
+        Set<Integer> ageIdList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(151, ageIdList.size());
+
+        PhenotypicFilter maleFilter =
+                new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("male"), null, null, null);
+        query = new Query(List.of(), List.of(), maleFilter, null, ResultType.COUNT, null, null);
+        Set<Integer> sexIdList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(1150, sexIdList.size());
+
+        PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(null, List.of(ageFilter, maleFilter), Operator.AND);
+        query = new Query(List.of(), List.of(), phenotypicSubquery, null, ResultType.COUNT, null, null);
+        Set<Integer> bothIdList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(68, bothIdList.size());
+        assertEquals(Sets.intersection(ageIdList, sexIdList), bothIdList);
+    }
+
+    @Test
     public void getPatientSubsetForQuery_validMultipleNumericPhenotypicQuery() {
         PhenotypicFilter ageFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null);
@@ -217,6 +382,23 @@ public class QueryExecutorIntegrationTest {
         );
 
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(7, idList.size());
+    }
+
+    @Test
+    public void getPatientSubsetForQuery_validRequiredVariantSomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(), null, List.of(new GenomicFilter("chr21,5032061,A,G,LOC102723996,missense_variant", null, null, null)),
+            ResultType.COUNT, null, null
+        );
+
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(0, idList.size());
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition4"));
+        idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(7, idList.size());
     }
 
@@ -325,6 +507,22 @@ public class QueryExecutorIntegrationTest {
 
         Collection<String> variantList = queryExecutor.getVariantList(query);
         assertEquals(4, variantList.size());
+    }
+
+    @Test
+    public void getVariantList_validGeneWithVariantQuerySomePartitions() {
+        Query query = new Query(
+            List.of(), List.of(), null, List.of(new GenomicFilter("Gene_with_variant", List.of("LOC102723996"), null, null)),
+            ResultType.COUNT, null, null
+        );
+
+
+        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2"));
+
+        Set<Integer> patientSubsetForQuery = queryExecutor.getPatientSubsetForQuery(query);
+
+        Collection<String> variantList = queryExecutor.getVariantList(query);
+        assertEquals(3, variantList.size());
     }
 
     @Test

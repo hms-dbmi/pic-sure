@@ -4,6 +4,7 @@ import com.google.common.collect.Lists;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,14 +27,15 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
     private final int idBatchSize;
     private final QueryExecutor queryExecutor;
 
-    private final PhenotypicObservationStore phenotypicObservationStore;
+    private final PartitionedPhenotypicObservationStore phenotypicObservationStore;
 
     private static final Logger log = LoggerFactory.getLogger(MultiValueQueryV3Processor.class);
 
 
     @Autowired
     public MultiValueQueryV3Processor(
-        QueryExecutor queryExecutor, PhenotypicObservationStore phenotypicObservationStore, @Value("${ID_BATCH_SIZE:0}") int idBatchSize
+        QueryExecutor queryExecutor, PartitionedPhenotypicObservationStore phenotypicObservationStore,
+        @Value("${ID_BATCH_SIZE:0}") int idBatchSize
     ) {
         this.queryExecutor = queryExecutor;
         this.idBatchSize = idBatchSize;
@@ -74,8 +76,8 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
 
     private Map<String, Map<Integer, List<String>>> buildResult(Query query, TreeSet<Integer> ids) {
         ConcurrentHashMap<String, Map<Integer, List<String>>> pathToPatientToValueMap = new ConcurrentHashMap<>();
-        List<ColumnMeta> columns = query.select().stream().map(queryExecutor.getDictionary()::get).filter(Objects::nonNull).toList();
-        List<String> paths = columns.stream().map(ColumnMeta::getName).collect(Collectors.toList());
+        List<SummaryColumnMeta> columns = query.select().stream().map(queryExecutor.getDictionary()::get).filter(Objects::nonNull).toList();
+        List<String> paths = columns.stream().map(SummaryColumnMeta::getName).collect(Collectors.toList());
         int columnCount = paths.size() + 1;
 
         ArrayList<Integer> columnIndex = queryExecutor.useResidentCubesFirst(paths, columnCount);

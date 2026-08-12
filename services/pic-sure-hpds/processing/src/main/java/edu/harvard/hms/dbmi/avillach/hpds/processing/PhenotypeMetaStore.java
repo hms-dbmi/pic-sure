@@ -29,8 +29,6 @@ public class PhenotypeMetaStore {
 
     private TreeSet<Integer> patientIds;
 
-    private final LoadingCache<String, Set<String>> childConceptCache;
-
     public TreeMap<String, ColumnMeta> getMetaStore() {
         return metaStore;
     }
@@ -47,25 +45,11 @@ public class PhenotypeMetaStore {
         return metaStore.get(columnName);
     }
 
-    public Set<String> loadChildConceptPaths(String conceptPath) {
-        return metaStore.keySet().stream().filter(column -> column.startsWith(conceptPath)).collect(Collectors.toSet());
-    }
-
-    public Set<String> getChildConceptPaths(String conceptPath) {
-        try {
-            return childConceptCache.get(conceptPath);
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     @Autowired
     @SuppressWarnings("unchecked")
-    public PhenotypeMetaStore(
-        @Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory,
-        @Value("${CHILD_CONCEPT_CACHE_SIZE:500}") int childConceptCacheSize
-    ) {
-        String columnMetaFile = hpdsDataDirectory + "columnMeta.javabin";
+    public PhenotypeMetaStore(@Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory) {
+        String columnMetaFile = hpdsDataDirectory + "/columnMeta.javabin";
         try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(columnMetaFile)))) {
             TreeMap<String, ColumnMeta> _metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
             TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<>();
@@ -85,26 +69,10 @@ public class PhenotypeMetaStore {
             metaStore = new TreeMap<>();
             patientIds = new TreeSet<>();
         }
-        childConceptCache = CacheBuilder.newBuilder().maximumSize(childConceptCacheSize).build(new CacheLoader<>() {
-            @Override
-            public Set<String> load(String key) {
-                return loadChildConceptPaths(key);
-            }
-        });
     }
 
-    public PhenotypeMetaStore(
-        TreeMap<String, ColumnMeta> metaStore, TreeSet<Integer> patientIds,
-        @Value("${CHILD_CONCEPT_CACHE_SIZE:500}") int childConceptCacheSize
-    ) {
+    public PhenotypeMetaStore(TreeMap<String, ColumnMeta> metaStore, TreeSet<Integer> patientIds) {
         this.metaStore = metaStore;
         this.patientIds = patientIds;
-
-        this.childConceptCache = CacheBuilder.newBuilder().maximumSize(childConceptCacheSize).build(new CacheLoader<>() {
-            @Override
-            public Set<String> load(String key) {
-                return loadChildConceptPaths(key);
-            }
-        });
     }
 }

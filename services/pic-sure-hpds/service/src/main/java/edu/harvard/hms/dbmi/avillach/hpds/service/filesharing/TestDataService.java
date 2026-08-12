@@ -15,10 +15,10 @@ public class TestDataService {
 
     private static final Logger LOG = LoggerFactory.getLogger(TestDataService.class);
 
-    private final FileSystemService fileSystemService;
+    private final FileSystemV3Service fileSystemService;
 
     @Autowired
-    public TestDataService(FileSystemService fileSystemService) {
+    public TestDataService(FileSystemV3Service fileSystemService) {
         this.fileSystemService = fileSystemService;
     }
 

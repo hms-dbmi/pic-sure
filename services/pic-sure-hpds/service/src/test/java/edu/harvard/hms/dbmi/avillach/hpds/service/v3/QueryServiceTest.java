@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.GenomicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.service.HpdsApplication;
 import edu.harvard.hms.dbmi.avillach.hpds.service.QueryV3Service;
@@ -16,8 +17,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.io.IOException;
@@ -32,10 +35,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @EnableAutoConfiguration
 @SpringBootTest(classes = HpdsApplication.class)
 @ActiveProfiles("integration-test")
+@AutoConfigureMockMvc
 class QueryServiceTest {
 
     @Autowired
     private QueryV3Service queryService;
+
+    @MockitoBean
+    private UserRequestContext userRequestContext;
 
     @BeforeAll
     public static void beforeAll() {

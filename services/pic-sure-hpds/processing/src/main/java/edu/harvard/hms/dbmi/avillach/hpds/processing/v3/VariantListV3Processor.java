@@ -41,13 +41,13 @@ public class VariantListV3Processor implements HpdsV3Processor {
     private final QueryExecutor queryExecutor;
     private final ColumnSorter columnSorter;
 
-    private final PhenotypicObservationStore phenotypicObservationStore;
+    private final PartitionedPhenotypicObservationStore phenotypicObservationStore;
 
 
     @Autowired
     public VariantListV3Processor(
         QueryExecutor queryExecutor, GenomicProcessor genomicProcessor, ColumnSorter columnSorter,
-        PhenotypicObservationStore phenotypicObservationStore, @Value("${VCF_EXCERPT_ENABLED:false}") boolean vcfExcerptEnabled,
+        PartitionedPhenotypicObservationStore phenotypicObservationStore, @Value("${VCF_EXCERPT_ENABLED:false}") boolean vcfExcerptEnabled,
         @Value("${AGGREGATE_VCF_EXCERPT_ENABLED:false}") boolean aggregateVcfExcerptEnabled,
         @Value("${ID_CUBE_NAME:NONE}") String idCubeName
     ) {

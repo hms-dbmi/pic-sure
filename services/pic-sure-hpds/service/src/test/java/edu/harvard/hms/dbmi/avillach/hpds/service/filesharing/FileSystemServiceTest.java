@@ -14,12 +14,12 @@ public class FileSystemServiceTest {
     @Test
     public void shouldWriteToFile() throws IOException {
         Path dir = Files.createTempDirectory("my-upload-dir");
-        FileSystemService subject = new FileSystemService();
+        FileSystemV3Service subject = new FileSystemV3Service();
         ReflectionTestUtils.setField(subject, "sharingRoot", dir);
         ReflectionTestUtils.setField(subject, "enableFileSharing", true);
-        String fileContent = "I just got an ad that tried to sell a baguette with moz, dressing, " +
-            "and tomatoes as a healthy lunch, and that's just so far from the truth that it's bugging me. " +
-            "Like, come on. It's bread and cheese and oil. I don't care how fresh the tomatoes are.";
+        String fileContent = "I just got an ad that tried to sell a baguette with moz, dressing, "
+            + "and tomatoes as a healthy lunch, and that's just so far from the truth that it's bugging me. "
+            + "Like, come on. It's bread and cheese and oil. I don't care how fresh the tomatoes are.";
 
         boolean actual = subject.writeResultToFile("out.tsv", fileContent, "my-id");
         String actualContent = Files.readString(dir.resolve("my-id/out.tsv"));
@@ -31,7 +31,7 @@ public class FileSystemServiceTest {
     @Test
     public void shouldNotWriteToFile() throws IOException {
         Path dir = Files.createTempDirectory("my-upload-dir");
-        FileSystemService subject = new FileSystemService();
+        FileSystemV3Service subject = new FileSystemV3Service();
         ReflectionTestUtils.setField(subject, "sharingRoot", dir);
         ReflectionTestUtils.setField(subject, "enableFileSharing", false);
 

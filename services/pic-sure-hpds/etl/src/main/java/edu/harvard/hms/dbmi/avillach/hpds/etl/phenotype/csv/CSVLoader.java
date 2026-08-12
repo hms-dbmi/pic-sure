@@ -1,8 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.csv;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import edu.harvard.hms.dbmi.avillach.hpds.etl.LoadingStore;
 import org.apache.commons.csv.CSVFormat;
@@ -18,7 +23,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class CSVLoader {
 
-    private static LoadingStore store = new LoadingStore();
 
     private static Logger log = LoggerFactory.getLogger(CSVLoader.class);
 
@@ -32,20 +36,53 @@ public class CSVLoader {
 
     private static final int DATETIME = 4;
 
-    private static String HPDS_DIRECTORY = "/opt/local/hpds/";
+    private LoadingStore store;
+    private Path partitionDirectory;
+    private Path allConceptsPath;
+    private static String BASE_HPDS_DIRECTORY = "/opt/local/hpds/";
 
     public static void main(String[] args) throws IOException {
         if (args.length > 0) {
-            HPDS_DIRECTORY = args[0] + "/";
+            BASE_HPDS_DIRECTORY = args[0] + "/";
         }
-        store.allObservationsStore = new RandomAccessFile(HPDS_DIRECTORY + "allObservationsStore.javabin", "rw");
-        initialLoad(HPDS_DIRECTORY);
-        store.saveStore(HPDS_DIRECTORY);
+
+        Crypto.loadKey(Crypto.DEFAULT_KEY_NAME, BASE_HPDS_DIRECTORY + "encryption_key");
+
+        try (Stream<Path> allFiles = Files.walk(Path.of(BASE_HPDS_DIRECTORY))) {
+            List<Path> allConceptFiles = allFiles.filter(Files::isRegularFile) // Filters out folders, keeping only files
+                .filter(path -> path.toString().endsWith("allConcepts.csv")).collect(Collectors.toList());
+
+            for (Path allConceptFile : allConceptFiles) {
+                String fileName = allConceptFile.getFileName().toString();
+                String partitionName = fileName.split("-")[0];
+
+                Path partitionDirectory = allConceptFile.getParent().resolve(partitionName);
+                Files.createDirectories(partitionDirectory);
+
+                CSVLoader csvLoader = new CSVLoader(allConceptFile, partitionDirectory);
+                csvLoader.initialLoad();
+                csvLoader.save();
+            }
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    private static void initialLoad(String hpdsDirectory) throws IOException {
-        Crypto.loadKey(Crypto.DEFAULT_KEY_NAME, hpdsDirectory + "encryption_key");
-        Reader in = new FileReader(HPDS_DIRECTORY + "allConcepts.csv");
+    public CSVLoader(Path allConceptsPath, Path partitionDirectory) {
+        this.allConceptsPath = allConceptsPath;
+        this.partitionDirectory = partitionDirectory;
+        this.store = new LoadingStore();
+
+        try {
+            this.store.allObservationsStore = new RandomAccessFile(this.partitionDirectory + "/allObservationsStore.javabin", "rw");
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void initialLoad() throws IOException {
+        Reader in = new FileReader(this.allConceptsPath.toFile());
         Iterable<CSVRecord> records = CSVFormat.DEFAULT.withAllowMissingColumnNames().parse(new BufferedReader(in, 1024 * 1024));
 
         final PhenoCube[] currentConcept = new PhenoCube[1];
@@ -54,7 +91,11 @@ public class CSVLoader {
         }
     }
 
-    private static void processRecord(final PhenoCube[] currentConcept, CSVRecord record) {
+    private void save() {
+        store.saveStore(partitionDirectory.toString());
+    }
+
+    private void processRecord(final PhenoCube[] currentConcept, CSVRecord record) {
         if (record.size() < 4) {
             log.info("Record number " + record.getRecordNumber() + " had less records than we expected so we are skipping it.");
             return;
