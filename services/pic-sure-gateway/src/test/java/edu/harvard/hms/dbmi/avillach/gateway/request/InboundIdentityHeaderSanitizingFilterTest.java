@@ -125,6 +125,22 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void stripsApiKeyHeaderRegardlessOfCaseBeforeDownstream() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("x-PiCsUrE-aPi-kEy", "secret-api-key");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        HttpServletRequest downstream = captured.get();
+        assertThat(downstream.getHeader("X-PICSURE-API-Key")).isNull();
+        assertThat(downstream.getHeader("x-picsure-api-key")).isNull();
+        assertThat(downstream.getHeaders("X-PICSURE-API-Key").hasMoreElements()).isFalse();
+        assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("x-PiCsUrE-aPi-kEy", "X-PICSURE-API-Key");
+    }
+
+    @Test
     void nonIdentityHeadersPassThroughUnchangedWhenNoSpoofAttempted() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
         request.addHeader("Authorization", "Bearer abc");

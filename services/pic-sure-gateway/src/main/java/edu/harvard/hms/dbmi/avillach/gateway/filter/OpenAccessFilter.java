@@ -33,6 +33,8 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
+    static final String API_KEY_HEADER = "X-PICSURE-API-Key";
+
     /**
      * Set to {@link Boolean#TRUE} only by this filter, only after PSAMA grants the open-access validate. This — not the user-id attribute,
      * which other identity sources may legitimately set — is the one signal {@code PsamaIntrospectionFilter} accepts to skip token
@@ -70,6 +72,10 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         body.put("request", queryMap);
         String hostMarker = openAccessIpAddress(req);
         body.put("ipAddress", hostMarker); // NO token field (JWTFilter.java:389-394)
+        String apiKey = req.getHeader(API_KEY_HEADER);
+        if (apiKey != null && !apiKey.isBlank()) {
+            body.put("apiKey", apiKey);
+        }
 
         boolean granted;
         try {

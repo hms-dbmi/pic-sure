@@ -51,6 +51,9 @@ public class AuthorizationServiceTest {
     @MockBean
     private UserConsentsRepository userConsentsRepository;
 
+    @MockBean
+    private edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService apiKeyService;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     private static AccessRule GATE_resouceUUID;
@@ -215,7 +218,8 @@ public class AuthorizationServiceTest {
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
         authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, bdcConsentBasedAccessRuleEvaluator, "fence,okta", userConsentsRepository
+            accessRuleService, sessionService, roleService, bdcConsentBasedAccessRuleEvaluator, "fence,okta", userConsentsRepository,
+            apiKeyService, false
         );
     }
 

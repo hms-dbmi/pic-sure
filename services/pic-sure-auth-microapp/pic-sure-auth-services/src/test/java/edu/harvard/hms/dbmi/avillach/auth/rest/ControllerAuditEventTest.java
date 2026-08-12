@@ -144,6 +144,26 @@ class ControllerAuditEventTest {
     }
 
     @Test
+    void apiKeyController() throws Exception {
+        Class<?> c = ApiKeyController.class;
+        assertAuditEvent(
+            c, "createUserKey",
+            new Class[] {edu.harvard.hms.dbmi.avillach.auth.model.request.UserApiKeyRequest.class, HttpServletRequest.class}, "ACCESS",
+            "api_key.create"
+        );
+        assertAuditEvent(
+            c, "listKeys", new Class[] {int.class, int.class, edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType.class}, "OTHER",
+            "api_key.list"
+        );
+        assertAuditEvent(
+            c, "createPlatformKey",
+            new Class[] {edu.harvard.hms.dbmi.avillach.auth.model.request.PlatformApiKeyRequest.class, HttpServletRequest.class}, "ADMIN",
+            "api_key.platform.create"
+        );
+        assertAuditEvent(c, "revokeKey", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "api_key.revoke");
+    }
+
+    @Test
     void connectionWebController() throws Exception {
         Class<?> c = ConnectionWebController.class;
         // getConnectionById(String connectionId)
