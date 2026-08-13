@@ -1,4 +1,4 @@
-FROM amazoncorretto:25
+FROM amazoncorretto:25-alpine
 WORKDIR /app
 COPY target/pic-sure-gateway-*.jar /app/app.jar
 EXPOSE 8080

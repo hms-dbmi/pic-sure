@@ -1,9 +1,5 @@
-FROM mysql:8.2.0
+FROM mysql:8.4
 
-RUN mkdir /tempsql/
-COPY db/picsure-auth-dump-initial.sql /tempsql/picsure-auth-dump-initial.sql
+COPY db/picsure-auth-dump-initial.sql /docker-entrypoint-initdb.d/picsure-auth-dump-initial.sql
 
 EXPOSE 3306
-
-ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["mysqld","--init-file","/tempsql/picsure-auth-dump-initial.sql"]

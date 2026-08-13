@@ -12,7 +12,7 @@ services:
       - "5005:5005" # Debug port
     depends_on:
       auth-flyway:
-        condition: service_started
+        condition: service_completed_successfully
 
   picsure-db:
     build:
@@ -23,8 +23,8 @@ services:
         MYSQL_ROOT_PASSWORD: password
     ports:
         - "3306:3306" # MySQL port
-    command:
-      - --default-authentication-plugin=mysql_native_password # Required for MySQL 8.0
+    volumes:
+      - ./pic-sure-auth-db/db/sql/V1__CREATE_AUTH_INITIAL.sql:/docker-entrypoint-initdb.d/picsure-auth-dump-initial.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
       interval: 10s
@@ -32,13 +32,13 @@ services:
       retries: 5
 
   auth-flyway:
-    image: flyway/flyway:latest
+    image: flyway/flyway:13-alpine
     volumes:
       - ./pic-sure-auth-db/db/sql:/flyway/sql
     # linux/amd64
     platform: linux/amd64
     environment:
-        - FLYWAY_URL=jdbc:mysql://picsure-db:3306/auth?useSSL=false
+        - FLYWAY_URL=jdbc:mysql://picsure-db:3306/auth?useSSL=false&allowPublicKeyRetrieval=true
         - FLYWAY_USER=root
         - FLYWAY_PASSWORD=password
         - FLYWAY_SCHEMAS=auth
