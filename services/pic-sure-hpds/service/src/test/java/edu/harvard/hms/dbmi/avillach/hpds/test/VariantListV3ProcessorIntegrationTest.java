@@ -20,6 +20,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -43,7 +44,7 @@ public class VariantListV3ProcessorIntegrationTest {
     @Test
     public void runVcfExcerptQuery_validGeneWithVariantQuery() {
         GenomicFilter genomicFilter = new GenomicFilter("Gene_with_variant", List.of("LOC102723996"), null, null);
-        Query query = new Query(List.of(), List.of(), null, List.of(genomicFilter), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(genomicFilter), ResultType.COUNT, null, null);
 
         String vcfExerpt = variantListProcessor.runVcfExcerptQuery(query, true);
         log.debug(vcfExerpt);
@@ -74,7 +75,7 @@ public class VariantListV3ProcessorIntegrationTest {
     @Test
     public void runVcfExcerptQuery_validGeneWithVariantQueryNoCall() {
         GenomicFilter genomicFilter = new GenomicFilter("Gene_with_variant", List.of("ABC1"), null, null);
-        Query query = new Query(List.of(), List.of(), null, List.of(genomicFilter), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(genomicFilter), ResultType.COUNT, null, null);
 
         String vcfExerpt = variantListProcessor.runVcfExcerptQuery(query, true);
         log.debug(vcfExerpt);
@@ -108,7 +109,7 @@ public class VariantListV3ProcessorIntegrationTest {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null);
         GenomicFilter genomicFilter = new GenomicFilter("Gene_with_variant", List.of("LOC102723996"), null, null);
-        Query query = new Query(List.of(), List.of(), phenotypicFilter, List.of(genomicFilter), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicFilter, List.of(genomicFilter), ResultType.COUNT, null, null);
 
         String vcfExerpt = variantListProcessor.runVcfExcerptQuery(query, true);
         log.debug(vcfExerpt);
@@ -141,7 +142,7 @@ public class VariantListV3ProcessorIntegrationTest {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null);
         GenomicFilter genomicFilter = new GenomicFilter("Gene_with_variant", List.of("ABC1"), null, null);
-        Query query = new Query(List.of(), List.of(), phenotypicFilter, List.of(genomicFilter), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicFilter, List.of(genomicFilter), ResultType.COUNT, null, null);
 
         String vcfExerpt = variantListProcessor.runVcfExcerptQuery(query, true);
         log.debug(vcfExerpt);
@@ -175,7 +176,7 @@ public class VariantListV3ProcessorIntegrationTest {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 0.0, 1.0, null);
         GenomicFilter genomicFilter = new GenomicFilter("Gene_with_variant", List.of("LOC102723996"), null, null);
-        Query query = new Query(List.of(), List.of(), phenotypicFilter, List.of(genomicFilter), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicFilter, List.of(genomicFilter), ResultType.COUNT, null, null);
 
         String vcfExerpt = variantListProcessor.runVcfExcerptQuery(query, true);
         assertEquals("No Variants Found\n", vcfExerpt);
@@ -184,7 +185,7 @@ public class VariantListV3ProcessorIntegrationTest {
     @Test
     public void runVariantListQuery_validQuery_returnVariants() {
         GenomicFilter genomicFilter = new GenomicFilter("Gene_with_variant", List.of("LOC102723996"), null, null);
-        Query query = new Query(List.of(), List.of(), null, List.of(genomicFilter), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(genomicFilter), ResultType.COUNT, null, null);
 
         String variantList = variantListProcessor.runVariantListQuery(query);
         assertEquals(

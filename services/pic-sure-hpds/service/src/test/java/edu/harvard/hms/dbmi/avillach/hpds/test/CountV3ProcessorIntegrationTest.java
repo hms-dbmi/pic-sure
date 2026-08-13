@@ -45,7 +45,7 @@ public class CountV3ProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_multipleConceptsNoFilters() {
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"), List.of(), null, null,
+            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"), List.of(), Set.of(), null, null,
             ResultType.CROSS_COUNT, null, null
         );
 
@@ -58,7 +58,7 @@ public class CountV3ProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_unknownConceptNoFilters() {
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\NOT_REAL_DOESNT_EXIST\\"), List.of(), null,
+            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\NOT_REAL_DOESNT_EXIST\\"), List.of(), Set.of(), null,
             null, ResultType.CROSS_COUNT, null, null
         );
 
@@ -78,7 +78,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(null, List.of(sexFilter, populationFilter), Operator.AND);
 
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\"), List.of(),
+            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\"), List.of(), Set.of(),
             phenotypicSubquery, null, ResultType.CROSS_COUNT, null, null
         );
 
@@ -99,7 +99,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(null, List.of(sexFilter, populationFilter), Operator.AND);
 
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\"), List.of(),
+            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\"), List.of(), Set.of(),
             phenotypicSubquery, null, ResultType.CROSS_COUNT, null, null
         );
 
@@ -119,7 +119,7 @@ public class CountV3ProcessorIntegrationTest {
         );
 
         PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(null, List.of(sexFilter, populationFilter), Operator.AND);
-        Query query = new Query(List.of(), List.of(), phenotypicSubquery, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicSubquery, null, ResultType.COUNT, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);
         assertEquals(2, crossCounts.size());
@@ -142,7 +142,7 @@ public class CountV3ProcessorIntegrationTest {
             new PhenotypicFilter(PhenotypicFilterType.FILTER, populationPath, Set.of("Finnish"), null, null, null);
 
         PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(null, List.of(sexFilter, populationFilter), Operator.OR);
-        Query query = new Query(List.of(), List.of(), phenotypicSubquery, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicSubquery, null, ResultType.COUNT, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);
 
@@ -164,7 +164,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicFilter sexFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("male"), null, null, null);
         Query query = new Query(
-            List.of(), List.of(), sexFilter, List.of(new GenomicFilter("chr21,5032061,A,G", List.of("0/1", "1/1"), null, null)),
+            List.of(), List.of(), Set.of(), sexFilter, List.of(new GenomicFilter("chr21,5032061,A,G", List.of("0/1", "1/1"), null, null)),
             ResultType.COUNT, null, null
         );
 
@@ -183,7 +183,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicFilter maleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("male"), null, null, null);
         PhenotypicFilter femaleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("female"), null, null, null);
         PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(maleFilter, femaleFilter), Operator.OR);
-        Query query = new Query(List.of(), List.of(), subquery, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), subquery, null, ResultType.COUNT, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);
 
@@ -204,7 +204,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicFilter maleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("male"), null, null, null);
         PhenotypicFilter femaleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("female"), null, null, null);
         PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(maleFilter, femaleFilter), Operator.AND);
-        Query query = new Query(List.of(), List.of(), subquery, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), subquery, null, ResultType.COUNT, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);
 
@@ -225,7 +225,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicFilter requiredSex = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, sexPath, null, null, null, null);
         PhenotypicFilter maleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("male"), null, null, null);
         PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(requiredSex, maleFilter), Operator.AND);
-        Query query = new Query(List.of(), List.of(), subquery, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), subquery, null, ResultType.COUNT, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);
 
@@ -247,7 +247,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicFilter requiredPopulation = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, populationPath, null, null, null, null);
 
         PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(maleFilter, requiredPopulation), Operator.OR);
-        Query query = new Query(List.of(), List.of(), subquery, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), subquery, null, ResultType.COUNT, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);
 
@@ -265,7 +265,7 @@ public class CountV3ProcessorIntegrationTest {
     public void runCategoryCrossCounts_requiredContinuousConcept_isExcluded() {
         String agePath = "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\";
         PhenotypicFilter requiredAge = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, agePath, null, null, null, null);
-        Query query = new Query(List.of(), List.of(), requiredAge, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), requiredAge, null, ResultType.COUNT, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);
 
@@ -282,7 +282,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicFilter youngFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, agePath, null, 31.0, 35.0, null);
         PhenotypicFilter oldFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, agePath, null, 55.0, 62.0, null);
         PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(youngFilter, oldFilter), Operator.OR);
-        Query query = new Query(List.of(), List.of(), subquery, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), subquery, null, ResultType.COUNT, null, null);
 
         Map<String, Map<Double, Integer>> crossCounts = countProcessor.runContinuousCrossCounts(query);
 
@@ -304,7 +304,7 @@ public class CountV3ProcessorIntegrationTest {
         PhenotypicFilter oldFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, agePath, null, 55.0, 62.0, null);
         PhenotypicFilter maleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("male"), null, null, null);
         PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(oldFilter, maleFilter), Operator.OR);
-        Query query = new Query(List.of(), List.of(), subquery, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), subquery, null, ResultType.COUNT, null, null);
 
         Map<String, Map<Double, Integer>> crossCounts = countProcessor.runContinuousCrossCounts(query);
 

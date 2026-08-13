@@ -28,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -52,7 +53,7 @@ class QueryServiceTest {
     @Test
     public void dataframeMulti() throws IOException, InterruptedException {
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"), List.of(),
+            List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"), List.of(), Set.of(),
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null),
             List.of(new GenomicFilter("Gene_with_variant", List.of("LOC102723996", "LOC101928576"), null, null)), ResultType.DATAFRAME,
             null, null
@@ -79,7 +80,7 @@ class QueryServiceTest {
     @Test
     public void runQuery_dataframeSelectInvalidConcept_doNotFail() throws IOException, InterruptedException {
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", "\\open_access-1000Genomes\\data\\NOT_A_CONCEPT_PATH\\"), List.of(),
+            List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", "\\open_access-1000Genomes\\data\\NOT_A_CONCEPT_PATH\\"), List.of(), Set.of(),
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null),
             List.of(new GenomicFilter("Gene_with_variant", List.of("LOC102723996", "LOC101928576"), null, null)), ResultType.DATAFRAME,
             null, null
