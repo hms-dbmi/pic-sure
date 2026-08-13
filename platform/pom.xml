@@ -27,7 +27,7 @@
         <!-- Shared third-party pins not governed by the Spring BOMs -->
         <wiremock.version>3.10.0</wiremock.version>
         <!-- HTTP-client winner (consolidation Phase 4) — aligned with spring-boot-dependencies -->
-        <httpclient5.version>5.5.2</httpclient5.version>
+        <httpclient5.version>5.6.3</httpclient5.version>
         <!-- Structured logging encoder (not governed by the Spring BOMs) -->
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
     </properties>
