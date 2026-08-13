@@ -48,6 +48,13 @@ public record Query(
         return userConsents == null ? Set.of() : userConsents;
     }
 
+    public Query setUserConsents(Set<UserConsent> userConsents) {
+        return new Query(
+                this.select, this.authorizationFilters, userConsents != null ? userConsents : Set.of(), this.phenotypicClause, this.genomicFilters,
+                this.expectedResultType, this.picsureId, this.id
+        );
+    }
+
 
     @Override
     public List<GenomicFilter> genomicFilters() {

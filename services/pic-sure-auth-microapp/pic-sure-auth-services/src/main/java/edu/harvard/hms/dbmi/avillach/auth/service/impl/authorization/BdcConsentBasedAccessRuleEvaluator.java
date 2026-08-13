@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.UserConsent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,7 +27,7 @@ public class BdcConsentBasedAccessRuleEvaluator implements ConsentBasedAccessRul
 
     @Override
     public boolean evaluateAccessRule(Query query, AccessRule accessRule, UserConsents consents) {
-        Set<String> userStudies = consents.getConsents().values().stream().flatMap(Collection::stream)
+        Set<String> userStudies = consents.getConsents().stream()
             .map(consent -> consent.split("\\.")[0]).collect(Collectors.toSet());
 
         for (PhenotypicFilter phenotypicFilter : query.allFilters()) {
@@ -35,15 +36,6 @@ public class BdcConsentBasedAccessRuleEvaluator implements ConsentBasedAccessRul
 
         for (String conceptPath : query.select()) {
             if (!isConceptPathAuthorized(conceptPath, consents, userStudies)) return false;
-        }
-
-        if (!query.genomicFilters().isEmpty()) {
-            if (!consents.getConsents().containsKey(GENOMIC_AUTHORIZATION_FILTER)) {
-                log.debug(
-                    "Genomic filters must contain the following authorization concepts: " + String.join(", ", GENOMIC_AUTHORIZATION_FILTER)
-                );
-                return false;
-            }
         }
 
         return true;
@@ -58,11 +50,7 @@ public class BdcConsentBasedAccessRuleEvaluator implements ConsentBasedAccessRul
             return true;
         }
         if (filterConsent.equals("DCC Harmonized data set")) {
-            Set<String> harmonizedConsents = consents.getConsents().getOrDefault(HARMONIZED_AUTHORIZATION_FILTER, Set.of());
-            if (harmonizedConsents.isEmpty()) {
-                log.debug("User must have at least one consent in " + HARMONIZED_AUTHORIZATION_FILTER + " to use filter " + conceptPath);
-                return false;
-            }
+            return true;
         } else if (!userStudies.contains(filterConsent)) {
             log.debug("User does not have study: " + filterConsent + " to access " + conceptPath);
             return false;
@@ -72,22 +60,6 @@ public class BdcConsentBasedAccessRuleEvaluator implements ConsentBasedAccessRul
 
     @Override
     public Query setAuthorizationFiltersForQuery(UserConsents userConsents, Query query) {
-        List<AuthorizationFilter> authorizationFilter = userConsents.getConsents().entrySet().stream().filter(entry -> {
-            if (entry.getKey().equals(GENOMIC_AUTHORIZATION_FILTER) && query.genomicFilters().isEmpty()) {
-                return false;
-            }
-            if (entry.getKey().equals(HARMONIZED_AUTHORIZATION_FILTER)) {
-                long harmonizedFilterCount =
-                    query.allFilters().stream().filter(filter -> filter.conceptPath().startsWith("\\DCC Harmonized data set\\")).count();
-                // leave these consents if there are any filters on harmonized concept paths
-                return harmonizedFilterCount > 0;
-            }
-            return true;
-        }).map(entry -> new AuthorizationFilter(entry.getKey(), entry.getValue())).toList();
-
-        log.debug("Adding authorization filters to query:");
-        authorizationFilter.stream().map(Objects::toString).forEach(log::debug);
-
-        return query.setAuthorizationFilters(authorizationFilter);
+        return query.setUserConsents(userConsents.getConsents().stream().map(UserConsent::new).collect(Collectors.toSet()));
     }
 }
