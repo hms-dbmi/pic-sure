@@ -30,6 +30,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.zip.CRC32;
 
 /**
  * Generates, verifies, and manages API keys for open-access requests. Only a hash of each key is stored; the plaintext exists solely in the
@@ -50,6 +51,8 @@ public class ApiKeyService {
     private static final String BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     // 43 base62 characters carry just under 256 bits of entropy
     private static final int KEY_BODY_LENGTH = 43;
+    // 62^6 > 2^32, so 6 base62 characters always fit a CRC32
+    private static final int CHECKSUM_LENGTH = 6;
     private static final int DISPLAY_PREFIX_LENGTH = 8;
     private static final Duration LAST_USED_WRITE_INTERVAL = Duration.ofMinutes(1);
 
@@ -106,7 +109,8 @@ public class ApiKeyService {
             }
         }
         String body = randomBase62(KEY_BODY_LENGTH);
-        String plaintext = typedPrefix(keyType) + body;
+        String prefixedBody = typedPrefix(keyType) + body;
+        String plaintext = prefixedBody + checksum(prefixedBody);
         ApiKey apiKey = new ApiKey().setKeyHash(hashWithCurrentScheme(plaintext)).setHashScheme(currentScheme())
             .setDisplayPrefix(body.substring(0, DISPLAY_PREFIX_LENGTH)).setKeyType(keyType).setName(name).setEmail(email)
             .setCreatedAt(createdAt).setExpiresAt(expiresAt);
@@ -119,7 +123,7 @@ public class ApiKeyService {
      * Returns the matching key only when it is currently valid: known, unrevoked, unexpired.
      */
     public Optional<ApiKey> verifyKey(String plaintext) {
-        if (plaintext == null || !hasTypedPrefix(plaintext)) {
+        if (plaintext == null || !hasTypedPrefix(plaintext) || !hasValidChecksum(plaintext)) {
             return Optional.empty();
         }
 
@@ -218,6 +222,29 @@ public class ApiKeyService {
 
     private static boolean hasTypedPrefix(String plaintext) {
         return plaintext.startsWith(USER_KEY_PREFIX) || plaintext.startsWith(PLATFORM_KEY_PREFIX);
+    }
+
+    // format integrity only, not a security control: rejects accidental garbage (truncated paste,
+    // corrupted config) before any DB or HMAC work; an attacker can trivially compute a valid checksum
+    private static boolean hasValidChecksum(String plaintext) {
+        // both typed prefixes have the same length
+        if (plaintext.length() != USER_KEY_PREFIX.length() + KEY_BODY_LENGTH + CHECKSUM_LENGTH) {
+            return false;
+        }
+        int checksumStart = plaintext.length() - CHECKSUM_LENGTH;
+        return checksum(plaintext.substring(0, checksumStart)).equals(plaintext.substring(checksumStart));
+    }
+
+    private static String checksum(String value) {
+        CRC32 crc = new CRC32();
+        crc.update(value.getBytes(StandardCharsets.UTF_8));
+        long remaining = crc.getValue();
+        StringBuilder encoded = new StringBuilder(CHECKSUM_LENGTH);
+        for (int i = 0; i < CHECKSUM_LENGTH; i++) {
+            encoded.append(BASE62_ALPHABET.charAt((int) (remaining % 62)));
+            remaining /= 62;
+        }
+        return encoded.reverse().toString();
     }
 
     private boolean hasPepper() {

@@ -52,7 +52,7 @@ public class ApiKeyServiceTest {
     public void testGenerateUserKey_formatAndPersistedFields() {
         ApiKeyCreationResponse response = apiKeyService.generateUserKey(null, "user@example.com");
 
-        assertTrue(response.apiKey().matches("^picsure_u_[0-9A-Za-z]{43}$"));
+        assertTrue(response.apiKey().matches("^picsure_u_[0-9A-Za-z]{49}$"));
         assertEquals(response.apiKey().substring("picsure_u_".length(), "picsure_u_".length() + 8), response.displayPrefix());
         assertEquals(ApiKeyType.USER, response.keyType());
 
@@ -90,7 +90,7 @@ public class ApiKeyServiceTest {
 
         ApiKeyCreationResponse response = apiKeyService.generatePlatformKey("Partner X", "partner@example.com", expiresAt, false);
 
-        assertTrue(response.apiKey().matches("^picsure_p_[0-9A-Za-z]{43}$"));
+        assertTrue(response.apiKey().matches("^picsure_p_[0-9A-Za-z]{49}$"));
         assertEquals(ApiKeyType.PLATFORM, response.keyType());
         assertEquals(expiresAt, response.expiresAt());
         ArgumentCaptor<ApiKey> captor = ArgumentCaptor.forClass(ApiKey.class);
@@ -122,9 +122,25 @@ public class ApiKeyServiceTest {
 
     @Test
     public void testVerifyKey_unknownKey() {
+        // well-formed key (valid prefix and checksum) that simply has no matching row
+        ApiKeyCreationResponse response = apiKeyService.generateUserKey(null, null);
         when(apiKeyRepository.findByKeyHash(anyString())).thenReturn(Optional.empty());
 
-        assertTrue(apiKeyService.verifyKey("picsure_u_0000000000000000000000000000000000000000000").isEmpty());
+        assertTrue(apiKeyService.verifyKey(response.apiKey()).isEmpty());
+    }
+
+    @Test
+    public void testVerifyKey_corruptedOrTruncatedKeyFailsChecksumWithoutLookup() {
+        ApiKeyCreationResponse response = apiKeyService.generateUserKey(null, null);
+        String key = response.apiKey();
+        int flipIndex = "picsure_u_".length() + 3;
+        char flipped = key.charAt(flipIndex) == 'x' ? 'y' : 'x';
+        String corrupted = key.substring(0, flipIndex) + flipped + key.substring(flipIndex + 1);
+        clearInvocations(apiKeyRepository);
+
+        assertTrue(apiKeyService.verifyKey(corrupted).isEmpty());
+        assertTrue(apiKeyService.verifyKey(key.substring(0, key.length() - 1)).isEmpty());
+        verify(apiKeyRepository, never()).findByKeyHash(anyString());
     }
 
     @Test
