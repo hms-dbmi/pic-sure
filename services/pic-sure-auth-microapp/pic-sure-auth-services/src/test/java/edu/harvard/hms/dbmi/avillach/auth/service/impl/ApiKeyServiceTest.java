@@ -52,8 +52,8 @@ public class ApiKeyServiceTest {
     public void testGenerateUserKey_formatAndPersistedFields() {
         ApiKeyCreationResponse response = apiKeyService.generateUserKey(null, "user@example.com");
 
-        assertTrue(response.apiKey().matches("^picsure_[0-9A-Za-z]{43}$"));
-        assertEquals(response.apiKey().substring("picsure_".length(), "picsure_".length() + 8), response.displayPrefix());
+        assertTrue(response.apiKey().matches("^picsure_u_[0-9A-Za-z]{43}$"));
+        assertEquals(response.apiKey().substring("picsure_u_".length(), "picsure_u_".length() + 8), response.displayPrefix());
         assertEquals(ApiKeyType.USER, response.keyType());
 
         ArgumentCaptor<ApiKey> captor = ArgumentCaptor.forClass(ApiKey.class);
@@ -90,6 +90,7 @@ public class ApiKeyServiceTest {
 
         ApiKeyCreationResponse response = apiKeyService.generatePlatformKey("Partner X", "partner@example.com", expiresAt, false);
 
+        assertTrue(response.apiKey().matches("^picsure_p_[0-9A-Za-z]{43}$"));
         assertEquals(ApiKeyType.PLATFORM, response.keyType());
         assertEquals(expiresAt, response.expiresAt());
         ArgumentCaptor<ApiKey> captor = ArgumentCaptor.forClass(ApiKey.class);
@@ -113,6 +114,8 @@ public class ApiKeyServiceTest {
     @Test
     public void testVerifyKey_wrongPrefixSkipsLookup() {
         assertTrue(apiKeyService.verifyKey("sk_live_notourkey").isEmpty());
+        // bare picsure_ without a type marker is not a mintable format and must not cost a lookup
+        assertTrue(apiKeyService.verifyKey("picsure_0000000000000000000000000000000000000000000").isEmpty());
         assertTrue(apiKeyService.verifyKey(null).isEmpty());
         verify(apiKeyRepository, never()).findByKeyHash(anyString());
     }
@@ -121,7 +124,19 @@ public class ApiKeyServiceTest {
     public void testVerifyKey_unknownKey() {
         when(apiKeyRepository.findByKeyHash(anyString())).thenReturn(Optional.empty());
 
-        assertTrue(apiKeyService.verifyKey("picsure_0000000000000000000000000000000000000000000").isEmpty());
+        assertTrue(apiKeyService.verifyKey("picsure_u_0000000000000000000000000000000000000000000").isEmpty());
+    }
+
+    @Test
+    public void testVerifyKey_prefixMismatchWithStoredTypeRejected() {
+        ApiKeyCreationResponse response = apiKeyService.generateUserKey(null, null);
+        // such a row can only exist if key_type was altered after minting: the hash covers the full
+        // plaintext, so the u_/p_ marker and the column agree for every legitimately minted key
+        ApiKey stored = storedKeyFor(response).setKeyType(ApiKeyType.PLATFORM);
+        when(apiKeyRepository.findByKeyHash(stored.getKeyHash())).thenReturn(Optional.of(stored));
+
+        assertTrue(apiKeyService.verifyKey(response.apiKey()).isEmpty());
+        verify(apiKeyRepository, never()).touchLastUsed(any(UUID.class), any(Instant.class), any(Instant.class));
     }
 
     @Test

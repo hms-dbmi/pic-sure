@@ -41,6 +41,8 @@ public class ApiKeyService {
     private static final Logger logger = LoggerFactory.getLogger(ApiKeyService.class);
 
     public static final String KEY_PREFIX = "picsure_";
+    public static final String USER_KEY_PREFIX = KEY_PREFIX + "u_";
+    public static final String PLATFORM_KEY_PREFIX = KEY_PREFIX + "p_";
     public static final String SCHEME_SHA256 = "SHA256";
     public static final String SCHEME_HMAC_SHA256 = "HMAC_SHA256";
 
@@ -104,7 +106,7 @@ public class ApiKeyService {
             }
         }
         String body = randomBase62(KEY_BODY_LENGTH);
-        String plaintext = KEY_PREFIX + body;
+        String plaintext = typedPrefix(keyType) + body;
         ApiKey apiKey = new ApiKey().setKeyHash(hashWithCurrentScheme(plaintext)).setHashScheme(currentScheme())
             .setDisplayPrefix(body.substring(0, DISPLAY_PREFIX_LENGTH)).setKeyType(keyType).setName(name).setEmail(email)
             .setCreatedAt(createdAt).setExpiresAt(expiresAt);
@@ -117,7 +119,7 @@ public class ApiKeyService {
      * Returns the matching key only when it is currently valid: known, unrevoked, unexpired.
      */
     public Optional<ApiKey> verifyKey(String plaintext) {
-        if (plaintext == null || !plaintext.startsWith(KEY_PREFIX)) {
+        if (plaintext == null || !hasTypedPrefix(plaintext)) {
             return Optional.empty();
         }
 
@@ -127,6 +129,14 @@ public class ApiKeyService {
         }
 
         ApiKey apiKey = found.get();
+        // only possible if key_type was altered after minting; fail closed
+        if (!plaintext.startsWith(typedPrefix(apiKey.getKeyType()))) {
+            logger.warn(
+                "Rejected API key with display prefix {}: key prefix does not match stored key type {}", apiKey.getDisplayPrefix(),
+                apiKey.getKeyType()
+            );
+            return Optional.empty();
+        }
         Instant now = Instant.now();
         if (apiKey.getRevokedAt() != null || isExpired(apiKey, now)) {
             logger.info(
@@ -200,6 +210,14 @@ public class ApiKeyService {
             return apiKey.getKeyType() != ApiKeyType.PLATFORM;
         }
         return !now.isBefore(apiKey.getExpiresAt());
+    }
+
+    private static String typedPrefix(ApiKeyType keyType) {
+        return keyType == ApiKeyType.PLATFORM ? PLATFORM_KEY_PREFIX : USER_KEY_PREFIX;
+    }
+
+    private static boolean hasTypedPrefix(String plaintext) {
+        return plaintext.startsWith(USER_KEY_PREFIX) || plaintext.startsWith(PLATFORM_KEY_PREFIX);
     }
 
     private boolean hasPepper() {
