@@ -52,6 +52,19 @@ public class ApiKeyControllerWebTest {
     }
 
     @Test
+    public void testJsonNullBodyReturns400OnPlatformEndpoint() throws Exception {
+        // the JSON literal null binds the @RequestBody record itself to null - distinct from an absent body
+        mockMvc.perform(post("/apiKey/platform").contentType(MediaType.APPLICATION_JSON).content("null"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testJsonNullBodyReturns400OnPublicUserEndpoint() throws Exception {
+        mockMvc.perform(post("/open/apiKey").contentType(MediaType.APPLICATION_JSON).content("null"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     public void testUnparseableExpiresAtReturns400() throws Exception {
         mockMvc.perform(
             post("/apiKey/platform").contentType(MediaType.APPLICATION_JSON)

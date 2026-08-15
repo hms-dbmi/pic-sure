@@ -9,6 +9,7 @@ import java.util.Set;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -51,7 +52,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         private static final Set<String> STRIPPED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
             GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, "X-Real-IP", "Forwarded",
-            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, "X-PICSURE-API-Key"
+            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, OpenAccessFilter.API_KEY_HEADER
         );
 
         SanitizedIdentityHeadersRequest(HttpServletRequest request) {

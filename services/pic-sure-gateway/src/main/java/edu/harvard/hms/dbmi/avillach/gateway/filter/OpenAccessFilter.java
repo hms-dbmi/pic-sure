@@ -33,7 +33,7 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
-    static final String API_KEY_HEADER = "X-PICSURE-API-Key";
+    public static final String API_KEY_HEADER = "X-PICSURE-API-Key";
 
     /**
      * Set to {@link Boolean#TRUE} only by this filter, only after PSAMA grants the open-access validate. This — not the user-id attribute,
