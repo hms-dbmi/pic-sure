@@ -224,8 +224,7 @@ public class ApiKeyService {
         return plaintext.startsWith(USER_KEY_PREFIX) || plaintext.startsWith(PLATFORM_KEY_PREFIX);
     }
 
-    // format integrity only, not a security control: rejects accidental garbage (truncated paste,
-    // corrupted config) before any DB or HMAC work; an attacker can trivially compute a valid checksum
+    // not a security control: a valid checksum is trivially forgeable
     private static boolean hasValidChecksum(String plaintext) {
         // both typed prefixes have the same length
         if (plaintext.length() != USER_KEY_PREFIX.length() + KEY_BODY_LENGTH + CHECKSUM_LENGTH) {
