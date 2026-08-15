@@ -24,7 +24,7 @@ public class ApplicationConfigObjectMapperTest {
     public void testCreationResponseSerializesWithIsoInstant() throws Exception {
         Instant expiresAt = Instant.parse("2026-10-11T12:13:14Z");
         ApiKeyCreationResponse response = new ApiKeyCreationResponse(
-            "picsure_0000000000000000000000000000000000000000000", UUID.randomUUID(), "00000000", ApiKeyType.USER, expiresAt
+            "picsure_u_00000000000000000000000000000000000000000003tr27S", UUID.randomUUID(), "00000000", ApiKeyType.USER, expiresAt
         );
 
         String json = objectMapper.writeValueAsString(response);

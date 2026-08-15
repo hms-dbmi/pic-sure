@@ -40,7 +40,7 @@ public class ApiKeyControllerTest {
     private HttpServletRequest request;
 
     private final ApiKeyCreationResponse creationResponse = new ApiKeyCreationResponse(
-        "picsure_0000000000000000000000000000000000000000000", UUID.randomUUID(), "00000000", ApiKeyType.USER,
+        "picsure_u_00000000000000000000000000000000000000000003tr27S", UUID.randomUUID(), "00000000", ApiKeyType.USER,
         Instant.now().plusSeconds(3600)
     );
 

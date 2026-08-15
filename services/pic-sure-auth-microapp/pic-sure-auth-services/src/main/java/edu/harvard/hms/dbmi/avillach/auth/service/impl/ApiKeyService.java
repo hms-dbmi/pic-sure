@@ -49,7 +49,7 @@ public class ApiKeyService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    // 43 base62 characters carry just under 256 bits of entropy
+    // 43 base62 characters carry just over 256 bits of entropy
     private static final int KEY_BODY_LENGTH = 43;
     // 62^6 > 2^32, so 6 base62 characters always fit a CRC32
     private static final int CHECKSUM_LENGTH = 6;
@@ -123,7 +123,7 @@ public class ApiKeyService {
      * Returns the matching key only when it is currently valid: known, unrevoked, unexpired.
      */
     public Optional<ApiKey> verifyKey(String plaintext) {
-        if (plaintext == null || !hasTypedPrefix(plaintext) || !hasValidChecksum(plaintext)) {
+        if (plaintext == null || !hasTypedPrefix(plaintext) || !hasValidFormat(plaintext)) {
             return Optional.empty();
         }
 
@@ -217,7 +217,10 @@ public class ApiKeyService {
     }
 
     private static String typedPrefix(ApiKeyType keyType) {
-        return keyType == ApiKeyType.PLATFORM ? PLATFORM_KEY_PREFIX : USER_KEY_PREFIX;
+        return switch (keyType) {
+            case PLATFORM -> PLATFORM_KEY_PREFIX;
+            case USER -> USER_KEY_PREFIX;
+        };
     }
 
     private static boolean hasTypedPrefix(String plaintext) {
@@ -225,10 +228,15 @@ public class ApiKeyService {
     }
 
     // not a security control: a valid checksum is trivially forgeable
-    private static boolean hasValidChecksum(String plaintext) {
+    private static boolean hasValidFormat(String plaintext) {
         // both typed prefixes have the same length
         if (plaintext.length() != USER_KEY_PREFIX.length() + KEY_BODY_LENGTH + CHECKSUM_LENGTH) {
             return false;
+        }
+        for (int i = USER_KEY_PREFIX.length(); i < plaintext.length(); i++) {
+            if (BASE62_ALPHABET.indexOf(plaintext.charAt(i)) < 0) {
+                return false;
+            }
         }
         int checksumStart = plaintext.length() - CHECKSUM_LENGTH;
         return checksum(plaintext.substring(0, checksumStart)).equals(plaintext.substring(checksumStart));

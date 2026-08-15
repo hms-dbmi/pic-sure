@@ -144,6 +144,15 @@ public class ApiKeyServiceTest {
     }
 
     @Test
+    public void testVerifyKey_nonBase62BodyRejectedWithoutLookupEvenWithConsistentChecksum() {
+        // 2GIGVO is the correct CRC32 for this body: only the alphabet check can reject it
+        String key = "picsure_u_" + "!".repeat(43) + "2GIGVO";
+
+        assertTrue(apiKeyService.verifyKey(key).isEmpty());
+        verify(apiKeyRepository, never()).findByKeyHash(anyString());
+    }
+
+    @Test
     public void testVerifyKey_prefixMismatchWithStoredTypeRejected() {
         ApiKeyCreationResponse response = apiKeyService.generateUserKey(null, null);
         // such a row can only exist if key_type was altered after minting: the hash covers the full
