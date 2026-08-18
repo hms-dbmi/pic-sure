@@ -421,7 +421,6 @@ public class PicSureService {
                 return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(infoColumnMeta);
 
             case DATAFRAME:
-            case SECRET_ADMIN_DATAFRAME:
             case DATAFRAME_TIMESERIES:
             case PATIENTS:
                 QueryStatus status = query(resultRequest).getBody();
