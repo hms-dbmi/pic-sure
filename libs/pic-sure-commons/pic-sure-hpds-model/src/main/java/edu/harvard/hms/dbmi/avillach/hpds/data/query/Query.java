@@ -190,7 +190,6 @@ public class Query {
                 writePartFormat("Continuous Cross Count Fields", numericFilters.entrySet(), builder, true);
                 break;
             case DATAFRAME:
-            case SECRET_ADMIN_DATAFRAME:
             case PATIENTS:
                 writePartFormat("Data Export Fields", fields, builder, true);
                 break;

@@ -37,7 +37,6 @@ public class QueryV3Service {
 
     private final ExecutorService smallTaskExecutor;
 
-    private final QueryV3Processor queryProcessor;
     private final TimeseriesV3Processor timeseriesProcessor;
     private final CountV3Processor countProcessor;
     private final MultiValueQueryV3Processor multiValueQueryProcessor;
@@ -53,13 +52,12 @@ public class QueryV3Service {
 
     @Autowired
     public QueryV3Service(
-        QueryV3Processor queryProcessor, TimeseriesV3Processor timeseriesProcessor, CountV3Processor countProcessor,
-        MultiValueQueryV3Processor multiValueQueryProcessor, @Autowired(required = false) DictionaryService dictionaryService,
-        QueryValidator queryValidator, @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
-        @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads, @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads,
-        PatientV3Processor patientProcessor, @Autowired(required = false) LoggingClient loggingClient
+        TimeseriesV3Processor timeseriesProcessor, CountV3Processor countProcessor, MultiValueQueryV3Processor multiValueQueryProcessor,
+        @Autowired(required = false) DictionaryService dictionaryService, QueryValidator queryValidator,
+        @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit, @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
+        @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads, PatientV3Processor patientProcessor,
+        @Autowired(required = false) LoggingClient loggingClient
     ) {
-        this.queryProcessor = queryProcessor;
         this.timeseriesProcessor = timeseriesProcessor;
         this.countProcessor = countProcessor;
         this.multiValueQueryProcessor = multiValueQueryProcessor;
@@ -119,7 +117,6 @@ public class QueryV3Service {
 
         HpdsV3Processor p = switch (query.expectedResultType()) {
             case PATIENTS -> patientProcessor;
-            case SECRET_ADMIN_DATAFRAME -> queryProcessor;
             case DATAFRAME_TIMESERIES -> timeseriesProcessor;
             case COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT -> countProcessor;
             case DATAFRAME_PFB, DATAFRAME -> multiValueQueryProcessor;
