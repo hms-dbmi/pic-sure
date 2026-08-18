@@ -29,6 +29,47 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void shouldRecordXClientTypeHeaderAsCaller() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/authentication/ras");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, filterChain);
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertEquals("PYTHON_ADAPTER", captor.getValue().getCaller());
+    }
+
+    @Test
+    void shouldLeaveCallerUnsetWithoutTheXClientTypeHeader() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/authentication/ras");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, filterChain);
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertNull(captor.getValue().getCaller());
+    }
+
+    @Test
+    void shouldLeaveCallerUnsetWhenTheXClientTypeHeaderIsEmpty() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/authentication/ras");
+        request.addHeader("X-Client-Type", "");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, filterChain);
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertNull(captor.getValue().getCaller());
+    }
+
+    @Test
     void shouldCategorizeLoginEvent() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/authentication/ras");
         request.setAttribute(AuditAttributes.EVENT_TYPE, "AUTH");

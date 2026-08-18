@@ -36,6 +36,44 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void doFilter_recordsXClientTypeHeaderAsCaller() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(eventCaptor.capture(), any(), any());
+        assertEquals("PYTHON_ADAPTER", eventCaptor.getValue().getCaller());
+    }
+
+    @Test
+    void doFilter_leavesCallerUnsetWithoutTheXClientTypeHeader() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(eventCaptor.capture(), any(), any());
+        assertNull(eventCaptor.getValue().getCaller());
+    }
+
+    @Test
+    void doFilter_leavesCallerUnsetWhenTheXClientTypeHeaderIsEmpty() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
+        request.addHeader("X-Client-Type", "");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(eventCaptor.capture(), any(), any());
+        assertNull(eventCaptor.getValue().getCaller());
+    }
+
+    @Test
     void doFilter_generatesRequestIdAndLogsDistributions() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
         request.setContentType("application/json");
