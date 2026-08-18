@@ -1,4 +1,4 @@
-FROM mysql:8.4
+FROM mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
 
 COPY db/picsure-auth-dump-initial.sql /docker-entrypoint-initdb.d/picsure-auth-dump-initial.sql
 
