@@ -26,8 +26,9 @@
         <pic-sure-hpds-query-service.version>3.0.0</pic-sure-hpds-query-service.version>
         <!-- Shared third-party pins not governed by the Spring BOMs -->
         <wiremock.version>3.10.0</wiremock.version>
-        <!-- HTTP-client winner (consolidation Phase 4) — aligned with spring-boot-dependencies -->
-        <httpclient5.version>5.5.2</httpclient5.version>
+        <httpclient5.version>5.6.4</httpclient5.version>
+        <httpcore5.version>5.4.3</httpcore5.version>
+        <logback.version>1.6.3</logback.version>
         <!-- Structured logging encoder (not governed by the Spring BOMs) -->
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
     </properties>
@@ -93,6 +94,36 @@
                 <groupId>org.apache.httpcomponents.client5</groupId>
                 <artifactId>httpclient5</artifactId>
                 <version>${httpclient5.version}</version>
+            </dependency>
+            <!-- HttpCore 5: httpclient5 drags httpcore5 + httpcore5-h2 in transitively and
+                 the Spring BOM would otherwise hold them at 5.3.6. Kept as one family so
+                 the core version always matches what httpclient5-parent expects. -->
+            <dependency>
+                <groupId>org.apache.httpcomponents.core5</groupId>
+                <artifactId>httpcore5</artifactId>
+                <version>${httpcore5.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.httpcomponents.core5</groupId>
+                <artifactId>httpcore5-h2</artifactId>
+                <version>${httpcore5.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.httpcomponents.core5</groupId>
+                <artifactId>httpcore5-reactive</artifactId>
+                <version>${httpcore5.version}</version>
+            </dependency>
+            <!-- Logback: pulled in by spring-boot-starter-logging, so both artifacts are
+                 managed together to keep classic and core on the same version. -->
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>${logback.version}</version>
             </dependency>
             <dependency>
                 <groupId>net.logstash.logback</groupId>
