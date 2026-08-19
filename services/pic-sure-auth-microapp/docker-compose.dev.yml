@@ -18,13 +18,12 @@ services:
     build:
       context: ./pic-sure-auth-db/
       dockerfile: Dockerfile
+      target: empty-db
     environment:
         MYSQL_DATABASE: auth
         MYSQL_ROOT_PASSWORD: password
     ports:
         - "3306:3306" # MySQL port
-    volumes:
-      - ./pic-sure-auth-db/db/sql/V1__CREATE_AUTH_INITIAL.sql:/docker-entrypoint-initdb.d/picsure-auth-dump-initial.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
       interval: 10s
@@ -32,7 +31,7 @@ services:
       retries: 5
 
   auth-flyway:
-    image: flyway/flyway:13-alpine
+    image: flyway/flyway:13-alpine@sha256:e51c63b766e54fdc5e08778018746cb0071643a8b898ca15a2cf8df268ddb584
     volumes:
       - ./pic-sure-auth-db/db/sql:/flyway/sql
     # linux/amd64
@@ -44,7 +43,6 @@ services:
         - FLYWAY_SCHEMAS=auth
         - FLYWAY_LOCATIONS=filesystem:/flyway/sql
         - FLYWAY_IGNORE_MISSING_MIGRATIONS=true
-        - FLYWAY_BASELINE_ON_MIGRATE=true
     command:
       - migrate
     depends_on:
