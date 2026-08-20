@@ -58,7 +58,7 @@ public class CSVLoader {
 
             for (Path allConceptFile : allConceptFiles) {
                 String fileName = allConceptFile.getFileName().toString();
-                String partitionName = fileName.split("_")[0];
+                String partitionName = fileName.split("-")[0];
 
                 Path partitionDirectory = allConceptFile.getParent().resolve(partitionName);
                 Files.createDirectories(partitionDirectory);
