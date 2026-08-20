@@ -54,7 +54,7 @@ public class CSVLoader {
 
         try (Stream<Path> allFiles = Files.walk(Path.of(BASE_HPDS_DIRECTORY))) {
             List<Path> allConceptFiles = allFiles.filter(Files::isRegularFile) // Filters out folders, keeping only files
-                .filter(path -> path.toString().endsWith("allConcepts_new_search_with_data_analyzer.csv")).collect(Collectors.toList());
+                .filter(path -> path.toString().endsWith("allConcepts.csv")).collect(Collectors.toList());
 
             for (Path allConceptFile : allConceptFiles) {
                 String fileName = allConceptFile.getFileName().toString();
