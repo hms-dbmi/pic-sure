@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.gateway.config;
 
-import java.time.Duration;
-
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
@@ -44,15 +42,16 @@ import io.micrometer.core.instrument.MeterRegistry;
 public class SecurityConfig {
 
     // Auth-boundary HTTP clients (PSAMA introspection, query-service dispatch) run synchronously inside the request path; a
-    // hung upstream must not tie up a Tomcat worker indefinitely, so both get bounded connect/read timeouts.
-    static final Duration AUTH_CONNECT_TIMEOUT = Duration.ofSeconds(2);
-    static final Duration AUTH_READ_TIMEOUT = Duration.ofSeconds(10);
+    // hung upstream must not tie up a Tomcat worker indefinitely, so both get bounded connect/read timeouts. The bounds come
+    // from the properties record, not from spring.http.client.*. The factory below is built from an explicit
+    // ClientHttpRequestFactoryBuilder.detect(), which never reads Boot's auto-configured client settings.
+    static ClientHttpRequestFactorySettings authRequestFactorySettings(GatewaySecurityProperties props) {
+        return ClientHttpRequestFactorySettings.defaults().withConnectTimeout(props.authConnectTimeout())
+            .withReadTimeout(props.authReadTimeout());
+    }
 
-    static final ClientHttpRequestFactorySettings AUTH_REQUEST_FACTORY_SETTINGS =
-        ClientHttpRequestFactorySettings.defaults().withConnectTimeout(AUTH_CONNECT_TIMEOUT).withReadTimeout(AUTH_READ_TIMEOUT);
-
-    private static RestClient.Builder timeoutBoundedRestClientBuilder() {
-        return RestClient.builder().requestFactory(ClientHttpRequestFactoryBuilder.detect().build(AUTH_REQUEST_FACTORY_SETTINGS));
+    private static RestClient.Builder timeoutBoundedRestClientBuilder(GatewaySecurityProperties props) {
+        return RestClient.builder().requestFactory(ClientHttpRequestFactoryBuilder.detect().build(authRequestFactorySettings(props)));
     }
 
     @Bean
@@ -80,7 +79,7 @@ public class SecurityConfig {
     @Bean
     PsamaClient psamaClient(GatewaySecurityProperties props) {
         return new PsamaClient(
-            timeoutBoundedRestClientBuilder().build(), props.introspectionUrl(), props.openAccessValidateUrl(), props.serviceToken()
+            timeoutBoundedRestClientBuilder(props).build(), props.introspectionUrl(), props.openAccessValidateUrl(), props.serviceToken()
         );
     }
 
@@ -89,7 +88,7 @@ public class SecurityConfig {
         // The dispatch endpoint (/operations/internal/queries/{id}/dispatch) lives on operations-service, the
         // sole DB owner -- not the DB-free query-service.
         return new QueryAuthFetcher(
-            timeoutBoundedRestClientBuilder().build(), props.operationsServiceUrl(), props.queryServiceInternalToken()
+            timeoutBoundedRestClientBuilder(props).build(), props.operationsServiceUrl(), props.queryServiceInternalToken()
         );
     }
 
@@ -110,7 +109,9 @@ public class SecurityConfig {
     FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
         PsamaClient client, AuditContext audit, ObjectMapper json, GatewaySecurityProperties props, PublicEndpointPolicy publicEndpoints
     ) {
-        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, props.openAccessEnabled(), publicEndpoints));
+        var r = new FilterRegistrationBean<>(
+            new OpenAccessFilter(client, audit, json, props.openAccessEnabled(), publicEndpoints, props.openPathPrefixes())
+        );
         r.setOrder(20);
         r.addUrlPatterns("/*");
         return r;

@@ -125,6 +125,16 @@ picsure:
       # PicsureException-only advice, surfacing as a bare 500 on downloads alone.
       operations-service-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
       query-service-internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+      # Auth-boundary HTTP client timeouts for PSAMA introspection, open-validate, and query-service dispatch.
+      # Bounded so a hung upstream cannot pin Tomcat workers. Never raise past the ~60s at the proxy layers
+      # (httpd Timeout, ALB idle timeout), where the wait becomes a 504 anyway. A non-positive value counts as unset.
+      auth-connect-timeout: ${GATEWAY_AUTH_CONNECT_TIMEOUT:2s}
+      auth-read-timeout: ${GATEWAY_AUTH_READ_TIMEOUT:10s}
+      # Requests here take the open-access path even when a bearer token is present. The query-service selects the
+      # open HPDS backend from this same path segment. Unlike allow-list-prefixes below, PSAMA's
+      # /auth/open/validate still gates the request and can still deny it.
+      open-path-prefixes:
+        - /hpds/open
       # Allowed list of prefixes that do not require authentication. The logging service has its own access key
       # for security. The other paths are publicly available.
       allow-list-prefixes:

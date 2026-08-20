@@ -34,9 +34,13 @@ import jakarta.servlet.http.HttpServletResponse;
 
 class OpenAccessFilterTest {
 
+    /** Mirrors {@code picsure.gateway.security.open-path-prefixes} in application.yml. */
+    private static final List<String> OPEN_PATH_PREFIXES = List.of("/hpds/open");
+
     private OpenAccessFilter filter(PsamaClient client, AuditContext ctx, boolean enabled) {
         return new OpenAccessFilter(
-            client, ctx, new ObjectMapper(), enabled, new PublicEndpointPolicy(List.of("/actuator", "/openapi", "/swagger-ui", "/logging"))
+            client, ctx, new ObjectMapper(), enabled, new PublicEndpointPolicy(List.of("/actuator", "/openapi", "/swagger-ui", "/logging")),
+            OPEN_PATH_PREFIXES
         );
     }
 
@@ -189,6 +193,106 @@ class OpenAccessFilterTest {
         verify(chain, never()).doFilter(any(), any());
         assertThat(ctx.getMetadata()).containsEntry("auth_result", "failure")
             .containsEntry("auth_failure_reason", "open_access_unreachable");
+    }
+
+    @Test
+    void tokenedRequestOnAnOpenPathTakesTheOpenAccessFastPath() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        AuditContext ctx = new AuditContext();
+        OpenAccessFilter f = filter(client, ctx, true);
+
+        BufferedRequestWrapper req = wrap("Bearer real-token", "/hpds/open/v3/query/sync", "POST");
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).doesNotContainKey("token"); // the token is never read or forwarded
+        assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED)).isEqualTo(Boolean.TRUE);
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).isEqualTo(GatewayUserResolver.ACCESS_TYPE_OPEN);
+        assertThat(ctx.getMetadata()).containsEntry("auth_action", "open_access.granted");
+        verify(chain).doFilter(eq(req), any());
+    }
+
+    @Test
+    void tokenedRequestOnTheBareOpenPathPrefixTakesTheOpenAccessFastPath() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap("Bearer real-token", "/hpds/open", "POST");
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        verify(client).validateOpenAccess(any());
+        assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED)).isEqualTo(Boolean.TRUE);
+    }
+
+    @Test
+    void tokenedRequestOnAnAuthPathStillGoesToIntrospection() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap("Bearer real-token", "/hpds/auth/v3/query/sync", "POST");
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        verify(chain).doFilter(eq(req), any());
+        verifyNoInteractions(client);
+        assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED)).isNull();
+    }
+
+    @Test
+    void tokenedRequestOnDictionaryFacetsStillGoesToIntrospection() throws Exception {
+        // Serves open and authorized traffic on one URL, so it can never be blanket-open at the gateway.
+        PsamaClient client = mock(PsamaClient.class);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap("Bearer real-token", "/dictionary/facets", "POST");
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        verify(chain).doFilter(eq(req), any());
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void openPathPrefixDoesNotMatchASiblingPathThatMerelySharesItsCharacters() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap("Bearer real-token", "/hpds/openx/v3/query/sync", "POST");
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        verify(chain).doFilter(eq(req), any());
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void disabledOpenAccessSendsTokenedOpenPathRequestsToIntrospection() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        OpenAccessFilter f = filter(client, new AuditContext(), false);
+
+        BufferedRequestWrapper req = wrap("Bearer real-token", "/hpds/open/v3/query/sync", "POST");
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        verify(chain).doFilter(eq(req), any());
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void untokenedRequestOnAnOpenPathStillGrantsAsBefore() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap(null, "/hpds/open/v3/query/sync", "POST");
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        verify(client).validateOpenAccess(any());
+        assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED)).isEqualTo(Boolean.TRUE);
     }
 
     private static BufferedRequestWrapper wrap(String authHeader) {

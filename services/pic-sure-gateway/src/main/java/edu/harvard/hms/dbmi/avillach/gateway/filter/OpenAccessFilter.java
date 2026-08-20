@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -30,7 +31,11 @@ import jakarta.servlet.http.HttpServletResponse;
  * different shape than introspection ({@code JWTFilter.java:389-394}): {@code { "request": { "Target Service": "<real path>", "query":
  * <body minus resourceCredentials> }, "ipAddress": "OPEN_ACCESS:<host>" }} — no {@code token} field, adds {@code ipAddress}. PSAMA returns
  * a bare boolean: {@code true} grants with username {@code OPEN_ACCESS:<host>}; {@code false} denies with a 401. Routes selected by the
- * shared {@link PublicEndpointPolicy}, a real bearer token, or disabled open access pass through untouched.
+ * shared {@link PublicEndpointPolicy} or disabled open access pass through untouched.
+ *
+ * <p>Requests under {@code open-path-prefixes} take this path even when a bearer token is present. The token is never read. The path
+ * decides openness, not the client's header, so this grants less than introspection would. {@code JWTFilter} keyed its open branch on token
+ * absence alone.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
@@ -48,21 +53,25 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     private final ObjectMapper json;
     private final boolean openAccessEnabled;
     private final PublicEndpointPolicy publicEndpoints;
+    private final List<String> openPathPrefixes;
 
     public OpenAccessFilter(
-        PsamaClient psama, AuditContext audit, ObjectMapper json, boolean openAccessEnabled, PublicEndpointPolicy publicEndpoints
+        PsamaClient psama, AuditContext audit, ObjectMapper json, boolean openAccessEnabled, PublicEndpointPolicy publicEndpoints,
+        List<String> openPathPrefixes
     ) {
         this.psama = psama;
         this.audit = audit;
         this.json = json;
         this.openAccessEnabled = openAccessEnabled;
         this.publicEndpoints = publicEndpoints;
+        this.openPathPrefixes = openPathPrefixes == null ? List.of() : List.copyOf(openPathPrefixes);
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
-        if (publicEndpoints.evaluate(req.getMethod(), req.getRequestURI()).publicEndpoint()) {
+        String path = req.getRequestURI();
+        if (publicEndpoints.evaluate(req.getMethod(), path).publicEndpoint()) {
             chain.doFilter(req, resp);
             return;
         }
@@ -70,7 +79,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         String authz = req.getHeader("Authorization");
         boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // JWTFilter.java:154-157
 
-        if (!openAccessEnabled || !noToken) {
+        if (!openAccessEnabled || (!noToken && !isOpenPath(path))) {
             chain.doFilter(req, resp);
             return;
         }
@@ -108,6 +117,22 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         audit.put("auth_result", "success");
         audit.put("auth_action", "open_access.granted");
         chain.doFilter(req, resp);
+    }
+
+    /**
+     * Segment-boundary prefix match, the same rule {@code PublicEndpointPolicy} applies to the introspection allow-list. {@code /hpds/open}
+     * matches itself and anything below it, never {@code /hpds/openx}.
+     */
+    private boolean isOpenPath(String path) {
+        if (path == null) {
+            return false;
+        }
+        for (String prefix : openPathPrefixes) {
+            if (path.equals(prefix) || path.startsWith(prefix + "/")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** {@code "OPEN_ACCESS:<host>"} marker sent as {@code ipAddress} to PSAMA's open-access validate endpoint (JWTFilter.java:389-394). */
