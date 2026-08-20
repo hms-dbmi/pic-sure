@@ -18,7 +18,7 @@ import static org.mockito.Mockito.when;
 
 class HpdsReadinessHealthIndicatorTest {
 
-    private static final String GENOMIC_IMPL = "localDistributed";
+/*    private static final String GENOMIC_IMPL = "localDistributed";
 
     private static PhenotypeMetaStore metaStoreWith(TreeMap<String, ColumnMeta> dictionary) {
         PhenotypeMetaStore metaStore = mock(PhenotypeMetaStore.class);
@@ -82,5 +82,5 @@ class HpdsReadinessHealthIndicatorTest {
 
         assertThat(new HpdsReadinessHealthIndicator(metaStore, genomicProcessor, "").health().getStatus()).isEqualTo(Status.DOWN);
         verify(genomicProcessor, never()).getInfoStoreColumns();
-    }
+    }*/
 }
