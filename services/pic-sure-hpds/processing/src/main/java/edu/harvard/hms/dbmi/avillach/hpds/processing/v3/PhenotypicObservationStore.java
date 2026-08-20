@@ -112,6 +112,9 @@ public class PhenotypicObservationStore {
      */
     public Optional<PhenoCube<?>> getCube(String path) {
         try {
+            if (phenotypeMetaStore.getColumnMeta(path) == null) {
+                return Optional.empty();
+            }
             return Optional.of(phenoCubeCache.get(path));
         } catch (CacheLoader.InvalidCacheLoadException | ExecutionException e) {
             return Optional.empty();

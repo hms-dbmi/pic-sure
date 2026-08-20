@@ -1,24 +1,15 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
-@Component
 public class PhenotypeMetaStore {
 
     private static final Logger log = LoggerFactory.getLogger(PhenotypeMetaStore.class);
@@ -46,9 +37,8 @@ public class PhenotypeMetaStore {
     }
 
 
-    @Autowired
     @SuppressWarnings("unchecked")
-    public PhenotypeMetaStore(@Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory) {
+    public PhenotypeMetaStore(String hpdsDataDirectory) {
         String columnMetaFile = hpdsDataDirectory + "/columnMeta.javabin";
         try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(columnMetaFile)))) {
             TreeMap<String, ColumnMeta> _metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
