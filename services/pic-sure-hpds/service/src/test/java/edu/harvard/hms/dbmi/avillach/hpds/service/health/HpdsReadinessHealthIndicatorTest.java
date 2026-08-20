@@ -1,8 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service.health;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.PartitionedPhenotypicObservationStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.Status;
@@ -18,12 +18,12 @@ import static org.mockito.Mockito.when;
 
 class HpdsReadinessHealthIndicatorTest {
 
-/*    private static final String GENOMIC_IMPL = "localDistributed";
+    private static final String GENOMIC_IMPL = "localDistributed";
 
-    private static PhenotypeMetaStore metaStoreWith(TreeMap<String, ColumnMeta> dictionary) {
-        PhenotypeMetaStore metaStore = mock(PhenotypeMetaStore.class);
-        when(metaStore.getMetaStore()).thenReturn(dictionary);
-        return metaStore;
+    private static PartitionedPhenotypicObservationStore observationStoreWith(TreeMap<String, SummaryColumnMeta> dictionary) {
+        PartitionedPhenotypicObservationStore observationStore = mock(PartitionedPhenotypicObservationStore.class);
+        when(observationStore.getMetaStore()).thenReturn(dictionary);
+        return observationStore;
     }
 
     private static GenomicProcessor genomicProcessorWith(Set<String> infoStoreColumns) {
@@ -32,42 +32,42 @@ class HpdsReadinessHealthIndicatorTest {
         return genomicProcessor;
     }
 
-    private static TreeMap<String, ColumnMeta> dictionaryWithOneColumn() {
-        TreeMap<String, ColumnMeta> dict = new TreeMap<>();
-        dict.put("\\demographics\\AGE\\", mock(ColumnMeta.class));
+    private static TreeMap<String, SummaryColumnMeta> dictionaryWithOneColumn() {
+        TreeMap<String, SummaryColumnMeta> dict = new TreeMap<>();
+        dict.put("\\demographics\\AGE\\", mock(SummaryColumnMeta.class));
         return dict;
     }
 
     @Test
     void upWhenPhenotypeDataLoaded() {
-        PhenotypeMetaStore metaStore = metaStoreWith(dictionaryWithOneColumn());
+        PartitionedPhenotypicObservationStore observationStore = observationStoreWith(dictionaryWithOneColumn());
         GenomicProcessor genomicProcessor = genomicProcessorWith(Set.of());
 
-        assertThat(new HpdsReadinessHealthIndicator(metaStore, genomicProcessor, GENOMIC_IMPL).health().getStatus()).isEqualTo(Status.UP);
+        assertThat(new HpdsReadinessHealthIndicator(observationStore, genomicProcessor, GENOMIC_IMPL).health().getStatus()).isEqualTo(Status.UP);
     }
 
     @Test
     void upWhenGenomicDataLoaded() {
-        PhenotypeMetaStore metaStore = metaStoreWith(new TreeMap<>());
+        PartitionedPhenotypicObservationStore observationStore = observationStoreWith(new TreeMap<>());
         GenomicProcessor genomicProcessor = genomicProcessorWith(Set.of("Gene_with_variant"));
 
-        assertThat(new HpdsReadinessHealthIndicator(metaStore, genomicProcessor, GENOMIC_IMPL).health().getStatus()).isEqualTo(Status.UP);
+        assertThat(new HpdsReadinessHealthIndicator(observationStore, genomicProcessor, GENOMIC_IMPL).health().getStatus()).isEqualTo(Status.UP);
     }
 
     @Test
     void downWhenGenomicEnabledButNoDataLoaded() {
-        PhenotypeMetaStore metaStore = metaStoreWith(new TreeMap<>());
+        PartitionedPhenotypicObservationStore observationStore = observationStoreWith(new TreeMap<>());
         GenomicProcessor genomicProcessor = genomicProcessorWith(Set.of());
 
-        assertThat(new HpdsReadinessHealthIndicator(metaStore, genomicProcessor, GENOMIC_IMPL).health().getStatus()).isEqualTo(Status.DOWN);
+        assertThat(new HpdsReadinessHealthIndicator(observationStore, genomicProcessor, GENOMIC_IMPL).health().getStatus()).isEqualTo(Status.DOWN);
     }
 
     @Test
     void upWhenGenomicDisabledAndPhenotypeLoaded() {
-        PhenotypeMetaStore metaStore = metaStoreWith(dictionaryWithOneColumn());
+        PartitionedPhenotypicObservationStore observationStore = observationStoreWith(dictionaryWithOneColumn());
         GenomicProcessor genomicProcessor = mock(GenomicProcessor.class);
 
-        Health health = new HpdsReadinessHealthIndicator(metaStore, genomicProcessor, "").health();
+        Health health = new HpdsReadinessHealthIndicator(observationStore, genomicProcessor, "").health();
 
         assertThat(health.getStatus()).isEqualTo(Status.UP);
         assertThat(health.getDetails()).containsEntry("genomicData", "not configured");
@@ -77,10 +77,10 @@ class HpdsReadinessHealthIndicatorTest {
 
     @Test
     void downWhenGenomicDisabledAndNoPhenotypeLoaded() {
-        PhenotypeMetaStore metaStore = metaStoreWith(new TreeMap<>());
+        PartitionedPhenotypicObservationStore observationStore = observationStoreWith(new TreeMap<>());
         GenomicProcessor genomicProcessor = mock(GenomicProcessor.class);
 
-        assertThat(new HpdsReadinessHealthIndicator(metaStore, genomicProcessor, "").health().getStatus()).isEqualTo(Status.DOWN);
+        assertThat(new HpdsReadinessHealthIndicator(observationStore, genomicProcessor, "").health().getStatus()).isEqualTo(Status.DOWN);
         verify(genomicProcessor, never()).getInfoStoreColumns();
-    }*/
+    }
 }
