@@ -16,22 +16,45 @@ public final class SessionIdResolver {
     private static final int HASH_HEX_LENGTH = 16;
     private static final char[] HEX = "0123456789abcdef".toCharArray();
 
+    /** Cap on client-supplied session ids; anything a well-behaved client sends (UUIDs, opaque tokens) fits comfortably. */
+    static final int MAX_SESSION_ID_LENGTH = 128;
+
     private SessionIdResolver() {}
 
     /**
      * Resolve a session identifier.
      *
+     * <p>The header value is client-controlled and flows into audit events, so it is sanitized before use: control characters (log/JSON
+     * injection vectors such as CR/LF) are stripped and the result is truncated to {@link #MAX_SESSION_ID_LENGTH} characters. If nothing
+     * survives sanitization, the hash fallback is used.
+     *
      * @param sessionIdHeader the value of the {@code X-Session-Id} header (may be null or empty)
      * @param srcIp the client IP address (may be null)
      * @param userAgent the {@code User-Agent} header value (may be null)
-     * @return a non-null session identifier — either the header value or a 16-char hex SHA-256 hash of IP + User-Agent
+     * @return a non-null session identifier — either the sanitized header value or a 16-char hex SHA-256 hash of IP + User-Agent
      */
     public static String resolve(String sessionIdHeader, String srcIp, String userAgent) {
-        if (sessionIdHeader != null && !sessionIdHeader.isEmpty()) {
-            return sessionIdHeader;
+        String sanitized = sanitize(sessionIdHeader);
+        if (sanitized != null) {
+            return sanitized;
         }
         String raw = (srcIp != null ? srcIp : "") + "|" + (userAgent != null ? userAgent : "");
         return sha256Hex(raw, HASH_HEX_LENGTH);
+    }
+
+    /** Strips ISO control characters and caps length; returns null when nothing usable remains. */
+    private static String sanitize(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(Math.min(value.length(), MAX_SESSION_ID_LENGTH));
+        for (int i = 0; i < value.length() && sb.length() < MAX_SESSION_ID_LENGTH; i++) {
+            char c = value.charAt(i);
+            if (!Character.isISOControl(c)) {
+                sb.append(c);
+            }
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 
     static String sha256Hex(String input, int hexLength) {

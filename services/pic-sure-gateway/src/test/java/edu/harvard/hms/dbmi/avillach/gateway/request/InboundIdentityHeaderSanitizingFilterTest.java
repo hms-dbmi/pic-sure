@@ -59,6 +59,37 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void stripsSpoofableForwardingHeadersAndInternalTokenButKeepsXForwardedForAndTelemetry() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
+        request.addHeader("X-Real-IP", "6.6.6.6");
+        request.addHeader("Forwarded", "for=6.6.6.6");
+        request.addHeader("X-PIC-SURE-INTERNAL-TOKEN", "stolen-internal-token");
+        // X-Forwarded-For stays: the trusted front proxy appends to it, and consumers take the
+        // rightmost (trusted) entry. Session/client-type/request-source are intentional client telemetry.
+        request.addHeader("X-Forwarded-For", "6.6.6.6, 10.0.0.1");
+        request.addHeader("X-Session-Id", "session-123");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        request.addHeader("request-source", "portal");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        HttpServletRequest wrapped = captured.get();
+        assertThat(wrapped.getHeader("X-Real-IP")).isNull();
+        assertThat(wrapped.getHeader("Forwarded")).isNull();
+        assertThat(wrapped.getHeader("X-PIC-SURE-INTERNAL-TOKEN")).isNull();
+        assertThat(wrapped.getHeader("X-Forwarded-For")).isEqualTo("6.6.6.6, 10.0.0.1");
+        assertThat(wrapped.getHeader("X-Session-Id")).isEqualTo("session-123");
+        assertThat(wrapped.getHeader("X-Client-Type")).isEqualTo("PYTHON_ADAPTER");
+        assertThat(wrapped.getHeader("request-source")).isEqualTo("portal");
+
+        List<String> names = Collections.list(wrapped.getHeaderNames());
+        assertThat(names).doesNotContain("X-Real-IP", "Forwarded", "X-PIC-SURE-INTERNAL-TOKEN");
+        assertThat(names).contains("X-Forwarded-For", "X-Session-Id", "X-Client-Type", "request-source");
+    }
+
+    @Test
     void headerStrippingIsCaseInsensitive() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
         request.addHeader("x-user-privileges", "SYSTEM,ADMIN");

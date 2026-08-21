@@ -44,8 +44,8 @@ spring:
             # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
             # /operations/** is served by operations-service, the sole DB owner (also home to
             # the internal query dispatch API PsamaIntrospectionFilter/QueryAuthFetcher calls for result/signed-url
-            # auth). /operations/configuration/** carries a public-GET carve-out for the introspection filter itself
-            # (see PsamaIntrospectionFilter#isPublicConfigurationRead) — everything else (POST/PATCH/DELETE, all
+            # auth). /operations/configuration/** carries a public-GET carve-out in PublicEndpointPolicy, shared by
+            # both authentication filters — everything else (POST/PATCH/DELETE, all
             # /operations/configuration/admin/**, and all of /operations/dataset/**) is introspected as usual by the
             # always-on auth chain.
             - id: hpds
@@ -113,7 +113,6 @@ picsure:
   gateway:
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
-      user-id-claim: sub
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}
       introspection-url: ${TOKEN_INTROSPECTION_URL:}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}

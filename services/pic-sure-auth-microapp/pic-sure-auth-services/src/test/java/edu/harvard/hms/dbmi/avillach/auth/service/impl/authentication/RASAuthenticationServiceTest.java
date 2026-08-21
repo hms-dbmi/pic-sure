@@ -13,10 +13,8 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
-import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.*;
-import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,8 +47,6 @@ public class RASAuthenticationServiceTest {
     @MockBean
     private CacheEvictionService cacheEvictionService;
     @MockBean
-    private RoleService roleService;
-    @MockBean
     private UserRepository userRepository;
     @MockBean
     private ApplicationContext applicationContext;
@@ -72,16 +68,12 @@ public class RASAuthenticationServiceTest {
     @BeforeEach
     public void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
-        RoleService roleService = new RoleService(
-            mock(UserRepository.class), mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class),
-            mock(ApplicationContext.class), null
-        );
         this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, "", cacheEvictionService, null));
         doReturn(false).when(rasPassPortService).isExpired(any());
 
         rasAuthenticationService = new RASAuthenticationService(
-            userService, restClientUtil, true, "test.com", "", "", "", "https://stsstg.nih.gov", roleService, rasPassPortService,
-            connectionService, cacheEvictionService
+            userService, restClientUtil, true, "test.com", "", "", "", "https://stsstg.nih.gov", rasPassPortService, connectionService,
+            cacheEvictionService
         );
 
         Connection rasConnection = new Connection();
@@ -126,7 +118,7 @@ public class RASAuthenticationServiceTest {
         User user = createTestUser();
         user.setSubject("okta-ras|adfadfaf");
         when(userService.createRasUser(any(), any())).thenReturn(Optional.of(user));
-        when(userService.updateUserRoles(any(), any())).thenReturn(user);
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
         when(userService.updateUserConsents(any(), any())).thenReturn(user);
 
         ArgumentCaptor<UserClaims> claimsCaptor = ArgumentCaptor.forClass(UserClaims.class);
@@ -188,18 +180,16 @@ public class RASAuthenticationServiceTest {
         assertTrue(passport.isPresent());
 
         Set<RasDbgapPermission> dbgapPermissions = new HashSet<>();
-        Set<String> dbgapRoleNames = new HashSet<>();
 
         when(rasPassPortService.ga4ghPassportToRasDbgapPermissions(any())).thenReturn(dbgapPermissions);
-        when(roleService.getRoleNamesForDbgapPermissions(any())).thenReturn(dbgapRoleNames);
-        when(userService.updateUserRoles(any(), any())).thenReturn(user);
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
         when(userService.updateUserConsents(any(), any())).thenReturn(user);
 
         user = this.rasAuthenticationService.updateRasUserRoles(code, user, passport.get());
         assertNotNull(user);
 
         // We are verifying that we attempt to update a users roles even if no dbgap roles are present.
-        verify(userService, times(1)).updateUserRoles(user, dbgapRoleNames);
+        verify(userService, times(1)).ensureBaselineRoles(user);
     }
 
     private void mockTokenAndIntrospectionResponses(String introspectionResponse) {
@@ -240,19 +230,7 @@ public class RASAuthenticationServiceTest {
         Privilege privilege = new Privilege();
         privilege.setName("TEST_PRIVILEGE");
         privilege.setUuid(UUID.randomUUID());
-        privilege.setQueryTemplate(
-            createQueryTemplate(
-                "consent_concept_path_" + privilege.getUuid(), "project_name_" + privilege.getUuid(), "consent_group_" + privilege.getUuid()
-            )
-        );
 
         return privilege;
-    }
-
-    private String createQueryTemplate(String consent_concept_path, String project_name, String consent_group) {
-        return "{\"categoryFilters\": {\"" + consent_concept_path + "\":\"" + project_name + "." + consent_group + "\"},"
-            + "\"numericFilters\":{},\"requiredFields\":[],"
-            + "\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
-            + "\"expectedResultType\": \"COUNT\"" + "}";
     }
 }

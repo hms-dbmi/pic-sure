@@ -8,5 +8,12 @@ import java.util.UUID;
  * {@code edu.harvard.dbmi.avillach.domain.PicSureStatus} enum NAME (or {@code null} if unset). {@code metadata} is base64-encoded bytes (or
  * {@code null} if unset).
  */
-public record StoredQuery(UUID picsureId, String query, String resourceResultId, String status, String version, String metadata) {
+public record StoredQuery(
+    UUID picsureId, String query, String resourceResultId, String status, String version, String metadata, Long startTime, Long readyTime
+) {
+
+    /** Convenience for callers that don't carry timing ({@code startTime}/{@code readyTime} are server-owned epoch millis). */
+    public StoredQuery(UUID picsureId, String query, String resourceResultId, String status, String version, String metadata) {
+        this(picsureId, query, resourceResultId, status, version, metadata, null, null);
+    }
 }

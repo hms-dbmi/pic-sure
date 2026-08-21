@@ -53,6 +53,13 @@ class NamedDatasetControllerTest {
     }
 
     @Test
+    void listWithUserIdButNoEmailIsUnauthorized() throws Exception {
+        // Passes the WebSecurityConfig gate (X-User-Id present) but trips the email guard in NamedDatasetService.
+        mockMvc.perform(get("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void listReturnsOnlyCallersDatasets() throws Exception {
         Query aliceQuery = queryRepo.save(new Query());
         Query bobQuery = queryRepo.save(new Query());
