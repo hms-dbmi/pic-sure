@@ -3,9 +3,8 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public record Query(
     @Schema(
@@ -20,6 +19,8 @@ public record Query(
     @Schema(description = "An externally passed UUID to assign to this query") UUID picsureId,
     @Schema(description = "An internally generated UUID identifying this query") UUID id
 ) {
+
+    public static final String CONSENTS_AUTHORIZATION_FILTER_NAME = "_consents";
 
     @Override
     public List<String> select() {
@@ -80,5 +81,14 @@ public record Query(
             return this;
         }
         return new Query(select, authorizationFilters, phenotypicClause, genomicFilters, expectedResultType, picsureId, UUID.randomUUID());
+    }
+
+    public Set<String> getUserConsents() {
+        return authorizationFilters().stream()
+                .filter(authorizationFilter -> CONSENTS_AUTHORIZATION_FILTER_NAME.equals(authorizationFilter.conceptPath()))
+                .map(AuthorizationFilter::values)
+                .filter(Objects::nonNull)
+                .flatMap(Collection::stream)
+                .collect(Collectors.toSet());
     }
 }

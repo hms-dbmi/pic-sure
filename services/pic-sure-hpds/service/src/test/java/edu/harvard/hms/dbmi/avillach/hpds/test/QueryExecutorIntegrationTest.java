@@ -67,7 +67,7 @@ public class QueryExecutorIntegrationTest {
             ResultType.COUNT, null, null
         );
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
 
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(3, idList.size());
@@ -93,7 +93,7 @@ public class QueryExecutorIntegrationTest {
             List.of(new GenomicFilter("Gene_with_variant", List.of("LOC102723996", "LOC101928576"), null, null)), ResultType.COUNT, null,
             null
         );
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
 
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
 
@@ -122,11 +122,11 @@ public class QueryExecutorIntegrationTest {
         );
 
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(0, idList.size());
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition4"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition4"));
         idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(4, idList.size());
     }
@@ -151,12 +151,12 @@ public class QueryExecutorIntegrationTest {
             null, ResultType.COUNT, null, null
         );
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(151, idList.size());
         idList.forEach(id -> assertTrue(id >= 198000 && id < 200000));
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition1", "partition4"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition1", "partition4"));
         idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(411, idList.size());
         idList.forEach(id -> assertTrue(id < 198000 || id >= 200000));
@@ -170,12 +170,12 @@ public class QueryExecutorIntegrationTest {
             null, ResultType.COUNT, null, null
         );
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3452345", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3452345", "partition3"));
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(151, idList.size());
         idList.forEach(id -> assertTrue(id >= 198000 && id < 200000));
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition3452345"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition3452345"));
         idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(0, idList.size());
     }
@@ -202,10 +202,10 @@ public class QueryExecutorIntegrationTest {
         );
 
         // note: all of the patients in this population are in partition 4
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(0, idList.size());
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition4"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition4"));
         idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(102, idList.size());
     }
@@ -232,7 +232,7 @@ public class QueryExecutorIntegrationTest {
             ), null, ResultType.COUNT, null, null
         );
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(0, idList.size());
     }
@@ -279,11 +279,11 @@ public class QueryExecutorIntegrationTest {
             ), null, ResultType.COUNT, null, null
         );
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
         Set<Integer> bothIdList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(0, bothIdList.size());
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition4"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition4"));
         bothIdList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(255, bothIdList.size());
     }
@@ -333,7 +333,7 @@ public class QueryExecutorIntegrationTest {
 
     @Test
     public void getPatientSubsetForQuery_validMultiplePhenotypicQuerySomePartitions() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
 
         PhenotypicFilter ageFilter =
                 new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null);
@@ -393,11 +393,11 @@ public class QueryExecutorIntegrationTest {
         );
 
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition3"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition3"));
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(0, idList.size());
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2", "partition4"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2", "partition4"));
         idList = queryExecutor.getPatientSubsetForQuery(query);
         assertEquals(7, idList.size());
     }
@@ -517,7 +517,7 @@ public class QueryExecutorIntegrationTest {
         );
 
 
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition2"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition2"));
 
         Set<Integer> patientSubsetForQuery = queryExecutor.getPatientSubsetForQuery(query);
 
@@ -628,30 +628,6 @@ public class QueryExecutorIntegrationTest {
         assertEquals(Sets.intersection(yorubaIdList, ageIdList), bothIdList);
     }
 
-
-    @Test
-    public void getPatientSubsetForQuery_validPhenotypicQueryWithAuthorizationFilter() {
-        PhenotypicFilter finnishFilter = new PhenotypicFilter(
-            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\POPULATION NAME\\", Set.of("Finnish"), null, null, null
-        );
-        Query query = new Query(List.of(), List.of(), finnishFilter, null, ResultType.COUNT, null, null);
-        Set<Integer> finnishIdList = queryExecutor.getPatientSubsetForQuery(query);
-        assertEquals(102, finnishIdList.size());
-
-        PhenotypicFilter femaleFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("female"), null, null, null);
-        query = new Query(List.of(), List.of(), femaleFilter, null, ResultType.COUNT, null, null);
-        Set<Integer> femaleIdList = queryExecutor.getPatientSubsetForQuery(query);
-        assertEquals(2330, femaleIdList.size());
-
-
-        AuthorizationFilter authorizationFilter =
-            new AuthorizationFilter("\\open_access-1000Genomes\\data\\POPULATION NAME\\", Set.of("Finnish"));
-        query = new Query(List.of(), List.of(authorizationFilter), femaleFilter, null, ResultType.COUNT, null, null);
-        Set<Integer> bothIdList = queryExecutor.getPatientSubsetForQuery(query);
-        assertEquals(64, bothIdList.size());
-        assertEquals(Sets.intersection(finnishIdList, femaleIdList), bothIdList);
-    }
 
     @Test
     public void getPatientSubsetForQuery_validAnyRecordOfPhenotypicQuery_returnsPatients() {

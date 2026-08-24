@@ -37,7 +37,7 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     @Test
     public void getKeysForRange_noConsents_throwException() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of());
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of());
 
         assertThrows(MissingConsentsException.class, () -> {
             partitionedPhenotypicObservationStore.getKeysForRange("/a/concept/path/", 0.0, 10.0);
@@ -46,7 +46,7 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     @Test
     public void getKeysForValues_noConsents_throwException() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of());
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of());
 
         assertThrows(MissingConsentsException.class, () -> {
             partitionedPhenotypicObservationStore.getKeysForValues("/a/concept/path/", Set.of("value"));
@@ -55,7 +55,7 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     @Test
     public void getAllKeys_noConsents_throwException() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of());
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of());
 
         assertThrows(MissingConsentsException.class, () -> {
             partitionedPhenotypicObservationStore.getAllKeys("/a/concept/path/");
@@ -64,7 +64,7 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     @Test
     public void getCube_noConsents_throwException() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of());
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of());
 
         assertThrows(MissingConsentsException.class, () -> {
             partitionedPhenotypicObservationStore.getCube("/a/concept/path/");
@@ -73,7 +73,7 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     @Test
     public void getPatientIds_noConsents_throwException() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of());
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of());
 
         assertThrows(MissingConsentsException.class, () -> {
             partitionedPhenotypicObservationStore.getPatientIds();
@@ -84,31 +84,31 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     @Test
     public void getKeysForRange_hasConsents_doNotThrow() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition1"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition1"));
         partitionedPhenotypicObservationStore.getKeysForRange("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", 0.0, 10.0);
     }
 
     @Test
     public void getKeysForValues_hasConsents_doNotThrow() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition1"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition1"));
         partitionedPhenotypicObservationStore.getKeysForValues("\\open_access-1000Genomes\\data\\SEX\\", Set.of("male"));
     }
 
     @Test
     public void getAllKeys_hasConsents_doNotThrow() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition1"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition1"));
         partitionedPhenotypicObservationStore.getAllKeys("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\");
     }
 
     @Test
     public void getCube_hasConsents_doNotThrow() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition1"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition1"));
         partitionedPhenotypicObservationStore.getCube("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\");
     }
 
     @Test
     public void getPatientIds_hasConsents_doNotThrow() {
-        when(userRequestContext.getUserConsents()).thenReturn(List.of("partition1"));
+        when(userRequestContext.getUserConsents()).thenReturn(Set.of("partition1"));
 
         Set<Integer> patientIds = partitionedPhenotypicObservationStore.getPatientIds();
         assertTrue(patientIds.size() > 0);
