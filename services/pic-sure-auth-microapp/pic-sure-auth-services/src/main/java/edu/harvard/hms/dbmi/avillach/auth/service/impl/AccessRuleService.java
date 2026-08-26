@@ -25,7 +25,6 @@ import java.util.*;
 @Service
 public class AccessRuleService {
 
-    private static final int RETIRED_USER_CONSENT_ACCESS_TYPE = 17;
     private final Logger logger = LoggerFactory.getLogger(AccessRuleService.class);
 
     private final AccessRuleRepository accessRuleRepo;
@@ -631,10 +630,6 @@ public class AccessRuleService {
             case AccessRule.TypeNaming.ALL_REG_MATCH:
             case AccessRule.TypeNaming.ANY_REG_MATCH:
                 decision = requestBodyValue.matches(value);
-                break;
-            case RETIRED_USER_CONSENT_ACCESS_TYPE:
-                logger.warn("evaluateAccessRule() rejected retired access rule type 17.");
-                decision = false;
                 break;
             default:
                 logger.warn("evaluateAccessRule() incoming accessRule type is out of scope. Just return true.");
