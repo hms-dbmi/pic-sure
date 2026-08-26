@@ -49,7 +49,7 @@ public class TimeseriesProcessorIntegrationTest {
             null
         );
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), phenotypicClause, null,
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), phenotypicClause, null,
             ResultType.DATAFRAME_TIMESERIES, UUID.randomUUID(), UUID.randomUUID()
         );
 
@@ -73,7 +73,7 @@ public class TimeseriesProcessorIntegrationTest {
         PhenotypicClause phenotypicClause =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("male"), null, null, null);
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SEX\\"), List.of(), phenotypicClause, null, ResultType.DATAFRAME_TIMESERIES,
+            List.of("\\open_access-1000Genomes\\data\\SEX\\"), List.of(), Set.of(), phenotypicClause, null, ResultType.DATAFRAME_TIMESERIES,
             UUID.randomUUID(), UUID.randomUUID()
         );
 

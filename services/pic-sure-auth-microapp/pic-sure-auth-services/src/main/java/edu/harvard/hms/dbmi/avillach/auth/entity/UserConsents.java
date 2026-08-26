@@ -19,7 +19,7 @@ public class UserConsents extends BaseEntity {
 
 
     @Convert(converter = ConsentsJsonConverter.class)
-    private Map<String, Set<String>> consents;
+    private Set<String> consents;
 
     public UUID getUserId() {
         return userId;
@@ -30,11 +30,11 @@ public class UserConsents extends BaseEntity {
         return this;
     }
 
-    public Map<String, Set<String>> getConsents() {
+    public Set<String> getConsents() {
         return consents;
     }
 
-    public UserConsents setConsents(Map<String, Set<String>> consents) {
+    public UserConsents setConsents(Set<String> consents) {
         this.consents = consents;
         return this;
     }

@@ -33,7 +33,7 @@ class PhenotypicQueryExecutorTest {
 
     @Test
     public void getPatientSet_noFilters_returnAllPatients() {
-        Query query = new Query(List.of(), List.of(), null, null, ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, null, ResultType.COUNT, null, null);
 
         Set<Integer> patientIds = Set.of(10, 100, 1000);
         when(phenotypicObservationStore.getPatientIds()).thenReturn(new TreeSet<>(patientIds));
@@ -46,7 +46,7 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_validNumericFilter_returnPatients() throws ExecutionException {
         String conceptPath = "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\";
         Query query = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, null, 35.0, 45.0, null), null,
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, null, 35.0, 45.0, null), null,
             ResultType.COUNT, null, null
         );
 
@@ -61,7 +61,7 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_validCategoricalFilter_returnPatients() throws ExecutionException {
         String conceptPath = "\\open_access-1000Genomes\\data\\POPULATION NAME\\";
         Query query = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null,
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null,
             ResultType.COUNT, null, null
         );
 
@@ -76,7 +76,7 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_nonExistentCategoricalFilter_returnNoPatients() {
         String conceptPath = "\\open_access-1000Genomes\\data\\NOT_A_CONCEPT_PATH\\";
         Query query = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null,
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null,
             ResultType.COUNT, null, null
         );
 
@@ -90,7 +90,7 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_nonExistentNumericFilter_returnNoPatients() {
         String conceptPath = "\\open_access-1000Genomes\\data\\NOT_A_CONCEPT_PATH\\";
         Query query = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, null, 42.0, null, null), null,
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, null, 42.0, null, null), null,
             ResultType.COUNT, null, null
         );
 
@@ -118,7 +118,7 @@ class PhenotypicQueryExecutorTest {
         PhenotypicClause phenotypicSubquery2 = new PhenotypicSubquery(null, List.of(categoricalFilter2, numericFilter2), Operator.AND);
         PhenotypicClause topSubquery = new PhenotypicSubquery(null, List.of(phenotypicSubquery1, phenotypicSubquery2), Operator.OR);
 
-        Query query = new Query(List.of(), List.of(), topSubquery, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), topSubquery, List.of(), ResultType.COUNT, null, null);
 
         Set<Integer> catFilter1Ids = Set.of(3, 5, 8, 13, 21);
         Set<Integer> numFilter1Ids = Set.of(2, 3, 5, 8, 13);
@@ -140,7 +140,7 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_validCategoricalFilterMultipleValues_returnPatients() throws ExecutionException {
         String conceptPath = "\\open_access-1000Genomes\\data\\POPULATION NAME\\";
         Query query = new Query(
-            List.of(), List.of(),
+            List.of(), List.of(), Set.of(),
             new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish", "Zapotec"), null, null, null), null,
             ResultType.COUNT, null, null
         );
@@ -158,7 +158,7 @@ class PhenotypicQueryExecutorTest {
         String numericConceptPath = "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\";
         String nonMatchingConceptPath = "\\synthea\\data\\SYNTHETIC_AGE\\";
         Query query = new Query(
-            List.of(), List.of(),
+            List.of(), List.of(), Set.of(),
             new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, "\\open_access-1000Genomes\\", null, null, null, null), null,
             ResultType.COUNT, null, null
         );
@@ -186,7 +186,7 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_anyRecordOfFilterNoMatches_returnNoPatients() {
         String nonMatchingConceptPath = "\\synthea\\data\\SYNTHETIC_AGE\\";
         Query query = new Query(
-            List.of(), List.of(),
+            List.of(), List.of(), Set.of(),
             new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, "\\open_access-1000Genomes\\", null, null, null, null), null,
             ResultType.COUNT, null, null
         );
@@ -207,7 +207,7 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_validRequiredFilter_returnPatients() throws ExecutionException {
         String conceptPath = "\\open_access-1000Genomes\\data\\POPULATION NAME\\";
         Query query = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath, null, null, null, null), null,
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath, null, null, null, null), null,
             ResultType.COUNT, null, null
         );
 
@@ -222,7 +222,7 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_notFoundRequiredFilter_returnNoPatients() {
         String conceptPath = "\\open_access-1000Genomes\\data\\POPULATION NAME\\";
         Query query = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath, null, null, null, null), null,
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath, null, null, null, null), null,
             ResultType.COUNT, null, null
         );
 

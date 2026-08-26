@@ -44,7 +44,7 @@ class QueryValidatorTest {
 
     @Test
     public void validate_emptyQuery_isValid() {
-        Query query = new Query(List.of(), List.of(), null, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(), ResultType.COUNT, null, null);
         queryValidator.validate(query);
     }
 
@@ -52,7 +52,7 @@ class QueryValidatorTest {
     public void validate_validPhenotypicFilter_isValid() {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, null, null);
-        Query query = new Query(List.of(), List.of(), phenotypicFilter, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicFilter, List.of(), ResultType.COUNT, null, null);
         queryValidator.validate(query);
         verify(phenotypicFilterValidator, times(1)).validate(phenotypicFilter, metaStore);
     }
@@ -65,7 +65,7 @@ class QueryValidatorTest {
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\age\\", null, 42.0, null, null);
         PhenotypicClause phenotypicSubquery1 = new PhenotypicSubquery(null, List.of(phenotypicFilter, phenotypicFilter2), Operator.AND);
         PhenotypicClause phenotypicSubquery2 = new PhenotypicSubquery(null, List.of(phenotypicSubquery1, phenotypicSubquery1), Operator.OR);
-        Query query = new Query(List.of(), List.of(), phenotypicSubquery2, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicSubquery2, List.of(), ResultType.COUNT, null, null);
         queryValidator.validate(query);
         verify(phenotypicFilterValidator, times(2)).validate(phenotypicFilter, metaStore);
         verify(phenotypicFilterValidator, times(2)).validate(phenotypicFilter2, metaStore);
@@ -75,7 +75,7 @@ class QueryValidatorTest {
     public void validate_invalidFilter_throwsException() {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\age\\", Set.of("male"), null, null, null);
-        Query query = new Query(List.of(), List.of(), phenotypicFilter, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicFilter, List.of(), ResultType.COUNT, null, null);
         doThrow(IllegalArgumentException.class).when(phenotypicFilterValidator).validate(phenotypicFilter, metaStore);
         assertThrows(IllegalArgumentException.class, () -> queryValidator.validate(query));
     }
@@ -88,7 +88,7 @@ class QueryValidatorTest {
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\age\\", null, 42.0, null, null);
         PhenotypicClause phenotypicSubquery1 = new PhenotypicSubquery(null, List.of(phenotypicFilter, phenotypicFilter2), Operator.AND);
         PhenotypicClause phenotypicSubquery2 = new PhenotypicSubquery(null, List.of(phenotypicSubquery1, phenotypicSubquery1), Operator.OR);
-        Query query = new Query(List.of(), List.of(), phenotypicSubquery2, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicSubquery2, List.of(), ResultType.COUNT, null, null);
         doThrow(IllegalArgumentException.class).when(phenotypicFilterValidator).validate(phenotypicFilter, metaStore);
         assertThrows(IllegalArgumentException.class, () -> queryValidator.validate(query));
     }
@@ -98,7 +98,7 @@ class QueryValidatorTest {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, null, null);
         Query query = new Query(
-            List.of(), List.of(new AuthorizationFilter("\\_consent\\", Set.of("studyABC"))), phenotypicFilter, List.of(), ResultType.COUNT,
+            List.of(), List.of(new AuthorizationFilter("\\_consent\\", Set.of("studyABC"))), Set.of(), phenotypicFilter, List.of(), ResultType.COUNT,
             null, null
         );
 
@@ -110,7 +110,7 @@ class QueryValidatorTest {
     public void validate_requireAuthorizationFilter_throwsException() {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, null, null);
-        Query query = new Query(List.of(), List.of(), phenotypicFilter, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), phenotypicFilter, List.of(), ResultType.COUNT, null, null);
 
         queryValidator = new QueryValidator(phenotypicQueryExecutor, phenotypicFilterValidator, true);
         assertThrows(IllegalArgumentException.class, () -> queryValidator.validate(query));

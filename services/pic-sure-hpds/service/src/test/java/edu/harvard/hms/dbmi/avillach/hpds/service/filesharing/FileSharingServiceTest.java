@@ -18,6 +18,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -53,7 +54,7 @@ public class FileSharingServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID uuid = UUID.randomUUID();
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
             picsureId, uuid
         );
         AsyncResult result = new AsyncResult(query, variantListProcessor, resultWriter);
@@ -72,7 +73,7 @@ public class FileSharingServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID uuid = UUID.randomUUID();
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
             picsureId, uuid
         );
         AsyncResult result = new AsyncResult(query, variantListProcessor, resultWriter);
@@ -90,7 +91,7 @@ public class FileSharingServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID uuid = UUID.randomUUID();
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.DATAFRAME_TIMESERIES,
             picsureId, uuid
         );
         String vcf = "lol lets put the whole vcf in a string";
@@ -107,7 +108,7 @@ public class FileSharingServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID uuid = UUID.randomUUID();
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), null, null, ResultType.PATIENTS, picsureId, uuid
+            List.of("\\open_access-1000Genomes\\data\\SUPERPOPULATION NAME\\"), List.of(), Set.of(), null, null, ResultType.PATIENTS, picsureId, uuid
         );
 
         AsyncResult result = new AsyncResult(query, patientProcessor, resultWriter);

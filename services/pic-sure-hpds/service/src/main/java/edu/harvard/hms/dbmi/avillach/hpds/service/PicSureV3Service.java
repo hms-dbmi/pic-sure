@@ -10,6 +10,7 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.UserConsent;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
@@ -234,7 +235,7 @@ public class PicSureV3Service {
         Object queryObject = queryJson.getQuery();
         Query query = deserializeQuery(queryObject);
 
-        this.userRequestContext.setUserConsents(query.getUserConsents());
+        this.userRequestContext.setUserConsents(query.userConsents().stream().map(UserConsent::value).collect(Collectors.toSet()));
         return query;
     }
 
