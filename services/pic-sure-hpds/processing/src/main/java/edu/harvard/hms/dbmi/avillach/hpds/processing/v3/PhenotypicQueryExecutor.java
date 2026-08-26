@@ -45,15 +45,8 @@ public class PhenotypicQueryExecutor {
     }
 
     public Set<Integer> getPatientSet(Query query) {
-        List<PhenotypicClause> mergedClauses = new ArrayList<>();
-
         if (query.phenotypicClause() != null) {
-            mergedClauses.add(query.phenotypicClause());
-        }
-
-        if (!mergedClauses.isEmpty()) {
-            PhenotypicSubquery authorizedSubquery = new PhenotypicSubquery(null, mergedClauses, Operator.AND);
-            return evaluatePhenotypicClause(authorizedSubquery);
+            return evaluatePhenotypicClause(query.phenotypicClause());
         } else {
             // if there are no phenotypic queries, return all patients
             return phenotypicObservationStore.getPatientIds();
