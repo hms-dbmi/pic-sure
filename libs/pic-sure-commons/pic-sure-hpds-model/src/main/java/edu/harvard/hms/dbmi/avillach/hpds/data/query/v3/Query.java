@@ -4,7 +4,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public record Query(
     @Schema(
@@ -21,8 +20,6 @@ public record Query(
     @Schema(description = "An externally passed UUID to assign to this query") UUID picsureId,
     @Schema(description = "An internally generated UUID identifying this query") UUID id
 ) {
-
-    public static final String CONSENTS_AUTHORIZATION_FILTER_NAME = "_consents";
 
     @Override
     public List<String> select() {
