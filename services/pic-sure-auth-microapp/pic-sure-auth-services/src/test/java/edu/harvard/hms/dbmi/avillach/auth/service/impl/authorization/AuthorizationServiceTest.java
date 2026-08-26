@@ -279,35 +279,6 @@ public class AuthorizationServiceTest {
         assertFalse(result);
     }
 
-    @Test
-    public void testIsAuthorized_ConsentRule_NonQueryRequestBody_DeniedWithoutNPE() {
-        Application application = createTestApplication();
-        User user = createTestUser();
-
-        AccessRule consentRule = new AccessRule();
-        consentRule.setUuid(UUID.randomUUID());
-        consentRule.setName("AR_CONSENT_nhanes");
-        consentRule.setRule("$.query.query.categoryFilters.\\_consents\\[*]");
-        consentRule.setType(AccessRule.TypeNaming.USER_CONSENT_ACCESS);
-        consentRule.setValue("Nhanes");
-
-        for (Privilege privilege : user.getRoles().iterator().next().getPrivileges()) {
-            privilege.setAccessRules(Collections.singleton(consentRule));
-            privilege.setApplication(application);
-        }
-        configureUserSecurityContext(user);
-        user.setConnection(createFenceTestConnection());
-
-        // Introspection bodies for non-query endpoints carry no "query" node; a consent
-        // rule must deny them cleanly, not NPE into a 500.
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("Target Service", "/operations/dataset/named");
-
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
-
-        assertFalse(result);
-    }
-
     private Connection createFenceTestConnection() {
         Connection connection = new Connection();
         connection.setUuid(UUID.randomUUID());

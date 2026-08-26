@@ -41,7 +41,6 @@ class AuthorizationServiceConsentDecisionTest {
     private SessionService sessionService;
     private RoleService roleService;
     private AccessRule routeRule;
-    private AccessRule legacyConsentRule;
     private User user;
     private Application application;
 
@@ -54,7 +53,6 @@ class AuthorizationServiceConsentDecisionTest {
         when(sessionService.isSessionExpired(any())).thenReturn(false);
 
         routeRule = rule("AR_ALLOW_HPDS_INGRESS", AccessRule.TypeNaming.ALL_REG_MATCH);
-        legacyConsentRule = rule("GATE_QUERY_HPDS_AUTH_V3", AccessRule.TypeNaming.USER_CONSENT_ACCESS);
         when(accessRuleService.evaluateAccessRule(any(), any())).thenAnswer(invocation -> invocation.getArgument(1) == routeRule);
 
         application = new Application();
@@ -65,7 +63,7 @@ class AuthorizationServiceConsentDecisionTest {
         privilege.setUuid(UUID.randomUUID());
         privilege.setName("MANAGED_PRIV_AUTH_ACCESS");
         privilege.setApplication(application);
-        privilege.setAccessRules(new HashSet<>(Set.of(routeRule, legacyConsentRule)));
+        privilege.setAccessRules(new HashSet<>(Set.of(routeRule)));
         application.setPrivileges(Set.of(privilege));
 
         Role role = new Role();
@@ -86,7 +84,7 @@ class AuthorizationServiceConsentDecisionTest {
         user.setConnection(connection);
         user.setRoles(Set.of(role));
 
-        when(accessRuleService.cachedPreProcessAccessRules(any(), any())).thenReturn(Set.of(routeRule, legacyConsentRule));
+        when(accessRuleService.cachedPreProcessAccessRules(any(), any())).thenReturn(Set.of(routeRule));
     }
 
     @Test
@@ -109,6 +107,17 @@ class AuthorizationServiceConsentDecisionTest {
 
         assertTrue(result.result());
         assertTrue(result.query().isPresent());
+    }
+
+    @Test
+    void authQueryOutsideUserStudiesIsScopedInsteadOfRejectedBeforeExecution() {
+        givenConsents(Map.of(CONSENT_PATH, Set.of(CONSENT)));
+
+        EvaluateAccessRuleResult result =
+            service(true).isAuthorized(application, queryRequest("/hpds/auth/v3/query/sync", "\\phs999999\\variable\\"), user, false);
+
+        assertTrue(result.result());
+        assertEquals(List.of(new AuthorizationFilter(CONSENT_PATH, Set.of(CONSENT))), result.query().orElseThrow().authorizationFilters());
     }
 
     @Test
@@ -197,18 +206,6 @@ class AuthorizationServiceConsentDecisionTest {
         assertEquals("Query is outside the gateway spliceable position.", result.denialReason().orElseThrow());
     }
 
-    @Test
-    void legacyConsentRuleIsNotUsedAsTheRouteGrant() {
-        when(accessRuleService.evaluateAccessRule(any(), any())).thenReturn(false);
-        givenConsents(Map.of(CONSENT_PATH, Set.of(CONSENT)));
-
-        EvaluateAccessRuleResult result = service(true).isAuthorized(
-            application, queryRequest("/hpds/auth/v3/query/sync"), user, false
-        );
-
-        assertFalse(result.result());
-    }
-
     private AuthorizationService service(boolean consentAuthorizationEnabled) {
         return new AuthorizationService(
             accessRuleService, sessionService, roleService, new BdcConsentBasedAccessRuleEvaluator(), "fence,okta", userConsentsRepository,
@@ -222,12 +219,16 @@ class AuthorizationServiceConsentDecisionTest {
     }
 
     private static Map<String, Object> queryRequest(String targetService) {
+        return queryRequest(targetService, "\\phs001062\\variable\\");
+    }
+
+    private static Map<String, Object> queryRequest(String targetService, String selectedConcept) {
         return Map.of(
             "Target Service", targetService, "query",
             Map.of(
                 "query",
                 Map.of(
-                    "select", List.of("\\phs001062\\variable\\"), "authorizationFilters", List.of(), "genomicFilters", List.of(),
+                    "select", List.of(selectedConcept), "authorizationFilters", List.of(), "genomicFilters", List.of(),
                     "expectedResultType", "COUNT"
                 )
             )

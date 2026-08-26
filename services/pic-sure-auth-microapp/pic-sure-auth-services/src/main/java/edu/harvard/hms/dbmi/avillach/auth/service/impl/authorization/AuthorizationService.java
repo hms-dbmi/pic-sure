@@ -47,8 +47,6 @@ public class AuthorizationService {
      * {@code /hpds/auth/v30/query}, {@code /hpds/auth/v3ish/query}, {@code /hpds/v3/query}, {@code /foo/hpds/auth/v3/query}, or
      * {@code /hpds/auth/v3-query}.
      */
-    private static final Pattern HPDS_V3_TARGET_SERVICE_PATTERN = Pattern.compile("^/hpds/auth/v3(/.*)?$");
-
     private static final Pattern AUTH_TARGET_SERVICE_PATTERN = Pattern.compile("^/(hpds|visualization)/auth(/.*)?$");
     private static final Pattern OPEN_TARGET_SERVICE_PATTERN = Pattern.compile("^/(hpds|visualization)/open(/.*)?$");
     private static final String EXPECTED_RESULT_TYPE = "expectedResultType";
@@ -241,9 +239,6 @@ public class AuthorizationService {
         AccessRule passByRule = null;
 
         for (AccessRule accessRule : accessRules) {
-            if (AccessRule.TypeNaming.USER_CONSENT_ACCESS == accessRule.getType()) {
-                continue;
-            }
             try {
                 if (this.accessRuleService.evaluateAccessRule(requestBody, accessRule)) {
                     passByRule = accessRule;
@@ -377,13 +372,6 @@ public class AuthorizationService {
      * {@code contains("hpds") && contains("v3")} check) so that consent-rule evaluation is skipped only for genuine HPDS-v3 calls, not for
      * unrelated paths that happen to contain those substrings.
      */
-    static boolean isHpdsV3TargetService(String targetService) {
-        if (targetService == null) {
-            return false;
-        }
-        return HPDS_V3_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
-    }
-
     static boolean isAuthTargetService(String targetService) {
         return targetService != null && AUTH_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
     }

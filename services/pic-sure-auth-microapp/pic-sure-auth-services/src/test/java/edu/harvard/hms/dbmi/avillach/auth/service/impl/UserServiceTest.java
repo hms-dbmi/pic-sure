@@ -497,8 +497,8 @@ public class UserServiceTest {
         .of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME, RoleService.MANAGED_ROLE_NAMED_DATASET);
 
     /**
-     * Every user reaches authorized data through the baseline roles alone now that dbGaP-derived roles are gone. MANUAL_ROLE_AUTH_ACCESS in
-     * particular carries USER_CONSENT_ACCESS, so if it stops being attached here the user is silently left with no consent-based access.
+     * Every user reaches authorized data through the baseline roles alone now that dbGaP-derived roles are gone. The auth access role
+     * carries the route rules needed before consent scoping, so losing it denies authorized requests before their consents can be applied.
      */
     @Test
     public void ensureBaselineRoles_allBaselineRolesExist_allAreAttachedAndPersisted() {

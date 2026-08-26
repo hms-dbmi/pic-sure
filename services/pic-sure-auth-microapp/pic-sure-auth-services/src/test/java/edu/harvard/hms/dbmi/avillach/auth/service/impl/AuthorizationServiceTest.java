@@ -133,6 +133,18 @@ public class AuthorizationServiceTest {
     }
 
     @Test
+    public void testEvaluateAccessRule_RetiredTypeFailsClosed() {
+        AccessRule accessRule = new AccessRule();
+        accessRule.setRule("$.test");
+        accessRule.setType(17);
+        accessRule.setValue("value");
+
+        boolean result = accessRuleService.evaluateAccessRule(Map.of("test", "value"), accessRule);
+
+        assertFalse(result);
+    }
+
+    @Test
     public void testExtractAndCheckRule_Pass() {
         AccessRule accessRule = new AccessRule();
         accessRule.setRule("$.test");
