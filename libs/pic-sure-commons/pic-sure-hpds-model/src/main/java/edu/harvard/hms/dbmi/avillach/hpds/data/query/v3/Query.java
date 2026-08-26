@@ -3,10 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public record Query(
     @Schema(
