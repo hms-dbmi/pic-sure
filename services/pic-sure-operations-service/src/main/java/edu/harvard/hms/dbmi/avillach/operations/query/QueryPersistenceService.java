@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import java.sql.Date;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -41,11 +42,12 @@ public class QueryPersistenceService {
     @Transactional
     public UUID save(SaveQueryRequest req) {
         Query entity = new Query();
-        entity.setQuery(req.query());
+        entity.setQuery(stripResourceCredentials(req.query()));
         entity.setResourceResultId(req.resourceResultId());
         entity.setStatus(parseStatus(req.status()));
         entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
+        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned, like the legacy WAR's create path
         return repo.save(entity).getUuid();
     }
 
@@ -58,7 +60,11 @@ public class QueryPersistenceService {
     public void update(UUID picsureId, UpdateQueryRequest req) {
         Query entity = load(picsureId);
         if (req.status() != null) {
-            entity.setStatus(parseStatus(req.status()));
+            PicSureStatus newStatus = parseStatus(req.status());
+            if (newStatus == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
+                entity.setReadyTime(new Date(System.currentTimeMillis())); // first AVAILABLE transition, like the legacy WAR
+            }
+            entity.setStatus(newStatus);
         }
         if (req.resourceResultId() != null) {
             entity.setResourceResultId(req.resourceResultId());
@@ -99,9 +105,35 @@ public class QueryPersistenceService {
 
     private static StoredQuery toDto(Query entity) {
         return new StoredQuery(
-            entity.getUuid(), entity.getQuery(), entity.getResourceResultId(),
-            entity.getStatus() == null ? null : entity.getStatus().name(), entity.getVersion(), encodeMetadata(entity.getMetadata())
+            entity.getUuid(), stripResourceCredentials(entity.getQuery()), entity.getResourceResultId(),
+            entity.getStatus() == null ? null : entity.getStatus().name(), entity.getVersion(), encodeMetadata(entity.getMetadata()),
+            toEpochMillis(entity.getStartTime()), toEpochMillis(entity.getReadyTime())
         );
+    }
+
+    private static Long toEpochMillis(Date date) {
+        return date == null ? null : date.getTime();
+    }
+
+    /**
+     * SECURITY: {@code resourceCredentials} must never be persisted (writers now strip before sending) nor returned to any internal reader
+     * -- this covers rows stored before writers stripped. Bodies without the field pass through byte-identical; malformed JSON passes
+     * through unchanged (it cannot carry a parseable credentials field, and dispatch already nulls it).
+     */
+    private static String stripResourceCredentials(String json) {
+        if (json == null || json.isBlank()) {
+            return json;
+        }
+        try {
+            JsonNode node = MAPPER.readTree(json);
+            if (node instanceof ObjectNode obj && obj.has("resourceCredentials")) {
+                obj.remove("resourceCredentials");
+                return MAPPER.writeValueAsString(node);
+            }
+            return json;
+        } catch (JsonProcessingException e) {
+            return json;
+        }
     }
 
     private static PicSureStatus parseStatus(String status) {

@@ -5,10 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 
@@ -31,6 +34,9 @@ import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
  */
 class NamedDatasetServiceTest {
 
+    /** Gateway-resolved identity for the canonical caller; the service keys everything on {@code getEmail()}. */
+    static final GatewayUser ALICE = new GatewayUser("auth0|alice", "auth0|alice", "alice@example.com", null, Set.of());
+
     NamedDatasetRepository repo = mock(NamedDatasetRepository.class);
     QueryRepository queryRepo = mock(QueryRepository.class);
     NamedDatasetMapper mapper = new NamedDatasetMapper();
@@ -44,7 +50,7 @@ class NamedDatasetServiceTest {
         e.setUuid(UUID.randomUUID());
         when(repo.findByUser("alice@example.com")).thenReturn(List.of(e));
 
-        List<NamedDatasetDto> result = service.listForUser("alice@example.com");
+        List<NamedDatasetDto> result = service.listForUser(ALICE);
 
         assertThat(result).hasSize(1).extracting(NamedDatasetDto::name).containsExactly("d1");
     }
@@ -54,7 +60,7 @@ class NamedDatasetServiceTest {
         UUID id = UUID.randomUUID();
         when(repo.findByUuidAndUser(id, "alice@example.com")).thenReturn(Optional.empty());
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.getForUser("alice@example.com", id));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.getForUser(ALICE, id));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
     }
@@ -66,7 +72,7 @@ class NamedDatasetServiceTest {
         e.setUuid(id);
         when(repo.findByUuidAndUser(id, "alice@example.com")).thenReturn(Optional.of(e));
 
-        NamedDatasetDto dto = service.getForUser("alice@example.com", id);
+        NamedDatasetDto dto = service.getForUser(ALICE, id);
 
         assertThat(dto.name()).isEqualTo("d1");
     }
@@ -84,7 +90,7 @@ class NamedDatasetServiceTest {
         });
 
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(queryId, "d2", false, null);
-        NamedDatasetDto dto = service.create("alice@example.com", req);
+        NamedDatasetDto dto = service.create(ALICE, req);
 
         assertThat(dto.name()).isEqualTo("d2");
         assertThat(dto.query().uuid()).isEqualTo(queryId);
@@ -99,7 +105,7 @@ class NamedDatasetServiceTest {
         when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_queryId_user"));
 
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(queryId, "dup", false, null);
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.create("alice@example.com", req));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(ALICE, req));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
     }
@@ -110,7 +116,7 @@ class NamedDatasetServiceTest {
         when(queryRepo.findById(queryId)).thenReturn(Optional.empty());
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(queryId, "d3", false, null);
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.create("alice@example.com", req));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(ALICE, req));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
     }
@@ -121,7 +127,7 @@ class NamedDatasetServiceTest {
         when(repo.findByUuidAndUser(id, "alice@example.com")).thenReturn(Optional.empty());
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(UUID.randomUUID(), "renamed", false, null);
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.update("alice@example.com", id, req));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, id, req));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
     }
@@ -138,7 +144,7 @@ class NamedDatasetServiceTest {
         when(repo.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(queryId, "renamed", true, null);
-        NamedDatasetDto dto = service.update("alice@example.com", id, req);
+        NamedDatasetDto dto = service.update(ALICE, id, req);
 
         assertThat(dto.name()).isEqualTo("renamed");
         assertThat(dto.archived()).isTrue();
@@ -160,7 +166,7 @@ class NamedDatasetServiceTest {
         when(repo.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(newQueryId, "d1", false, null);
-        NamedDatasetDto dto = service.update("alice@example.com", id, req);
+        NamedDatasetDto dto = service.update(ALICE, id, req);
 
         assertThat(dto.query().uuid()).isEqualTo(newQueryId);
     }
@@ -181,7 +187,7 @@ class NamedDatasetServiceTest {
         when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_queryId_user"));
 
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(newQueryId, "d1", false, null);
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.update("alice@example.com", id, req));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.update(ALICE, id, req));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
     }
@@ -191,7 +197,7 @@ class NamedDatasetServiceTest {
         UUID id = UUID.randomUUID();
         when(repo.findByUuidAndUser(id, "alice@example.com")).thenReturn(Optional.empty());
 
-        PicsureException ex = assertThrows(PicsureException.class, () -> service.delete("alice@example.com", id));
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.delete(ALICE, id));
 
         assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
     }
@@ -203,8 +209,35 @@ class NamedDatasetServiceTest {
         existing.setUuid(id);
         when(repo.findByUuidAndUser(id, "alice@example.com")).thenReturn(Optional.of(existing));
 
-        service.delete("alice@example.com", id);
+        service.delete(ALICE, id);
 
         verify(repo).delete(existing);
+    }
+
+    // Identity-completeness guard (moved here from the controller): a gateway-authenticated caller without an email owner key is
+    // rejected with 401 before any repository access.
+
+    @Test
+    void nullUserIsUnauthorized() {
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.listForUser(null));
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verifyNoInteractions(repo);
+    }
+
+    @Test
+    void userWithoutEmailIsUnauthorized() {
+        GatewayUser noEmail = new GatewayUser("auth0|alice", "auth0|alice", null, null, Set.of());
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.getForUser(noEmail, UUID.randomUUID()));
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verifyNoInteractions(repo);
+    }
+
+    @Test
+    void userWithBlankEmailIsUnauthorizedOnCreate() {
+        GatewayUser blankEmail = new GatewayUser("auth0|alice", "auth0|alice", "   ", null, Set.of());
+        NamedDatasetRequestDto req = new NamedDatasetRequestDto(UUID.randomUUID(), "d1", false, null);
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(blankEmail, req));
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verifyNoInteractions(repo, queryRepo);
     }
 }

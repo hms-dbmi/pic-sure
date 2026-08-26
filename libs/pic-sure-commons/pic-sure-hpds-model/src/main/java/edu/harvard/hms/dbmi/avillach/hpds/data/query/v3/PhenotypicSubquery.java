@@ -11,4 +11,13 @@ public record PhenotypicSubquery(
     ) List<PhenotypicClause> phenotypicClauses,
     @Schema(description = "Specifies logic to combine `phenotypicClauses` in this subquery") Operator operator
 ) implements PhenotypicClause {
+
+    /**
+     * Null-safe: a deserialized subquery may omit {@code phenotypicClauses} entirely; treat that as no clauses so consumers like
+     * {@link Query#allFilters()} do not NPE on client-supplied JSON.
+     */
+    @Override
+    public List<PhenotypicClause> phenotypicClauses() {
+        return phenotypicClauses == null ? List.of() : phenotypicClauses;
+    }
 }

@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.commons.audit;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,7 +20,8 @@ public class AuditContext {
         }
     }
 
+    /** Read-only live view of the accumulated metadata; use {@link #put(String, Object)} to add entries. */
     public Map<String, Object> getMetadata() {
-        return metadata;
+        return Collections.unmodifiableMap(metadata);
     }
 }

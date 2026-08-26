@@ -83,6 +83,32 @@ public class QueryTest {
     }
 
     @Test
+    public void allFilters_nullPhenotypicClausesListFromJson_returnsEmptyInsteadOfNpe() throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        // A client can legally omit phenotypicClauses on a subquery; that must not NPE downstream.
+        String json = "{\"phenotypicClause\":{\"phenotypicClauses\":null,\"operator\":\"AND\"},\"expectedResultType\":\"COUNT\"}";
+
+        Query deserialized = objectMapper.readValue(json, Query.class);
+
+        assertEquals(List.of(), deserialized.allFilters());
+        PhenotypicSubquery sub = (PhenotypicSubquery) deserialized.phenotypicClause();
+        assertEquals(List.of(), sub.phenotypicClauses());
+    }
+
+    @Test
+    public void allFilters_nullElementInPhenotypicClausesFromJson_isIgnored() throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String json = "{\"phenotypicClause\":{\"phenotypicClauses\":[null,"
+            + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\abc\\\\\",\"min\":1.0}],\"operator\":\"AND\"}}";
+
+        Query deserialized = objectMapper.readValue(json, Query.class);
+
+        List<PhenotypicFilter> filters = deserialized.allFilters();
+        assertEquals(1, filters.size());
+        assertEquals("\\abc\\", filters.get(0).conceptPath());
+    }
+
+    @Test
     public void generateId_nullId_createNewId() {
         Query query = new Query(List.of("PATIENT_ID"), List.of(), Set.of(), null, List.of(), ResultType.COUNT, null, null);
 

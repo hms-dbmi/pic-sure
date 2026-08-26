@@ -25,26 +25,11 @@ public class Privilege extends BaseEntity {
     private Application application;
 
     @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "accessRule_privilege",
-            joinColumns = {@JoinColumn(name = "privilege_id")},
-            inverseJoinColumns = {@JoinColumn(name = "accessRule_id")})
+    @JoinTable(
+        name = "accessRule_privilege", joinColumns = {@JoinColumn(name = "privilege_id")},
+        inverseJoinColumns = {@JoinColumn(name = "accessRule_id")}
+    )
     private Set<AccessRule> accessRules;
-
-    /**
-     * We only support a JSON Object format for now,
-     * since it will return a merged JSON in the end,
-     * if saving as a JSON array, later processing will
-     * throw exception
-     */
-    private String queryTemplate;
-
-    /**
-     * This is a field that will be retrieved by the pic-sure-ui,
-     * so the UI will understand what data should be filtered when
-     * doing a search, to furthermore prevent invalid queries because
-     * no invalid search results will be shown.
-     */
-    private String queryScope;
 
     public String getName() {
         return name;
@@ -80,35 +65,19 @@ public class Privilege extends BaseEntity {
         this.accessRules = accessRules;
     }
 
-    public String getQueryTemplate() {
-        return queryTemplate;
-    }
-
-    public void setQueryTemplate(String queryTemplate) {
-        this.queryTemplate = queryTemplate;
-    }
-
-    public String getQueryScope() {
-        return queryScope;
-    }
-
-    public void setQueryScope(String queryScope) {
-        this.queryScope = queryScope;
-    }
-
     @JsonProperty("application")
-    public Application.ApplicationForDisplay getApplicationForDisplay(){
-        if (application != null)
-            return new Application.ApplicationForDisplay()
-                .setDescription(application.getDescription())
-                .setName(application.getName())
-                .setEnable(application.isEnable())
-                .setUuid(application.getUuid().toString());
+    public Application.ApplicationForDisplay getApplicationForDisplay() {
+        if (application != null) return new Application.ApplicationForDisplay().setDescription(application.getDescription())
+            .setName(application.getName()).setEnable(application.isEnable()).setUuid(application.getUuid().toString());
 
         return null;
     }
-    
+
     public String toString() {
-    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ Application UUID : " + (application==null ? "NO APPLICATION AFFILIATED" : application.getUuid()) + "} ___ ({"+ (accessRules==null ? "NO ACCESS RULES DEFINED" :accessRules.stream().map(AccessRule::toString).collect(Collectors.joining("},{"))) + "})";
+        return uuid.toString() + " ___ " + name + " ___ " + description + " ___ Application UUID : "
+            + (application == null ? "NO APPLICATION AFFILIATED" : application.getUuid()) + "} ___ ({"
+            + (accessRules == null ? "NO ACCESS RULES DEFINED"
+                : accessRules.stream().map(AccessRule::toString).collect(Collectors.joining("},{")))
+            + "})";
     }
 }

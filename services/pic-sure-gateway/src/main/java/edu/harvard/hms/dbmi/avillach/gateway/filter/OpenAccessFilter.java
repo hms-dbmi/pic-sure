@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -15,6 +17,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -26,8 +29,8 @@ import jakarta.servlet.http.HttpServletResponse;
  * access is enabled AND {@code Authorization} is blank or ≤ 7 chars ({@code JWTFilter.java:154-157}). The open-access payload is a
  * different shape than introspection ({@code JWTFilter.java:389-394}): {@code { "request": { "Target Service": "<real path>", "query":
  * <body minus resourceCredentials> }, "ipAddress": "OPEN_ACCESS:<host>" }} — no {@code token} field, adds {@code ipAddress}. PSAMA returns
- * a bare boolean: {@code true} grants with username {@code OPEN_ACCESS:<host>}; {@code false} denies with a 401. A real bearer token, or
- * open access disabled, passes through untouched.
+ * a bare boolean: {@code true} grants with username {@code OPEN_ACCESS:<host>}; {@code false} denies with a 401. Routes selected by the
+ * shared {@link PublicEndpointPolicy}, a real bearer token, or disabled open access pass through untouched.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
@@ -38,21 +41,32 @@ public class OpenAccessFilter extends OncePerRequestFilter {
      */
     public static final String ATTR_OPEN_ACCESS_GRANTED = OpenAccessFilter.class.getName() + ".granted";
 
+    private static final Logger log = LoggerFactory.getLogger(OpenAccessFilter.class);
+
     private final PsamaClient psama;
     private final AuditContext audit;
     private final ObjectMapper json;
     private final boolean openAccessEnabled;
+    private final PublicEndpointPolicy publicEndpoints;
 
-    public OpenAccessFilter(PsamaClient psama, AuditContext audit, ObjectMapper json, boolean openAccessEnabled) {
+    public OpenAccessFilter(
+        PsamaClient psama, AuditContext audit, ObjectMapper json, boolean openAccessEnabled, PublicEndpointPolicy publicEndpoints
+    ) {
         this.psama = psama;
         this.audit = audit;
         this.json = json;
         this.openAccessEnabled = openAccessEnabled;
+        this.publicEndpoints = publicEndpoints;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
+        if (publicEndpoints.evaluate(req.getMethod(), req.getRequestURI()).publicEndpoint()) {
+            chain.doFilter(req, resp);
+            return;
+        }
+
         String authz = req.getHeader("Authorization");
         boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // JWTFilter.java:154-157
 
@@ -67,7 +81,20 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         String hostMarker = openAccessIpAddress(req);
         body.put("ipAddress", hostMarker); // NO token field (JWTFilter.java:389-394)
 
-        if (!psama.validateOpenAccess(body)) {
+        boolean granted;
+        try {
+            granted = psama.validateOpenAccess(body);
+        } catch (Exception e) {
+            // Mirror PsamaIntrospectionFilter's transport-failure handling: keep the gateway error shape
+            // (rather than Spring's default 500) and record the same audit failure the deny path records.
+            log.error("PSAMA open-access validation failed", e);
+            audit.put("auth_result", "failure");
+            audit.put("auth_action", "open_access.denied");
+            audit.put("auth_failure_reason", "open_access_unreachable");
+            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "open_access_unreachable", "Open access validation failed.");
+            return;
+        }
+        if (!granted) {
             audit.put("auth_result", "failure");
             audit.put("auth_action", "open_access.denied");
             GatewayErrors.write(resp, HttpStatus.UNAUTHORIZED, "unauthorized", "User is not authorized.");

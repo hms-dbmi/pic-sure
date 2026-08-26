@@ -36,9 +36,6 @@ public class PrivilegeServiceTest {
     private Authentication authentication;
 
     @MockBean
-    private ApplicationService applicationService;
-
-    @MockBean
     private AccessRuleService accessRuleService;
 
     @Autowired

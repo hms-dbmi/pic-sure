@@ -24,11 +24,19 @@ public class BdcConsentsBuilderTest {
         new StudyMetaData().setHarmonized(false).setDataType("P").setStudyType("public")
     );
 
+    /**
+     * A user with no dbGaP permissions at all must still receive every public study in {@code \_consents\}. This is the guarantee that
+     * replaced {@code RoleService.getPublicAccessRoles()}: deleting those roles is only safe because this builder injects public studies
+     * unconditionally. If this regresses, public studies silently disappear for every unauthorized user.
+     */
     @Test
-    public void createConsents_noConsents_addPublic() {
+    public void createConsents_userWithNoDbgapPermissions_stillReceivesPublicStudies() {
         Set<String> userStudies = Set.of();
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
-        assertEquals(consents, Set.of("open_access-1000Genomes", "tutorial-biolincc_framingham"));
+        assertEquals(
+            Set.of("open_access-1000Genomes", "tutorial-biolincc_framingham"), consents,
+            "public studies must reach \\_consents\\ without any dbGaP permission, and no non-public study may leak in"
+        );
     }
 
     @Test
@@ -52,7 +60,7 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_multipleNormalConsent() {
-        Set<String> userStudies = Set.of("phs123.c1","phs123.c2");
+        Set<String> userStudies = Set.of("phs123.c1", "phs123.c2");
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
         assertEquals(
             Set.of("phs123.c1", "phs123.c2", "open_access-1000Genomes", "tutorial-biolincc_framingham"),
@@ -62,7 +70,7 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_oneNormalConsentOneMissingConsent_ignoreMissingConsent() {
-        Set<String> userStudies = Set.of("phs123.c1","phs321.c1");
+        Set<String> userStudies = Set.of("phs123.c1", "phs321.c1");
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
         assertEquals(
             Set.of("phs123.c1", "open_access-1000Genomes", "tutorial-biolincc_framingham"), consents
@@ -72,7 +80,7 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_harmonizedConsentsOnly() {
-        Set<String> userStudies = Set.of("phs456.c1","phs456.c2");
+        Set<String> userStudies = Set.of("phs456.c1", "phs456.c2");
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
         assertEquals(
             Set.of("phs456.c1", "phs456.c2", "open_access-1000Genomes", "tutorial-biolincc_framingham"),
@@ -82,7 +90,7 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_multipleNormalAndHarmonizedConsents() {
-        Set<String> userStudies = Set.of("phs123.c1","phs123.c2","phs456.c1");
+        Set<String> userStudies = Set.of("phs123.c1", "phs123.c2", "phs456.c1");
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
         assertEquals(
             Set.of("phs123.c1", "phs123.c2", "phs456.c1", "open_access-1000Genomes", "tutorial-biolincc_framingham"),
@@ -93,7 +101,7 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_genomicConsentsOnly() {
-        Set<String> userStudies = Set.of("phs789.c1","phs789.c2");
+        Set<String> userStudies = Set.of("phs789.c1", "phs789.c2");
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
         assertEquals(
             Set.of("phs789.c1", "phs789.c2", "open_access-1000Genomes", "tutorial-biolincc_framingham"),
@@ -103,7 +111,7 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_multipleNormalAndGenomicConsents() {
-        Set<String> userStudies = Set.of("phs123.c1","phs123.c2","phs789.c1");
+        Set<String> userStudies = Set.of("phs123.c1", "phs123.c2", "phs789.c1");
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
         assertEquals(
             Set.of("phs123.c1", "phs123.c2", "phs789.c1", "open_access-1000Genomes", "tutorial-biolincc_framingham"),
@@ -113,7 +121,7 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_harmonizedGenomicConsentsOnly() {
-        Set<String> userStudies = Set.of("phs999.c1","phs999.c2");
+        Set<String> userStudies = Set.of("phs999.c1", "phs999.c2");
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
         assertEquals(
             Set.of("phs999.c1", "phs999.c2", "open_access-1000Genomes", "tutorial-biolincc_framingham"),
@@ -123,7 +131,7 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_multipleNormalAndHarmonizedGenomicConsents() {
-        Set<String> userStudies = Set.of("phs123.c1","phs123.c2","phs999.c1");
+        Set<String> userStudies = Set.of("phs123.c1", "phs123.c2", "phs999.c1");
         Set<String> consents = new BdcConsentsBuilder(DEFAULT_FENCE_MAPPING, userStudies).createConsents();
         assertEquals(
             Set.of("phs123.c1", "phs123.c2", "phs999.c1", "open_access-1000Genomes", "tutorial-biolincc_framingham"),
@@ -133,9 +141,8 @@ public class BdcConsentsBuilderTest {
 
     @Test
     public void createConsents_publicGenomicStudy_shouldBeAddedToTopmedConsents() {
-        HashMap<String, StudyMetaData> studyMetaData= new HashMap<>(DEFAULT_FENCE_MAPPING);
-        studyMetaData.put("open_access-1000Genomes",
-                new StudyMetaData().setHarmonized(false).setDataType("P/G").setStudyType("public"));
+        HashMap<String, StudyMetaData> studyMetaData = new HashMap<>(DEFAULT_FENCE_MAPPING);
+        studyMetaData.put("open_access-1000Genomes", new StudyMetaData().setHarmonized(false).setDataType("P/G").setStudyType("public"));
         Set<String> userStudies = Set.of();
         Set<String> consents = new BdcConsentsBuilder(studyMetaData, userStudies).createConsents();
         assertEquals(consents, Set.of("open_access-1000Genomes", "tutorial-biolincc_framingham"));

@@ -6,13 +6,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,16 +31,13 @@ public class QueryExecutor {
 
     private final PhenotypicQueryExecutor phenotypicQueryExecutor;
 
-    private final PhenotypeMetaStore phenotypeMetaStore;
-
 
     @Autowired
     public QueryExecutor(
-        GenomicProcessor genomicProcessor, PhenotypicQueryExecutor phenotypicQueryExecutor, PhenotypeMetaStore phenotypeMetaStore
+        GenomicProcessor genomicProcessor, PhenotypicQueryExecutor phenotypicQueryExecutor
     ) {
         this.genomicProcessor = genomicProcessor;
         this.phenotypicQueryExecutor = phenotypicQueryExecutor;
-        this.phenotypeMetaStore = phenotypeMetaStore;
     }
 
     public Set<String> getInfoStoreColumns() {

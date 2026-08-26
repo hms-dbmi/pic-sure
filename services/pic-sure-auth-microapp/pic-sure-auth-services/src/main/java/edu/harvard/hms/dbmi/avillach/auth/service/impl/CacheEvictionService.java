@@ -12,19 +12,16 @@ public class CacheEvictionService {
 
     private static final Logger log = LoggerFactory.getLogger(CacheEvictionService.class);
     private final SessionService sessionService;
-    private final UserService userService;
     private final AccessRuleService accessRuleService;
 
     @Autowired
-    public CacheEvictionService(SessionService sessionService, UserService userService, AccessRuleService accessRuleService) {
+    public CacheEvictionService(SessionService sessionService, AccessRuleService accessRuleService) {
         this.sessionService = sessionService;
-        this.userService = userService;
         this.accessRuleService = accessRuleService;
     }
 
     public void evictCache(String userSubject) {
         this.sessionService.endSession(userSubject);
-        this.userService.evictFromCache(userSubject);
         this.accessRuleService.evictFromMergedAccessRuleCache(userSubject);
         this.accessRuleService.evictFromPreProcessedAccessRules(userSubject);
         // No audit logging here — evictCache is called from multiple paths (logout,
