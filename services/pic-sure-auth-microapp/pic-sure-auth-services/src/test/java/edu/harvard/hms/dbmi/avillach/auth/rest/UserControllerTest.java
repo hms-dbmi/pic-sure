@@ -32,10 +32,10 @@ public class UserControllerTest {
     public void consentsEndpointDispatchesAndReturnsConsents() throws Exception {
         UUID userId = UUID.randomUUID();
         when(userService.getUserConsents())
-            .thenReturn(new UserConsents().setUserId(userId).setConsents(Map.of("consents", Set.of("phs1234.c1", "phs5678.c2"))));
+            .thenReturn(new UserConsents().setUserId(userId).setConsents(Set.of("phs1234.c1", "phs5678.c2")));
 
         mockMvc.perform(get("/user/me/consents")).andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(userId.toString()))
-            .andExpect(jsonPath("$.consents.consents", containsInAnyOrder("phs1234.c1", "phs5678.c2")));
+            .andExpect(jsonPath("$.consents", containsInAnyOrder("phs1234.c1", "phs5678.c2")));
     }
 
     @Test

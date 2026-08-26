@@ -34,7 +34,7 @@ public class QueryTranslator {
 
     public static Query translate(edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1) throws UntranslatableQueryException {
         return new Query(
-            buildSelect(v1), List.of(), buildPhenotypicClause(v1), buildGenomicFilters(v1), v1.getExpectedResultType(),
+            buildSelect(v1), List.of(), Set.of(), buildPhenotypicClause(v1), buildGenomicFilters(v1), v1.getExpectedResultType(),
             parseUuid(v1.getPicSureId()), parseUuid(v1.getId())
         );
     }

@@ -29,7 +29,7 @@ public class QueryTest {
 
         PhenotypicSubquery phenotypicQuery =
             new PhenotypicSubquery(null, List.of(phenotypicSubquery, phenotypicSubquery2, phenotypicFilter), Operator.OR);
-        Query query = new Query(List.of("PATIENT_ID"), authorizationFilters, phenotypicQuery, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of("PATIENT_ID"), authorizationFilters, Set.of(), phenotypicQuery, List.of(), ResultType.COUNT, null, null);
 
         String serialized = objectMapper.writeValueAsString(query);
         System.out.println(serialized);
@@ -43,7 +43,7 @@ public class QueryTest {
     public void jacksonSerialization_validNullValues() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
 
-        Query query = new Query(null, null, null, null, null, null, null);
+        Query query = new Query(null, null, null, null, null, null, null, null);
 
         String serialized = objectMapper.writeValueAsString(query);
         System.out.println(serialized);
@@ -72,7 +72,7 @@ public class QueryTest {
 
         PhenotypicSubquery phenotypicQuery =
             new PhenotypicSubquery(null, List.of(phenotypicSubquery, phenotypicSubquery2, phenotypicFilter), null);
-        Query query = new Query(List.of("PATIENT_ID"), authorizationFilters, phenotypicQuery, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of("PATIENT_ID"), authorizationFilters, Set.of(), phenotypicQuery, List.of(), ResultType.COUNT, null, null);
 
         String serialized = objectMapper.writeValueAsString(query);
         System.out.println(serialized);
@@ -110,7 +110,7 @@ public class QueryTest {
 
     @Test
     public void generateId_nullId_createNewId() {
-        Query query = new Query(List.of("PATIENT_ID"), List.of(), null, List.of(), ResultType.COUNT, null, null);
+        Query query = new Query(List.of("PATIENT_ID"), List.of(), Set.of(), null, List.of(), ResultType.COUNT, null, null);
 
         query = query.generateId();
         assertNotNull(query.id());
@@ -119,7 +119,7 @@ public class QueryTest {
     @Test
     public void generateId_idExists_doNotReplaceId() {
         UUID uuid = UUID.randomUUID();
-        Query query = new Query(List.of("PATIENT_ID"), List.of(), null, List.of(), ResultType.COUNT, null, uuid);
+        Query query = new Query(List.of("PATIENT_ID"), List.of(), Set.of(), null, List.of(), ResultType.COUNT, null, uuid);
 
         query = query.generateId();
         assertEquals(uuid, query.id());

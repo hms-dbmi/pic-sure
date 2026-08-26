@@ -625,7 +625,7 @@ public class UserService {
     }
 
     public User updateUserConsents(User user, Set<String> userConsentStrings) {
-        Map<String, Set<String>> consents =
+        Set<String> consents =
                 getUserConsents(user, userConsentStrings);
 
         UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
@@ -641,7 +641,7 @@ public class UserService {
         return user;
     }
 
-    private Map<String, Set<String>> getUserConsents(User user, Set<String> userConsentStrings) {
+    private Set<String> getUserConsents(User user, Set<String> userConsentStrings) {
         UserConsentsOverride overrideConsents = userConsentsOverrideRepository.findByUserId(user.getUuid());
         if (overrideConsents != null && overrideConsents.isEnabled()) {
             return overrideConsents.getConsents();
@@ -675,7 +675,7 @@ public class UserService {
             // Not an error: a user with no stored record simply has no authorized studies. Returning an empty set lets clients treat
             // this as "nothing authorized" instead of failing outright.
             logger.info("No consents stored for user {}", userId);
-            return new UserConsents().setUserId(userId).setConsents(Map.of());
+            return new UserConsents().setUserId(userId).setConsents(Set.of());
         }
 
         return userConsents;

@@ -3,17 +3,17 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 public record Query(
     @Schema(
         description = "A list of concept paths to select. Ignored for expectedResultType that do not return fields, such as COUNT"
     ) List<String> select,
+    @Deprecated
     @Schema(
-        description = "A list of filters specifically applied for authorization purposes"
+        description = "A list of filters specifically applied for authorization purposes", deprecated = true
     ) List<AuthorizationFilter> authorizationFilters,
+    Set<UserConsent> userConsents,
     @Schema(description = "An object specifying phenotypic filters") PhenotypicClause phenotypicClause,
     @Schema(description = "A list of genomic filters") List<GenomicFilter> genomicFilters,
     @Schema(description = "An object specifying the result type") ResultType expectedResultType,
@@ -26,6 +26,7 @@ public record Query(
         return select == null ? List.of() : select;
     }
 
+    @Deprecated
     @Override
     public List<AuthorizationFilter> authorizationFilters() {
         return authorizationFilters == null ? List.of() : authorizationFilters;
@@ -33,8 +34,21 @@ public record Query(
 
     public Query setAuthorizationFilters(List<AuthorizationFilter> authorizationFilters) {
         return new Query(
-            this.select, authorizationFilters == null ? List.of() : authorizationFilters, this.phenotypicClause, this.genomicFilters,
+            this.select, authorizationFilters == null ? List.of() : authorizationFilters, this.userConsents, this.phenotypicClause, this.genomicFilters,
             this.expectedResultType, this.picsureId, this.id
+        );
+    }
+
+
+    @Override
+    public Set<UserConsent> userConsents() {
+        return userConsents == null ? Set.of() : userConsents;
+    }
+
+    public Query setUserConsents(Set<UserConsent> userConsents) {
+        return new Query(
+                this.select, this.authorizationFilters, userConsents != null ? userConsents : Set.of(), this.phenotypicClause, this.genomicFilters,
+                this.expectedResultType, this.picsureId, this.id
         );
     }
 
@@ -79,6 +93,6 @@ public record Query(
         if (id != null) {
             return this;
         }
-        return new Query(select, authorizationFilters, phenotypicClause, genomicFilters, expectedResultType, picsureId, UUID.randomUUID());
+        return new Query(select, authorizationFilters, userConsents, phenotypicClause, genomicFilters, expectedResultType, picsureId, UUID.randomUUID());
     }
 }

@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.service.health;
 
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.PartitionedPhenotypicObservationStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
@@ -22,15 +23,15 @@ import org.springframework.stereotype.Component;
 @Component("hpdsReadiness")
 public class HpdsReadinessHealthIndicator implements HealthIndicator {
 
-    private final PhenotypeMetaStore phenotypeMetaStore;
+    private final PartitionedPhenotypicObservationStore partitionedPhenotypicObservationStore;
     private final GenomicProcessor genomicProcessor;
     private final boolean genomicEnabled;
 
     public HpdsReadinessHealthIndicator(
-        PhenotypeMetaStore phenotypeMetaStore, GenomicProcessor genomicProcessor,
+            PartitionedPhenotypicObservationStore partitionedPhenotypicObservationStore, GenomicProcessor genomicProcessor,
         @Value("${hpds.genomicProcessor.impl:}") String genomicProcessorImpl
     ) {
-        this.phenotypeMetaStore = phenotypeMetaStore;
+        this.partitionedPhenotypicObservationStore = partitionedPhenotypicObservationStore;
         this.genomicProcessor = genomicProcessor;
         this.genomicEnabled = genomicProcessorImpl != null && !genomicProcessorImpl.isBlank();
     }
@@ -38,7 +39,7 @@ public class HpdsReadinessHealthIndicator implements HealthIndicator {
     @Override
     public Health health() {
         try {
-            int phenotypeColumns = phenotypeMetaStore.getMetaStore().size();
+            int phenotypeColumns = partitionedPhenotypicObservationStore.getMetaStore().size();
             Health.Builder builder = Health.unknown().withDetail("phenotypeColumns", phenotypeColumns);
 
             boolean dataLoaded = phenotypeColumns > 0;

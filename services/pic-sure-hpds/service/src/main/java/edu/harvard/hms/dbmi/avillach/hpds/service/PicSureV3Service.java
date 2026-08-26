@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
@@ -9,6 +10,7 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.UserConsent;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
@@ -16,6 +18,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.QueryExecutor;
@@ -48,7 +51,7 @@ public class PicSureV3Service {
     public PicSureV3Service(
         QueryV3Service queryService, CountV3Processor countProcessor, VariantListV3Processor variantListProcessor,
         QueryExecutor queryExecutor, Paginator paginator, SignUrlService signUrlService, FileSharingV3Service fileSharingService,
-        TestDataService testDataService
+        TestDataService testDataService, UserRequestContext userRequestContext
     ) {
         this.queryService = queryService;
         this.countProcessor = countProcessor;
@@ -58,6 +61,7 @@ public class PicSureV3Service {
         this.fileSharingService = fileSharingService;
         this.signUrlService = signUrlService;
         this.testDataService = testDataService;
+        this.userRequestContext = userRequestContext;
         Crypto.loadDefaultKey();
     }
 
@@ -80,6 +84,8 @@ public class PicSureV3Service {
     private final FileSharingV3Service fileSharingService;
 
     private final TestDataService testDataService;
+
+    private final UserRequestContext userRequestContext;
 
     @Autowired
     private HttpServletRequest httpRequest;
@@ -226,12 +232,19 @@ public class PicSureV3Service {
     }
 
     private Query convertIncomingQuery(QueryRequest queryJson) throws IOException {
-        Object query = queryJson.getQuery();
-        if (query instanceof String) {
-            // The query is now being reset in wildfly and encoded as a string in JWTFilter
-            return mapper.readValue((String) query, Query.class);
+        Object queryObject = queryJson.getQuery();
+        Query query = deserializeQuery(queryObject);
+
+        this.userRequestContext.setUserConsents(query.userConsents().stream().map(UserConsent::value).collect(Collectors.toSet()));
+        return query;
+    }
+
+    private Query deserializeQuery(Object queryObject) throws JsonProcessingException {
+        if (queryObject instanceof String) {
+            // The queryObject is now being reset in wildfly and encoded as a string in JWTFilter
+            return mapper.readValue((String) queryObject, Query.class);
         } else {
-            String queryString = mapper.writeValueAsString(query);
+            String queryString = mapper.writeValueAsString(queryObject);
             return mapper.readValue(queryString, Query.class);
         }
     }

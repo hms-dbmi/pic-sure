@@ -10,6 +10,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import edu.harvard.hms.dbmi.avillach.hpds.etl.LoadingStore;
+import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.config.CSVConfig;
+import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.config.ConfigLoader;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;
@@ -40,6 +42,8 @@ public class CSVLoader {
     private Path partitionDirectory;
     private Path allConceptsPath;
     private static String BASE_HPDS_DIRECTORY = "/opt/local/hpds/";
+
+    private static final ConfigLoader configLoader = new ConfigLoader();
 
     public static void main(String[] args) throws IOException {
         if (args.length > 0) {
@@ -85,9 +89,10 @@ public class CSVLoader {
         Reader in = new FileReader(this.allConceptsPath.toFile());
         Iterable<CSVRecord> records = CSVFormat.DEFAULT.withAllowMissingColumnNames().parse(new BufferedReader(in, 1024 * 1024));
 
+        CSVConfig csvConfig = configLoader.getConfigFor("allConcepts");
         final PhenoCube[] currentConcept = new PhenoCube[1];
         for (CSVRecord record : records) {
-            processRecord(currentConcept, record);
+            processRecord(currentConcept, record, csvConfig);
         }
     }
 
@@ -95,14 +100,14 @@ public class CSVLoader {
         store.saveStore(partitionDirectory.toString());
     }
 
-    private void processRecord(final PhenoCube[] currentConcept, CSVRecord record) {
+    private void processRecord(final PhenoCube[] currentConcept, CSVRecord record, CSVConfig csvConfig) {
         if (record.size() < 4) {
             log.info("Record number " + record.getRecordNumber() + " had less records than we expected so we are skipping it.");
             return;
         }
 
         try {
-            String conceptPathFromRow = record.get(CONCEPT_PATH);
+            String conceptPathFromRow = CSVParserUtil.parseConceptPath(record, false, csvConfig);
             String[] segments = conceptPathFromRow.split("\\\\");
             for (int x = 0; x < segments.length; x++) {
                 segments[x] = segments[x].trim();

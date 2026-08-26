@@ -72,7 +72,7 @@ class QueryServiceClientTest {
             .andExpect(content().json("{\"resourceCredentials\":{}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
-        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(), null, null, null);
         Map<String, Map<String, Integer>> result =
             client.getAuthCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, IDENTITY, "request-1", DistributionType.CATEGORICAL);
 
@@ -90,7 +90,7 @@ class QueryServiceClientTest {
             .andExpect(header("X-User-Id", "OPEN_ACCESS:predev.example.org"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
-        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(), null, null, null);
         Map<String, Map<String, ObfuscatedCount>> result =
             client.getOpenCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, OPEN_IDENTITY, "request-2", DistributionType.CATEGORICAL);
 
@@ -104,7 +104,7 @@ class QueryServiceClientTest {
             .andExpect(headerDoesNotExist("X-User-Email")).andExpect(headerDoesNotExist("X-User-Roles"))
             .andExpect(headerDoesNotExist("X-User-Privileges")).andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(), null, null, null);
         client.getOpenCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, OPEN_IDENTITY, "request-3", DistributionType.CATEGORICAL);
 
         mockServer.verify();
@@ -117,7 +117,7 @@ class QueryServiceClientTest {
         mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync")).andExpect(jsonPath("$.resourceUUID").doesNotExist())
             .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(), null, null, null);
         client.getAuthCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, IDENTITY, "request-4", DistributionType.CATEGORICAL);
 
         mockServer.verify();
@@ -134,7 +134,7 @@ class QueryServiceClientTest {
             .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
         Query query = new Query(
-            List.of(), List.of(new AuthorizationFilter("\\_consents\\", Set.of("phs000001.c1"))), null, List.of(), null, null, null
+            List.of(), List.of(new AuthorizationFilter("\\_consents\\", Set.of("phs000001.c1"))), Set.of(), null, List.of(), null, null, null
         );
         client.getAuthCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, IDENTITY, "request-5", DistributionType.CATEGORICAL);
 
@@ -149,7 +149,7 @@ class QueryServiceClientTest {
         mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
-        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(), null, null, null);
         client.getAuthCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, IDENTITY, "request-6", DistributionType.CATEGORICAL);
 
         ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
@@ -180,7 +180,7 @@ class QueryServiceClientTest {
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
-        Query query = new Query(List.of("\\Nhanes\\demographics\\AGE\\"), List.of(), null, List.of(), null, null, null);
+        Query query = new Query(List.of("\\Nhanes\\demographics\\AGE\\"), List.of(), Set.of(), null, List.of(), null, null, null);
         Map<String, Map<String, Integer>> result =
             client.getAuthCrossCounts(query, ResultType.CONTINUOUS_CROSS_COUNT, IDENTITY, "request-7", DistributionType.CONTINUOUS);
 

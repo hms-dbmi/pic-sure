@@ -20,7 +20,7 @@ public class UserConsentsOverride extends BaseEntity {
 
 
     @Convert(converter = ConsentsJsonConverter.class)
-    private Map<String, Set<String>> consents;
+    private Set<String> consents;
 
     @Column(name = "enabled")
     private boolean enabled;
@@ -34,11 +34,11 @@ public class UserConsentsOverride extends BaseEntity {
         return this;
     }
 
-    public Map<String, Set<String>> getConsents() {
+    public Set<String> getConsents() {
         return consents;
     }
 
-    public UserConsentsOverride setConsents(Map<String, Set<String>> consents) {
+    public UserConsentsOverride setConsents(Set<String> consents) {
         this.consents = consents;
         return this;
     }
