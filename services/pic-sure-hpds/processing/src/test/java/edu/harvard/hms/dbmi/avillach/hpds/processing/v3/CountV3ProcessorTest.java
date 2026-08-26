@@ -52,14 +52,14 @@ class CountV3ProcessorTest {
         String conceptPath1 = "\\_studies_consents\\phs001194\\HMB\\";
         String conceptPath2 = "\\_studies_consents\\phs000007\\HMB-IRB-MDS\\";
 
-        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
+        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
 
         Query queryConcept1 = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
             null, null, null
         );
         Query queryConcept2 = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
             null, null, null
         );
 
@@ -84,14 +84,14 @@ class CountV3ProcessorTest {
         String conceptPath1 = "\\_studies_consents\\phs001194\\HMB\\";
         String conceptPath2 = "\\_studies_consents\\phs000007\\HMB-IRB-MDS\\";
 
-        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
+        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
 
         Query queryConcept1 = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
             null, null, null
         );
         Query queryConcept2 = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
             null, null, null
         );
 
@@ -117,14 +117,14 @@ class CountV3ProcessorTest {
         String conceptPath1 = "\\_studies_consents\\phs001194\\HMB\\";
         String conceptPath2 = "\\_studies_consents\\phs000007\\HMB-IRB-MDS\\";
 
-        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
+        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
 
         Query queryConcept1 = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
             null, null, null
         );
         Query queryConcept2 = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
             null, null, null
         );
 
@@ -146,7 +146,7 @@ class CountV3ProcessorTest {
     public void runContinuousCrossCounts_requiredNumericConcept_returnsObservedValues() {
         String conceptPath = "\\demographics\\AGE\\";
         PhenotypicFilter required = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath, null, null, null, null);
-        Query query = new Query(List.of(), List.of(), required, List.of(), ResultType.CONTINUOUS_CROSS_COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), required, List.of(), ResultType.CONTINUOUS_CROSS_COUNT, null, null);
 
         PhenoCube<Double> cube = new PhenoCube<>(conceptPath, Double.class);
         cube.setSortedByKey(new KeyAndValue[] {new KeyAndValue<>(1, 18.0), new KeyAndValue<>(2, 19.0), new KeyAndValue<>(3, 19.0)});
@@ -168,7 +168,7 @@ class CountV3ProcessorTest {
         PhenotypicFilter maleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("male"), null, null, null);
         PhenotypicFilter femaleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("female"), null, null, null);
         PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(maleFilter, femaleFilter), Operator.OR);
-        Query query = new Query(List.of(), List.of(), subquery, List.of(), ResultType.CATEGORICAL_CROSS_COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), subquery, List.of(), ResultType.CATEGORICAL_CROSS_COUNT, null, null);
 
         TreeMap<String, TreeSet<Integer>> categoryMap = new TreeMap<>();
         categoryMap.put("male", new TreeSet<>(Set.of(1, 2, 3)));
@@ -192,7 +192,7 @@ class CountV3ProcessorTest {
     public void runCategoryCrossCounts_requiredFilterPartialBaseSet_countsEachPatientOnce() {
         String sexPath = "\\demographics\\SEX\\";
         PhenotypicFilter requiredSex = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, sexPath, null, null, null, null);
-        Query query = new Query(List.of(), List.of(), requiredSex, List.of(), ResultType.CATEGORICAL_CROSS_COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), requiredSex, List.of(), ResultType.CATEGORICAL_CROSS_COUNT, null, null);
 
         TreeMap<String, TreeSet<Integer>> categoryMap = new TreeMap<>();
         categoryMap.put("male", new TreeSet<>(Set.of(1, 2, 3)));
@@ -220,7 +220,7 @@ class CountV3ProcessorTest {
         // range is OR'd with a filter on another concept. The age distribution must include 40 because patient 2 is in the cohort; the
         // filter range only constrains the cohort, not which values are displayed.
         PhenotypicFilter youngFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, agePath, null, 10.0, 20.0, null);
-        Query query = new Query(List.of(), List.of(), youngFilter, List.of(), ResultType.CONTINUOUS_CROSS_COUNT, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), youngFilter, List.of(), ResultType.CONTINUOUS_CROSS_COUNT, null, null);
 
         PhenoCube<Double> cube = new PhenoCube<>(agePath, Double.class);
         cube.setSortedByKey(new KeyAndValue[] {new KeyAndValue<>(1, 15.0), new KeyAndValue<>(2, 40.0), new KeyAndValue<>(3, 65.0)});

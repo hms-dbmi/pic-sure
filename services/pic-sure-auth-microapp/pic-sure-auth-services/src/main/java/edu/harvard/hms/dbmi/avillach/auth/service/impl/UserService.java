@@ -622,7 +622,7 @@ public class UserService {
     }
 
     public User updateUserConsents(User user, Set<String> userConsentStrings) {
-        Map<String, Set<String>> consents =
+        Set<String> consents =
             new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
         UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
         if (userConsents == null) {
@@ -662,7 +662,7 @@ public class UserService {
             // Not an error: a user with no stored record simply has no authorized studies. Returning an empty set lets clients treat
             // this as "nothing authorized" instead of failing outright.
             logger.info("No consents stored for user {}", userId);
-            return new UserConsents().setUserId(userId).setConsents(Map.of());
+            return new UserConsents().setUserId(userId).setConsents(Set.of());
         }
 
         return userConsents;

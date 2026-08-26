@@ -92,7 +92,7 @@ public class CountV3Processor implements HpdsV3Processor {
         query.select().parallelStream().forEach((String concept) -> {
             try {
                 Query safeCopy = new Query(
-                    List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, concept, null, null, null, null), List.of(),
+                    List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, concept, null, null, null, null), List.of(),
                     null, null, null
                 );
                 int matchingPatients = Sets.intersection(queryExecutor.getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size();

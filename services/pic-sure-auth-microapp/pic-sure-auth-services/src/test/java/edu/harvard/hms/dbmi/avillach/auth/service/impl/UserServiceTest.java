@@ -18,9 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockitoAnnotations;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -29,6 +27,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.security.SecureRandom;
 import java.util.*;
@@ -41,21 +40,21 @@ import static org.mockito.Mockito.*;
 @ContextConfiguration(classes = {JWTUtil.class, UserService.class})
 public class UserServiceTest {
 
-    @MockBean
+    @MockitoBean
     private SecurityContext securityContext;
-    @MockBean
+    @MockitoBean
     private BasicMailService basicMailService;
-    @MockBean
+    @MockitoBean
     private TOSService tosService;
-    @MockBean
+    @MockitoBean
     private UserRepository userRepository;
-    @MockBean
+    @MockitoBean
     private ConnectionRepository connectionRepository;
-    @MockBean
+    @MockitoBean
     private RoleService roleService;
-    @MockBean
+    @MockitoBean
     private JWTUtil mockJwtUtil;
-    @MockBean
+    @MockitoBean
     private LoggingClient loggingClient;
     private JWTUtil jwtUtil;
 
@@ -63,9 +62,9 @@ public class UserServiceTest {
     private final long longTermTokenExpirationTime = 2592000000L;
 
     private UserService userService;
-    @MockBean
+    @MockitoBean
     private UserConsentsRepository userConsentsRepository;
-    @MockBean
+    @MockitoBean
     private FenceMappingUtility fenceMappingUtility;
 
     @BeforeEach
@@ -595,35 +594,35 @@ public class UserServiceTest {
 
         ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
         verify(userConsentsRepository).save(userConsentsCaptor.capture());
-        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), userConsentsCaptor.getValue().getConsents());
+        assertEquals(Set.of("phs1234.c1"), userConsentsCaptor.getValue().getConsents());
     }
 
 
     @Test
     public void updateUserConsents_existingUser() {
         when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of("phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P")));
-        when(userConsentsRepository.findByUserId(any(UUID.class))).thenReturn(new UserConsents().setConsents(Map.of("_consents", Set.of("phs345.c2"))));
+        when(userConsentsRepository.findByUserId(any(UUID.class))).thenReturn(new UserConsents().setConsents(Set.of("phs345.c2")));
         User user = createTestUser();
 
         userService.updateUserConsents(user, Set.of("phs1234.c1"));
 
         ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
         verify(userConsentsRepository).save(userConsentsCaptor.capture());
-        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), userConsentsCaptor.getValue().getConsents());
+        assertEquals(Set.of("phs1234.c1"), userConsentsCaptor.getValue().getConsents());
     }
 
     @Test
     public void getUserConsents_returnsStoredConsentsOfAuthenticatedUser() {
         User user = createTestUser();
         configureUserSecurityContext(user);
-        UserConsents stored = new UserConsents().setUserId(user.getUuid()).setConsents(Map.of("\\_consents\\", Set.of("phs1234.c1")));
+        UserConsents stored = new UserConsents().setUserId(user.getUuid()).setConsents(Set.of("phs1234.c1"));
         when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(stored);
 
         UserConsents result = userService.getUserConsents();
 
         assertNotNull(result);
         assertEquals(user.getUuid(), result.getUserId());
-        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), result.getConsents());
+        assertEquals(Set.of("phs1234.c1"), result.getConsents());
     }
 
     @Test
@@ -636,7 +635,7 @@ public class UserServiceTest {
 
         assertNotNull(result);
         assertEquals(user.getUuid(), result.getUserId());
-        assertEquals(Map.of(), result.getConsents());
+        assertEquals(Set.of(), result.getConsents());
     }
 
     @Test

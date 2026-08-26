@@ -84,7 +84,7 @@ public class QueryServiceClient {
         // authorizationFilters are carried through verbatim: PSAMA injects the caller's consent scope and the gateway's
         // BodyMutationFilter swaps it into the body before this service sees it. Auth HPDS rejects an empty list.
         Query subQuery = new Query(
-            query.select(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(), resultType, query.picsureId(),
+            query.select(), query.authorizationFilters(), query.userConsents(), query.phenotypicClause(), query.genomicFilters(), resultType, query.picsureId(),
             query.id()
         );
 

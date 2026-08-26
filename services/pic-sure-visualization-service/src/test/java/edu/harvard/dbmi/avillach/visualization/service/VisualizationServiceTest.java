@@ -47,7 +47,7 @@ class VisualizationServiceTest {
     void generateDistributions_authorized_categoricalFilter() {
         PhenotypicFilter catFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White", "Black"), null, null, null);
-        Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), catFilter, List.of(), null, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = new LinkedHashMap<>();
         crossCounts.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000, "Black", 12000)));
@@ -65,7 +65,7 @@ class VisualizationServiceTest {
     void generateDistributions_open_withObfuscation() {
         PhenotypicFilter catFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null);
-        Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), catFilter, List.of(), null, null, null);
 
         Map<String, Map<String, ObfuscatedCount>> openCrossCounts = new LinkedHashMap<>();
         openCrossCounts.put(
@@ -85,7 +85,7 @@ class VisualizationServiceTest {
     void generateDistributions_open_setsObfuscatedFromAccessTypeRegardlessOfValues() {
         PhenotypicFilter catFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null);
-        Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), catFilter, List.of(), null, null, null);
 
         // All values look like plain integers — no markers at all.
         Map<String, Map<String, ObfuscatedCount>> openCrossCounts = new LinkedHashMap<>();
@@ -105,7 +105,7 @@ class VisualizationServiceTest {
 
     @Test
     void generateDistributions_noFilters_returnsEmptyCharts() {
-        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), null, List.of(), null, null, null);
 
         VisualizationResponse response = service.generateDistributions(query, AccessType.AUTHORIZED, IDENTITY, null);
 
@@ -116,7 +116,7 @@ class VisualizationServiceTest {
     @Test
     void generateDistributions_authorized_continuousFilter_binsData() {
         PhenotypicFilter numFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\measurements\\bmi\\", null, 18.0, 40.0, null);
-        Query query = new Query(List.of(), List.of(), numFilter, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), numFilter, List.of(), null, null, null);
 
         Map<String, Integer> rawValues = new LinkedHashMap<>();
         rawValues.put("18.0", 100);
@@ -138,7 +138,7 @@ class VisualizationServiceTest {
 
     @Test
     void generateDistributions_selectFallback_whenNoFilters() {
-        Query query = new Query(List.of("\\demographics\\race\\"), List.of(), null, List.of(), null, null, null);
+        Query query = new Query(List.of("\\demographics\\race\\"), List.of(), Set.of(), null, List.of(), null, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = new LinkedHashMap<>();
         crossCounts.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 100)));
@@ -154,7 +154,7 @@ class VisualizationServiceTest {
     @Test
     void generateDistributions_requiredNumericFilter_skipsEmptyCategoricalAndReturnsHistogram() {
         PhenotypicFilter required = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\demographics\\AGE\\", null, null, null, null);
-        Query query = new Query(List.of(), List.of(), required, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), required, List.of(), null, null, null);
 
         Map<String, Map<String, Integer>> emptyCategoricalCounts = new LinkedHashMap<>();
         emptyCategoricalCounts.put("\\demographics\\AGE\\", new LinkedHashMap<>());
@@ -176,7 +176,7 @@ class VisualizationServiceTest {
     void generateDistributions_authorized_categoricalWithManyCategories_aggregatesToOther() {
         PhenotypicFilter catFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("A", "B"), null, null, null);
-        Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), catFilter, List.of(), null, null, null);
 
         Map<String, Integer> manyCategories = new LinkedHashMap<>();
         for (int i = 1; i <= 9; i++) {
@@ -200,7 +200,7 @@ class VisualizationServiceTest {
     void generateDistributions_authorized_nullCountInResponse_skipsNullEntries() {
         PhenotypicFilter catFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null);
-        Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
+        Query query = new Query(List.of(), List.of(), Set.of(), catFilter, List.of(), null, null, null);
 
         Map<String, Integer> values = new LinkedHashMap<>();
         values.put("White", 45000);

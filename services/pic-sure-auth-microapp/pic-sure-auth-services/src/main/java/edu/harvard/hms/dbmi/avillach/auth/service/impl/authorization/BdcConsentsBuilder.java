@@ -32,9 +32,8 @@ public class BdcConsentsBuilder {
         this.userConsentStrings = userConsentStrings;
     }
 
-    public Map<String, Set<String>> createConsents() {
-        Map<String, Set<String>> result = new HashMap<>();
-        result.put(CONSENTS_KEY, new HashSet<>());
+    public Set<String> createConsents() {
+        Set<String> result = new HashSet<>();
 
         userConsentStrings.forEach(consent -> {
             StudyMetaData studyMetaData = fenceMappingByConsent.get(consent);
@@ -43,35 +42,17 @@ public class BdcConsentsBuilder {
                 return;
             }
             // all user consents go in the consents list
-            result.computeIfAbsent(CONSENTS_KEY, _ -> new HashSet<>()).add(consent);
-
-            if (studyMetaData.getIsHarmonized()) {
-                Set<String> harmonizedConsents = result.getOrDefault(HARMONIZED_CONSENTS_KEY, new HashSet<>());
-                harmonizedConsents.add(consent);
-                result.put(HARMONIZED_CONSENTS_KEY, harmonizedConsents);
-            }
-
-            if (studyMetaData.getDataType() != null && studyMetaData.getDataType().contains(GENOMIC_DATA_TYPE_VALUE)) {
-                Set<String> topmedConsents = result.getOrDefault(TOPMED_CONSENTS_KEY, new HashSet<>());
-                topmedConsents.add(consent);
-                result.put(TOPMED_CONSENTS_KEY, topmedConsents);
-            }
+            result.add(consent);
         });
 
         // Add all public studies to the consents list
         fenceMappingByConsent.forEach((key, value) -> {
             if (PUBLIC_STUDY_TYPE.equalsIgnoreCase(value.getStudyType())) {
-                result.computeIfAbsent(CONSENTS_KEY, _ -> new HashSet<>()).add(key);
-
-                if (value.getDataType() != null && value.getDataType().contains(GENOMIC_DATA_TYPE_VALUE)) {
-                    Set<String> topmedConsents = result.getOrDefault(TOPMED_CONSENTS_KEY, new HashSet<>());
-                    topmedConsents.add(key);
-                    result.put(TOPMED_CONSENTS_KEY, topmedConsents);
-                }
+                result.add(key);
             }
         });
 
-        if (result.get(CONSENTS_KEY).isEmpty()) {
+        if (result.isEmpty()) {
             throw new IllegalStateException("No studies available for user");
         }
 
