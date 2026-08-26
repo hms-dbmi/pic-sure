@@ -46,11 +46,11 @@ public class TokenService {
     private final UserService userService;
 
     @Autowired
-    public TokenService(AuthorizationService authorizationService, UserRepository userRepository,
-                        @Value("${application.token.expiration.time}") long tokenExpirationTime,
-                        JWTUtil jwtUtil,
-                        SessionService sessionService,
-                        UserService userService) {
+    public TokenService(
+        AuthorizationService authorizationService, UserRepository userRepository,
+        @Value("${application.token.expiration.time}") long tokenExpirationTime, JWTUtil jwtUtil, SessionService sessionService,
+        UserService userService
+    ) {
         this.authorizationService = authorizationService;
         this.userRepository = userRepository;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
@@ -177,6 +177,7 @@ public class TokenService {
             EvaluateAccessRuleResult evaluateAccessRuleResult =
                 authorizationService.isAuthorized(application, inputMap.get("request"), user, isLongTermToken);
             isAuthorizationPassed = evaluateAccessRuleResult.result();
+            errorMsg = evaluateAccessRuleResult.denialReason().orElse(null);
             evaluateAccessRuleResult.query().ifPresent(query -> {
                 try {
                     tokenInspection.addField("query", new ObjectMapper().writeValueAsString(query));
@@ -269,12 +270,8 @@ public class TokenService {
         claimsMap.put("roles", userService.addRoleClaims(loadUser));
 
         Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + this.tokenExpirationTime);
-        String refreshedToken = this.jwtUtil.createJwtToken(
-                claims.getId(),
-                claims.getIssuer(),
-                claimsMap,
-                subject,
-                this.tokenExpirationTime);
+        String refreshedToken =
+            this.jwtUtil.createJwtToken(claims.getId(), claims.getIssuer(), claimsMap, subject, this.tokenExpirationTime);
 
         logger.debug("Finished RefreshToken and new token has been generated.");
         return new ValidRefreshToken(refreshedToken, ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());

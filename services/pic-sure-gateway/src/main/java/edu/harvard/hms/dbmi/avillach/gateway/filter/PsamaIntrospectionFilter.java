@@ -142,6 +142,10 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             return;
         }
 
+        if (intro != null && !intro.active() && intro.sub() != null && intro.message() != null && !intro.message().isBlank()) {
+            forbidden(resp, intro.message());
+            return;
+        }
         if (intro == null || !intro.active()) {
             denied(resp, "invalid_token", "Token invalid or expired.");
             return;
@@ -173,6 +177,12 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         audit.put("auth_result", "failure");
         audit.put("auth_failure_reason", reason);
         GatewayErrors.write(resp, HttpStatus.UNAUTHORIZED, "unauthorized", message);
+    }
+
+    private void forbidden(HttpServletResponse resp, String message) throws IOException {
+        audit.put("auth_result", "failure");
+        audit.put("auth_failure_reason", "authorization_denied");
+        GatewayErrors.write(resp, HttpStatus.FORBIDDEN, "forbidden", message);
     }
 
     private void mapPicsureException(HttpServletResponse resp, PicsureException e) throws IOException {

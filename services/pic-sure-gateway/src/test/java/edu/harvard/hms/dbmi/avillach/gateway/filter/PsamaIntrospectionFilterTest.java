@@ -219,6 +219,29 @@ class PsamaIntrospectionFilterTest {
     }
 
     @Test
+    void consentAuthorizationDenialReturnsForbiddenWithCause() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(any(), any())).thenReturn(
+            new IntrospectionResponse(false, "u-1", "s-1", null, null, null, null, null, null, "User has no consents on file.")
+        );
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer valid-token", new byte[0], "/hpds/auth/v3/query/sync");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        StringWriter responseBody = new StringWriter();
+        when(resp.getWriter()).thenReturn(new PrintWriter(responseBody));
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, resp, chain);
+
+        verify(resp).setStatus(403);
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(responseBody.toString()).contains("User has no consents on file.");
+    }
+
+    @Test
     void sendsRealPathAsTargetServiceAndStripsResourceCredentials() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);

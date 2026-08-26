@@ -1,7 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.rest.TokenController;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
@@ -49,6 +50,11 @@ public class AuthorizationService {
     private static final Pattern HPDS_V3_TARGET_SERVICE_PATTERN = Pattern.compile("^/hpds/auth/v3(/.*)?$");
 
     private static final Pattern AUTH_TARGET_SERVICE_PATTERN = Pattern.compile("^/(hpds|visualization)/auth(/.*)?$");
+    private static final Pattern OPEN_TARGET_SERVICE_PATTERN = Pattern.compile("^/(hpds|visualization)/open(/.*)?$");
+    private static final String EXPECTED_RESULT_TYPE = "expectedResultType";
+    static final String NO_CONSENTS_MESSAGE = "User has no consents on file.";
+    static final String MISROUTED_QUERY_MESSAGE = "Query target service does not name an auth or open backend.";
+    static final String UNSPLICEABLE_QUERY_MESSAGE = "Query is outside the gateway spliceable position.";
 
     protected AccessRuleService accessRuleService;
     protected SessionService sessionService;
@@ -64,12 +70,14 @@ public class AuthorizationService {
 
 
     private final UserConsentsRepository userConsentsRepository;
+    private final boolean consentBasedAuthorizationEnabled;
 
     @Autowired
     public AuthorizationService(
         AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
         ConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator,
-        @Value("${strict.authorization.applications.connections}") String strictConnections, UserConsentsRepository userConsentsRepository
+        @Value("${strict.authorization.applications.connections}") String strictConnections, UserConsentsRepository userConsentsRepository,
+        @Value("${consent.based.authorization.enabled:true}") boolean consentBasedAuthorizationEnabled
     ) {
         this.accessRuleService = accessRuleService;
         this.sessionService = sessionService;
@@ -79,6 +87,18 @@ public class AuthorizationService {
             this.strictConnections.addAll(Arrays.asList(strictConnections.split(",")));
         }
         this.userConsentsRepository = userConsentsRepository;
+        this.consentBasedAuthorizationEnabled = consentBasedAuthorizationEnabled;
+        logger.info("Consent-based authorization enabled: {}", consentBasedAuthorizationEnabled);
+    }
+
+    public AuthorizationService(
+        AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
+        ConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator, String strictConnections,
+        UserConsentsRepository userConsentsRepository
+    ) {
+        this(
+            accessRuleService, sessionService, roleService, consentBasedAccessRuleEvaluator, strictConnections, userConsentsRepository, true
+        );
     }
 
     /**
@@ -160,7 +180,7 @@ public class AuthorizationService {
 
         if (this.strictConnections.contains(label)) {
             accessRules = this.accessRuleService.getAccessRulesForUserAndApp(user, application);
-            if (accessRules.isEmpty()) {
+            if (accessRules.isEmpty() && !requiresAccessRuleForAuthRequest(requestBody)) {
                 logger.info(
                     "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED",
                     user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName
@@ -206,89 +226,148 @@ public class AuthorizationService {
             "ACCESS_LOG ___ {},{},{} ___ has been {} access to execute query ___ {} ___ in application ___ {} ___ {}",
             user.getUuid().toString(), user.getEmail(), user.getName(), (result ? "granted" : "denied"), formattedQuery, applicationName,
             (result ? "passed by " + passRuleName
-                : "failed by rules: [" + failedRules.stream().map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
-                    .collect(Collectors.joining(", ")) + "]")
+                : evaluationResult.denialReason().orElseGet(
+                    () -> "failed by rules: [" + failedRules.stream()
+                        .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName())).collect(Collectors.joining(", "))
+                        + "]"
+                ))
         );
 
         return evaluationResult;
     }
 
     private EvaluateAccessRuleResult passesAccessRuleEvaluation(Object requestBody, Set<AccessRule> accessRules, User user) {
-        // Current logic here is: among all accessRules, they are OR relationship
         Set<AccessRule> failedRules = new HashSet<>();
         AccessRule passByRule = null;
-        boolean result = false;
-        Query returnQuery = null;
 
         for (AccessRule accessRule : accessRules) {
+            if (AccessRule.TypeNaming.USER_CONSENT_ACCESS == accessRule.getType()) {
+                continue;
+            }
             try {
-                if (AccessRule.TypeNaming.USER_CONSENT_ACCESS == accessRule.getType()) {
-                    UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
-
-                    // This is an HPDS query inside a PIC-SURE query
-                    Map queryMap = (Map) ((Map) requestBody).get("query");
-                    if (queryMap == null) {
-                        // Non-query request bodies (e.g. {Target Service=/operations/...}) carry no
-                        // query for a consent rule to evaluate: deny by this rule rather than NPE
-                        // into a 500, which the gateway would surface as a 502.
-                        failedRules.add(accessRule);
-                        continue;
-                    }
-                    Object queryObject = queryMap.get("query");
-                    Query query;
-
-                    if (queryObject instanceof String) {
-                        query = new ObjectMapper().readValue((String) queryObject, Query.class);
-                    } else {
-                        query = new ObjectMapper().convertValue(queryObject, Query.class);
-                    }
-
-                    if (consentBasedAccessRuleEvaluator.evaluateAccessRule(query, accessRule, userConsents)) {
-                        result = true;
-                        passByRule = accessRule;
-
-                        returnQuery = consentBasedAccessRuleEvaluator.setAuthorizationFiltersForQuery(userConsents, query);
-                        break;
-                    } else {
-                        failedRules.add(accessRule);
-                    }
+                if (this.accessRuleService.evaluateAccessRule(requestBody, accessRule)) {
+                    passByRule = accessRule;
+                    break;
                 } else {
-                    String targetService = (String) ((Map) requestBody).get("Target Service");
-                    logger.debug("Target service = " + targetService);
-                    if (targetService != null && (targetService.startsWith("/v3") || isHpdsV3TargetService(targetService))) {
-                        logger.debug("Skipping access rule {}", accessRule.getName());
-                    } else if (this.accessRuleService.evaluateAccessRule(requestBody, accessRule)) {
-                        result = true;
-                        passByRule = accessRule;
-                        break;
-                    } else {
-                        failedRules.add(accessRule);
-                        // Print the evaluation tree when a rule fails
-                        if (logger.isInfoEnabled()) {
-                            String ruleName = accessRule.getMergedName().isEmpty() ? accessRule.getName() : accessRule.getMergedName();
-                            logger.info(
-                                "Rule evaluation tree for failed rule {}:\n{}", ruleName, this.accessRuleService.printEvaluationTree()
-                            );
-                        }
+                    failedRules.add(accessRule);
+                    if (logger.isInfoEnabled()) {
+                        logger.info(
+                            "Rule evaluation tree for failed rule {}:\n{}", ruleName(accessRule),
+                            this.accessRuleService.printEvaluationTree()
+                        );
                     }
                 }
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
             } finally {
-                // Clear the evaluation tree to prevent memory leaks
                 this.accessRuleService.clearEvaluationTree();
             }
         }
 
-        String passRuleName = null;
-        if (passByRule != null) {
-            if (passByRule.getMergedName().isEmpty())
-                passRuleName = passByRule.getName();
-            else
-                passRuleName = passByRule.getMergedName();
+        if (passByRule == null) {
+            return new EvaluateAccessRuleResult(false, failedRules, null, Optional.empty());
         }
 
-        return new EvaluateAccessRuleResult(result, failedRules, passRuleName, Optional.ofNullable(returnQuery));
+        String passRuleName = ruleName(passByRule);
+        if (!consentBasedAuthorizationEnabled) {
+            return new EvaluateAccessRuleResult(true, failedRules, passRuleName, Optional.empty());
+        }
+
+        String targetService = targetServiceFrom(requestBody);
+        boolean carriesQuery = containsHpdsQuery(requestBody);
+        if (!isAuthTargetService(targetService)) {
+            if (carriesQuery && !isOpenTargetService(targetService)) {
+                logger.error("Denying query because target service does not name a backend: {}", targetService);
+                return denied(failedRules, MISROUTED_QUERY_MESSAGE);
+            }
+            return new EvaluateAccessRuleResult(true, failedRules, passRuleName, Optional.empty());
+        }
+
+        UserConsents userConsents = user == null ? null : userConsentsRepository.findByUserId(user.getUuid());
+        if (!hasConsents(userConsents)) {
+            logger.warn("Denying auth backend request for user {}: {}", user == null ? null : user.getUuid(), NO_CONSENTS_MESSAGE);
+            return denied(failedRules, NO_CONSENTS_MESSAGE);
+        }
+
+        if (!carriesQuery) {
+            return new EvaluateAccessRuleResult(true, failedRules, passRuleName, Optional.empty());
+        }
+
+        Query query = hpdsQueryFrom(requestBody);
+        if (query == null) {
+            logger.error("Denying query on {} because it is outside the gateway spliceable position", targetService);
+            return denied(failedRules, UNSPLICEABLE_QUERY_MESSAGE);
+        }
+
+        Query scopedQuery = consentBasedAccessRuleEvaluator.setAuthorizationFiltersForQuery(userConsents, query);
+        return new EvaluateAccessRuleResult(true, failedRules, passRuleName, Optional.of(scopedQuery));
+    }
+
+    private boolean requiresAccessRuleForAuthRequest(Object requestBody) {
+        return consentBasedAuthorizationEnabled && isAuthTargetService(targetServiceFrom(requestBody));
+    }
+
+    private static EvaluateAccessRuleResult denied(Set<AccessRule> failedRules, String reason) {
+        return new EvaluateAccessRuleResult(false, failedRules, null, Optional.empty(), Optional.of(reason));
+    }
+
+    private static String ruleName(AccessRule accessRule) {
+        return accessRule.getMergedName().isEmpty() ? accessRule.getName() : accessRule.getMergedName();
+    }
+
+    private Query hpdsQueryFrom(Object requestBody) {
+        if (!(requestBody instanceof Map<?, ?> payload) || !(payload.get("query") instanceof Map<?, ?> body)) {
+            return null;
+        }
+        Object queryObject = body.get("query");
+        if (queryObject == null) {
+            return null;
+        }
+        try {
+            if (queryObject instanceof String queryJson) {
+                return queryJson.isBlank() ? null : new ObjectMapper().readValue(queryJson, Query.class);
+            }
+            return new ObjectMapper().convertValue(queryObject, Query.class);
+        } catch (JsonProcessingException | IllegalArgumentException e) {
+            logger.debug("Request body carries a query that is not an HPDS v3 query: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private boolean containsHpdsQuery(Object requestBody) {
+        JsonNode payload;
+        try {
+            payload = new ObjectMapper().valueToTree(requestBody);
+        } catch (IllegalArgumentException e) {
+            logger.error("Request body could not be scanned for a query", e);
+            return true;
+        }
+        if (payload == null || payload.isNull()) {
+            return false;
+        }
+        for (JsonNode candidate : payload.findParents(EXPECTED_RESULT_TYPE)) {
+            if (isResultType(candidate.path(EXPECTED_RESULT_TYPE).asText(null))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isResultType(String value) {
+        if (value == null) {
+            return false;
+        }
+        return Arrays.stream(ResultType.values()).anyMatch(resultType -> resultType.name().equalsIgnoreCase(value));
+    }
+
+    private static boolean hasConsents(UserConsents userConsents) {
+        return userConsents != null && userConsents.getConsents() != null
+            && userConsents.getConsents().values().stream().filter(Objects::nonNull).anyMatch(consents -> !consents.isEmpty());
+    }
+
+    private static String targetServiceFrom(Object requestBody) {
+        if (requestBody instanceof Map<?, ?> payload && payload.get("Target Service") instanceof String targetService) {
+            return targetService;
+        }
+        return null;
     }
 
     /**
@@ -307,6 +386,10 @@ public class AuthorizationService {
 
     static boolean isAuthTargetService(String targetService) {
         return targetService != null && AUTH_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
+    }
+
+    static boolean isOpenTargetService(String targetService) {
+        return targetService != null && OPEN_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
     }
 
     public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
