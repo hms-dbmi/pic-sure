@@ -102,8 +102,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         }
         req.setAttribute(GatewayUserResolver.HEADER_USER_ID, hostMarker);
         req.setAttribute(ATTR_OPEN_ACCESS_GRANTED, Boolean.TRUE);
-        // Downstream services select the open HPDS backend from this. They cannot infer it from the user id above:
-        // OPEN_ACCESS:<host> is non-blank and so reads as an authenticated user to any presence check.
+        // Record that the open-access flow admitted this request. Backend routing remains path-based.
         req.setAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN);
         audit.put("auth_result", "success");
         audit.put("auth_action", "open_access.granted");

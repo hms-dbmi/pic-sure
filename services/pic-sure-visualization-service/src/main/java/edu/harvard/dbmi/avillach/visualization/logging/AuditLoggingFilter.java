@@ -35,7 +35,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return switch (request.getRequestURI()) {
-            case "/distributions", "/bin/continuous" -> false;
+            case "/auth/distributions", "/open/distributions", "/bin/continuous" -> false;
             default -> true;
         };
     }
@@ -75,7 +75,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     ) {
         try {
             String action = switch (request.getRequestURI()) {
-                case "/distributions" -> "visualization.distributions";
+                case "/auth/distributions", "/open/distributions" -> "visualization.distributions";
                 case "/bin/continuous" -> "visualization.bin_continuous";
                 default -> "visualization.request";
             };

@@ -171,8 +171,7 @@ class PsamaIntrospectionFilterTest {
 
     @Test
     void successfulIntrospectionSetsAuthorizedAccessTypeAttribute() throws Exception {
-        // IdentityPropagationFilter turns this attribute into X-Picsure-Access-Type, which is how downstream services
-        // pick the authorized HPDS backend.
+        // IdentityPropagationFilter turns this attribute into X-Picsure-Access-Type for gateway-flow metadata.
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
@@ -180,7 +179,7 @@ class PsamaIntrospectionFilterTest {
             .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "ADMIN", List.of(), false, null, null));
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
-        BufferedRequestWrapper req = wrap("Bearer user-token", new byte[0], "/visualization/distributions");
+        BufferedRequestWrapper req = wrap("Bearer user-token", new byte[0], "/visualization/open/distributions");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
         f.doFilter(req, resp, mock(FilterChain.class));
@@ -190,13 +189,12 @@ class PsamaIntrospectionFilterTest {
 
     @Test
     void deniedRequestSetsNoAccessTypeAttribute() throws Exception {
-        // No Authorization header -> 401 before any identity is resolved. Absence must stay absence, so downstream
-        // fails closed rather than inheriting a stale or defaulted access type.
+        // No Authorization header means no gateway access type was resolved.
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
-        BufferedRequestWrapper req = wrap(null, new byte[0], "/visualization/distributions");
+        BufferedRequestWrapper req = wrap(null, new byte[0], "/visualization/auth/distributions");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
         f.doFilter(req, resp, mock(FilterChain.class));
@@ -212,7 +210,7 @@ class PsamaIntrospectionFilterTest {
         when(client.introspect(any(), any())).thenReturn(new IntrospectionResponse(false, null, null, null, null, null, null, null, null));
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
-        BufferedRequestWrapper req = wrap("Bearer expired-token", new byte[0], "/visualization/distributions");
+        BufferedRequestWrapper req = wrap("Bearer expired-token", new byte[0], "/visualization/auth/distributions");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
         f.doFilter(req, resp, mock(FilterChain.class));

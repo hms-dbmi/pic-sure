@@ -85,7 +85,7 @@ class HpdsCallIntegrationTest {
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isOk()).andReturn();
@@ -126,7 +126,7 @@ class HpdsCallIntegrationTest {
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isOk()).andReturn();
@@ -168,8 +168,8 @@ class HpdsCallIntegrationTest {
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON)
-                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
         ).andExpect(status().isOk()).andReturn();
 
         mockServer.verify();
@@ -196,7 +196,7 @@ class HpdsCallIntegrationTest {
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isBadGateway()).andReturn();
@@ -222,7 +222,7 @@ class HpdsCallIntegrationTest {
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isBadGateway());
@@ -253,7 +253,7 @@ class HpdsCallIntegrationTest {
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON)
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON)
                 .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
         ).andExpect(status().isOk()).andReturn();
 

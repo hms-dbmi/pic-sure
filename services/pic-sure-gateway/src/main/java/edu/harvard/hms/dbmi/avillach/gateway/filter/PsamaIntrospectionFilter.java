@@ -155,8 +155,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         req.setAttribute(
             GatewayUserResolver.HEADER_USER_PRIVILEGES, intro.privileges() == null ? "" : String.join(",", intro.privileges())
         );
-        // Set only on a validated token -- the denial paths above leave it absent so downstream fails closed rather
-        // than inheriting a defaulted access type.
+        // Record that token introspection admitted this request. Backend routing remains path-based.
         req.setAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED);
         audit.put("auth_result", "success");
 

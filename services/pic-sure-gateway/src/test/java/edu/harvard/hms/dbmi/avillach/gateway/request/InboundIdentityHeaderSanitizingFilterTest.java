@@ -107,9 +107,8 @@ class InboundIdentityHeaderSanitizingFilterTest {
 
     @Test
     void stripsClientSuppliedAccessTypeHeaderRegardlessOfCase() throws Exception {
-        // X-Picsure-Access-Type selects the authorized vs open HPDS backend downstream, so a client-supplied value is a
-        // direct attempt to read non-obfuscated data. It gets the same unconditional strip as the X-User-* set.
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/distributions");
+        // The gateway owns X-Picsure-Access-Type, so it gets the same unconditional strip as the X-User-* set.
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/auth/distributions");
         request.addHeader("x-picsure-access-type", "authorized");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
