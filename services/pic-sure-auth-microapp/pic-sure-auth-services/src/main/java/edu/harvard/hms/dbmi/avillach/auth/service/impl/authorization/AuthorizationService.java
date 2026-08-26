@@ -48,6 +48,8 @@ public class AuthorizationService {
      */
     private static final Pattern HPDS_V3_TARGET_SERVICE_PATTERN = Pattern.compile("^/hpds/auth/v3(/.*)?$");
 
+    private static final Pattern AUTH_TARGET_SERVICE_PATTERN = Pattern.compile("^/(hpds|visualization)/auth(/.*)?$");
+
     protected AccessRuleService accessRuleService;
     protected SessionService sessionService;
     private final RoleService roleService;
@@ -303,6 +305,10 @@ public class AuthorizationService {
         return HPDS_V3_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
     }
 
+    static boolean isAuthTargetService(String targetService) {
+        return targetService != null && AUTH_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
+    }
+
     public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
 
         if (inputMap == null || inputMap.isEmpty()) {
@@ -319,6 +325,17 @@ public class AuthorizationService {
                 "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been granted access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION"
             );
             return true;
+        }
+
+        if (requestBody instanceof Map<?, ?> requestDetails) {
+            Object targetService = requestDetails.get("Target Service");
+            if (targetService instanceof String targetServicePath && isAuthTargetService(targetServicePath)) {
+                logger.info(
+                    "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ AUTH BACKEND PATH {} IS NOT AVAILABLE TO OPEN ACCESS",
+                    targetServicePath
+                );
+                return false;
+            }
         }
 
         // Load the open access rules
