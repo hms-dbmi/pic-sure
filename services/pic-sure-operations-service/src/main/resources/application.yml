@@ -20,6 +20,10 @@ spring:
         # against the real database breaks. Hibernate's own PhysicalNamingStrategyStandardImpl passes names through
         # unchanged, matching the schema exactly.
         physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
 
 picsure:
   operations:

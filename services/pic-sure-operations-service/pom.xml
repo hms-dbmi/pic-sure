@@ -16,8 +16,8 @@
     <packaging>jar</packaging>
 
     <name>pic-sure-operations-service</name>
-    <description>Sole pic-sure-DB owner: Configuration + NamedDataset + Query, exposing /configuration/**, /dataset/**, and (later) an
-        internal query API. Trusts the gateway's X-User-* headers; performs no JWT validation locally.</description>
+    <description>Sole pic-sure-DB owner: Configuration + NamedDataset + Query + banners, exposing /configuration/**, /dataset/**,
+        /banners/**, and an internal query API. Trusts the gateway's X-User-* headers; performs no JWT validation locally.</description>
 
     <dependencies>
         <dependency>
