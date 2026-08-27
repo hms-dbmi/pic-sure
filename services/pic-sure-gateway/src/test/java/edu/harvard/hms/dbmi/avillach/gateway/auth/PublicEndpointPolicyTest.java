@@ -17,7 +17,7 @@ class PublicEndpointPolicyTest {
     @CsvSource(
         {"GET, /system/status", "GET, /openapi.json", "POST, /gateway/openapi.json", "GET, /logging", "POST, /logging/audit",
             "GET, /operations/configuration", "GET, /operations/configuration/", "GET, /operations/configuration/abc-123",
-            "GET, /operations/configuration/abc-123/", "GET, /operations/banners/active"}
+            "GET, /operations/configuration/abc-123/", "GET, /operations/banners/active", "GET, /operations/banners/active/"}
     )
     void existingPublicRoutesRemainPublic(String method, String path) {
         assertThat(policy.evaluate(method, path).publicEndpoint()).isTrue();

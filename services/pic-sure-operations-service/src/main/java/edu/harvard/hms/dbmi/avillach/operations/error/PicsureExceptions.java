@@ -26,4 +26,9 @@ public final class PicsureExceptions {
     public static PicsureException unauthorized(String message) {
         return new PicsureException(HttpStatus.UNAUTHORIZED, "unauthorized", message);
     }
+
+    /** 400 with a caller-supplied message. */
+    public static PicsureException badRequest(String message) {
+        return new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", message);
+    }
 }

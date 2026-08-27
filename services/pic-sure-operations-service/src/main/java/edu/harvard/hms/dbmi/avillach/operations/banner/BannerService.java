@@ -4,13 +4,12 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
+import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 
 @Service
 public class BannerService {
@@ -38,7 +37,7 @@ public class BannerService {
     @Transactional
     public BannerDto publish(PublishBannerRequest request, GatewayUser user) {
         if (!request.pageTargets().isArray()) {
-            throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Page targets must be an array");
+            throw PicsureExceptions.badRequest("Page targets must be an array");
         }
         Instant now = clock.instant();
         String actor = user.getUserId();
@@ -54,7 +53,7 @@ public class BannerService {
                 )
             ).setCreatedAt(now).setCreatedBy(actor).setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor);
         BannerOccurrence saved = repository.saveAndFlush(banner);
-        auditService.afterPublicationCommit(saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerPublicationAudit(saved.getUuid(), now, saved.getPresentationHash(), actor);
         return BannerDto.from(saved);
     }
 }

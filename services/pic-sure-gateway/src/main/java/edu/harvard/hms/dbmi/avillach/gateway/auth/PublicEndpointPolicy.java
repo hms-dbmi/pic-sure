@@ -39,7 +39,7 @@ public final class PublicEndpointPolicy {
         if (!"GET".equals(method)) {
             return PROTECTED;
         }
-        if (path.equals("/operations/banners/active")) {
+        if (path.equals("/operations/banners/active") || path.equals("/operations/banners/active/")) {
             return PUBLIC;
         }
         if (path.equals("/operations/configuration") || path.equals("/operations/configuration/")) {

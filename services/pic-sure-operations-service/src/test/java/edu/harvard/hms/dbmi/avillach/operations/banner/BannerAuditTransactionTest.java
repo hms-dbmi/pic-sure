@@ -66,8 +66,8 @@ class BannerAuditTransactionTest {
         assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
         assertThat(event.getValue().getMetadata()).containsExactlyInAnyOrderEntriesOf(
             Map.of(
-                "actor", "admin-id", "bannerUuid", published[0].uuid().toString(), "timestamp", published[0].publishedAt().toString(),
-                "presentationHash", published[0].presentationHash()
+                "bannerUuid", published[0].uuid().toString(), "timestamp", published[0].publishedAt().toString(), "presentationHash",
+                published[0].presentationHash()
             )
         );
         assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Committed banner");
