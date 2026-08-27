@@ -19,4 +19,12 @@ public interface BannerRepository extends JpaRepository<BannerOccurrence, UUID> 
         ORDER BY banner.priority ASC, banner.uuid ASC
         """)
     List<BannerOccurrence> findActive(@Param("now") Instant now);
+
+    @Query("""
+        SELECT COALESCE(MAX(banner.priority), 0)
+        FROM banner_occurrence banner
+        WHERE banner.status = edu.harvard.hms.dbmi.avillach.operations.banner.BannerStatus.PUBLISHED
+          AND (banner.endAt IS NULL OR banner.endAt > :now)
+        """)
+    int findMaximumOrderablePriority(@Param("now") Instant now);
 }

@@ -1,15 +1,22 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -20,10 +27,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -37,6 +52,12 @@ class BannerControllerTest {
 
     @Autowired
     private BannerRepository repository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @MockitoBean
+    private LoggingClient loggingClient;
 
     @Test
     void activeFeedIsAnonymousStartInclusiveEndExclusiveAndPriorityOrdered() throws Exception {
@@ -84,6 +105,95 @@ class BannerControllerTest {
     @Test
     void otherBannerPathsAreNotAnonymous() throws Exception {
         mockMvc.perform(get("/banners")).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminAndSuperAdminCanPublishButOtherPrivilegesCannot() throws Exception {
+        String request = publishRequest("<p>Authorized</p>", null);
+
+        mockMvc.perform(
+            post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON).content(request)
+        ).andExpect(status().isCreated());
+        mockMvc.perform(
+            post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "super-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON).content(request)
+        ).andExpect(status().isCreated());
+        mockMvc.perform(
+            post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "researcher-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "PIC_SURE_ANY_QUERY").contentType(MediaType.APPLICATION_JSON)
+                .content(request)
+        ).andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners").contentType(MediaType.APPLICATION_JSON).content(request)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void publishRejectsHtmlAndTitleOverTheirServerLimits() throws Exception {
+        mockMvc.perform(adminPost(publishRequest("x".repeat(5_001), null))).andExpect(status().isBadRequest());
+        mockMvc.perform(adminPost(publishRequest("<p>Valid</p>", "x".repeat(121)))).andExpect(status().isBadRequest());
+
+        org.assertj.core.api.Assertions.assertThat(repository.count()).isZero();
+        verifyNoInteractions(loggingClient);
+    }
+
+    @Test
+    void publishReturnsAuthoritativeRecordAssignsBottomPriorityAndEmitsOneConciseAuditEvent() throws Exception {
+        repository.save(banner(8, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Active"));
+        repository.save(banner(13, BannerStatus.PUBLISHED, NOW.plusSeconds(60), null, "Scheduled"));
+        repository.save(banner(50, BannerStatus.PUBLISHED, NOW.minusSeconds(120), NOW, "Expired"));
+        repository.save(banner(70, BannerStatus.DISABLED, NOW.minusSeconds(120), null, "Disabled"));
+        clearInvocations(loggingClient);
+        String submittedHtml = "<p>Exact bytes:  two spaces</p>";
+        UUID clientUuid = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        ObjectNode request = (ObjectNode) objectMapper.readTree(publishRequest(submittedHtml, " Notice "));
+        request.put("uuid", clientUuid.toString()).put("status", "ARCHIVED").put("priority", 999).put("presentationHash", "client-hash")
+            .put("startAt", NOW.plusSeconds(3_600).toString()).put("createdBy", "spoofed-actor");
+
+        String response = mockMvc.perform(adminPost(request.toString())).andExpect(status().isCreated())
+            .andExpect(jsonPath("$.uuid").value(not(clientUuid.toString()))).andExpect(jsonPath("$.status").value("PUBLISHED"))
+            .andExpect(jsonPath("$.htmlContent").value(submittedHtml)).andExpect(jsonPath("$.title").value("Notice"))
+            .andExpect(jsonPath("$.startAt").value(NOW.toString())).andExpect(jsonPath("$.createdAt").value(NOW.toString()))
+            .andExpect(jsonPath("$.updatedAt").value(NOW.toString())).andExpect(jsonPath("$.publishedAt").value(NOW.toString()))
+            .andExpect(jsonPath("$.createdBy").value("admin-id")).andExpect(jsonPath("$.updatedBy").value("admin-id"))
+            .andExpect(jsonPath("$.publishedBy").value("admin-id")).andExpect(jsonPath("$.priority").value(14))
+            .andExpect(jsonPath("$.presentationHash").value(org.hamcrest.Matchers.matchesPattern("[0-9a-f]{64}"))).andReturn().getResponse()
+            .getContentAsString();
+
+        BannerDto published = objectMapper.readValue(response, BannerDto.class);
+        org.mockito.ArgumentCaptor<LoggingEvent> event = org.mockito.ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(event.capture());
+        org.assertj.core.api.Assertions.assertThat(event.getValue().getEventType()).isEqualTo("BANNER");
+        org.assertj.core.api.Assertions.assertThat(event.getValue().getAction()).isEqualTo("banner.published");
+        org.assertj.core.api.Assertions.assertThat(event.getValue().getMetadata()).containsExactlyInAnyOrderEntriesOf(
+            Map.of(
+                "actor", "admin-id", "bannerUuid", published.uuid().toString(), "timestamp", NOW.toString(), "presentationHash",
+                published.presentationHash()
+            )
+        );
+        org.assertj.core.api.Assertions.assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain(submittedHtml);
+    }
+
+    @Test
+    void auditFailureDoesNotRollBackACompletedPublication() throws Exception {
+        doThrow(new IllegalStateException("logging unavailable")).when(loggingClient).send(org.mockito.ArgumentMatchers.any());
+
+        mockMvc.perform(adminPost(publishRequest("<p>Published despite audit outage</p>", null))).andExpect(status().isCreated());
+
+        org.assertj.core.api.Assertions.assertThat(repository.count()).isEqualTo(1);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPost(String content) {
+        return post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+            .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON).content(content);
+    }
+
+    private String publishRequest(String htmlContent, String title) throws Exception {
+        return objectMapper.writeValueAsString(
+            Map.of(
+                "htmlContent", htmlContent, "title", title == null ? "" : title, "appearance", "PRIMARY", "icon", "INFORMATION",
+                "dismissible", true, "audience", "EVERYONE", "placement", "SITE_TOP", "pageTargets", List.of(Map.of("kind", "ALL"))
+            )
+        );
     }
 
     private static BannerOccurrence banner(int priority, BannerStatus status, Instant startAt, Instant endAt, String title) {

@@ -51,6 +51,10 @@
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-spring-commons</artifactId>
         </dependency>
+        <dependency>
+            <groupId>edu.harvard.dbmi.avillach</groupId>
+            <artifactId>pic-sure-logging-client</artifactId>
+        </dependency>
         <!-- Shared DTO/domain types (e.g. PicSureStatus) for the config/dataset/query surfaces (later tasks). -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>

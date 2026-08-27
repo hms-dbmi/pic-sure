@@ -4,8 +4,12 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.serverError;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
@@ -18,6 +22,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -70,5 +77,41 @@ class BannerRouteTest {
         assertThat(response.getBody()).isEqualTo("banner-feed-ok");
         operationsStub.verify(getRequestedFor(urlEqualTo("/operations/banners/active")));
         psamaStub.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void rejectsAnUnauthenticatedManagementMutationAtTheGateway() {
+        operationsStub.stubFor(post(urlEqualTo("/operations/banners")).willReturn(aResponse().withStatus(201)));
+
+        ResponseEntity<String> response = rest.postForEntity("http://127.0.0.1:" + port + "/operations/banners", "{}", String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(401);
+        operationsStub.verify(0, anyRequestedFor(urlEqualTo("/operations/banners")));
+        psamaStub.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void propagatesResolvedPrivilegesForManagementAuthorizationAtTheOperationsBoundary() {
+        psamaStub.stubFor(
+            post(urlEqualTo("/auth/token/inspect")).willReturn(
+                okJson(
+                    "{\"active\":true,\"userId\":\"researcher-id\",\"sub\":\"researcher-sub\",\"email\":\"r@example.org\","
+                        + "\"roles\":\"USER\",\"privileges\":[\"PIC_SURE_ANY_QUERY\"]}"
+                )
+            )
+        );
+        operationsStub.stubFor(post(urlEqualTo("/operations/banners")).willReturn(aResponse().withStatus(403)));
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth("researcher-token");
+
+        ResponseEntity<String> response = rest
+            .exchange("http://127.0.0.1:" + port + "/operations/banners", HttpMethod.POST, new HttpEntity<>("{}", headers), String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(403);
+        operationsStub.verify(
+            postRequestedFor(urlEqualTo("/operations/banners"))
+                .withHeader("X-User-Id", equalTo("researcher-id"))
+                .withHeader("X-User-Privileges", equalTo("PIC_SURE_ANY_QUERY"))
+        );
     }
 }

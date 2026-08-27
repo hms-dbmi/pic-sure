@@ -28,9 +28,10 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
  * routes here.</li> <li>{@code GET /banners/active} -- public, UNAUTHENTICATED banner delivery.</li> <li>{@code /dataset/**} -- requires an
  * authenticated caller, i.e. the gateway supplied {@code X-User-Id}. Spring Security's {@code authenticated()} already excludes the default
  * anonymous principal (see {@code AuthenticatedAuthorizationManager}), so a request with no identity is correctly rejected rather than
- * silently treated as authenticated.</li> <li>{@code /banners/**} -- requires an authenticated caller, protecting every banner path not
- * matched by the public active read above.</li> <li>Everything else is permitted at this layer; the config/dataset controllers built in
- * later tasks enforce any remaining per-endpoint rules themselves (e.g. the {@code NamedDataset} owner-email check).</li> </ol>
+ * silently treated as authenticated.</li> <li>{@code /banners/**} -- requires the {@code ADMIN} or {@code SUPER_ADMIN} authority,
+ * protecting every banner path not matched by the public active read above.</li> <li>Everything else is permitted at this layer; the
+ * config/dataset controllers built in later tasks enforce any remaining per-endpoint rules themselves (e.g. the {@code NamedDataset}
+ * owner-email check).</li> </ol>
  *
  * <p>CSRF is disabled and sessions are stateless: every request carries its own trust via headers, there is no browser session to protect
  * and nothing is stored server-side between requests.
@@ -39,6 +40,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 public class WebSecurityConfig {
 
     static final String SUPER_ADMIN = "SUPER_ADMIN";
+    static final String ADMIN = "ADMIN";
 
     @Bean
     @Order(10) // yields /actuator/** to ActuatorSecurityConfig's @Order(0) chain.
@@ -52,7 +54,7 @@ public class WebSecurityConfig {
                     .permitAll().requestMatchers("/configuration/admin/**").hasAuthority(SUPER_ADMIN)
                     .requestMatchers(HttpMethod.GET, "/configuration", "/configuration/*").permitAll().requestMatchers("/internal/**")
                     .permitAll().requestMatchers(HttpMethod.GET, "/banners/active").permitAll().requestMatchers("/dataset/**")
-                    .authenticated().requestMatchers("/banners/**").authenticated().anyRequest().permitAll()
+                    .authenticated().requestMatchers("/banners/**").hasAnyAuthority(ADMIN, SUPER_ADMIN).anyRequest().permitAll()
             ).build();
     }
 }
