@@ -46,9 +46,6 @@ public class AuthorizationServiceTest {
     private RoleService roleService;
 
     @MockBean
-    private BdcConsentBasedAccessRuleEvaluator bdcConsentBasedAccessRuleEvaluator;
-
-    @MockBean
     private UserConsentsRepository userConsentsRepository;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -214,9 +211,8 @@ public class AuthorizationServiceTest {
 
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
-        authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, bdcConsentBasedAccessRuleEvaluator, "fence,okta", userConsentsRepository
-        );
+        authorizationService =
+            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false);
     }
 
     @Test
@@ -369,8 +365,9 @@ public class AuthorizationServiceTest {
         assertFalse(result);
     }
 
+    /** Deny by default: a privilege carrying no access rules grants nothing, so there is nothing for an empty rule set to pass. */
     @Test
-    public void testIsAuthorized_NoRequestBodyWithRulelessPrivilege() {
+    public void testIsAuthorized_RulelessPrivilegeIsDenied() {
         Application application = createTestApplication();
         User user = createTestUser();
         configureUserSecurityContext(user);
@@ -382,7 +379,7 @@ public class AuthorizationServiceTest {
 
         boolean result = authorizationService.isAuthorized(application, null, user, false).result();
 
-        assertTrue(result);
+        assertFalse(result);
     }
 
     @Test

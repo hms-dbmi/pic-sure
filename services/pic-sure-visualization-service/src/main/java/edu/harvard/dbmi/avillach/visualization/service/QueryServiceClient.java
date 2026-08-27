@@ -43,8 +43,14 @@ public class QueryServiceClient {
 
     private static final Logger logger = LoggerFactory.getLogger(QueryServiceClient.class);
 
-    /** The gateway-resolved identity to forward downstream. Any component may be null or blank; only non-blank values become headers. */
-    public record GatewayIdentity(String userId, String subject, String email, String roles, String privileges) {
+    /** Gateway-owned identity headers and the caller credential to forward downstream. */
+    public record GatewayIdentity(
+        String userId, String subject, String email, String roles, String privileges, String authorizationHeader
+    ) {
+
+        public GatewayIdentity(String userId, String subject, String email, String roles, String privileges) {
+            this(userId, subject, email, roles, privileges, null);
+        }
     }
 
     private final RestClient restClient;
@@ -81,8 +87,7 @@ public class QueryServiceClient {
     ) {
         long startTime = System.currentTimeMillis();
 
-        // authorizationFilters are carried through verbatim: PSAMA injects the caller's consent scope and the gateway's
-        // BodyMutationFilter swaps it into the body before this service sees it. Auth HPDS rejects an empty list.
+        // HQS replaces authorizationFilters using the caller token before it executes or stores this subquery.
         Query subQuery = new Query(
             query.select(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(), resultType, query.picsureId(),
             query.id()
@@ -143,6 +148,7 @@ public class QueryServiceClient {
         setIfPresent(headers, GatewayUserResolver.HEADER_USER_EMAIL, identity.email());
         setIfPresent(headers, GatewayUserResolver.HEADER_USER_ROLES, identity.roles());
         setIfPresent(headers, GatewayUserResolver.HEADER_USER_PRIVILEGES, identity.privileges());
+        setIfPresent(headers, HttpHeaders.AUTHORIZATION, identity.authorizationHeader());
     }
 
     private static void setIfPresent(HttpHeaders headers, String name, String value) {

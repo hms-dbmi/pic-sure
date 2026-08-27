@@ -54,7 +54,7 @@ public class DistributionController {
         return new QueryServiceClient.GatewayIdentity(
             request.getHeader(GatewayUserResolver.HEADER_USER_ID), request.getHeader(GatewayUserResolver.HEADER_USER_SUBJECT),
             request.getHeader(GatewayUserResolver.HEADER_USER_EMAIL), request.getHeader(GatewayUserResolver.HEADER_USER_ROLES),
-            request.getHeader(GatewayUserResolver.HEADER_USER_PRIVILEGES)
+            request.getHeader(GatewayUserResolver.HEADER_USER_PRIVILEGES), request.getHeader("Authorization")
         );
     }
 }

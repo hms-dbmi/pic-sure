@@ -632,8 +632,15 @@ public class AccessRuleService {
                 decision = requestBodyValue.matches(value);
                 break;
             default:
-                logger.warn("evaluateAccessRule() incoming accessRule type is out of scope. Just return true.");
-                decision = true;
+                // FAIL CLOSED. A type this evaluator does not implement carries no meaning it can check, so the rule matches nothing and
+                // grants nothing. Granting here made every retired or mistyped rule row an unconditional allow: deleting type 17 from
+                // TypeNaming did not make its rows inert, it moved them into this branch, and each one hung off a privilege every
+                // authenticated user holds.
+                logger.error(
+                    "_decisionMaker() unsupported access rule type {} on rule {}; refusing to grant", accessRule.getType(),
+                    accessRule.getMergedName().isEmpty() ? accessRule.getName() : accessRule.getMergedName()
+                );
+                decision = false;
         }
 
         if (decision) {

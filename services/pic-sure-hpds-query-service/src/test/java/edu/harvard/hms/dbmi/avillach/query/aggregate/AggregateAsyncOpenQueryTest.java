@@ -72,6 +72,7 @@ class AggregateAsyncOpenQueryTest {
         registry.add("hpds.open-url", () -> "http://localhost:" + hpds.port() + "/PIC-SURE");
         // AggregateBackendClient (study-consents lookup) posts to the open backend root
         registry.add("aggregate.hpds-open-url", () -> "http://localhost:" + hpds.port());
+        registry.add("consent.based.authorization.enabled", () -> false);
     }
 
     @Autowired

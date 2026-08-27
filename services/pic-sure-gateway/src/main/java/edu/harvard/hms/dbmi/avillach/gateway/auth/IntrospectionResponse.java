@@ -12,13 +12,6 @@ public record IntrospectionResponse(
     // sends a "userId" field. Without this alias X-User-Id is never propagated and the query/operations services'
     // header-based authn rejects every request.
     @JsonAlias("uuid") String userId, String sub, String email, String roles, List<String> privileges, Boolean tokenRefreshed, String token,
-    String query, String message
+    String message
 ) {
-
-    public IntrospectionResponse(
-        boolean active, String userId, String sub, String email, String roles, List<String> privileges, Boolean tokenRefreshed,
-        String token, String query
-    ) {
-        this(active, userId, sub, email, roles, privileges, tokenRefreshed, token, query, null);
-    }
 }

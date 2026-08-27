@@ -3,14 +3,15 @@ package edu.harvard.hms.dbmi.avillach.query.query;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -37,18 +38,20 @@ public class HpdsQueryV3Controller {
     @PostMapping("/query")
     public QueryStatus query(
         @PathVariable("backend") String backend, @RequestBody QueryRequest req,
-        @RequestParam(name = "isInstitute", required = false) Boolean isInstitute
+        @RequestParam(name = "isInstitute", required = false) Boolean isInstitute,
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         rejectInstitutionalQuery(isInstitute);
-        return service.queryV3(backend, req);
+        return service.queryV3(backend, req, authorizationHeader);
     }
 
     @PostMapping("/query/sync")
     public ResponseEntity<byte[]> querySync(
         @PathVariable("backend") String backend, @RequestBody QueryRequest req,
-        @RequestHeader(name = "request-source", required = false) String requestSource
+        @RequestHeader(name = "request-source", required = false) String requestSource,
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
-        return syncResponse(service.querySync(backend, req, requestSource));
+        return syncResponse(service.querySync(backend, req, requestSource, authorizationHeader));
     }
 
     @PostMapping("/query/{id}/status")
@@ -58,21 +61,26 @@ public class HpdsQueryV3Controller {
 
     @PostMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     public ResponseEntity<byte[]> result(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req
+        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req,
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
-        return service.queryResult(backend, id, req);
+        return service.queryResult(backend, id, req, authorizationHeader);
     }
 
     @PostMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> signedUrl(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req
+        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req,
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
-        return service.queryResultSignedUrl(backend, id, req);
+        return service.queryResultSignedUrl(backend, id, req, authorizationHeader);
     }
 
-    @GetMapping("/query/{id}/metadata")
-    public QueryStatus metadata(@PathVariable("backend") String backend, @PathVariable("id") UUID id) {
-        return service.queryMetadata(id); // DB-only, backend irrelevant
+    @RequestMapping(path = "/query/{id}/metadata", method = {RequestMethod.GET, RequestMethod.POST})
+    public QueryStatus metadata(
+        @PathVariable("backend") String backend, @PathVariable("id") UUID id,
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) {
+        return service.queryMetadata(backend, id, authorizationHeader);
     }
 
     /**

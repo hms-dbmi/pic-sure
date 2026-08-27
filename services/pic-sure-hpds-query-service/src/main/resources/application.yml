@@ -18,6 +18,16 @@ hpds:
   open-url: ${HPDS_OPEN_URL:}
   open-token: ${HPDS_OPEN_TOKEN:}
 
+psama:
+  base-url: ${PSAMA_URL:}
+  connect-timeout-sec: 2
+  read-timeout-sec: 10
+
+consent:
+  based:
+    authorization:
+      enabled: ${CONSENT_BASED_AUTHORIZATION_ENABLED:true}
+
 picsure:
   query:
     operations:

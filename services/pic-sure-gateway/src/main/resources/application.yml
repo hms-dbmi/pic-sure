@@ -42,9 +42,8 @@ spring:
             # Query-service and operations-service ingress. Unlike the routes
             # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
             # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
-            # /operations/** is served by operations-service, the sole DB owner (also home to
-            # the internal query dispatch API PsamaIntrospectionFilter/QueryAuthFetcher calls for result/signed-url
-            # auth). /operations/configuration/** carries a public-GET carve-out in PublicEndpointPolicy, shared by
+            # /operations/** is served by operations-service, the sole DB owner.
+            # /operations/configuration/** carries a public-GET carve-out in PublicEndpointPolicy, shared by
             # both authentication filters — everything else (POST/PATCH/DELETE, all
             # /operations/configuration/admin/**, and all of /operations/dataset/**) is introspected as usual by the
             # always-on auth chain.
@@ -117,14 +116,6 @@ picsure:
       introspection-url: ${TOKEN_INTROSPECTION_URL:}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}
       service-token: ${TOKEN_INTROSPECTION_TOKEN:}
-      # Same default as the /operations route uri above (and the aio deep-health downstream): this is a
-      # non-secret internal DNS name, not an env-specific secret. It MUST NOT default to empty -- it is the
-      # base URL QueryAuthFetcher GETs for /query/{id}/result and /signed-url authorization, and an empty
-      # value yields a relative URI whose IllegalArgumentException ("URI with undefined scheme") is not a
-      # RestClientException, so it escapes QueryAuthFetcher's fail-closed catches AND the gateway's
-      # PicsureException-only advice, surfacing as a bare 500 on downloads alone.
-      operations-service-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
-      query-service-internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
       # Allowed list of prefixes that do not require authentication. The logging service has its own access key
       # for security. The other paths are publicly available.
       allow-list-prefixes:

@@ -28,16 +28,14 @@ class AuthorizationServiceAuthTargetServiceTest {
         AccessRuleService accessRuleService = mock(AccessRuleService.class);
         SessionService sessionService = mock(SessionService.class);
         RoleService roleService = mock(RoleService.class);
-        ConsentBasedAccessRuleEvaluator consentEvaluator = mock(ConsentBasedAccessRuleEvaluator.class);
         UserConsentsRepository userConsentsRepository = mock(UserConsentsRepository.class);
 
         Role openAccessRole = new Role();
         openAccessRole.setPrivileges(Set.of());
         when(roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME)).thenReturn(openAccessRole);
 
-        authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, consentEvaluator, "fence,okta", userConsentsRepository
-        );
+        authorizationService =
+            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false);
     }
 
     @ParameterizedTest
@@ -64,9 +62,15 @@ class AuthorizationServiceAuthTargetServiceTest {
         assertFalse(authorizationService.openAccessRequestIsValid(validationRequest(targetService)));
     }
 
+    /**
+     * Deny by default reaches open access too. An open-access role with no rules used to grant every path; now it grants none, so an
+     * environment that wants anonymous reads has to say so with a rule. On BDC that rule is {@code AR_ALLOW_HPDS_OPEN_INGRESS}, attached by
+     * migration to {@code MANAGED_PRIV_OPEN_ACCESS}.
+     */
     @Test
-    void anonymousCallerCanReachOpenPathWhenOpenRoleHasNoRules() {
-        assertTrue(authorizationService.openAccessRequestIsValid(validationRequest("/hpds/open/v3/query/sync")));
+    void anonymousCallerIsDeniedOnEveryPathWhenOpenRoleHasNoRules() {
+        assertFalse(authorizationService.openAccessRequestIsValid(validationRequest("/hpds/open/v3/query/sync")));
+        assertFalse(authorizationService.openAccessRequestIsValid(validationRequest("/visualization/open/distributions")));
     }
 
     private static Map<String, Object> validationRequest(String targetService) {

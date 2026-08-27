@@ -6,7 +6,6 @@ import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentBasedAccessRuleEvaluator;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,9 +43,6 @@ public class AuthorizationServiceTest {
     private RoleService roleService;
 
     @MockBean
-    private BdcConsentBasedAccessRuleEvaluator bdcConsentBasedAccessRuleEvaluator;
-
-    @MockBean
     private UserConsentsRepository userConsentsRepository;
 
     @BeforeEach
@@ -55,9 +51,8 @@ public class AuthorizationServiceTest {
         SecurityContextHolder.setContext(securityContext);
 
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
-        authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, bdcConsentBasedAccessRuleEvaluator, "fence,okta,open", userConsentsRepository
-        );
+        authorizationService =
+            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false);
     }
 
     @Test
@@ -184,8 +179,9 @@ public class AuthorizationServiceTest {
         assertFalse(result);
     }
 
+    /** Deny by default: a privilege carrying no access rules grants nothing, so there is nothing for an empty rule set to pass. */
     @Test
-    public void testIsAuthorized_NoRequestBodyWithRulelessPrivilege() {
+    public void testIsAuthorized_RulelessPrivilegeIsDenied() {
         Application application = createTestApplication();
         User user = createTestUser();
         configureUserSecurityContext(user);
@@ -197,7 +193,7 @@ public class AuthorizationServiceTest {
 
         boolean result = authorizationService.isAuthorized(application, null, user, false).result();
 
-        assertTrue(result);
+        assertFalse(result);
     }
 
     @Test

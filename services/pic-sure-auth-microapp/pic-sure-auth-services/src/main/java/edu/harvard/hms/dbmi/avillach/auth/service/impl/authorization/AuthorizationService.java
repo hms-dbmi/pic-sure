@@ -1,8 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
@@ -10,8 +7,6 @@ import edu.harvard.hms.dbmi.avillach.auth.rest.TokenController;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,17 +43,12 @@ public class AuthorizationService {
      * {@code /hpds/auth/v3-query}.
      */
     private static final Pattern AUTH_TARGET_SERVICE_PATTERN = Pattern.compile("^/(hpds|visualization)/auth(/.*)?$");
-    private static final Pattern OPEN_TARGET_SERVICE_PATTERN = Pattern.compile("^/(hpds|visualization)/open(/.*)?$");
-    private static final String EXPECTED_RESULT_TYPE = "expectedResultType";
     static final String NO_CONSENTS_MESSAGE = "User has no consents on file.";
-    static final String MISROUTED_QUERY_MESSAGE = "Query target service does not name an auth or open backend.";
-    static final String UNSPLICEABLE_QUERY_MESSAGE = "Query is outside the gateway spliceable position.";
+    static final String NO_ACCESS_RULES_MESSAGE = "No access rule grants this request.";
 
     protected AccessRuleService accessRuleService;
     protected SessionService sessionService;
     private final RoleService roleService;
-
-    private final ConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator;
 
     /**
      * Applications that have strict access control. If the application is strict a user must have both privileges and access rules. If the
@@ -73,30 +63,18 @@ public class AuthorizationService {
     @Autowired
     public AuthorizationService(
         AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
-        ConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator,
         @Value("${strict.authorization.applications.connections}") String strictConnections, UserConsentsRepository userConsentsRepository,
         @Value("${consent.based.authorization.enabled:true}") boolean consentBasedAuthorizationEnabled
     ) {
         this.accessRuleService = accessRuleService;
         this.sessionService = sessionService;
         this.roleService = roleService;
-        this.consentBasedAccessRuleEvaluator = consentBasedAccessRuleEvaluator;
         if (strictConnections != null && !strictConnections.isEmpty()) {
             this.strictConnections.addAll(Arrays.asList(strictConnections.split(",")));
         }
         this.userConsentsRepository = userConsentsRepository;
         this.consentBasedAuthorizationEnabled = consentBasedAuthorizationEnabled;
         logger.info("Consent-based authorization enabled: {}", consentBasedAuthorizationEnabled);
-    }
-
-    public AuthorizationService(
-        AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
-        ConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator, String strictConnections,
-        UserConsentsRepository userConsentsRepository
-    ) {
-        this(
-            accessRuleService, sessionService, roleService, consentBasedAccessRuleEvaluator, strictConnections, userConsentsRepository, true
-        );
     }
 
     /**
@@ -118,17 +96,17 @@ public class AuthorizationService {
 
         if (user == null) {
             logger.error("isAuthorized() User cannot be null");
-            return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
+            return new EvaluateAccessRuleResult(false, Set.of(), null);
         }
 
         if (StringUtils.isBlank(user.getSubject())) {
             logger.error("isAuthorized() Subject cannot be blank {}", user.getSubject());
-            return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
+            return new EvaluateAccessRuleResult(false, Set.of(), null);
         }
 
         if (!isLongTermToken && sessionService.isSessionExpired(user.getSubject())) {
             logger.error("isAuthorized() Session expired {}", user.getSubject());
-            return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
+            return new EvaluateAccessRuleResult(false, Set.of(), null);
         }
 
         Object authorizationRequest = Objects.requireNonNullElse(requestBody, Map.of());
@@ -149,12 +127,12 @@ public class AuthorizationService {
 
         if (this.strictConnections.contains(label)) {
             accessRules = this.accessRuleService.getAccessRulesForUserAndApp(user, application);
-            if (accessRules.isEmpty() && !requiresAccessRuleForAuthRequest(authorizationRequest)) {
+            if (accessRules.isEmpty()) {
                 logger.info(
                     "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED",
                     user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName
                 );
-                return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
+                return denied(Set.of(), NO_ACCESS_RULES_MESSAGE);
             }
         } else {
             Set<Privilege> privileges = user.getPrivilegesByApplication(application);
@@ -163,21 +141,22 @@ public class AuthorizationService {
                 "ACCESS_LOG ___ {},{},{} ___ has the following privileges: {}", user.getUuid().toString(), user.getEmail(), user.getName(),
                 privileges.stream().map(Privilege::getName).collect(Collectors.joining(", "))
             );
-            if (privileges == null || privileges.isEmpty()) {
+
+            if (privileges.isEmpty()) {
                 logger.info(
                     "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} __ USER HAS NO PRIVILEGES ASSOCIATED TO THE APPLICATION, BUT APPLICATION HAS PRIVILEGES",
                     user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName
                 );
-                return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
+                return new EvaluateAccessRuleResult(false, Set.of(), null);
             }
 
             accessRules = this.accessRuleService.cachedPreProcessAccessRules(user, privileges);
             if (accessRules.isEmpty()) {
                 logger.info(
-                    "ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED",
+                    "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED",
                     user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName
                 );
-                return new EvaluateAccessRuleResult(true, Set.of(), null, Optional.empty());
+                return denied(Set.of(), NO_ACCESS_RULES_MESSAGE);
             }
         }
 
@@ -229,111 +208,28 @@ public class AuthorizationService {
         }
 
         if (passByRule == null) {
-            return new EvaluateAccessRuleResult(false, failedRules, null, Optional.empty());
+            return new EvaluateAccessRuleResult(false, failedRules, null);
         }
 
         String passRuleName = ruleName(passByRule);
-        if (!consentBasedAuthorizationEnabled) {
-            return new EvaluateAccessRuleResult(true, failedRules, passRuleName, Optional.empty());
-        }
-
-        String targetService = targetServiceFrom(requestBody);
-        boolean carriesQuery = containsHpdsQuery(requestBody);
-        if (!isAuthTargetService(targetService)) {
-            if (carriesQuery && !isOpenTargetService(targetService)) {
-                logger.error("Denying query because target service does not name a backend: {}", targetService);
-                return denied(failedRules, MISROUTED_QUERY_MESSAGE);
-            }
-            return new EvaluateAccessRuleResult(true, failedRules, passRuleName, Optional.empty());
-        }
-
-        UserConsents userConsents = user == null ? null : userConsentsRepository.findByUserId(user.getUuid());
-        if (!hasConsents(userConsents)) {
-            logger.warn("Denying auth backend request for user {}: {}", user == null ? null : user.getUuid(), NO_CONSENTS_MESSAGE);
+        if (consentBasedAuthorizationEnabled && user != null && !hasConsents(userConsentsRepository.findByUserId(user.getUuid()))) {
+            logger.warn("Denying request for user {}: {}", user.getUuid(), NO_CONSENTS_MESSAGE);
             return denied(failedRules, NO_CONSENTS_MESSAGE);
         }
-
-        if (!carriesQuery) {
-            return new EvaluateAccessRuleResult(true, failedRules, passRuleName, Optional.empty());
-        }
-
-        Query query = hpdsQueryFrom(requestBody);
-        if (query == null) {
-            logger.error("Denying query on {} because it is outside the gateway spliceable position", targetService);
-            return denied(failedRules, UNSPLICEABLE_QUERY_MESSAGE);
-        }
-
-        Query scopedQuery = consentBasedAccessRuleEvaluator.setAuthorizationFiltersForQuery(userConsents, query);
-        return new EvaluateAccessRuleResult(true, failedRules, passRuleName, Optional.of(scopedQuery));
-    }
-
-    private boolean requiresAccessRuleForAuthRequest(Object requestBody) {
-        return consentBasedAuthorizationEnabled && isAuthTargetService(targetServiceFrom(requestBody));
+        return new EvaluateAccessRuleResult(true, failedRules, passRuleName);
     }
 
     private static EvaluateAccessRuleResult denied(Set<AccessRule> failedRules, String reason) {
-        return new EvaluateAccessRuleResult(false, failedRules, null, Optional.empty(), Optional.of(reason));
+        return new EvaluateAccessRuleResult(false, failedRules, null, Optional.of(reason));
     }
 
     private static String ruleName(AccessRule accessRule) {
         return accessRule.getMergedName().isEmpty() ? accessRule.getName() : accessRule.getMergedName();
     }
 
-    private Query hpdsQueryFrom(Object requestBody) {
-        if (!(requestBody instanceof Map<?, ?> payload) || !(payload.get("query") instanceof Map<?, ?> body)) {
-            return null;
-        }
-        Object queryObject = body.get("query");
-        if (queryObject == null) {
-            return null;
-        }
-        try {
-            if (queryObject instanceof String queryJson) {
-                return queryJson.isBlank() ? null : new ObjectMapper().readValue(queryJson, Query.class);
-            }
-            return new ObjectMapper().convertValue(queryObject, Query.class);
-        } catch (JsonProcessingException | IllegalArgumentException e) {
-            logger.debug("Request body carries a query that is not an HPDS v3 query: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private boolean containsHpdsQuery(Object requestBody) {
-        JsonNode payload;
-        try {
-            payload = new ObjectMapper().valueToTree(requestBody);
-        } catch (IllegalArgumentException e) {
-            logger.error("Request body could not be scanned for a query", e);
-            return true;
-        }
-        if (payload == null || payload.isNull()) {
-            return false;
-        }
-        for (JsonNode candidate : payload.findParents(EXPECTED_RESULT_TYPE)) {
-            if (isResultType(candidate.path(EXPECTED_RESULT_TYPE).asText(null))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean isResultType(String value) {
-        if (value == null) {
-            return false;
-        }
-        return Arrays.stream(ResultType.values()).anyMatch(resultType -> resultType.name().equalsIgnoreCase(value));
-    }
-
     private static boolean hasConsents(UserConsents userConsents) {
         return userConsents != null && userConsents.getConsents() != null
             && userConsents.getConsents().values().stream().filter(Objects::nonNull).anyMatch(consents -> !consents.isEmpty());
-    }
-
-    private static String targetServiceFrom(Object requestBody) {
-        if (requestBody instanceof Map<?, ?> payload && payload.get("Target Service") instanceof String targetService) {
-            return targetService;
-        }
-        return null;
     }
 
     /**
@@ -345,10 +241,6 @@ public class AuthorizationService {
      */
     static boolean isAuthTargetService(String targetService) {
         return targetService != null && AUTH_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
-    }
-
-    static boolean isOpenTargetService(String targetService) {
-        return targetService != null && OPEN_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
     }
 
     public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
@@ -395,8 +287,8 @@ public class AuthorizationService {
 
         boolean result = false;
         if (allOpenAccessRules.isEmpty()) {
-            result = true;
-            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been granted access to application ___ NO ACCESS RULES EVALUATED");
+            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ NO ACCESS RULES EVALUATED");
+            return false;
         } else {
             EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(requestBody, allOpenAccessRules, null);
             result = evaluationResult.result();

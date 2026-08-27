@@ -11,7 +11,7 @@ import java.util.UUID;
  * transition to {@code AVAILABLE} respectively (precision follows the legacy DATE columns).
  *
  * <p>Deliberately distinct from the gateway-only dispatch payload ({@code {queryJson: "..."}}), which excludes everything here except the
- * (auth-mutated) query body -- see {@code InternalQueryController#dispatch}.
+ * query body, including any consent filters HQS applied before persistence. See {@code InternalQueryController#dispatch}.
  */
 public record StoredQuery(
     UUID picsureId, String query, String resourceResultId, String status, String version, String metadata, Long startTime, Long readyTime

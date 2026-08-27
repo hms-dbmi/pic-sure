@@ -90,6 +90,21 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void stripsReservedServiceClientTypeFromExternalRequests() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user/me/consents");
+        request.addHeader("x-client-type", "SERVICE");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        HttpServletRequest wrapped = captured.get();
+        assertThat(wrapped.getHeader("X-Client-Type")).isNull();
+        assertThat(wrapped.getHeaders("x-client-type").hasMoreElements()).isFalse();
+        assertThat(Collections.list(wrapped.getHeaderNames())).doesNotContain("x-client-type");
+    }
+
+    @Test
     void headerStrippingIsCaseInsensitive() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
         request.addHeader("x-user-privileges", "SYSTEM,ADMIN");

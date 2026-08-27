@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
@@ -64,6 +65,8 @@ public class TokenServiceTest {
         SecurityContextHolder.setContext(securityContext);
         when(securityContext.getAuthentication()).thenReturn(authentication);
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
+        when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
+            .thenReturn(new EvaluateAccessRuleResult(true, Set.of(), "test-rule"));
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         tokenService = new TokenService(authorizationService, userRepository, 1000L * 60 * 60, jwtUtil, sessionService, userService);
     }
@@ -107,14 +110,54 @@ public class TokenServiceTest {
         inputMap.put("request", Map.of("Target Service", "/hpds/auth/v3/query/sync"));
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean())).thenReturn(
-            new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty(), Optional.of("User has no consents on file."))
-        );
+        when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
+            .thenReturn(new EvaluateAccessRuleResult(false, Set.of(), null, Optional.of("User has no consents on file.")));
 
         Map<String, Object> response = tokenService.inspectToken(inputMap);
 
         assertFalse((Boolean) response.get("active"));
         assertEquals("User has no consents on file.", response.get("message"));
+    }
+
+    @Test
+    public void testInspectToken_neverReturnsQuery() {
+        Application application = createTestApplication();
+        configureApplicationSecurityContext(application);
+
+        User user = createTestUser();
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("sub", user.getSubject());
+        String token = jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, user.getSubject(), testTokenExpiration);
+        Map<String, Object> inputMap = new HashMap<>();
+        inputMap.put("token", token);
+        inputMap.put("request", Map.of("Target Service", "/hpds/auth/v3/query/sync", "Query", Map.of("secret", "value")));
+
+        when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
+
+        Map<String, Object> response = tokenService.inspectToken(inputMap);
+
+        assertFalse(response.containsKey("query"));
+    }
+
+    @Test
+    public void testInspectToken_applicationWithoutPrivilegesStillRequiresAccessRuleEvaluation() {
+        Application application = createTestApplication();
+        configureApplicationSecurityContext(application);
+        User user = createTestUser();
+        Map<String, Object> claims = Map.of("sub", user.getSubject());
+        String token = jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, user.getSubject(), testTokenExpiration);
+        Map<String, Object> inputMap = new HashMap<>();
+        inputMap.put("token", token);
+        inputMap.put("request", Map.of("Target Service", "/hpds/auth/v3/query/sync"));
+        when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
+        when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
+            .thenReturn(new EvaluateAccessRuleResult(false, Set.of(), null, Optional.of("No access rule grants this request.")));
+
+        Map<String, Object> response = tokenService.inspectToken(inputMap);
+
+        assertFalse((Boolean) response.get("active"));
+        assertEquals("No access rule grants this request.", response.get("message"));
+        verify(authorizationService).isAuthorized(application, Map.of("Target Service", "/hpds/auth/v3/query/sync"), user, false);
     }
 
     @Test
@@ -215,6 +258,7 @@ public class TokenServiceTest {
             "whatever", "edu.harvard.hms.dbmi.psama", claims, AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + claims.get("sub").toString(),
             testTokenExpiration
         );
+        user.setToken(token);
 
         inputMap.put("token", token);
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);

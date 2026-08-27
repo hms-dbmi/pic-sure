@@ -167,24 +167,11 @@ public class TokenService {
         }
 
         // Authorize token based on application privileges
-        if (application.getPrivileges() == null || application.getPrivileges().isEmpty()) {
-            isAuthorizationPassed = true;
-            logger.info(
-                "ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO APP PRIVILEGES DEFINED",
-                user.getUuid(), user.getEmail(), user.getName(), inputMap.get("request"), application.getName()
-            );
-        } else if (!isLongTermTokenCompromised && user.getRoles() != null) {
+        if (!isLongTermTokenCompromised && user.getRoles() != null) {
             EvaluateAccessRuleResult evaluateAccessRuleResult =
                 authorizationService.isAuthorized(application, inputMap.get("request"), user, isLongTermToken);
             isAuthorizationPassed = evaluateAccessRuleResult.result();
             errorMsg = evaluateAccessRuleResult.denialReason().orElse(null);
-            evaluateAccessRuleResult.query().ifPresent(query -> {
-                try {
-                    tokenInspection.addField("query", new ObjectMapper().writeValueAsString(query));
-                } catch (JsonProcessingException e) {
-                    throw new RuntimeException(e);
-                }
-            });
         } else if (!isLongTermTokenCompromised) {
             errorMsg = "User doesn't have enough privileges.";
         }
