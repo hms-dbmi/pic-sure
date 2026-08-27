@@ -8,6 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,6 +66,21 @@ class BannerControllerTest {
     }
 
     @Test
+    void duplicatePrioritiesAreOrderedByUuid() throws Exception {
+        List<BannerOccurrence> saved = repository.saveAll(
+            List.of(
+                banner(10, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Duplicate A"),
+                banner(10, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Duplicate B")
+            )
+        );
+        List<String> expectedIds =
+            saved.stream().map(BannerOccurrence::getUuid).sorted(Comparator.comparing(UUID::toString)).map(UUID::toString).toList();
+
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(2)))
+            .andExpect(jsonPath("$[0].uuid").value(expectedIds.get(0))).andExpect(jsonPath("$[1].uuid").value(expectedIds.get(1)));
+    }
+
+    @Test
     void otherBannerPathsAreNotAnonymous() throws Exception {
         mockMvc.perform(get("/banners")).andExpect(status().isForbidden());
     }
@@ -81,6 +100,7 @@ class BannerControllerTest {
 
         @Bean
         @Primary
+        @Qualifier("bannerClock")
         Clock fixedClock() {
             return Clock.fixed(NOW, ZoneOffset.UTC);
         }
