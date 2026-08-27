@@ -109,8 +109,7 @@ class BannerRouteTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(403);
         operationsStub.verify(
-            postRequestedFor(urlEqualTo("/operations/banners"))
-                .withHeader("X-User-Id", equalTo("researcher-id"))
+            postRequestedFor(urlEqualTo("/operations/banners")).withHeader("X-User-Id", equalTo("researcher-id"))
                 .withHeader("X-User-Privileges", equalTo("PIC_SURE_ANY_QUERY"))
         );
     }

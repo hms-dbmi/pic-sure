@@ -20,8 +20,8 @@ class BannerPresentationHasherTest {
         PublishBannerRequest changedHtmlBytes =
             request("<p>Exact bytes</p>", "Notice", "[{\"kind\":\"ALL\"},{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
 
-        assertThat(hasher.hash(first)).isEqualTo(hasher.hash(sameMeaning)).matches("[0-9a-f]{64}");
-        assertThat(hasher.hash(changedHtmlBytes)).isNotEqualTo(hasher.hash(first));
+        assertThat(hash(first)).isEqualTo(hash(sameMeaning)).matches("[0-9a-f]{64}");
+        assertThat(hash(changedHtmlBytes)).isNotEqualTo(hash(first));
     }
 
     @Test
@@ -45,11 +45,18 @@ class BannerPresentationHasherTest {
         );
         PublishBannerRequest changedTargets = request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
 
-        assertThat(hasher.hash(changedAppearance)).isNotEqualTo(hasher.hash(original));
-        assertThat(hasher.hash(changedIcon)).isNotEqualTo(hasher.hash(original));
-        assertThat(hasher.hash(changedDismissibility)).isNotEqualTo(hasher.hash(original));
-        assertThat(hasher.hash(changedAudience)).isNotEqualTo(hasher.hash(original));
-        assertThat(hasher.hash(changedTargets)).isNotEqualTo(hasher.hash(original));
+        assertThat(hash(changedAppearance)).isNotEqualTo(hash(original));
+        assertThat(hash(changedIcon)).isNotEqualTo(hash(original));
+        assertThat(hash(changedDismissibility)).isNotEqualTo(hash(original));
+        assertThat(hash(changedAudience)).isNotEqualTo(hash(original));
+        assertThat(hash(changedTargets)).isNotEqualTo(hash(original));
+    }
+
+    private String hash(PublishBannerRequest request) {
+        return hasher.hash(
+            request.htmlContent(), request.title(), request.appearance(), request.icon(), request.dismissible(), request.audience(),
+            request.placement(), request.pageTargets()
+        );
     }
 
     private PublishBannerRequest request(String html, String title, String pageTargets) throws Exception {

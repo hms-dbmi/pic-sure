@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -29,11 +30,13 @@ public class BannerPresentationHasher {
         this.objectMapper = objectMapper;
     }
 
-    public String hash(PublishBannerRequest request) {
+    public String hash(
+        String htmlContent, String title, BannerAppearance appearance, BannerIcon icon, boolean dismissible, BannerAudience audience,
+        BannerPlacement placement, JsonNode pageTargets
+    ) {
         List<String> fields = List.of(
-            request.htmlContent(), normalizeTitle(request.title()), request.appearance().name(), request.icon().name(),
-            Boolean.toString(request.dismissible()), request.audience().name(), request.placement().name(),
-            canonicalJson(request.pageTargets())
+            htmlContent, normalizeTitle(title), appearance.name(), icon.name(), Boolean.toString(dismissible), audience.name(),
+            placement.name(), canonicalJson(pageTargets)
         );
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -44,7 +47,7 @@ public class BannerPresentationHasher {
                     output.write(encoded);
                 }
             }
-            return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
         } catch (IOException | NoSuchAlgorithmException e) {
             throw new IllegalStateException("Unable to compute banner presentation hash", e);
         }
