@@ -30,13 +30,11 @@ public class BannerPresentationHasher {
         this.objectMapper = objectMapper;
     }
 
-    public String hash(
-        String htmlContent, String title, BannerAppearance appearance, BannerIcon icon, boolean dismissible, BannerAudience audience,
-        BannerPlacement placement, JsonNode pageTargets
-    ) {
+    public String hash(BannerOccurrence banner) {
         List<String> fields = List.of(
-            htmlContent, normalizeTitle(title), appearance.name(), icon.name(), Boolean.toString(dismissible), audience.name(),
-            placement.name(), canonicalJson(pageTargets)
+            banner.getHtmlContent(), normalizeTitle(banner.getTitle()), banner.getAppearance().name(), banner.getIcon().name(),
+            Boolean.toString(banner.isDismissible()), banner.getAudience().name(), banner.getPlacement().name(),
+            canonicalJson(banner.getPageTargets())
         );
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();

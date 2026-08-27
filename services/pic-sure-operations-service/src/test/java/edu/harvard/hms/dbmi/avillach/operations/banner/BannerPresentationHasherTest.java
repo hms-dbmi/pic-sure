@@ -20,7 +20,8 @@ class BannerPresentationHasherTest {
         PublishBannerRequest changedHtmlBytes =
             request("<p>Exact bytes</p>", "Notice", "[{\"kind\":\"ALL\"},{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
 
-        assertThat(hash(first)).isEqualTo(hash(sameMeaning)).matches("[0-9a-f]{64}");
+        assertThat(hash(first)).isEqualTo(hash(sameMeaning))
+            .isEqualTo("496c6e461a6c0d60a52ad4049d5c71834d2a5fdbe0cd06b537311016ecf672b9");
         assertThat(hash(changedHtmlBytes)).isNotEqualTo(hash(first));
     }
 
@@ -52,11 +53,22 @@ class BannerPresentationHasherTest {
         assertThat(hash(changedTargets)).isNotEqualTo(hash(original));
     }
 
+    @Test
+    void occurrenceFieldsCannotBeTransposedAtTheHashCallSite() throws Exception {
+        BannerOccurrence original = occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]"));
+        BannerOccurrence transposed = occurrence(request("Title", "<p>Content</p>", "[{\"kind\":\"ALL\"}]"));
+
+        assertThat(hasher.hash(original)).isNotEqualTo(hasher.hash(transposed));
+    }
+
     private String hash(PublishBannerRequest request) {
-        return hasher.hash(
-            request.htmlContent(), request.title(), request.appearance(), request.icon(), request.dismissible(), request.audience(),
-            request.placement(), request.pageTargets()
-        );
+        return hasher.hash(occurrence(request));
+    }
+
+    private BannerOccurrence occurrence(PublishBannerRequest request) {
+        return new BannerOccurrence().setHtmlContent(request.htmlContent()).setTitle(request.title()).setAppearance(request.appearance())
+            .setIcon(request.icon()).setDismissible(request.dismissible()).setAudience(request.audience()).setPlacement(request.placement())
+            .setPageTargets(request.pageTargets());
     }
 
     private PublishBannerRequest request(String html, String title, String pageTargets) throws Exception {

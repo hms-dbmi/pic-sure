@@ -46,12 +46,8 @@ public class BannerService {
             .setTitle(normalizedTitle.isEmpty() ? null : normalizedTitle).setAppearance(request.appearance()).setIcon(request.icon())
             .setDismissible(request.dismissible()).setAudience(request.audience()).setPlacement(request.placement())
             .setPageTargets(request.pageTargets().deepCopy()).setStartAt(now).setPriority(repository.findMaximumOrderablePriority(now) + 1)
-            .setPresentationHash(
-                hasher.hash(
-                    request.htmlContent(), request.title(), request.appearance(), request.icon(), request.dismissible(), request.audience(),
-                    request.placement(), request.pageTargets()
-                )
-            ).setCreatedAt(now).setCreatedBy(actor).setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor);
+            .setCreatedAt(now).setCreatedBy(actor).setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor);
+        banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         auditService.registerPublicationAudit(saved.getUuid(), now, saved.getPresentationHash(), actor);
         return BannerDto.from(saved);
