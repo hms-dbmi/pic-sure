@@ -115,8 +115,6 @@ public class AuthorizationService {
      */
     public EvaluateAccessRuleResult isAuthorized(Application application, Object requestBody, User user, boolean isLongTermToken) {
         String applicationName = application.getName();
-        String resourceId = "null";
-        String targetService = "null";
 
         if (user == null) {
             logger.error("isAuthorized() User cannot be null");
@@ -133,40 +131,13 @@ public class AuthorizationService {
             return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
         }
 
-        // in some cases, we don't go through the evaluation
-        if (requestBody == null) {
-            logger.debug(
-                "ACCESS_LOG ___ {},{},{} ___ has been granted access to application ___ {} ___ NO REQUEST BODY FORWARDED BY APPLICATION",
-                user.getUuid().toString(), user.getEmail(), user.getName(), applicationName
-            );
-            return new EvaluateAccessRuleResult(true, Set.of(), null, Optional.empty());
-        }
-
-        try {
-            Map requestBodyMap = (Map) requestBody;
-            Map queryMap = (Map) requestBodyMap.get("query");
-            resourceId = (String) queryMap.get("resourceUUID");
-            targetService = (String) queryMap.get("Target Service");
-        } catch (RuntimeException e) {
-            logger.debug("Error parsing resource and target service from request body.");
-        }
-
-        String formattedQuery;
-        try {
-            formattedQuery = (String) ((Map) requestBody).get("formattedQuery");
-
-            if (formattedQuery == null) {
-                // fallback in case no formatted query info present
-                formattedQuery = new ObjectMapper().writeValueAsString(requestBody);
-            }
-
-        } catch (ClassCastException | JsonProcessingException e1) {
-            logger.debug(
-                "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ UNABLE TO PARSE REQUEST",
-                user.getUuid().toString(), user.getEmail(), user.getName(), requestBody, applicationName
-            );
-            logger.debug("isAuthorized() Stack Trace: ", e1);
-            return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
+        Object authorizationRequest = Objects.requireNonNullElse(requestBody, Map.of());
+        String formattedQuery = authorizationRequest.toString();
+        if (
+            authorizationRequest instanceof Map<?, ?> requestMap
+                && requestMap.get("formattedQuery") instanceof String providedFormattedQuery
+        ) {
+            formattedQuery = providedFormattedQuery;
         }
 
         Set<AccessRule> accessRules;
@@ -178,7 +149,7 @@ public class AuthorizationService {
 
         if (this.strictConnections.contains(label)) {
             accessRules = this.accessRuleService.getAccessRulesForUserAndApp(user, application);
-            if (accessRules.isEmpty() && !requiresAccessRuleForAuthRequest(requestBody)) {
+            if (accessRules.isEmpty() && !requiresAccessRuleForAuthRequest(authorizationRequest)) {
                 logger.info(
                     "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED",
                     user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName
@@ -215,7 +186,7 @@ public class AuthorizationService {
             accessRules.stream().map(AccessRule::toString).collect(Collectors.joining(", "))
         );
 
-        EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(requestBody, accessRules, user);
+        EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(authorizationRequest, accessRules, user);
         boolean result = evaluationResult.result();
         String passRuleName = evaluationResult.passRuleName();
         Set<AccessRule> failedRules = evaluationResult.failedRules();
