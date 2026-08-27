@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -202,6 +203,11 @@ public class AuthorizationServiceTest {
         AR_Fields_IS_NOT_EMPTY.setName("AR_Fields_IS_EMPTY");
         AR_Fields_IS_NOT_EMPTY.setRule("$.queries..fields.*");
         AR_Fields_IS_NOT_EMPTY.setType(AccessRule.TypeNaming.IS_NOT_EMPTY);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     @BeforeEach

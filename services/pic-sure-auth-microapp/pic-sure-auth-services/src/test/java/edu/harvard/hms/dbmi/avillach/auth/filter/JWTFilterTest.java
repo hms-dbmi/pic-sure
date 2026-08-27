@@ -13,6 +13,7 @@ import io.jsonwebtoken.Jws;
 import jakarta.servlet.FilterChain;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -26,6 +27,7 @@ import static org.mockito.Mockito.when;
 
 class JWTFilterTest {
 
+    @BeforeEach
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
