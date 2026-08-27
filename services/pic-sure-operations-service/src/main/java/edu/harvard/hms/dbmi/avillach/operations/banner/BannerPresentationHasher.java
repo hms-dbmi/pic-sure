@@ -31,10 +31,14 @@ public class BannerPresentationHasher {
     }
 
     public String hash(BannerOccurrence banner) {
+        if (banner == null) {
+            throw new IllegalArgumentException("Banner occurrence is required");
+        }
         List<String> fields = List.of(
-            banner.getHtmlContent(), normalizeTitle(banner.getTitle()), banner.getAppearance().name(), banner.getIcon().name(),
-            Boolean.toString(banner.isDismissible()), banner.getAudience().name(), banner.getPlacement().name(),
-            canonicalJson(banner.getPageTargets())
+            required(banner.getHtmlContent(), "htmlContent"), normalizeTitle(banner.getTitle()),
+            required(banner.getAppearance(), "appearance").name(), required(banner.getIcon(), "icon").name(),
+            Boolean.toString(banner.isDismissible()), required(banner.getAudience(), "audience").name(),
+            required(banner.getPlacement(), "placement").name(), canonicalJson(required(banner.getPageTargets(), "pageTargets"))
         );
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -53,6 +57,13 @@ public class BannerPresentationHasher {
 
     static String normalizeTitle(String title) {
         return title == null ? "" : title.strip();
+    }
+
+    private static <T> T required(T value, String field) {
+        if (value == null) {
+            throw new IllegalArgumentException("Banner " + field + " is required");
+        }
+        return value;
     }
 
     private String canonicalJson(JsonNode value) {

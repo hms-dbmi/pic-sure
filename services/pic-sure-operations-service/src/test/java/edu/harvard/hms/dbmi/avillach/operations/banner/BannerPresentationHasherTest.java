@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import org.junit.jupiter.api.Test;
 
@@ -54,11 +55,25 @@ class BannerPresentationHasherTest {
     }
 
     @Test
-    void occurrenceFieldsCannotBeTransposedAtTheHashCallSite() throws Exception {
+    void presentationFieldOrderChangesTheDigest() throws Exception {
         BannerOccurrence original = occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]"));
         BannerOccurrence transposed = occurrence(request("Title", "<p>Content</p>", "[{\"kind\":\"ALL\"}]"));
 
         assertThat(hasher.hash(original)).isNotEqualTo(hasher.hash(transposed));
+    }
+
+    @Test
+    void requiredPresentationFieldsFailWithClearErrors() throws Exception {
+        assertMissing("htmlContent", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setHtmlContent(null));
+        assertMissing("appearance", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setAppearance(null));
+        assertMissing("icon", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setIcon(null));
+        assertMissing("audience", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setAudience(null));
+        assertMissing("placement", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setPlacement(null));
+        assertMissing("pageTargets", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setPageTargets(null));
+    }
+
+    private void assertMissing(String field, BannerOccurrence occurrence) {
+        assertThatIllegalArgumentException().isThrownBy(() -> hasher.hash(occurrence)).withMessage("Banner " + field + " is required");
     }
 
     private String hash(PublishBannerRequest request) {
