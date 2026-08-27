@@ -39,9 +39,11 @@ import jakarta.servlet.http.HttpServlet;
 class AuditFilterOrderTest {
 
     private static GatewaySecurityProperties props(boolean openAccessEnabled) {
+        // No open-path prefixes and null timeouts keep this suite on the behavior it was written against: the open
+        // fast path triggers on token absence only, and the auth clients fall back to the default 2s/10s bounds.
         return new GatewaySecurityProperties(
-            List.of(), openAccessEnabled, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token",
-            "http://operations.local", "internal-token"
+            List.of(), List.of(), openAccessEnabled, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token",
+            "http://operations.local", "internal-token", null, null
         );
     }
 
