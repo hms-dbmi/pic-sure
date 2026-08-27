@@ -14,12 +14,12 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,6 +73,7 @@ class BannerControllerTest {
                 banner(10, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Duplicate B")
             )
         );
+        // Canonical UUID text order matches BINARY(16) unsigned byte order; this detects mapping or ordering-semantics changes.
         List<String> expectedIds =
             saved.stream().map(BannerOccurrence::getUuid).sorted(Comparator.comparing(UUID::toString)).map(UUID::toString).toList();
 
