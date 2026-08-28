@@ -25,19 +25,23 @@ public class BannerAuditService {
     }
 
     public void registerPublicationAudit(UUID bannerUuid, Instant timestamp, String presentationHash, String actor) {
+        registerMutationAudit("banner.published", bannerUuid, timestamp, presentationHash, actor);
+    }
+
+    public void registerMutationAudit(String action, UUID bannerUuid, Instant timestamp, String presentationHash, String actor) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 try {
                     loggingClient.send(
-                        LoggingEvent.builder("BANNER").action("banner.published").caller(actor).metadata(
+                        LoggingEvent.builder("BANNER").action(action).caller(actor).metadata(
                             Map.of(
                                 "bannerUuid", bannerUuid.toString(), "timestamp", timestamp.toString(), "presentationHash", presentationHash
                             )
                         ).build()
                     );
                 } catch (RuntimeException e) {
-                    LOG.warn("Banner {} was published, but its audit event could not be queued", bannerUuid, e);
+                    LOG.warn("Banner {} was changed, but its {} audit event could not be queued", bannerUuid, action, e);
                 }
             }
         });

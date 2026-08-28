@@ -52,7 +52,7 @@ class BannerAuditTransactionTest {
 
     @Test
     void publishesOneAuditEventOnlyAfterTheDatabaseTransactionCommits() throws Exception {
-        BannerDto[] published = new BannerDto[1];
+        ManagementBannerDto[] published = new ManagementBannerDto[1];
 
         transactions.executeWithoutResult(status -> {
             published[0] = service.publish(request(), ADMIN);
@@ -92,6 +92,33 @@ class BannerAuditTransactionTest {
 
         assertThat(repository.count()).isOne();
         verify(loggingClient).send(any());
+    }
+
+    @Test
+    void savingAndUpdatingADraftEmitOneConciseEventEach() throws Exception {
+        ManagementBannerDto[] saved = new ManagementBannerDto[1];
+
+        transactions.executeWithoutResult(status -> saved[0] = service.saveDraft(request(), ADMIN));
+
+        ArgumentCaptor<LoggingEvent> saveEvent = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(saveEvent.capture());
+        assertThat(saveEvent.getValue().getAction()).isEqualTo("banner.saved");
+        assertThat(saveEvent.getValue().getMetadata()).containsKeys("bannerUuid", "timestamp", "presentationHash");
+        assertThat(objectMapper.writeValueAsString(saveEvent.getValue())).doesNotContain("Committed banner");
+
+        reset(loggingClient);
+        PublishBannerRequest updated = new PublishBannerRequest(
+            "<p>Updated draft</p>", "Updated", BannerAppearance.WARNING, BannerIcon.WARNING, false, BannerAudience.SIGNED_IN,
+            BannerPlacement.SITE_TOP, objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL"))
+        );
+
+        transactions.executeWithoutResult(status -> service.updateDraft(saved[0].uuid(), updated, ADMIN));
+
+        ArgumentCaptor<LoggingEvent> updateEvent = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(updateEvent.capture());
+        assertThat(updateEvent.getValue().getAction()).isEqualTo("banner.updated");
+        assertThat(updateEvent.getValue().getMetadata()).containsKeys("bannerUuid", "timestamp", "presentationHash");
+        assertThat(objectMapper.writeValueAsString(updateEvent.getValue())).doesNotContain("Updated draft");
     }
 
     private PublishBannerRequest request() {

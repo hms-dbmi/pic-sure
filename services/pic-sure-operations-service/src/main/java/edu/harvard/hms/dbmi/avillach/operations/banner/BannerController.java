@@ -1,10 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -28,9 +31,30 @@ public class BannerController {
         return service.activeBanners();
     }
 
+    @GetMapping
+    public List<ManagementBannerDto> managedBanners() {
+        return service.managedBanners();
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public BannerDto publish(GatewayUser user, @Valid @RequestBody PublishBannerRequest request) {
+    public ManagementBannerDto publish(GatewayUser user, @Valid @RequestBody PublishBannerRequest request) {
         return service.publish(request, user);
+    }
+
+    @PostMapping("/saved")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ManagementBannerDto saveDraft(GatewayUser user, @Valid @RequestBody PublishBannerRequest request) {
+        return service.saveDraft(request, user);
+    }
+
+    @PutMapping("/{uuid}")
+    public ManagementBannerDto updateDraft(GatewayUser user, @PathVariable UUID uuid, @Valid @RequestBody PublishBannerRequest request) {
+        return service.updateDraft(uuid, request, user);
+    }
+
+    @PostMapping("/{uuid}/publish")
+    public ManagementBannerDto publishDraft(GatewayUser user, @PathVariable UUID uuid, @Valid @RequestBody PublishBannerRequest request) {
+        return service.publishDraft(uuid, request, user);
     }
 }

@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -51,6 +52,9 @@ class BannerControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private BannerPresentationHasher hasher;
 
     @MockitoBean
     private LoggingClient loggingClient;
@@ -154,9 +158,92 @@ class BannerControllerTest {
             .andExpect(jsonPath("$.presentationHash").value(org.hamcrest.Matchers.matchesPattern("[0-9a-f]{64}")));
     }
 
+    @Test
+    void savesUpdatesAndPublishesADraftAsTheSameOccurrence() throws Exception {
+        String savedJson = mockMvc.perform(adminPost("/banners/saved", publishRequest("<p>Draft copy</p>", " Draft ")))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("SAVED")).andExpect(jsonPath("$.title").value("Draft"))
+            .andExpect(jsonPath("$.startAt").doesNotExist()).andExpect(jsonPath("$.priority").doesNotExist())
+            .andExpect(jsonPath("$.publishedAt").doesNotExist()).andReturn().getResponse().getContentAsString();
+        UUID uuid = UUID.fromString(objectMapper.readTree(savedJson).get("uuid").asText());
+
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
+
+        mockMvc
+            .perform(
+                put("/banners/{uuid}", uuid).header(GatewayUserResolver.HEADER_USER_ID, "super-id")
+                    .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
+                    .content(publishRequest("<p>Updated draft copy</p>", "Updated draft"))
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.uuid").value(uuid.toString())).andExpect(jsonPath("$.status").value("SAVED"))
+            .andExpect(jsonPath("$.htmlContent").value("<p>Updated draft copy</p>")).andExpect(jsonPath("$.updatedBy").value("super-id"));
+
+        mockMvc
+            .perform(
+                post("/banners/{uuid}/publish", uuid).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                    .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
+                    .content(publishRequest("<p>Published draft copy</p>", "Published draft"))
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.uuid").value(uuid.toString()))
+            .andExpect(jsonPath("$.status").value("PUBLISHED")).andExpect(jsonPath("$.startAt").value(NOW.toString()))
+            .andExpect(jsonPath("$.htmlContent").value("<p>Published draft copy</p>"))
+            .andExpect(jsonPath("$.publishedBy").value("admin-id"));
+
+        BannerOccurrence promoted = repository.findById(uuid).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(promoted.getPresentationHash()).isEqualTo(hasher.hash(promoted));
+
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+            .andExpect(jsonPath("$[0].uuid").value(uuid.toString()))
+            .andExpect(jsonPath("$[0].htmlContent").value("<p>Published draft copy</p>"));
+    }
+
+    @Test
+    void managementListExcludesArchivedAndReturnsDerivedLifecycle() throws Exception {
+        repository.save(banner(1, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Active"));
+        repository.save(banner(2, BannerStatus.PUBLISHED, NOW.plusSeconds(60), null, "Scheduled"));
+        repository.save(banner(3, BannerStatus.PUBLISHED, NOW.minusSeconds(120), NOW, "Expired"));
+        repository.save(banner(null, BannerStatus.SAVED, null, null, "Saved"));
+        repository.save(banner(null, BannerStatus.DISABLED, NOW.minusSeconds(120), null, "Disabled"));
+        repository.save(banner(null, BannerStatus.ARCHIVED, NOW.minusSeconds(120), null, "Archived"));
+
+        mockMvc
+            .perform(
+                get("/banners").header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                    .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN")
+            ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(5)))
+            .andExpect(jsonPath("$[?(@.title == 'Active')].lifecycle").value("ACTIVE"))
+            .andExpect(jsonPath("$[?(@.title == 'Scheduled')].lifecycle").value("SCHEDULED"))
+            .andExpect(jsonPath("$[?(@.title == 'Expired')].lifecycle").value("EXPIRED"))
+            .andExpect(jsonPath("$[?(@.title == 'Saved')].lifecycle").value("SAVED"))
+            .andExpect(jsonPath("$[?(@.title == 'Disabled')].lifecycle").value("DISABLED"))
+            .andExpect(jsonPath("$[?(@.title == 'Archived')]").isEmpty());
+    }
+
+    @Test
+    void onlySavedOccurrencesCanBeUpdatedOrPromoted() throws Exception {
+        BannerOccurrence published = repository.save(banner(1, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Published"));
+
+        mockMvc.perform(
+            put("/banners/{uuid}", published.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
+                .content(publishRequest("<p>Changed</p>", null))
+        ).andExpect(status().isConflict());
+        mockMvc.perform(
+            post("/banners/{uuid}/publish", published.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
+                .content(publishRequest("<p>Changed</p>", null))
+        ).andExpect(status().isConflict());
+        mockMvc.perform(
+            post("/banners/{uuid}/publish", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
+                .content(publishRequest("<p>Changed</p>", null))
+        ).andExpect(status().isNotFound());
+    }
+
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPost(String content) {
-        return post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
-            .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON).content(content);
+        return adminPost("/banners", content);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPost(String path, String content) {
+        return post(path).header(GatewayUserResolver.HEADER_USER_ID, "admin-id").header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN")
+            .contentType(MediaType.APPLICATION_JSON).content(content);
     }
 
     private String publishRequest(String htmlContent, String title) throws Exception {
@@ -168,7 +255,7 @@ class BannerControllerTest {
         );
     }
 
-    private static BannerOccurrence banner(int priority, BannerStatus status, Instant startAt, Instant endAt, String title) {
+    private static BannerOccurrence banner(Integer priority, BannerStatus status, Instant startAt, Instant endAt, String title) {
         return new BannerOccurrence().setStatus(status).setHtmlContent("<p>" + title + " content</p>").setTitle(title)
             .setAppearance(BannerAppearance.PRIMARY).setIcon(BannerIcon.INFORMATION).setDismissible(true)
             .setAudience(BannerAudience.EVERYONE).setPlacement(BannerPlacement.SITE_TOP)

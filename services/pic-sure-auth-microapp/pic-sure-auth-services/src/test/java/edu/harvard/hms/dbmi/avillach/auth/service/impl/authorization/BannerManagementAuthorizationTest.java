@@ -44,7 +44,7 @@ class BannerManagementAuthorizationTest {
 
     @Test
     void bannerManagementRequiresTheApplicationScopedAdminPrivilege() {
-        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", "^/operations/banners/?$");
+        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", "^/operations/banners(?:/.*)?/?$");
         Privilege globalAdmin = privilege("ADMIN", null, bannerRoute);
         Privilege scopedBannerManagement = privilege("BANNER_MANAGEMENT", picsure, bannerRoute);
         Privilege ordinaryQuery = privilege("PIC_SURE_ANY_QUERY", picsure, routeRule("AR_QUERY", "^/query(/.*)?$"));
@@ -53,6 +53,12 @@ class BannerManagementAuthorizationTest {
         assertThat(authorizationService.isAuthorized(picsure, request, user(globalAdmin, scopedBannerManagement), false).result()).isTrue();
         assertThat(authorizationService.isAuthorized(picsure, request, user(ordinaryQuery), false).result()).isFalse();
         assertThat(authorizationService.isAuthorized(picsure, request, user(globalAdmin), false).result()).isFalse();
+        assertThat(
+            authorizationService.isAuthorized(
+                picsure, Map.of("Target Service", "/operations/banners/00000000-0000-0000-0000-000000000001/publish"),
+                user(scopedBannerManagement), false
+            ).result()
+        ).isTrue();
     }
 
     private AccessRule routeRule(String name, String value) {
