@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,6 +21,7 @@ public class BannerAuditService {
     static final String UPDATED_ACTION = "banner.updated";
     static final String PUBLISHED_ACTION = "banner.published";
     static final String SCHEDULED_ACTION = "banner.scheduled";
+    static final String REORDERED_ACTION = "banner.reordered";
 
     private static final Logger LOG = LoggerFactory.getLogger(BannerAuditService.class);
 
@@ -47,14 +49,25 @@ public class BannerAuditService {
         registerAfterCommit(event, bannerUuid, UPDATED_ACTION);
     }
 
+    public void registerReorderAudit(List<UUID> bannerUuids, Instant timestamp, String actor) {
+        List<String> orderedUuids = bannerUuids.stream().map(UUID::toString).toList();
+        LoggingEvent event = LoggingEvent.builder("BANNER").action(REORDERED_ACTION).caller(actor)
+            .metadata(Map.of("bannerUuids", orderedUuids, "timestamp", timestamp.toString())).build();
+        registerAfterCommit(event, "queue", REORDERED_ACTION);
+    }
+
     private void registerAfterCommit(LoggingEvent event, UUID bannerUuid, String action) {
+        registerAfterCommit(event, bannerUuid.toString(), action);
+    }
+
+    private void registerAfterCommit(LoggingEvent event, String subject, String action) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 try {
                     loggingClient.send(event);
                 } catch (RuntimeException e) {
-                    LOG.warn("Banner {} was changed, but its {} audit event could not be queued", bannerUuid, action, e);
+                    LOG.warn("Banner {} was changed, but its {} audit event could not be queued", subject, action, e);
                 }
             }
         });

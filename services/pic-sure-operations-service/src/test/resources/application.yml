@@ -7,6 +7,7 @@ spring:
     username: sa
     password:
   jpa:
+    defer-datasource-initialization: true
     # Test-only: H2 has no pre-existing schema to preserve, so let Hibernate build the api-data tables from the
     # entities themselves to prove they bind cleanly. NEVER set this to anything but "none" against the real MySQL
     # schema (see the load-bearing comment in src/main/resources/application.yml).

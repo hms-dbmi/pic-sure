@@ -1,8 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
+import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
 
 import java.time.Instant;
 import java.util.List;
@@ -33,7 +33,7 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 @SpringBootTest(
     properties = {"spring.flyway.enabled=true", "spring.flyway.locations=classpath:banner-version-migration",
         "spring.flyway.baseline-on-migrate=true", "spring.flyway.baseline-version=1", "spring.jpa.hibernate.ddl-auto=none",
-        "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"}
+        "spring.jpa.defer-datasource-initialization=false", "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"}
 )
 @Testcontainers(disabledWithoutDocker = true)
 class BannerMySqlMigrationTest {
@@ -42,8 +42,8 @@ class BannerMySqlMigrationTest {
     private static final GatewayUser ADMIN = new GatewayUser("admin-id", "subject", "admin@example.org", "ADMIN", Set.of("ADMIN"));
 
     @Container
-    static final MySQLContainer<?> MYSQL =
-        new MySQLContainer<>("mysql:8.4").withDatabaseName("picsure").withInitScript("mysql-before-banner-version.sql");
+    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4").withDatabaseName("picsure")
+        .withCommand("--log-bin-trust-function-creators=1").withInitScript("mysql-before-banner-version.sql");
 
     @Autowired
     private BannerService service;
@@ -111,6 +111,14 @@ class BannerMySqlMigrationTest {
                 assertThat(version.effectiveAt()).isEqualTo(PUBLISHED_AT.plusSeconds(3600));
                 assertThat(version.actor()).isEqualTo(BannerService.SYSTEM_MIGRATION_ACTOR);
             });
+        assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'picsure' AND table_name = 'banner_priority_allocator'",
+                Integer.class
+            )
+        ).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT next_priority FROM banner_priority_allocator WHERE id = 1", Integer.class))
+            .isGreaterThanOrEqualTo(1);
     }
 
     @Test
@@ -204,6 +212,30 @@ class BannerMySqlMigrationTest {
             .containsExactlyInAnyOrder("<p>Initial</p>", "<p>First</p>", "<p>Second</p>");
         BannerOccurrence current = bannerRepository.findById(oldBinary.getUuid()).orElseThrow();
         assertThat(versions.get(2).getPresentationHash()).isEqualTo(current.getPresentationHash());
+    }
+
+    @Test
+    void concurrentPublicationsAllocateDistinctBottomPriorities() throws Exception {
+        jdbcTemplate.execute("CREATE TRIGGER delay_banner_insert BEFORE INSERT ON banner_occurrence FOR EACH ROW DO SLEEP(0.5)");
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                start.await();
+                return service.publish(request("<p>First publication</p>", "First"), ADMIN);
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return service.publish(request("<p>Second publication</p>", "Second"), ADMIN);
+            });
+            start.countDown();
+            List<Integer> priorities =
+                List.of(first.get(20, TimeUnit.SECONDS).priority(), second.get(20, TimeUnit.SECONDS).priority()).stream().sorted().toList();
+            assertThat(priorities).doesNotHaveDuplicates();
+            assertThat(priorities.get(1)).isEqualTo(priorities.getFirst() + 1);
+        } finally {
+            jdbcTemplate.execute("DROP TRIGGER IF EXISTS delay_banner_insert");
+        }
     }
 
     private BannerOccurrence oldBinaryPublication(String htmlContent, String title, String publishedBy) {

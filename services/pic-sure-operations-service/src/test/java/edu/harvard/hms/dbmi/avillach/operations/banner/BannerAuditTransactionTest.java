@@ -7,6 +7,7 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -155,6 +156,25 @@ class BannerAuditTransactionTest {
         reset(loggingClient);
         transactions.executeWithoutResult(status -> service.update(published.uuid(), changed, ADMIN));
         verifyNoInteractions(loggingClient);
+    }
+
+    @Test
+    void reorderEmitsOneConciseAuditAfterCommit() throws Exception {
+        ManagementBannerDto first = service.publish(request(), ADMIN);
+        ManagementBannerDto second = service.publish(request(), ADMIN);
+        reset(loggingClient);
+
+        transactions.executeWithoutResult(status -> {
+            service.reorder(List.of(second.uuid(), first.uuid()), ADMIN);
+            verifyNoInteractions(loggingClient);
+        });
+
+        ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(event.capture());
+        assertThat(event.getValue().getAction()).isEqualTo("banner.reordered");
+        assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
+        assertThat(event.getValue().getMetadata()).containsEntry("bannerUuids", List.of(second.uuid().toString(), first.uuid().toString()));
+        assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Committed banner");
     }
 
     private PublishBannerRequest request() {

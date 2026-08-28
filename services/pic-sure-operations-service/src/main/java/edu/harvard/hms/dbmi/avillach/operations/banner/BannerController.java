@@ -36,6 +36,11 @@ public class BannerController {
         return service.managedBanners();
     }
 
+    @PutMapping("/order")
+    public List<ManagementBannerDto> reorder(GatewayUser user, @Valid @RequestBody ReorderBannersRequest request) {
+        return service.reorder(request.bannerUuids(), user);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ManagementBannerDto publish(GatewayUser user, @Valid @RequestBody PublishBannerRequest request) {

@@ -4,7 +4,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -27,16 +30,19 @@ public class BannerService {
 
     private final BannerRepository repository;
     private final BannerVersionRepository versionRepository;
+    private final BannerPriorityAllocatorRepository priorityAllocatorRepository;
     private final Clock clock;
     private final BannerPresentationHasher hasher;
     private final BannerAuditService auditService;
 
     public BannerService(
-        BannerRepository repository, BannerVersionRepository versionRepository, @Qualifier("bannerClock") Clock clock,
+        BannerRepository repository, BannerVersionRepository versionRepository,
+        BannerPriorityAllocatorRepository priorityAllocatorRepository, @Qualifier("bannerClock") Clock clock,
         BannerPresentationHasher hasher, BannerAuditService auditService
     ) {
         this.repository = repository;
         this.versionRepository = versionRepository;
+        this.priorityAllocatorRepository = priorityAllocatorRepository;
         this.clock = clock;
         this.hasher = hasher;
         this.auditService = auditService;
@@ -63,8 +69,7 @@ public class BannerService {
         String actor = user.getUserId();
         Instant startAt = publicationStart(request, now);
         BannerOccurrence banner = apply(request, new BannerOccurrence()).setStatus(BannerStatus.PUBLISHED).setStartAt(startAt)
-            .setEndAt(request.endAt())
-            .setPriority(repository.findMaximumOrderablePriority(now) + 1).setCreatedAt(now).setCreatedBy(actor).setUpdatedAt(now)
+            .setEndAt(request.endAt()).setPriority(allocateBottomPriority(now)).setCreatedAt(now).setCreatedBy(actor).setUpdatedAt(now)
             .setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
@@ -107,13 +112,51 @@ public class BannerService {
         String actor = user.getUserId();
         Instant startAt = publicationStart(request, now);
         apply(request, banner).setStatus(BannerStatus.PUBLISHED).setStartAt(startAt).setEndAt(request.endAt())
-            .setPriority(repository.findMaximumOrderablePriority(now) + 1).setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now)
-            .setPublishedBy(actor);
+            .setPriority(allocateBottomPriority(now)).setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         versionRepository.saveAndFlush(BannerVersion.snapshot(saved, 1, now, actor));
         auditService.registerMutationAudit(publicationAction(startAt, now), saved.getUuid(), now, saved.getPresentationHash(), actor);
         return managementDto(saved, now);
+    }
+
+    @Transactional
+    public List<ManagementBannerDto> reorder(List<UUID> bannerUuids, GatewayUser user) {
+        if (new HashSet<>(bannerUuids).size() != bannerUuids.size()) {
+            throw PicsureExceptions.badRequest("Banner order must not contain duplicate UUIDs");
+        }
+
+        BannerPriorityAllocator allocator = lockAllocator();
+        Instant now = clock.instant();
+        List<BannerOccurrence> current = repository.findOrderableForUpdate(now);
+        Map<UUID, BannerOccurrence> currentByUuid = new HashMap<>();
+        current.forEach(banner -> currentByUuid.put(banner.getUuid(), banner));
+        if (current.size() != bannerUuids.size() || !currentByUuid.keySet().equals(new HashSet<>(bannerUuids))) {
+            throw PicsureExceptions.badRequest("Banner order must contain every current active and scheduled banner exactly once");
+        }
+
+        List<BannerOccurrence> reordered = bannerUuids.stream().map(currentByUuid::get).toList();
+        for (int index = 0; index < reordered.size(); index++) {
+            reordered.get(index).setPriority(index + 1);
+        }
+        repository.saveAllAndFlush(reordered);
+        allocator.setNextPriority(reordered.size() + 1);
+        priorityAllocatorRepository.save(allocator);
+        auditService.registerReorderAudit(bannerUuids, now, user.getUserId());
+        return reordered.stream().map(banner -> managementDto(banner, now)).toList();
+    }
+
+    private int allocateBottomPriority(Instant now) {
+        BannerPriorityAllocator allocator = lockAllocator();
+        int priority = Math.max(allocator.getNextPriority(), repository.findMaximumOrderablePriority(now) + 1);
+        allocator.setNextPriority(priority + 1);
+        priorityAllocatorRepository.save(allocator);
+        return priority;
+    }
+
+    private BannerPriorityAllocator lockAllocator() {
+        return priorityAllocatorRepository.lockSingleton()
+            .orElseThrow(() -> new IllegalStateException("Banner priority allocator is not initialized"));
     }
 
     private ManagementBannerDto updateSaved(BannerOccurrence banner, PublishBannerRequest request, GatewayUser user) {

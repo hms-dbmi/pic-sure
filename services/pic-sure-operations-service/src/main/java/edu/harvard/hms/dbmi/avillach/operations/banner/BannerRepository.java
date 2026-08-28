@@ -32,6 +32,16 @@ public interface BannerRepository extends JpaRepository<BannerOccurrence, UUID> 
         """)
     int findMaximumOrderablePriority(@Param("now") Instant now);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT banner
+        FROM banner_occurrence banner
+        WHERE banner.status = edu.harvard.hms.dbmi.avillach.operations.banner.BannerStatus.PUBLISHED
+          AND (banner.endAt IS NULL OR banner.endAt > :now)
+        ORDER BY banner.priority ASC, banner.uuid ASC
+        """)
+    List<BannerOccurrence> findOrderableForUpdate(@Param("now") Instant now);
+
     @Query("""
         SELECT banner
         FROM banner_occurrence banner
