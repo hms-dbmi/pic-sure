@@ -56,6 +56,9 @@ class BannerControllerTest {
     @Autowired
     private BannerPresentationHasher hasher;
 
+    @Autowired
+    private BannerVersionRepository versionRepository;
+
     @MockitoBean
     private LoggingClient loggingClient;
 
@@ -207,6 +210,7 @@ class BannerControllerTest {
                     .content(publishRequest("<p>Updated draft copy</p>", "Updated draft"))
             ).andExpect(status().isOk()).andExpect(jsonPath("$.uuid").value(uuid.toString())).andExpect(jsonPath("$.status").value("SAVED"))
             .andExpect(jsonPath("$.htmlContent").value("<p>Updated draft copy</p>")).andExpect(jsonPath("$.updatedBy").value("super-id"));
+        org.assertj.core.api.Assertions.assertThat(versionRepository.findByBannerUuidOrderByVersionNumber(uuid)).isEmpty();
 
         mockMvc
             .perform(
@@ -220,6 +224,8 @@ class BannerControllerTest {
 
         BannerOccurrence promoted = repository.findById(uuid).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(promoted.getPresentationHash()).isEqualTo(hasher.hash(promoted));
+        org.assertj.core.api.Assertions.assertThat(versionRepository.findByBannerUuidOrderByVersionNumber(uuid)).singleElement()
+            .satisfies(version -> org.assertj.core.api.Assertions.assertThat(version.getVersionNumber()).isEqualTo(1));
 
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
             .andExpect(jsonPath("$[0].uuid").value(uuid.toString()))
@@ -253,15 +259,20 @@ class BannerControllerTest {
     }
 
     @Test
-    void onlySavedOccurrencesCanBeUpdatedOrPromoted() throws Exception {
+    void updateRouteDispatchesPublishedChangesAndRejectsOtherNonDraftStates() throws Exception {
         BannerOccurrence published = repository.save(banner(1, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Published"));
+        BannerOccurrence disabled = repository.save(banner(2, BannerStatus.DISABLED, NOW.minusSeconds(60), null, "Disabled"));
         BannerOccurrence archived = repository.save(banner(2, BannerStatus.ARCHIVED, NOW.minusSeconds(60), null, "Archived"));
 
-        mockMvc.perform(
-            put("/banners/{uuid}", published.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
-                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
-                .content(publishRequest("<p>Changed</p>", null))
-        ).andExpect(status().isConflict());
+        mockMvc.perform(adminPut(published.getUuid(), publishRequest("<p>Changed published</p>", null)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PUBLISHED"))
+            .andExpect(jsonPath("$.htmlContent").value("<p>Changed published</p>"));
+        mockMvc.perform(adminPut(disabled.getUuid(), publishRequest("<p>Changed disabled</p>", null)))
+            .andExpect(status().isConflict());
+        mockMvc.perform(adminPut(archived.getUuid(), publishRequest("<p>Changed archived</p>", null)))
+            .andExpect(status().isConflict());
+        mockMvc.perform(adminPut(UUID.randomUUID(), publishRequest("<p>Missing</p>", null))).andExpect(status().isNotFound());
+
         mockMvc.perform(
             post("/banners/{uuid}/publish", published.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
@@ -273,15 +284,33 @@ class BannerControllerTest {
                 .content(publishRequest("<p>Changed</p>", null))
         ).andExpect(status().isNotFound());
         mockMvc.perform(
-            put("/banners/{uuid}", archived.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
-                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
-                .content(publishRequest("<p>Changed</p>", null))
-        ).andExpect(status().isNotFound());
-        mockMvc.perform(
             post("/banners/{uuid}/publish", archived.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content(publishRequest("<p>Changed</p>", null))
-        ).andExpect(status().isNotFound());
+        ).andExpect(status().isConflict());
+    }
+
+    @Test
+    void publishedEditReturnsTheAuthoritativeUpdateAndChangesThePublicFeed() throws Exception {
+        String create = publishRequest("<p>Original bytes</p>", "Original");
+        String response = mockMvc.perform(adminPost(create)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        UUID uuid = UUID.fromString(objectMapper.readTree(response).get("uuid").asText());
+        ObjectNode update = (ObjectNode) objectMapper.readTree(publishRequest("<p>Corrected bytes</p>", "Corrected"));
+        update.put("appearance", "ERROR").put("icon", "ERROR").put("dismissible", false);
+
+        mockMvc
+            .perform(
+                put("/banners/{uuid}", uuid).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                    .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
+                    .content(update.toString())
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.uuid").value(uuid.toString()))
+            .andExpect(jsonPath("$.htmlContent").value("<p>Corrected bytes</p>")).andExpect(jsonPath("$.title").value("Corrected"))
+            .andExpect(jsonPath("$.appearance").value("ERROR")).andExpect(jsonPath("$.icon").value("ERROR"))
+            .andExpect(jsonPath("$.dismissible").value(false));
+
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+            .andExpect(jsonPath("$[0].uuid").value(uuid.toString())).andExpect(jsonPath("$[0].htmlContent").value("<p>Corrected bytes</p>"))
+            .andExpect(jsonPath("$[0].title").value("Corrected")).andExpect(jsonPath("$[0].appearance").value("ERROR"));
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPost(String content) {

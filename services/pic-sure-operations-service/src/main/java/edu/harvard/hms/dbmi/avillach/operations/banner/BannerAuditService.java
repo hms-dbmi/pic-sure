@@ -46,4 +46,25 @@ public class BannerAuditService {
             }
         });
     }
+
+    public void registerUpdateAudit(UUID bannerUuid, Instant timestamp, String previousHash, String presentationHash, String actor) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    loggingClient.send(
+                        LoggingEvent.builder("BANNER").action("banner.updated").caller(actor)
+                            .metadata(
+                                Map.of(
+                                    "bannerUuid", bannerUuid.toString(), "timestamp", timestamp.toString(), "previousPresentationHash",
+                                    previousHash, "presentationHash", presentationHash
+                                )
+                            ).build()
+                    );
+                } catch (RuntimeException e) {
+                    LOG.warn("Banner {} was updated, but its audit event could not be queued", bannerUuid, e);
+                }
+            }
+        });
+    }
 }

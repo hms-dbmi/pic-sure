@@ -36,6 +36,9 @@ class BannerAuditTransactionTest {
     private BannerRepository repository;
 
     @Autowired
+    private BannerVersionRepository versionRepository;
+
+    @Autowired
     private TransactionTemplate transactions;
 
     @Autowired
@@ -46,6 +49,7 @@ class BannerAuditTransactionTest {
 
     @BeforeEach
     void cleanDatabaseAndMock() {
+        versionRepository.deleteAll();
         repository.deleteAll();
         reset(loggingClient);
     }
@@ -112,13 +116,45 @@ class BannerAuditTransactionTest {
             BannerPlacement.SITE_TOP, objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL"))
         );
 
-        transactions.executeWithoutResult(status -> service.updateDraft(saved[0].uuid(), updated, ADMIN));
+        transactions.executeWithoutResult(status -> service.update(saved[0].uuid(), updated, ADMIN));
 
         ArgumentCaptor<LoggingEvent> updateEvent = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient).send(updateEvent.capture());
         assertThat(updateEvent.getValue().getAction()).isEqualTo("banner.updated");
         assertThat(updateEvent.getValue().getMetadata()).containsKeys("bannerUuid", "timestamp", "presentationHash");
         assertThat(objectMapper.writeValueAsString(updateEvent.getValue())).doesNotContain("Updated draft");
+    }
+
+    @Test
+    void materialUpdateEmitsOneConciseAuditAfterCommitAndNoOpEmitsNone() throws Exception {
+        ManagementBannerDto published = service.publish(request(), ADMIN);
+        reset(loggingClient);
+        PublishBannerRequest changed = new PublishBannerRequest(
+            "<p>Corrected banner</p>", "Notice", BannerAppearance.WARNING, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,
+            BannerPlacement.SITE_TOP, objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL"))
+        );
+        ManagementBannerDto[] updated = new ManagementBannerDto[1];
+
+        transactions.executeWithoutResult(status -> {
+            updated[0] = service.update(published.uuid(), changed, ADMIN);
+            verifyNoInteractions(loggingClient);
+        });
+
+        ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(event.capture());
+        assertThat(event.getValue().getAction()).isEqualTo("banner.updated");
+        assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
+        assertThat(event.getValue().getMetadata()).containsExactlyInAnyOrderEntriesOf(
+            Map.of(
+                "bannerUuid", published.uuid().toString(), "timestamp", updated[0].updatedAt().toString(), "previousPresentationHash",
+                published.presentationHash(), "presentationHash", updated[0].presentationHash()
+            )
+        );
+        assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Corrected banner");
+
+        reset(loggingClient);
+        transactions.executeWithoutResult(status -> service.update(published.uuid(), changed, ADMIN));
+        verifyNoInteractions(loggingClient);
     }
 
     private PublishBannerRequest request() {
