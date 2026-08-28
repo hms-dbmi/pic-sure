@@ -1,5 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException;
 import org.springframework.stereotype.Component;
 
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
@@ -12,6 +18,14 @@ import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 @Component
 public class NamedDatasetMapper {
 
+    /**
+     * Lenient mapper used ONLY to deserialize a stored v1 {@code query} node in {@link #convertQuery(Query)}: unknown fields on a stored row that
+     * predate the current v1 {@code Query} model must not abort translation, so this mapper does not fail on
+     * unknown properties. Never used for anything else in this class.
+     */
+    private static final ObjectMapper V1_QUERY_MAPPER =
+            JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+
     public NamedDatasetDto toDto(NamedDataset e) {
         return new NamedDatasetDto(e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery()), e.getArchived(), e.getMetadata());
     }
@@ -22,8 +36,33 @@ public class NamedDatasetMapper {
             return null;
         }
         return new NamedDatasetQueryDto(
-            q.getUuid(), q.getQuery(), q.getStartTime() == null ? null : q.getStartTime().getTime(), q.getStatus()
+            q.getUuid(), convertQuery(q), q.getStartTime() == null ? null : q.getStartTime().getTime(), q.getStatus()
         );
+    }
+
+    private static String convertQuery(Query q) {
+        if (q.getQuery() == null) {
+            return null;
+        }
+        if (q.getQuery() == "") {
+            return "";
+        }
+        if (isV3(q)) {
+            return q.getQuery();
+        }
+        try {
+            edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1 = V1_QUERY_MAPPER.readValue(q.getQuery(), edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
+            edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query v3 = QueryTranslator.translate(v1);
+            return V1_QUERY_MAPPER.writeValueAsString(v3);
+        } catch (JsonProcessingException | UntranslatableQueryException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Preserves PicsureQueryService.isV3Query: version major == "3" (null-safe). */
+    static boolean isV3(Query query) {
+        String v = query.getVersion();
+        return v != null && v.split("\\.")[0].equals("3");
     }
 
     /** {@code user} is the caller's EMAIL (owner key); {@code query} is pre-resolved by the service. */

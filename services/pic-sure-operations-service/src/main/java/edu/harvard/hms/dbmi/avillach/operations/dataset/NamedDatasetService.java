@@ -52,7 +52,8 @@ public class NamedDatasetService {
     @Transactional(readOnly = true)
     public NamedDatasetDto getForUser(GatewayUser user, UUID id) {
         NamedDataset e = repo.findByUuidAndUser(id, requireEmail(user)).orElseThrow(() -> notFound(id));
-        return mapper.toDto(e);
+        NamedDatasetDto dto = mapper.toDto(e);
+        return dto;
     }
 
     @Transactional
