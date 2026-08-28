@@ -2,7 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -28,6 +28,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +39,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import jakarta.persistence.EntityManager;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -58,6 +60,12 @@ class BannerPageTargetingTest {
     @Autowired
     private BannerVersionRepository versionRepository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private EntityManager entityManager;
+
     @MockitoBean
     private LoggingClient loggingClient;
 
@@ -66,6 +74,7 @@ class BannerPageTargetingTest {
         JsonNode submitted = objectMapper.readTree("""
             [
               {"kind":"SUBTREE","path":"/admin/"},
+              {"kind":"EXACT","path":"/help /"},
               {"kind":"EXACT","path":" /removed-route/ "},
               {"kind":"PARAMETERIZED","path":"/studies/[study]/participants/[participant]/"},
               {"kind":"EXACT","path":"/removed-route"}
@@ -76,6 +85,7 @@ class BannerPageTargetingTest {
         UUID uuid = UUID.fromString(published.get("uuid").asText());
         JsonNode expected = objectMapper.readTree("""
             [
+              {"kind":"EXACT","path":"/help"},
               {"kind":"EXACT","path":"/removed-route"},
               {"kind":"PARAMETERIZED","path":"/studies/[study]/participants/[participant]"},
               {"kind":"SUBTREE","path":"/admin"}
@@ -89,23 +99,54 @@ class BannerPageTargetingTest {
         assertThat(versionTargets).isEqualTo(expected);
         mockMvc.perform(get("/banners").headers(adminHeaders())).andExpect(status().isOk())
             .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT"))
-            .andExpect(jsonPath("$[0].pageTargets[0].path").value("/removed-route"));
+            .andExpect(jsonPath("$[0].pageTargets[0].path").value("/help"));
         mockMvc.perform(get("/banners/active/v2")).andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].pageTargets[1].kind").value("PARAMETERIZED"))
-            .andExpect(jsonPath("$[0].pageTargets[2].path").value("/admin")).andExpect(jsonPath("$[0].createdBy").doesNotExist());
+            .andExpect(jsonPath("$[0].pageTargets[2].kind").value("PARAMETERIZED"))
+            .andExpect(jsonPath("$[0].pageTargets[3].path").value("/admin")).andExpect(jsonPath("$[0].createdBy").doesNotExist());
     }
 
     @Test
     void legacyFeedReturnsOnlyAllPagesWhileVersionedFeedCarriesTheFullClientFilteredContract() throws Exception {
-        publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/help\"}]"));
+        JsonNode targeted = publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/help\"}]"));
         publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
 
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)))
             .andExpect(jsonPath("$[0].pageTargets[0].kind").value("ALL"));
         mockMvc.perform(get("/banners/active/v2")).andExpect(status().isOk())
             .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(2)))
+            .andExpect(jsonPath("$[0].uuid").value(targeted.get("uuid").asText()))
+            .andExpect(jsonPath("$[0].htmlContent").value("<p>Page-targeted notice</p>"))
+            .andExpect(jsonPath("$[0].title").value("Page target"))
+            .andExpect(jsonPath("$[0].appearance").value("PRIMARY"))
+            .andExpect(jsonPath("$[0].icon").value("INFORMATION"))
+            .andExpect(jsonPath("$[0].dismissible").value(true))
+            .andExpect(jsonPath("$[0].audience").value("EVERYONE"))
+            .andExpect(jsonPath("$[0].placement").value("SITE_TOP"))
             .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT"))
+            .andExpect(jsonPath("$[0].pageTargets[0].path").value("/help"))
+            .andExpect(jsonPath("$[0].priority").isNumber())
+            .andExpect(jsonPath("$[0].presentationHash").value(targeted.get("presentationHash").asText()))
+            .andExpect(jsonPath("$[0].createdBy").doesNotExist())
             .andExpect(jsonPath("$[1].pageTargets[0].kind").value("ALL"));
+    }
+
+    @Test
+    void malformedStoredTargetsAreOmittedWithoutTakingAnyFeedDown() throws Exception {
+        JsonNode malformed = publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/hidden\"}]"));
+        publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
+        UUID malformedUuid = UUID.fromString(malformed.get("uuid").asText());
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = ?",
+            "[{\"kind\":\"FUTURE\",\"path\":\"/hidden\"}]", malformedUuid
+        );
+        entityManager.clear();
+
+        mockMvc.perform(get("/banners").headers(adminHeaders())).andExpect(status().isOk())
+            .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
+            .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
+        mockMvc.perform(get("/banners/active/v2")).andExpect(status().isOk())
+            .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
     }
 
     @Test
@@ -123,6 +164,16 @@ class BannerPageTargetingTest {
         assertThat(published.get("pageTargets")).isEqualTo(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/\"}]"));
     }
 
+    @Test
+    void normalizationIsIdempotentWhenSpacesTouchRemovableTrailingSlashes() {
+        List<BannerPageTarget> once = BannerPageTargets.normalize(
+            List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help /"))
+        );
+
+        assertThat(once).containsExactly(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help"));
+        assertThat(BannerPageTargets.normalize(once)).isEqualTo(once);
+    }
+
     @ParameterizedTest
     @ValueSource(
         strings = {"[]", "[null]", "[{}]", "[{\"kind\":\"ALL\",\"path\":\"/\"}]",
@@ -131,7 +182,8 @@ class BannerPageTargetingTest {
             "[{\"kind\":\"EXACT\",\"path\":\"help\"}]", "[{\"kind\":\"EXACT\",\"path\":\"\\t/help\"}]",
             "[{\"kind\":\"EXACT\",\"path\":\"/help?topic=banners\"}]", "[{\"kind\":\"EXACT\",\"path\":\"/help#banners\"}]",
             "[{\"kind\":\"EXACT\",\"path\":\"/help//banners\"}]", "[{\"kind\":\"EXACT\",\"path\":\"/help/../admin\"}]",
-            "[{\"kind\":\"SUBTREE\",\"path\":\"/\"}]", "[{\"kind\":\"SUBTREE\",\"path\":\"/help/*\"}]",
+            "[{\"kind\":\"SUBTREE\",\"path\":\"/\"}]", "[{\"kind\":\"SUBTREE\",\"path\":\"/ /\"}]",
+            "[{\"kind\":\"SUBTREE\",\"path\":\"/help/*\"}]",
             "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies\"}]", "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies/[[study]]\"}]",
             "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies/[...study]\"}]",
             "[{\"kind\":\"PARAMETERIZED\",\"path\":\"/studies/[study=uuid]\"}]",
@@ -158,7 +210,7 @@ class BannerPageTargetingTest {
     void trimsAnUnboundedTargetPathInLinearTime() {
         String path = "/help" + "/".repeat(200_000);
 
-        List<BannerPageTarget> normalized = assertTimeoutPreemptively(
+        List<BannerPageTarget> normalized = assertTimeout(
             Duration.ofMillis(500), () -> BannerPageTargets.normalize(List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, path)))
         );
 

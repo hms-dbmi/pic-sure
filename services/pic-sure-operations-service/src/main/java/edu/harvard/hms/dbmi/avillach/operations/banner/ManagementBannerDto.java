@@ -12,10 +12,14 @@ public record ManagementBannerDto(
     String updatedBy, Instant publishedAt, String publishedBy, Instant disabledAt, String disabledBy
 ) {
     static Optional<ManagementBannerDto> from(BannerOccurrence banner, Instant now) {
+        List<BannerPageTarget> pageTargets = banner.getPageTargets();
+        if (pageTargets == null) {
+            return Optional.empty();
+        }
         return lifecycle(banner, now).map(
             lifecycle -> new ManagementBannerDto(
                 banner.getUuid(), banner.getStatus(), lifecycle, banner.getHtmlContent(), banner.getTitle(), banner.getAppearance(),
-                banner.getIcon(), banner.isDismissible(), banner.getAudience(), banner.getPlacement(), banner.getPageTargets(),
+                banner.getIcon(), banner.isDismissible(), banner.getAudience(), banner.getPlacement(), pageTargets,
                 banner.getStartAt(), banner.getEndAt(), banner.getPriority(), banner.getPresentationHash(), banner.getCreatedAt(),
                 banner.getCreatedBy(), banner.getUpdatedAt(), banner.getUpdatedBy(), banner.getPublishedAt(), banner.getPublishedBy(),
                 banner.getDisabledAt(), banner.getDisabledBy()

@@ -80,10 +80,7 @@ final class BannerPageTargets {
         while (start < end && submitted.charAt(start) == ' ') {
             start++;
         }
-        while (end > start && submitted.charAt(end - 1) == ' ') {
-            end--;
-        }
-        while (end - start > 1 && submitted.charAt(end - 1) == '/') {
+        while (end - start > 1 && (submitted.charAt(end - 1) == ' ' || submitted.charAt(end - 1) == '/')) {
             end--;
         }
         String path = submitted.substring(start, end);
@@ -109,7 +106,10 @@ final class BannerPageTargets {
     }
 
     static List<BannerPageTarget> fromStoredJson(JsonNode stored) {
-        if (stored == null || !stored.isArray() || stored.isEmpty()) {
+        if (stored == null || !stored.isArray()) {
+            return null;
+        }
+        if (stored.isEmpty()) {
             return List.of(BannerPageTarget.all());
         }
 
@@ -118,7 +118,7 @@ final class BannerPageTargets {
             stored.forEach(value -> targets.add(BannerPageTarget.fromJson(value)));
             return normalize(List.copyOf(targets));
         } catch (RuntimeException ignored) {
-            return List.of(BannerPageTarget.all());
+            return null;
         }
     }
 

@@ -241,21 +241,75 @@ class BannerMySqlMigrationTest {
     }
 
     @Test
-    void loosePreTargetingJsonRoundTripsAsLegacyAllPagesWithoutTakingReadsDown() {
+    void emptyPreTargetingJsonRoundTripsAsLegacyAllPages() {
         ManagementBannerDto published = service.publish(request("<p>Legacy target bytes</p>", "Legacy target bytes"), ADMIN);
-        String looseTargets = "[\"legacy\",{\"kind\":\"EXACT\",\"path\":\"/help\",\"extra\":true}]";
-        jdbcTemplate.update("UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", looseTargets,
+        jdbcTemplate.update("UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", "[]",
             published.uuid().toString());
-        jdbcTemplate.update("UPDATE banner_version SET page_targets = CAST(? AS JSON) WHERE banner_uuid = UUID_TO_BIN(?)", looseTargets,
+        jdbcTemplate.update("UPDATE banner_version SET page_targets = CAST(? AS JSON) WHERE banner_uuid = UUID_TO_BIN(?)", "[]",
             published.uuid().toString());
         entityManager.clear();
 
         assertThat(service.managedBanners()).singleElement()
             .extracting(ManagementBannerDto::pageTargets).isEqualTo(List.of(BannerPageTarget.all()));
-        assertThat(service.activeBanners()).singleElement()
+        assertThat(service.targetedActiveBanners()).singleElement()
             .extracting(ActiveBannerDto::pageTargets).isEqualTo(List.of(BannerPageTarget.all()));
         assertThat(versionRepository.findAll()).singleElement()
             .extracting(BannerVersion::getPageTargets).isEqualTo(List.of(BannerPageTarget.all()));
+    }
+
+    @Test
+    void malformedAndUnknownStoredTargetsAreOmittedWithoutTakingListsDown() {
+        ManagementBannerDto valid = service.publish(
+            request("<p>Valid targeted</p>", "Valid targeted", List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help"))), ADMIN
+        );
+        ManagementBannerDto malformed = service.publish(request("<p>Malformed</p>", "Malformed"), ADMIN);
+        ManagementBannerDto unknown = service.publish(request("<p>Unknown</p>", "Unknown"), ADMIN);
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", "[\"legacy\"]",
+            malformed.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_version SET page_targets = CAST(? AS JSON) WHERE banner_uuid = UUID_TO_BIN(?)", "[\"legacy\"]",
+            malformed.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)",
+            "[{\"kind\":\"FUTURE\",\"path\":\"/future\"}]", unknown.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_version SET page_targets = CAST(? AS JSON) WHERE banner_uuid = UUID_TO_BIN(?)",
+            "[{\"kind\":\"FUTURE\",\"path\":\"/future\"}]", unknown.uuid().toString()
+        );
+        entityManager.clear();
+
+        assertThat(service.managedBanners()).extracting(ManagementBannerDto::uuid).containsExactly(valid.uuid());
+        assertThat(service.targetedActiveBanners()).extracting(ActiveBannerDto::uuid).containsExactly(valid.uuid());
+        assertThat(service.legacyAllPagesActiveBanners()).isEmpty();
+        assertThat(versionRepository.findAll()).filteredOn(version -> !version.getBannerUuid().equals(valid.uuid()))
+            .allSatisfy(version -> assertThat(version.getPageTargets()).isNull());
+    }
+
+    @Test
+    void currentTargetedJsonRoundTripsThroughOccurrenceVersionAndFeed() {
+        ManagementBannerDto published = service.publish(
+            request(
+                "<p>Current targeted</p>", "Current targeted",
+                List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help /"))
+            ),
+            ADMIN
+        );
+        entityManager.clear();
+        List<BannerPageTarget> expected = List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help"));
+
+        assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(page_targets, '$[0].path')) FROM banner_occurrence WHERE uuid = UUID_TO_BIN(?)",
+                String.class, published.uuid().toString()
+            )
+        ).isEqualTo("/help");
+        assertThat(bannerRepository.findById(published.uuid()).orElseThrow().getPageTargets()).isEqualTo(expected);
+        assertThat(versionRepository.findAll()).singleElement().extracting(BannerVersion::getPageTargets).isEqualTo(expected);
+        assertThat(service.targetedActiveBanners()).singleElement().extracting(ActiveBannerDto::pageTargets).isEqualTo(expected);
     }
 
     private BannerOccurrence oldBinaryPublication(String htmlContent, String title, String publishedBy) {
@@ -269,9 +323,13 @@ class BannerMySqlMigrationTest {
     }
 
     private PublishBannerRequest request(String htmlContent, String title) {
+        return request(htmlContent, title, List.of(BannerPageTarget.all()));
+    }
+
+    private PublishBannerRequest request(String htmlContent, String title, List<BannerPageTarget> pageTargets) {
         return new PublishBannerRequest(
             htmlContent, title, BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
-            List.of(BannerPageTarget.all())
+            pageTargets
         );
     }
 

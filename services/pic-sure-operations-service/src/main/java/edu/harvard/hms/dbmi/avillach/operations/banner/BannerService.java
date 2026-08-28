@@ -49,14 +49,13 @@ public class BannerService {
     }
 
     @Transactional(readOnly = true)
-    public List<ActiveBannerDto> activeBanners() {
-        Instant now = clock.instant();
-        return repository.findActive(now).stream().map(ActiveBannerDto::from).toList();
+    public List<ActiveBannerDto> targetedActiveBanners() {
+        return loadActiveBanners();
     }
 
     @Transactional(readOnly = true)
-    public List<ActiveBannerDto> legacyActiveBanners() {
-        return activeBanners().stream().filter(banner -> BannerPageTargets.isAllPages(banner.pageTargets())).toList();
+    public List<ActiveBannerDto> legacyAllPagesActiveBanners() {
+        return loadActiveBanners().stream().filter(banner -> BannerPageTargets.isAllPages(banner.pageTargets())).toList();
     }
 
     @Transactional(readOnly = true)
@@ -64,6 +63,10 @@ public class BannerService {
         Instant now = clock.instant();
         return repository.findAllManaged().stream().flatMap(banner -> ManagementBannerDto.from(banner, now).stream())
             .sorted(MANAGEMENT_ORDER).toList();
+    }
+
+    private List<ActiveBannerDto> loadActiveBanners() {
+        return repository.findActive(clock.instant()).stream().flatMap(banner -> ActiveBannerDto.from(banner).stream()).toList();
     }
 
     @Transactional
