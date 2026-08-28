@@ -264,13 +264,10 @@ class BannerControllerTest {
         BannerOccurrence disabled = repository.save(banner(2, BannerStatus.DISABLED, NOW.minusSeconds(60), null, "Disabled"));
         BannerOccurrence archived = repository.save(banner(2, BannerStatus.ARCHIVED, NOW.minusSeconds(60), null, "Archived"));
 
-        mockMvc.perform(adminPut(published.getUuid(), publishRequest("<p>Changed published</p>", null)))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PUBLISHED"))
-            .andExpect(jsonPath("$.htmlContent").value("<p>Changed published</p>"));
-        mockMvc.perform(adminPut(disabled.getUuid(), publishRequest("<p>Changed disabled</p>", null)))
-            .andExpect(status().isConflict());
-        mockMvc.perform(adminPut(archived.getUuid(), publishRequest("<p>Changed archived</p>", null)))
-            .andExpect(status().isConflict());
+        mockMvc.perform(adminPut(published.getUuid(), publishRequest("<p>Changed published</p>", null))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("PUBLISHED")).andExpect(jsonPath("$.htmlContent").value("<p>Changed published</p>"));
+        mockMvc.perform(adminPut(disabled.getUuid(), publishRequest("<p>Changed disabled</p>", null))).andExpect(status().isConflict());
+        mockMvc.perform(adminPut(archived.getUuid(), publishRequest("<p>Changed archived</p>", null))).andExpect(status().isConflict());
         mockMvc.perform(adminPut(UUID.randomUUID(), publishRequest("<p>Missing</p>", null))).andExpect(status().isNotFound());
 
         mockMvc.perform(

@@ -78,8 +78,8 @@ class BannerVersionAtomicityTest {
         UUID bannerUuid = oldBinary.getUuid();
         doThrow(new IllegalStateException("version storage unavailable")).when(versionRepository).saveAndFlush(any(BannerVersion.class));
 
-        assertThatThrownBy(() -> service.update(bannerUuid, request("<p>Changed</p>"), ADMIN))
-            .isInstanceOf(IllegalStateException.class).hasMessage("version storage unavailable");
+        assertThatThrownBy(() -> service.update(bannerUuid, request("<p>Changed</p>"), ADMIN)).isInstanceOf(IllegalStateException.class)
+            .hasMessage("version storage unavailable");
 
         BannerOccurrence occurrence = bannerRepository.findById(bannerUuid).orElseThrow();
         assertThat(occurrence.getHtmlContent()).isEqualTo("<p>Original</p>");
