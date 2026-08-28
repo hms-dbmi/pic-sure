@@ -115,6 +115,9 @@ class BannerManagementAuthorizationTest {
             .map(Path::of)
             .toList();
         assertThat(migrationFiles).as("AIO, BDC, and AIM migration paths").hasSize(3);
+        assertThat(migrationFiles.stream().map(path -> path.toAbsolutePath().normalize()).toList())
+            .as("distinct AIO, BDC, and AIM migration paths")
+            .doesNotHaveDuplicates();
 
         byte[] reference = Files.readAllBytes(migrationFiles.getFirst());
         for (Path migrationFile : migrationFiles) {
