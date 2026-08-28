@@ -5,12 +5,23 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -28,8 +39,12 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 
 class BannerManagementAuthorizationTest {
 
-    private static final String BANNER_MANAGEMENT_ROUTE_PATTERN =
-        "^/operations/banners(?:/?|/saved/?|/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:/?|/publish/?))$";
+    private static final String MIGRATION_FILES_PROPERTY = "banner.management.migration.files";
+    private static final Pattern MIGRATION_VALUE = Pattern.compile("SET\\s+value\\s*=\\s*'([^']+)'", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FAIL_SAFE_RULE_UPDATE = Pattern.compile(
+        "WHERE\\s+name\\s*=\\s*'AR_BANNER_MANAGEMENT_GATEWAY'\\s*;", Pattern.CASE_INSENSITIVE
+    );
+    private static final RouteFixture ROUTES = loadRouteFixture();
 
     private Application picsure;
     private AuthorizationService authorizationService;
@@ -50,7 +65,7 @@ class BannerManagementAuthorizationTest {
 
     @Test
     void bannerManagementRequiresTheApplicationScopedAdminPrivilege() {
-        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", BANNER_MANAGEMENT_ROUTE_PATTERN);
+        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", ROUTES.pattern());
         Privilege globalAdmin = privilege("ADMIN", null, bannerRoute);
         Privilege scopedBannerManagement = privilege("BANNER_MANAGEMENT", picsure, bannerRoute);
         Privilege ordinaryQuery = privilege("PIC_SURE_ANY_QUERY", picsure, routeRule("AR_QUERY", "^/query(/.*)?$"));
@@ -70,7 +85,7 @@ class BannerManagementAuthorizationTest {
     @ParameterizedTest
     @MethodSource("allowedManagementPaths")
     void bannerManagementPrivilegeAllowsOnlyTheManagementRoutes(String path) {
-        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", BANNER_MANAGEMENT_ROUTE_PATTERN);
+        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", ROUTES.pattern());
         Privilege scopedBannerManagement = privilege("BANNER_MANAGEMENT", picsure, bannerRoute);
 
         assertThat(authorizationService.isAuthorized(picsure, Map.of("Target Service", path), user(scopedBannerManagement), false).result())
@@ -80,24 +95,64 @@ class BannerManagementAuthorizationTest {
     @ParameterizedTest
     @MethodSource("rejectedManagementPaths")
     void bannerManagementPrivilegeRejectsPublicAndUnrecognizedDescendants(String path) {
-        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", BANNER_MANAGEMENT_ROUTE_PATTERN);
+        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", ROUTES.pattern());
         Privilege scopedBannerManagement = privilege("BANNER_MANAGEMENT", picsure, bannerRoute);
 
         assertThat(authorizationService.isAuthorized(picsure, Map.of("Target Service", path), user(scopedBannerManagement), false).result())
             .isFalse();
     }
 
-    private static Stream<String> allowedManagementPaths() {
-        return Stream.of(
-            "/operations/banners", "/operations/banners/", "/operations/banners/saved",
-            "/operations/banners/00000000-0000-0000-0000-000000000001", "/operations/banners/00000000-0000-0000-0000-000000000001/publish"
+    @Test
+    void deploymentMigrationsAreByteEquivalentAndUseTheCanonicalRouteFixture() throws IOException {
+        String configuredFiles = System.getProperty(MIGRATION_FILES_PROPERTY);
+        Assumptions.assumeTrue(
+            configuredFiles != null && !configuredFiles.isBlank(),
+            () -> "set -D%s to the AIO, BDC, and AIM migration paths separated by '%s'"
+                .formatted(MIGRATION_FILES_PROPERTY, File.pathSeparator)
         );
+
+        List<Path> migrationFiles = Arrays.stream(configuredFiles.split(Pattern.quote(File.pathSeparator)))
+            .map(Path::of)
+            .toList();
+        assertThat(migrationFiles).as("AIO, BDC, and AIM migration paths").hasSize(3);
+
+        byte[] reference = Files.readAllBytes(migrationFiles.getFirst());
+        for (Path migrationFile : migrationFiles) {
+            byte[] bytes = Files.readAllBytes(migrationFile);
+            assertThat(bytes).as("migration bytes for %s", migrationFile).isEqualTo(reference);
+
+            String sql = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+            Matcher value = MIGRATION_VALUE.matcher(sql);
+            assertThat(value.find()).as("route value in %s", migrationFile).isTrue();
+            assertThat(value.group(1)).as("route value in %s", migrationFile).isEqualTo(ROUTES.pattern());
+            assertThat(FAIL_SAFE_RULE_UPDATE.matcher(sql).find())
+                .as("rule-name-only update in %s", migrationFile)
+                .isTrue();
+        }
+    }
+
+    private static Stream<String> allowedManagementPaths() {
+        return ROUTES.allowed().stream();
     }
 
     private static Stream<String> rejectedManagementPaths() {
-        return Stream.of(
-            "/operations/banners/active", "/operations/banners/not-a-uuid",
-            "/operations/banners/00000000-0000-0000-0000-000000000001/publish/extra"
+        return ROUTES.rejected().stream();
+    }
+
+    private static RouteFixture loadRouteFixture() {
+        Properties properties = new Properties();
+        try (InputStream fixture = BannerManagementAuthorizationTest.class.getResourceAsStream("/banner-management-routes.properties")) {
+            if (fixture == null) {
+                throw new IllegalStateException("Missing banner-management-routes.properties");
+            }
+            properties.load(fixture);
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not load banner management route fixture", e);
+        }
+        return new RouteFixture(
+            properties.getProperty("pattern"),
+            List.of(properties.getProperty("allowed").split(",")),
+            List.of(properties.getProperty("rejected").split(","))
         );
     }
 
@@ -132,4 +187,6 @@ class BannerManagementAuthorizationTest {
         user.setRoles(Set.of(role));
         return user;
     }
+
+    private record RouteFixture(String pattern, List<String> allowed, List<String> rejected) { }
 }
