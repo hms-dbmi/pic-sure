@@ -43,4 +43,9 @@ INSERT INTO banner_occurrence (
     JSON_ARRAY(JSON_OBJECT('kind', 'EXACT', 'path', '/help')), '2026-08-27 12:00:00.000000', 1,
     REPEAT('a', 64), '2026-08-27 11:00:00.000000', 'creator', '2026-08-27 12:00:00.000000', 'publisher',
     '2026-08-27 12:00:00.000000', 'publisher'
+), (
+    UUID_TO_BIN('00000000-0000-0000-0000-000000000002'), 'PUBLISHED', '<p>Missing publication time</p>',
+    'Legacy title', 'PRIMARY', 'NONE', TRUE, 'EVERYONE', 'SITE_TOP', JSON_ARRAY(JSON_OBJECT('kind', 'ALL')),
+    '2026-08-27 13:00:00.000000', 2, REPEAT('b', 64), '2026-08-27 10:00:00.000000', 'creator',
+    '2026-08-27 13:00:00.000000', 'updater', NULL, NULL
 );

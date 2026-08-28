@@ -32,7 +32,8 @@ INSERT INTO banner_version (
 )
 SELECT UUID_TO_BIN(UUID()), occurrence.uuid, 1, occurrence.html_content, occurrence.title, occurrence.appearance,
        occurrence.icon, occurrence.dismissible, occurrence.audience, occurrence.placement, occurrence.page_targets,
-       occurrence.start_at, occurrence.end_at, occurrence.presentation_hash, occurrence.published_at,
+       occurrence.start_at, occurrence.end_at, occurrence.presentation_hash,
+       COALESCE(occurrence.published_at, occurrence.updated_at, occurrence.created_at),
        COALESCE(NULLIF(occurrence.published_by, ''), 'SYSTEM_MIGRATION')
 FROM banner_occurrence occurrence
 WHERE occurrence.status = 'PUBLISHED'

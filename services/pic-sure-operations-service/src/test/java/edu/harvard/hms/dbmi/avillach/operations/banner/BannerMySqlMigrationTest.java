@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,10 +18,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -43,7 +42,6 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"}
 )
 @Testcontainers(disabledWithoutDocker = true)
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class BannerMySqlMigrationTest {
 
     private static final Instant PUBLISHED_AT = Instant.parse("2026-08-27T12:00:00Z");
@@ -70,6 +68,8 @@ class BannerMySqlMigrationTest {
 
     @MockitoBean
     private LoggingClient loggingClient;
+
+    private static List<MigratedVersion> migratedVersions;
 
     @DynamicPropertySource
     static void mysqlProperties(DynamicPropertyRegistry registry) {
@@ -107,13 +107,24 @@ class BannerMySqlMigrationTest {
         }
     }
 
-    void cleanDatabase() {
+    @BeforeEach
+    void captureInitialMigrationThenCleanDatabase() {
+        synchronized (BannerMySqlMigrationTest.class) {
+            if (migratedVersions == null) {
+                migratedVersions = versionRepository.findAll().stream()
+                    .map(
+                        version -> new MigratedVersion(
+                            version.getVersionNumber(), version.getHtmlContent(), version.getTitle(), version.getEffectiveAt(),
+                            version.getActor()
+                        )
+                    ).toList();
+            }
+        }
         versionRepository.deleteAll();
         bannerRepository.deleteAll();
     }
 
     @Test
-    @Order(1)
     void migrationCreatesTheTableAndBackfillsExactPublishedState() {
         assertThat(
             jdbcTemplate.queryForObject(
@@ -121,18 +132,23 @@ class BannerMySqlMigrationTest {
                 Integer.class
             )
         ).isEqualTo(1);
-        assertThat(versionRepository.findAll()).singleElement().satisfies(version -> {
-            assertThat(version.getVersionNumber()).isEqualTo(1);
-            assertThat(version.getHtmlContent()).isEqualTo("<p>Pre-migration bytes</p>");
-            assertThat(version.getTitle()).isEqualTo("Pre-migration title");
-            assertThat(version.getEffectiveAt()).isEqualTo(PUBLISHED_AT);
-            assertThat(version.getActor()).isEqualTo("publisher");
-        });
+        assertThat(migratedVersions).hasSize(2);
+        assertThat(migratedVersions).filteredOn(version -> version.htmlContent().equals("<p>Pre-migration bytes</p>")).singleElement()
+            .satisfies(version -> {
+                assertThat(version.versionNumber()).isEqualTo(1);
+                assertThat(version.title()).isEqualTo("Pre-migration title");
+                assertThat(version.effectiveAt()).isEqualTo(PUBLISHED_AT);
+                assertThat(version.actor()).isEqualTo("publisher");
+            });
+        assertThat(migratedVersions).filteredOn(version -> version.htmlContent().equals("<p>Missing publication time</p>")).singleElement()
+            .satisfies(version -> {
+                assertThat(version.effectiveAt()).isEqualTo(PUBLISHED_AT.plusSeconds(3600));
+                assertThat(version.actor()).isEqualTo("SYSTEM_MIGRATION");
+            });
     }
 
     @Test
     void newBinaryPublicationCreatesExactlyOneFirstVersionAndTheMigrationEnforcesVersionIdentity() {
-        cleanDatabase();
         PublishBannerRequest request = new PublishBannerRequest(
             "<p>New binary</p>", "New binary", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,
             BannerPlacement.SITE_TOP, JsonNodeFactory.instance.arrayNode().add(JsonNodeFactory.instance.objectNode().put("kind", "ALL"))
@@ -167,12 +183,11 @@ class BannerMySqlMigrationTest {
 
     @Test
     void oldBinaryPublicationIsLazilyBootstrappedBeforeItsFirstMaterialEdit() {
-        cleanDatabase();
         BannerOccurrence oldBinary = oldBinaryPublication("<p>Old binary</p>", "Old binary", "old-admin");
 
         ManagementBannerDto updated = service.update(oldBinary.getUuid(), request("<p>Corrected</p>", "Corrected"), ADMIN);
 
-        List<BannerVersion> versions = versionsFor(oldBinary.getUuid());
+        List<BannerVersion> versions = versionsFor(versionRepository, oldBinary.getUuid());
         assertThat(versions).extracting(BannerVersion::getVersionNumber).containsExactly(1, 2);
         assertThat(versions.getFirst().getHtmlContent()).isEqualTo("<p>Old binary</p>");
         assertThat(versions.getFirst().getTitle()).isEqualTo("Old binary");
@@ -184,14 +199,13 @@ class BannerMySqlMigrationTest {
 
     @Test
     void oldBinaryNoOpStillCommitsItsMissingFirstVersionWithActorFallback() {
-        cleanDatabase();
         BannerOccurrence oldBinary = oldBinaryPublication("<p>Same</p>", "Same", null);
         Instant originalUpdatedAt = oldBinary.getUpdatedAt();
 
         ManagementBannerDto unchanged = service.update(oldBinary.getUuid(), request("<p>Same</p>", " Same "), ADMIN);
 
         assertThat(unchanged.updatedAt()).isEqualTo(originalUpdatedAt);
-        assertThat(versionsFor(oldBinary.getUuid())).singleElement().satisfies(version -> {
+        assertThat(versionsFor(versionRepository, oldBinary.getUuid())).singleElement().satisfies(version -> {
             assertThat(version.getHtmlContent()).isEqualTo("<p>Same</p>");
             assertThat(version.getEffectiveAt()).isEqualTo(PUBLISHED_AT);
             assertThat(version.getActor()).isEqualTo("SYSTEM_MIGRATION");
@@ -200,7 +214,6 @@ class BannerMySqlMigrationTest {
 
     @Test
     void concurrentEditsSerializeBootstrapAndVersionNumbers() throws Exception {
-        cleanDatabase();
         BannerOccurrence oldBinary = oldBinaryPublication("<p>Initial</p>", "Initial", "old-admin");
         CountDownLatch start = new CountDownLatch(1);
 
@@ -218,7 +231,7 @@ class BannerMySqlMigrationTest {
             second.get(20, TimeUnit.SECONDS);
         }
 
-        List<BannerVersion> versions = versionsFor(oldBinary.getUuid());
+        List<BannerVersion> versions = versionsFor(versionRepository, oldBinary.getUuid());
         assertThat(versions).extracting(BannerVersion::getVersionNumber).containsExactly(1, 2, 3);
         assertThat(versions.getFirst().getHtmlContent()).isEqualTo("<p>Initial</p>");
         assertThat(versions).extracting(BannerVersion::getHtmlContent)
@@ -245,8 +258,7 @@ class BannerMySqlMigrationTest {
         );
     }
 
-    private List<BannerVersion> versionsFor(UUID bannerUuid) {
-        return versionRepository.findAll().stream().filter(version -> version.getBannerUuid().equals(bannerUuid))
-            .sorted(java.util.Comparator.comparingInt(BannerVersion::getVersionNumber)).toList();
+    private record MigratedVersion(int versionNumber, String htmlContent, String title, Instant effectiveAt, String actor) {
     }
+
 }

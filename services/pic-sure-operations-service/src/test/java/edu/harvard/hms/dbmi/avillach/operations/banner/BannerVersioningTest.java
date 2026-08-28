@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -8,7 +9,6 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,7 +70,7 @@ class BannerVersioningTest {
 
         ManagementBannerDto published = service.publish(request, FIRST_ADMIN);
 
-        List<BannerVersion> versions = versionsFor(published.uuid());
+        List<BannerVersion> versions = versionsFor(versionRepository, published.uuid());
         assertThat(versions).singleElement().satisfies(version -> {
             assertThat(version.getVersionNumber()).isEqualTo(1);
             assertThat(version.getBannerUuid()).isEqualTo(published.uuid());
@@ -113,7 +113,7 @@ class BannerVersioningTest {
         assertThat(updated.publishedBy()).isEqualTo("first-admin");
         assertThat(updated.presentationHash()).isNotEqualTo(published.presentationHash());
 
-        List<BannerVersion> versions = versionsFor(published.uuid());
+        List<BannerVersion> versions = versionsFor(versionRepository, published.uuid());
         assertThat(versions).extracting(BannerVersion::getVersionNumber).containsExactly(1, 2);
         BannerVersion prior = versions.getFirst();
         assertThat(prior.getHtmlContent()).isEqualTo(original.htmlContent());
@@ -153,7 +153,7 @@ class BannerVersioningTest {
         ManagementBannerDto result = service.update(published.uuid(), normalizedNoOp, SECOND_ADMIN);
 
         assertThat(result).isEqualTo(published);
-        assertThat(versionsFor(published.uuid())).hasSize(1);
+        assertThat(versionsFor(versionRepository, published.uuid())).hasSize(1);
     }
 
     @Test
@@ -175,12 +175,37 @@ class BannerVersioningTest {
         );
 
         assertThat(updated.presentationHash()).isNotEqualTo(published.presentationHash());
-        assertThat(versionsFor(published.uuid())).hasSize(2);
+        assertThat(versionsFor(versionRepository, published.uuid())).hasSize(2);
     }
 
-    private List<BannerVersion> versionsFor(UUID bannerUuid) {
-        return versionRepository.findAll().stream().filter(version -> version.getBannerUuid().equals(bannerUuid))
-            .sorted(java.util.Comparator.comparingInt(BannerVersion::getVersionNumber)).toList();
+    @Test
+    void lazyBootstrapFallsBackToStoredUpdateTimeWhenPublicationTimeIsMissing() throws Exception {
+        ManagementBannerDto published = service.publish(
+            request(
+                "<p>Legacy state</p>", "Legacy", BannerAppearance.WARNING, BannerIcon.WARNING, false, BannerAudience.SIGNED_IN,
+                "[{\"kind\":\"EXACT\",\"path\":\"/legacy\"}]"
+            ), FIRST_ADMIN
+        );
+        versionRepository.deleteAll();
+        BannerOccurrence legacy = bannerRepository.findById(published.uuid()).orElseThrow();
+        Instant storedUpdateTime = PUBLISHED_AT.plusSeconds(900);
+        legacy.setPublishedAt(null).setPublishedBy(null).setUpdatedAt(storedUpdateTime);
+        bannerRepository.saveAndFlush(legacy);
+        clock.set(UPDATED_AT);
+
+        service.update(
+            published.uuid(),
+            request(
+                "<p>Corrected state</p>", "Corrected", BannerAppearance.ERROR, BannerIcon.ERROR, true, BannerAudience.EVERYONE,
+                "[{\"kind\":\"ALL\"}]"
+            ), SECOND_ADMIN
+        );
+
+        List<BannerVersion> versions = versionsFor(versionRepository, published.uuid());
+        assertThat(versions).extracting(BannerVersion::getVersionNumber).containsExactly(1, 2);
+        assertThat(versions.getFirst().getHtmlContent()).isEqualTo("<p>Legacy state</p>");
+        assertThat(versions.getFirst().getEffectiveAt()).isEqualTo(storedUpdateTime);
+        assertThat(versions.getFirst().getActor()).isEqualTo("SYSTEM_MIGRATION");
     }
 
     private PublishBannerRequest request(
