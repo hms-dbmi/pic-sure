@@ -59,6 +59,9 @@ class BannerControllerTest {
     @Autowired
     private BannerVersionRepository versionRepository;
 
+    @Autowired
+    private BannerPriorityAllocatorRepository priorityAllocatorRepository;
+
     @MockitoBean
     private LoggingClient loggingClient;
 
@@ -380,6 +383,8 @@ class BannerControllerTest {
         String response = mockMvc.perform(adminPost(publishRequest("<p>Live notice</p>", "Live"))).andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
         UUID uuid = UUID.fromString(objectMapper.readTree(response).get("uuid").asText());
+        int priority = repository.findById(uuid).orElseThrow().getPriority();
+        int nextPriority = priorityAllocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority();
         mockMvc.perform(get("/banners/active")).andExpect(jsonPath("$", hasSize(1)));
 
         mockMvc
@@ -395,6 +400,10 @@ class BannerControllerTest {
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
         BannerOccurrence disabled = repository.findById(uuid).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(disabled.getHtmlContent()).isEqualTo("<p>Live notice</p>");
+        org.assertj.core.api.Assertions.assertThat(disabled.getPriority()).isEqualTo(priority);
+        org.assertj.core.api.Assertions.assertThat(
+            priorityAllocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority()
+        ).isEqualTo(nextPriority);
         org.assertj.core.api.Assertions.assertThat(disabled.getPresentationHash()).isEqualTo(hasher.hash(disabled));
         org.assertj.core.api.Assertions.assertThat(disabled.getPublishedAt()).isEqualTo(NOW);
         org.assertj.core.api.Assertions.assertThat(versionRepository.findAll()).singleElement().satisfies(version -> {
