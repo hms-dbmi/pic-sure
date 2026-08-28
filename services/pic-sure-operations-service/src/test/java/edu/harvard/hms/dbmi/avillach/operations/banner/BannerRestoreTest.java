@@ -136,6 +136,23 @@ class BannerRestoreTest {
         assertThat(repository.findById(source.getUuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
     }
 
+    @Test
+    void restoresADisabledOccurrenceWithAFutureStart() {
+        BannerOccurrence source = repository.saveAndFlush(
+            banner(BannerStatus.DISABLED, NOW.minusSeconds(600), null, 9, "Disabled").setDisabledAt(NOW.minusSeconds(60))
+                .setDisabledBy("disabler-id")
+        );
+        Instant futureStart = NOW.plusSeconds(600);
+
+        ManagementBannerDto restored = service.restore(source.getUuid(), request(futureStart, NOW.plusSeconds(1_200)), RESTORER);
+
+        assertThat(restored.lifecycle()).isEqualTo(BannerLifecycle.SCHEDULED);
+        assertThat(restored.startAt()).isEqualTo(futureStart);
+        assertThat(restored.endAt()).isEqualTo(NOW.plusSeconds(1_200));
+        assertThat(restored.restoredFromUuid()).isEqualTo(source.getUuid());
+        assertThat(repository.findById(source.getUuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
+    }
+
     private static Stream<Arguments> rejectedOccurrences() {
         return Stream.of(
             Arguments.of("saved", BannerStatus.SAVED, null, null),

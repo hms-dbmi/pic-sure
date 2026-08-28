@@ -65,8 +65,8 @@ public class BannerAuditService {
         LoggingEvent event = LoggingEvent.builder("BANNER").action(RESTORED_ACTION).caller(actor)
             .metadata(
                 Map.of(
-                    "sourceBannerUuid", sourceBannerUuid.toString(), "newBannerUuid", newBannerUuid.toString(), "timestamp",
-                    timestamp.toString(), "presentationHash", presentationHash
+                    "bannerUuid", newBannerUuid.toString(), "sourceBannerUuid", sourceBannerUuid.toString(), "newBannerUuid",
+                    newBannerUuid.toString(), "timestamp", timestamp.toString(), "presentationHash", presentationHash
                 )
             ).build();
         registerAfterCommit(event, newBannerUuid, RESTORED_ACTION);

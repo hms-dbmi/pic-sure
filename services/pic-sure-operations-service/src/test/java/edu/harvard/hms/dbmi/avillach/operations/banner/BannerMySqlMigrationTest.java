@@ -101,6 +101,7 @@ class BannerMySqlMigrationTest {
             }
         }
         versionRepository.deleteAll();
+        // Restored occurrences reference their source, so remove children before repository cleanup removes sources.
         jdbcTemplate.update("DELETE FROM banner_occurrence WHERE restored_from_uuid IS NOT NULL");
         bannerRepository.deleteAll();
     }
