@@ -313,6 +313,24 @@ class BannerControllerTest {
             .andExpect(jsonPath("$[0].title").value("Corrected")).andExpect(jsonPath("$[0].appearance").value("ERROR"));
     }
 
+    @Test
+    void nonAdminsAndAnonymousUsersCannotEditPublishedBanners() throws Exception {
+        String response = mockMvc.perform(adminPost(publishRequest("<p>Original</p>", "Original"))).andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        UUID uuid = UUID.fromString(objectMapper.readTree(response).get("uuid").asText());
+        String update = publishRequest("<p>Unauthorized change</p>", "Unauthorized");
+
+        mockMvc.perform(
+            put("/banners/{uuid}", uuid).header(GatewayUserResolver.HEADER_USER_ID, "researcher-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "PIC_SURE_ANY_QUERY").contentType(MediaType.APPLICATION_JSON)
+                .content(update)
+        ).andExpect(status().isForbidden());
+        mockMvc.perform(put("/banners/{uuid}", uuid).contentType(MediaType.APPLICATION_JSON).content(update))
+            .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$[0].htmlContent").value("<p>Original</p>"));
+    }
+
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPost(String content) {
         return adminPost("/banners", content);
     }

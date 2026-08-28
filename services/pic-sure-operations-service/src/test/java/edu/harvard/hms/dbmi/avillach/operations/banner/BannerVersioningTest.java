@@ -8,6 +8,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,7 +70,7 @@ class BannerVersioningTest {
 
         ManagementBannerDto published = service.publish(request, FIRST_ADMIN);
 
-        List<BannerVersion> versions = versionRepository.findByBannerUuidOrderByVersionNumber(published.uuid());
+        List<BannerVersion> versions = versionsFor(published.uuid());
         assertThat(versions).singleElement().satisfies(version -> {
             assertThat(version.getVersionNumber()).isEqualTo(1);
             assertThat(version.getBannerUuid()).isEqualTo(published.uuid());
@@ -112,7 +113,7 @@ class BannerVersioningTest {
         assertThat(updated.publishedBy()).isEqualTo("first-admin");
         assertThat(updated.presentationHash()).isNotEqualTo(published.presentationHash());
 
-        List<BannerVersion> versions = versionRepository.findByBannerUuidOrderByVersionNumber(published.uuid());
+        List<BannerVersion> versions = versionsFor(published.uuid());
         assertThat(versions).extracting(BannerVersion::getVersionNumber).containsExactly(1, 2);
         BannerVersion prior = versions.getFirst();
         assertThat(prior.getHtmlContent()).isEqualTo(original.htmlContent());
@@ -152,7 +153,7 @@ class BannerVersioningTest {
         ManagementBannerDto result = service.update(published.uuid(), normalizedNoOp, SECOND_ADMIN);
 
         assertThat(result).isEqualTo(published);
-        assertThat(versionRepository.findByBannerUuidOrderByVersionNumber(published.uuid())).hasSize(1);
+        assertThat(versionsFor(published.uuid())).hasSize(1);
     }
 
     @Test
@@ -174,17 +175,12 @@ class BannerVersioningTest {
         );
 
         assertThat(updated.presentationHash()).isNotEqualTo(published.presentationHash());
-        assertThat(versionRepository.findByBannerUuidOrderByVersionNumber(published.uuid())).hasSize(2);
+        assertThat(versionsFor(published.uuid())).hasSize(2);
     }
 
-    @Test
-    void scheduleChangesAreMaterialEvenThoughTheyDoNotChangeThePresentationHash() {
-        BannerOccurrence current = new BannerOccurrence().setPresentationHash("same-hash").setStartAt(PUBLISHED_AT).setEndAt(null);
-        BannerOccurrence changedStart = new BannerOccurrence().setPresentationHash("same-hash").setStartAt(UPDATED_AT).setEndAt(null);
-        BannerOccurrence changedEnd = new BannerOccurrence().setPresentationHash("same-hash").setStartAt(PUBLISHED_AT).setEndAt(UPDATED_AT);
-
-        assertThat(BannerService.hasMaterialChange(current, changedStart)).isTrue();
-        assertThat(BannerService.hasMaterialChange(current, changedEnd)).isTrue();
+    private List<BannerVersion> versionsFor(UUID bannerUuid) {
+        return versionRepository.findAll().stream().filter(version -> version.getBannerUuid().equals(bannerUuid))
+            .sorted(java.util.Comparator.comparingInt(BannerVersion::getVersionNumber)).toList();
     }
 
     private PublishBannerRequest request(

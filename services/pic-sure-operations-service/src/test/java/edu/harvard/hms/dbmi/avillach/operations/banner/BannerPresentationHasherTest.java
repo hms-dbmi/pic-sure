@@ -21,8 +21,7 @@ class BannerPresentationHasherTest {
         PublishBannerRequest changedHtmlBytes =
             request("<p>Exact bytes</p>", "Notice", "[{\"kind\":\"ALL\"},{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
 
-        assertThat(hash(first)).isEqualTo(hash(sameMeaning))
-            .isEqualTo("496c6e461a6c0d60a52ad4049d5c71834d2a5fdbe0cd06b537311016ecf672b9");
+        assertThat(hash(first)).isEqualTo(hash(sameMeaning)).isEqualTo("496c6e461a6c0d60a52ad4049d5c71834d2a5fdbe0cd06b537311016ecf672b9");
         assertThat(hash(changedHtmlBytes)).isNotEqualTo(hash(first));
     }
 
