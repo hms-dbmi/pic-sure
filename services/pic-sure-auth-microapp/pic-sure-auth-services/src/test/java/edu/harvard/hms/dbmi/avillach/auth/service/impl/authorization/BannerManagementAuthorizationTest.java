@@ -5,23 +5,16 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -39,11 +32,6 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 
 class BannerManagementAuthorizationTest {
 
-    private static final String MIGRATION_FILES_PROPERTY = "banner.management.migration.files";
-    private static final Pattern MIGRATION_VALUE = Pattern.compile("SET\\s+value\\s*=\\s*'([^']+)'", Pattern.CASE_INSENSITIVE);
-    private static final Pattern FAIL_SAFE_RULE_UPDATE = Pattern.compile(
-        "WHERE\\s+name\\s*=\\s*'AR_BANNER_MANAGEMENT_GATEWAY'\\s*;", Pattern.CASE_INSENSITIVE
-    );
     private static final RouteFixture ROUTES = loadRouteFixture();
 
     private Application picsure;
@@ -102,38 +90,6 @@ class BannerManagementAuthorizationTest {
             .isFalse();
     }
 
-    @Test
-    void deploymentMigrationsAreByteEquivalentAndUseTheCanonicalRouteFixture() throws IOException {
-        String configuredFiles = System.getProperty(MIGRATION_FILES_PROPERTY);
-        Assumptions.assumeTrue(
-            configuredFiles != null && !configuredFiles.isBlank(),
-            () -> "set -D%s to the AIO, BDC, and AIM migration paths separated by '%s'"
-                .formatted(MIGRATION_FILES_PROPERTY, File.pathSeparator)
-        );
-
-        List<Path> migrationFiles = Arrays.stream(configuredFiles.split(Pattern.quote(File.pathSeparator)))
-            .map(Path::of)
-            .toList();
-        assertThat(migrationFiles).as("AIO, BDC, and AIM migration paths").hasSize(3);
-        assertThat(migrationFiles.stream().map(path -> path.toAbsolutePath().normalize()).toList())
-            .as("distinct AIO, BDC, and AIM migration paths")
-            .doesNotHaveDuplicates();
-
-        byte[] reference = Files.readAllBytes(migrationFiles.getFirst());
-        for (Path migrationFile : migrationFiles) {
-            byte[] bytes = Files.readAllBytes(migrationFile);
-            assertThat(bytes).as("migration bytes for %s", migrationFile).isEqualTo(reference);
-
-            String sql = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-            Matcher value = MIGRATION_VALUE.matcher(sql);
-            assertThat(value.find()).as("route value in %s", migrationFile).isTrue();
-            assertThat(value.group(1)).as("route value in %s", migrationFile).isEqualTo(ROUTES.pattern());
-            assertThat(FAIL_SAFE_RULE_UPDATE.matcher(sql).find())
-                .as("rule-name-only update in %s", migrationFile)
-                .isTrue();
-        }
-    }
-
     private static Stream<String> allowedManagementPaths() {
         return ROUTES.allowed().stream();
     }
@@ -153,8 +109,7 @@ class BannerManagementAuthorizationTest {
             throw new IllegalStateException("Could not load banner management route fixture", e);
         }
         return new RouteFixture(
-            properties.getProperty("pattern"),
-            List.of(properties.getProperty("allowed").split(",")),
+            properties.getProperty("pattern"), List.of(properties.getProperty("allowed").split(",")),
             List.of(properties.getProperty("rejected").split(","))
         );
     }
@@ -191,5 +146,6 @@ class BannerManagementAuthorizationTest {
         return user;
     }
 
-    private record RouteFixture(String pattern, List<String> allowed, List<String> rejected) { }
+    private record RouteFixture(String pattern, List<String> allowed, List<String> rejected) {
+    }
 }

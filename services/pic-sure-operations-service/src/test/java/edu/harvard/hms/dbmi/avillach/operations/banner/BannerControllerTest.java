@@ -134,12 +134,38 @@ class BannerControllerTest {
     }
 
     @Test
-    void publishRejectsHtmlAndTitleOverTheirServerLimits() throws Exception {
-        mockMvc.perform(adminPost(publishRequest("x".repeat(5_001), null))).andExpect(status().isBadRequest());
-        mockMvc.perform(adminPost(publishRequest("<p>Valid</p>", "x".repeat(121)))).andExpect(status().isBadRequest());
+    void allMutationsRejectHtmlAndTitleOverTheirServerLimits() throws Exception {
+        UUID savedUuid = repository.save(banner(null, BannerStatus.SAVED, null, null, "Saved validation target")).getUuid();
+        List<org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder> oversizedHtml = List.of(
+            adminPost(publishRequest("x".repeat(5_001), null)), adminPost("/banners/saved", publishRequest("x".repeat(5_001), null)),
+            adminPut(savedUuid, publishRequest("x".repeat(5_001), null)),
+            adminPost("/banners/{uuid}/publish", savedUuid, publishRequest("x".repeat(5_001), null))
+        );
+        List<org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder> oversizedTitle = List.of(
+            adminPost(publishRequest("<p>Valid</p>", "x".repeat(121))),
+            adminPost("/banners/saved", publishRequest("<p>Valid</p>", "x".repeat(121))),
+            adminPut(savedUuid, publishRequest("<p>Valid</p>", "x".repeat(121))),
+            adminPost("/banners/{uuid}/publish", savedUuid, publishRequest("<p>Valid</p>", "x".repeat(121)))
+        );
 
-        org.assertj.core.api.Assertions.assertThat(repository.count()).isZero();
+        for (var request : oversizedHtml) {
+            mockMvc.perform(request).andExpect(status().isBadRequest());
+        }
+        for (var request : oversizedTitle) {
+            mockMvc.perform(request).andExpect(status().isBadRequest());
+        }
+
+        org.assertj.core.api.Assertions.assertThat(repository.count()).isOne();
+        org.assertj.core.api.Assertions.assertThat(repository.findById(savedUuid).orElseThrow().getTitle())
+            .isEqualTo("Saved validation target");
         verifyNoInteractions(loggingClient);
+    }
+
+    @Test
+    void archivedOccurrencesHaveNoManagementRepresentation() {
+        BannerOccurrence archived = banner(null, BannerStatus.ARCHIVED, null, null, "Archived");
+
+        org.assertj.core.api.Assertions.assertThat(ManagementBannerDto.from(archived, NOW)).isEmpty();
     }
 
     @Test
@@ -265,6 +291,16 @@ class BannerControllerTest {
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPost(String path, String content) {
         return post(path).header(GatewayUserResolver.HEADER_USER_ID, "admin-id").header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN")
             .contentType(MediaType.APPLICATION_JSON).content(content);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPost(String path, UUID uuid, String content) {
+        return post(path, uuid).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+            .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON).content(content);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPut(UUID uuid, String content) {
+        return put("/banners/{uuid}", uuid).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+            .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON).content(content);
     }
 
     private String publishRequest(String htmlContent, String title) throws Exception {

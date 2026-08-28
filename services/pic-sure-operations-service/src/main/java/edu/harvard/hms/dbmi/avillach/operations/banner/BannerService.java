@@ -44,7 +44,8 @@ public class BannerService {
     @Transactional(readOnly = true)
     public List<ManagementBannerDto> managedBanners() {
         Instant now = clock.instant();
-        return repository.findAllManaged().stream().map(banner -> ManagementBannerDto.from(banner, now)).sorted(MANAGEMENT_ORDER).toList();
+        return repository.findAllManaged().stream().flatMap(banner -> ManagementBannerDto.from(banner, now).stream())
+            .sorted(MANAGEMENT_ORDER).toList();
     }
 
     @Transactional
@@ -58,7 +59,7 @@ public class BannerService {
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         auditService.registerMutationAudit(BannerAuditService.PUBLISHED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
-        return ManagementBannerDto.from(saved, now);
+        return managementDto(saved, now);
     }
 
     @Transactional
@@ -71,7 +72,7 @@ public class BannerService {
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         auditService.registerMutationAudit(BannerAuditService.SAVED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
-        return ManagementBannerDto.from(saved, now);
+        return managementDto(saved, now);
     }
 
     @Transactional
@@ -84,7 +85,7 @@ public class BannerService {
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         auditService.registerMutationAudit(BannerAuditService.UPDATED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
-        return ManagementBannerDto.from(saved, now);
+        return managementDto(saved, now);
     }
 
     @Transactional
@@ -99,7 +100,7 @@ public class BannerService {
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         auditService.registerMutationAudit(BannerAuditService.PUBLISHED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
-        return ManagementBannerDto.from(saved, now);
+        return managementDto(saved, now);
     }
 
     private BannerOccurrence requireSaved(UUID uuid) {
@@ -109,6 +110,10 @@ public class BannerService {
             throw PicsureExceptions.conflict("Only saved banners can be changed before publication");
         }
         return banner;
+    }
+
+    private static ManagementBannerDto managementDto(BannerOccurrence banner, Instant now) {
+        return ManagementBannerDto.from(banner, now).orElseThrow(() -> PicsureExceptions.notFound("Banner", banner.getUuid()));
     }
 
     private static void validate(PublishBannerRequest request) {
