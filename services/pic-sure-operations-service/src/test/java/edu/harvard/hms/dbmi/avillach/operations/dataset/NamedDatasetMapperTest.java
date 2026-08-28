@@ -71,7 +71,7 @@ class NamedDatasetMapperTest {
     void toDtoConvertsV1Query() throws JsonProcessingException {
         Query query = new Query();
         query.setUuid(UUID.randomUUID());
-        query.setQuery("{\"categoryFilters\":{}}}");
+        query.setQuery("{\"categoryFilters\":{}}");
         NamedDataset entity = new NamedDataset().setUser("alice@example.com").setName("d1").setQuery(query);
         entity.setUuid(UUID.randomUUID());
 
