@@ -23,25 +23,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * <p>This is a test class from the view of high level use cases (user input aspect)</p>
- * <br>
- * <p>This class should contain the following use cases:</p>
- * <ul>
- *    <li>A: Level 1 users must not include DATAFRAME as expectedResultType
- *           <br><b>This is for the more general level 1 and level 2 abstractions we already have in other projects.</b></li>
- *    <li>B: A user has access to \\demographics\\ but not to \\laboratory\\
- *           <br><b>Basic study-level access control</b></li>
- *    <li>C: A user has access to everything for COUNT expectedResultType, but only \\demographics\\ for DATAFRAME
- *           <br><b>This is level 1 for everything except level 2 for demographics Also emulates study level access where a user is level 1 for all studies and level 2 for a specific study </b>
- *           <br><b>Also emulates study level access where a user is level 1 for all studies and level 2 for a specific study</b>
- *           </li>
- *    <li>D: A user has access to everything for COUNT and CROSS_COUNT expectedResultTypes but only has DATAFRAME access if they include \\demographics\\SEX\\male as a filter
- *           <br><b>In this case male is being used to emulate a consent group based access control</b> </li>
- *    <li>E: A user has access to \\laboratory\\ if they have included \\demographics\\SEX\\male as a filter, and has access to \\examination\\ if they have included \\demographics\\SEX\\female as a filter
- *           <br><b>This is a more complex consent group based access control use-case, male is consent group A, female is consent group B</b></li>
- *    <li>F: A user has access to run queries with variantInfoFilters and specific variant category filters only. The user cannot include any other filters or select any fields and can only do COUNT queries.
- *           <br><b>This is the authentication only variant search functionality.</b> </li>
- * </ul>
+ * <p>This is a test class from the view of high level use cases (user input aspect)</p> <br> <p>This class should contain the following use
+ * cases:</p> <ul> <li>A: Level 1 users must not include DATAFRAME as expectedResultType <br><b>This is for the more general level 1 and
+ * level 2 abstractions we already have in other projects.</b></li> <li>B: A user has access to \\demographics\\ but not to \\laboratory\\
+ * <br><b>Basic study-level access control</b></li> <li>C: A user has access to everything for COUNT expectedResultType, but only
+ * \\demographics\\ for DATAFRAME <br><b>This is level 1 for everything except level 2 for demographics Also emulates study level access
+ * where a user is level 1 for all studies and level 2 for a specific study </b> <br><b>Also emulates study level access where a user is
+ * level 1 for all studies and level 2 for a specific study</b> </li> <li>D: A user has access to everything for COUNT and CROSS_COUNT
+ * expectedResultTypes but only has DATAFRAME access if they include \\demographics\\SEX\\male as a filter <br><b>In this case male is being
+ * used to emulate a consent group based access control</b> </li> <li>E: A user has access to \\laboratory\\ if they have included
+ * \\demographics\\SEX\\male as a filter, and has access to \\examination\\ if they have included \\demographics\\SEX\\female as a filter
+ * <br><b>This is a more complex consent group based access control use-case, male is consent group A, female is consent group B</b></li>
+ * <li>F: A user has access to run queries with variantInfoFilters and specific variant category filters only. The user cannot include any
+ * other filters or select any fields and can only do COUNT queries. <br><b>This is the authentication only variant search
+ * functionality.</b> </li> </ul>
  *
  * We also have a class testing from the aspect of design, which means each test case is just testing one feature.
  * @see AuthorizationServiceTest
@@ -72,402 +67,129 @@ public class AuthorizationServiceByUseCasesTest {
     private static AccessRule AR_ExpectedResultType_String_contains;
 
 
-    public static String sample_caseAB_pass = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-            "        \"male\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"COUNT\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseAB_pass =
+        "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"\\\\demographics\\\\SEX\\\\\": [\n" + "        \"male\"\n"
+            + "      ]\n" + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n"
+            + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n" + "    \"expectedResultType\": \"COUNT\",\n" + "    \"fields\": [\n"
+            + "      \"\\\\demographics\\\\SEX\\\\\",\n" + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ]\n" + "  },\n"
+            + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseAB_fail = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\laboratory\\\\SEX\\\\\": [\n" +
-            "        \"male\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"DATAFRAME\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseAB_fail =
+        "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"\\\\laboratory\\\\SEX\\\\\": [\n" + "        \"male\"\n"
+            + "      ]\n" + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n"
+            + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n" + "    \"expectedResultType\": \"DATAFRAME\",\n"
+            + "    \"fields\": [\n" + "      \"\\\\demographics\\\\SEX\\\\\",\n" + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ]\n"
+            + "  },\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseCD_pass = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-            "        \"male\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"dataframe\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseCD_pass =
+        "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"\\\\demographics\\\\SEX\\\\\": [\n" + "        \"male\"\n"
+            + "      ]\n" + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n"
+            + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n" + "    \"expectedResultType\": \"dataframe\",\n"
+            + "    \"fields\": [\n" + "      \"\\\\demographics\\\\SEX\\\\\",\n" + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ]\n"
+            + "  },\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseCD_fail = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-            "        \"male\",\n" +
-            "        \"female\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"dataframe\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\",\n" +
-            "      \"\\\\laboratory\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseCD_fail = "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n"
+        + "      \"\\\\demographics\\\\SEX\\\\\": [\n" + "        \"male\",\n" + "        \"female\"\n" + "      ]\n" + "    },\n"
+        + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n" + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n"
+        + "    \"expectedResultType\": \"dataframe\",\n" + "    \"fields\": [\n" + "      \"\\\\demographics\\\\SEX\\\\\",\n"
+        + "      \"\\\\demographics\\\\AGE\\\\\",\n" + "      \"\\\\laboratory\\\\AGE\\\\\"\n" + "    ]\n" + "  },\n"
+        + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseCD_fail_2 = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\laboratory\\\\SEX\\\\\": [\n" +
-            "        \"male\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"dataframe\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseCD_fail_2 =
+        "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"\\\\laboratory\\\\SEX\\\\\": [\n" + "        \"male\"\n"
+            + "      ]\n" + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n"
+            + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n" + "    \"expectedResultType\": \"dataframe\",\n"
+            + "    \"fields\": [\n" + "      \"\\\\demographics\\\\SEX\\\\\",\n" + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ]\n"
+            + "  },\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseE_pass = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-            "        \"male\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"dataframe\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\laboratory\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseE_pass =
+        "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"\\\\demographics\\\\SEX\\\\\": [\n" + "        \"male\"\n"
+            + "      ]\n" + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n"
+            + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n" + "    \"expectedResultType\": \"dataframe\",\n"
+            + "    \"fields\": [\n" + "      \"\\\\demographics\\\\SEX\\\\\",\n" + "      \"\\\\laboratory\\\\AGE\\\\\"\n" + "    ]\n"
+            + "  },\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseE_2_pass = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-            "        \"female\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"dataframe\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\examination\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseE_2_pass =
+        "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"\\\\demographics\\\\SEX\\\\\": [\n" + "        \"female\"\n"
+            + "      ]\n" + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n"
+            + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n" + "    \"expectedResultType\": \"dataframe\",\n"
+            + "    \"fields\": [\n" + "      \"\\\\demographics\\\\SEX\\\\\",\n" + "      \"\\\\examination\\\\AGE\\\\\"\n" + "    ]\n"
+            + "  },\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseE_fail = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-            "        \"nothing\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"dataframe\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\examination\\\\AGE\\\\\",\n" +
-            "      \"\\\\laboratory\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseE_fail = "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n"
+        + "      \"\\\\demographics\\\\SEX\\\\\": [\n" + "        \"nothing\"\n" + "      ]\n" + "    },\n"
+        + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n" + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n"
+        + "    \"expectedResultType\": \"dataframe\",\n" + "    \"fields\": [\n" + "      \"\\\\demographics\\\\SEX\\\\\",\n"
+        + "      \"\\\\examination\\\\AGE\\\\\",\n" + "      \"\\\\laboratory\\\\AGE\\\\\"\n" + "    ]\n" + "  },\n"
+        + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseE_2_fail = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-            "        \"nothing\"\n" +
-            "      ],\n" +
-            "      \"\\\\laboratory\\\\SEX\\\\\": [\n" +
-            "        \"male\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"dataframe\",\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-            "      \"\\\\examination\\\\AGE\\\\\"\n" +
-            "    ]\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseE_2_fail = "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n"
+        + "      \"\\\\demographics\\\\SEX\\\\\": [\n" + "        \"nothing\"\n" + "      ],\n" + "      \"\\\\laboratory\\\\SEX\\\\\": [\n"
+        + "        \"male\"\n" + "      ]\n" + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n"
+        + "      \"\\\\demographics\\\\AGE\\\\\"\n" + "    ],\n" + "    \"expectedResultType\": \"dataframe\",\n" + "    \"fields\": [\n"
+        + "      \"\\\\demographics\\\\SEX\\\\\",\n" + "      \"\\\\examination\\\\AGE\\\\\"\n" + "    ]\n" + "  },\n"
+        + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseF_pass = "{\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"3,112222,112222,C,T\": [\n" +
-            "        \"1/1\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "    ],\n" +
-            "    \"variantInfoFilters\": [\n" +
-            "      {\n" +
-            "        \"categoryVariantInfoFilters\": {\n" +
-            "          \"HD\": [\n" +
-            "            \"\\\"Asthma,_severe\\\"\"\n" +
-            "          ]\n" +
-            "        },\n" +
-            "        \"numericVariantInfoFilters\": {}\n" +
-            "      }\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"COUNT\"\n" +
-            "  },\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseF_pass = "{\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"query\": {\n"
+        + "    \"categoryFilters\": {\n" + "      \"3,112222,112222,C,T\": [\n" + "        \"1/1\"\n" + "      ]\n" + "    },\n"
+        + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n" + "    ],\n" + "    \"variantInfoFilters\": [\n" + "      {\n"
+        + "        \"categoryVariantInfoFilters\": {\n" + "          \"HD\": [\n" + "            \"\\\"Asthma,_severe\\\"\"\n"
+        + "          ]\n" + "        },\n" + "        \"numericVariantInfoFilters\": {}\n" + "      }\n" + "    ],\n"
+        + "    \"expectedResultType\": \"COUNT\"\n" + "  },\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseF_fail = "{\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"3,112222,112222,C,T\": [\n" +
-            "        \"1/1\"\n" +
-            "      ],\n" +
-            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-            "        \"male\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "    ],\n" +
-            "    \"variantInfoFilters\": [\n" +
-            "      {\n" +
-            "        \"categoryVariantInfoFilters\": {\n" +
-            "          \"HD\": [\n" +
-            "            \"\\\"Asthma,_severe\\\"\"\n" +
-            "          ]\n" +
-            "        },\n" +
-            "        \"numericVariantInfoFilters\": {}\n" +
-            "      }\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"COUNT\"\n" +
-            "  },\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseF_fail =
+        "{\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n"
+            + "      \"3,112222,112222,C,T\": [\n" + "        \"1/1\"\n" + "      ],\n" + "      \"\\\\demographics\\\\SEX\\\\\": [\n"
+            + "        \"male\"\n" + "      ]\n" + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n" + "    ],\n"
+            + "    \"variantInfoFilters\": [\n" + "      {\n" + "        \"categoryVariantInfoFilters\": {\n" + "          \"HD\": [\n"
+            + "            \"\\\"Asthma,_severe\\\"\"\n" + "          ]\n" + "        },\n" + "        \"numericVariantInfoFilters\": {}\n"
+            + "      }\n" + "    ],\n" + "    \"expectedResultType\": \"COUNT\"\n" + "  },\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseF_fail_2 = "{\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"3,112222,112222,C,T\": [\n" +
-            "        \"1/1\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"COUNT\"\n" +
-            "  },\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseF_fail_2 = "{\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n"
+        + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"3,112222,112222,C,T\": [\n" + "        \"1/1\"\n" + "      ]\n"
+        + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n" + "    ],\n"
+        + "    \"expectedResultType\": \"COUNT\"\n" + "  },\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseF_fail_3 = "{\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"3,112222,112222,C,T\": [\n" +
-            "        \"1/1\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "    ],\n" +
-            "    \"variantInfoFilters\": [\n" +
-            "      {\n" +
-            "        \"categoryVariantInfoFilters\": {\n" +
-            "          \"HD\": [\n" +
-            "            \"\\\"Asthma,_severe\\\"\"\n" +
-            "          ]\n" +
-            "        },\n" +
-            "        \"numericVariantInfoFilters\": {}\n" +
-            "      }\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"CROSS_COUNT\"\n" +
-            "  },\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseF_fail_3 = "{\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n"
+        + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"3,112222,112222,C,T\": [\n" + "        \"1/1\"\n" + "      ]\n"
+        + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n" + "    ],\n" + "    \"variantInfoFilters\": [\n"
+        + "      {\n" + "        \"categoryVariantInfoFilters\": {\n" + "          \"HD\": [\n" + "            \"\\\"Asthma,_severe\\\"\"\n"
+        + "          ]\n" + "        },\n" + "        \"numericVariantInfoFilters\": {}\n" + "      }\n" + "    ],\n"
+        + "    \"expectedResultType\": \"CROSS_COUNT\"\n" + "  },\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseF_fail_4 = "{\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"3,112222,112222,C,T\": [\n" +
-            "        \"1/1\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [\n" +
-            "      \"\\\\000_UDN ID\\\\\"\n" +
-            "    ],\n" +
-            "    \"variantInfoFilters\": [\n" +
-            "      {\n" +
-            "        \"categoryVariantInfoFilters\": {\n" +
-            "          \"HD\": [\n" +
-            "            \"\\\"Asthma,_severe\\\"\"\n" +
-            "          ]\n" +
-            "        },\n" +
-            "        \"numericVariantInfoFilters\": {}\n" +
-            "      }\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"COUNT\"\n" +
-            "  },\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseF_fail_4 = "{\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n"
+        + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"3,112222,112222,C,T\": [\n" + "        \"1/1\"\n" + "      ]\n"
+        + "    },\n" + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [\n" + "      \"\\\\000_UDN ID\\\\\"\n" + "    ],\n"
+        + "    \"variantInfoFilters\": [\n" + "      {\n" + "        \"categoryVariantInfoFilters\": {\n" + "          \"HD\": [\n"
+        + "            \"\\\"Asthma,_severe\\\"\"\n" + "          ]\n" + "        },\n" + "        \"numericVariantInfoFilters\": {}\n"
+        + "      }\n" + "    ],\n" + "    \"expectedResultType\": \"COUNT\"\n" + "  },\n" + "  \"resourceCredentials\": {}\n" + "}";
 
-    public static String sample_caseF_fail_5 = "{\n" +
-            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"3,112222,112222,C,T\": [\n" +
-            "        \"1/1\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {\"nothing\":null},\n" +
-            "    \"requiredFields\": [\n" +
-            "    ],\n" +
-            "    \"variantInfoFilters\": [\n" +
-            "      {\n" +
-            "        \"categoryVariantInfoFilters\": {\n" +
-            "          \"HD\": [\n" +
-            "            \"\\\"Asthma,_severe\\\"\"\n" +
-            "          ]\n" +
-            "        },\n" +
-            "        \"numericVariantInfoFilters\": {}\n" +
-            "      }\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"COUNT\"\n" +
-            "  },\n" +
-            "  \"resourceCredentials\": {}\n" +
-            "}";
+    public static String sample_caseF_fail_5 = "{\n" + "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n"
+        + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "      \"3,112222,112222,C,T\": [\n" + "        \"1/1\"\n" + "      ]\n"
+        + "    },\n" + "    \"numericFilters\": {\"nothing\":null},\n" + "    \"requiredFields\": [\n" + "    ],\n"
+        + "    \"variantInfoFilters\": [\n" + "      {\n" + "        \"categoryVariantInfoFilters\": {\n" + "          \"HD\": [\n"
+        + "            \"\\\"Asthma,_severe\\\"\"\n" + "          ]\n" + "        },\n" + "        \"numericVariantInfoFilters\": {}\n"
+        + "      }\n" + "    ],\n" + "    \"expectedResultType\": \"COUNT\"\n" + "  },\n" + "  \"resourceCredentials\": {}\n" + "}";
 
     // Sample for anyRecordOf test case (Case G)
-    public static String sample_caseG_pass = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "    },\n" +
-            "    \"numericFilters\": {},\n" +
-            "    \"requiredFields\": [],\n" +
-            "    \"anyRecordOf\": [\n" +
-            "      \"\\\\phs001001\\\\pht005655\\\\phv00354560\\\\age\\\\\"\n" +
-            "    ],\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\_Topmed Study Accession with Subject ID\\\\\",\n" +
-            "      \"\\\\_Parent Study Accession with Subject ID\\\\\"\n" +
-            "    ],\n" +
-            "    \"variantInfoFilters\": [\n" +
-            "      {\n" +
-            "        \"categoryVariantInfoFilters\": {},\n" +
-            "        \"numericVariantInfoFilters\": {}\n" +
-            "      }\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"COUNT\"\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"02e23f52-f354-4e8b-992c-d37c8b9ba140\"\n" +
-            "}";
+    public static String sample_caseG_pass = "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n" + "    },\n"
+        + "    \"numericFilters\": {},\n" + "    \"requiredFields\": [],\n" + "    \"anyRecordOf\": [\n"
+        + "      \"\\\\phs001001\\\\pht005655\\\\phv00354560\\\\age\\\\\"\n" + "    ],\n" + "    \"fields\": [\n"
+        + "      \"\\\\_Topmed Study Accession with Subject ID\\\\\",\n" + "      \"\\\\_Parent Study Accession with Subject ID\\\\\"\n"
+        + "    ],\n" + "    \"variantInfoFilters\": [\n" + "      {\n" + "        \"categoryVariantInfoFilters\": {},\n"
+        + "        \"numericVariantInfoFilters\": {}\n" + "      }\n" + "    ],\n" + "    \"expectedResultType\": \"COUNT\"\n" + "  },\n"
+        + "  \"resourceUUID\": \"02e23f52-f354-4e8b-992c-d37c8b9ba140\"\n" + "}";
 
-    public static String sample_caseG_fail = "{\n" +
-            "  \"query\": {\n" +
-            "    \"categoryFilters\": {\n" +
-            "      \"\\\\_consents\\\\\": [\n" +
-            "        \"phs000956.c2\",\"phs001189.c1\",\"tutorial-biolincc_digitalis\",\"phs001143.c1\",\"phs001032.c1\",\"phs001013.c1\",\"phs001013.c2\",\"phs000280.c1\",\"phs000284.c1\",\"phs000200.c1\",\"phs000280.c2\",\"phs001040.c1\",\"phs000951.c1\",\"phs000974.c1\",\"tutorial-biolincc_camp\",\"phs000997.c1\",\"phs000200.c2\",\"phs000007.c2\",\"phs000974.c2\",\"phs000007.c1\",\"phs000993.c1\",\"phs000179.c1\",\"phs000993.c2\",\"phs001062.c1\",\"phs000964.c3\",\"phs000964.c4\",\"phs000285.c2\",\"phs000285.c1\",\"tutorial-biolincc_framingham\",\"phs000964.c1\",\"phs000964.c2\",\"phs000287.c1\",\"phs001211.c2\",\"phs001211.c1\",\"phs000287.c2\",\"phs000287.c3\",\"phs000287.c4\",\"open_access-1000Genomes\",\"phs001024.c1\",\"phs000209.c1\",\"phs000209.c2\"\n" +
-            "      ]\n" +
-            "    },\n" +
-            "    \"numericFilters\": {\"age\": {\"min\": 20, \"max\": 80}},\n" +
-            "    \"requiredFields\": [\"\\\\demographics\\\\AGE\\\\\"],\n" +
-            "    \"anyRecordOf\": [\n" +
-            "      \"\\\\different_path\\\\different_value\\\\\"\n" +
-            "    ],\n" +
-            "    \"fields\": [\n" +
-            "      \"\\\\_Topmed Study Accession with Subject ID\\\\\",\n" +
-            "      \"\\\\_Parent Study Accession with Subject ID\\\\\"\n" +
-            "    ],\n" +
-            "    \"variantInfoFilters\": [\n" +
-            "      {\n" +
-            "        \"categoryVariantInfoFilters\": {},\n" +
-            "        \"numericVariantInfoFilters\": {}\n" +
-            "      }\n" +
-            "    ],\n" +
-            "    \"expectedResultType\": \"DATAFRAME\"\n" +
-            "  },\n" +
-            "  \"resourceUUID\": \"02e23f52-f354-4e8b-992c-d37c8b9ba140\"\n" +
-            "}";
+    public static String sample_caseG_fail = "{\n" + "  \"query\": {\n" + "    \"categoryFilters\": {\n"
+        + "      \"\\\\_consents\\\\\": [\n"
+        + "        \"phs000956.c2\",\"phs001189.c1\",\"tutorial-biolincc_digitalis\",\"phs001143.c1\",\"phs001032.c1\",\"phs001013.c1\",\"phs001013.c2\",\"phs000280.c1\",\"phs000284.c1\",\"phs000200.c1\",\"phs000280.c2\",\"phs001040.c1\",\"phs000951.c1\",\"phs000974.c1\",\"tutorial-biolincc_camp\",\"phs000997.c1\",\"phs000200.c2\",\"phs000007.c2\",\"phs000974.c2\",\"phs000007.c1\",\"phs000993.c1\",\"phs000179.c1\",\"phs000993.c2\",\"phs001062.c1\",\"phs000964.c3\",\"phs000964.c4\",\"phs000285.c2\",\"phs000285.c1\",\"tutorial-biolincc_framingham\",\"phs000964.c1\",\"phs000964.c2\",\"phs000287.c1\",\"phs001211.c2\",\"phs001211.c1\",\"phs000287.c2\",\"phs000287.c3\",\"phs000287.c4\",\"open_access-1000Genomes\",\"phs001024.c1\",\"phs000209.c1\",\"phs000209.c2\"\n"
+        + "      ]\n" + "    },\n" + "    \"numericFilters\": {\"age\": {\"min\": 20, \"max\": 80}},\n"
+        + "    \"requiredFields\": [\"\\\\demographics\\\\AGE\\\\\"],\n" + "    \"anyRecordOf\": [\n"
+        + "      \"\\\\different_path\\\\different_value\\\\\"\n" + "    ],\n" + "    \"fields\": [\n"
+        + "      \"\\\\_Topmed Study Accession with Subject ID\\\\\",\n" + "      \"\\\\_Parent Study Accession with Subject ID\\\\\"\n"
+        + "    ],\n" + "    \"variantInfoFilters\": [\n" + "      {\n" + "        \"categoryVariantInfoFilters\": {},\n"
+        + "        \"numericVariantInfoFilters\": {}\n" + "      }\n" + "    ],\n" + "    \"expectedResultType\": \"DATAFRAME\"\n"
+        + "  },\n" + "  \"resourceUUID\": \"02e23f52-f354-4e8b-992c-d37c8b9ba140\"\n" + "}";
 
     @BeforeAll
     public static void init() {
@@ -483,7 +205,7 @@ public class AuthorizationServiceByUseCasesTest {
     @BeforeEach
     public void setUp() {
         AccessRuleRepository accessRuleRepository = Mockito.mock(AccessRuleRepository.class);
-        accessRuleService = new AccessRuleService(accessRuleRepository, "false");
+        accessRuleService = new AccessRuleService(accessRuleRepository);
     }
 
     @Test
@@ -492,13 +214,13 @@ public class AuthorizationServiceByUseCasesTest {
         assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseAB_fail, Map.class), rule_caseA));
     }
 
-    private static void initialTestCaseA(){
+    private static void initialTestCaseA() {
         rule_caseA = new AccessRule();
         rule_caseA.setUuid(UUID.randomUUID());
         rule_caseA.setType(AccessRule.TypeNaming.NOT_CONTAINS_IGNORE_CASE);
         rule_caseA.setName("rule_caseA");
         rule_caseA.setRule("$..expectedResultType");
-//        rule_caseA.setRule("$..\\laboratory\\*");
+        // rule_caseA.setRule("$..\\laboratory\\*");
         rule_caseA.setValue("DATAFRAME");
     }
 
@@ -508,7 +230,7 @@ public class AuthorizationServiceByUseCasesTest {
         assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseAB_fail, Map.class), rule_caseB));
     }
 
-    private static void initialTestCaseB(){
+    private static void initialTestCaseB() {
         rule_caseB = new AccessRule();
         rule_caseB.setUuid(UUID.randomUUID());
         rule_caseB.setName("rule_caseB");
@@ -535,7 +257,7 @@ public class AuthorizationServiceByUseCasesTest {
         assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseCD_fail_2, Map.class), rule_caseC));
     }
 
-    private static void initialTestCaseC(){
+    private static void initialTestCaseC() {
         rule_caseC = new AccessRule();
         rule_caseC.setUuid(UUID.randomUUID());
         rule_caseC.setName("rule_caseC");
@@ -591,7 +313,7 @@ public class AuthorizationServiceByUseCasesTest {
         assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseCD_fail_2, Map.class), rule_caseD));
     }
 
-    private static void initialTestCaseD(){
+    private static void initialTestCaseD() {
         rule_caseD = new AccessRule();
         rule_caseD.setUuid(UUID.randomUUID());
         rule_caseD.setName("rule_caseD");
@@ -613,28 +335,28 @@ public class AuthorizationServiceByUseCasesTest {
     @Test
     public void testCaseE() throws IOException {
         assertTrue(
-                accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_pass, Map.class), rule_caseE)
+            accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_pass, Map.class), rule_caseE)
                 || accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_pass, Map.class), rule_caseE_2)
         );
 
         assertTrue(
-                accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_2_pass, Map.class), rule_caseE)
-                        || accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_2_pass, Map.class), rule_caseE_2)
+            accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_2_pass, Map.class), rule_caseE)
+                || accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_2_pass, Map.class), rule_caseE_2)
         );
 
         assertFalse(
-                accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_fail, Map.class), rule_caseE)
-                        || accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_fail, Map.class), rule_caseE_2)
+            accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_fail, Map.class), rule_caseE)
+                || accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_fail, Map.class), rule_caseE_2)
         );
 
         assertFalse(
-                accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_2_fail, Map.class), rule_caseE)
-                        || accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_2_fail, Map.class), rule_caseE_2)
+            accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_2_fail, Map.class), rule_caseE)
+                || accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseE_2_fail, Map.class), rule_caseE_2)
         );
 
     }
 
-    private static void initialTestCaseE(){
+    private static void initialTestCaseE() {
         rule_caseE = new AccessRule();
         rule_caseE.setUuid(UUID.randomUUID());
         rule_caseE.setName("rule_caseE");
@@ -683,7 +405,7 @@ public class AuthorizationServiceByUseCasesTest {
         assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseF_fail_5, Map.class), rule_caseF));
     }
 
-    private static void initialTestCaseF(){
+    private static void initialTestCaseF() {
         rule_caseF = new AccessRule();
         rule_caseF.setUuid(UUID.randomUUID());
         rule_caseF.setName("rule_caseF");
@@ -735,7 +457,7 @@ public class AuthorizationServiceByUseCasesTest {
         assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseG_fail, Map.class), rule_caseG));
     }
 
-    private static void initialTestCaseG(){
+    private static void initialTestCaseG() {
         rule_caseG = new AccessRule();
         rule_caseG.setUuid(UUID.randomUUID());
         rule_caseG.setName("rule_caseG");

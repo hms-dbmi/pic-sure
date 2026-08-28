@@ -56,7 +56,7 @@ public class AuthorizationServiceTest {
         MockitoAnnotations.openMocks(this);
         SecurityContextHolder.setContext(securityContext);
 
-        accessRuleService = new AccessRuleService(accessRuleRepository, "false");
+        accessRuleService = new AccessRuleService(accessRuleRepository);
         authorizationService =
             new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false);
     }

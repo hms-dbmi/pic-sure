@@ -1,13 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
-import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.event.ApplicationContextEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -23,18 +20,10 @@ public class PrivilegeService {
     private final static Logger logger = LoggerFactory.getLogger(PrivilegeService.class.getName());
 
     private final PrivilegeRepository privilegeRepository;
-    private final AccessRuleService accessRuleService;
 
     @Autowired
-    protected PrivilegeService(PrivilegeRepository privilegeRepository, AccessRuleService accessRuleService) {
+    protected PrivilegeService(PrivilegeRepository privilegeRepository) {
         this.privilegeRepository = privilegeRepository;
-        this.accessRuleService = accessRuleService;
-    }
-
-    @Transactional
-    @EventListener(ApplicationContextEvent.class)
-    protected void onContextRefreshedEvent() {
-        updateAllPrivilegesOnStartup();
     }
 
     @Transactional
@@ -85,24 +74,5 @@ public class PrivilegeService {
 
     public Optional<Privilege> findById(UUID uuid) {
         return privilegeRepository.findById(uuid);
-    }
-
-    /**
-     * Attaches the configured standard access rules to every privilege on startup. Standard rules are created by database migration without
-     * a privilege attachment, so this is the only thing that binds them to users. This method never removes a standard access rule;
-     * removing one requires a migration.
-     */
-    protected void updateAllPrivilegesOnStartup() {
-        List<Privilege> privileges = this.getPrivilegesAll();
-        Set<AccessRule> standardAccessRules = this.accessRuleService.addStandardAccessRules();
-        if (standardAccessRules.isEmpty()) {
-            logger.error("No standard access rules found.");
-            return;
-        }
-
-        privileges.forEach(privilege -> {
-            privilege.getAccessRules().addAll(standardAccessRules);
-            this.save(privilege);
-        });
     }
 }

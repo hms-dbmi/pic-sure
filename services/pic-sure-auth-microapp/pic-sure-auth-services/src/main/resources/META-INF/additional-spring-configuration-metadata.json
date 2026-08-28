@@ -76,11 +76,6 @@
       "description": "Description for fence.redirect.url."
     },
     {
-      "name": "fence.standard.access.rules",
-      "type": "java.lang.String",
-      "description": "Description for fence.standard.access.rules."
-    },
-    {
       "name": "application.token.expiration.time",
       "type": "java.lang.String",
       "description": "Description for application.token.expiration.time."

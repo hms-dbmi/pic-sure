@@ -14,7 +14,6 @@ import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -30,20 +29,12 @@ public class AccessRuleService {
     private final AccessRuleRepository accessRuleRepo;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private Set<AccessRule> standardAccessRules;
-
-    private final String fence_standard_access_rules;
-
     private final ThreadLocal<Stack<AccessRuleEvaluationNode>> evaluationTreeStack = ThreadLocal.withInitial(Stack::new);
     private final ThreadLocal<AccessRuleEvaluationNode> rootNode = new ThreadLocal<>();
 
     @Autowired
-    public AccessRuleService(
-        AccessRuleRepository accessRuleRepo, @Value("${fence.standard.access.rules}") String fenceStandardAccessRules
-    ) {
+    public AccessRuleService(AccessRuleRepository accessRuleRepo) {
         this.accessRuleRepo = accessRuleRepo;
-        this.fence_standard_access_rules = fenceStandardAccessRules;
-        logger.info("fence_standard_access_rules: {}", fenceStandardAccessRules);
     }
 
     public Optional<AccessRule> getAccessRuleById(String accessRuleId) {
@@ -650,34 +641,6 @@ public class AccessRuleService {
         }
 
         return decision;
-    }
-
-    /**
-     * The set of standard access rules that are added to all privileges. This set is cached to avoid loading the rules multiple times.
-     *
-     * @return The set of standard access rules.
-     */
-    protected Set<AccessRule> addStandardAccessRules() {
-        if (standardAccessRules != null && !standardAccessRules.isEmpty()) {
-            return standardAccessRules;
-        }
-
-        standardAccessRules = new HashSet<>();
-        for (String arName : fence_standard_access_rules.split(",")) {
-            if (arName.startsWith("AR_")) {
-                AccessRule ar = this.getAccessRuleByName(arName);
-                if (ar != null) {
-                    standardAccessRules.add(ar);
-                } else {
-                    logger.warn("Unable to find an access rule with name {}", arName);
-                }
-            } else {
-                logger.info("Skipping AccessRule {} as it does not start with AR_", arName);
-            }
-        }
-
-        logger.info("Added {} standard access rules to privilege", standardAccessRules.size());
-        return standardAccessRules;
     }
 
     public List<AccessRule> getAccessRulesByPrivilegeIds(List<UUID> privilegeIds) {

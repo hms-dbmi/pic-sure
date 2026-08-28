@@ -36,9 +36,6 @@ public class PrivilegeServiceTest {
     @MockBean
     private Authentication authentication;
 
-    @MockBean
-    private AccessRuleService accessRuleService;
-
     @Autowired
     private PrivilegeService privilegeService;
 
@@ -71,7 +68,7 @@ public class PrivilegeServiceTest {
 
         assertEquals(privileges, result);
         verify(privilegeRepository, times(1)).deleteById(privilegeId);
-        verify(privilegeRepository, times(2)).findAll();
+        verify(privilegeRepository, times(1)).findAll();
     }
 
     @Test
