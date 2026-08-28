@@ -15,15 +15,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 class BannerRolloutContractTest {
 
-    private static final String TARGETED_FEED_BOUNDARY =
-        "DISABLE_ACTIVE_AND_SCHEDULED_TARGETED_BANNERS_BEFORE_OPERATIONS_OR_GATEWAY_BELOW_TICKET_08";
+    private static final String REPOSITORY_ROOT_OVERRIDE = "banner.rollout.repositoryRoot";
+    private static final String TARGETED_FEED_BOUNDARY = "DISABLE_ACTIVE_AND_SCHEDULED_TARGETED_BANNERS_BEFORE_LEGACY_ACTIVE_FEED_BACKEND";
 
     @Test
     void definesTheSharedForwardAndRollbackOrder() throws IOException {
         JsonNode contract = new ObjectMapper().readTree(contractPath().toFile());
 
         assertThat(contract.path("schemaVersion").asInt()).isEqualTo(1);
-        assertThat(contract.path("cacheRefresh").asText()).isEqualTo("PSAMA_PROCESS_RESTART");
+        assertThat(contract.path("deploymentWideCacheRefresh").asText()).isEqualTo("PSAMA_PROCESS_RESTART");
         assertThat(textValues(contract.path("forwardPhases"))).containsExactly(
             "APPLY_AUTHORIZATION_AND_PIC_SURE_MIGRATIONS", "RECREATE_PSAMA", "VERIFY_OPERATIONS_AND_GATEWAY_HEALTH",
             "PUBLISH_FRONTEND_ACTIVE_V2"
@@ -40,14 +40,22 @@ class BannerRolloutContractTest {
     }
 
     private Path contractPath() {
-        Path directory = Path.of(System.getProperty("maven.multiModuleProjectDirectory", ".")).toAbsolutePath();
-        while (directory != null) {
-            Path contract = directory.resolve(".github/banner-rollout-contract.json");
-            if (Files.isRegularFile(contract)) {
-                return contract;
-            }
-            directory = directory.getParent();
+        String repositoryRoot = System.getProperty(REPOSITORY_ROOT_OVERRIDE);
+        String moduleRoot = System.getProperty("basedir");
+        if ((repositoryRoot == null || repositoryRoot.isBlank()) && (moduleRoot == null || moduleRoot.isBlank())) {
+            throw new IllegalStateException("Maven module root is unavailable; set -D" + REPOSITORY_ROOT_OVERRIDE + "=<pic-sure checkout>");
         }
-        throw new IllegalStateException("Could not find .github/banner-rollout-contract.json");
+
+        Path root =
+            repositoryRoot == null || repositoryRoot.isBlank() ? Path.of(moduleRoot).resolve("../../..").toAbsolutePath().normalize()
+                : Path.of(repositoryRoot).toAbsolutePath().normalize();
+        Path contract = root.resolve(".github/banner-rollout-contract.json");
+        if (!Files.isRegularFile(contract)) {
+            throw new IllegalStateException(
+                "Missing .github/banner-rollout-contract.json under " + root + "; override with -D" + REPOSITORY_ROOT_OVERRIDE
+                    + "=<pic-sure checkout>"
+            );
+        }
+        return contract;
     }
 }
