@@ -202,8 +202,8 @@ class BannerVersioningTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = BannerStatus.class, names = {"SAVED", "DISABLED", "ARCHIVED"})
-    void updatePublishedRejectsOtherStatesWithoutWritingAVersion(BannerStatus status) throws Exception {
+    @EnumSource(value = BannerStatus.class, names = {"DISABLED", "ARCHIVED"})
+    void updateRejectsDisabledAndArchivedWithoutWritingAVersion(BannerStatus status) throws Exception {
         ManagementBannerDto published = service.publish(
             request(
                 "<p>Original</p>", "Original", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE,

@@ -210,7 +210,7 @@ class BannerControllerTest {
                     .content(publishRequest("<p>Updated draft copy</p>", "Updated draft"))
             ).andExpect(status().isOk()).andExpect(jsonPath("$.uuid").value(uuid.toString())).andExpect(jsonPath("$.status").value("SAVED"))
             .andExpect(jsonPath("$.htmlContent").value("<p>Updated draft copy</p>")).andExpect(jsonPath("$.updatedBy").value("super-id"));
-        org.assertj.core.api.Assertions.assertThat(versionRepository.findByBannerUuidOrderByVersionNumber(uuid)).isEmpty();
+        org.assertj.core.api.Assertions.assertThat(versionRepository.findAll()).isEmpty();
 
         mockMvc
             .perform(
@@ -224,7 +224,7 @@ class BannerControllerTest {
 
         BannerOccurrence promoted = repository.findById(uuid).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(promoted.getPresentationHash()).isEqualTo(hasher.hash(promoted));
-        org.assertj.core.api.Assertions.assertThat(versionRepository.findByBannerUuidOrderByVersionNumber(uuid)).singleElement()
+        org.assertj.core.api.Assertions.assertThat(versionRepository.findAll()).singleElement()
             .satisfies(version -> org.assertj.core.api.Assertions.assertThat(version.getVersionNumber()).isEqualTo(1));
 
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
