@@ -1,13 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Immutable;
 import org.hibernate.type.SqlTypes;
-
-import com.fasterxml.jackson.databind.JsonNode;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -64,7 +63,7 @@ public class BannerVersion {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "page_targets", nullable = false, columnDefinition = "JSON")
-    private JsonNode pageTargets;
+    private List<BannerPageTarget> pageTargets;
 
     @Column(name = "start_at")
     private Instant startAt;
@@ -93,7 +92,7 @@ public class BannerVersion {
         this.dismissible = banner.isDismissible();
         this.audience = banner.getAudience();
         this.placement = banner.getPlacement();
-        this.pageTargets = banner.getPageTargets().deepCopy();
+        this.pageTargets = List.copyOf(banner.getPageTargets());
         this.startAt = banner.getStartAt();
         this.endAt = banner.getEndAt();
         this.presentationHash = banner.getPresentationHash();
@@ -145,7 +144,7 @@ public class BannerVersion {
         return placement;
     }
 
-    public JsonNode getPageTargets() {
+    public List<BannerPageTarget> getPageTargets() {
         return pageTargets;
     }
 

@@ -262,9 +262,7 @@ public class BannerService {
     }
 
     private static void validate(PublishBannerRequest request) {
-        if (!request.pageTargets().isArray()) {
-            throw PicsureExceptions.badRequest("Page targets must be an array");
-        }
+        BannerPageTargets.normalize(request.pageTargets());
     }
 
     private static void validateNewSchedule(PublishBannerRequest request, Instant now) {
@@ -287,8 +285,10 @@ public class BannerService {
         if ((startChanged || endChanged) && banner.getEndAt() != null && !banner.getEndAt().isAfter(now)) {
             throw PicsureExceptions.conflict("Expired banners cannot be rescheduled");
         }
-        if ((startChanged && !hasMinutePrecision(requestedStart))
-            || (endChanged && requestedEnd != null && !hasMinutePrecision(requestedEnd))) {
+        if (
+            (startChanged && !hasMinutePrecision(requestedStart))
+                || (endChanged && requestedEnd != null && !hasMinutePrecision(requestedEnd))
+        ) {
             throw PicsureExceptions.badRequest("Banner schedule timestamps must use minute precision");
         }
         if (startChanged && requestedStart.isBefore(now)) {
@@ -331,7 +331,8 @@ public class BannerService {
         String normalizedTitle = BannerPresentationHasher.normalizeTitle(request.title());
         return banner.setHtmlContent(request.htmlContent()).setTitle(normalizedTitle.isEmpty() ? null : normalizedTitle)
             .setAppearance(request.appearance()).setIcon(request.icon()).setDismissible(request.dismissible())
-            .setAudience(request.audience()).setPlacement(request.placement()).setPageTargets(request.pageTargets().deepCopy());
+            .setAudience(request.audience()).setPlacement(request.placement())
+            .setPageTargets(BannerPageTargets.normalize(request.pageTargets()));
     }
 
     static boolean hasMaterialChange(BannerOccurrence current, BannerOccurrence candidate) {

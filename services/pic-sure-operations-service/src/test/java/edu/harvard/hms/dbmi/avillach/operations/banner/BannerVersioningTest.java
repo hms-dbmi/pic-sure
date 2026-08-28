@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
@@ -147,13 +148,13 @@ class BannerVersioningTest {
     void normalizedNoOpReturnsTheAuthoritativeOccurrenceWithoutAppendingHistory() throws Exception {
         PublishBannerRequest original = request(
             "<p>Same exact bytes</p>", "Notice", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE,
-            "[{\"kind\":\"ALL\"},{\"kind\":\"EXACT\",\"path\":\"/help\"}]"
+            "[{\"kind\":\"SUBTREE\",\"path\":\"/admin\"},{\"kind\":\"EXACT\",\"path\":\"/help\"}]"
         );
         ManagementBannerDto published = service.publish(original, FIRST_ADMIN);
         clock.set(UPDATED_AT);
         PublishBannerRequest normalizedNoOp = request(
             original.htmlContent(), " Notice ", original.appearance(), original.icon(), original.dismissible(), original.audience(),
-            "[{\"path\":\"/help\",\"kind\":\"EXACT\"},{\"kind\":\"ALL\"}]"
+            "[{\"path\":\"/help/\",\"kind\":\"EXACT\"},{\"kind\":\"SUBTREE\",\"path\":\"/admin/\"}]"
         );
 
         ManagementBannerDto result = service.update(published.uuid(), normalizedNoOp, SECOND_ADMIN);
@@ -264,7 +265,8 @@ class BannerVersioningTest {
         String pageTargets
     ) throws Exception {
         return new PublishBannerRequest(
-            htmlContent, title, appearance, icon, dismissible, audience, BannerPlacement.SITE_TOP, objectMapper.readTree(pageTargets)
+            htmlContent, title, appearance, icon, dismissible, audience, BannerPlacement.SITE_TOP,
+            BannerPageTargets.normalize(objectMapper.readValue(pageTargets, new TypeReference<>() {}))
         );
     }
 

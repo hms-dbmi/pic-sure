@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -16,15 +17,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 
 class BannerPriorityLockOrderTest {
 
     private static final Instant NOW = Instant.parse("2026-08-27T12:00:00Z");
-    private static final GatewayUser ADMIN =
-        new GatewayUser("admin-id", "admin-subject", "admin@example.org", "ADMIN", Set.of("ADMIN"));
+    private static final GatewayUser ADMIN = new GatewayUser("admin-id", "admin-subject", "admin@example.org", "ADMIN", Set.of("ADMIN"));
 
     @Test
     void publishingDraftLocksAllocatorBeforeOccurrence() {
@@ -33,9 +31,8 @@ class BannerPriorityLockOrderTest {
         BannerPriorityAllocatorRepository allocatorRepository = mock(BannerPriorityAllocatorRepository.class);
         BannerPresentationHasher hasher = mock(BannerPresentationHasher.class);
         BannerAuditService auditService = mock(BannerAuditService.class);
-        BannerService service = new BannerService(
-            repository, versionRepository, allocatorRepository, Clock.fixed(NOW, ZoneOffset.UTC), hasher, auditService
-        );
+        BannerService service =
+            new BannerService(repository, versionRepository, allocatorRepository, Clock.fixed(NOW, ZoneOffset.UTC), hasher, auditService);
         UUID uuid = UUID.randomUUID();
         BannerOccurrence draft = new BannerOccurrence().setStatus(BannerStatus.SAVED).setCreatedAt(NOW).setCreatedBy("admin-id")
             .setUpdatedAt(NOW).setUpdatedBy("admin-id");
@@ -57,8 +54,8 @@ class BannerPriorityLockOrderTest {
 
     private static PublishBannerRequest request() {
         return new PublishBannerRequest(
-            "<p>Draft</p>", "Draft", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE,
-            BannerPlacement.SITE_TOP, JsonNodeFactory.instance.arrayNode()
+            "<p>Draft</p>", "Draft", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
+            List.of(BannerPageTarget.all())
         );
     }
 }

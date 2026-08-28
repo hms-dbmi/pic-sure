@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doThrow;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -85,10 +86,9 @@ class BannerVersionAtomicityTest {
         Instant publishedAt = Instant.parse("2026-08-27T12:00:00Z");
         BannerOccurrence oldBinary = new BannerOccurrence().setStatus(BannerStatus.PUBLISHED).setHtmlContent("<p>Original</p>")
             .setTitle("Notice").setAppearance(BannerAppearance.PRIMARY).setIcon(BannerIcon.NONE).setDismissible(true)
-            .setAudience(BannerAudience.EVERYONE).setPlacement(BannerPlacement.SITE_TOP)
-            .setPageTargets(objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL"))).setStartAt(publishedAt)
-            .setPriority(1).setCreatedAt(publishedAt).setCreatedBy("old-admin").setUpdatedAt(publishedAt).setUpdatedBy("old-admin")
-            .setPublishedAt(publishedAt).setPublishedBy("old-admin");
+            .setAudience(BannerAudience.EVERYONE).setPlacement(BannerPlacement.SITE_TOP).setPageTargets(List.of(BannerPageTarget.all()))
+            .setStartAt(publishedAt).setPriority(1).setCreatedAt(publishedAt).setCreatedBy("old-admin").setUpdatedAt(publishedAt)
+            .setUpdatedBy("old-admin").setPublishedAt(publishedAt).setPublishedBy("old-admin");
         oldBinary.setPresentationHash(hasher.hash(oldBinary));
         oldBinary = bannerRepository.saveAndFlush(oldBinary);
         UUID bannerUuid = oldBinary.getUuid();
@@ -109,7 +109,7 @@ class BannerVersionAtomicityTest {
     private PublishBannerRequest request(String htmlContent, Instant startAt, Instant endAt) {
         return new PublishBannerRequest(
             htmlContent, "Notice", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
-            objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL")), startAt, endAt
+            List.of(BannerPageTarget.all()), startAt, endAt
         );
     }
 }

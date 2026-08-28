@@ -1,16 +1,15 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
 public record ManagementBannerDto(
     UUID uuid, BannerStatus status, BannerLifecycle lifecycle, String htmlContent, String title, BannerAppearance appearance,
-    BannerIcon icon, boolean dismissible, BannerAudience audience, BannerPlacement placement, JsonNode pageTargets, Instant startAt,
-    Instant endAt, Integer priority, String presentationHash, Instant createdAt, String createdBy, Instant updatedAt, String updatedBy,
-    Instant publishedAt, String publishedBy, Instant disabledAt, String disabledBy
+    BannerIcon icon, boolean dismissible, BannerAudience audience, BannerPlacement placement, List<BannerPageTarget> pageTargets,
+    Instant startAt, Instant endAt, Integer priority, String presentationHash, Instant createdAt, String createdBy, Instant updatedAt,
+    String updatedBy, Instant publishedAt, String publishedBy, Instant disabledAt, String disabledBy
 ) {
     static Optional<ManagementBannerDto> from(BannerOccurrence banner, Instant now) {
         return lifecycle(banner, now).map(

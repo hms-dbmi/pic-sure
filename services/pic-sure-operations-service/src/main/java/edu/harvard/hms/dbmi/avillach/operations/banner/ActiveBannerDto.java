@@ -1,12 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
+import java.util.List;
 import java.util.UUID;
-
-import com.fasterxml.jackson.databind.JsonNode;
 
 public record ActiveBannerDto(
     UUID uuid, String htmlContent, String title, BannerAppearance appearance, BannerIcon icon, boolean dismissible, BannerAudience audience,
-    BannerPlacement placement, JsonNode pageTargets, Integer priority, String presentationHash
+    BannerPlacement placement, List<BannerPageTarget> pageTargets, Integer priority, String presentationHash
 ) {
     static ActiveBannerDto from(BannerOccurrence banner) {
         return new ActiveBannerDto(

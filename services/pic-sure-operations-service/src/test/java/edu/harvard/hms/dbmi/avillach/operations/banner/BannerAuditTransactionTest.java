@@ -116,7 +116,7 @@ class BannerAuditTransactionTest {
         reset(loggingClient);
         PublishBannerRequest updated = new PublishBannerRequest(
             "<p>Updated draft</p>", "Updated", BannerAppearance.WARNING, BannerIcon.WARNING, false, BannerAudience.SIGNED_IN,
-            BannerPlacement.SITE_TOP, objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL"))
+            BannerPlacement.SITE_TOP, List.of(BannerPageTarget.all())
         );
 
         transactions.executeWithoutResult(status -> service.update(saved[0].uuid(), updated, ADMIN));
@@ -134,7 +134,7 @@ class BannerAuditTransactionTest {
         reset(loggingClient);
         PublishBannerRequest changed = new PublishBannerRequest(
             "<p>Corrected banner</p>", "Notice", BannerAppearance.WARNING, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,
-            BannerPlacement.SITE_TOP, objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL"))
+            BannerPlacement.SITE_TOP, List.of(BannerPageTarget.all())
         );
         ManagementBannerDto[] updated = new ManagementBannerDto[1];
 
@@ -257,7 +257,7 @@ class BannerAuditTransactionTest {
     private PublishBannerRequest request() {
         return new PublishBannerRequest(
             "<p>Committed banner</p>", "Notice", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,
-            BannerPlacement.SITE_TOP, objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL"))
+            BannerPlacement.SITE_TOP, List.of(BannerPageTarget.all())
         );
     }
 }

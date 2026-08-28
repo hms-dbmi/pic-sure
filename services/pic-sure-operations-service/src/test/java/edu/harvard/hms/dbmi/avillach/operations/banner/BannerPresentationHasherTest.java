@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 class BannerPresentationHasherTest {
@@ -14,14 +15,11 @@ class BannerPresentationHasherTest {
 
     @Test
     void hashUsesExactHtmlBytesAndNormalizedStructuredFields() throws Exception {
-        PublishBannerRequest first =
-            request("<p>Exact  bytes</p>", " Notice ", "[{\"path\":\"/help\",\"kind\":\"EXACT\"},{\"kind\":\"ALL\"}]");
-        PublishBannerRequest sameMeaning =
-            request("<p>Exact  bytes</p>", "Notice", "[{\"kind\":\"ALL\"},{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
-        PublishBannerRequest changedHtmlBytes =
-            request("<p>Exact bytes</p>", "Notice", "[{\"kind\":\"ALL\"},{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
+        PublishBannerRequest first = request("<p>Exact  bytes</p>", " Notice ", "[{\"kind\":\"EXACT\",\"path\":\"/help/\"}]");
+        PublishBannerRequest sameMeaning = request("<p>Exact  bytes</p>", "Notice", "[{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
+        PublishBannerRequest changedHtmlBytes = request("<p>Exact bytes</p>", "Notice", "[{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
 
-        assertThat(hash(first)).isEqualTo(hash(sameMeaning)).isEqualTo("496c6e461a6c0d60a52ad4049d5c71834d2a5fdbe0cd06b537311016ecf672b9");
+        assertThat(hash(first)).isEqualTo(hash(sameMeaning)).isEqualTo("a57a362055168ce255c3a2e7665af1185383f15cd2bd22ab1500fbacdd94d42e");
         assertThat(hash(changedHtmlBytes)).isNotEqualTo(hash(first));
     }
 
@@ -89,7 +87,7 @@ class BannerPresentationHasherTest {
     private PublishBannerRequest request(String html, String title, String pageTargets) throws Exception {
         return new PublishBannerRequest(
             html, title, BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
-            objectMapper.readTree(pageTargets)
+            BannerPageTargets.normalize(objectMapper.readValue(pageTargets, new TypeReference<>() {}))
         );
     }
 }

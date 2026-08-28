@@ -25,8 +25,6 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 
@@ -125,7 +123,7 @@ class BannerMySqlMigrationTest {
     void newBinaryPublicationCreatesExactlyOneFirstVersionAndTheMigrationEnforcesVersionIdentity() {
         PublishBannerRequest request = new PublishBannerRequest(
             "<p>New binary</p>", "New binary", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,
-            BannerPlacement.SITE_TOP, JsonNodeFactory.instance.arrayNode().add(JsonNodeFactory.instance.objectNode().put("kind", "ALL"))
+            BannerPlacement.SITE_TOP, List.of(BannerPageTarget.all())
         );
 
         ManagementBannerDto published = service.publish(request, ADMIN);
@@ -241,8 +239,7 @@ class BannerMySqlMigrationTest {
     private BannerOccurrence oldBinaryPublication(String htmlContent, String title, String publishedBy) {
         BannerOccurrence banner = new BannerOccurrence().setStatus(BannerStatus.PUBLISHED).setHtmlContent(htmlContent).setTitle(title)
             .setAppearance(BannerAppearance.PRIMARY).setIcon(BannerIcon.INFORMATION).setDismissible(true)
-            .setAudience(BannerAudience.EVERYONE).setPlacement(BannerPlacement.SITE_TOP)
-            .setPageTargets(JsonNodeFactory.instance.arrayNode().add(JsonNodeFactory.instance.objectNode().put("kind", "ALL")))
+            .setAudience(BannerAudience.EVERYONE).setPlacement(BannerPlacement.SITE_TOP).setPageTargets(List.of(BannerPageTarget.all()))
             .setStartAt(PUBLISHED_AT).setPriority(1).setCreatedAt(PUBLISHED_AT.minusSeconds(60)).setCreatedBy("old-admin")
             .setUpdatedAt(PUBLISHED_AT).setUpdatedBy("old-admin").setPublishedAt(PUBLISHED_AT).setPublishedBy(publishedBy);
         banner.setPresentationHash(hasher.hash(banner));
@@ -252,7 +249,7 @@ class BannerMySqlMigrationTest {
     private PublishBannerRequest request(String htmlContent, String title) {
         return new PublishBannerRequest(
             htmlContent, title, BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
-            JsonNodeFactory.instance.arrayNode().add(JsonNodeFactory.instance.objectNode().put("kind", "ALL"))
+            List.of(BannerPageTarget.all())
         );
     }
 

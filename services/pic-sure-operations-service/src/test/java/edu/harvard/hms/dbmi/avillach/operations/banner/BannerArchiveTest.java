@@ -26,8 +26,6 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
@@ -190,11 +188,10 @@ class BannerArchiveTest {
     private static BannerOccurrence banner(BannerStatus status, Instant startAt, Instant endAt, String title) {
         return new BannerOccurrence().setStatus(status).setHtmlContent("<p>" + title + " content</p>").setTitle(title)
             .setAppearance(BannerAppearance.WARNING).setIcon(BannerIcon.WARNING).setDismissible(false).setAudience(BannerAudience.SIGNED_IN)
-            .setPlacement(BannerPlacement.SITE_TOP)
-            .setPageTargets(JsonNodeFactory.instance.arrayNode().add(JsonNodeFactory.instance.objectNode().put("kind", "ALL")))
-            .setStartAt(startAt).setEndAt(endAt).setPriority(17).setPresentationHash("hash-" + title).setCreatedAt(NOW.minusSeconds(1_200))
-            .setCreatedBy("creator-id").setUpdatedAt(NOW.minusSeconds(300)).setUpdatedBy("editor-id")
-            .setPublishedAt(startAt == null ? null : NOW.minusSeconds(600)).setPublishedBy(startAt == null ? null : "publisher-id")
+            .setPlacement(BannerPlacement.SITE_TOP).setPageTargets(List.of(BannerPageTarget.all())).setStartAt(startAt).setEndAt(endAt)
+            .setPriority(17).setPresentationHash("hash-" + title).setCreatedAt(NOW.minusSeconds(1_200)).setCreatedBy("creator-id")
+            .setUpdatedAt(NOW.minusSeconds(300)).setUpdatedBy("editor-id").setPublishedAt(startAt == null ? null : NOW.minusSeconds(600))
+            .setPublishedBy(startAt == null ? null : "publisher-id")
             .setDisabledAt(status == BannerStatus.DISABLED ? NOW.minusSeconds(120) : null)
             .setDisabledBy(status == BannerStatus.DISABLED ? "disabler-id" : null);
     }

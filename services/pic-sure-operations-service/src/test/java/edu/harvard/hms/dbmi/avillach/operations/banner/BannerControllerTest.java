@@ -31,7 +31,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
@@ -402,9 +401,9 @@ class BannerControllerTest {
         BannerOccurrence disabled = repository.findById(uuid).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(disabled.getHtmlContent()).isEqualTo("<p>Live notice</p>");
         org.assertj.core.api.Assertions.assertThat(disabled.getPriority()).isEqualTo(priority);
-        org.assertj.core.api.Assertions.assertThat(
-            priorityAllocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority()
-        ).isEqualTo(nextPriority);
+        org.assertj.core.api.Assertions
+            .assertThat(priorityAllocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority())
+            .isEqualTo(nextPriority);
         org.assertj.core.api.Assertions.assertThat(disabled.getPresentationHash()).isEqualTo(hasher.hash(disabled));
         org.assertj.core.api.Assertions.assertThat(disabled.getPublishedAt()).isEqualTo(NOW);
         org.assertj.core.api.Assertions.assertThat(versionRepository.findAll()).singleElement().satisfies(version -> {
@@ -576,8 +575,7 @@ class BannerControllerTest {
     private static BannerOccurrence banner(Integer priority, BannerStatus status, Instant startAt, Instant endAt, String title) {
         return new BannerOccurrence().setStatus(status).setHtmlContent("<p>" + title + " content</p>").setTitle(title)
             .setAppearance(BannerAppearance.PRIMARY).setIcon(BannerIcon.INFORMATION).setDismissible(true)
-            .setAudience(BannerAudience.EVERYONE).setPlacement(BannerPlacement.SITE_TOP)
-            .setPageTargets(JsonNodeFactory.instance.arrayNode().add(JsonNodeFactory.instance.objectNode().put("kind", "ALL")))
+            .setAudience(BannerAudience.EVERYONE).setPlacement(BannerPlacement.SITE_TOP).setPageTargets(List.of(BannerPageTarget.all()))
             .setStartAt(startAt).setEndAt(endAt).setPriority(priority).setPresentationHash("hash-" + title)
             .setCreatedAt(NOW.minusSeconds(120)).setCreatedBy("admin").setUpdatedAt(NOW.minusSeconds(60)).setUpdatedBy("admin")
             .setPublishedAt(NOW.minusSeconds(60)).setPublishedBy("admin");
