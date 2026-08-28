@@ -64,6 +64,7 @@ class BannerPresentationHasherTest {
 
     @Test
     void requiredPresentationFieldsFailWithClearErrors() throws Exception {
+        assertThatIllegalArgumentException().isThrownBy(() -> hasher.hash(null)).withMessage("Banner occurrence is required");
         assertMissing("htmlContent", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setHtmlContent(null));
         assertMissing("appearance", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setAppearance(null));
         assertMissing("icon", occurrence(request("<p>Content</p>", "Title", "[{\"kind\":\"ALL\"}]")).setIcon(null));
