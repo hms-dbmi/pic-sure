@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -100,6 +101,7 @@ class BannerMySqlMigrationTest {
             }
         }
         versionRepository.deleteAll();
+        jdbcTemplate.update("DELETE FROM banner_occurrence WHERE restored_from_uuid IS NOT NULL");
         bannerRepository.deleteAll();
     }
 
@@ -297,6 +299,41 @@ class BannerMySqlMigrationTest {
         assertThat(service.managedBanners()).filteredOn(banner -> banner.lifecycle() == BannerLifecycle.ACTIVE)
             .extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), first.uuid(), arrival.uuid());
         assertThat(arrival.priority()).isEqualTo(3);
+    }
+
+    @Test
+    void concurrentRestoresOfTheSameSourceAllowExactlyOneNewOccurrence() throws Exception {
+        ManagementBannerDto published = service.publish(request("<p>Source</p>", "Source"), ADMIN);
+        service.disable(published.uuid(), ADMIN);
+        CountDownLatch start = new CountDownLatch(1);
+        int successes = 0;
+        int conflicts = 0;
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                start.await();
+                return service.restore(published.uuid(), request("<p>First restore</p>", "First restore"), ADMIN);
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return service.restore(published.uuid(), request("<p>Second restore</p>", "Second restore"), ADMIN);
+            });
+            start.countDown();
+            for (var future : List.of(first, second)) {
+                try {
+                    future.get(20, TimeUnit.SECONDS);
+                    successes++;
+                } catch (ExecutionException e) {
+                    assertThat(e.getCause()).isInstanceOf(edu.harvard.hms.dbmi.avillach.commons.error.PicsureException.class);
+                    conflicts++;
+                }
+            }
+        }
+
+        assertThat(successes).isOne();
+        assertThat(conflicts).isOne();
+        assertThat(bannerRepository.findById(published.uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
+        assertThat(bannerRepository.findAll()).filteredOn(banner -> published.uuid().equals(banner.getRestoredFromUuid())).hasSize(1);
     }
 
     @Test

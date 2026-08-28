@@ -259,6 +259,49 @@ class BannerAuditTransactionTest {
         verifyNoInteractions(loggingClient);
     }
 
+    @Test
+    void restoreEmitsOneConciseAuditAfterCommitWithoutCreateOrArchiveCompanions() throws Exception {
+        ManagementBannerDto published = service.publish(request(), ADMIN);
+        service.disable(published.uuid(), ADMIN);
+        reset(loggingClient);
+        ManagementBannerDto[] restored = new ManagementBannerDto[1];
+
+        transactions.executeWithoutResult(status -> {
+            restored[0] = service.restore(published.uuid(), request(), ADMIN);
+            verifyNoInteractions(loggingClient);
+        });
+
+        ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(event.capture());
+        assertThat(event.getValue().getEventType()).isEqualTo("BANNER");
+        assertThat(event.getValue().getAction()).isEqualTo("banner.restored");
+        assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
+        assertThat(event.getValue().getMetadata()).containsExactlyInAnyOrderEntriesOf(
+            Map.of(
+                "sourceBannerUuid", published.uuid().toString(), "newBannerUuid", restored[0].uuid().toString(), "timestamp",
+                restored[0].publishedAt().toString(), "presentationHash", restored[0].presentationHash()
+            )
+        );
+        assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Committed banner");
+    }
+
+    @Test
+    void rolledBackRestoreLeavesTheSourceDisabledAndEmitsNoAudit() {
+        ManagementBannerDto published = service.publish(request(), ADMIN);
+        service.disable(published.uuid(), ADMIN);
+        reset(loggingClient);
+
+        transactions.executeWithoutResult(status -> {
+            service.restore(published.uuid(), request(), ADMIN);
+            status.setRollbackOnly();
+        });
+
+        assertThat(repository.findById(published.uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.DISABLED);
+        assertThat(repository.count()).isOne();
+        assertThat(versionRepository.findAll()).hasSize(1);
+        verifyNoInteractions(loggingClient);
+    }
+
     private PublishBannerRequest request() {
         return new PublishBannerRequest(
             "<p>Committed banner</p>", "Notice", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,

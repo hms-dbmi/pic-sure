@@ -101,7 +101,8 @@ class BannerRouteTest {
         Map<String, HttpMethod> mutations = Map.of(
             "/operations/banners", HttpMethod.POST, "/operations/banners/saved", HttpMethod.POST, "/operations/banners/order",
             HttpMethod.PUT, "/operations/banners/" + uuid, HttpMethod.PUT, "/operations/banners/" + uuid + "/publish", HttpMethod.POST,
-            "/operations/banners/" + uuid + "/disable", HttpMethod.POST, "/operations/banners/" + uuid + "/archive", HttpMethod.POST
+            "/operations/banners/" + uuid + "/disable", HttpMethod.POST, "/operations/banners/" + uuid + "/archive", HttpMethod.POST,
+            "/operations/banners/" + uuid + "/restore", HttpMethod.POST
         );
 
         mutations.forEach((path, method) -> {

@@ -9,7 +9,7 @@ public record ManagementBannerDto(
     UUID uuid, BannerStatus status, BannerLifecycle lifecycle, String htmlContent, String title, BannerAppearance appearance,
     BannerIcon icon, boolean dismissible, BannerAudience audience, BannerPlacement placement, List<BannerPageTarget> pageTargets,
     Instant startAt, Instant endAt, Integer priority, String presentationHash, Instant createdAt, String createdBy, Instant updatedAt,
-    String updatedBy, Instant publishedAt, String publishedBy, Instant disabledAt, String disabledBy
+    String updatedBy, Instant publishedAt, String publishedBy, Instant disabledAt, String disabledBy, UUID restoredFromUuid
 ) {
     static Optional<ManagementBannerDto> from(BannerOccurrence banner, Instant now) {
         List<BannerPageTarget> pageTargets = banner.getPageTargets();
@@ -22,7 +22,7 @@ public record ManagementBannerDto(
                 banner.getIcon(), banner.isDismissible(), banner.getAudience(), banner.getPlacement(), pageTargets,
                 banner.getStartAt(), banner.getEndAt(), banner.getPriority(), banner.getPresentationHash(), banner.getCreatedAt(),
                 banner.getCreatedBy(), banner.getUpdatedAt(), banner.getUpdatedBy(), banner.getPublishedAt(), banner.getPublishedBy(),
-                banner.getDisabledAt(), banner.getDisabledBy()
+                banner.getDisabledAt(), banner.getDisabledBy(), banner.getRestoredFromUuid()
             )
         );
     }

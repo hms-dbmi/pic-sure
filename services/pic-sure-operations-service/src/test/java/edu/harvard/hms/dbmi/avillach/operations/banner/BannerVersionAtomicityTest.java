@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 
 import java.time.Instant;
@@ -29,11 +30,14 @@ class BannerVersionAtomicityTest {
     @Autowired
     private BannerService service;
 
-    @Autowired
+    @MockitoSpyBean
     private BannerRepository bannerRepository;
 
     @Autowired
     private BannerPresentationHasher hasher;
+
+    @Autowired
+    private BannerPriorityAllocatorRepository allocatorRepository;
 
     @MockitoSpyBean
     private BannerVersionRepository versionRepository;
@@ -95,6 +99,46 @@ class BannerVersionAtomicityTest {
         BannerOccurrence occurrence = bannerRepository.findById(bannerUuid).orElseThrow();
         assertThat(occurrence.getHtmlContent()).isEqualTo("<p>Original</p>");
         assertThat(versionRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void destinationVersionFailureRollsBackTheEntireRestore() {
+        ManagementBannerDto published = service.publish(request("<p>Original</p>"), ADMIN);
+        service.disable(published.uuid(), ADMIN);
+        int nextPriority = allocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority();
+        doThrow(new IllegalStateException("version storage unavailable")).when(versionRepository).saveAndFlush(any(BannerVersion.class));
+
+        assertThatThrownBy(() -> service.restore(published.uuid(), request("<p>Restored</p>"), ADMIN))
+            .isInstanceOf(IllegalStateException.class).hasMessage("version storage unavailable");
+
+        BannerOccurrence source = bannerRepository.findById(published.uuid()).orElseThrow();
+        assertThat(source.getStatus()).isEqualTo(BannerStatus.DISABLED);
+        assertThat(source.getArchivedAt()).isNull();
+        assertThat(bannerRepository.count()).isOne();
+        assertThat(versionRepository.findAll()).hasSize(1);
+        assertThat(allocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority())
+            .isEqualTo(nextPriority);
+    }
+
+    @Test
+    void sourceArchiveFailureAfterDestinationVersionRollsBackTheEntireRestore() {
+        ManagementBannerDto published = service.publish(request("<p>Original</p>"), ADMIN);
+        service.disable(published.uuid(), ADMIN);
+        int nextPriority = allocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority();
+        doThrow(new IllegalStateException("source archive unavailable")).when(bannerRepository).saveAndFlush(
+            argThat(banner -> published.uuid().equals(banner.getUuid()) && banner.getStatus() == BannerStatus.ARCHIVED)
+        );
+
+        assertThatThrownBy(() -> service.restore(published.uuid(), request("<p>Restored</p>"), ADMIN))
+            .isInstanceOf(IllegalStateException.class).hasMessage("source archive unavailable");
+
+        BannerOccurrence source = bannerRepository.findById(published.uuid()).orElseThrow();
+        assertThat(source.getStatus()).isEqualTo(BannerStatus.DISABLED);
+        assertThat(source.getArchivedAt()).isNull();
+        assertThat(bannerRepository.count()).isOne();
+        assertThat(versionRepository.findAll()).hasSize(1);
+        assertThat(allocatorRepository.findById(BannerPriorityAllocator.SINGLETON_ID).orElseThrow().getNextPriority())
+            .isEqualTo(nextPriority);
     }
 
     private PublishBannerRequest request(String htmlContent) {

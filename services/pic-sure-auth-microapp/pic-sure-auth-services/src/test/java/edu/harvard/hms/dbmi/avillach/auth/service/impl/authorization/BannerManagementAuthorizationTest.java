@@ -86,6 +86,18 @@ class BannerManagementAuthorizationTest {
                 user(globalAdmin), false
             ).result()
         ).isFalse();
+        assertThat(
+            authorizationService.isAuthorized(
+                picsure, Map.of("Target Service", "/operations/banners/00000000-0000-0000-0000-000000000001/restore"),
+                user(scopedBannerManagement), false
+            ).result()
+        ).isTrue();
+        assertThat(
+            authorizationService.isAuthorized(
+                picsure, Map.of("Target Service", "/operations/banners/00000000-0000-0000-0000-000000000001/restore"),
+                user(globalAdmin), false
+            ).result()
+        ).isFalse();
     }
 
     @ParameterizedTest

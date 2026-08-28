@@ -120,6 +120,9 @@ class BannerControllerTest {
             .andExpect(status().isForbidden());
         mockMvc.perform(post("/banners/{uuid}/disable", UUID.randomUUID())).andExpect(status().isForbidden());
         mockMvc.perform(post("/banners/{uuid}/archive", UUID.randomUUID())).andExpect(status().isForbidden());
+        mockMvc.perform(
+            post("/banners/{uuid}/restore", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}")
+        ).andExpect(status().isForbidden());
     }
 
     @Test
@@ -148,13 +151,15 @@ class BannerControllerTest {
         List<org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder> oversizedHtml = List.of(
             adminPost(publishRequest("x".repeat(5_001), null)), adminPost("/banners/saved", publishRequest("x".repeat(5_001), null)),
             adminPut(savedUuid, publishRequest("x".repeat(5_001), null)),
-            adminPost("/banners/{uuid}/publish", savedUuid, publishRequest("x".repeat(5_001), null))
+            adminPost("/banners/{uuid}/publish", savedUuid, publishRequest("x".repeat(5_001), null)),
+            adminPost("/banners/{uuid}/restore", savedUuid, publishRequest("x".repeat(5_001), null))
         );
         List<org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder> oversizedTitle = List.of(
             adminPost(publishRequest("<p>Valid</p>", "x".repeat(121))),
             adminPost("/banners/saved", publishRequest("<p>Valid</p>", "x".repeat(121))),
             adminPut(savedUuid, publishRequest("<p>Valid</p>", "x".repeat(121))),
-            adminPost("/banners/{uuid}/publish", savedUuid, publishRequest("<p>Valid</p>", "x".repeat(121)))
+            adminPost("/banners/{uuid}/publish", savedUuid, publishRequest("<p>Valid</p>", "x".repeat(121))),
+            adminPost("/banners/{uuid}/restore", savedUuid, publishRequest("<p>Valid</p>", "x".repeat(121)))
         );
 
         for (var request : oversizedHtml) {
@@ -542,6 +547,19 @@ class BannerControllerTest {
         mockMvc.perform(post("/banners/{uuid}/archive", guarded)).andExpect(status().isForbidden());
 
         org.assertj.core.api.Assertions.assertThat(repository.findById(guarded).orElseThrow().getStatus()).isEqualTo(BannerStatus.SAVED);
+    }
+
+    @Test
+    void restoreRouteCreatesANewOccurrenceAndReturnsItsProvenance() throws Exception {
+        UUID source = repository.save(banner(4, BannerStatus.DISABLED, NOW.minusSeconds(120), null, "Disabled")).getUuid();
+
+        mockMvc.perform(adminPost("/banners/{uuid}/restore", source, publishRequest("<p>Restored</p>", "Restored")))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.uuid").value(not(source.toString())))
+            .andExpect(jsonPath("$.status").value("PUBLISHED")).andExpect(jsonPath("$.lifecycle").value("ACTIVE"))
+            .andExpect(jsonPath("$.restoredFromUuid").value(source.toString())).andExpect(jsonPath("$.htmlContent").value("<p>Restored</p>"));
+
+        org.assertj.core.api.Assertions.assertThat(repository.findById(source).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
+        org.assertj.core.api.Assertions.assertThat(repository.count()).isEqualTo(2);
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminArchive(UUID uuid) {

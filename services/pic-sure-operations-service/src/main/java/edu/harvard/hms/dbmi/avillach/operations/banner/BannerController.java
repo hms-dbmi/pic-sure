@@ -77,4 +77,12 @@ public class BannerController {
     public ArchivedBannerDto archive(GatewayUser user, @PathVariable UUID uuid) {
         return service.archive(uuid, user);
     }
+
+    @PostMapping("/{uuid}/restore")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ManagementBannerDto restore(
+        GatewayUser user, @PathVariable UUID uuid, @Valid @RequestBody PublishBannerRequest request
+    ) {
+        return service.restore(uuid, request, user);
+    }
 }

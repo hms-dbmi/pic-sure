@@ -132,6 +132,33 @@ public class BannerService {
     }
 
     @Transactional
+    public ManagementBannerDto restore(UUID sourceUuid, PublishBannerRequest request, GatewayUser user) {
+        validate(request);
+        Instant now = clock.instant();
+        validateRestoreSchedule(request, now);
+        BannerPriorityAllocator allocator = lockAllocator();
+        BannerOccurrence source =
+            repository.findByIdForUpdate(sourceUuid).orElseThrow(() -> PicsureExceptions.notFound("Banner", sourceUuid));
+        BannerLifecycle sourceLifecycle = ManagementBannerDto.from(source, now).map(ManagementBannerDto::lifecycle)
+            .orElseThrow(() -> PicsureExceptions.conflict("Archived banners cannot be restored"));
+        if (sourceLifecycle != BannerLifecycle.DISABLED && sourceLifecycle != BannerLifecycle.EXPIRED) {
+            throw PicsureExceptions.conflict("Only disabled or expired banners can be restored");
+        }
+
+        String actor = user.getUserId();
+        Instant startAt = publicationStart(request, now);
+        BannerOccurrence destination = apply(request, new BannerOccurrence()).setStatus(BannerStatus.PUBLISHED).setStartAt(startAt)
+            .setEndAt(request.endAt()).setPriority(allocateBottomPriority(allocator, now)).setCreatedAt(now).setCreatedBy(actor)
+            .setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor).setRestoredFromUuid(sourceUuid);
+        destination.setPresentationHash(hasher.hash(destination));
+        BannerOccurrence saved = repository.saveAndFlush(destination);
+        versionRepository.saveAndFlush(BannerVersion.snapshot(saved, 1, now, actor));
+        markArchived(source, now, actor);
+        auditService.registerRestoreAudit(sourceUuid, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        return managementDto(saved, now);
+    }
+
+    @Transactional
     public List<ManagementBannerDto> reorder(List<UUID> bannerUuids, GatewayUser user) {
         if (new HashSet<>(bannerUuids).size() != bannerUuids.size()) {
             throw PicsureExceptions.badRequest("Banner order must not contain duplicate UUIDs");
@@ -280,6 +307,13 @@ public class BannerService {
 
     private static void validateNewSchedule(PublishBannerRequest request, Instant now) {
         validateSchedule(request.startAt(), request.endAt(), now, true, true);
+    }
+
+    private static void validateRestoreSchedule(PublishBannerRequest request, Instant now) {
+        validateNewSchedule(request, now);
+        if (request.startAt() != null && !request.startAt().isAfter(now)) {
+            throw PicsureExceptions.badRequest("A restored banner's explicit start must be in the future");
+        }
     }
 
     private static void validateChangedDraftSchedule(BannerOccurrence banner, PublishBannerRequest request, Instant now) {

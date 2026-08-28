@@ -24,6 +24,7 @@ public class BannerAuditService {
     static final String REORDERED_ACTION = "banner.reordered";
     static final String DISABLED_ACTION = "banner.disabled";
     static final String ARCHIVED_ACTION = "banner.archived";
+    static final String RESTORED_ACTION = "banner.restored";
 
     private static final Logger LOG = LoggerFactory.getLogger(BannerAuditService.class);
 
@@ -56,6 +57,19 @@ public class BannerAuditService {
         LoggingEvent event = LoggingEvent.builder("BANNER").action(REORDERED_ACTION).caller(actor)
             .metadata(Map.of("bannerUuids", orderedUuids, "timestamp", timestamp.toString())).build();
         registerAfterCommit(event, "queue", REORDERED_ACTION);
+    }
+
+    public void registerRestoreAudit(
+        UUID sourceBannerUuid, UUID newBannerUuid, Instant timestamp, String presentationHash, String actor
+    ) {
+        LoggingEvent event = LoggingEvent.builder("BANNER").action(RESTORED_ACTION).caller(actor)
+            .metadata(
+                Map.of(
+                    "sourceBannerUuid", sourceBannerUuid.toString(), "newBannerUuid", newBannerUuid.toString(), "timestamp",
+                    timestamp.toString(), "presentationHash", presentationHash
+                )
+            ).build();
+        registerAfterCommit(event, newBannerUuid, RESTORED_ACTION);
     }
 
     private void registerAfterCommit(LoggingEvent event, UUID bannerUuid, String action) {

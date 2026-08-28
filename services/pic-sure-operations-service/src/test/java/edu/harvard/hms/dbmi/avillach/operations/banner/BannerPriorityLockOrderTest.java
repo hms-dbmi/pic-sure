@@ -72,6 +72,40 @@ class BannerPriorityLockOrderTest {
         lockOrder.verify(repository).findOrderableForUpdate(NOW);
     }
 
+    @Test
+    void restoringLocksAllocatorBeforeSourceOccurrence() {
+        BannerRepository repository = mock(BannerRepository.class);
+        BannerVersionRepository versionRepository = mock(BannerVersionRepository.class);
+        BannerPriorityAllocatorRepository allocatorRepository = mock(BannerPriorityAllocatorRepository.class);
+        BannerPresentationHasher hasher = mock(BannerPresentationHasher.class);
+        BannerAuditService auditService = mock(BannerAuditService.class);
+        BannerService service =
+            new BannerService(repository, versionRepository, allocatorRepository, Clock.fixed(NOW, ZoneOffset.UTC), hasher, auditService);
+        UUID uuid = UUID.randomUUID();
+        BannerOccurrence source = new BannerOccurrence().setStatus(BannerStatus.DISABLED).setCreatedAt(NOW).setCreatedBy("admin-id")
+            .setUpdatedAt(NOW).setUpdatedBy("admin-id");
+        ReflectionTestUtils.setField(source, "uuid", uuid);
+        BannerPriorityAllocator allocator = new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1);
+        when(allocatorRepository.lockSingleton()).thenReturn(Optional.of(allocator));
+        when(repository.findByIdForUpdate(uuid)).thenReturn(Optional.of(source));
+        when(repository.findMaximumOrderablePriority(NOW)).thenReturn(0);
+        when(repository.saveAndFlush(any(BannerOccurrence.class))).thenAnswer(invocation -> {
+            BannerOccurrence occurrence = invocation.getArgument(0);
+            if (occurrence.getUuid() == null) {
+                ReflectionTestUtils.setField(occurrence, "uuid", UUID.randomUUID());
+            }
+            return occurrence;
+        });
+        when(versionRepository.saveAndFlush(any(BannerVersion.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(hasher.hash(any(BannerOccurrence.class))).thenReturn("hash");
+
+        service.restore(uuid, request(), ADMIN);
+
+        InOrder lockOrder = inOrder(allocatorRepository, repository);
+        lockOrder.verify(allocatorRepository).lockSingleton();
+        lockOrder.verify(repository).findByIdForUpdate(uuid);
+    }
+
     private static PublishBannerRequest request() {
         return new PublishBannerRequest(
             "<p>Draft</p>", "Draft", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
