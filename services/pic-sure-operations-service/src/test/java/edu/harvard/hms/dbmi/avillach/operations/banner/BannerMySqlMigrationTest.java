@@ -349,6 +349,33 @@ class BannerMySqlMigrationTest {
     }
 
     @Test
+    void malformedAndUnknownStoredTargetsDoNotPreventCanonicalReorder() {
+        ManagementBannerDto first = service.publish(request("<p>First valid</p>", "First valid"), ADMIN);
+        ManagementBannerDto malformed = service.publish(request("<p>Malformed</p>", "Malformed"), ADMIN);
+        ManagementBannerDto unknown = service.publish(request("<p>Unknown</p>", "Unknown"), ADMIN);
+        ManagementBannerDto second = service.publish(request("<p>Second valid</p>", "Second valid"), ADMIN);
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", "[\"legacy\"]",
+            malformed.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)",
+            "[{\"kind\":\"FUTURE\",\"path\":\"/future\"}]", unknown.uuid().toString()
+        );
+        entityManager.clear();
+
+        assertThat(service.reorder(List.of(second.uuid(), first.uuid()), ADMIN)).extracting(ManagementBannerDto::uuid)
+            .containsExactly(second.uuid(), first.uuid());
+        assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT BIN_TO_UUID(uuid) FROM banner_occurrence WHERE status = 'PUBLISHED' ORDER BY priority", String.class
+            )
+        ).containsExactly(
+            second.uuid().toString(), first.uuid().toString(), malformed.uuid().toString(), unknown.uuid().toString()
+        );
+    }
+
+    @Test
     void currentTargetedJsonRoundTripsThroughOccurrenceVersionAndFeed() {
         ManagementBannerDto published = service.publish(
             request(

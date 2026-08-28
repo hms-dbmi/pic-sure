@@ -142,15 +142,15 @@ public class BannerService {
         List<BannerOccurrence> current = repository.findOrderableForUpdate(now);
         Map<UUID, BannerOccurrence> currentByUuid = new HashMap<>();
         current.forEach(banner -> currentByUuid.put(banner.getUuid(), banner));
-        HashSet<UUID> persistedUuids = new HashSet<>();
-        repository.findAllById(bannerUuids).forEach(banner -> persistedUuids.add(banner.getUuid()));
-        if (!persistedUuids.containsAll(bannerUuids)) {
+        HashSet<UUID> submittedExistingUuids = new HashSet<>();
+        repository.findAllById(bannerUuids).forEach(banner -> submittedExistingUuids.add(banner.getUuid()));
+        if (!submittedExistingUuids.containsAll(bannerUuids)) {
             throw PicsureExceptions.badRequest("Banner order contains a nonexistent UUID");
         }
 
         List<BannerOccurrence> reordered = new ArrayList<>(current.size());
         bannerUuids.stream().map(currentByUuid::get).filter(Objects::nonNull).forEach(reordered::add);
-        current.stream().filter(banner -> !persistedUuids.contains(banner.getUuid())).forEach(reordered::add);
+        current.stream().filter(banner -> !submittedExistingUuids.contains(banner.getUuid())).forEach(reordered::add);
         for (int index = 0; index < reordered.size(); index++) {
             reordered.get(index).setPriority(index + 1);
         }
@@ -158,7 +158,7 @@ public class BannerService {
         allocator.setNextPriority(reordered.size() + 1);
         priorityAllocatorRepository.save(allocator);
         auditService.registerReorderAudit(reordered.stream().map(BannerOccurrence::getUuid).toList(), now, user.getUserId());
-        return reordered.stream().map(banner -> managementDto(banner, now)).toList();
+        return reordered.stream().flatMap(banner -> ManagementBannerDto.from(banner, now).stream()).toList();
     }
 
     private int allocateBottomPriority(Instant now) {

@@ -52,6 +52,26 @@ class BannerPriorityLockOrderTest {
         lockOrder.verify(repository).findByIdForUpdate(uuid);
     }
 
+    @Test
+    void reorderLocksAllocatorBeforeCurrentOccurrences() {
+        BannerRepository repository = mock(BannerRepository.class);
+        BannerPriorityAllocatorRepository allocatorRepository = mock(BannerPriorityAllocatorRepository.class);
+        BannerService service = new BannerService(
+            repository, mock(BannerVersionRepository.class), allocatorRepository, Clock.fixed(NOW, ZoneOffset.UTC),
+            mock(BannerPresentationHasher.class), mock(BannerAuditService.class)
+        );
+        BannerPriorityAllocator allocator = new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1);
+        when(allocatorRepository.lockSingleton()).thenReturn(Optional.of(allocator));
+        when(repository.findOrderableForUpdate(NOW)).thenReturn(List.of());
+        when(repository.findAllById(List.of())).thenReturn(List.of());
+
+        service.reorder(List.of(), ADMIN);
+
+        InOrder lockOrder = inOrder(allocatorRepository, repository);
+        lockOrder.verify(allocatorRepository).lockSingleton();
+        lockOrder.verify(repository).findOrderableForUpdate(NOW);
+    }
+
     private static PublishBannerRequest request() {
         return new PublishBannerRequest(
             "<p>Draft</p>", "Draft", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
