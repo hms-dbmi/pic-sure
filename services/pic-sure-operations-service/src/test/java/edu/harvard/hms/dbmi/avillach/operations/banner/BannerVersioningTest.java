@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -9,9 +10,13 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,6 +28,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 
 @SpringBootTest
@@ -179,6 +185,51 @@ class BannerVersioningTest {
     }
 
     @Test
+    void updatePublishedRejectsAnUnknownUuidWithoutWritingAVersion() throws Exception {
+        PicsureException exception = assertThrows(
+            PicsureException.class,
+            () -> service.update(
+                UUID.fromString("00000000-0000-0000-0000-000000000099"),
+                request(
+                    "<p>Missing</p>", "Missing", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE,
+                    "[{\"kind\":\"ALL\"}]"
+                ), FIRST_ADMIN
+            )
+        );
+
+        assertThat(exception.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(versionRepository.count()).isZero();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = BannerStatus.class, names = {"SAVED", "DISABLED", "ARCHIVED"})
+    void updatePublishedRejectsOtherStatesWithoutWritingAVersion(BannerStatus status) throws Exception {
+        ManagementBannerDto published = service.publish(
+            request(
+                "<p>Original</p>", "Original", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE,
+                "[{\"kind\":\"ALL\"}]"
+            ), FIRST_ADMIN
+        );
+        BannerOccurrence occurrence = bannerRepository.findById(published.uuid()).orElseThrow().setStatus(status);
+        bannerRepository.saveAndFlush(occurrence);
+        versionRepository.deleteAll();
+
+        PicsureException exception = assertThrows(
+            PicsureException.class,
+            () -> service.update(
+                published.uuid(),
+                request(
+                    "<p>Rejected</p>", "Rejected", BannerAppearance.ERROR, BannerIcon.ERROR, false, BannerAudience.SIGNED_IN,
+                    "[{\"kind\":\"ALL\"}]"
+                ), SECOND_ADMIN
+            )
+        );
+
+        assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(versionRepository.count()).isZero();
+    }
+
+    @Test
     void lazyBootstrapFallsBackToStoredUpdateTimeWhenPublicationTimeIsMissing() throws Exception {
         ManagementBannerDto published = service.publish(
             request(
@@ -205,7 +256,7 @@ class BannerVersioningTest {
         assertThat(versions).extracting(BannerVersion::getVersionNumber).containsExactly(1, 2);
         assertThat(versions.getFirst().getHtmlContent()).isEqualTo("<p>Legacy state</p>");
         assertThat(versions.getFirst().getEffectiveAt()).isEqualTo(storedUpdateTime);
-        assertThat(versions.getFirst().getActor()).isEqualTo("SYSTEM_MIGRATION");
+        assertThat(versions.getFirst().getActor()).isEqualTo(BannerService.SYSTEM_MIGRATION_ACTOR);
     }
 
     private PublishBannerRequest request(

@@ -4,13 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -77,34 +71,6 @@ class BannerMySqlMigrationTest {
         registry.add("spring.datasource.username", MYSQL::getUsername);
         registry.add("spring.datasource.password", MYSQL::getPassword);
         registry.add("spring.datasource.driver-class-name", MYSQL::getDriverClassName);
-        registry.add("spring.flyway.locations", BannerMySqlMigrationTest::migrationLocation);
-    }
-
-    private static String migrationLocation() {
-        String deploymentMigration = System.getProperty("banner.version.migration");
-        if (deploymentMigration == null) {
-            return "classpath:banner-version-migration";
-        }
-        try (
-            InputStream fixtureStream =
-                BannerMySqlMigrationTest.class.getResourceAsStream("/banner-version-migration/V2__CREATE_BANNER_VERSION.sql")
-        ) {
-            if (fixtureStream == null) {
-                throw new IllegalStateException("The banner version migration fixture is missing");
-            }
-            Path deploymentPath = Path.of(deploymentMigration);
-            if (!Arrays.equals(fixtureStream.readAllBytes(), Files.readAllBytes(deploymentPath))) {
-                throw new IllegalStateException("The MySQL test fixture differs from " + deploymentPath);
-            }
-            Path stagingDirectory = Files.createTempDirectory("banner-version-migration-");
-            stagingDirectory.toFile().deleteOnExit();
-            Path stagedMigration = stagingDirectory.resolve("V2__CREATE_BANNER_VERSION.sql");
-            Files.copy(deploymentPath, stagedMigration, StandardCopyOption.REPLACE_EXISTING);
-            stagedMigration.toFile().deleteOnExit();
-            return "filesystem:" + stagingDirectory;
-        } catch (IOException e) {
-            throw new IllegalStateException("The deployment banner version migration could not be staged", e);
-        }
     }
 
     @BeforeEach
@@ -143,7 +109,7 @@ class BannerMySqlMigrationTest {
         assertThat(migratedVersions).filteredOn(version -> version.htmlContent().equals("<p>Missing publication time</p>")).singleElement()
             .satisfies(version -> {
                 assertThat(version.effectiveAt()).isEqualTo(PUBLISHED_AT.plusSeconds(3600));
-                assertThat(version.actor()).isEqualTo("SYSTEM_MIGRATION");
+                assertThat(version.actor()).isEqualTo(BannerService.SYSTEM_MIGRATION_ACTOR);
             });
     }
 
@@ -208,7 +174,7 @@ class BannerMySqlMigrationTest {
         assertThat(versionsFor(versionRepository, oldBinary.getUuid())).singleElement().satisfies(version -> {
             assertThat(version.getHtmlContent()).isEqualTo("<p>Same</p>");
             assertThat(version.getEffectiveAt()).isEqualTo(PUBLISHED_AT);
-            assertThat(version.getActor()).isEqualTo("SYSTEM_MIGRATION");
+            assertThat(version.getActor()).isEqualTo(BannerService.SYSTEM_MIGRATION_ACTOR);
         });
     }
 
