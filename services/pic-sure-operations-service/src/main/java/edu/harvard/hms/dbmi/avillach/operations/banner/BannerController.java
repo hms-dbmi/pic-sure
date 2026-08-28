@@ -67,4 +67,9 @@ public class BannerController {
     public ManagementBannerDto disable(GatewayUser user, @PathVariable UUID uuid) {
         return service.disable(uuid, user);
     }
+
+    @PostMapping("/{uuid}/archive")
+    public ArchivedBannerDto archive(GatewayUser user, @PathVariable UUID uuid) {
+        return service.archive(uuid, user);
+    }
 }

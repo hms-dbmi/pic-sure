@@ -85,9 +85,9 @@ class BannerRouteTest {
     void rejectsAnUnauthenticatedManagementMutationAtTheGateway() {
         String uuid = "00000000-0000-0000-0000-000000000001";
         Map<String, HttpMethod> mutations = Map.of(
-            "/operations/banners", HttpMethod.POST, "/operations/banners/saved", HttpMethod.POST, "/operations/banners/" + uuid,
-            HttpMethod.PUT, "/operations/banners/" + uuid + "/publish", HttpMethod.POST, "/operations/banners/" + uuid + "/disable",
-            HttpMethod.POST
+            "/operations/banners", HttpMethod.POST, "/operations/banners/saved", HttpMethod.POST, "/operations/banners/order",
+            HttpMethod.PUT, "/operations/banners/" + uuid, HttpMethod.PUT, "/operations/banners/" + uuid + "/publish", HttpMethod.POST,
+            "/operations/banners/" + uuid + "/disable", HttpMethod.POST, "/operations/banners/" + uuid + "/archive", HttpMethod.POST
         );
 
         mutations.forEach((path, method) -> {

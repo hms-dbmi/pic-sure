@@ -209,6 +209,51 @@ class BannerAuditTransactionTest {
         verifyNoInteractions(loggingClient);
     }
 
+    @Test
+    void archiveEmitsOneConciseAuditAfterCommitAndARejectedTransitionEmitsNone() throws Exception {
+        ManagementBannerDto published = service.publish(request(), ADMIN);
+        service.disable(published.uuid(), ADMIN);
+        reset(loggingClient);
+        ArchivedBannerDto[] archived = new ArchivedBannerDto[1];
+
+        transactions.executeWithoutResult(status -> {
+            archived[0] = service.archive(published.uuid(), ADMIN);
+            verifyNoInteractions(loggingClient);
+        });
+
+        ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(event.capture());
+        assertThat(event.getValue().getEventType()).isEqualTo("BANNER");
+        assertThat(event.getValue().getAction()).isEqualTo("banner.archived");
+        assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
+        assertThat(event.getValue().getMetadata()).containsExactlyInAnyOrderEntriesOf(
+            Map.of(
+                "bannerUuid", published.uuid().toString(), "timestamp", archived[0].archivedAt().toString(), "presentationHash",
+                published.presentationHash()
+            )
+        );
+        assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Committed banner");
+
+        reset(loggingClient);
+        assertThatThrownBy(() -> transactions.executeWithoutResult(status -> service.archive(published.uuid(), ADMIN)))
+            .isInstanceOf(PicsureException.class);
+        verifyNoInteractions(loggingClient);
+    }
+
+    @Test
+    void rollbackDoesNotEmitAFalseArchiveAudit() {
+        ManagementBannerDto saved = service.saveDraft(request(), ADMIN);
+        reset(loggingClient);
+
+        transactions.executeWithoutResult(status -> {
+            service.archive(saved.uuid(), ADMIN);
+            status.setRollbackOnly();
+        });
+
+        assertThat(repository.findById(saved.uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.SAVED);
+        verifyNoInteractions(loggingClient);
+    }
+
     private PublishBannerRequest request() {
         return new PublishBannerRequest(
             "<p>Committed banner</p>", "Notice", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,

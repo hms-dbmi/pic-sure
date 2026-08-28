@@ -23,6 +23,7 @@ public class BannerAuditService {
     static final String SCHEDULED_ACTION = "banner.scheduled";
     static final String REORDERED_ACTION = "banner.reordered";
     static final String DISABLED_ACTION = "banner.disabled";
+    static final String ARCHIVED_ACTION = "banner.archived";
 
     private static final Logger LOG = LoggerFactory.getLogger(BannerAuditService.class);
 

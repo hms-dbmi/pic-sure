@@ -120,6 +120,7 @@ class BannerControllerTest {
         mockMvc.perform(post("/banners/{uuid}/publish", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isForbidden());
         mockMvc.perform(post("/banners/{uuid}/disable", UUID.randomUUID())).andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners/{uuid}/archive", UUID.randomUUID())).andExpect(status().isForbidden());
     }
 
     @Test
@@ -464,6 +465,73 @@ class BannerControllerTest {
         mockMvc.perform(post("/banners/{uuid}/disable", uuid)).andExpect(status().isForbidden());
 
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)));
+    }
+
+    @Test
+    void archiveReturnsASmallAuthoritativeResultAndDropsTheOccurrenceFromNormalApis() throws Exception {
+        UUID disabled = repository.save(banner(4, BannerStatus.DISABLED, NOW.minusSeconds(120), null, "Disabled")).getUuid();
+        repository.save(banner(5, BannerStatus.PUBLISHED, NOW.minusSeconds(120), null, "Active"));
+
+        mockMvc
+            .perform(
+                post("/banners/{uuid}/archive", disabled).header(GatewayUserResolver.HEADER_USER_ID, "super-id")
+                    .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN")
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.uuid").value(disabled.toString()))
+            .andExpect(jsonPath("$.status").value("ARCHIVED")).andExpect(jsonPath("$.archivedAt").value(NOW.toString()))
+            .andExpect(jsonPath("$.archivedBy").value("super-id")).andExpect(jsonPath("$.lifecycle").doesNotExist())
+            .andExpect(jsonPath("$.htmlContent").doesNotExist()).andExpect(jsonPath("$.title").doesNotExist())
+            .andExpect(jsonPath("$.pageTargets").doesNotExist()).andExpect(jsonPath("$.presentationHash").doesNotExist());
+
+        mockMvc.perform(
+            get("/banners").header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN")
+        ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].title").value("Active"));
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+            .andExpect(jsonPath("$[0].title").value("Active"));
+    }
+
+    @Test
+    void archiveRejectsDisplayableAlreadyArchivedAndUnknownOccurrencesOverHttp() throws Exception {
+        BannerOccurrence active = repository.save(banner(1, BannerStatus.PUBLISHED, NOW.minusSeconds(120), null, "Active"));
+        BannerOccurrence scheduled = repository.save(banner(2, BannerStatus.PUBLISHED, NOW.plusSeconds(120), null, "Scheduled"));
+        BannerOccurrence archived = repository.save(banner(3, BannerStatus.ARCHIVED, NOW.minusSeconds(120), null, "Archived"));
+
+        for (BannerOccurrence rejected : List.of(active, scheduled, archived)) {
+            mockMvc.perform(adminArchive(rejected.getUuid())).andExpect(status().isConflict());
+        }
+        mockMvc.perform(adminArchive(UUID.randomUUID())).andExpect(status().isNotFound());
+
+        org.assertj.core.api.Assertions.assertThat(repository.findById(active.getUuid()).orElseThrow().getStatus())
+            .isEqualTo(BannerStatus.PUBLISHED);
+        org.assertj.core.api.Assertions.assertThat(repository.findById(scheduled.getUuid()).orElseThrow().getStatus())
+            .isEqualTo(BannerStatus.PUBLISHED);
+        org.assertj.core.api.Assertions.assertThat(repository.findById(archived.getUuid()).orElseThrow().getArchivedAt()).isNull();
+        verifyNoInteractions(loggingClient);
+    }
+
+    @Test
+    void adminAndSuperAdminCanArchiveButOtherPrivilegesCannot() throws Exception {
+        UUID first = repository.save(banner(null, BannerStatus.SAVED, null, null, "First draft")).getUuid();
+        UUID second = repository.save(banner(null, BannerStatus.SAVED, null, null, "Second draft")).getUuid();
+        UUID guarded = repository.save(banner(null, BannerStatus.SAVED, null, null, "Guarded draft")).getUuid();
+
+        mockMvc.perform(adminArchive(first)).andExpect(status().isOk());
+        mockMvc.perform(
+            post("/banners/{uuid}/archive", second).header(GatewayUserResolver.HEADER_USER_ID, "super-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN")
+        ).andExpect(status().isOk());
+        mockMvc.perform(
+            post("/banners/{uuid}/archive", guarded).header(GatewayUserResolver.HEADER_USER_ID, "researcher-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "PIC_SURE_ANY_QUERY")
+        ).andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners/{uuid}/archive", guarded)).andExpect(status().isForbidden());
+
+        org.assertj.core.api.Assertions.assertThat(repository.findById(guarded).orElseThrow().getStatus()).isEqualTo(BannerStatus.SAVED);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminArchive(UUID uuid) {
+        return post("/banners/{uuid}/archive", uuid).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+            .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN");
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminDisable(UUID uuid) {

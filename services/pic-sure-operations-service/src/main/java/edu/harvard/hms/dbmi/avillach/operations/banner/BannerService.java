@@ -183,6 +183,33 @@ public class BannerService {
         return managementDto(saved, now);
     }
 
+    @Transactional
+    public ArchivedBannerDto archive(UUID uuid, GatewayUser user) {
+        BannerOccurrence banner = repository.findByIdForUpdate(uuid).orElseThrow(() -> PicsureExceptions.notFound("Banner", uuid));
+        Instant now = clock.instant();
+        BannerLifecycle lifecycle = ManagementBannerDto.from(banner, now).map(ManagementBannerDto::lifecycle)
+            .orElseThrow(() -> PicsureExceptions.conflict("Archived banners cannot be archived again"));
+        if (lifecycle == BannerLifecycle.ACTIVE || lifecycle == BannerLifecycle.SCHEDULED) {
+            throw PicsureExceptions.conflict("Active and scheduled banners must be disabled before they can be archived");
+        }
+
+        String actor = user.getUserId();
+        BannerOccurrence saved = markArchived(banner, now, actor);
+        auditService.registerMutationAudit(BannerAuditService.ARCHIVED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        return ArchivedBannerDto.from(saved);
+    }
+
+    /**
+     * Retires an occurrence without auditing, so a caller that archives as part of a larger action reports only its own event. Archiving is
+     * retention bookkeeping: content, schedule, priority, provenance, and every stored version stay as they are, and the priority allocator
+     * is untouched because an archiveable occurrence was already outside the orderable queue.
+     */
+    private BannerOccurrence markArchived(BannerOccurrence banner, Instant now, String actor) {
+        return repository.saveAndFlush(
+            banner.setStatus(BannerStatus.ARCHIVED).setArchivedAt(now).setArchivedBy(actor).setUpdatedAt(now).setUpdatedBy(actor)
+        );
+    }
+
     private ManagementBannerDto updateSaved(BannerOccurrence banner, PublishBannerRequest request, GatewayUser user) {
         Instant now = clock.instant();
         validateChangedDraftSchedule(banner, request, now);
