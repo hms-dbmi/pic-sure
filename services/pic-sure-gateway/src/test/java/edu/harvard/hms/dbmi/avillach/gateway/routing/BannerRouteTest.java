@@ -15,6 +15,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,12 +83,19 @@ class BannerRouteTest {
 
     @Test
     void rejectsAnUnauthenticatedManagementMutationAtTheGateway() {
-        operationsStub.stubFor(post(urlEqualTo("/operations/banners")).willReturn(aResponse().withStatus(201)));
+        String uuid = "00000000-0000-0000-0000-000000000001";
+        Map<String, HttpMethod> mutations = Map.of(
+            "/operations/banners", HttpMethod.POST, "/operations/banners/saved", HttpMethod.POST, "/operations/banners/" + uuid,
+            HttpMethod.PUT, "/operations/banners/" + uuid + "/publish", HttpMethod.POST
+        );
 
-        ResponseEntity<String> response = rest.postForEntity("http://127.0.0.1:" + port + "/operations/banners", "{}", String.class);
+        mutations.forEach((path, method) -> {
+            ResponseEntity<String> response =
+                rest.exchange("http://127.0.0.1:" + port + path, method, new HttpEntity<>("{}"), String.class);
 
-        assertThat(response.getStatusCode().value()).isEqualTo(401);
-        operationsStub.verify(0, anyRequestedFor(urlEqualTo("/operations/banners")));
+            assertThat(response.getStatusCode().value()).isEqualTo(401);
+            operationsStub.verify(0, anyRequestedFor(urlEqualTo(path)));
+        });
         psamaStub.verify(0, anyRequestedFor(anyUrl()));
     }
 

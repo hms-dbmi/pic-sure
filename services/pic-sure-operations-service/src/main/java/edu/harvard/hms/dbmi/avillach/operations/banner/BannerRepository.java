@@ -32,7 +32,6 @@ public interface BannerRepository extends JpaRepository<BannerOccurrence, UUID> 
         SELECT banner
         FROM banner_occurrence banner
         WHERE banner.status <> edu.harvard.hms.dbmi.avillach.operations.banner.BannerStatus.ARCHIVED
-        ORDER BY banner.createdAt ASC, banner.uuid ASC
         """)
     List<BannerOccurrence> findAllManaged();
 }

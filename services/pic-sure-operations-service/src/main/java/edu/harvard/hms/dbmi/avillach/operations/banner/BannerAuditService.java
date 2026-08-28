@@ -16,16 +16,16 @@ import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 @Service
 public class BannerAuditService {
 
+    static final String SAVED_ACTION = "banner.saved";
+    static final String UPDATED_ACTION = "banner.updated";
+    static final String PUBLISHED_ACTION = "banner.published";
+
     private static final Logger LOG = LoggerFactory.getLogger(BannerAuditService.class);
 
     private final LoggingClient loggingClient;
 
     public BannerAuditService(LoggingClient loggingClient) {
         this.loggingClient = loggingClient;
-    }
-
-    public void registerPublicationAudit(UUID bannerUuid, Instant timestamp, String presentationHash, String actor) {
-        registerMutationAudit("banner.published", bannerUuid, timestamp, presentationHash, actor);
     }
 
     public void registerMutationAudit(String action, UUID bannerUuid, Instant timestamp, String presentationHash, String actor) {

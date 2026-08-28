@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -14,6 +15,11 @@ import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 
 @Service
 public class BannerService {
+
+    private static final Comparator<ManagementBannerDto> MANAGEMENT_ORDER =
+        Comparator.comparingInt((ManagementBannerDto banner) -> lifecycleOrder(banner.lifecycle()))
+            .thenComparing(BannerService::orderablePriority, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(ManagementBannerDto::createdAt).thenComparing(banner -> banner.uuid().toString());
 
     private final BannerRepository repository;
     private final Clock clock;
@@ -38,7 +44,7 @@ public class BannerService {
     @Transactional(readOnly = true)
     public List<ManagementBannerDto> managedBanners() {
         Instant now = clock.instant();
-        return repository.findAllManaged().stream().map(banner -> ManagementBannerDto.from(banner, now)).toList();
+        return repository.findAllManaged().stream().map(banner -> ManagementBannerDto.from(banner, now)).sorted(MANAGEMENT_ORDER).toList();
     }
 
     @Transactional
@@ -51,7 +57,7 @@ public class BannerService {
             .setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
-        auditService.registerPublicationAudit(saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(BannerAuditService.PUBLISHED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
         return ManagementBannerDto.from(saved, now);
     }
 
@@ -64,7 +70,7 @@ public class BannerService {
             .setUpdatedAt(now).setUpdatedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
-        auditService.registerMutationAudit("banner.saved", saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(BannerAuditService.SAVED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
         return ManagementBannerDto.from(saved, now);
     }
 
@@ -77,7 +83,7 @@ public class BannerService {
         apply(request, banner).setUpdatedAt(now).setUpdatedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
-        auditService.registerMutationAudit("banner.updated", saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(BannerAuditService.UPDATED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
         return ManagementBannerDto.from(saved, now);
     }
 
@@ -92,12 +98,13 @@ public class BannerService {
             .setPublishedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
-        auditService.registerPublicationAudit(saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(BannerAuditService.PUBLISHED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
         return ManagementBannerDto.from(saved, now);
     }
 
     private BannerOccurrence requireSaved(UUID uuid) {
-        BannerOccurrence banner = repository.findById(uuid).orElseThrow(() -> PicsureExceptions.notFound("Banner", uuid));
+        BannerOccurrence banner = repository.findById(uuid).filter(found -> found.getStatus() != BannerStatus.ARCHIVED)
+            .orElseThrow(() -> PicsureExceptions.notFound("Banner", uuid));
         if (banner.getStatus() != BannerStatus.SAVED) {
             throw PicsureExceptions.conflict("Only saved banners can be changed before publication");
         }
@@ -115,5 +122,20 @@ public class BannerService {
         return banner.setHtmlContent(request.htmlContent()).setTitle(normalizedTitle.isEmpty() ? null : normalizedTitle)
             .setAppearance(request.appearance()).setIcon(request.icon()).setDismissible(request.dismissible())
             .setAudience(request.audience()).setPlacement(request.placement()).setPageTargets(request.pageTargets().deepCopy());
+    }
+
+    private static int lifecycleOrder(BannerLifecycle lifecycle) {
+        return switch (lifecycle) {
+            case ACTIVE, SCHEDULED -> 0;
+            case SAVED, DISABLED -> 1;
+            case EXPIRED -> 2;
+        };
+    }
+
+    private static Integer orderablePriority(ManagementBannerDto banner) {
+        return switch (banner.lifecycle()) {
+            case ACTIVE, SCHEDULED -> banner.priority();
+            case SAVED, DISABLED, EXPIRED -> null;
+        };
     }
 }

@@ -105,6 +105,12 @@ class BannerControllerTest {
     @Test
     void otherBannerPathsAreNotAnonymous() throws Exception {
         mockMvc.perform(get("/banners")).andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners/saved").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+        mockMvc.perform(put("/banners/{uuid}", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners/{uuid}/publish", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden());
     }
 
     @Test
@@ -196,8 +202,12 @@ class BannerControllerTest {
 
     @Test
     void managementListExcludesArchivedAndReturnsDerivedLifecycle() throws Exception {
-        repository.save(banner(1, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Active"));
-        repository.save(banner(2, BannerStatus.PUBLISHED, NOW.plusSeconds(60), null, "Scheduled"));
+        BannerOccurrence active =
+            banner(1, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Active").setCreatedAt(NOW.minusSeconds(30));
+        BannerOccurrence scheduled =
+            banner(2, BannerStatus.PUBLISHED, NOW.plusSeconds(60), null, "Scheduled").setCreatedAt(NOW.minusSeconds(300));
+        repository.save(active);
+        repository.save(scheduled);
         repository.save(banner(3, BannerStatus.PUBLISHED, NOW.minusSeconds(120), NOW, "Expired"));
         repository.save(banner(null, BannerStatus.SAVED, null, null, "Saved"));
         repository.save(banner(null, BannerStatus.DISABLED, NOW.minusSeconds(120), null, "Disabled"));
@@ -207,8 +217,8 @@ class BannerControllerTest {
             .perform(
                 get("/banners").header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
                     .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN")
-            ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(5)))
-            .andExpect(jsonPath("$[?(@.title == 'Active')].lifecycle").value("ACTIVE"))
+            ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(5))).andExpect(jsonPath("$[0].title").value("Active"))
+            .andExpect(jsonPath("$[1].title").value("Scheduled")).andExpect(jsonPath("$[?(@.title == 'Active')].lifecycle").value("ACTIVE"))
             .andExpect(jsonPath("$[?(@.title == 'Scheduled')].lifecycle").value("SCHEDULED"))
             .andExpect(jsonPath("$[?(@.title == 'Expired')].lifecycle").value("EXPIRED"))
             .andExpect(jsonPath("$[?(@.title == 'Saved')].lifecycle").value("SAVED"))
@@ -219,6 +229,7 @@ class BannerControllerTest {
     @Test
     void onlySavedOccurrencesCanBeUpdatedOrPromoted() throws Exception {
         BannerOccurrence published = repository.save(banner(1, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Published"));
+        BannerOccurrence archived = repository.save(banner(2, BannerStatus.ARCHIVED, NOW.minusSeconds(60), null, "Archived"));
 
         mockMvc.perform(
             put("/banners/{uuid}", published.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
@@ -232,6 +243,16 @@ class BannerControllerTest {
         ).andExpect(status().isConflict());
         mockMvc.perform(
             post("/banners/{uuid}/publish", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
+                .content(publishRequest("<p>Changed</p>", null))
+        ).andExpect(status().isNotFound());
+        mockMvc.perform(
+            put("/banners/{uuid}", archived.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
+                .content(publishRequest("<p>Changed</p>", null))
+        ).andExpect(status().isNotFound());
+        mockMvc.perform(
+            post("/banners/{uuid}/publish", archived.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content(publishRequest("<p>Changed</p>", null))
         ).andExpect(status().isNotFound());
