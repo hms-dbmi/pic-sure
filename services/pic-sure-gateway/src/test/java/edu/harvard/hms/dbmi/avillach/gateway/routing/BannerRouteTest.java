@@ -86,7 +86,8 @@ class BannerRouteTest {
         String uuid = "00000000-0000-0000-0000-000000000001";
         Map<String, HttpMethod> mutations = Map.of(
             "/operations/banners", HttpMethod.POST, "/operations/banners/saved", HttpMethod.POST, "/operations/banners/" + uuid,
-            HttpMethod.PUT, "/operations/banners/" + uuid + "/publish", HttpMethod.POST
+            HttpMethod.PUT, "/operations/banners/" + uuid + "/publish", HttpMethod.POST, "/operations/banners/" + uuid + "/disable",
+            HttpMethod.POST
         );
 
         mutations.forEach((path, method) -> {

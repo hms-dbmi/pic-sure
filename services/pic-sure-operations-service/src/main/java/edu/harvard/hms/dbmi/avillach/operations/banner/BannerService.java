@@ -164,6 +164,25 @@ public class BannerService {
             .orElseThrow(() -> new IllegalStateException("Banner priority allocator is not initialized"));
     }
 
+    @Transactional
+    public ManagementBannerDto disable(UUID uuid, GatewayUser user) {
+        BannerOccurrence banner = repository.findByIdForUpdate(uuid).orElseThrow(() -> PicsureExceptions.notFound("Banner", uuid));
+        Instant now = clock.instant();
+        BannerLifecycle lifecycle = ManagementBannerDto.from(banner, now).map(ManagementBannerDto::lifecycle)
+            .orElseThrow(() -> PicsureExceptions.conflict("Archived banners cannot be disabled"));
+        if (lifecycle != BannerLifecycle.ACTIVE && lifecycle != BannerLifecycle.SCHEDULED) {
+            throw PicsureExceptions.conflict("Only active or scheduled banners can be disabled");
+        }
+
+        String actor = user.getUserId();
+        // Disabling changes only lifecycle bookkeeping: content, schedule, priority, and every published version stay as they are.
+        BannerOccurrence saved = repository.saveAndFlush(
+            banner.setStatus(BannerStatus.DISABLED).setDisabledAt(now).setDisabledBy(actor).setUpdatedAt(now).setUpdatedBy(actor)
+        );
+        auditService.registerMutationAudit(BannerAuditService.DISABLED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        return managementDto(saved, now);
+    }
+
     private ManagementBannerDto updateSaved(BannerOccurrence banner, PublishBannerRequest request, GatewayUser user) {
         Instant now = clock.instant();
         validateChangedDraftSchedule(banner, request, now);

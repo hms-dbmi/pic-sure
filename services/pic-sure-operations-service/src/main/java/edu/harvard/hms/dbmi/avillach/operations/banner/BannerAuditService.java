@@ -22,6 +22,7 @@ public class BannerAuditService {
     static final String PUBLISHED_ACTION = "banner.published";
     static final String SCHEDULED_ACTION = "banner.scheduled";
     static final String REORDERED_ACTION = "banner.reordered";
+    static final String DISABLED_ACTION = "banner.disabled";
 
     private static final Logger LOG = LoggerFactory.getLogger(BannerAuditService.class);
 

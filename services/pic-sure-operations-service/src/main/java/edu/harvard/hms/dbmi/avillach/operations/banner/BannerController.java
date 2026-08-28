@@ -62,4 +62,9 @@ public class BannerController {
     public ManagementBannerDto publishDraft(GatewayUser user, @PathVariable UUID uuid, @Valid @RequestBody PublishBannerRequest request) {
         return service.publishDraft(uuid, request, user);
     }
+
+    @PostMapping("/{uuid}/disable")
+    public ManagementBannerDto disable(GatewayUser user, @PathVariable UUID uuid) {
+        return service.disable(uuid, user);
+    }
 }

@@ -68,6 +68,12 @@ class BannerManagementAuthorizationTest {
                 user(scopedBannerManagement), false
             ).result()
         ).isTrue();
+        assertThat(
+            authorizationService.isAuthorized(
+                picsure, Map.of("Target Service", "/operations/banners/00000000-0000-0000-0000-000000000001/disable"),
+                user(scopedBannerManagement), false
+            ).result()
+        ).isTrue();
     }
 
     @ParameterizedTest

@@ -116,6 +116,7 @@ class BannerControllerTest {
             .andExpect(status().isForbidden());
         mockMvc.perform(post("/banners/{uuid}/publish", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners/{uuid}/disable", UUID.randomUUID())).andExpect(status().isForbidden());
     }
 
     @Test
@@ -372,6 +373,93 @@ class BannerControllerTest {
             .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$[0].htmlContent").value("<p>Original</p>"));
+    }
+
+    @Test
+    void disableRemovesAnActiveOccurrenceFromTheFeedAndRecordsProvenance() throws Exception {
+        String response = mockMvc.perform(adminPost(publishRequest("<p>Live notice</p>", "Live"))).andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        UUID uuid = UUID.fromString(objectMapper.readTree(response).get("uuid").asText());
+        mockMvc.perform(get("/banners/active")).andExpect(jsonPath("$", hasSize(1)));
+
+        mockMvc
+            .perform(
+                post("/banners/{uuid}/disable", uuid).header(GatewayUserResolver.HEADER_USER_ID, "super-id")
+                    .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN")
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.uuid").value(uuid.toString()))
+            .andExpect(jsonPath("$.status").value("DISABLED")).andExpect(jsonPath("$.lifecycle").value("DISABLED"))
+            .andExpect(jsonPath("$.disabledAt").value(NOW.toString())).andExpect(jsonPath("$.disabledBy").value("super-id"))
+            .andExpect(jsonPath("$.htmlContent").value("<p>Live notice</p>")).andExpect(jsonPath("$.startAt").value(NOW.toString()))
+            .andExpect(jsonPath("$.publishedBy").value("admin-id"));
+
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
+        BannerOccurrence disabled = repository.findById(uuid).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(disabled.getHtmlContent()).isEqualTo("<p>Live notice</p>");
+        org.assertj.core.api.Assertions.assertThat(disabled.getPresentationHash()).isEqualTo(hasher.hash(disabled));
+        org.assertj.core.api.Assertions.assertThat(disabled.getPublishedAt()).isEqualTo(NOW);
+        org.assertj.core.api.Assertions.assertThat(versionRepository.findAll()).singleElement().satisfies(version -> {
+            org.assertj.core.api.Assertions.assertThat(version.getVersionNumber()).isOne();
+            org.assertj.core.api.Assertions.assertThat(version.getHtmlContent()).isEqualTo("<p>Live notice</p>");
+        });
+    }
+
+    @Test
+    void disableMovesAScheduledOccurrenceOutOfTheOrderableQueue() throws Exception {
+        ObjectNode request = (ObjectNode) objectMapper.readTree(publishRequest("<p>Upcoming</p>", "Upcoming"));
+        request.put("startAt", NOW.plusSeconds(3_600).toString());
+        String response =
+            mockMvc.perform(adminPost(request.toString())).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        UUID uuid = UUID.fromString(objectMapper.readTree(response).get("uuid").asText());
+
+        mockMvc.perform(adminDisable(uuid)).andExpect(status().isOk()).andExpect(jsonPath("$.lifecycle").value("DISABLED"))
+            .andExpect(jsonPath("$.startAt").value(NOW.plusSeconds(3_600).toString()));
+
+        mockMvc.perform(
+            get("/banners").header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN")
+        ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].lifecycle").value("DISABLED"));
+    }
+
+    @Test
+    void disableRejectsSavedExpiredAlreadyDisabledAndArchivedOccurrencesWithoutChangingState() throws Exception {
+        BannerOccurrence saved = repository.save(banner(null, BannerStatus.SAVED, null, null, "Saved"));
+        BannerOccurrence expired = repository.save(banner(1, BannerStatus.PUBLISHED, NOW.minusSeconds(120), NOW, "Expired"));
+        BannerOccurrence alreadyDisabled = repository.save(banner(2, BannerStatus.DISABLED, NOW.minusSeconds(120), null, "Disabled"));
+        BannerOccurrence archived = repository.save(banner(3, BannerStatus.ARCHIVED, NOW.minusSeconds(120), null, "Archived"));
+
+        for (BannerOccurrence rejected : List.of(saved, expired, alreadyDisabled, archived)) {
+            mockMvc.perform(adminDisable(rejected.getUuid())).andExpect(status().isConflict());
+        }
+        mockMvc.perform(adminDisable(UUID.randomUUID())).andExpect(status().isNotFound());
+
+        org.assertj.core.api.Assertions.assertThat(repository.findById(saved.getUuid()).orElseThrow().getStatus())
+            .isEqualTo(BannerStatus.SAVED);
+        org.assertj.core.api.Assertions.assertThat(repository.findById(expired.getUuid()).orElseThrow().getStatus())
+            .isEqualTo(BannerStatus.PUBLISHED);
+        org.assertj.core.api.Assertions.assertThat(repository.findById(archived.getUuid()).orElseThrow().getStatus())
+            .isEqualTo(BannerStatus.ARCHIVED);
+        org.assertj.core.api.Assertions.assertThat(repository.findById(alreadyDisabled.getUuid()).orElseThrow().getDisabledAt()).isNull();
+        verifyNoInteractions(loggingClient);
+    }
+
+    @Test
+    void nonAdminsAndAnonymousUsersCannotDisableBanners() throws Exception {
+        String response = mockMvc.perform(adminPost(publishRequest("<p>Original</p>", "Original"))).andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        UUID uuid = UUID.fromString(objectMapper.readTree(response).get("uuid").asText());
+
+        mockMvc.perform(
+            post("/banners/{uuid}/disable", uuid).header(GatewayUserResolver.HEADER_USER_ID, "researcher-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "PIC_SURE_ANY_QUERY")
+        ).andExpect(status().isForbidden());
+        mockMvc.perform(post("/banners/{uuid}/disable", uuid)).andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)));
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminDisable(UUID uuid) {
+        return post("/banners/{uuid}/disable", uuid).header(GatewayUserResolver.HEADER_USER_ID, "admin-id")
+            .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "ADMIN");
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder adminPost(String content) {

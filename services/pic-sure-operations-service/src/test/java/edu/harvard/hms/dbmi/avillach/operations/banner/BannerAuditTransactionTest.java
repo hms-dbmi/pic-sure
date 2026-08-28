@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
@@ -23,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 
 @SpringBootTest
@@ -175,6 +177,36 @@ class BannerAuditTransactionTest {
         assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
         assertThat(event.getValue().getMetadata()).containsEntry("bannerUuids", List.of(second.uuid().toString(), first.uuid().toString()));
         assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Committed banner");
+    }
+
+    @Test
+    void disableEmitsOneConciseAuditAfterCommitAndARejectedTransitionEmitsNone() throws Exception {
+        ManagementBannerDto published = service.publish(request(), ADMIN);
+        reset(loggingClient);
+        ManagementBannerDto[] disabled = new ManagementBannerDto[1];
+
+        transactions.executeWithoutResult(status -> {
+            disabled[0] = service.disable(published.uuid(), ADMIN);
+            verifyNoInteractions(loggingClient);
+        });
+
+        ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(event.capture());
+        assertThat(event.getValue().getEventType()).isEqualTo("BANNER");
+        assertThat(event.getValue().getAction()).isEqualTo("banner.disabled");
+        assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
+        assertThat(event.getValue().getMetadata()).containsExactlyInAnyOrderEntriesOf(
+            Map.of(
+                "bannerUuid", published.uuid().toString(), "timestamp", disabled[0].disabledAt().toString(), "presentationHash",
+                published.presentationHash()
+            )
+        );
+        assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Committed banner");
+
+        reset(loggingClient);
+        assertThatThrownBy(() -> transactions.executeWithoutResult(status -> service.disable(published.uuid(), ADMIN)))
+            .isInstanceOf(PicsureException.class);
+        verifyNoInteractions(loggingClient);
     }
 
     private PublishBannerRequest request() {
