@@ -181,7 +181,7 @@ class BannerControllerTest {
         UUID clientUuid = UUID.fromString("00000000-0000-0000-0000-000000000001");
         ObjectNode request = (ObjectNode) objectMapper.readTree(publishRequest(submittedHtml, " Notice "));
         request.put("uuid", clientUuid.toString()).put("status", "ARCHIVED").put("priority", 999).put("presentationHash", "client-hash")
-            .put("startAt", NOW.plusSeconds(3_600).toString()).put("createdBy", "spoofed-actor");
+            .put("createdBy", "spoofed-actor");
 
         mockMvc.perform(adminPost(request.toString())).andExpect(status().isCreated())
             .andExpect(jsonPath("$.uuid").value(not(clientUuid.toString()))).andExpect(jsonPath("$.status").value("PUBLISHED"))
@@ -191,6 +191,18 @@ class BannerControllerTest {
             .andExpect(jsonPath("$.createdBy").value("admin-id")).andExpect(jsonPath("$.updatedBy").value("admin-id"))
             .andExpect(jsonPath("$.publishedBy").value("admin-id")).andExpect(jsonPath("$.priority").value(14))
             .andExpect(jsonPath("$.presentationHash").value(org.hamcrest.Matchers.matchesPattern("[0-9a-f]{64}")));
+    }
+
+    @Test
+    void publishAcceptsAnExplicitUtcWindowAndReturnsScheduled() throws Exception {
+        ObjectNode request = (ObjectNode) objectMapper.readTree(publishRequest("<p>Scheduled</p>", "Scheduled"));
+        request.put("startAt", NOW.plusSeconds(60).toString()).put("endAt", NOW.plusSeconds(120).toString());
+
+        mockMvc.perform(adminPost(request.toString())).andExpect(status().isCreated())
+            .andExpect(jsonPath("$.status").value("PUBLISHED")).andExpect(jsonPath("$.lifecycle").value("SCHEDULED"))
+            .andExpect(jsonPath("$.startAt").value(NOW.plusSeconds(60).toString()))
+            .andExpect(jsonPath("$.endAt").value(NOW.plusSeconds(120).toString()));
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
     }
 
     @Test

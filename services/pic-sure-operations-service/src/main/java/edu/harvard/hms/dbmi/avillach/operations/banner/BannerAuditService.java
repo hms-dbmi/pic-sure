@@ -19,6 +19,7 @@ public class BannerAuditService {
     static final String SAVED_ACTION = "banner.saved";
     static final String UPDATED_ACTION = "banner.updated";
     static final String PUBLISHED_ACTION = "banner.published";
+    static final String SCHEDULED_ACTION = "banner.scheduled";
 
     private static final Logger LOG = LoggerFactory.getLogger(BannerAuditService.class);
 

@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -58,14 +59,17 @@ public class BannerService {
     public ManagementBannerDto publish(PublishBannerRequest request, GatewayUser user) {
         validate(request);
         Instant now = clock.instant();
+        validateNewSchedule(request, now);
         String actor = user.getUserId();
-        BannerOccurrence banner = apply(request, new BannerOccurrence()).setStatus(BannerStatus.PUBLISHED).setStartAt(now)
+        Instant startAt = publicationStart(request, now);
+        BannerOccurrence banner = apply(request, new BannerOccurrence()).setStatus(BannerStatus.PUBLISHED).setStartAt(startAt)
+            .setEndAt(request.endAt())
             .setPriority(repository.findMaximumOrderablePriority(now) + 1).setCreatedAt(now).setCreatedBy(actor).setUpdatedAt(now)
             .setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         versionRepository.saveAndFlush(BannerVersion.snapshot(saved, 1, now, actor));
-        auditService.registerMutationAudit(BannerAuditService.PUBLISHED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(publicationAction(startAt, now), saved.getUuid(), now, saved.getPresentationHash(), actor);
         return managementDto(saved, now);
     }
 
@@ -73,9 +77,10 @@ public class BannerService {
     public ManagementBannerDto saveDraft(PublishBannerRequest request, GatewayUser user) {
         validate(request);
         Instant now = clock.instant();
+        validateNewSchedule(request, now);
         String actor = user.getUserId();
         BannerOccurrence banner = apply(request, new BannerOccurrence()).setStatus(BannerStatus.SAVED).setCreatedAt(now).setCreatedBy(actor)
-            .setUpdatedAt(now).setUpdatedBy(actor);
+            .setUpdatedAt(now).setUpdatedBy(actor).setStartAt(request.startAt()).setEndAt(request.endAt());
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         auditService.registerMutationAudit(BannerAuditService.SAVED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
@@ -98,21 +103,24 @@ public class BannerService {
         validate(request);
         BannerOccurrence banner = requireSavedForPublication(uuid);
         Instant now = clock.instant();
+        validateNewSchedule(request, now);
         String actor = user.getUserId();
-        apply(request, banner).setStatus(BannerStatus.PUBLISHED).setStartAt(now)
+        Instant startAt = publicationStart(request, now);
+        apply(request, banner).setStatus(BannerStatus.PUBLISHED).setStartAt(startAt).setEndAt(request.endAt())
             .setPriority(repository.findMaximumOrderablePriority(now) + 1).setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now)
             .setPublishedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         versionRepository.saveAndFlush(BannerVersion.snapshot(saved, 1, now, actor));
-        auditService.registerMutationAudit(BannerAuditService.PUBLISHED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(publicationAction(startAt, now), saved.getUuid(), now, saved.getPresentationHash(), actor);
         return managementDto(saved, now);
     }
 
     private ManagementBannerDto updateSaved(BannerOccurrence banner, PublishBannerRequest request, GatewayUser user) {
         Instant now = clock.instant();
+        validateChangedDraftSchedule(banner, request, now);
         String actor = user.getUserId();
-        apply(request, banner).setUpdatedAt(now).setUpdatedBy(actor);
+        apply(request, banner).setStartAt(request.startAt()).setEndAt(request.endAt()).setUpdatedAt(now).setUpdatedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         auditService.registerMutationAudit(BannerAuditService.UPDATED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
@@ -160,6 +168,46 @@ public class BannerService {
         if (!request.pageTargets().isArray()) {
             throw PicsureExceptions.badRequest("Page targets must be an array");
         }
+    }
+
+    private static void validateNewSchedule(PublishBannerRequest request, Instant now) {
+        validateSchedule(request.startAt(), request.endAt(), now, true, true);
+    }
+
+    private static void validateChangedDraftSchedule(BannerOccurrence banner, PublishBannerRequest request, Instant now) {
+        boolean startChanged = !Objects.equals(banner.getStartAt(), request.startAt());
+        boolean endChanged = !Objects.equals(banner.getEndAt(), request.endAt());
+        if (startChanged || endChanged) {
+            validateSchedule(request.startAt(), request.endAt(), now, startChanged, endChanged);
+        }
+    }
+
+    private static void validateSchedule(Instant startAt, Instant endAt, Instant now, boolean validateStart, boolean validateEnd) {
+        if ((startAt != null && !hasMinutePrecision(startAt)) || (endAt != null && !hasMinutePrecision(endAt))) {
+            throw PicsureExceptions.badRequest("Banner schedule timestamps must use minute precision");
+        }
+        if (validateStart && startAt != null && startAt.isBefore(now)) {
+            throw PicsureExceptions.badRequest("Banner start must not be in the past");
+        }
+        if (validateEnd && endAt != null && !endAt.isAfter(now)) {
+            throw PicsureExceptions.badRequest("Banner end must be in the future");
+        }
+        Instant effectiveStart = startAt == null ? now : startAt;
+        if (endAt != null && !endAt.isAfter(effectiveStart)) {
+            throw PicsureExceptions.badRequest("Banner end must be after its start");
+        }
+    }
+
+    private static boolean hasMinutePrecision(Instant instant) {
+        return instant.equals(instant.truncatedTo(ChronoUnit.MINUTES));
+    }
+
+    private static Instant publicationStart(PublishBannerRequest request, Instant now) {
+        return request.startAt() == null ? now : request.startAt();
+    }
+
+    private static String publicationAction(Instant startAt, Instant now) {
+        return startAt.isAfter(now) ? BannerAuditService.SCHEDULED_ACTION : BannerAuditService.PUBLISHED_ACTION;
     }
 
     private static BannerOccurrence apply(PublishBannerRequest request, BannerOccurrence banner) {
