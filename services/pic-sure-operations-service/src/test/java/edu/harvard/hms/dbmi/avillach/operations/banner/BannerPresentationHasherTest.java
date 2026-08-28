@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import java.time.Instant;
+
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -26,6 +28,10 @@ class BannerPresentationHasherTest {
     @Test
     void hashChangesWhenStructuredPresentationOrTargetingChanges() throws Exception {
         PublishBannerRequest original = request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]");
+        PublishBannerRequest changedTitle = new PublishBannerRequest(
+            original.htmlContent(), "Changed notice", original.appearance(), original.icon(), original.dismissible(), original.audience(),
+            original.placement(), original.pageTargets()
+        );
         PublishBannerRequest changedAppearance = new PublishBannerRequest(
             original.htmlContent(), original.title(), BannerAppearance.WARNING, original.icon(), original.dismissible(),
             original.audience(), original.placement(), original.pageTargets()
@@ -44,11 +50,27 @@ class BannerPresentationHasherTest {
         );
         PublishBannerRequest changedTargets = request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"EXACT\",\"path\":\"/help\"}]");
 
+        assertThat(hash(changedTitle)).isNotEqualTo(hash(original));
         assertThat(hash(changedAppearance)).isNotEqualTo(hash(original));
         assertThat(hash(changedIcon)).isNotEqualTo(hash(original));
         assertThat(hash(changedDismissibility)).isNotEqualTo(hash(original));
         assertThat(hash(changedAudience)).isNotEqualTo(hash(original));
         assertThat(hash(changedTargets)).isNotEqualTo(hash(original));
+    }
+
+    @Test
+    void hashExcludesScheduleAndPriority() throws Exception {
+        BannerOccurrence original = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]"));
+        BannerOccurrence changedStart = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]"))
+            .setStartAt(Instant.parse("2026-08-28T12:00:00Z"));
+        BannerOccurrence changedEnd = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]"))
+            .setEndAt(Instant.parse("2026-08-29T12:00:00Z"));
+        BannerOccurrence changedPriority = occurrence(request("<p>Same HTML</p>", "Notice", "[{\"kind\":\"ALL\"}]"))
+            .setPriority(40);
+
+        assertThat(hasher.hash(changedStart)).isEqualTo(hasher.hash(original));
+        assertThat(hasher.hash(changedEnd)).isEqualTo(hasher.hash(original));
+        assertThat(hasher.hash(changedPriority)).isEqualTo(hasher.hash(original));
     }
 
     @Test
