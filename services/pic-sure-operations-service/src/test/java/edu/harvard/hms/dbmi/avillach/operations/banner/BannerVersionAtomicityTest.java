@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Set;
 import java.util.UUID;
 
@@ -65,6 +66,21 @@ class BannerVersionAtomicityTest {
     }
 
     @Test
+    void versionAppendFailureRollsBackAPublishedScheduleEdit() {
+        ManagementBannerDto published = service.publish(request("<p>Original</p>"), ADMIN);
+        Instant futureStart = published.startAt().plusSeconds(600).truncatedTo(ChronoUnit.MINUTES).plusSeconds(60);
+        doThrow(new IllegalStateException("version storage unavailable")).when(versionRepository).saveAndFlush(any(BannerVersion.class));
+
+        assertThatThrownBy(() -> service.update(published.uuid(), request("<p>Original</p>", futureStart, null), ADMIN))
+            .isInstanceOf(IllegalStateException.class).hasMessage("version storage unavailable");
+
+        BannerOccurrence occurrence = bannerRepository.findById(published.uuid()).orElseThrow();
+        assertThat(occurrence.getStartAt()).isEqualTo(published.startAt());
+        assertThat(occurrence.getEndAt()).isNull();
+        assertThat(versionRepository.findAll()).hasSize(1);
+    }
+
+    @Test
     void lazyBootstrapFailureRollsBackWithoutChangingAnOldBinaryOccurrence() {
         Instant publishedAt = Instant.parse("2026-08-27T12:00:00Z");
         BannerOccurrence oldBinary = new BannerOccurrence().setStatus(BannerStatus.PUBLISHED).setHtmlContent("<p>Original</p>")
@@ -87,9 +103,13 @@ class BannerVersionAtomicityTest {
     }
 
     private PublishBannerRequest request(String htmlContent) {
+        return request(htmlContent, null, null);
+    }
+
+    private PublishBannerRequest request(String htmlContent, Instant startAt, Instant endAt) {
         return new PublishBannerRequest(
             htmlContent, "Notice", BannerAppearance.PRIMARY, BannerIcon.NONE, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
-            objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL"))
+            objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL")), startAt, endAt
         );
     }
 }

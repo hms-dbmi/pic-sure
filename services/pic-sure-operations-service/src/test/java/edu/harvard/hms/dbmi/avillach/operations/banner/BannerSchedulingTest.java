@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -190,22 +191,95 @@ class BannerSchedulingTest {
     }
 
     @Test
-    void publishedContentEditsPreserveTheExistingWindowUntilTheReschedulingTicket() {
-        Instant originalStart = NOW.plusSeconds(60);
-        Instant originalEnd = NOW.plusSeconds(120);
-        ManagementBannerDto published = service.publish(request(originalStart, originalEnd), ADMIN);
-        PublishBannerRequest attemptedReschedule = new PublishBannerRequest(
-            "<p>Corrected scheduled maintenance</p>", "Maintenance", BannerAppearance.WARNING, BannerIcon.WARNING, true,
-            BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
-            objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL")), NOW.plusSeconds(180),
-            NOW.plusSeconds(240)
+    void unchangedHistoricalPublishedStartIsAValidNoOpWithoutAnotherVersion() {
+        clock.set(NOW.plusSeconds(30));
+        ManagementBannerDto published = service.publish(request(null, null), ADMIN);
+        clock.set(NOW.plusSeconds(90));
+
+        ManagementBannerDto unchanged = service.update(published.uuid(), request(published.startAt(), null), ADMIN);
+
+        assertThat(unchanged).isEqualTo(published);
+        assertThat(BannerVersionTestSupport.versionsFor(versionRepository, published.uuid())).hasSize(1);
+    }
+
+    @Test
+    void changingPublishedStartToADifferentPastMinuteIsRejectedWithoutWrites() {
+        ManagementBannerDto published = service.publish(request(null, null), ADMIN);
+        clock.set(NOW.plusSeconds(120));
+
+        PicsureException exception = assertThrows(
+            PicsureException.class, () -> service.update(published.uuid(), request(NOW.plusSeconds(60), null), ADMIN)
         );
 
-        ManagementBannerDto updated = service.update(published.uuid(), attemptedReschedule, ADMIN);
+        assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(repository.findById(published.uuid()).orElseThrow().getStartAt()).isEqualTo(published.startAt());
+        assertThat(BannerVersionTestSupport.versionsFor(versionRepository, published.uuid())).hasSize(1);
+    }
 
-        assertThat(updated.htmlContent()).isEqualTo("<p>Corrected scheduled maintenance</p>");
-        assertThat(updated.startAt()).isEqualTo(originalStart);
-        assertThat(updated.endAt()).isEqualTo(originalEnd);
+    @ParameterizedTest(name = "published schedule edit derives {0}")
+    @MethodSource("publishedScheduleTransitions")
+    void publishedScheduleEditsKeepTheOccurrenceAndAppendTheDerivedStateVersion(
+        BannerLifecycle expectedLifecycle, Instant editTime, Instant startAt, Instant endAt
+    ) {
+        ManagementBannerDto published = service.publish(request(null, null), ADMIN);
+        clock.set(editTime);
+
+        ManagementBannerDto updated = service.update(published.uuid(), request(startAt, endAt), ADMIN);
+
+        assertThat(updated.uuid()).isEqualTo(published.uuid());
+        assertThat(updated.lifecycle()).isEqualTo(expectedLifecycle);
+        assertThat(updated.startAt()).isEqualTo(startAt);
+        assertThat(updated.endAt()).isEqualTo(endAt);
+        assertThat(BannerVersionTestSupport.versionsFor(versionRepository, published.uuid()))
+            .extracting(BannerVersion::getVersionNumber).containsExactly(1, 2);
+        assertThat(BannerVersionTestSupport.versionsFor(versionRepository, published.uuid()).getLast())
+            .satisfies(version -> {
+                assertThat(version.getStartAt()).isEqualTo(startAt);
+                assertThat(version.getEndAt()).isEqualTo(endAt);
+            });
+    }
+
+    static Stream<Arguments> publishedScheduleTransitions() {
+        return Stream.of(
+            Arguments.of(BannerLifecycle.SCHEDULED, NOW.plusSeconds(60), NOW.plusSeconds(180), null),
+            Arguments.of(BannerLifecycle.EXPIRED, NOW.plusSeconds(180), NOW, NOW.plusSeconds(60))
+        );
+    }
+
+    @Test
+    void clearingAPublishedEndMakesTheSameOccurrenceNonExpiring() {
+        Instant start = NOW.plusSeconds(60);
+        Instant originalEnd = NOW.plusSeconds(180);
+        ManagementBannerDto published = service.publish(request(start, originalEnd), ADMIN);
+        clock.set(start);
+
+        ManagementBannerDto updated = service.update(published.uuid(), request(start, null), ADMIN);
+
+        assertThat(updated.uuid()).isEqualTo(published.uuid());
+        assertThat(updated.lifecycle()).isEqualTo(BannerLifecycle.ACTIVE);
+        assertThat(updated.endAt()).isNull();
+        assertThat(BannerVersionTestSupport.versionsFor(versionRepository, published.uuid()))
+            .extracting(BannerVersion::getEndAt).containsExactly(originalEnd, null);
+    }
+
+    @Test
+    void scheduleEditEmitsOneUpdateAuditAndDerivedBoundaryCrossingsEmitNone() {
+        ManagementBannerDto published = service.publish(request(null, null), ADMIN);
+        reset(loggingClient);
+        Instant futureStart = NOW.plusSeconds(120);
+        ManagementBannerDto[] updated = new ManagementBannerDto[1];
+
+        transactions.executeWithoutResult(
+            status -> updated[0] = service.update(published.uuid(), request(futureStart, null), ADMIN)
+        );
+
+        verify(loggingClient).send(org.mockito.ArgumentMatchers.argThat(event -> "banner.updated".equals(event.getAction())));
+        reset(loggingClient);
+        clock.set(futureStart);
+        service.managedBanners();
+        service.activeBanners();
+        verifyNoInteractions(loggingClient);
+        assertThat(updated[0].lifecycle()).isEqualTo(BannerLifecycle.SCHEDULED);
     }
 
     private PublishBannerRequest request(Instant startAt, Instant endAt) {

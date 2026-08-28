@@ -128,6 +128,9 @@ public class BannerService {
     }
 
     private ManagementBannerDto updatePublished(BannerOccurrence banner, PublishBannerRequest request, GatewayUser user) {
+        Instant now = clock.instant();
+        Instant requestedStart = request.startAt() == null ? banner.getStartAt() : request.startAt();
+        validateChangedPublishedSchedule(banner, requestedStart, request.endAt(), now);
         int currentVersionNumber = versionRepository.findMaximumVersionNumber(banner.getUuid());
         if (currentVersionNumber == 0) {
             String publishedBy = banner.getPublishedBy();
@@ -136,16 +139,16 @@ public class BannerService {
             currentVersionNumber = 1;
         }
 
-        BannerOccurrence candidate = apply(request, new BannerOccurrence()).setStartAt(banner.getStartAt()).setEndAt(banner.getEndAt());
+        BannerOccurrence candidate = apply(request, new BannerOccurrence()).setStartAt(requestedStart).setEndAt(request.endAt());
         candidate.setPresentationHash(hasher.hash(candidate));
         if (!hasMaterialChange(banner, candidate)) {
-            return managementDto(banner, clock.instant());
+            return managementDto(banner, now);
         }
 
-        Instant now = clock.instant();
         String actor = user.getUserId();
         String previousHash = banner.getPresentationHash();
-        apply(request, banner).setPresentationHash(candidate.getPresentationHash()).setUpdatedAt(now).setUpdatedBy(actor);
+        apply(request, banner).setStartAt(requestedStart).setEndAt(request.endAt()).setPresentationHash(candidate.getPresentationHash())
+            .setUpdatedAt(now).setUpdatedBy(actor);
         BannerOccurrence saved = repository.saveAndFlush(banner);
         versionRepository.saveAndFlush(BannerVersion.snapshot(saved, currentVersionNumber + 1, now, actor));
         auditService.registerUpdateAudit(saved.getUuid(), now, previousHash, saved.getPresentationHash(), actor);
@@ -179,6 +182,23 @@ public class BannerService {
         boolean endChanged = !Objects.equals(banner.getEndAt(), request.endAt());
         if (startChanged || endChanged) {
             validateSchedule(request.startAt(), request.endAt(), now, startChanged, endChanged);
+        }
+    }
+
+    private static void validateChangedPublishedSchedule(
+        BannerOccurrence banner, Instant requestedStart, Instant requestedEnd, Instant now
+    ) {
+        boolean startChanged = !Objects.equals(banner.getStartAt(), requestedStart);
+        boolean endChanged = !Objects.equals(banner.getEndAt(), requestedEnd);
+        if ((startChanged && !hasMinutePrecision(requestedStart))
+            || (endChanged && requestedEnd != null && !hasMinutePrecision(requestedEnd))) {
+            throw PicsureExceptions.badRequest("Banner schedule timestamps must use minute precision");
+        }
+        if (startChanged && requestedStart.isBefore(now)) {
+            throw PicsureExceptions.badRequest("Banner start must not be in the past");
+        }
+        if (requestedEnd != null && !requestedEnd.isAfter(requestedStart)) {
+            throw PicsureExceptions.badRequest("Banner end must be after its start");
         }
     }
 
