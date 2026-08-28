@@ -27,6 +27,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
+import jakarta.persistence.EntityManager;
 
 @SpringBootTest(
     properties = {"spring.flyway.enabled=true", "spring.flyway.locations=classpath:banner-version-migration",
@@ -57,6 +58,9 @@ class BannerMySqlMigrationTest {
 
     @Autowired
     private BannerPresentationHasher hasher;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @MockitoBean
     private LoggingClient loggingClient;
@@ -234,6 +238,24 @@ class BannerMySqlMigrationTest {
         } finally {
             jdbcTemplate.execute("DROP TRIGGER IF EXISTS delay_banner_insert");
         }
+    }
+
+    @Test
+    void loosePreTargetingJsonRoundTripsAsLegacyAllPagesWithoutTakingReadsDown() {
+        ManagementBannerDto published = service.publish(request("<p>Legacy target bytes</p>", "Legacy target bytes"), ADMIN);
+        String looseTargets = "[\"legacy\",{\"kind\":\"EXACT\",\"path\":\"/help\",\"extra\":true}]";
+        jdbcTemplate.update("UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", looseTargets,
+            published.uuid().toString());
+        jdbcTemplate.update("UPDATE banner_version SET page_targets = CAST(? AS JSON) WHERE banner_uuid = UUID_TO_BIN(?)", looseTargets,
+            published.uuid().toString());
+        entityManager.clear();
+
+        assertThat(service.managedBanners()).singleElement()
+            .extracting(ManagementBannerDto::pageTargets).isEqualTo(List.of(BannerPageTarget.all()));
+        assertThat(service.activeBanners()).singleElement()
+            .extracting(ActiveBannerDto::pageTargets).isEqualTo(List.of(BannerPageTarget.all()));
+        assertThat(versionRepository.findAll()).singleElement()
+            .extracting(BannerVersion::getPageTargets).isEqualTo(List.of(BannerPageTarget.all()));
     }
 
     private BannerOccurrence oldBinaryPublication(String htmlContent, String title, String publishedBy) {

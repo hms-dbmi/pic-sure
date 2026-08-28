@@ -55,6 +55,11 @@ public class BannerService {
     }
 
     @Transactional(readOnly = true)
+    public List<ActiveBannerDto> legacyActiveBanners() {
+        return activeBanners().stream().filter(banner -> BannerPageTargets.isAllPages(banner.pageTargets())).toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<ManagementBannerDto> managedBanners() {
         Instant now = clock.instant();
         return repository.findAllManaged().stream().flatMap(banner -> ManagementBannerDto.from(banner, now).stream())

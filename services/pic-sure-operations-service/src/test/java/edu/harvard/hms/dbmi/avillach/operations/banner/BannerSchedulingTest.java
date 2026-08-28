@@ -29,8 +29,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
@@ -49,9 +47,6 @@ class BannerSchedulingTest {
 
     @Autowired
     private BannerVersionRepository versionRepository;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Autowired
     private TransactionTemplate transactions;

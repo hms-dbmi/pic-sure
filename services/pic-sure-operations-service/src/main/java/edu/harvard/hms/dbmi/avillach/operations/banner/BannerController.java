@@ -28,6 +28,11 @@ public class BannerController {
 
     @GetMapping("/active")
     public List<ActiveBannerDto> activeBanners() {
+        return service.legacyActiveBanners();
+    }
+
+    @GetMapping("/active/v2")
+    public List<ActiveBannerDto> targetedActiveBanners() {
         return service.activeBanners();
     }
 

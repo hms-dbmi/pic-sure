@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -55,7 +57,7 @@ public class BannerOccurrence {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "page_targets", nullable = false, columnDefinition = "JSON")
-    private List<BannerPageTarget> pageTargets = List.of(BannerPageTarget.all());
+    private JsonNode pageTargets = BannerPageTargets.toStoredJson(List.of(BannerPageTarget.all()));
 
     @Column(name = "start_at")
     private Instant startAt;
@@ -178,11 +180,11 @@ public class BannerOccurrence {
     }
 
     public List<BannerPageTarget> getPageTargets() {
-        return pageTargets;
+        return pageTargets == null ? null : BannerPageTargets.fromStoredJson(pageTargets);
     }
 
     public BannerOccurrence setPageTargets(List<BannerPageTarget> pageTargets) {
-        this.pageTargets = pageTargets == null ? null : List.copyOf(pageTargets);
+        this.pageTargets = pageTargets == null ? null : BannerPageTargets.toStoredJson(pageTargets);
         return this;
     }
 

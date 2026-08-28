@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -33,7 +35,7 @@ public record BannerPageTarget(BannerPageTargetKind kind, String path) {
             throw new IllegalArgumentException("Unsupported page target kind", e);
         }
 
-        Set<String> fields = value.properties().stream().map(java.util.Map.Entry::getKey).collect(java.util.stream.Collectors.toSet());
+        Set<String> fields = value.properties().stream().map(Map.Entry::getKey).collect(Collectors.toSet());
         if (kind == BannerPageTargetKind.ALL) {
             if (!fields.equals(ALL_FIELDS)) {
                 throw new IllegalArgumentException("All-pages targets contain only the kind");

@@ -1,8 +1,15 @@
 package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 
@@ -10,7 +17,8 @@ final class BannerPageTargets {
 
     private static final Pattern PARAMETER_SEGMENT = Pattern.compile("\\[[A-Za-z_][A-Za-z0-9_]*]");
     private static final Comparator<BannerPageTarget> CANONICAL_ORDER =
-        Comparator.comparing(BannerPageTarget::kind).thenComparing(BannerPageTarget::path, Comparator.nullsFirst(String::compareTo));
+        Comparator.comparingInt((BannerPageTarget target) -> canonicalRank(target.kind()))
+            .thenComparing(BannerPageTarget::path, Comparator.nullsFirst(String::compareTo));
 
     private BannerPageTargets() {}
 
@@ -23,6 +31,10 @@ final class BannerPageTargets {
             throw PicsureExceptions.badRequest("All pages cannot be combined with targeted pages");
         }
         return normalized;
+    }
+
+    static boolean isAllPages(List<BannerPageTarget> targets) {
+        return targets != null && targets.size() == 1 && targets.getFirst().kind() == BannerPageTargetKind.ALL;
     }
 
     private static BannerPageTarget normalize(BannerPageTarget target) {
@@ -63,12 +75,20 @@ final class BannerPageTargets {
     }
 
     private static String normalizePath(String submitted) {
-        String path = submitted;
-        while (path.startsWith(" ")) {
-            path = path.substring(1);
+        int start = 0;
+        int end = submitted.length();
+        while (start < end && submitted.charAt(start) == ' ') {
+            start++;
         }
-        while (path.endsWith(" ")) {
-            path = path.substring(0, path.length() - 1);
+        while (end > start && submitted.charAt(end - 1) == ' ') {
+            end--;
+        }
+        while (end - start > 1 && submitted.charAt(end - 1) == '/') {
+            end--;
+        }
+        String path = submitted.substring(start, end);
+        if (path.indexOf('\\') >= 0 || path.chars().anyMatch(Character::isISOControl)) {
+            throw PicsureExceptions.badRequest("Page target paths contain unsupported characters");
         }
         if (!path.startsWith("/")) {
             throw PicsureExceptions.badRequest("Page target paths must start with /");
@@ -76,13 +96,41 @@ final class BannerPageTargets {
         if (path.indexOf('?') >= 0 || path.indexOf('#') >= 0) {
             throw PicsureExceptions.badRequest("Page target paths must not contain a query or fragment");
         }
-        if (path.indexOf('\\') >= 0 || path.chars().anyMatch(Character::isISOControl)) {
-            throw PicsureExceptions.badRequest("Page target paths contain unsupported characters");
-        }
-        while (path.length() > 1 && path.endsWith("/")) {
-            path = path.substring(0, path.length() - 1);
-        }
         return path;
+    }
+
+    private static int canonicalRank(BannerPageTargetKind kind) {
+        return switch (kind) {
+            case ALL -> 0;
+            case EXACT -> 1;
+            case PARAMETERIZED -> 2;
+            case SUBTREE -> 3;
+        };
+    }
+
+    static List<BannerPageTarget> fromStoredJson(JsonNode stored) {
+        if (stored == null || !stored.isArray() || stored.isEmpty()) {
+            return List.of(BannerPageTarget.all());
+        }
+
+        try {
+            Set<BannerPageTarget> targets = new LinkedHashSet<>();
+            stored.forEach(value -> targets.add(BannerPageTarget.fromJson(value)));
+            return normalize(List.copyOf(targets));
+        } catch (RuntimeException ignored) {
+            return List.of(BannerPageTarget.all());
+        }
+    }
+
+    static JsonNode toStoredJson(List<BannerPageTarget> targets) {
+        ArrayNode stored = JsonNodeFactory.instance.arrayNode();
+        for (BannerPageTarget target : targets) {
+            ObjectNode value = stored.addObject().put("kind", target.kind().name());
+            if (target.path() != null) {
+                value.put("path", target.path());
+            }
+        }
+        return stored;
     }
 
     private static void requireLiteralSegments(List<String> segments) {

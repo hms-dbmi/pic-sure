@@ -87,7 +87,7 @@ class BannerPresentationHasherTest {
     private PublishBannerRequest request(String html, String title, String pageTargets) throws Exception {
         return new PublishBannerRequest(
             html, title, BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
-            BannerPageTargets.normalize(objectMapper.readValue(pageTargets, new TypeReference<>() {}))
+            objectMapper.readValue(pageTargets, new TypeReference<>() {})
         );
     }
 }

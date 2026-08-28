@@ -61,6 +61,9 @@ class BannerRouteTest {
         operationsStub.resetAll();
         operationsStub
             .stubFor(get(urlEqualTo("/operations/banners/active")).willReturn(aResponse().withStatus(200).withBody("banner-feed-ok")));
+        operationsStub.stubFor(
+            get(urlEqualTo("/operations/banners/active/v2")).willReturn(aResponse().withStatus(200).withBody("targeted-banner-feed-ok"))
+        );
         psamaStub.resetAll();
         psamaStub.stubFor(any(anyUrl()).willReturn(serverError()));
     }
@@ -78,6 +81,17 @@ class BannerRouteTest {
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo("banner-feed-ok");
         operationsStub.verify(getRequestedFor(urlEqualTo("/operations/banners/active")));
+        psamaStub.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void forwardsVersionedTargetedBannerFeedAnonymouslyWithoutStrippingThePath() {
+        ResponseEntity<String> response =
+            rest.getForEntity("http://127.0.0.1:" + port + "/operations/banners/active/v2", String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).isEqualTo("targeted-banner-feed-ok");
+        operationsStub.verify(getRequestedFor(urlEqualTo("/operations/banners/active/v2")));
         psamaStub.verify(0, anyRequestedFor(anyUrl()));
     }
 

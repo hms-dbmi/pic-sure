@@ -266,7 +266,7 @@ class BannerVersioningTest {
     ) throws Exception {
         return new PublishBannerRequest(
             htmlContent, title, appearance, icon, dismissible, audience, BannerPlacement.SITE_TOP,
-            BannerPageTargets.normalize(objectMapper.readValue(pageTargets, new TypeReference<>() {}))
+            objectMapper.readValue(pageTargets, new TypeReference<>() {})
         );
     }
 

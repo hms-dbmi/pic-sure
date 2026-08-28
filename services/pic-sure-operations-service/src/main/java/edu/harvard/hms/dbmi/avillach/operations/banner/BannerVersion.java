@@ -8,6 +8,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Immutable;
 import org.hibernate.type.SqlTypes;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -63,7 +65,7 @@ public class BannerVersion {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "page_targets", nullable = false, columnDefinition = "JSON")
-    private List<BannerPageTarget> pageTargets;
+    private JsonNode pageTargets;
 
     @Column(name = "start_at")
     private Instant startAt;
@@ -92,7 +94,7 @@ public class BannerVersion {
         this.dismissible = banner.isDismissible();
         this.audience = banner.getAudience();
         this.placement = banner.getPlacement();
-        this.pageTargets = List.copyOf(banner.getPageTargets());
+        this.pageTargets = BannerPageTargets.toStoredJson(banner.getPageTargets());
         this.startAt = banner.getStartAt();
         this.endAt = banner.getEndAt();
         this.presentationHash = banner.getPresentationHash();
@@ -145,7 +147,7 @@ public class BannerVersion {
     }
 
     public List<BannerPageTarget> getPageTargets() {
-        return pageTargets;
+        return pageTargets == null ? null : BannerPageTargets.fromStoredJson(pageTargets);
     }
 
     public Instant getStartAt() {

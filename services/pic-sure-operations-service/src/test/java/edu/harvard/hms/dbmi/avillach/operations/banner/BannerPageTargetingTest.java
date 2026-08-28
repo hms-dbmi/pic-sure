@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 
 import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -9,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -88,9 +90,22 @@ class BannerPageTargetingTest {
         mockMvc.perform(get("/banners").headers(adminHeaders())).andExpect(status().isOk())
             .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT"))
             .andExpect(jsonPath("$[0].pageTargets[0].path").value("/removed-route"));
-        mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
+        mockMvc.perform(get("/banners/active/v2")).andExpect(status().isOk())
             .andExpect(jsonPath("$[0].pageTargets[1].kind").value("PARAMETERIZED"))
             .andExpect(jsonPath("$[0].pageTargets[2].path").value("/admin")).andExpect(jsonPath("$[0].createdBy").doesNotExist());
+    }
+
+    @Test
+    void legacyFeedReturnsOnlyAllPagesWhileVersionedFeedCarriesTheFullClientFilteredContract() throws Exception {
+        publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/help\"}]"));
+        publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
+
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)))
+            .andExpect(jsonPath("$[0].pageTargets[0].kind").value("ALL"));
+        mockMvc.perform(get("/banners/active/v2")).andExpect(status().isOk())
+            .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(2)))
+            .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT"))
+            .andExpect(jsonPath("$[1].pageTargets[0].kind").value("ALL"));
     }
 
     @Test
@@ -137,6 +152,17 @@ class BannerPageTargetingTest {
         JsonNode published = publish(objectMapper.valueToTree(targets));
 
         assertThat(published.get("pageTargets")).hasSize(150);
+    }
+
+    @Test
+    void trimsAnUnboundedTargetPathInLinearTime() {
+        String path = "/help" + "/".repeat(200_000);
+
+        List<BannerPageTarget> normalized = assertTimeoutPreemptively(
+            Duration.ofMillis(500), () -> BannerPageTargets.normalize(List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, path)))
+        );
+
+        assertThat(normalized).containsExactly(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help"));
     }
 
     @Test

@@ -18,8 +18,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 
@@ -33,9 +31,6 @@ class BannerVersionAtomicityTest {
 
     @Autowired
     private BannerRepository bannerRepository;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Autowired
     private BannerPresentationHasher hasher;
