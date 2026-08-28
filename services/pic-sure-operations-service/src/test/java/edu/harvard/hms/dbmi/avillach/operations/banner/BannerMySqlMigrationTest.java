@@ -3,9 +3,18 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -14,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,6 +36,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import jakarta.persistence.EntityManager;
 
@@ -310,6 +321,78 @@ class BannerMySqlMigrationTest {
         assertThat(bannerRepository.findById(published.uuid()).orElseThrow().getPageTargets()).isEqualTo(expected);
         assertThat(versionRepository.findAll()).singleElement().extracting(BannerVersion::getPageTargets).isEqualTo(expected);
         assertThat(service.targetedActiveBanners()).singleElement().extracting(ActiveBannerDto::pageTargets).isEqualTo(expected);
+    }
+
+    @Test
+    void legacyEmptyTargetsNoOpPreservesDismissalIdentityUntilOneMaterialUpdate() throws Exception {
+        PublishBannerRequest unchanged = request("<p>Legacy all pages</p>", "Legacy all pages");
+        ManagementBannerDto published = service.publish(unchanged, ADMIN);
+        String legacyHash = legacyEmptyTargetsHash(unchanged);
+        assertThat(legacyHash).isNotEqualTo(published.presentationHash());
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON), presentation_hash = ? WHERE uuid = UUID_TO_BIN(?)", "[]",
+            legacyHash, published.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_version SET page_targets = CAST(? AS JSON), presentation_hash = ? WHERE banner_uuid = UUID_TO_BIN(?)", "[]",
+            legacyHash, published.uuid().toString()
+        );
+        entityManager.clear();
+        reset(loggingClient);
+
+        ManagementBannerDto noOp = service.update(published.uuid(), unchanged, ADMIN);
+
+        assertThat(noOp.presentationHash()).isEqualTo(legacyHash);
+        assertThat(storedPresentationHash(published.uuid())).isEqualTo(legacyHash);
+        assertThat(storedTargetCounts("banner_occurrence", "uuid", "created_at", published.uuid())).containsExactly(0);
+        assertThat(storedTargetCounts("banner_version", "banner_uuid", "version_number", published.uuid())).containsExactly(0);
+        assertThat(versionsFor(versionRepository, published.uuid())).singleElement()
+            .extracting(BannerVersion::getPresentationHash).isEqualTo(legacyHash);
+        verifyNoInteractions(loggingClient);
+
+        PublishBannerRequest changed = request("<p>Materially changed</p>", "Legacy all pages");
+        ManagementBannerDto updated = service.update(published.uuid(), changed, ADMIN);
+
+        assertThat(updated.presentationHash()).isNotEqualTo(legacyHash);
+        assertThat(storedPresentationHash(published.uuid())).isEqualTo(updated.presentationHash());
+        assertThat(storedTargetCounts("banner_occurrence", "uuid", "created_at", published.uuid())).containsExactly(1);
+        assertThat(storedTargetCounts("banner_version", "banner_uuid", "version_number", published.uuid())).containsExactly(0, 1);
+        assertThat(hasher.hash(bannerRepository.findById(published.uuid()).orElseThrow())).isEqualTo(updated.presentationHash());
+        assertThat(versionsFor(versionRepository, published.uuid())).extracting(BannerVersion::getPresentationHash)
+            .containsExactly(legacyHash, updated.presentationHash());
+        ArgumentCaptor<LoggingEvent> audit = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(audit.capture());
+        assertThat(audit.getValue().getAction()).isEqualTo("banner.updated");
+        assertThat(audit.getValue().getMetadata()).containsAllEntriesOf(
+            Map.of("previousPresentationHash", legacyHash, "presentationHash", updated.presentationHash())
+        );
+    }
+
+    private String storedPresentationHash(UUID bannerUuid) {
+        return jdbcTemplate.queryForObject(
+            "SELECT presentation_hash FROM banner_occurrence WHERE uuid = UUID_TO_BIN(?)", String.class, bannerUuid.toString()
+        );
+    }
+
+    private List<Integer> storedTargetCounts(String table, String bannerColumn, String orderColumn, UUID bannerUuid) {
+        return jdbcTemplate.queryForList(
+            "SELECT JSON_LENGTH(page_targets) FROM " + table + " WHERE " + bannerColumn + " = UUID_TO_BIN(?) ORDER BY " + orderColumn,
+            Integer.class, bannerUuid.toString()
+        );
+    }
+
+    private static String legacyEmptyTargetsHash(PublishBannerRequest request) throws NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        List<String> fields = List.of(
+            request.htmlContent(), BannerPresentationHasher.normalizeTitle(request.title()), request.appearance().name(), request.icon().name(),
+            Boolean.toString(request.dismissible()), request.audience().name(), request.placement().name(), "[]"
+        );
+        for (String field : fields) {
+            byte[] encoded = field.getBytes(StandardCharsets.UTF_8);
+            digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(encoded.length).array());
+            digest.update(encoded);
+        }
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     private BannerOccurrence oldBinaryPublication(String htmlContent, String title, String publishedBy) {

@@ -343,8 +343,8 @@ public class BannerService {
             .setPageTargets(BannerPageTargets.normalize(request.pageTargets()));
     }
 
-    static boolean hasMaterialChange(BannerOccurrence current, BannerOccurrence candidate) {
-        return !candidate.getPresentationHash().equals(current.getPresentationHash())
+    private boolean hasMaterialChange(BannerOccurrence current, BannerOccurrence candidate) {
+        return !candidate.getPresentationHash().equals(hasher.hash(current))
             || !Objects.equals(candidate.getStartAt(), current.getStartAt()) || !Objects.equals(candidate.getEndAt(), current.getEndAt());
     }
 
