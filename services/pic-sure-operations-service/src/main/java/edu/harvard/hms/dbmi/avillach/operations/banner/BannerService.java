@@ -190,6 +190,9 @@ public class BannerService {
     ) {
         boolean startChanged = !Objects.equals(banner.getStartAt(), requestedStart);
         boolean endChanged = !Objects.equals(banner.getEndAt(), requestedEnd);
+        if ((startChanged || endChanged) && banner.getEndAt() != null && !banner.getEndAt().isAfter(now)) {
+            throw PicsureExceptions.conflict("Expired banners cannot be rescheduled");
+        }
         if ((startChanged && !hasMinutePrecision(requestedStart))
             || (endChanged && requestedEnd != null && !hasMinutePrecision(requestedEnd))) {
             throw PicsureExceptions.badRequest("Banner schedule timestamps must use minute precision");

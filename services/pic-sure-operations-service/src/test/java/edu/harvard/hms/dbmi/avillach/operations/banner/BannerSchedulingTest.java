@@ -262,6 +262,55 @@ class BannerSchedulingTest {
             .extracting(BannerVersion::getEndAt).containsExactly(originalEnd, null);
     }
 
+    @ParameterizedTest(name = "expired occurrence cannot be rescheduled to {0}")
+    @MethodSource("expiredRevivalSchedules")
+    void expiredPublishedOccurrencesCannotChangeSchedule(
+        BannerLifecycle attemptedLifecycle, Instant requestedStart, Instant requestedEnd
+    ) {
+        Instant originalStart = NOW.plusSeconds(60);
+        Instant originalEnd = NOW.plusSeconds(120);
+        ManagementBannerDto published = service.publish(request(originalStart, originalEnd), ADMIN);
+        clock.set(NOW.plusSeconds(180));
+        reset(loggingClient);
+
+        PicsureException exception = assertThrows(
+            PicsureException.class, () -> service.update(published.uuid(), request(requestedStart, requestedEnd), ADMIN)
+        );
+
+        assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(repository.findById(published.uuid()).orElseThrow()).satisfies(occurrence -> {
+            assertThat(occurrence.getStartAt()).isEqualTo(originalStart);
+            assertThat(occurrence.getEndAt()).isEqualTo(originalEnd);
+        });
+        assertThat(BannerVersionTestSupport.versionsFor(versionRepository, published.uuid())).hasSize(1);
+        verifyNoInteractions(loggingClient);
+    }
+
+    static Stream<Arguments> expiredRevivalSchedules() {
+        return Stream.of(
+            Arguments.of(BannerLifecycle.ACTIVE, NOW.plusSeconds(60), null),
+            Arguments.of(BannerLifecycle.SCHEDULED, NOW.plusSeconds(240), null)
+        );
+    }
+
+    @Test
+    void expiredPublishedOccurrencesStillAllowContentEditsWithTheirExactSchedule() {
+        Instant start = NOW.plusSeconds(60);
+        Instant end = NOW.plusSeconds(120);
+        ManagementBannerDto published = service.publish(request(start, end), ADMIN);
+        clock.set(NOW.plusSeconds(180));
+
+        ManagementBannerDto updated = service.update(
+            published.uuid(), request("<p>Corrected expired maintenance</p>", start, end), ADMIN
+        );
+
+        assertThat(updated.lifecycle()).isEqualTo(BannerLifecycle.EXPIRED);
+        assertThat(updated.htmlContent()).isEqualTo("<p>Corrected expired maintenance</p>");
+        assertThat(updated.startAt()).isEqualTo(start);
+        assertThat(updated.endAt()).isEqualTo(end);
+        assertThat(BannerVersionTestSupport.versionsFor(versionRepository, published.uuid())).hasSize(2);
+    }
+
     @Test
     void scheduleEditEmitsOneUpdateAuditAndDerivedBoundaryCrossingsEmitNone() {
         ManagementBannerDto published = service.publish(request(null, null), ADMIN);
@@ -283,8 +332,12 @@ class BannerSchedulingTest {
     }
 
     private PublishBannerRequest request(Instant startAt, Instant endAt) {
+        return request("<p>Scheduled maintenance</p>", startAt, endAt);
+    }
+
+    private PublishBannerRequest request(String htmlContent, Instant startAt, Instant endAt) {
         return new PublishBannerRequest(
-            "<p>Scheduled maintenance</p>", "Maintenance", BannerAppearance.WARNING, BannerIcon.WARNING, true,
+            htmlContent, "Maintenance", BannerAppearance.WARNING, BannerIcon.WARNING, true,
             BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
             objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("kind", "ALL")), startAt, endAt
         );
