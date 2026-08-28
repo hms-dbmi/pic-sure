@@ -106,13 +106,15 @@ public class BannerService {
     @Transactional
     public ManagementBannerDto publishDraft(UUID uuid, PublishBannerRequest request, GatewayUser user) {
         validate(request);
-        BannerOccurrence banner = requireSavedForPublication(uuid);
         Instant now = clock.instant();
         validateNewSchedule(request, now);
+        BannerPriorityAllocator allocator = lockAllocator();
+        BannerOccurrence banner = requireSavedForPublication(uuid);
         String actor = user.getUserId();
         Instant startAt = publicationStart(request, now);
         apply(request, banner).setStatus(BannerStatus.PUBLISHED).setStartAt(startAt).setEndAt(request.endAt())
-            .setPriority(allocateBottomPriority(now)).setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now).setPublishedBy(actor);
+            .setPriority(allocateBottomPriority(allocator, now)).setUpdatedAt(now).setUpdatedBy(actor).setPublishedAt(now)
+            .setPublishedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
         versionRepository.saveAndFlush(BannerVersion.snapshot(saved, 1, now, actor));
@@ -147,7 +149,10 @@ public class BannerService {
     }
 
     private int allocateBottomPriority(Instant now) {
-        BannerPriorityAllocator allocator = lockAllocator();
+        return allocateBottomPriority(lockAllocator(), now);
+    }
+
+    private int allocateBottomPriority(BannerPriorityAllocator allocator, Instant now) {
         int priority = Math.max(allocator.getNextPriority(), repository.findMaximumOrderablePriority(now) + 1);
         allocator.setNextPriority(priority + 1);
         priorityAllocatorRepository.save(allocator);
