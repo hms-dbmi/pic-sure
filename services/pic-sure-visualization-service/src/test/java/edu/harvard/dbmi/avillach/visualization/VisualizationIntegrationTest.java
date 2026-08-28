@@ -44,7 +44,7 @@ class VisualizationIntegrationTest {
 
     @Test
     void distributions_authBackend_returnsOk() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("expectedResultType", "COUNT")));
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         MvcResult result = mockMvc.perform(
             post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -60,7 +60,7 @@ class VisualizationIntegrationTest {
 
     @Test
     void distributions_openBackend_returnsOk() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("expectedResultType", "COUNT")));
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         MvcResult result = mockMvc.perform(
             post("/open/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
@@ -75,14 +75,14 @@ class VisualizationIntegrationTest {
 
     @Test
     void distributions_withoutAccessTypeHeader_usesPathBackend() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("expectedResultType", "COUNT")));
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         mockMvc.perform(post("/open/distributions").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
     }
 
     @Test
     void distributions_gatewayAccessTypeDoesNotSelectBackend() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("expectedResultType", "COUNT")));
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         mockMvc.perform(
             post("/open/distributions").contentType(MediaType.APPLICATION_JSON)
@@ -92,7 +92,7 @@ class VisualizationIntegrationTest {
 
     @Test
     void distributions_withUnknownBackend_returns400() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("expectedResultType", "COUNT")));
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         mockMvc.perform(post("/superuser/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isBadRequest());
@@ -100,7 +100,7 @@ class VisualizationIntegrationTest {
 
     @Test
     void distributions_withoutBackend_isRemoved() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("expectedResultType", "COUNT")));
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
     }
@@ -108,31 +108,13 @@ class VisualizationIntegrationTest {
     @Test
     void distributions_legacyHpdsResourceUUID_isAcceptedAndIgnoredForAccessSelection() throws Exception {
         // Legacy clients still send a body UUID; it no longer drives AUTHORIZED-vs-OPEN and unknown values are not rejected.
-        String body = objectMapper.writeValueAsString(
-            Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of("expectedResultType", "COUNT"))
-        );
+        String body =
+            objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of()));
 
         mockMvc.perform(
             post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
                 .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
         ).andExpect(status().isOk());
-    }
-
-    /** The shared v3 query contract requires a result type even though the decomposer chooses each downstream subquery's result type. */
-    @Test
-    void distributions_queryWithoutExpectedResultType_returns400() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("select", java.util.List.of("\\phs000999\\variable\\"))));
-
-        mockMvc.perform(post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void distributions_queryWithNullExpectedResultType_returns400() throws Exception {
-        String body = "{\"query\":{\"select\":[],\"expectedResultType\":null}}";
-
-        mockMvc.perform(post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest());
     }
 
     @Test

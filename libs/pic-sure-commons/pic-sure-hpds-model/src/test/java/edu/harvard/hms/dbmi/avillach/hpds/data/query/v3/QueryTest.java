@@ -40,10 +40,10 @@ public class QueryTest {
     }
 
     @Test
-    public void jacksonSerialization_nullableFieldsNormalize() throws JsonProcessingException {
+    public void jacksonSerialization_validNullValues() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
 
-        Query query = new Query(null, null, null, null, ResultType.COUNT, null, null);
+        Query query = new Query(null, null, null, null, null, null, null);
 
         String serialized = objectMapper.writeValueAsString(query);
         System.out.println(serialized);
@@ -54,42 +54,9 @@ public class QueryTest {
         assertEquals(List.of(), deserialized.authorizationFilters());
         assertNull(deserialized.phenotypicClause());
         assertEquals(List.of(), deserialized.genomicFilters());
-        assertEquals(ResultType.COUNT, deserialized.expectedResultType());
+        assertNull(deserialized.expectedResultType());
         assertNull(deserialized.picsureId());
         assertNull(deserialized.id());
-    }
-
-    @Test
-    public void jacksonDeserialization_absentExpectedResultType_isRefused() {
-        ObjectMapper objectMapper = new ObjectMapper();
-
-        assertThrows(JsonProcessingException.class, () -> objectMapper.readValue("{\"select\":[]}", Query.class));
-    }
-
-    @Test
-    public void jacksonDeserialization_nullExpectedResultType_isRefused() {
-        ObjectMapper objectMapper = new ObjectMapper();
-
-        assertThrows(
-            JsonProcessingException.class, () -> objectMapper.readValue("{\"select\":[],\"expectedResultType\":null}", Query.class)
-        );
-    }
-
-    @Test
-    public void jacksonDeserialization_ordinalExpectedResultType_binds() throws JsonProcessingException {
-        ObjectMapper objectMapper = new ObjectMapper();
-
-        assertEquals(ResultType.DATAFRAME, objectMapper.readValue("{\"expectedResultType\":1}", Query.class).expectedResultType());
-        assertEquals(ResultType.DATAFRAME, objectMapper.readValue("{\"expectedResultType\":\"1\"}", Query.class).expectedResultType());
-    }
-
-    /**
-     * In-process construction stays permissive on purpose. {@code CountV3Processor} builds per-concept probe queries with no result type,
-     * and its caller swallows exceptions into a -1 count, so enforcing here would silently break every cross count.
-     */
-    @Test
-    public void construction_nullExpectedResultType_isAllowed() {
-        assertNull(new Query(List.of(), List.of(), null, List.of(), null, null, null).expectedResultType());
     }
 
     @Test
@@ -131,7 +98,7 @@ public class QueryTest {
     @Test
     public void allFilters_nullElementInPhenotypicClausesFromJson_isIgnored() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
-        String json = "{\"expectedResultType\":\"COUNT\",\"phenotypicClause\":{\"phenotypicClauses\":[null,"
+        String json = "{\"phenotypicClause\":{\"phenotypicClauses\":[null,"
             + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\abc\\\\\",\"min\":1.0}],\"operator\":\"AND\"}}";
 
         Query deserialized = objectMapper.readValue(json, Query.class);

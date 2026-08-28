@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -18,36 +16,10 @@ public record Query(
     ) List<AuthorizationFilter> authorizationFilters,
     @Schema(description = "An object specifying phenotypic filters") PhenotypicClause phenotypicClause,
     @Schema(description = "A list of genomic filters") List<GenomicFilter> genomicFilters,
-    @Schema(description = "An object specifying the result type", requiredMode = Schema.RequiredMode.REQUIRED) @JsonProperty(
-        required = true
-    ) ResultType expectedResultType, @Schema(description = "An externally passed UUID to assign to this query") UUID picsureId,
+    @Schema(description = "An object specifying the result type") ResultType expectedResultType,
+    @Schema(description = "An externally passed UUID to assign to this query") UUID picsureId,
     @Schema(description = "An internally generated UUID identifying this query") UUID id
 ) {
-
-    /**
-     * The deserialization entry point, which refuses a query that does not name a result type. Enforcement lives here rather than in the
-     * canonical constructor so it applies to JSON only: in-process construction stays permissive, which matters because
-     * {@code CountV3Processor} builds per-concept probe queries with a null result type and {@code QueryTranslator} carries through
-     * whatever a v1 query had. <p> {@code @JsonProperty(required = true)} alone is not enough. It rejects an absent field but accepts an
-     * explicit {@code "expectedResultType": null}, which is exactly as easy to send, so the null check below is what closes that half. <p>
-     * Why this is a security control and not just validation: PSAMA decides whether a body carries a query before it decides whether to
-     * attach consent filters. A body with no result type was read as "no query here", granted unscoped, and then given a result type
-     * downstream by the visualization decomposer. Refusing it at the model boundary means every service that binds this record refuses it
-     * too.
-     */
-    @JsonCreator
-    static Query fromJson(
-        @JsonProperty("select") List<String> select, @JsonProperty("authorizationFilters") List<AuthorizationFilter> authorizationFilters,
-        @JsonProperty("phenotypicClause") PhenotypicClause phenotypicClause,
-        @JsonProperty("genomicFilters") List<GenomicFilter> genomicFilters,
-        @JsonProperty(value = "expectedResultType", required = true) ResultType expectedResultType,
-        @JsonProperty("picsureId") UUID picsureId, @JsonProperty("id") UUID id
-    ) {
-        if (expectedResultType == null) {
-            throw new IllegalArgumentException("expectedResultType is required and must name a valid result type");
-        }
-        return new Query(select, authorizationFilters, phenotypicClause, genomicFilters, expectedResultType, picsureId, id);
-    }
 
     @Override
     public List<String> select() {

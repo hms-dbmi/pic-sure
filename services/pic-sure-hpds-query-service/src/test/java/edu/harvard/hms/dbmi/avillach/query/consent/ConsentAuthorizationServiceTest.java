@@ -90,6 +90,24 @@ class ConsentAuthorizationServiceTest {
             .containsExactly(new AuthorizationFilter("\\_consents\\", Set.of("phs001.c1")));
     }
 
+    /**
+     * Scoping is keyed on the {@code auth} path segment, never on the body naming a result type. A query missing one is still consent
+     * filtered rather than forwarded unscoped, which is what lets the v3 model accept it.
+     */
+    @Test
+    void authQueryWithoutExpectedResultTypeIsStillScoped() {
+        PsamaConsentClient client = mock(PsamaConsentClient.class);
+        when(client.fetch("Bearer caller-token")).thenReturn(Map.of("\\_consents\\", Set.of("phs001.c1")));
+        ConsentAuthorizationService service = new ConsentAuthorizationService(client, new ConsentFilterBuilder(), true);
+        GeneralQueryRequest request = new GeneralQueryRequest().setQuery(Map.of("select", List.of("\\phs000999\\variable\\")));
+
+        service.scopeQuery("auth", request, "Bearer caller-token");
+
+        Query scoped = (Query) request.getQuery();
+        assertThat(scoped.expectedResultType()).isNull();
+        assertThat(scoped.authorizationFilters()).containsExactly(new AuthorizationFilter("\\_consents\\", Set.of("phs001.c1")));
+    }
+
     @Test
     void authQueryWithoutCallerTokenFailsClosed() {
         ConsentAuthorizationService service =
