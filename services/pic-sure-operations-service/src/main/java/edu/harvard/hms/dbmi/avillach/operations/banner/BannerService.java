@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.operations.banner;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -141,18 +142,22 @@ public class BannerService {
         List<BannerOccurrence> current = repository.findOrderableForUpdate(now);
         Map<UUID, BannerOccurrence> currentByUuid = new HashMap<>();
         current.forEach(banner -> currentByUuid.put(banner.getUuid(), banner));
-        if (current.size() != bannerUuids.size() || !currentByUuid.keySet().equals(new HashSet<>(bannerUuids))) {
-            throw PicsureExceptions.badRequest("Banner order must contain every current active and scheduled banner exactly once");
+        HashSet<UUID> persistedUuids = new HashSet<>();
+        repository.findAllById(bannerUuids).forEach(banner -> persistedUuids.add(banner.getUuid()));
+        if (!persistedUuids.containsAll(bannerUuids)) {
+            throw PicsureExceptions.badRequest("Banner order contains a nonexistent UUID");
         }
 
-        List<BannerOccurrence> reordered = bannerUuids.stream().map(currentByUuid::get).toList();
+        List<BannerOccurrence> reordered = new ArrayList<>(current.size());
+        bannerUuids.stream().map(currentByUuid::get).filter(Objects::nonNull).forEach(reordered::add);
+        current.stream().filter(banner -> !persistedUuids.contains(banner.getUuid())).forEach(reordered::add);
         for (int index = 0; index < reordered.size(); index++) {
             reordered.get(index).setPriority(index + 1);
         }
         repository.saveAllAndFlush(reordered);
         allocator.setNextPriority(reordered.size() + 1);
         priorityAllocatorRepository.save(allocator);
-        auditService.registerReorderAudit(bannerUuids, now, user.getUserId());
+        auditService.registerReorderAudit(reordered.stream().map(BannerOccurrence::getUuid).toList(), now, user.getUserId());
         return reordered.stream().map(banner -> managementDto(banner, now)).toList();
     }
 

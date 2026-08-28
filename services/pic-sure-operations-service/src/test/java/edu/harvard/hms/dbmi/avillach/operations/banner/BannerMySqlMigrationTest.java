@@ -252,6 +252,54 @@ class BannerMySqlMigrationTest {
     }
 
     @Test
+    void laterConcurrentReorderControlsTheFinalSharedMemberOrder() throws Exception {
+        ManagementBannerDto first = service.publish(request("<p>First</p>", "First"), ADMIN);
+        ManagementBannerDto second = service.publish(request("<p>Second</p>", "Second"), ADMIN);
+        ManagementBannerDto third = service.publish(request("<p>Third</p>", "Third"), ADMIN);
+        installDelayedReorderTrigger();
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var earlier = executor.submit(() -> service.reorder(List.of(third.uuid(), first.uuid(), second.uuid()), ADMIN));
+            awaitActiveMySqlTransaction();
+            var later = executor.submit(() -> service.reorder(List.of(second.uuid(), third.uuid(), first.uuid()), ADMIN));
+
+            assertThat(earlier.get(20, TimeUnit.SECONDS)).extracting(ManagementBannerDto::uuid)
+                .containsExactly(third.uuid(), first.uuid(), second.uuid());
+            assertThat(later.get(20, TimeUnit.SECONDS)).extracting(ManagementBannerDto::uuid)
+                .containsExactly(second.uuid(), third.uuid(), first.uuid());
+        } finally {
+            removeDelayedReorderTrigger();
+        }
+
+        assertThat(service.managedBanners()).filteredOn(banner -> banner.lifecycle() == BannerLifecycle.ACTIVE)
+            .extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), third.uuid(), first.uuid());
+    }
+
+    @Test
+    void publicationWaitsForAnOverlappingReorderAndAllocatesAfterItsCanonicalQueue() throws Exception {
+        ManagementBannerDto first = service.publish(request("<p>First</p>", "First"), ADMIN);
+        ManagementBannerDto second = service.publish(request("<p>Second</p>", "Second"), ADMIN);
+        installDelayedReorderTrigger();
+
+        ManagementBannerDto arrival;
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var reorder = executor.submit(() -> service.reorder(List.of(second.uuid(), first.uuid()), ADMIN));
+            awaitActiveMySqlTransaction();
+            var publish = executor.submit(() -> service.publish(request("<p>Arrival</p>", "Arrival"), ADMIN));
+
+            assertThat(reorder.get(20, TimeUnit.SECONDS)).extracting(ManagementBannerDto::uuid)
+                .containsExactly(second.uuid(), first.uuid());
+            arrival = publish.get(20, TimeUnit.SECONDS);
+        } finally {
+            removeDelayedReorderTrigger();
+        }
+
+        assertThat(service.managedBanners()).filteredOn(banner -> banner.lifecycle() == BannerLifecycle.ACTIVE)
+            .extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), first.uuid(), arrival.uuid());
+        assertThat(arrival.priority()).isEqualTo(3);
+    }
+
+    @Test
     void emptyPreTargetingJsonRoundTripsAsLegacyAllPages() {
         ManagementBannerDto published = service.publish(request("<p>Legacy target bytes</p>", "Legacy target bytes"), ADMIN);
         jdbcTemplate.update("UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", "[]",
@@ -372,6 +420,32 @@ class BannerMySqlMigrationTest {
         return jdbcTemplate.queryForObject(
             "SELECT presentation_hash FROM banner_occurrence WHERE uuid = UUID_TO_BIN(?)", String.class, bannerUuid.toString()
         );
+    }
+
+    private void awaitActiveMySqlTransaction() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Integer signaled = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM banner_reorder_test_signal", Integer.class);
+            if (signaled != null && signaled > 0) return;
+            Thread.sleep(10);
+        }
+        throw new AssertionError("Timed out waiting for the overlapping MySQL transaction");
+    }
+
+    private void installDelayedReorderTrigger() {
+        jdbcTemplate.execute("CREATE TABLE banner_reorder_test_signal (id INT PRIMARY KEY) ENGINE=MyISAM");
+        jdbcTemplate.execute("""
+            CREATE TRIGGER delay_banner_reorder BEFORE UPDATE ON banner_occurrence FOR EACH ROW
+            BEGIN
+              INSERT IGNORE INTO banner_reorder_test_signal VALUES (1);
+              DO SLEEP(0.2);
+            END
+            """);
+    }
+
+    private void removeDelayedReorderTrigger() {
+        jdbcTemplate.execute("DROP TRIGGER IF EXISTS delay_banner_reorder");
+        jdbcTemplate.execute("DROP TABLE IF EXISTS banner_reorder_test_signal");
     }
 
     private List<Integer> storedTargetCounts(String table, String bannerColumn, String orderColumn, UUID bannerUuid) {

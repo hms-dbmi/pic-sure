@@ -164,10 +164,13 @@ class BannerAuditTransactionTest {
     void reorderEmitsOneConciseAuditAfterCommit() throws Exception {
         ManagementBannerDto first = service.publish(request(), ADMIN);
         ManagementBannerDto second = service.publish(request(), ADMIN);
+        ManagementBannerDto arrival = service.publish(request(), ADMIN);
+        ManagementBannerDto departed = service.publish(request(), ADMIN);
+        service.disable(departed.uuid(), ADMIN);
         reset(loggingClient);
 
         transactions.executeWithoutResult(status -> {
-            service.reorder(List.of(second.uuid(), first.uuid()), ADMIN);
+            service.reorder(List.of(departed.uuid(), second.uuid(), first.uuid()), ADMIN);
             verifyNoInteractions(loggingClient);
         });
 
@@ -175,7 +178,9 @@ class BannerAuditTransactionTest {
         verify(loggingClient).send(event.capture());
         assertThat(event.getValue().getAction()).isEqualTo("banner.reordered");
         assertThat(event.getValue().getCaller()).isEqualTo("admin-id");
-        assertThat(event.getValue().getMetadata()).containsEntry("bannerUuids", List.of(second.uuid().toString(), first.uuid().toString()));
+        assertThat(event.getValue().getMetadata()).containsEntry(
+            "bannerUuids", List.of(second.uuid().toString(), first.uuid().toString(), arrival.uuid().toString())
+        );
         assertThat(objectMapper.writeValueAsString(event.getValue())).doesNotContain("Committed banner");
     }
 

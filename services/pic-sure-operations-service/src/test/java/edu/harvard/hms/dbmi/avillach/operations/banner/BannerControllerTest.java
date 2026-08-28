@@ -200,30 +200,46 @@ class BannerControllerTest {
     }
 
     @Test
-    void reorderRequiresAndCompactsTheCompleteCurrentQueue() throws Exception {
+    void reorderIgnoresPersistedDeparturesAppendsArrivalsAndCompactsTheCanonicalQueue() throws Exception {
         BannerOccurrence first = repository.save(banner(8, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "First"));
         BannerOccurrence second = repository.save(banner(21, BannerStatus.PUBLISHED, NOW.plusSeconds(60), null, "Second"));
-        repository.save(banner(13, BannerStatus.PUBLISHED, NOW.minusSeconds(120), NOW, "Expired"));
-        repository.save(banner(null, BannerStatus.SAVED, null, null, "Saved"));
+        BannerOccurrence arrival = repository.save(banner(34, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "Arrival"));
+        BannerOccurrence expired = repository.save(banner(13, BannerStatus.PUBLISHED, NOW.minusSeconds(120), NOW, "Expired"));
+        BannerOccurrence disabled = repository.save(banner(55, BannerStatus.DISABLED, NOW.minusSeconds(120), null, "Disabled"));
+        BannerOccurrence saved = repository.save(banner(null, BannerStatus.SAVED, null, null, "Saved"));
 
-        mockMvc.perform(adminPut("/banners/order", Map.of("bannerUuids", List.of(second.getUuid(), first.getUuid()))))
-            .andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(2)))
+        mockMvc.perform(
+            adminPut(
+                "/banners/order",
+                Map.of("bannerUuids", List.of(expired.getUuid(), second.getUuid(), disabled.getUuid(), saved.getUuid(), first.getUuid()))
+            )
+        ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(3)))
             .andExpect(jsonPath("$[0].uuid").value(second.getUuid().toString())).andExpect(jsonPath("$[0].priority").value(1))
-            .andExpect(jsonPath("$[1].uuid").value(first.getUuid().toString())).andExpect(jsonPath("$[1].priority").value(2));
+            .andExpect(jsonPath("$[1].uuid").value(first.getUuid().toString())).andExpect(jsonPath("$[1].priority").value(2))
+            .andExpect(jsonPath("$[2].uuid").value(arrival.getUuid().toString())).andExpect(jsonPath("$[2].priority").value(3));
 
-        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
-            .andExpect(jsonPath("$[0].uuid").value(first.getUuid().toString())).andExpect(jsonPath("$[0].priority").value(2));
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(2)))
+            .andExpect(jsonPath("$[0].uuid").value(first.getUuid().toString())).andExpect(jsonPath("$[0].priority").value(2))
+            .andExpect(jsonPath("$[1].uuid").value(arrival.getUuid().toString())).andExpect(jsonPath("$[1].priority").value(3));
     }
 
     @Test
-    void reorderRejectsDuplicateUnknownIncompleteAndNonCurrentMembersWithoutChangingPriorities() throws Exception {
+    void emptyStaleReorderAppendsEveryCurrentMemberInPersistedOrder() throws Exception {
         BannerOccurrence first = repository.save(banner(8, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "First"));
         BannerOccurrence second = repository.save(banner(21, BannerStatus.PUBLISHED, NOW.plusSeconds(60), null, "Second"));
-        BannerOccurrence expired = repository.save(banner(34, BannerStatus.PUBLISHED, NOW.minusSeconds(120), NOW, "Expired"));
+
+        mockMvc.perform(adminPut("/banners/order", Map.of("bannerUuids", List.of()))).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].uuid").value(first.getUuid().toString())).andExpect(jsonPath("$[0].priority").value(1))
+            .andExpect(jsonPath("$[1].uuid").value(second.getUuid().toString())).andExpect(jsonPath("$[1].priority").value(2));
+    }
+
+    @Test
+    void reorderRejectsDuplicateAndUnknownMembersWithoutChangingPriorities() throws Exception {
+        BannerOccurrence first = repository.save(banner(8, BannerStatus.PUBLISHED, NOW.minusSeconds(60), null, "First"));
+        BannerOccurrence second = repository.save(banner(21, BannerStatus.PUBLISHED, NOW.plusSeconds(60), null, "Second"));
 
         List<List<UUID>> invalidOrders = List.of(
-            List.of(first.getUuid(), first.getUuid()), List.of(first.getUuid(), UUID.randomUUID()), List.of(first.getUuid()),
-            List.of(first.getUuid(), second.getUuid(), expired.getUuid())
+            List.of(first.getUuid(), first.getUuid()), List.of(first.getUuid(), UUID.randomUUID())
         );
         for (List<UUID> invalidOrder : invalidOrders) {
             mockMvc.perform(adminPut("/banners/order", Map.of("bannerUuids", invalidOrder))).andExpect(status().isBadRequest());
