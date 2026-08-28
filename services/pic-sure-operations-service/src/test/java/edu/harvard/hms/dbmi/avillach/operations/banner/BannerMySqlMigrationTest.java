@@ -338,6 +338,35 @@ class BannerMySqlMigrationTest {
     }
 
     @Test
+    void staleReorderWaitsForRestoreThenOmitsTheArchivedSourceAndAppendsTheDestination() throws Exception {
+        ManagementBannerDto first = service.publish(request("<p>First</p>", "First"), ADMIN);
+        ManagementBannerDto second = service.publish(request("<p>Second</p>", "Second"), ADMIN);
+        ManagementBannerDto source = service.publish(request("<p>Source</p>", "Source"), ADMIN);
+        service.disable(source.uuid(), ADMIN);
+        installDelayedRestoreInsertTrigger();
+
+        ManagementBannerDto destination;
+        List<ManagementBannerDto> reordered;
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var restore = executor.submit(() -> service.restore(source.uuid(), request("<p>Restored</p>", "Restored"), ADMIN));
+            awaitRestoreInsert();
+            var staleReorder = executor.submit(() -> service.reorder(List.of(second.uuid(), source.uuid(), first.uuid()), ADMIN));
+
+            destination = restore.get(20, TimeUnit.SECONDS);
+            reordered = staleReorder.get(20, TimeUnit.SECONDS);
+        } finally {
+            removeDelayedRestoreInsertTrigger();
+        }
+
+        assertThat(reordered).extracting(ManagementBannerDto::uuid)
+            .containsExactly(second.uuid(), first.uuid(), destination.uuid());
+        assertThat(bannerRepository.findById(source.uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
+        assertThat(service.managedBanners()).filteredOn(banner -> banner.lifecycle() == BannerLifecycle.ACTIVE)
+            .extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), first.uuid(), destination.uuid());
+        assertThat(destination.priority()).isGreaterThan(first.priority());
+    }
+
+    @Test
     void emptyPreTargetingJsonRoundTripsAsLegacyAllPages() {
         ManagementBannerDto published = service.publish(request("<p>Legacy target bytes</p>", "Legacy target bytes"), ADMIN);
         jdbcTemplate.update("UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", "[]",
@@ -511,6 +540,32 @@ class BannerMySqlMigrationTest {
     private void removeDelayedReorderTrigger() {
         jdbcTemplate.execute("DROP TRIGGER IF EXISTS delay_banner_reorder");
         jdbcTemplate.execute("DROP TABLE IF EXISTS banner_reorder_test_signal");
+    }
+
+    private void awaitRestoreInsert() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Integer signaled = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM banner_restore_test_signal", Integer.class);
+            if (signaled != null && signaled > 0) return;
+            Thread.sleep(10);
+        }
+        throw new AssertionError("Timed out waiting for the overlapping restore transaction");
+    }
+
+    private void installDelayedRestoreInsertTrigger() {
+        jdbcTemplate.execute("CREATE TABLE banner_restore_test_signal (id INT PRIMARY KEY) ENGINE=MyISAM");
+        jdbcTemplate.execute("""
+            CREATE TRIGGER delay_banner_restore_insert BEFORE INSERT ON banner_occurrence FOR EACH ROW
+            BEGIN
+              INSERT IGNORE INTO banner_restore_test_signal VALUES (1);
+              DO SLEEP(0.2);
+            END
+            """);
+    }
+
+    private void removeDelayedRestoreInsertTrigger() {
+        jdbcTemplate.execute("DROP TRIGGER IF EXISTS delay_banner_restore_insert");
+        jdbcTemplate.execute("DROP TABLE IF EXISTS banner_restore_test_signal");
     }
 
     private List<Integer> storedTargetCounts(String table, String bannerColumn, String orderColumn, UUID bannerUuid) {
