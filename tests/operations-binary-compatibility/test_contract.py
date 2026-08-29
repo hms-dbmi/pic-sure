@@ -265,17 +265,17 @@ class ContractTest(unittest.TestCase):
         test_dir = Path(__file__).parent
         fixture = (
             "import pathlib, sys, time\n"
-            "pathlib.Path(sys.argv[1]).write_text('started', encoding='utf-8')\n"
-            "time.sleep(0.3)\n"
+            "pathlib.Path(sys.argv[1]).write_text('{}', encoding='utf-8')\n"
+            "while not pathlib.Path(sys.argv[3]).exists(): time.sleep(0.005)\n"
             "pathlib.Path(sys.argv[2]).write_text('survived', encoding='utf-8')\n"
-            "time.sleep(30)\n"
         )
         for received_signal in (signal.SIGINT, signal.SIGTERM):
             started_attempts = 0
-            for delay in (0, 0.02, 0.05, 0.1, 0.2):
-                with self.subTest(signal=received_signal, delay=delay), tempfile.TemporaryDirectory() as directory:
+            for start_mode in ("immediate", "ready"):
+                with self.subTest(signal=received_signal, start_mode=start_mode), tempfile.TemporaryDirectory() as directory:
                     started_file = Path(directory) / "started"
                     survived_file = Path(directory) / "survived"
+                    gate_file = Path(directory) / "gate"
                     wrapper = subprocess.Popen(
                         [
                             sys.executable,
@@ -286,20 +286,30 @@ class ContractTest(unittest.TestCase):
                             fixture,
                             started_file,
                             survived_file,
+                            gate_file,
                         ],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
                         start_new_session=True,
                     )
-                    time.sleep(delay)
+                    if start_mode == "ready":
+                        self.wait_for_json(started_file)
                     wrapper.send_signal(received_signal)
-                    wrapper.communicate(timeout=1)
-                    time.sleep(0.35)
-                    started_attempts += int(started_file.exists())
+                    wrapper.wait(timeout=1)
+                    gate_file.write_text("continue\n", encoding="utf-8")
+                    _stdout, stderr = wrapper.communicate(timeout=1)
+                    command_started = started_file.exists()
+                    started_attempts += int(command_started)
+                    diagnostic = (
+                        f"signal={received_signal}, start_mode={start_mode}, status={wrapper.returncode}, "
+                        f"started={command_started}, stderr={stderr.strip()!r}"
+                    )
 
-                    self.assertEqual(-received_signal, wrapper.returncode)
-                    self.assertFalse(survived_file.exists(), "command survived an immediate wrapper signal")
+                    self.assertNotEqual(0, wrapper.returncode, diagnostic)
+                    if command_started:
+                        self.assertEqual(-received_signal, wrapper.returncode, diagnostic)
+                    self.assertFalse(survived_file.exists(), diagnostic)
             self.assertGreater(started_attempts, 0, f"no command started during {received_signal} stress")
 
     def test_cleanup_timeout_is_bounded_and_diagnostic(self):
