@@ -1,6 +1,6 @@
 # Operations binary and schema compatibility proof
 
-This harness builds and starts three exact Operations generations against disposable MySQL, applies the reviewed Ticket 15 schema, and compares the observed results with [`matrix.tsv`](matrix.tsv). It uses the real management HTTP API for every write. Historical behavior is provided only by jars built from the pinned Git objects.
+This harness builds and starts three exact Operations generations against disposable MySQL, applies the reviewed Ticket 15 schema, and compares the observed results with [`matrix.tsv`](matrix.tsv). Application writes use the real management HTTP API. Direct SQL is limited to deterministic lifecycle and rollback-fixture normalization, with the binary-produced values asserted before normalization. Historical behavior is provided only by jars built from the pinned Git objects.
 
 The matrix covers AIO, BDC, and AIM-AHEAD because Ticket 16 proves that their banner schema bytes match the Ticket 15 AIO contract consumed here. It records each binary's commit, source tree, jar SHA-256, `project.build.outputTimestamp`, pinned build/runtime images, migration commits and SQL checksums, schema state, result, and preserved-data checksum.
 
@@ -23,7 +23,11 @@ BDC_PROOF_SOURCE_ROOT=/path/to/pic-sure-bdc-infrastructure \
 tests/operations-binary-compatibility/test.sh all
 ```
 
-The Operations repository must contain all three pinned commits. The migration repositories must have the exact required commit at `HEAD`. Every override must be clean; copied sources, moving branches, changed migrations, and untracked inputs are rejected. Set `KEEP_COMPAT_TEMP=true` to retain generated logs and the observed matrix after a diagnostic run. Logs contain only synthetic credentials and fixture data.
+The Operations repository must contain all three pinned commits. The migration repositories must have the exact required commit at `HEAD`. Every override must be clean; copied sources, moving branches, changed migrations, and untracked inputs are rejected. The entrypoint keeps Python bytecode outside the source contract and runs its forced-failure cleanup regression before the selected matrix cells.
+
+These Operations commits must remain reachable from a published ref after integration. A squash or rebase merge followed by deletion of the only containing branch makes the historical binaries unavailable and the proof fails by design. Preserve the commits through a merge commit or a durable ref; the harness never substitutes copied or self-attested source.
+
+Set `KEEP_COMPAT_TEMP=true` to retain generated logs and the observed matrix after any local run. `KEEP_COMPAT_TEMP_ON_FAILURE=true` retains them only when the proof fails. CI uses the failure-only setting and uploads the synthetic logs and observed matrix as a seven-day artifact.
 
 ## Compatibility boundary
 

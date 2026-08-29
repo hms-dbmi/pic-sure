@@ -5,7 +5,6 @@ on:
   pull_request:
     paths:
       - '.github/workflows/operations-binary-compatibility.yml'
-      - 'services/pic-sure-operations-service/**'
       - 'tests/operations-binary-compatibility/**'
 
 permissions:
@@ -26,5 +25,15 @@ jobs:
           fetch-depth: 0
       - name: Run compatibility matrix
         env:
+          KEEP_COMPAT_TEMP_ON_FAILURE: true
           OPERATIONS_COMPAT_SOURCE_ROOT: ${{ github.workspace }}
+          TMPDIR: ${{ runner.temp }}
         run: tests/operations-binary-compatibility/test.sh all
+      - name: Retain failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: operations-binary-compatibility-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/operations-binary-*
+          if-no-files-found: warn
+          retention-days: 7

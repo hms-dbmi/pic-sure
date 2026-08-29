@@ -34,6 +34,9 @@ BUILD_IMAGE = "maven:3-amazoncorretto-25@sha256:de7a3e517efac1b933af6ceb375974a0
 RUNTIME_IMAGE = "amazoncorretto:25@sha256:397edfaaa0fdfc95001d4c4a4ab82174073277a5d630fd9375c94dca25b5991d"
 AUDIT_PROBE_IMAGE = "busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616"
 JDK_RUNTIME = 'openjdk version "25.0.4" 2026-07-21 LTS'
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 300
+BUILD_COMMAND_TIMEOUT_SECONDS = 900
+GIT_ARCHIVE_TIMEOUT_SECONDS = 60
 
 SYNTHETIC_ROOT_PASSWORD = "operations-banner-proof"
 ADMIN_HEADERS = {
@@ -106,6 +109,7 @@ class Harness:
         self.jars = {}
         self.jar_checksums = {}
         self.build_timestamps = {}
+        self.migration_checksum_text = None
         self.observations = []
         self.expected_by_cell = {
             row["cell"]: row for row in contract.load_matrix(self.test_dir / "matrix.tsv")
@@ -167,8 +171,10 @@ class Harness:
                 OPERATIONS_URL,
                 list(GENERATIONS.values()),
                 self.operations_source,
-                "Pinned Operations commits are not all public. Publish the prerequisite application commits first, "
-                "or set OPERATIONS_COMPAT_SOURCE_ROOT to one clean Git repository containing every exact commit.",
+                "Pinned Operations commits are not all reachable from a published ref. Integration must preserve the exact "
+                "historical commits through a merge commit or durable ref; a squash/rebase merge followed by branch deletion "
+                "makes this proof unavailable. Publish the prerequisite commits or set OPERATIONS_COMPAT_SOURCE_ROOT to one "
+                "clean Git repository containing every exact commit.",
             )
 
         self.aio_source = self.prepare_exact_checkout(
@@ -226,8 +232,13 @@ class Harness:
         if not manifest.is_file():
             raise contract.ContractError(f"missing migration checksum manifest: {manifest}")
         entries = {}
-        for line in manifest.read_text(encoding="utf-8").splitlines():
-            checksum, relative = line.split("\t", 1)
+        for line_number, line in enumerate(manifest.read_text(encoding="utf-8").splitlines(), start=1):
+            try:
+                checksum, relative = line.split("\t", 1)
+            except ValueError as error:
+                raise contract.ContractError(
+                    f"malformed migration checksum manifest row {line_number} in {manifest}"
+                ) from error
             entries[relative] = checksum
         if list(entries) != expected_paths:
             raise contract.ContractError(
@@ -265,12 +276,18 @@ class Harness:
             export.mkdir(parents=True, exist_ok=True)
             archive = self.temp_root / f"{generation}.tar"
             with archive.open("wb") as handle:
-                result = subprocess.run(
-                    ["git", "-C", self.operations_source, "archive", commit],
-                    check=False,
-                    stdout=handle,
-                    stderr=subprocess.PIPE,
-                )
+                try:
+                    result = subprocess.run(
+                        ["git", "-C", self.operations_source, "archive", commit],
+                        check=False,
+                        stdout=handle,
+                        stderr=subprocess.PIPE,
+                        timeout=GIT_ARCHIVE_TIMEOUT_SECONDS,
+                    )
+                except subprocess.TimeoutExpired as error:
+                    raise contract.ContractError(
+                        f"Operations Git archive timed out after {GIT_ARCHIVE_TIMEOUT_SECONDS} seconds for {commit}"
+                    ) from error
             if result.returncode != 0:
                 raise contract.ContractError(
                     f"could not export Operations {commit}: {result.stderr.decode('utf-8', errors='replace')}"
@@ -295,7 +312,8 @@ class Harness:
                     "mvn", "-q", "-B", "-Dmaven.repo.local=/m2",
                     f"-Dproject.build.outputTimestamp={timestamp}", "-DskipTests",
                     "-pl", "services/pic-sure-operations-service", "-am", "package",
-                ]
+                ],
+                timeout=BUILD_COMMAND_TIMEOUT_SECONDS,
             )
             jar = export / "services" / "pic-sure-operations-service" / "target" / "pic-sure-operations-service-3.0.0.jar"
             if not jar.is_file():
@@ -447,7 +465,7 @@ class Harness:
             encoding="utf-8",
         )
         script.chmod(0o755)
-        self.audit_request_file = audit_root / "requests"
+        self.audit_request_file = self.prepare_audit_request_file(audit_root)
         name = f"operations-compat-{self.run_id}-audit"
         self.command(
             [
@@ -473,6 +491,13 @@ class Harness:
             time.sleep(0.1)
         else:
             raise contract.ContractError("synthetic audit probe did not accept its control request")
+
+    @staticmethod
+    def prepare_audit_request_file(audit_root):
+        request_file = Path(audit_root) / "requests"
+        request_file.write_text("", encoding="utf-8")
+        request_file.chmod(0o666)
+        return request_file
 
     def stop_audit_probe(self):
         if self.audit_container:
@@ -549,7 +574,7 @@ class Harness:
 
     @staticmethod
     def payload(html, title, *, audience="EVERYONE", targets=None, start=None, end=None, dismissible=True):
-        value = {
+        return {
             "htmlContent": html,
             "title": title,
             "appearance": "PRIMARY",
@@ -561,7 +586,6 @@ class Harness:
             "startAt": start,
             "endAt": end,
         }
-        return value
 
     def publish(self, base_url, payload, expected=201):
         return self.json_request("POST", base_url + "/banners", payload, expected, ADMIN_HEADERS)
@@ -693,26 +717,59 @@ class Harness:
         self.start_mysql("forward")
         old = self.start_app("pre-allocator", "overlap-old")
         final = self.start_app("final", "overlap-final")
-        requests = [
-            (old, self.payload("<p>Overlapping old writer</p>", "Overlap old")),
-            (final, self.payload("<p>Overlapping final writer</p>", "Overlap final")),
-        ]
+        gate_name = f"operationscompat{self.run_id}"
+        # The trigger pauses the old insert after its MAX(priority) read. The final writer can then commit the same
+        # priority through the allocator, making the unsupported mixed-writer state deterministic.
+        self.mysql_execute(
+            "CREATE TRIGGER operations_compat_overlap_gate BEFORE INSERT ON banner_occurrence "
+            "FOR EACH ROW SET @operations_compat_gate = "
+            f"IF(NEW.title='Overlap old', GET_LOCK('{gate_name}', 30), 1)"
+        )
+        gate_holder = self.acquire_overlap_gate(gate_name)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [executor.submit(self.http, "POST", url + "/banners", payload, ADMIN_HEADERS) for url, payload in requests]
-            results = [future.result(timeout=15) for future in futures]
-        codes = sorted(code for code, _ in results)
+            old_future = executor.submit(
+                self.http,
+                "POST",
+                old + "/banners",
+                self.payload("<p>Overlapping old writer</p>", "Overlap old"),
+                ADMIN_HEADERS,
+            )
+            try:
+                self.wait_for_overlap_gate_waiter(gate_name)
+                final_result = self.http(
+                    "POST",
+                    final + "/banners",
+                    self.payload("<p>Overlapping final writer</p>", "Overlap final"),
+                    ADMIN_HEADERS,
+                )
+                final_state = self.mysql_query(
+                    "SELECT priority,title FROM banner_occurrence ORDER BY priority,uuid"
+                ).splitlines()
+                allocator_before_release = self.mysql_query(
+                    "SELECT id,next_priority FROM banner_priority_allocator"
+                )
+            finally:
+                self.mysql_execute(f"KILL {gate_holder}")
+            old_result = old_future.result(timeout=15)
+        codes = sorted([old_result[0], final_result[0]])
         if codes != [201, 201]:
             raise contract.ContractError(f"overlap cell expected both real writers to execute, got HTTP {codes}")
+        if final_state != ["1\tOverlap final"] or allocator_before_release != "1\t2":
+            raise contract.ContractError(
+                "final writer did not commit allocator priority 1 while the old writer was paused after its maximum-priority read: "
+                f"rows={final_state}, allocator={allocator_before_release}"
+            )
         overlap_state = self.mysql_query(
-            "SELECT priority,HEX(title) FROM banner_occurrence ORDER BY priority,uuid"
+            "SELECT priority,title FROM banner_occurrence ORDER BY title"
         ).splitlines()
         overlap_rows = [row.split("\t") for row in overlap_state]
-        overlap_titles = sorted(row[1] for row in overlap_rows)
-        expected_titles = sorted(
-            ["Overlap old".encode().hex().upper(), "Overlap final".encode().hex().upper()]
-        )
-        if len(overlap_rows) != 2 or overlap_titles != expected_titles:
-            raise contract.ContractError(f"overlap writers did not retain both synthetic occurrences: {overlap_state}")
+        expected_overlap = [["1", "Overlap final"], ["1", "Overlap old"]]
+        allocator_after_overlap = self.mysql_query("SELECT id,next_priority FROM banner_priority_allocator")
+        if overlap_rows != expected_overlap or allocator_after_overlap != "1\t2":
+            raise contract.ContractError(
+                "mixed writers did not expose the expected duplicate priority with a bypassed allocator: "
+                f"rows={overlap_rows}, allocator={allocator_after_overlap}"
+            )
         self.stop_app("overlap-old")
         self.stop_app("overlap-final")
         pre_recovery_max = int(self.mysql_query("SELECT MAX(priority) FROM banner_occurrence"))
@@ -724,16 +781,42 @@ class Harness:
         checksum = self.semantic_checksum(
             {
                 "http_codes": codes,
-                "overlap_occurrences": 2,
-                "overlap_titles": overlap_titles,
-                "recovered_above_max": True,
-                "allocator_singleton": True,
+                "overlap_rows": overlap_rows,
+                "allocator_after_overlap": [1, 2],
+                "recovered_priority": recovered["priority"],
+                "allocator_after_recovery": [int(value) for value in allocator.split("\t")],
             }
         )
         return self.observation(
             "overlapping-writers", "pre-allocator+final", "UNSUPPORTED_EXPECTED", checksum, "unsupported",
             "mixed writers bypass one allocator; stop management traffic, stop old writers, start final only, perform one allocator-owning publication, then reopen traffic",
         )
+
+    def acquire_overlap_gate(self, gate_name):
+        self.command(
+            [
+                "docker", "exec", "-d", "-e", f"MYSQL_PWD={SYNTHETIC_ROOT_PASSWORD}", self.mysql_container,
+                "mysql", "-N", "-B", "-h127.0.0.1", "-uroot", "picsure", "-e",
+                f"SELECT GET_LOCK('{gate_name}',0); DO SLEEP(60)",
+            ]
+        )
+        for _ in range(50):
+            holder = self.mysql_query(f"SELECT IS_USED_LOCK('{gate_name}')")
+            if holder and holder != "NULL":
+                return int(holder)
+            time.sleep(0.1)
+        raise contract.ContractError("could not acquire the deterministic mixed-writer gate")
+
+    def wait_for_overlap_gate_waiter(self, gate_name):
+        for _ in range(50):
+            waiters = self.mysql_query(
+                "SELECT COUNT(*) FROM performance_schema.metadata_locks "
+                f"WHERE OBJECT_TYPE='USER LEVEL LOCK' AND OBJECT_NAME='{gate_name}' AND LOCK_STATUS='PENDING'"
+            )
+            if waiters == "1":
+                return
+            time.sleep(0.1)
+        raise contract.ContractError("old writer did not reach the deterministic mixed-writer gate")
 
     def prepare_final_rollback_fixture(self):
         final = self.start_app("final")
@@ -884,10 +967,15 @@ SET FOREIGN_KEY_CHECKS=1;
 
         legacy = self.json_request("GET", final + "/banners/active")
         targeted_feed = self.json_request("GET", final + "/banners/active/v2")
-        legacy_ids = {item["uuid"] for item in legacy}
-        targeted_ids = {item["uuid"] for item in targeted_feed}
-        if all_pages["uuid"] not in legacy_ids or targeted["uuid"] in legacy_ids or targeted["uuid"] not in targeted_ids:
-            raise contract.ContractError("legacy and targeted active feeds did not preserve their compatibility boundary")
+        legacy_ids = [item["uuid"] for item in legacy]
+        targeted_ids = [item["uuid"] for item in targeted_feed]
+        expected_legacy_ids = [published_draft["uuid"], all_pages["uuid"]]
+        expected_targeted_ids = expected_legacy_ids + [targeted["uuid"]]
+        if legacy_ids != expected_legacy_ids or targeted_ids != expected_targeted_ids:
+            raise contract.ContractError(
+                "legacy and v2 active feeds did not preserve exact membership and visitor order: "
+                f"legacy={legacy_ids}, v2={targeted_ids}"
+            )
 
         disabled = self.json_request("POST", final + f"/banners/{all_pages['uuid']}/disable", expected=200, headers=ADMIN_HEADERS)
         restored = self.json_request(
@@ -906,14 +994,51 @@ SET FOREIGN_KEY_CHECKS=1;
             raise contract.ContractError("archive did not return the authoritative archived state")
 
         orderable = self.json_request("GET", final + "/banners", headers=ADMIN_HEADERS)
-        orderable_ids = [item["uuid"] for item in orderable if item["lifecycle"] in {"ACTIVE", "SCHEDULED"}]
+        orderable_ids = [
+            item["uuid"]
+            for item in sorted(
+                (item for item in orderable if item["lifecycle"] in {"ACTIVE", "SCHEDULED"}),
+                key=lambda item: (item["priority"], item["uuid"]),
+            )
+        ]
         submitted = list(reversed(orderable_ids[:2])) + [expiring["uuid"]]
+        expected_reordered_ids = submitted[:2] + [uuid for uuid in orderable_ids if uuid not in submitted]
         reordered = self.json_request(
             "PUT", final + "/banners/order", {"bannerUuids": submitted}, 200, ADMIN_HEADERS
         )
+        reordered_ids = [item["uuid"] for item in reordered]
         priorities = [item["priority"] for item in reordered]
+        if reordered_ids != expected_reordered_ids or expiring["uuid"] in reordered_ids:
+            raise contract.ContractError(
+                "tolerant reorder did not apply the requested reverse order, exclude the expired member, and append omitted members: "
+                f"expected={expected_reordered_ids}, got={reordered_ids}"
+            )
         if priorities != list(range(1, len(priorities) + 1)):
             raise contract.ContractError(f"tolerant reorder did not compact the queue: {priorities}")
+
+        visitor_v2 = self.json_request("GET", final + "/banners/active/v2")
+        visitor_legacy = self.json_request("GET", final + "/banners/active")
+        active_ids = {published_draft["uuid"], targeted["uuid"], restored["uuid"]}
+        all_pages_active_ids = {published_draft["uuid"], restored["uuid"]}
+        expected_visitor_v2 = [uuid for uuid in expected_reordered_ids if uuid in active_ids]
+        expected_visitor_legacy = [uuid for uuid in expected_reordered_ids if uuid in all_pages_active_ids]
+        visitor_v2_ids = [item["uuid"] for item in visitor_v2]
+        visitor_legacy_ids = [item["uuid"] for item in visitor_legacy]
+        if visitor_v2_ids != expected_visitor_v2 or visitor_legacy_ids != expected_visitor_legacy:
+            raise contract.ContractError(
+                "visitor feeds did not follow the canonical reordered queue: "
+                f"legacy={visitor_legacy_ids}, v2={visitor_v2_ids}"
+            )
+
+        fixture_names = {
+            published_draft["uuid"]: "published-draft",
+            all_pages["uuid"]: "all-pages",
+            targeted["uuid"]: "targeted",
+            scheduled["uuid"]: "scheduled",
+            expiring["uuid"]: "expired",
+            restored["uuid"]: "restored",
+        }
+        named = lambda uuids: [fixture_names[uuid] for uuid in uuids]
 
         version_counts = self.mysql_query(
             "SELECT BIN_TO_UUID(banner_uuid),COUNT(*) FROM banner_version GROUP BY banner_uuid ORDER BY BIN_TO_UUID(banner_uuid)"
@@ -925,10 +1050,15 @@ SET FOREIGN_KEY_CHECKS=1;
                 "expired": lifecycle_by_uuid[expiring["uuid"]],
                 "hash_schedule_stable": True,
                 "hash_material_changed": True,
-                "legacy_excludes_targeted": True,
+                "legacy_feed_before_reorder": named(legacy_ids),
+                "v2_feed_before_reorder": named(targeted_ids),
                 "restore_source": True,
                 "archive": archived["status"],
+                "submitted_order": named(submitted),
+                "canonical_reorder": named(reordered_ids),
                 "priorities": priorities,
+                "legacy_feed_after_reorder": named(visitor_legacy_ids),
+                "v2_feed_after_reorder": named(visitor_v2_ids),
                 "version_counts": sorted(line.split("\t")[1] for line in version_counts),
             }
         )
@@ -980,15 +1110,22 @@ SET FOREIGN_KEY_CHECKS=1;
         )
 
     @staticmethod
-    def command(args, check=True, capture=False, merge_stderr=False):
+    def command(args, check=True, capture=False, merge_stderr=False, timeout=DEFAULT_COMMAND_TIMEOUT_SECONDS):
         stderr = subprocess.STDOUT if merge_stderr else (subprocess.PIPE if capture else None)
-        result = subprocess.run(
-            [str(arg) for arg in args],
-            check=False,
-            stdout=subprocess.PIPE if capture else None,
-            stderr=stderr,
-            text=True,
-        )
+        command = [str(arg) for arg in args]
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                stdout=subprocess.PIPE if capture else None,
+                stderr=stderr,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise contract.ContractError(
+                f"command timed out after {timeout} seconds: {' '.join(command)}"
+            ) from error
         if check and result.returncode != 0:
             stdout = result.stdout.strip() if result.stdout else ""
             stderr_text = "" if merge_stderr or not result.stderr else result.stderr.strip()

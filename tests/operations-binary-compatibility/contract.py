@@ -48,6 +48,24 @@ FORWARD_SCHEMA_TABLES = {
     "banner_priority_allocator",
 }
 
+GIT_COMMAND_TIMEOUT_SECONDS = 30
+
+
+def run_git(args, label):
+    command = [str(value) for value in args]
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ContractError(
+            f"{label} Git command timed out after {GIT_COMMAND_TIMEOUT_SECONDS} seconds: {' '.join(command)}"
+        ) from error
+
 
 def sha256_file(path):
     digest = hashlib.sha256()
@@ -71,11 +89,9 @@ def require_preserved_checksum(cell, expected, actual):
 
 def require_clean_repository(path, label):
     repository = Path(path)
-    result = subprocess.run(
+    result = run_git(
         ["git", "-C", repository, "status", "--porcelain", "--untracked-files=all"],
-        check=False,
-        capture_output=True,
-        text=True,
+        label,
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
@@ -88,11 +104,9 @@ def require_clean_repository(path, label):
 
 def require_repository_head(path, label, expected_commit):
     require_clean_repository(path, label)
-    result = subprocess.run(
+    result = run_git(
         ["git", "-C", Path(path), "rev-parse", "HEAD"],
-        check=False,
-        capture_output=True,
-        text=True,
+        label,
     )
     if result.returncode != 0:
         raise ContractError(f"{label} has no readable HEAD at {path}")
@@ -104,11 +118,9 @@ def require_repository_head(path, label, expected_commit):
 
 
 def require_git_commit(path, commit):
-    result = subprocess.run(
+    result = run_git(
         ["git", "-C", Path(path), "cat-file", "-e", f"{commit}^{{commit}}"],
-        check=False,
-        capture_output=True,
-        text=True,
+        "Operations source override",
     )
     if result.returncode != 0:
         raise ContractError(f"Operations source override does not contain commit {commit}")
@@ -157,8 +169,10 @@ def validate_observation(row):
             )
     elif result not in {"PASS", "REJECTED_EXPECTED"}:
         raise ContractError(f"matrix cell {cell} has invalid result {result}")
-    if cell == "occurrence-only-rejection" and result != "REJECTED_EXPECTED":
-        raise ContractError("occurrence-only-rejection must record REJECTED_EXPECTED")
+    if cell == "occurrence-only-rejection" and (result != "REJECTED_EXPECTED" or boundary != "unsupported"):
+        raise ContractError(
+            "occurrence-only-rejection must record REJECTED_EXPECTED with an unsupported boundary"
+        )
     if cell not in {"overlapping-writers", "occurrence-only-rejection"} and boundary != "supported":
         raise ContractError(f"matrix cell {cell} must record the supported boundary")
 
