@@ -61,6 +61,7 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
             "23a550f373f07475efd8a838161e5e031e8706b14640a8a13d44de9ef0c9938e",
             "47fe7fcc0c0d775ad771ceca0f28327d019d2816639e88699eeae62256a2d2bc",
             "a211596a81df2488caad8a9ffefe881aff9804fda7a6199e3968cbdf1535614d",
+            "ce4b2f3b448e254f2017e88a2649136e9d9edbec4ca4a187274d3509458ea23f",
         }
         for value in expected:
             self.assertIn(value, source)
@@ -182,22 +183,74 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
         with self.assertRaisesRegex(contract.ContractError, "management writes are frozen"):
             harness.management_write("POST", "http://operations/banners", {})
 
+    def test_frontend_rollback_is_rejected_before_write_freeze(self):
+        harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+        harness.rollback_state = "FINAL_RUNNING"
+        harness.management_writes_frozen = False
+        harness.stop_frontend = mock.Mock()
+
+        with self.assertRaisesRegex(contract.ContractError, "until management writes are frozen"):
+            harness.start_frontend("old")
+        harness.stop_frontend.assert_not_called()
+
+    def test_harness_rejects_rollout_contract_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            contract_path = repository / ".github" / "banner-rollout-contract.json"
+            contract_path.parent.mkdir()
+            contract_path.write_text(
+                json.dumps(
+                    {
+                        "rollbackPhases": list(compatibility_run.REQUIRED_ROLLBACK_PHASES),
+                        "rollbackStateContract": {
+                            **compatibility_run.REQUIRED_ROLLBACK_STATE_CONTRACT,
+                            "frontendFirstRollbackAloneSafe": True,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+            harness.repository_root = repository
+
+            with self.assertRaisesRegex(contract.ContractError, "rollback state contract drift"):
+                harness.require_current_rollout_contract()
+
     def test_ticket17_process_group_timeout_kills_descendants(self):
         with tempfile.TemporaryDirectory() as directory:
             ready = Path(directory) / "ready"
-            child_code = (
-                "import pathlib, subprocess, sys, time\n"
-                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
-                "pathlib.Path(sys.argv[1]).write_text(str(child.pid), encoding='utf-8')\n"
+            grandchild_code = (
+                "import signal, sys, time\n"
+                "def stop(_signum, _frame):\n"
+                "    print('ticket17 drained stdout', flush=True)\n"
+                "    print('ticket17 drained stderr', file=sys.stderr, flush=True)\n"
+                "    raise SystemExit(0)\n"
+                "signal.signal(signal.SIGTERM, stop)\n"
                 "time.sleep(30)\n"
+            )
+            child_code = (
+                "import pathlib, subprocess, sys\n"
+                "print('ticket17 partial stdout', flush=True)\n"
+                "print('ticket17 partial stderr', file=sys.stderr, flush=True)\n"
+                f"child = subprocess.Popen([sys.executable, '-c', {grandchild_code!r}])\n"
+                "pathlib.Path(sys.argv[1]).write_text(str(child.pid), encoding='utf-8')\n"
             )
             started = time.monotonic()
             harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
             harness.active_process_group = None
+            leader_status_at_cleanup = []
+            terminate = harness.terminate_active_process_group
+
+            def record_leader_status():
+                leader_status_at_cleanup.append(harness.active_process_group.poll())
+                return terminate()
+
+            harness.terminate_active_process_group = record_leader_status
             result = harness.process_group_command(
-                [sys.executable, "-c", child_code, ready], timeout=0.2, capture=True
+                [sys.executable, "-c", child_code, ready], timeout=2, capture=True, merge_stderr=True
             )
             elapsed = time.monotonic() - started
+            self.assertTrue(ready.is_file(), "process-group timeout fixture did not become ready")
             child_pid = int(ready.read_text(encoding="utf-8"))
             for _ in range(100):
                 try:
@@ -208,8 +261,31 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
             else:
                 self.fail(f"timed-out process group left descendant {child_pid} running")
 
+            self.assertIsInstance(result.stdout, str)
+            self.assertIn("ticket17 partial stdout", result.stdout)
+            self.assertIn("ticket17 partial stderr", result.stdout)
+            self.assertIn("ticket17 drained stdout", result.stdout)
+            self.assertIn("ticket17 drained stderr", result.stdout)
+            harness.ticket17_dir = PROOF.parent / "operations-binary-compatibility"
+            harness.temp_root = Path(directory)
+            harness.operations_source = ROOT
+            harness.aio_source = ROOT
+            harness.bdc_source = ROOT
+            harness.process_group_command = mock.Mock(return_value=result)
+            with self.assertRaisesRegex(contract.ContractError, "failed with status 124"):
+                harness.run_ticket17_composition()
+            diagnostics = (Path(directory) / "ticket17.log").read_text(encoding="utf-8")
+            ticket17_result = json.loads(
+                (Path(directory) / "ticket17-result.json").read_text(encoding="utf-8")
+            )
+            self.assertIn("ticket17 partial stdout", diagnostics)
+            self.assertIn("ticket17 drained stdout", diagnostics)
+            self.assertEqual(124, ticket17_result["status"])
+            self.assertFalse(ticket17_result["passed"])
+
         self.assertEqual(124, result.returncode)
-        self.assertLess(elapsed, 2.0)
+        self.assertEqual([0], leader_status_at_cleanup)
+        self.assertLess(elapsed, 4.0)
 
     def test_ticket17_process_group_forwards_outer_signal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -253,6 +329,62 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
                 self.fail(f"signaled composition left descendant {child_pid} running")
 
         self.assertNotEqual(0, wrapper.returncode)
+
+    def test_process_group_sigkill_drain_is_bounded(self):
+        process = mock.Mock()
+        process.pid = 12345
+        process.stdout = mock.Mock()
+        process.stderr = mock.Mock()
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired("fixture", 1, output=b"term output", stderr=b"term error"),
+            subprocess.TimeoutExpired("fixture", 1, output=b"kill output", stderr=b"kill error"),
+        ]
+        process.wait.return_value = -signal.SIGKILL
+        harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+        harness.active_process_group = process
+
+        with mock.patch.object(compatibility_run.os, "killpg") as killpg:
+            stdout, stderr_text = harness.terminate_active_process_group()
+
+        self.assertEqual("kill output", stdout)
+        self.assertIn("kill error", stderr_text)
+        self.assertIn("diagnostics may be partial", stderr_text)
+        self.assertEqual([mock.call(timeout=1), mock.call(timeout=1)], process.communicate.call_args_list)
+        process.wait.assert_called_once_with(timeout=1)
+        process.stdout.close.assert_called_once_with()
+        process.stderr.close.assert_called_once_with()
+        self.assertEqual(
+            [mock.call(process.pid, signal.SIGTERM), mock.call(process.pid, signal.SIGKILL)],
+            killpg.call_args_list,
+        )
+        self.assertIsNone(harness.active_process_group)
+
+    def test_ticket17_cleanup_rejects_invalid_run_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ticket17_temp = Path(directory) / "ticket17-temp"
+            (ticket17_temp / "operations-binary-bad_suffix").mkdir(parents=True)
+            harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+            harness.temp_root = Path(directory)
+            harness.ticket17_dir = PROOF.parent / "operations-binary-compatibility"
+            harness.command = mock.Mock()
+
+            with self.assertRaisesRegex(contract.ContractError, "invalid Ticket 17 cleanup run ID"):
+                harness.cleanup_ticket17_resources()
+            harness.command.assert_not_called()
+
+    def test_fetched_multi_commit_source_checks_out_requested_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+            harness.command = mock.Mock(return_value=subprocess.CompletedProcess([], 0, "", ""))
+            commits = ["old", "final", "ticket17"]
+            destination = Path(directory) / "source"
+
+            harness.fetch_repository("https://example.invalid/repository.git", commits, destination, "source", "final")
+
+            self.assertEqual(
+                ["git", "-C", destination, "checkout", "--quiet", "--detach", "final"],
+                harness.command.call_args_list[-1].args[0],
+            )
 
     def test_pre_cell_failure_writes_structured_diagnostics(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -370,33 +502,21 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
         self.assertIn("require_backend_rollback_allowed", source)
         self.assertIn("targeted banners remain Active or Scheduled", source)
 
-        contract = json.loads((ROOT / ".github" / "banner-rollout-contract.json").read_text(encoding="utf-8"))
-        self.assertEqual(3, contract["schemaVersion"])
+        rollout_contract = json.loads(
+            (ROOT / ".github" / "banner-rollout-contract.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(3, rollout_contract["schemaVersion"])
         self.assertEqual(
-            [
-                "FREEZE_BANNER_MANAGEMENT_WRITES",
-                "ROLL_BACK_FRONTEND",
-                "DISABLE_ACTIVE_AND_SCHEDULED_TARGETED_BANNERS_BEFORE_LEGACY_ACTIVE_FEED_BACKEND",
-                "ROLL_BACK_OPERATIONS_AND_GATEWAY",
-                "KEEP_BANNER_MANAGEMENT_WRITES_FROZEN_BELOW_TARGETING_CAPABLE_BACKEND",
-                "RECREATE_PSAMA",
-            ],
-            contract["rollbackPhases"],
+            list(compatibility_run.REQUIRED_ROLLBACK_PHASES),
+            rollout_contract["rollbackPhases"],
         )
         self.assertEqual(
             "KEEP_BANNER_MANAGEMENT_WRITES_FROZEN_BELOW_TARGETING_CAPABLE_BACKEND",
-            contract["managementWriteFreezeBoundary"],
+            rollout_contract["managementWriteFreezeBoundary"],
         )
         self.assertEqual(
-            {
-                "freezeRequiredBeforeFrontendRollback": True,
-                "ordinaryManagementWritesAllowedWhileFrozen": False,
-                "targetedDisableAllowedWhileFrozen": True,
-                "legacyBackendTransitionRequiresTargetedClear": True,
-                "freezeRetainedBelowTargetingBackend": True,
-                "frontendFirstRollbackAloneSafe": False,
-            },
-            contract["rollbackStateContract"],
+            compatibility_run.REQUIRED_ROLLBACK_STATE_CONTRACT,
+            rollout_contract["rollbackStateContract"],
         )
 
     def test_fixed_fixtures_and_observation_fields_are_present(self):

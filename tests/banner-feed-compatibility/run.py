@@ -59,6 +59,22 @@ FRONTEND_DOCKERFILE_SHA256 = "23a550f373f07475efd8a838161e5e031e8706b14640a8a13d
 FRONTEND_LOCKFILE_SHA256 = "47fe7fcc0c0d775ad771ceca0f28327d019d2816639e88699eeae62256a2d2bc"
 TICKET17_MATRIX_SHA256 = "a211596a81df2488caad8a9ffefe881aff9804fda7a6199e3968cbdf1535614d"
 ROLLOUT_CONTRACT_BEFORE_TICKET18_SHA256 = "ce4b2f3b448e254f2017e88a2649136e9d9edbec4ca4a187274d3509458ea23f"
+REQUIRED_ROLLBACK_PHASES = (
+    "FREEZE_BANNER_MANAGEMENT_WRITES",
+    "ROLL_BACK_FRONTEND",
+    "DISABLE_ACTIVE_AND_SCHEDULED_TARGETED_BANNERS_BEFORE_LEGACY_ACTIVE_FEED_BACKEND",
+    "ROLL_BACK_OPERATIONS_AND_GATEWAY",
+    "KEEP_BANNER_MANAGEMENT_WRITES_FROZEN_BELOW_TARGETING_CAPABLE_BACKEND",
+    "RECREATE_PSAMA",
+)
+REQUIRED_ROLLBACK_STATE_CONTRACT = {
+    "freezeRequiredBeforeFrontendRollback": True,
+    "ordinaryManagementWritesAllowedWhileFrozen": False,
+    "targetedDisableAllowedWhileFrozen": True,
+    "legacyBackendTransitionRequiresTargetedClear": True,
+    "freezeRetainedBelowTargetingBackend": True,
+    "frontendFirstRollbackAloneSafe": False,
+}
 
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 300
 BUILD_COMMAND_TIMEOUT_SECONDS = 1800
@@ -224,6 +240,7 @@ class Harness:
             os.environ.get("OPERATIONS_COMPAT_SOURCE_ROOT"),
             OPERATIONS_URL,
             list(BACKEND_COMMITS.values()) + TICKET17_BACKEND_COMMITS,
+            FINAL_BACKEND_COMMIT,
             self.temp_root / "sources" / "pic-sure",
             "backend source",
         )
@@ -231,6 +248,7 @@ class Harness:
             os.environ.get("FRONTEND_COMPAT_SOURCE_ROOT"),
             FRONTEND_URL,
             list(FRONTEND_COMMITS.values()),
+            FINAL_FRONTEND_COMMIT,
             self.temp_root / "sources" / "frontend",
             "frontend source",
         )
@@ -243,14 +261,14 @@ class Harness:
             self.temp_root / "sources" / "bdc", "Ticket 16 BDC/AIM proof",
         )
 
-    def prepare_multi_commit_source(self, override, url, commits, destination, label):
+    def prepare_multi_commit_source(self, override, url, commits, checkout_commit, destination, label):
         if override:
             source = Path(override).resolve()
             contract.require_clean_repository(source, label)
             for commit in commits:
                 contract.require_git_commit(source, label, commit)
             return source
-        self.fetch_repository(url, commits, destination, label)
+        self.fetch_repository(url, commits, destination, label, checkout_commit)
         return destination
 
     def prepare_exact_source(self, override, url, commit, destination, label):
@@ -258,11 +276,13 @@ class Harness:
             source = Path(override).resolve()
             contract.require_repository_head(source, label, commit)
             return source
-        self.fetch_repository(url, [commit], destination, label)
+        self.fetch_repository(url, [commit], destination, label, commit)
         contract.require_repository_head(destination, label, commit)
         return destination
 
-    def fetch_repository(self, url, commits, destination, label):
+    def fetch_repository(self, url, commits, destination, label, checkout_commit):
+        if checkout_commit not in commits:
+            raise contract.ContractError(f"{label} checkout commit is not among the required commits: {checkout_commit}")
         destination.parent.mkdir(parents=True, exist_ok=True)
         self.command(["git", "init", "--quiet", destination])
         self.command(["git", "-C", destination, "remote", "add", "origin", url])
@@ -277,7 +297,7 @@ class Harness:
                     f"{label} exact commit {commit} is not publicly reachable. Publish the prerequisite commit "
                     f"or provide its clean exact source root. Git error: {result.stderr.strip()}"
                 )
-        self.command(["git", "-C", destination, "checkout", "--quiet", "--detach", commits[-1]])
+        self.command(["git", "-C", destination, "checkout", "--quiet", "--detach", checkout_commit])
 
     def verify_static_inputs(self):
         for generation, commit in BACKEND_COMMITS.items():
@@ -290,8 +310,7 @@ class Harness:
             raise contract.ContractError(
                 f"Ticket 17 matrix checksum mismatch: expected {TICKET17_MATRIX_SHA256}, got {actual_ticket17}"
             )
-        if not (self.repository_root / ".github" / "banner-rollout-contract.json").is_file():
-            raise contract.ContractError("missing shared banner rollout contract")
+        self.require_current_rollout_contract()
         contract_before_ticket18 = self.command(
             ["git", "-C", self.operations_source, "show", f"{FINAL_BACKEND_COMMIT}:.github/banner-rollout-contract.json"],
             capture=True,
@@ -304,6 +323,17 @@ class Harness:
             )
         contract.require_repository_head(self.aio_source, "Ticket 15 AIO proof", AIO_COMMIT)
         contract.require_repository_head(self.bdc_source, "Ticket 16 BDC/AIM proof", BDC_COMMIT)
+
+    def require_current_rollout_contract(self):
+        path = self.repository_root / ".github" / "banner-rollout-contract.json"
+        try:
+            rollout_contract = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise contract.ContractError(f"cannot read shared banner rollout contract: {error}") from error
+        if rollout_contract.get("rollbackPhases") != list(REQUIRED_ROLLBACK_PHASES):
+            raise contract.ContractError("shared banner rollout phase order drift")
+        if rollout_contract.get("rollbackStateContract") != REQUIRED_ROLLBACK_STATE_CONTRACT:
+            raise contract.ContractError("shared banner rollback state contract drift")
 
     def prepare_exports(self):
         for generation, commit in BACKEND_COMMITS.items():
@@ -1178,8 +1208,9 @@ class Harness:
             return
         for directory in ticket17_temp.glob("operations-binary-*"):
             run_id = directory.name.removeprefix("operations-binary-")
-            if run_id.isalnum():
-                self.command([self.ticket17_dir / "cleanup-resources.sh", run_id])
+            if not directory.is_dir() or not run_id.isascii() or not run_id.isalnum():
+                raise contract.ContractError(f"invalid Ticket 17 cleanup run ID in {directory.name}")
+            self.command([self.ticket17_dir / "cleanup-resources.sh", run_id])
 
     def write_failure_diagnostics(self, observed_path, failed_phase, error, cleanup_errors):
         try:
@@ -1312,24 +1343,50 @@ class Harness:
             )
         return result
 
+    @staticmethod
+    def process_output_text(output):
+        if output is None:
+            return ""
+        if isinstance(output, bytes):
+            return output.decode("utf-8", errors="replace")
+        return str(output)
+
     def terminate_active_process_group(self):
         process = self.active_process_group
-        if process is None or process.poll() is not None:
+        if process is None:
             self.active_process_group = None
-            return
+            return "", ""
+        stdout = ""
+        stderr_text = ""
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
         try:
-            process.communicate(timeout=1)
-        except subprocess.TimeoutExpired:
+            stdout, stderr_text = process.communicate(timeout=1)
+        except subprocess.TimeoutExpired as term_error:
+            stdout = self.process_output_text(term_error.stdout)
+            stderr_text = self.process_output_text(term_error.stderr)
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            process.communicate()
-        self.active_process_group = None
+            try:
+                stdout, stderr_text = process.communicate(timeout=1)
+            except subprocess.TimeoutExpired as kill_error:
+                stdout = self.process_output_text(kill_error.stdout) or stdout
+                stderr_text = self.process_output_text(kill_error.stderr) or stderr_text
+                for stream in (process.stdout, process.stderr):
+                    if stream is not None:
+                        stream.close()
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired as wait_error:
+                    raise contract.ContractError("process group did not terminate after SIGKILL") from wait_error
+                stderr_text += "process output pipes remained open after SIGKILL; diagnostics may be partial\n"
+        finally:
+            self.active_process_group = None
+        return self.process_output_text(stdout), self.process_output_text(stderr_text)
 
     def process_group_command(
         self,
@@ -1352,12 +1409,23 @@ class Harness:
         self.active_process_group = process
         try:
             stdout, stderr_text = process.communicate(timeout=timeout)
-            return subprocess.CompletedProcess(command, process.returncode, stdout, stderr_text)
+            return subprocess.CompletedProcess(
+                command,
+                process.returncode,
+                self.process_output_text(stdout),
+                self.process_output_text(stderr_text),
+            )
         except subprocess.TimeoutExpired as error:
-            partial_stdout = error.stdout or ""
-            partial_stderr = error.stderr or ""
-            self.terminate_active_process_group()
-            return subprocess.CompletedProcess(command, 124, partial_stdout, partial_stderr)
+            partial_stdout = self.process_output_text(error.stdout)
+            partial_stderr = self.process_output_text(error.stderr)
+            drained_stdout, drained_stderr = self.terminate_active_process_group()
+            stdout = drained_stdout or partial_stdout
+            stderr_text = drained_stderr or partial_stderr
+            if merge_stderr and stderr_text:
+                separator = "" if not stdout or stdout.endswith("\n") else "\n"
+                stdout = stdout + separator + stderr_text
+                stderr_text = ""
+            return subprocess.CompletedProcess(command, 124, stdout, stderr_text)
         except BaseException:
             self.terminate_active_process_group()
             raise

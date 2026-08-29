@@ -37,14 +37,20 @@ class BannerRolloutContractTest {
         assertThat(contract.path("targetedFeedRollbackBoundary").asText()).isEqualTo(TARGETED_FEED_BOUNDARY);
         assertThat(contract.path("managementWriteFreezeBoundary").asText()).isEqualTo(RETAINED_FREEZE_BOUNDARY);
         JsonNode rollbackState = contract.path("rollbackStateContract");
-        assertThat(rollbackState.path("freezeRequiredBeforeFrontendRollback").asBoolean()).isTrue();
-        assertThat(rollbackState.path("ordinaryManagementWritesAllowedWhileFrozen").asBoolean()).isFalse();
-        assertThat(rollbackState.path("targetedDisableAllowedWhileFrozen").asBoolean()).isTrue();
-        assertThat(rollbackState.path("legacyBackendTransitionRequiresTargetedClear").asBoolean()).isTrue();
-        assertThat(rollbackState.path("freezeRetainedBelowTargetingBackend").asBoolean()).isTrue();
-        assertThat(rollbackState.path("frontendFirstRollbackAloneSafe").asBoolean()).isFalse();
+        assertBoolean(rollbackState, "freezeRequiredBeforeFrontendRollback", true);
+        assertBoolean(rollbackState, "ordinaryManagementWritesAllowedWhileFrozen", false);
+        assertBoolean(rollbackState, "targetedDisableAllowedWhileFrozen", true);
+        assertBoolean(rollbackState, "legacyBackendTransitionRequiresTargetedClear", true);
+        assertBoolean(rollbackState, "freezeRetainedBelowTargetingBackend", true);
+        assertBoolean(rollbackState, "frontendFirstRollbackAloneSafe", false);
         assertThat(contract.path("schemaRollback").asText()).isEqualTo("KEEP_FORWARD_SCHEMA");
-        assertThat(contract.path("downMigrationAllowed").asBoolean()).isFalse();
+        assertBoolean(contract, "downMigrationAllowed", false);
+    }
+
+    private void assertBoolean(JsonNode parent, String field, boolean expected) {
+        JsonNode value = parent.path(field);
+        assertThat(value.isBoolean()).as(field + " must be a JSON boolean").isTrue();
+        assertThat(value.booleanValue()).isEqualTo(expected);
     }
 
     private List<String> textValues(JsonNode array) {
