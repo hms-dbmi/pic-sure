@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 
+import os
+import signal
 import subprocess
 import sys
 
 
 def run(command, timeout):
     try:
-        result = subprocess.run(command, check=False, timeout=timeout)
+        process = subprocess.Popen(command, start_new_session=True)
+        return process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
         print(
             f"command timed out after {timeout} seconds: {' '.join(command)}",
             file=sys.stderr,
@@ -16,7 +24,6 @@ def run(command, timeout):
     except OSError as error:
         print(f"could not run {' '.join(command)}: {error}", file=sys.stderr)
         return 127
-    return result.returncode
 
 
 def main():

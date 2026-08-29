@@ -39,13 +39,8 @@ for _attempt in {1..20}; do
         echo "$network_output" >&2
         exit "$network_status"
     fi
-    inspect_status=0
-    inspect_output="$(docker_command network inspect "$network" 2>&1)" || inspect_status=$?
-    if [[ $inspect_status -eq 124 ]]; then
-        echo "$inspect_output" >&2
-        exit "$inspect_status"
-    fi
-    [[ $inspect_status -eq 0 ]] || break
+    networks="$(docker_command network ls --quiet --filter "name=^${network}$")"
+    [[ -n "$networks" ]] || break
     sleep 0.1
 done
 
@@ -54,13 +49,8 @@ if [[ -n "$remaining" ]]; then
     echo "cleanup left compatibility containers for $run_id: $remaining" >&2
     exit 1
 fi
-inspect_status=0
-inspect_output="$(docker_command network inspect "$network" 2>&1)" || inspect_status=$?
-if [[ $inspect_status -eq 124 ]]; then
-    echo "$inspect_output" >&2
-    exit "$inspect_status"
-fi
-if [[ $inspect_status -eq 0 ]]; then
+networks="$(docker_command network ls --quiet --filter "name=^${network}$")"
+if [[ -n "$networks" ]]; then
     echo "cleanup left compatibility network $network" >&2
     exit 1
 fi

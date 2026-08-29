@@ -36,13 +36,8 @@ if [[ -n "$(docker_command container ls --all --quiet --filter "label=$label")" 
     echo "failure-path cleanup test left a container" >&2
     exit 1
 fi
-network_status=0
-network_output="$(docker_command network inspect "$network" 2>&1)" || network_status=$?
-if [[ $network_status -eq 124 ]]; then
-    echo "$network_output" >&2
-    exit "$network_status"
-fi
-if [[ $network_status -eq 0 ]]; then
+networks="$(docker_command network ls --quiet --filter "name=^${network}$")"
+if [[ -n "$networks" ]]; then
     echo "failure-path cleanup test left a network" >&2
     exit 1
 fi

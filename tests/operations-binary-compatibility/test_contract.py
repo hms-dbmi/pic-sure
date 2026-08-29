@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -157,15 +158,46 @@ class ContractTest(unittest.TestCase):
             self.assertEqual("synthetic cell failure", detail["error"])
             self.assertEqual(["stop_all_apps: synthetic log cleanup failure"], detail["cleanup_errors"])
 
-    def test_portable_command_timeout_returns_124(self):
-        import bounded_command
+    def test_portable_command_timeout_kills_descendants_without_pipe_delay(self):
+        test_dir = Path(__file__).parent
+        with tempfile.TemporaryDirectory() as directory:
+            child_pid_file = Path(directory) / "child.pid"
+            parent_code = (
+                "import pathlib, subprocess, sys, time\n"
+                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(1)'])\n"
+                "pathlib.Path(sys.argv[1]).write_text(str(child.pid), encoding='utf-8')\n"
+                "time.sleep(30)\n"
+            )
+            started = time.monotonic()
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    test_dir / "bounded_command.py",
+                    "0.05",
+                    sys.executable,
+                    "-c",
+                    parent_code,
+                    child_pid_file,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            elapsed = time.monotonic() - started
+            child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+            for _ in range(100):
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail(f"timed-out command left descendant {child_pid} running")
 
-        status = bounded_command.run(
-            [sys.executable, "-c", "import time; time.sleep(30)"],
-            timeout=0.01,
-        )
-
-        self.assertEqual(124, status)
+        self.assertEqual(124, result.returncode)
+        self.assertLess(elapsed, 0.75)
+        self.assertIn("command timed out after 0.05 seconds", result.stderr)
 
     def test_cleanup_timeout_is_bounded_and_diagnostic(self):
         test_dir = Path(__file__).parent
@@ -192,6 +224,36 @@ class ContractTest(unittest.TestCase):
 
         self.assertEqual(124, result.returncode)
         self.assertIn("command timed out after 0.01 seconds", result.stderr)
+
+    def test_cleanup_rejects_docker_daemon_error_during_network_query(self):
+        test_dir = Path(__file__).parent
+        with tempfile.TemporaryDirectory() as directory:
+            fake_docker = Path(directory) / "docker"
+            fake_docker.write_text(
+                "#!/usr/bin/env sh\n"
+                "case \"$1 $2\" in\n"
+                "  'container ls') exit 0 ;;\n"
+                "  'network rm') echo 'daemon API unavailable' >&2; exit 1 ;;\n"
+                "  'network ls') echo 'daemon API unavailable' >&2; exit 1 ;;\n"
+                "  *) echo \"unexpected Docker call: $*\" >&2; exit 9 ;;\n"
+                "esac\n",
+                encoding="utf-8",
+            )
+            fake_docker.chmod(0o755)
+            environment = os.environ.copy()
+            environment["OPERATIONS_COMPAT_DOCKER_BIN"] = str(fake_docker)
+
+            result = subprocess.run(
+                [test_dir / "cleanup-resources.sh", "daemonerror"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2,
+                env=environment,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("daemon API unavailable", result.stderr)
 
     def test_shell_docker_calls_use_the_bounded_wrapper(self):
         test_dir = Path(__file__).parent
