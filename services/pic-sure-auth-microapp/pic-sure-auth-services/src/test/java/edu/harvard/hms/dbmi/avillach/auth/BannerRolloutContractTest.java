@@ -17,20 +17,25 @@ class BannerRolloutContractTest {
 
     private static final String REPOSITORY_ROOT_OVERRIDE = "banner.rollout.repositoryRoot";
     private static final String TARGETED_FEED_BOUNDARY = "DISABLE_ACTIVE_AND_SCHEDULED_TARGETED_BANNERS_BEFORE_LEGACY_ACTIVE_FEED_BACKEND";
+    private static final String RETAINED_FREEZE_BOUNDARY = "KEEP_BANNER_MANAGEMENT_WRITES_FROZEN_BELOW_TARGETING_CAPABLE_BACKEND";
 
     @Test
     void definesTheSharedForwardAndRollbackOrder() throws IOException {
         JsonNode contract = new ObjectMapper().readTree(contractPath().toFile());
 
-        assertThat(contract.path("schemaVersion").asInt()).isEqualTo(1);
+        assertThat(contract.path("schemaVersion").asInt()).isEqualTo(2);
         assertThat(contract.path("deploymentWideCacheRefresh").asText()).isEqualTo("PSAMA_PROCESS_RESTART");
         assertThat(textValues(contract.path("forwardPhases"))).containsExactly(
             "APPLY_AUTHORIZATION_AND_PIC_SURE_MIGRATIONS", "RECREATE_PSAMA", "VERIFY_OPERATIONS_AND_GATEWAY_HEALTH",
             "PUBLISH_FRONTEND_ACTIVE_V2"
         );
         assertThat(textValues(contract.path("rollbackPhases")))
-            .containsExactly("ROLL_BACK_FRONTEND", TARGETED_FEED_BOUNDARY, "ROLL_BACK_OPERATIONS_AND_GATEWAY", "RECREATE_PSAMA");
+            .containsExactly(
+                "FREEZE_BANNER_MANAGEMENT_WRITES", "ROLL_BACK_FRONTEND", TARGETED_FEED_BOUNDARY,
+                "ROLL_BACK_OPERATIONS_AND_GATEWAY", RETAINED_FREEZE_BOUNDARY, "RECREATE_PSAMA"
+            );
         assertThat(contract.path("targetedFeedRollbackBoundary").asText()).isEqualTo(TARGETED_FEED_BOUNDARY);
+        assertThat(contract.path("managementWriteFreezeBoundary").asText()).isEqualTo(RETAINED_FREEZE_BOUNDARY);
         assertThat(contract.path("schemaRollback").asText()).isEqualTo("KEEP_FORWARD_SCHEMA");
         assertThat(contract.path("downMigrationAllowed").asBoolean()).isFalse();
     }

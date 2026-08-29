@@ -1,0 +1,9 @@
+{
+  "name": "pic-sure-banner-feed-browser-proof",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "playwright": "1.60.0"
+  }
+}
