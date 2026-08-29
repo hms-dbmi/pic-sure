@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import signal
 import stat
 import subprocess
 import sys
@@ -17,6 +18,15 @@ import run as compatibility_run
 
 
 class ContractTest(unittest.TestCase):
+
+    @staticmethod
+    def wait_for_json(path, timeout=2):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if path.is_file():
+                return json.loads(path.read_text(encoding="utf-8"))
+            time.sleep(0.01)
+        raise AssertionError(f"fixture did not become ready within {timeout} seconds: {path}")
 
     def test_rejects_wrong_binary_checksum(self):
         with self.assertRaisesRegex(contract.ContractError, "binary checksum mismatch"):
@@ -161,31 +171,33 @@ class ContractTest(unittest.TestCase):
     def test_portable_command_timeout_kills_descendants_without_pipe_delay(self):
         test_dir = Path(__file__).parent
         with tempfile.TemporaryDirectory() as directory:
-            child_pid_file = Path(directory) / "child.pid"
+            ready_file = Path(directory) / "ready.json"
             parent_code = (
-                "import pathlib, subprocess, sys, time\n"
-                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(1)'])\n"
-                "pathlib.Path(sys.argv[1]).write_text(str(child.pid), encoding='utf-8')\n"
+                "import json, os, pathlib, subprocess, sys, time\n"
+                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(4)'])\n"
+                "ready = {'parent_pid': os.getpid(), 'child_pid': child.pid}\n"
+                "pathlib.Path(sys.argv[1]).write_text(json.dumps(ready), encoding='utf-8')\n"
                 "time.sleep(30)\n"
             )
-            started = time.monotonic()
-            result = subprocess.run(
+            wrapper = subprocess.Popen(
                 [
                     sys.executable,
                     test_dir / "bounded_command.py",
-                    "0.05",
+                    "2",
                     sys.executable,
                     "-c",
                     parent_code,
-                    child_pid_file,
+                    ready_file,
                 ],
-                check=False,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=3,
             )
+            ready = self.wait_for_json(ready_file)
+            started = time.monotonic()
+            _stdout, stderr = wrapper.communicate(timeout=3)
             elapsed = time.monotonic() - started
-            child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+            child_pid = ready["child_pid"]
             for _ in range(100):
                 try:
                     os.kill(child_pid, 0)
@@ -195,9 +207,100 @@ class ContractTest(unittest.TestCase):
             else:
                 self.fail(f"timed-out command left descendant {child_pid} running")
 
-        self.assertEqual(124, result.returncode)
-        self.assertLess(elapsed, 0.75)
-        self.assertIn("command timed out after 0.05 seconds", result.stderr)
+        self.assertEqual(124, wrapper.returncode)
+        self.assertLess(elapsed, 2.25)
+        self.assertIn("command timed out after 2.0 seconds", stderr)
+
+    def test_portable_command_forwards_signals_to_descendants(self):
+        test_dir = Path(__file__).parent
+        fixture = (
+            "import json, os, pathlib, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+            "ready = {'parent_pid': os.getpid(), 'child_pid': child.pid}\n"
+            "pathlib.Path(sys.argv[1]).write_text(json.dumps(ready), encoding='utf-8')\n"
+            "time.sleep(30)\n"
+        )
+        for received_signal in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=received_signal), tempfile.TemporaryDirectory() as directory:
+                ready_file = Path(directory) / "ready.json"
+                wrapper = subprocess.Popen(
+                    [
+                        sys.executable,
+                        test_dir / "bounded_command.py",
+                        "30",
+                        sys.executable,
+                        "-c",
+                        fixture,
+                        ready_file,
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    start_new_session=True,
+                )
+                ready = self.wait_for_json(ready_file)
+                completed = True
+                try:
+                    wrapper.send_signal(received_signal)
+                    wrapper.communicate(timeout=1)
+                except subprocess.TimeoutExpired:
+                    completed = False
+                finally:
+                    try:
+                        os.killpg(ready["parent_pid"], signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    if wrapper.poll() is None:
+                        wrapper.kill()
+                    wrapper.communicate()
+
+                self.assertTrue(completed, f"wrapper did not close pipes after {received_signal}")
+                self.assertEqual(-received_signal, wrapper.returncode)
+                for process_name, process_id in ready.items():
+                    with self.subTest(process=process_name):
+                        with self.assertRaises(ProcessLookupError):
+                            os.kill(process_id, 0)
+
+    def test_portable_command_immediate_signal_does_not_leave_a_started_command(self):
+        test_dir = Path(__file__).parent
+        fixture = (
+            "import pathlib, sys, time\n"
+            "pathlib.Path(sys.argv[1]).write_text('started', encoding='utf-8')\n"
+            "time.sleep(0.3)\n"
+            "pathlib.Path(sys.argv[2]).write_text('survived', encoding='utf-8')\n"
+            "time.sleep(30)\n"
+        )
+        for received_signal in (signal.SIGINT, signal.SIGTERM):
+            started_attempts = 0
+            for delay in (0, 0.02, 0.05, 0.1, 0.2):
+                with self.subTest(signal=received_signal, delay=delay), tempfile.TemporaryDirectory() as directory:
+                    started_file = Path(directory) / "started"
+                    survived_file = Path(directory) / "survived"
+                    wrapper = subprocess.Popen(
+                        [
+                            sys.executable,
+                            test_dir / "bounded_command.py",
+                            "30",
+                            sys.executable,
+                            "-c",
+                            fixture,
+                            started_file,
+                            survived_file,
+                        ],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        start_new_session=True,
+                    )
+                    time.sleep(delay)
+                    wrapper.send_signal(received_signal)
+                    wrapper.communicate(timeout=1)
+                    time.sleep(0.35)
+                    started_attempts += int(started_file.exists())
+
+                    self.assertEqual(-received_signal, wrapper.returncode)
+                    self.assertFalse(survived_file.exists(), "command survived an immediate wrapper signal")
+            self.assertGreater(started_attempts, 0, f"no command started during {received_signal} stress")
 
     def test_cleanup_timeout_is_bounded_and_diagnostic(self):
         test_dir = Path(__file__).parent
