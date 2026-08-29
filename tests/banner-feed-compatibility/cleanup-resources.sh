@@ -42,9 +42,23 @@ for _attempt in {1..20}; do
     sleep 0.1
 done
 
+for _attempt in {1..20}; do
+    images="$(docker_command image ls --quiet --filter "label=$label")"
+    while IFS= read -r image; do
+        if [[ -n "$image" ]]; then
+            remove_status=0
+            docker_command image rm --force "$image" >/dev/null || remove_status=$?
+            [[ $remove_status -ne 124 ]] || exit "$remove_status"
+        fi
+    done <<< "$images"
+    [[ -z "$(docker_command image ls --quiet --filter "label=$label")" ]] && break
+    sleep 0.1
+done
+
 remaining="$(docker_command container ls --all --quiet --filter "label=$label")"
 networks="$(docker_command network ls --quiet --filter "name=^${network}$")"
-if [[ -n "$remaining" || -n "$networks" ]]; then
-    echo "cleanup left Ticket 18 resources for $run_id: containers=$remaining networks=$networks" >&2
+images="$(docker_command image ls --quiet --filter "label=$label")"
+if [[ -n "$remaining" || -n "$networks" || -n "$images" ]]; then
+    echo "cleanup left Ticket 18 resources for $run_id: containers=$remaining networks=$networks images=$images" >&2
     exit 1
 fi

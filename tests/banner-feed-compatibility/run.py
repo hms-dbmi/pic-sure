@@ -11,6 +11,7 @@ import sys
 import tarfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -23,6 +24,11 @@ OLD_FRONTEND_COMMIT = "e49ae2d07cfb76cdbe9186161c3d726ae76ba416"
 FINAL_FRONTEND_COMMIT = "7b69aa960ff98f97c1a2d026b7137b0e3dcdf603"
 AIO_COMMIT = "05b1a77512dc0921570f0d442853fdcee75b8131"
 BDC_COMMIT = "5d2ba9f59f161ace5e807c82a0580518a9d44d16"
+TICKET17_BACKEND_COMMITS = [
+    "97d772913aa147207f9ddcf16f8c2cfdf5ede646",
+    "e9e457cd285e185bdfb78d54b166fe5ded161335",
+    "4fbeb285cd584ff993ce93d3830e85aad1a14490",
+]
 
 BACKEND_TREES = {
     "old": "d6195f4acced760904d1e0d025dc86c4983fa64f",
@@ -147,41 +153,58 @@ class Harness:
         self.operations_url = None
         self.gateway_url = None
         self.frontend_url = None
+        self.current_backend_generation = None
+        self.current_frontend_generation = None
+        self.rollback_state = None
+        self.management_writes_frozen = False
+        self.active_process_group = None
+        self.log_capture_counts = {}
+        self.current_phase = "initialization"
 
     def run(self):
-        self.require_tools_and_runtime()
-        self.prepare_sources()
-        self.verify_static_inputs()
-        self.prepare_exports()
-        self.build_backend_binaries()
-        self.build_frontend_images()
-        self.build_browser_probe()
-        self.create_network()
-        selected = contract.REQUIRED_CELLS if self.selection == "all" else [self.selection]
         observed_path = self.temp_root / "observed-matrix.tsv"
-        for cell in selected:
-            print(f"== feed matrix phase: {cell} ==", flush=True)
-            try:
+        try:
+            for phase, action in (
+                ("runtime-validation", self.require_tools_and_runtime),
+                ("source-preparation", self.prepare_sources),
+                ("static-input-validation", self.verify_static_inputs),
+                ("source-export", self.prepare_exports),
+                ("backend-build", self.build_backend_binaries),
+                ("frontend-build", self.build_frontend_images),
+                ("browser-image-build", self.build_browser_probe),
+                ("network-creation", self.create_network),
+            ):
+                self.current_phase = phase
+                action()
+
+            selected = contract.REQUIRED_CELLS if self.selection == "all" else [self.selection]
+            for cell in selected:
+                self.current_phase = cell
+                print(f"== feed matrix phase: {cell} ==", flush=True)
                 observation = getattr(self, "cell_" + cell.replace("-", "_"))()
                 self.observations.append(observation)
                 contract.write_observed_matrix(observed_path, self.observations)
                 self.require_observation_matches(observation)
-            except Exception as error:
                 cleanup_errors = self.cleanup_cell_resources()
-                self.write_failure_diagnostics(observed_path, cell, error, cleanup_errors)
-                raise
-            cleanup_errors = self.cleanup_cell_resources()
-            if cleanup_errors:
-                error = contract.ContractError("cell cleanup failed: " + "; ".join(cleanup_errors))
-                self.write_failure_diagnostics(observed_path, cell, error, cleanup_errors)
-                raise error
+                if cleanup_errors:
+                    raise contract.ContractError("cell cleanup failed: " + "; ".join(cleanup_errors))
 
-        if self.selection == "all":
-            print("== Ticket 17 composition phase ==", flush=True)
-            self.run_ticket17_composition()
-        self.write_provenance()
-        print(f"Observed matrix: {observed_path}")
-        print(f"PASS: {', '.join(selected)}", flush=True)
+            self.write_provenance()
+            if self.selection == "all":
+                self.current_phase = "ticket17-composition"
+                print("== Ticket 17 composition phase ==", flush=True)
+                self.run_ticket17_composition()
+            self.current_phase = "complete"
+            print(f"Observed matrix: {observed_path}")
+            print(f"PASS: {', '.join(selected)}", flush=True)
+        except BaseException as error:
+            cleanup_errors = self.cleanup_cell_resources()
+            try:
+                self.write_provenance()
+            except Exception as provenance_error:
+                cleanup_errors.append(f"write_provenance: {provenance_error}")
+            self.write_failure_diagnostics(observed_path, self.current_phase, error, cleanup_errors)
+            raise
 
     def require_tools_and_runtime(self):
         missing = [tool for tool in ("docker", "git") if shutil.which(tool) is None]
@@ -200,7 +223,7 @@ class Harness:
         self.operations_source = self.prepare_multi_commit_source(
             os.environ.get("OPERATIONS_COMPAT_SOURCE_ROOT"),
             OPERATIONS_URL,
-            list(BACKEND_COMMITS.values()),
+            list(BACKEND_COMMITS.values()) + TICKET17_BACKEND_COMMITS,
             self.temp_root / "sources" / "pic-sure",
             "backend source",
         )
@@ -269,6 +292,16 @@ class Harness:
             )
         if not (self.repository_root / ".github" / "banner-rollout-contract.json").is_file():
             raise contract.ContractError("missing shared banner rollout contract")
+        contract_before_ticket18 = self.command(
+            ["git", "-C", self.operations_source, "show", f"{FINAL_BACKEND_COMMIT}:.github/banner-rollout-contract.json"],
+            capture=True,
+        ).stdout.encode("utf-8")
+        actual_contract_checksum = hashlib.sha256(contract_before_ticket18).hexdigest()
+        if actual_contract_checksum != ROLLOUT_CONTRACT_BEFORE_TICKET18_SHA256:
+            raise contract.ContractError(
+                "pre-Ticket-18 rollout contract checksum mismatch at pinned parent: "
+                f"expected {ROLLOUT_CONTRACT_BEFORE_TICKET18_SHA256}, got {actual_contract_checksum}"
+            )
         contract.require_repository_head(self.aio_source, "Ticket 15 AIO proof", AIO_COMMIT)
         contract.require_repository_head(self.bdc_source, "Ticket 16 BDC/AIM proof", BDC_COMMIT)
 
@@ -459,6 +492,12 @@ class Harness:
             raise contract.ContractError(f"forward banner schema drift: {tables}")
 
     def start_backend(self, generation):
+        if generation == "old" and self.rollback_state is not None:
+            if not self.management_writes_frozen:
+                raise contract.ContractError("backend rollback is forbidden until management writes are frozen")
+            if self.rollback_state != "FRONTEND_ROLLED_BACK":
+                raise contract.ContractError("backend rollback is forbidden until the frontend rollback has completed")
+            self.require_backend_rollback_allowed()
         self.stop_backend()
         operations_name = f"banner-feed-compat-{self.run_id}-operations-{generation}"
         self.command(
@@ -504,8 +543,16 @@ class Harness:
             gateway_name,
             f"{generation} Gateway",
         )
+        self.current_backend_generation = generation
+        if generation == "old" and self.rollback_state is not None:
+            self.rollback_state = "BELOW_TARGETING_BACKEND"
 
     def start_frontend(self, generation):
+        if generation == "old" and self.rollback_state is not None:
+            if not self.management_writes_frozen:
+                raise contract.ContractError("frontend rollback is forbidden until management writes are frozen")
+            if self.rollback_state not in {"WRITES_FROZEN", "BELOW_TARGETING_BACKEND"}:
+                raise contract.ContractError(f"frontend rollback is invalid from state {self.rollback_state}")
         self.stop_frontend()
         name = f"banner-feed-compat-{self.run_id}-frontend-{generation}"
         vhost = self.temp_root / "generated" / "httpd-vhosts.conf"
@@ -526,6 +573,9 @@ class Harness:
             name,
             f"{generation} production frontend /login",
         )
+        self.current_frontend_generation = generation
+        if generation == "old" and self.rollback_state == "WRITES_FROZEN":
+            self.rollback_state = "FRONTEND_ROLLED_BACK"
 
     def container_base_url(self, container, suffix="", port="8080/tcp"):
         mapping = self.command(["docker", "port", container, port], capture=True).stdout.strip()
@@ -565,7 +615,7 @@ class Harness:
             if name == "scheduled":
                 payload["startAt"] = "2098-01-01T00:00:00Z"
                 payload["endAt"] = "2098-01-02T00:00:00Z"
-            created[name] = self.json_request(
+            created[name] = self.management_write(
                 "POST", self.operations_url + "/banners", payload, expected=201, headers=ADMIN_HEADERS
             )
         self.canonicalize_fixture(created)
@@ -626,7 +676,7 @@ class Harness:
                 "SET FOREIGN_KEY_CHECKS=1",
             ]
         )
-        self.mysql_execute(";\n".join(statements) + ";")
+        self.mysql_query(";\n".join(statements) + ";")
 
     def prepare_cell(self, backend_generation):
         self.start_mysql()
@@ -711,10 +761,24 @@ class Harness:
             expected_feed_names=["all", "login", "not-login"],
         )
 
+        self.begin_supported_rollback()
+        self.freeze_management_writes()
         events = ["FREEZE_BANNER_MANAGEMENT_WRITES"]
+        ordinary_write_rejected = False
+        try:
+            self.management_write("POST", self.operations_url + "/banners", self.payload("<p>blocked</p>", "blocked", [{"kind": "ALL"}]))
+        except contract.ContractError as error:
+            if "management writes are frozen" not in str(error):
+                raise
+            ordinary_write_rejected = True
+        if not ordinary_write_rejected:
+            raise contract.ContractError("ordinary management write was not rejected after the freeze")
+
+        self.start_frontend("old")
+        events.append("ROLL_BACK_FRONTEND")
         rejected_gate = False
         try:
-            self.require_backend_rollback_allowed()
+            self.start_backend("old")
         except contract.ContractError as error:
             if "targeted banners remain Active or Scheduled" not in str(error):
                 raise
@@ -722,8 +786,6 @@ class Harness:
         if not rejected_gate:
             raise contract.ContractError("backend rollback gate did not reject active targeted banners")
 
-        self.start_frontend("old")
-        events.append("ROLL_BACK_FRONTEND")
         frontend_rollback = self.run_browser(
             cell + "-frontend-first",
             "/login",
@@ -743,11 +805,7 @@ class Harness:
                 f"rollback disable set drift: {[item['uuid'] for item in to_disable]}"
             )
         for item in to_disable:
-            disabled = self.json_request(
-                "POST", self.operations_url + f"/banners/{item['uuid']}/disable",
-                expected=200,
-                headers=ADMIN_HEADERS,
-            )
+            disabled = self.rollback_disable_targeted_banner(item)
             if disabled["status"] != "DISABLED":
                 raise contract.ContractError(f"rollback disable did not return DISABLED for {item['uuid']}")
         events.append("DISABLE_ACTIVE_AND_SCHEDULED_TARGETED_BANNERS_BEFORE_LEGACY_ACTIVE_FEED_BACKEND")
@@ -788,9 +846,11 @@ class Harness:
             "frontendRollback": frontend_rollback,
             "final": final_browser,
             "backendGateRejectedBeforeDisable": rejected_gate,
+            "ordinaryManagementWriteRejectedDuringFreeze": ordinary_write_rejected,
             "events": events,
             "databaseState": database_state,
-            "managementWritesFrozenBelowTargetingBackend": True,
+            "managementWritesFrozenBelowTargetingBackend": self.management_writes_frozen,
+            "rollbackState": self.rollback_state,
             "allPagesOutageChoice": "RETAIN_ALL_PAGES",
         }
         (cell_dir / "rollback-order.json").write_text(
@@ -798,6 +858,38 @@ class Harness:
             encoding="utf-8",
         )
         return self.observation(cell, rollback)
+
+    def begin_supported_rollback(self):
+        if self.current_backend_generation != "final" or self.current_frontend_generation != "final":
+            raise contract.ContractError("supported rollback must begin on the final backend and frontend")
+        if self.rollback_state is not None:
+            raise contract.ContractError("supported rollback state is already active")
+        self.rollback_state = "FINAL_RUNNING"
+
+    def freeze_management_writes(self):
+        if self.rollback_state != "FINAL_RUNNING":
+            raise contract.ContractError(f"management-write freeze is invalid from state {self.rollback_state}")
+        self.management_writes_frozen = True
+        self.rollback_state = "WRITES_FROZEN"
+
+    def management_write(self, method, url, payload=None, expected=200, headers=None):
+        if self.management_writes_frozen:
+            raise contract.ContractError("ordinary banner management writes are frozen during rollback")
+        return self.json_request(method, url, payload, expected=expected, headers=headers)
+
+    def rollback_disable_targeted_banner(self, item):
+        if not self.management_writes_frozen or self.rollback_state != "FRONTEND_ROLLED_BACK":
+            raise contract.ContractError("rollback disable requires the retained write freeze and frontend rollback")
+        if self.current_backend_generation != "final":
+            raise contract.ContractError("rollback disable requires the targeting-capable backend")
+        if item["pageTargets"] == [{"kind": "ALL"}] or item["lifecycle"] not in {"ACTIVE", "SCHEDULED"}:
+            raise contract.ContractError(f"rollback disable rejected ineligible banner {item['uuid']}")
+        return self.json_request(
+            "POST",
+            self.operations_url + f"/banners/{item['uuid']}/disable",
+            expected=200,
+            headers=ADMIN_HEADERS,
+        )
 
     def require_backend_rollback_allowed(self):
         management = self.json_request("GET", self.operations_url + "/banners", headers=ADMIN_HEADERS)
@@ -832,6 +924,8 @@ class Harness:
             "expectedStatus": expected_status,
             "markerUniverse": [FIXTURES[name]["title"] for name in FIXTURES],
         }
+        if expected_status >= 400:
+            config["failureSynchronizationPath"] = "/api/v1/log"
         config_path = cell_dir / "browser-config.json"
         result_path = cell_dir / "browser-result.json"
         config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -848,6 +942,8 @@ class Harness:
         if not result_path.is_file():
             raise contract.ContractError(f"browser probe did not write {result_path}")
         result = json.loads(result_path.read_text(encoding="utf-8"))
+        if not result.get("pageUrl"):
+            raise contract.ContractError(f"browser probe did not record Chromium's final URL for {label}: {result}")
         requests = result.get("requestedFeedUrls", [])
         if expected_feed_path not in requests or forbidden_feed in requests:
             raise contract.ContractError(
@@ -858,6 +954,8 @@ class Harness:
             raise contract.ContractError(
                 f"browser feed status drift for {label}: expected HTTP {expected_status}, got={responses}"
             )
+        if result.get("observedFeedPath") != expected_feed_path or result.get("observedFeedStatus") != expected_status:
+            raise contract.ContractError(f"browser selected feed evidence drift for {label}: {result}")
         expected_markers = [FIXTURES[name]["title"] for name in expected_rendered_names]
         if result.get("renderedMarkers") != expected_markers or result.get("regionPresent") is not expect_region:
             raise contract.ContractError(
@@ -892,11 +990,71 @@ class Harness:
         ).splitlines()
         return [row.split("\t") for row in rows]
 
+    def runtime_git_identity(self, repository, generation, commits):
+        requested_commit = commits[generation]
+        commit = self.command(
+            ["git", "-C", repository, "rev-parse", f"{requested_commit}^{{commit}}"], capture=True
+        ).stdout.strip()
+        tree = self.command(
+            ["git", "-C", repository, "rev-parse", f"{commit}^{{tree}}"], capture=True
+        ).stdout.strip()
+        return commit, tree
+
+    def runtime_outcome(self, cell, browser, detail):
+        all_marker = FIXTURES["all"]["title"]
+        login_marker = FIXTURES["login"]["title"]
+        not_login_marker = FIXTURES["not-login"]["title"]
+        if cell == "final-backend-old-frontend" and browser["observedFeedStatus"] == 200:
+            if browser["renderedMarkers"] == [all_marker]:
+                return "PASS", "supported legacy All-pages compatibility"
+        elif cell == "final-backend-final-frontend" and browser["observedFeedStatus"] == 200:
+            if browser["renderedMarkers"] == [all_marker, login_marker]:
+                return "PASS", "supported targeted feed"
+        elif cell == "old-backend-final-frontend" and browser["observedFeedStatus"] >= 400:
+            if browser["renderedMarkers"] == [] and browser["regionPresent"] is False:
+                return "REJECTED_EXPECTED", "fail closed without legacy fallback"
+        elif cell == "old-backend-old-frontend-unsafe" and browser["observedFeedStatus"] == 200:
+            if browser["renderedMarkers"] == [all_marker, login_marker, not_login_marker]:
+                return "UNSAFE_EXPECTED", "targeted row widens site-wide below targeting boundary"
+        elif cell == "supported-rollback-sequence":
+            if (
+                detail["backendGateRejectedBeforeDisable"] is True
+                and detail["ordinaryManagementWriteRejectedDuringFreeze"] is True
+                and detail["managementWritesFrozenBelowTargetingBackend"] is True
+                and detail["rollbackState"] == "BELOW_TARGETING_BACKEND"
+                and browser["renderedMarkers"] == [all_marker]
+            ):
+                return (
+                    "PASS",
+                    "freeze then frontend rollback then targeted disable then backend rollback with freeze retained",
+                )
+        raise contract.ContractError(f"runtime evidence cannot classify matrix outcome for {cell}: {detail}")
+
     def observation(self, cell, detail):
-        expected = self.expected_by_cell[cell]
-        row = dict(expected)
-        row["observed_sha256"] = contract.semantic_sha256(detail)
-        return row
+        browser = detail["final"] if cell == "supported-rollback-sequence" else detail
+        if not self.current_backend_generation or not self.current_frontend_generation:
+            raise contract.ContractError(f"cannot observe {cell} without running backend and frontend generations")
+        backend_commit, backend_tree = self.runtime_git_identity(
+            self.operations_source, self.current_backend_generation, BACKEND_COMMITS
+        )
+        frontend_commit, frontend_tree = self.runtime_git_identity(
+            self.frontend_source, self.current_frontend_generation, FRONTEND_COMMITS
+        )
+        browser_path = urllib.parse.urlsplit(browser["pageUrl"]).path
+        result, boundary = self.runtime_outcome(cell, browser, detail)
+        return {
+            "cell": cell,
+            "backend_commit": backend_commit,
+            "backend_tree": backend_tree,
+            "frontend_commit": frontend_commit,
+            "frontend_tree": frontend_tree,
+            "browser_path": browser_path,
+            "feed_path": browser["observedFeedPath"],
+            "http_status": str(browser["observedFeedStatus"]),
+            "result": result,
+            "boundary": boundary,
+            "observed_sha256": contract.semantic_sha256(detail),
+        }
 
     def require_observation_matches(self, observation):
         expected = self.expected_by_cell[observation["cell"]]
@@ -923,11 +1081,17 @@ class Harness:
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
         )
+        ticket17_temp = self.temp_root / "ticket17-temp"
+        ticket17_temp.mkdir(parents=True, exist_ok=True)
+        environment["TMPDIR"] = str(ticket17_temp)
+        if os.environ.get("KEEP_BANNER_FEED_TEMP") == "true":
+            environment["KEEP_COMPAT_TEMP"] = "true"
+        if os.environ.get("KEEP_BANNER_FEED_TEMP_ON_FAILURE") == "true":
+            environment["KEEP_COMPAT_TEMP_ON_FAILURE"] = "true"
         if "BANNER_FEED_M2_ROOT" in os.environ:
             environment["COMPAT_M2_ROOT"] = os.environ["BANNER_FEED_M2_ROOT"]
-        result = self.command(
+        result = self.process_group_command(
             [self.ticket17_dir / "test.sh", "all"],
-            check=False,
             capture=True,
             merge_stderr=True,
             timeout=7200,
@@ -937,7 +1101,7 @@ class Harness:
         ticket17_result = {
             "command": "tests/operations-binary-compatibility/test.sh all",
             "matrixSha256": matrix_checksum,
-            "sourceHead": FINAL_BACKEND_COMMIT,
+            "proofOwnerHead": FINAL_BACKEND_COMMIT,
             "status": result.returncode,
             "passed": result.returncode == 0,
         }
@@ -994,6 +1158,8 @@ class Harness:
     def cleanup_cell_resources(self):
         errors = []
         for label, cleanup in (
+            ("terminate_active_process_group", self.terminate_active_process_group),
+            ("cleanup_ticket17_resources", self.cleanup_ticket17_resources),
             ("stop_frontend", self.stop_frontend),
             ("stop_backend", self.stop_backend),
             ("stop_mysql", self.stop_mysql),
@@ -1002,13 +1168,25 @@ class Harness:
                 cleanup()
             except Exception as error:
                 errors.append(f"{label}: {error}")
+        self.rollback_state = None
+        self.management_writes_frozen = False
         return errors
 
-    def write_failure_diagnostics(self, observed_path, failed_cell, error, cleanup_errors):
+    def cleanup_ticket17_resources(self):
+        ticket17_temp = self.temp_root / "ticket17-temp"
+        if not ticket17_temp.is_dir():
+            return
+        for directory in ticket17_temp.glob("operations-binary-*"):
+            run_id = directory.name.removeprefix("operations-binary-")
+            if run_id.isalnum():
+                self.command([self.ticket17_dir / "cleanup-resources.sh", run_id])
+
+    def write_failure_diagnostics(self, observed_path, failed_phase, error, cleanup_errors):
         try:
             contract.write_observed_matrix(observed_path, self.observations)
             detail = {
-                "failed_cell": failed_cell,
+                "failed_cell": failed_phase if failed_phase in contract.REQUIRED_CELLS else None,
+                "failed_phase": failed_phase,
                 "completed_cells": [row["cell"] for row in self.observations],
                 "error_type": type(error).__name__,
                 "error": str(error),
@@ -1028,6 +1206,7 @@ class Harness:
             self.command(["docker", "container", "rm", "--force", name], check=False, capture=True)
             self.frontend_container = None
             self.frontend_url = None
+            self.current_frontend_generation = None
 
     def stop_backend(self):
         if self.gateway_container:
@@ -1042,6 +1221,7 @@ class Harness:
             self.command(["docker", "container", "rm", "--force", name], check=False, capture=True)
             self.operations_container = None
             self.operations_url = None
+        self.current_backend_generation = None
 
     def stop_mysql(self):
         if self.mysql_container:
@@ -1059,6 +1239,10 @@ class Harness:
         )
         log_path = self.temp_root / "logs" / f"{container}.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        capture_count = self.log_capture_counts.get(container, 0) + 1
+        self.log_capture_counts[container] = capture_count
+        if capture_count > 1:
+            log_path = log_path.with_name(f"{log_path.stem}.{capture_count}{log_path.suffix}")
         log_path.write_text(result.stdout, encoding="utf-8")
 
     def mysql_query(self, sql):
@@ -1072,9 +1256,6 @@ class Harness:
             capture=True,
         )
         return result.stdout.rstrip("\n")
-
-    def mysql_execute(self, sql):
-        self.mysql_query(sql)
 
     @staticmethod
     def http(method, url, payload=None, headers=None):
@@ -1130,6 +1311,59 @@ class Harness:
                 f"command failed ({result.returncode}): {' '.join(command)}\n{detail}"
             )
         return result
+
+    def terminate_active_process_group(self):
+        process = self.active_process_group
+        if process is None or process.poll() is not None:
+            self.active_process_group = None
+            return
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+        self.active_process_group = None
+
+    def process_group_command(
+        self,
+        args,
+        capture=False,
+        merge_stderr=False,
+        timeout=DEFAULT_COMMAND_TIMEOUT_SECONDS,
+        env=None,
+    ):
+        command = [str(value) for value in args]
+        stderr = subprocess.STDOUT if merge_stderr else (subprocess.PIPE if capture else None)
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=stderr,
+            text=True,
+            env=env,
+            start_new_session=True,
+        )
+        self.active_process_group = process
+        try:
+            stdout, stderr_text = process.communicate(timeout=timeout)
+            return subprocess.CompletedProcess(command, process.returncode, stdout, stderr_text)
+        except subprocess.TimeoutExpired as error:
+            partial_stdout = error.stdout or ""
+            partial_stderr = error.stderr or ""
+            self.terminate_active_process_group()
+            return subprocess.CompletedProcess(command, 124, partial_stdout, partial_stderr)
+        except BaseException:
+            self.terminate_active_process_group()
+            raise
+        finally:
+            if self.active_process_group is process:
+                self.active_process_group = None
 
 
 def main():

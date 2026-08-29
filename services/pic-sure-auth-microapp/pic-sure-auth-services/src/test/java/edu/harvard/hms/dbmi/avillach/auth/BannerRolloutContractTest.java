@@ -23,7 +23,7 @@ class BannerRolloutContractTest {
     void definesTheSharedForwardAndRollbackOrder() throws IOException {
         JsonNode contract = new ObjectMapper().readTree(contractPath().toFile());
 
-        assertThat(contract.path("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(contract.path("schemaVersion").asInt()).isEqualTo(3);
         assertThat(contract.path("deploymentWideCacheRefresh").asText()).isEqualTo("PSAMA_PROCESS_RESTART");
         assertThat(textValues(contract.path("forwardPhases"))).containsExactly(
             "APPLY_AUTHORIZATION_AND_PIC_SURE_MIGRATIONS", "RECREATE_PSAMA", "VERIFY_OPERATIONS_AND_GATEWAY_HEALTH",
@@ -36,6 +36,13 @@ class BannerRolloutContractTest {
             );
         assertThat(contract.path("targetedFeedRollbackBoundary").asText()).isEqualTo(TARGETED_FEED_BOUNDARY);
         assertThat(contract.path("managementWriteFreezeBoundary").asText()).isEqualTo(RETAINED_FREEZE_BOUNDARY);
+        JsonNode rollbackState = contract.path("rollbackStateContract");
+        assertThat(rollbackState.path("freezeRequiredBeforeFrontendRollback").asBoolean()).isTrue();
+        assertThat(rollbackState.path("ordinaryManagementWritesAllowedWhileFrozen").asBoolean()).isFalse();
+        assertThat(rollbackState.path("targetedDisableAllowedWhileFrozen").asBoolean()).isTrue();
+        assertThat(rollbackState.path("legacyBackendTransitionRequiresTargetedClear").asBoolean()).isTrue();
+        assertThat(rollbackState.path("freezeRetainedBelowTargetingBackend").asBoolean()).isTrue();
+        assertThat(rollbackState.path("frontendFirstRollbackAloneSafe").asBoolean()).isFalse();
         assertThat(contract.path("schemaRollback").asText()).isEqualTo("KEEP_FORWARD_SCHEMA");
         assertThat(contract.path("downMigrationAllowed").asBoolean()).isFalse();
     }

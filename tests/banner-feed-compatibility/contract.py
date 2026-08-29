@@ -2,6 +2,7 @@
 
 import csv
 import hashlib
+import json
 import subprocess
 from pathlib import Path
 
@@ -45,8 +46,6 @@ def sha256_file(path):
 
 
 def semantic_sha256(value):
-    import json
-
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 

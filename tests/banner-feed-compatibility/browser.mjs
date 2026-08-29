@@ -50,9 +50,9 @@ page.on('response', (response) => {
 
 let failure;
 try {
-  const failedFeedLogged =
-    config.expectedStatus >= 400
-      ? page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/log', {
+  const failureSynchronization =
+    config.failureSynchronizationPath
+      ? page.waitForResponse((response) => new URL(response.url()).pathname === config.failureSynchronizationPath, {
           timeout: 30000,
         })
       : null;
@@ -65,24 +65,41 @@ try {
     timeout: 30000,
   });
   const response = await awaitedFeed;
-  console.log(`observed ${new URL(response.url()).pathname} HTTP ${response.status()}`);
+  const observedFeedPath = new URL(response.url()).pathname;
+  const observedFeedStatus = response.status();
+  console.log(`observed ${observedFeedPath} HTTP ${observedFeedStatus}`);
   await page.getByTestId('login-title').waitFor({ state: 'visible', timeout: 30000 });
-  if (failedFeedLogged) await failedFeedLogged;
+  const failureSynchronizationResponse = failureSynchronization ? await failureSynchronization : null;
   await page.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );
 
   const region = page.getByTestId('site-banner-region');
   const regionPresent = (await region.count()) === 1 && (await region.isVisible());
-  const regionText = regionPresent ? await region.innerText() : '';
-  const renderedMarkers = config.markerUniverse.filter((marker) => regionText.includes(marker));
+  const bannerTexts = regionPresent
+    ? await region.getByTestId('site-banner').allTextContents()
+    : [];
+  const renderedMarkers = bannerTexts.map((text) => {
+    const matches = config.markerUniverse.filter((marker) => text.includes(marker));
+    if (matches.length !== 1) throw new Error(`banner DOM marker ambiguity: ${JSON.stringify({ text, matches })}`);
+    return matches[0];
+  });
   const feedResponses = await bounded(Promise.all(responseCaptures), 10000, 'feed response capture');
   const result = {
     browserPath: config.browserPath,
+    pageUrl: page.url(),
     requestedFeedUrls,
     feedResponses,
+    observedFeedPath,
+    observedFeedStatus,
     renderedMarkers,
     regionPresent,
+    failureSynchronization: failureSynchronizationResponse
+      ? {
+          path: new URL(failureSynchronizationResponse.url()).pathname,
+          status: failureSynchronizationResponse.status(),
+        }
+      : null,
     retriesDisabled: true,
   };
   fs.writeFileSync(resultPath, `${JSON.stringify(result, null, 2)}\n`);

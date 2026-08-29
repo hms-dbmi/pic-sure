@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "deploymentWideCacheRefresh": "PSAMA_PROCESS_RESTART",
   "forwardPhases": [
     "APPLY_AUTHORIZATION_AND_PIC_SURE_MIGRATIONS",
@@ -17,6 +17,14 @@
   ],
   "targetedFeedRollbackBoundary": "DISABLE_ACTIVE_AND_SCHEDULED_TARGETED_BANNERS_BEFORE_LEGACY_ACTIVE_FEED_BACKEND",
   "managementWriteFreezeBoundary": "KEEP_BANNER_MANAGEMENT_WRITES_FROZEN_BELOW_TARGETING_CAPABLE_BACKEND",
+  "rollbackStateContract": {
+    "freezeRequiredBeforeFrontendRollback": true,
+    "ordinaryManagementWritesAllowedWhileFrozen": false,
+    "targetedDisableAllowedWhileFrozen": true,
+    "legacyBackendTransitionRequiresTargetedClear": true,
+    "freezeRetainedBelowTargetingBackend": true,
+    "frontendFirstRollbackAloneSafe": false
+  },
   "schemaRollback": "KEEP_FORWARD_SCHEMA",
   "downMigrationAllowed": false
 }

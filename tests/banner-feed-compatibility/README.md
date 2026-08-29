@@ -27,7 +27,7 @@ Pass any `cell` value from `matrix.tsv` instead of `all` for a focused run. `all
 
 Set `KEEP_BANNER_FEED_TEMP=true` to retain all synthetic diagnostics. `KEEP_BANNER_FEED_TEMP_ON_FAILURE=true` retains them only after failure. The workflow uses the latter and uploads the observed matrix, provenance, logs, and failed-cell JSON. Every container and network receives a unique proof label and is removed on success, failure, timeout, signal, or partial startup.
 
-Both frontend generations expose the same `test:vitest`, `lint`, `check`, and `build` scripts. Run them with Node 24.19.0. The final generation's wall-time scheduling tests also require `TZ=America/New_York`; without it, a UTC container shifts the expected timer boundary by four hours. No source or script difference is needed.
+The proof entrypoint builds both production frontend images, but it does not run the frontend repositories' own test and static-check scripts. Run `test:vitest`, `lint`, `check`, and `build` manually for each exact frontend generation with Node 24.19.0. The final generation's wall-time scheduling tests also require `TZ=America/New_York`; without it, a UTC container shifts the expected timer boundary by four hours. No source or script difference is needed.
 
 ## Checked boundaries
 
@@ -36,8 +36,8 @@ The matrix establishes these results:
 - Final backend plus old frontend is supported: the browser uses legacy `/active`, which exposes only deliberate All-pages banners.
 - Final backend plus final frontend is supported: the browser uses `/active/v2`, receives typed targets, and renders only All-pages plus the matching `/login` target in priority order.
 - Old backend plus final frontend fails closed: old Gateway returns HTTP 401 for `/active/v2`; the frontend does not fall back to legacy and renders no banner region.
-- Old backend plus old frontend is unsafe while targeted rows remain: legacy `/active` exposes a targeted row and the old frontend renders it site-wide on `/not-login`.
-- The supported rollback sequence freezes banner-management writes, rolls back the frontend, disables every Active or Scheduled targeted occurrence, verifies the boundary, rolls back Operations and Gateway, and keeps management writes frozen below the targeting-capable backend. The deliberate All-pages banner remains available. A premature backend boundary crossing is rejected by the proof.
+- Old backend plus old frontend is unsafe while targeted rows remain. The requested `/not-login` navigation redirects to the actual `/login` page in this pinned configuration, where the old frontend still renders the banner targeted only to `/not-login`. The observed matrix records `/login`, not the requested path.
+- The supported rollback sequence enters an enforced write-freeze state, rejects ordinary management writes, rolls back the frontend, and permits only the targeted-banner disables needed for rollback. The backend transition itself rejects the boundary crossing until every Active or Scheduled targeted occurrence is disabled. The freeze remains active below the targeting-capable backend. The deliberate All-pages banner remains available; frontend-first rollback alone is not safe.
 
 Ticket 18 proves ordering, not the deployment-specific traffic-control mechanism. Tickets 20 and 21 own that mechanism.
 

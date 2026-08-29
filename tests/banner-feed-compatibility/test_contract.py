@@ -3,16 +3,42 @@
 import csv
 import hashlib
 import json
+import os
 import re
+import signal
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
 PROOF = ROOT / "tests" / "banner-feed-compatibility"
+sys.path.insert(0, str(PROOF))
+
+import contract  # noqa: E402
+import run as compatibility_run  # noqa: E402
 
 
 class BannerFeedCompatibilityContractTest(unittest.TestCase):
+
+    @staticmethod
+    def git_repository():
+        directory = tempfile.TemporaryDirectory()
+        repository = Path(directory.name)
+        subprocess.run(["git", "init", "--quiet", repository], check=True)
+        subprocess.run(["git", "-C", repository, "config", "user.name", "Compatibility Test"], check=True)
+        subprocess.run(
+            ["git", "-C", repository, "config", "user.email", "compatibility@example.invalid"], check=True
+        )
+        tracked = repository / "tracked.txt"
+        tracked.write_text("fixture\n", encoding="utf-8")
+        subprocess.run(["git", "-C", repository, "add", "tracked.txt"], check=True)
+        subprocess.run(["git", "-C", repository, "commit", "--quiet", "-m", "fixture"], check=True)
+        return directory, repository
 
     def source(self, name):
         path = PROOF / name
@@ -38,6 +64,12 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
         }
         for value in expected:
             self.assertIn(value, source)
+        for ticket17_commit in (
+            "97d772913aa147207f9ddcf16f8c2cfdf5ede646",
+            "e9e457cd285e185bdfb78d54b166fe5ded161335",
+            "4fbeb285cd584ff993ce93d3830e85aad1a14490",
+        ):
+            self.assertIn(ticket17_commit, compatibility_run.TICKET17_BACKEND_COMMITS)
 
     def test_matrix_has_the_complete_five_cell_contract(self):
         matrix = PROOF / "matrix.tsv"
@@ -59,6 +91,210 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
             [row["result"] for row in rows],
         )
         self.assertTrue(all(row["observed_sha256"] for row in rows))
+
+    def test_matrix_loader_rejects_a_missing_runtime_field(self):
+        with tempfile.TemporaryDirectory() as directory:
+            matrix = Path(directory) / "matrix.tsv"
+            matrix.write_text((PROOF / "matrix.tsv").read_text(encoding="utf-8"), encoding="utf-8")
+            rows = matrix.read_text(encoding="utf-8").splitlines()
+            fields = rows[1].split("\t")
+            fields[5] = ""
+            rows[1] = "\t".join(fields)
+            matrix.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(contract.ContractError, "empty browser_path"):
+                contract.load_matrix(matrix)
+
+    def test_git_source_validation_rejects_tree_drift_and_dirty_inputs(self):
+        directory, repository = self.git_repository()
+        try:
+            commit = subprocess.run(
+                ["git", "-C", repository, "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+            ).stdout.strip()
+            with self.assertRaisesRegex(contract.ContractError, "tree mismatch"):
+                contract.require_git_tree(repository, "fixture", commit, "0" * 40)
+            (repository / "tracked.txt").write_text("dirty\n", encoding="utf-8")
+            with self.assertRaisesRegex(contract.ContractError, "modified or untracked"):
+                contract.require_clean_repository(repository, "fixture")
+        finally:
+            directory.cleanup()
+
+    def test_observation_is_derived_from_runtime_state_and_browser_evidence(self):
+        harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+        harness.current_backend_generation = "old"
+        harness.current_frontend_generation = "old"
+        harness.operations_source = Path("/runtime/backend")
+        harness.frontend_source = Path("/runtime/frontend")
+        harness.runtime_git_identity = mock.Mock(
+            side_effect=[
+                (compatibility_run.OLD_BACKEND_COMMIT, compatibility_run.BACKEND_TREES["old"]),
+                (compatibility_run.OLD_FRONTEND_COMMIT, compatibility_run.FRONTEND_TREES["old"]),
+            ]
+        )
+        browser = {
+            "pageUrl": "http://frontend/login?redirected=true",
+            "observedFeedPath": "/picsure/operations/banners/active",
+            "observedFeedStatus": 200,
+            "renderedMarkers": [
+                compatibility_run.FIXTURES["all"]["title"],
+                compatibility_run.FIXTURES["login"]["title"],
+                compatibility_run.FIXTURES["not-login"]["title"],
+            ],
+            "regionPresent": True,
+        }
+
+        observed = harness.observation("old-backend-old-frontend-unsafe", browser)
+
+        self.assertEqual("/login", observed["browser_path"])
+        self.assertEqual(compatibility_run.OLD_BACKEND_COMMIT, observed["backend_commit"])
+        self.assertEqual(compatibility_run.FRONTEND_TREES["old"], observed["frontend_tree"])
+        self.assertEqual(200, int(observed["http_status"]))
+
+        browser["renderedMarkers"] = [compatibility_run.FIXTURES["all"]["title"]]
+        with self.assertRaisesRegex(contract.ContractError, "cannot classify"):
+            harness.runtime_outcome("old-backend-old-frontend-unsafe", browser, browser)
+
+    def test_observation_match_rejects_runtime_provenance_drift(self):
+        harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+        expected = {key: "expected" for key in contract.MATRIX_HEADER}
+        expected["cell"] = "fixture"
+        harness.expected_by_cell = {"fixture": expected}
+        observed = dict(expected)
+        observed["backend_tree"] = "runtime-tree"
+
+        with self.assertRaisesRegex(contract.ContractError, "backend_tree"):
+            harness.require_observation_matches(observed)
+
+    def test_supported_rollback_state_blocks_writes_and_early_backend_transition(self):
+        harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+        harness.rollback_state = "FRONTEND_ROLLED_BACK"
+        harness.management_writes_frozen = True
+        harness.current_backend_generation = "final"
+        harness.current_frontend_generation = "old"
+        harness.require_backend_rollback_allowed = mock.Mock(
+            side_effect=contract.ContractError("targeted banners remain Active or Scheduled")
+        )
+        harness.stop_backend = mock.Mock()
+
+        with self.assertRaisesRegex(contract.ContractError, "targeted banners remain Active or Scheduled"):
+            harness.start_backend("old")
+        harness.stop_backend.assert_not_called()
+        with self.assertRaisesRegex(contract.ContractError, "management writes are frozen"):
+            harness.management_write("POST", "http://operations/banners", {})
+
+    def test_ticket17_process_group_timeout_kills_descendants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ready = Path(directory) / "ready"
+            child_code = (
+                "import pathlib, subprocess, sys, time\n"
+                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+                "pathlib.Path(sys.argv[1]).write_text(str(child.pid), encoding='utf-8')\n"
+                "time.sleep(30)\n"
+            )
+            started = time.monotonic()
+            harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+            harness.active_process_group = None
+            result = harness.process_group_command(
+                [sys.executable, "-c", child_code, ready], timeout=0.2, capture=True
+            )
+            elapsed = time.monotonic() - started
+            child_pid = int(ready.read_text(encoding="utf-8"))
+            for _ in range(100):
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail(f"timed-out process group left descendant {child_pid} running")
+
+        self.assertEqual(124, result.returncode)
+        self.assertLess(elapsed, 2.0)
+
+    def test_ticket17_process_group_forwards_outer_signal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ready = Path(directory) / "ready"
+            fixture = (
+                "import pathlib, signal, subprocess, sys, time\n"
+                f"sys.path.insert(0, {str(PROOF)!r})\n"
+                "import run\n"
+                "harness = run.Harness.__new__(run.Harness)\n"
+                "harness.active_process_group = None\n"
+                "def stop(_signum, _frame):\n"
+                "    harness.terminate_active_process_group()\n"
+                "    raise KeyboardInterrupt\n"
+                "signal.signal(signal.SIGTERM, stop)\n"
+                "child_code = (\"import pathlib, subprocess, sys, time\\n\"\n"
+                "    \"child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\\n\"\n"
+                "    \"pathlib.Path(sys.argv[1]).write_text(str(child.pid), encoding='utf-8')\\n\"\n"
+                "    \"time.sleep(30)\\n\")\n"
+                "harness.process_group_command([sys.executable, '-c', child_code, sys.argv[1]], timeout=30)\n"
+            )
+            wrapper = subprocess.Popen(
+                [sys.executable, "-c", fixture, ready],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            deadline = time.monotonic() + 2
+            while not ready.is_file() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(ready.is_file(), "process-group signal fixture did not start")
+            child_pid = int(ready.read_text(encoding="utf-8"))
+            wrapper.send_signal(signal.SIGTERM)
+            wrapper.communicate(timeout=2)
+            for _ in range(100):
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail(f"signaled composition left descendant {child_pid} running")
+
+        self.assertNotEqual(0, wrapper.returncode)
+
+    def test_pre_cell_failure_writes_structured_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+            harness.temp_root = Path(directory)
+            harness.selection = "final-backend-old-frontend"
+            harness.current_phase = "initialization"
+            harness.observations = []
+            harness.require_tools_and_runtime = mock.Mock(
+                side_effect=contract.ContractError("synthetic runtime failure")
+            )
+            harness.cleanup_cell_resources = mock.Mock(return_value=["synthetic cleanup detail"])
+            harness.write_provenance = mock.Mock()
+
+            with self.assertRaisesRegex(contract.ContractError, "synthetic runtime failure"):
+                harness.run()
+
+            observed = Path(directory) / "observed-matrix.tsv"
+            failure = json.loads((Path(directory) / "failed-cell.json").read_text(encoding="utf-8"))
+            self.assertTrue(observed.is_file())
+            self.assertEqual("runtime-validation", failure["failed_phase"])
+            self.assertIsNone(failure["failed_cell"])
+            self.assertEqual(["synthetic cleanup detail"], failure["cleanup_errors"])
+
+    def test_repeated_container_log_capture_uses_distinct_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+            harness.temp_root = Path(directory)
+            harness.log_capture_counts = {}
+            harness.command = mock.Mock(
+                side_effect=[
+                    subprocess.CompletedProcess([], 0, "first phase\n", ""),
+                    subprocess.CompletedProcess([], 0, "second phase\n", ""),
+                ]
+            )
+
+            harness.capture_logs("frontend-old")
+            harness.capture_logs("frontend-old")
+
+            logs = Path(directory) / "logs"
+            self.assertEqual("first phase\n", (logs / "frontend-old.log").read_text(encoding="utf-8"))
+            self.assertEqual("second phase\n", (logs / "frontend-old.2.log").read_text(encoding="utf-8"))
 
     def test_real_production_frontend_and_generated_inputs_are_required(self):
         source = self.source("run.py")
@@ -108,6 +344,8 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
         self.assertIn("bounded_command.py", cleanup)
         self.assertNotRegex(cleanup, r"(?m)^\s*docker\s")
         self.assertIn("org.pic-sure.banner-feed-compatibility", cleanup)
+        self.assertIn("image ls --quiet --filter", cleanup)
+        self.assertIn("image rm --force", cleanup)
 
     def test_ticket_17_is_composed_without_copying_its_rows(self):
         source = self.source("run.py")
@@ -133,7 +371,7 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
         self.assertIn("targeted banners remain Active or Scheduled", source)
 
         contract = json.loads((ROOT / ".github" / "banner-rollout-contract.json").read_text(encoding="utf-8"))
-        self.assertEqual(2, contract["schemaVersion"])
+        self.assertEqual(3, contract["schemaVersion"])
         self.assertEqual(
             [
                 "FREEZE_BANNER_MANAGEMENT_WRITES",
@@ -149,6 +387,17 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
             "KEEP_BANNER_MANAGEMENT_WRITES_FROZEN_BELOW_TARGETING_CAPABLE_BACKEND",
             contract["managementWriteFreezeBoundary"],
         )
+        self.assertEqual(
+            {
+                "freezeRequiredBeforeFrontendRollback": True,
+                "ordinaryManagementWritesAllowedWhileFrozen": False,
+                "targetedDisableAllowedWhileFrozen": True,
+                "legacyBackendTransitionRequiresTargetedClear": True,
+                "freezeRetainedBelowTargetingBackend": True,
+                "frontendFirstRollbackAloneSafe": False,
+            },
+            contract["rollbackStateContract"],
+        )
 
     def test_fixed_fixtures_and_observation_fields_are_present(self):
         source = self.source("run.py")
@@ -163,7 +412,15 @@ class BannerFeedCompatibilityContractTest(unittest.TestCase):
         ):
             self.assertIn(value, source)
         browser = self.source("browser.mjs")
-        for field in ("requestedFeedUrls", "feedResponses", "renderedMarkers", "regionPresent"):
+        for field in (
+            "requestedFeedUrls",
+            "feedResponses",
+            "renderedMarkers",
+            "regionPresent",
+            "pageUrl",
+            "observedFeedPath",
+            "observedFeedStatus",
+        ):
             self.assertIn(field, browser)
 
     def test_ci_is_read_only_bounded_and_path_scoped(self):
