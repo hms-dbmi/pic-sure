@@ -126,20 +126,54 @@ class Harness:
         self.build_binaries()
         self.create_network()
         selected = contract.REQUIRED_CELLS if self.selection == "all" else [self.selection]
+        observed_path = self.temp_root / "observed-matrix.tsv"
         for cell in selected:
             print(f"== {cell} ==", flush=True)
-            observation = getattr(self, "cell_" + cell.replace("-", "_"))()
-            contract.validate_observation(observation)
-            self.observations.append(observation)
-            self.stop_all_apps()
-            self.stop_mysql()
+            try:
+                observation = getattr(self, "cell_" + cell.replace("-", "_"))()
+                contract.validate_observation(observation)
+                self.observations.append(observation)
+            except Exception as error:
+                cleanup_errors = self.cleanup_cell_resources()
+                self.write_failure_diagnostics(observed_path, cell, error, cleanup_errors)
+                raise
+            cleanup_errors = self.cleanup_cell_resources()
+            if cleanup_errors:
+                error = contract.ContractError("cell cleanup failed: " + "; ".join(cleanup_errors))
+                self.write_failure_diagnostics(observed_path, cell, error, cleanup_errors)
+                raise error
+            contract.write_matrix(observed_path, self.observations)
 
-        observed_path = self.temp_root / "observed-matrix.tsv"
-        contract.write_matrix(observed_path, self.observations)
         expected = [self.expected_by_cell[cell] for cell in selected]
         contract.require_observations_match(expected, self.observations)
         print(f"Observed matrix: {observed_path}")
         print(f"PASS: {', '.join(selected)}")
+
+    def cleanup_cell_resources(self):
+        errors = []
+        for label, cleanup in (("stop_all_apps", self.stop_all_apps), ("stop_mysql", self.stop_mysql)):
+            try:
+                cleanup()
+            except Exception as error:
+                errors.append(f"{label}: {error}")
+        return errors
+
+    def write_failure_diagnostics(self, observed_path, failed_cell, error, cleanup_errors):
+        try:
+            contract.write_matrix(observed_path, self.observations)
+            detail = {
+                "failed_cell": failed_cell,
+                "completed_cells": [observation["cell"] for observation in self.observations],
+                "error_type": type(error).__name__,
+                "error": str(error),
+                "cleanup_errors": cleanup_errors,
+            }
+            (self.temp_root / "failed-cell.json").write_text(
+                json.dumps(detail, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except Exception as diagnostic_error:
+            print(f"Could not write failure diagnostics: {diagnostic_error}", file=sys.stderr)
 
     def require_tools(self):
         missing = [tool for tool in ("docker", "git") if shutil.which(tool) is None]

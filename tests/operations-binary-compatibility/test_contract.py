@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 import hashlib
+import json
 import os
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -112,6 +114,95 @@ class ContractTest(unittest.TestCase):
         self.assertIn("KEEP_COMPAT_TEMP_ON_FAILURE: true", workflow)
         self.assertIn("actions/upload-artifact@", workflow)
         self.assertNotIn("services/pic-sure-operations-service/**", workflow)
+
+    def test_cell_failure_captures_partial_diagnostics_and_preserves_original_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            harness = compatibility_run.Harness.__new__(compatibility_run.Harness)
+            harness.selection = "final-http-contract"
+            harness.temp_root = Path(directory)
+            harness.observations = []
+            harness.expected_by_cell = {}
+            harness.require_tools = mock.Mock()
+            harness.require_runtime_pin = mock.Mock()
+            harness.prepare_sources = mock.Mock()
+            harness.verify_migration_contracts = mock.Mock()
+            harness.build_binaries = mock.Mock()
+            harness.create_network = mock.Mock()
+            harness.cell_final_http_contract = mock.Mock(
+                side_effect=contract.ContractError("synthetic cell failure")
+            )
+
+            def capture_then_fail():
+                (Path(directory) / "synthetic-app.log").write_text("captured failure log\n", encoding="utf-8")
+                raise contract.ContractError("synthetic log cleanup failure")
+
+            harness.stop_all_apps = mock.Mock(side_effect=capture_then_fail)
+            harness.stop_mysql = mock.Mock()
+
+            with self.assertRaisesRegex(contract.ContractError, "synthetic cell failure"):
+                harness.run()
+
+            harness.stop_all_apps.assert_called_once_with()
+            harness.stop_mysql.assert_called_once_with()
+            observed = Path(directory) / "observed-matrix.tsv"
+            failure = Path(directory) / "failed-cell.json"
+            self.assertEqual(
+                "captured failure log\n",
+                (Path(directory) / "synthetic-app.log").read_text(encoding="utf-8"),
+            )
+            self.assertTrue(observed.is_file())
+            self.assertEqual("deployment_scope", observed.read_text(encoding="utf-8").split("\t", 1)[0])
+            detail = json.loads(failure.read_text(encoding="utf-8"))
+            self.assertEqual("final-http-contract", detail["failed_cell"])
+            self.assertEqual("synthetic cell failure", detail["error"])
+            self.assertEqual(["stop_all_apps: synthetic log cleanup failure"], detail["cleanup_errors"])
+
+    def test_portable_command_timeout_returns_124(self):
+        import bounded_command
+
+        status = bounded_command.run(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            timeout=0.01,
+        )
+
+        self.assertEqual(124, status)
+
+    def test_cleanup_timeout_is_bounded_and_diagnostic(self):
+        test_dir = Path(__file__).parent
+        with tempfile.TemporaryDirectory() as directory:
+            fake_docker = Path(directory) / "docker"
+            fake_docker.write_text("#!/usr/bin/env sh\nsleep 30\n", encoding="utf-8")
+            fake_docker.chmod(0o755)
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "OPERATIONS_COMPAT_DOCKER_BIN": str(fake_docker),
+                    "OPERATIONS_COMPAT_DOCKER_TIMEOUT_SECONDS": "0.01",
+                }
+            )
+
+            result = subprocess.run(
+                [test_dir / "cleanup-resources.sh", "timeoutfixture"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2,
+                env=environment,
+            )
+
+        self.assertEqual(124, result.returncode)
+        self.assertIn("command timed out after 0.01 seconds", result.stderr)
+
+    def test_shell_docker_calls_use_the_bounded_wrapper(self):
+        test_dir = Path(__file__).parent
+        for script_name in ("cleanup-resources.sh", "test-cleanup.sh"):
+            source = (test_dir / script_name).read_text(encoding="utf-8")
+            self.assertIn("docker_command", source, script_name)
+            self.assertNotRegex(source, r"(?m)^\s*docker\s", script_name)
+
+        entrypoint = (test_dir / "test.sh").read_text(encoding="utf-8")
+        self.assertIn("original_status=$?", entrypoint)
+        self.assertIn("if [[ $final_status -eq 0 && $cleanup_status -ne 0 ]]", entrypoint)
 
     def test_committed_matrix_is_complete(self):
         matrix = Path(__file__).with_name("matrix.tsv")
