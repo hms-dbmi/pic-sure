@@ -18,8 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
-import edu.harvard.hms.dbmi.avillach.gateway.filter.BodyMutationFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.BufferingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
@@ -29,21 +28,20 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 /**
  * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code OpenAccessFilter}(20) -&gt;
- * {@code PsamaIntrospectionFilter}(30) -&gt; {@code BodyMutationFilter}(35) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt;
- * {@code IdentityPropagationFilter}(50). The audit filter (60) is wired in {@code AuditFilterConfig}. No datasource, no JPA --
- * {@link PsamaClient} and {@link QueryAuthFetcher} talk to PSAMA / the query service over HTTP only. <p> Spring Security itself stays
- * permit-all: the introspection filter above is the real auth boundary, matching the WAR's JWTFilter model rather than Spring Security's
- * authentication machinery.
+ * {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt; {@code IdentityPropagationFilter}(50). The audit
+ * filter (60) is wired in {@code AuditFilterConfig}. No datasource or JPA is used. {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring
+ * Security itself stays permit-all: the introspection filter above is the real auth boundary, matching the WAR's JWTFilter model rather
+ * than Spring Security's authentication machinery.
  *
- * <p><b>Always enforced:</b> all SEVEN filters register unconditionally and enforce every route -- there is no mode switch or
- * pass-through/transparent path.
+ * <p><b>Always registered:</b> all five filters are installed unconditionally. The shared {@link PublicEndpointPolicy} defines the
+ * intentional public-route bypasses used by both authentication filters; all other routes traverse the normal auth chain.
  */
 @Configuration
 @EnableConfigurationProperties(GatewaySecurityProperties.class)
 public class SecurityConfig {
 
-    // Auth-boundary HTTP clients (PSAMA introspection, query-service dispatch) run synchronously inside the request path; a
-    // hung upstream must not tie up a Tomcat worker indefinitely, so both get bounded connect/read timeouts.
+    // PSAMA introspection runs synchronously inside the request path, so bounded connect and read timeouts prevent a hung upstream from
+    // tying up a Tomcat worker indefinitely.
     static final Duration AUTH_CONNECT_TIMEOUT = Duration.ofSeconds(2);
     static final Duration AUTH_READ_TIMEOUT = Duration.ofSeconds(10);
 
@@ -84,12 +82,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    QueryAuthFetcher queryAuthFetcher(GatewaySecurityProperties props) {
-        // The dispatch endpoint (/operations/internal/queries/{id}/dispatch) lives on operations-service, the
-        // sole DB owner -- not the DB-free query-service.
-        return new QueryAuthFetcher(
-            timeoutBoundedRestClientBuilder().build(), props.operationsServiceUrl(), props.queryServiceInternalToken()
-        );
+    PublicEndpointPolicy publicEndpointPolicy(GatewaySecurityProperties props) {
+        return new PublicEndpointPolicy(props.allowListPrefixes());
     }
 
     @Bean
@@ -102,9 +96,9 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
-        PsamaClient client, AuditContext audit, ObjectMapper json, GatewaySecurityProperties props
+        PsamaClient client, AuditContext audit, GatewaySecurityProperties props, PublicEndpointPolicy publicEndpoints
     ) {
-        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, props.openAccessEnabled()));
+        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, props.openAccessEnabled(), publicEndpoints));
         r.setOrder(20);
         r.addUrlPatterns("/*");
         return r;
@@ -112,18 +106,10 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<PsamaIntrospectionFilter> introspectionFilter(
-        PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewaySecurityProperties props
+        PsamaClient client, AuditContext audit, PublicEndpointPolicy publicEndpoints
     ) {
-        var r = new FilterRegistrationBean<>(new PsamaIntrospectionFilter(client, audit, json, fetcher, props.allowListPrefixes()));
+        var r = new FilterRegistrationBean<>(new PsamaIntrospectionFilter(client, audit, publicEndpoints));
         r.setOrder(30);
-        r.addUrlPatterns("/*");
-        return r;
-    }
-
-    @Bean
-    FilterRegistrationBean<BodyMutationFilter> bodyMutationFilter(ObjectMapper json) {
-        var r = new FilterRegistrationBean<>(new BodyMutationFilter(json));
-        r.setOrder(35);
         r.addUrlPatterns("/*");
         return r;
     }

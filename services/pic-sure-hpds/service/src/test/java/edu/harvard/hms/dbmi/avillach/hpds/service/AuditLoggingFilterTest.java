@@ -38,6 +38,49 @@ class AuditLoggingFilterTest {
         return request;
     }
 
+    // ---- Per-request adapter attribution from the X-Client-Type header ----
+
+    @Test
+    void testXClientTypeHeaderLandsAsCaller() throws Exception {
+        MockHttpServletRequest request = mockRequest("/PIC-SURE/query", "POST");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertEquals("PYTHON_ADAPTER", captor.getValue().getCaller());
+    }
+
+    @Test
+    void testCallerIsUnsetWithoutTheXClientTypeHeader() throws Exception {
+        MockHttpServletRequest request = mockRequest("/PIC-SURE/query", "POST");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertNull(captor.getValue().getCaller());
+    }
+
+    @Test
+    void testCallerIsUnsetWhenTheXClientTypeHeaderIsEmpty() throws Exception {
+        MockHttpServletRequest request = mockRequest("/PIC-SURE/query", "POST");
+        request.addHeader("X-Client-Type", "");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertNull(captor.getValue().getCaller());
+    }
+
     // ---- Reads event type/action from request attributes (set by AuditInterceptor) ----
 
     @Test

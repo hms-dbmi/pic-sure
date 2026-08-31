@@ -32,6 +32,30 @@ public class AccessRuleServiceTest {
         MockitoAnnotations.openMocks(this);
     }
 
+    /**
+     * Fail closed on a type this evaluator does not implement. Retiring type 17 from {@code TypeNaming} did not make its rows inert: it
+     * moved them into the switch default, which used to return true, turning every surviving row into an unconditional grant.
+     */
+    @Test
+    public void testDecisionMaker_unsupportedType_deniesInsteadOfGranting() {
+        AccessRule retiredConsentRule = new AccessRule();
+        retiredConsentRule.setName("GATE_QUERY_v3");
+        retiredConsentRule.setType(17);
+        retiredConsentRule.setValue("/v3/query");
+
+        assertFalse(accessRuleService.decisionMaker(retiredConsentRule, "/hpds/auth/v3/query/sync"));
+    }
+
+    @Test
+    public void testDecisionMaker_unknownFutureType_deniesInsteadOfGranting() {
+        AccessRule rule = new AccessRule();
+        rule.setName("AR_FROM_THE_FUTURE");
+        rule.setType(99);
+        rule.setValue("anything");
+
+        assertFalse(accessRuleService.decisionMaker(rule, "anything"));
+    }
+
     @Test
     public void testGetAccessRuleById_found() {
         UUID id = UUID.randomUUID();

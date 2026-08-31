@@ -24,6 +24,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(AuditLoggingFilter.class);
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
     private static final String SESSION_ID_HEADER = "X-Session-Id";
+    private static final String CLIENT_TYPE_HEADER = "X-Client-Type";
 
     private final LoggingClient loggingClient;
 
@@ -34,7 +35,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return switch (request.getRequestURI()) {
-            case "/distributions", "/bin/continuous" -> false;
+            case "/auth/distributions", "/open/distributions", "/bin/continuous" -> false;
             default -> true;
         };
     }
@@ -74,13 +75,18 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     ) {
         try {
             String action = switch (request.getRequestURI()) {
-                case "/distributions" -> "visualization.distributions";
+                case "/auth/distributions", "/open/distributions" -> "visualization.distributions";
                 case "/bin/continuous" -> "visualization.bin_continuous";
                 default -> "visualization.request";
             };
 
             LoggingEvent.Builder builder = LoggingEvent.builder("QUERY").action(action).sessionId(sessionId)
                 .request(requestInfo(request, response, requestId, duration)).metadata(AuditLoggingContext.metadata(request));
+
+            String caller = request.getHeader(CLIENT_TYPE_HEADER);
+            if (caller != null && !caller.isEmpty()) {
+                builder.caller(caller);
+            }
 
             Map<String, Object> error = errorMap(response.getStatus(), failure);
             if (!error.isEmpty()) {

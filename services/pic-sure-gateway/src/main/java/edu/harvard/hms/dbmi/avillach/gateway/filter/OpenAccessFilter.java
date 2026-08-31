@@ -8,15 +8,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.web.util.UrlPathHelper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,11 +22,10 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Handles no-bearer requests when open access is enabled, short-circuiting before {@code PsamaIntrospectionFilter} runs. Triggers when open
- * access is enabled AND {@code Authorization} is blank or ≤ 7 chars ({@code JWTFilter.java:154-157}). The open-access payload is a
- * different shape than introspection ({@code JWTFilter.java:389-394}): {@code { "request": { "Target Service": "<real path>", "query":
- * <body minus resourceCredentials> }, "ipAddress": "OPEN_ACCESS:<host>" }} — no {@code token} field, adds {@code ipAddress}. PSAMA returns
- * a bare boolean: {@code true} grants with username {@code OPEN_ACCESS:<host>}; {@code false} denies with a 401. A real bearer token, or
- * open access disabled, passes through untouched.
+ * access is enabled and {@code Authorization} is blank or at most 7 characters ({@code JWTFilter.java:154-157}). The open-access payload
+ * contains the decoded path Spring resolved as {@code "Target Service"} plus {@code ipAddress}; it does not contain a token or request
+ * body. PSAMA returns a bare boolean. Routes selected by the shared {@link PublicEndpointPolicy}, a real bearer token, or disabled open
+ * access pass through untouched.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
@@ -44,19 +40,24 @@ public class OpenAccessFilter extends OncePerRequestFilter {
 
     private final PsamaClient psama;
     private final AuditContext audit;
-    private final ObjectMapper json;
     private final boolean openAccessEnabled;
+    private final PublicEndpointPolicy publicEndpoints;
 
-    public OpenAccessFilter(PsamaClient psama, AuditContext audit, ObjectMapper json, boolean openAccessEnabled) {
+    public OpenAccessFilter(PsamaClient psama, AuditContext audit, boolean openAccessEnabled, PublicEndpointPolicy publicEndpoints) {
         this.psama = psama;
         this.audit = audit;
-        this.json = json;
         this.openAccessEnabled = openAccessEnabled;
+        this.publicEndpoints = publicEndpoints;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
+        if (publicEndpoints.evaluate(req.getMethod(), req.getRequestURI()).publicEndpoint()) {
+            chain.doFilter(req, resp);
+            return;
+        }
+
         String authz = req.getHeader("Authorization");
         boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // JWTFilter.java:154-157
 
@@ -92,8 +93,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         }
         req.setAttribute(GatewayUserResolver.HEADER_USER_ID, hostMarker);
         req.setAttribute(ATTR_OPEN_ACCESS_GRANTED, Boolean.TRUE);
-        // Downstream services select the open HPDS backend from this. They cannot infer it from the user id above:
-        // OPEN_ACCESS:<host> is non-blank and so reads as an authenticated user to any presence check.
+        // Record that the open-access flow admitted this request. Backend routing remains path-based.
         req.setAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN);
         audit.put("auth_result", "success");
         audit.put("auth_action", "open_access.granted");
@@ -105,31 +105,10 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         return "OPEN_ACCESS:" + (req.getServerName() == null ? "unknown" : req.getServerName());
     }
 
-    /** Builds the inner {@code { "Target Service", "query" }} request map sent to PSAMA's open-access validate endpoint. */
+    /** Builds the inner {@code { "Target Service" }} request map sent to PSAMA's open-access validate endpoint. */
     private Map<String, Object> buildOpenAccessRequest(HttpServletRequest req) {
         Map<String, Object> queryMap = new HashMap<>();
-        queryMap.put("Target Service", req.getRequestURI()); // real path
-        if (req instanceof BufferedRequestWrapper buffered && buffered.getBody().length > 0) {
-            try {
-                JsonNode parsed = json.readTree(buffered.getBody());
-                stripResourceCredentials(parsed);
-                queryMap.put("query", parsed);
-            } catch (IOException ignored) {
-                // best-effort, mirrors the WAR
-            }
-        }
+        queryMap.put("Target Service", UrlPathHelper.defaultInstance.getPathWithinApplication(req));
         return queryMap;
-    }
-
-    private void stripResourceCredentials(JsonNode node) {
-        if (node == null) {
-            return;
-        }
-        if (node.isObject()) {
-            ((ObjectNode) node).remove("resourceCredentials");
-            node.fields().forEachRemaining(e -> stripResourceCredentials(e.getValue()));
-        } else if (node.isArray()) {
-            node.forEach(this::stripResourceCredentials);
-        }
     }
 }

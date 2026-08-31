@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -20,12 +21,11 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.client.RestClientException;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,7 +33,9 @@ import jakarta.servlet.http.HttpServletResponse;
 class OpenAccessFilterTest {
 
     private OpenAccessFilter filter(PsamaClient client, AuditContext ctx, boolean enabled) {
-        return new OpenAccessFilter(client, ctx, new ObjectMapper(), enabled);
+        return new OpenAccessFilter(
+            client, ctx, enabled, new PublicEndpointPolicy(List.of("/actuator", "/openapi", "/swagger-ui", "/logging"))
+        );
     }
 
     @Test
@@ -43,6 +45,20 @@ class OpenAccessFilterTest {
         BufferedRequestWrapper req = wrap("Bearer real-token");
         FilterChain chain = mock(FilterChain.class);
         f.doFilter(req, mock(HttpServletResponse.class), chain);
+        verify(chain).doFilter(eq(req), any());
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void enabledOpenAccessSkipsValidationForPublicSystemStatus() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(false);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+        BufferedRequestWrapper req = wrap(null, "/system/status", "GET");
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, new MockHttpServletResponse(), chain);
+
         verify(chain).doFilter(eq(req), any());
         verifyNoInteractions(client);
     }
@@ -174,9 +190,14 @@ class OpenAccessFilterTest {
     }
 
     private static BufferedRequestWrapper wrap(String authHeader) {
+        return wrap(authHeader, "/v3/search/abc", "POST");
+    }
+
+    private static BufferedRequestWrapper wrap(String authHeader, String uri, String method) {
         HttpServletRequest base = mock(HttpServletRequest.class);
-        when(base.getRequestURI()).thenReturn("/v3/search/abc");
-        lenient().when(base.getMethod()).thenReturn("POST");
+        when(base.getRequestURI()).thenReturn(uri);
+        when(base.getContextPath()).thenReturn("");
+        lenient().when(base.getMethod()).thenReturn(method);
         if (authHeader != null) when(base.getHeader("Authorization")).thenReturn(authHeader);
         lenient().when(base.getServerName()).thenReturn("aio.local");
         // Bare Mockito mocks don't retain state across calls; BufferedRequestWrapper delegates

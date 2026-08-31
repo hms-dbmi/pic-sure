@@ -35,16 +35,6 @@
         <spotless.version>2.46.1</spotless.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
-    <repositories>
-        <repository>
-            <id>github</id>
-            <name>GitHub HMS-DBMI Apache Maven Packages</name>
-            <url>https://maven.pkg.github.com/hms-dbmi/pic-sure-common</url>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
     <dependencyManagement>
         <dependencies>
             <!-- The single version catalog. Standalone (no parent) so this import
@@ -74,6 +64,12 @@
                     <version>3.14.0</version>
                     <configuration>
                         <release>${java.version}</release>
+                        <!-- Emit method parameter names (-parameters). spring-boot-starter-parent
+                             normally supplies this; these modules do not inherit it, so without
+                             this line Spring MVC cannot resolve implicitly-named @PathVariable /
+                             @RequestParam arguments and every such endpoint 500s at bind time
+                             ("parameter name information not available via reflection"). See ALS-12766. -->
+                        <parameters>true</parameters>
                     </configuration>
                 </plugin>
                 <plugin>

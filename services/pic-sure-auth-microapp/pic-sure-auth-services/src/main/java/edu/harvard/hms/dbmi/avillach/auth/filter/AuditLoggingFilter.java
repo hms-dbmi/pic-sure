@@ -82,6 +82,10 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
                 return;
             }
 
+            if ("/user/me/consents".equals(path) && "service".equalsIgnoreCase(request.getHeader("X-Client-Type"))) {
+                return;
+            }
+
             // Calculate duration
             Long startTime = (Long) request.getAttribute(AUDIT_START_TIME);
             long duration = 0L;
@@ -150,6 +154,11 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             // Build the event
             LoggingEvent.Builder eventBuilder =
                 LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo).metadata(metadata);
+
+            String caller = request.getHeader("X-Client-Type");
+            if (caller != null && !caller.isEmpty()) {
+                eventBuilder.caller(caller);
+            }
 
             if (errorMap != null) {
                 eventBuilder.error(errorMap);

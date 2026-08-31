@@ -125,9 +125,8 @@ class QueryServiceClientTest {
 
     @Test
     void authorizationFiltersSurviveIntoTheSubQuery() throws Exception {
-        // REGRESSION GUARD (predev 502): PSAMA injects consent filters and the gateway's BodyMutationFilter swaps them
-        // into the body before this service sees it. Auth HPDS defaults hpds.requireAuthorizationFilter=true, so
-        // dropping them here makes every authorized distribution fail with "Authorization filter is required".
+        // The decomposer must preserve all filters while building a subquery. HQS replaces authorization filters from
+        // the caller's current consents before execution.
         mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync"))
             .andExpect(jsonPath("$.query.authorizationFilters[0].conceptPath").value("\\_consents\\"))
             .andExpect(jsonPath("$.query.authorizationFilters[0].values[0]").value("phs000001.c1"))

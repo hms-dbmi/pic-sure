@@ -12,12 +12,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record GatewaySecurityProperties(
     List<String> allowListPrefixes, boolean openAccessEnabled,
     // GATEWAY_AUTH_MAX_BODY_BYTES -- auth-buffering cap; 413 over it
-    int maxBodyBytes, String introspectionUrl, String openAccessValidateUrl, String serviceToken,
-    // OPERATIONS_SERVICE_URL -- for QueryAuthFetcher dispatch (dispatch lives on operations-service,
-    // the sole DB owner)
-    String operationsServiceUrl,
-    // QUERY_SERVICE_INTERNAL_TOKEN -- X-PIC-SURE-INTERNAL-TOKEN, same value sent to operations-service now
-    String queryServiceInternalToken
+    int maxBodyBytes, String introspectionUrl, String openAccessValidateUrl, String serviceToken
 ) {
     public GatewaySecurityProperties {
         allowListPrefixes = allowListPrefixes == null ? List.of() : List.copyOf(allowListPrefixes);

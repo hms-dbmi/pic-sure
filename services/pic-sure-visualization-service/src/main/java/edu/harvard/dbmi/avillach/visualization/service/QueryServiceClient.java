@@ -32,8 +32,8 @@ import org.springframework.web.client.RestClient;
  *
  * <p>The gateway's {@code X-User-*} headers are forwarded verbatim because query-service gates {@code /hpds/**} behind
  * {@code .authenticated()}, which its {@code GatewayPrivilegesFilter} satisfies only when {@code X-User-Id} is present. Open-access
- * requests carry the marker {@code OPEN_ACCESS:<host>} in that header, which satisfies the rule; the auth-vs-open choice itself comes from
- * {@link AccessTypeResolver}, never from this value.
+ * requests carry the marker {@code OPEN_ACCESS:<host>} in that header, which satisfies the rule. The visualization request path selects the
+ * auth or open backend.
  *
  * <p>No {@code resourceUUID} is sent. query-service selects its backend from the path and only echoes the field back, so including it would
  * imply a routing role it no longer has.
@@ -43,8 +43,14 @@ public class QueryServiceClient {
 
     private static final Logger logger = LoggerFactory.getLogger(QueryServiceClient.class);
 
-    /** The gateway-resolved identity to forward downstream. Any component may be null or blank; only non-blank values become headers. */
-    public record GatewayIdentity(String userId, String subject, String email, String roles, String privileges) {
+    /** Gateway-owned identity headers and the caller credential to forward downstream. */
+    public record GatewayIdentity(
+        String userId, String subject, String email, String roles, String privileges, String authorizationHeader
+    ) {
+
+        public GatewayIdentity(String userId, String subject, String email, String roles, String privileges) {
+            this(userId, subject, email, roles, privileges, null);
+        }
     }
 
     private final RestClient restClient;
@@ -81,8 +87,7 @@ public class QueryServiceClient {
     ) {
         long startTime = System.currentTimeMillis();
 
-        // authorizationFilters are carried through verbatim: PSAMA injects the caller's consent scope and the gateway's
-        // BodyMutationFilter swaps it into the body before this service sees it. Auth HPDS rejects an empty list.
+        // HQS replaces authorizationFilters using the caller token before it executes or stores this subquery.
         Query subQuery = new Query(
             query.select(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(), resultType, query.picsureId(),
             query.id()
@@ -143,6 +148,7 @@ public class QueryServiceClient {
         setIfPresent(headers, GatewayUserResolver.HEADER_USER_EMAIL, identity.email());
         setIfPresent(headers, GatewayUserResolver.HEADER_USER_ROLES, identity.roles());
         setIfPresent(headers, GatewayUserResolver.HEADER_USER_PRIVILEGES, identity.privileges());
+        setIfPresent(headers, HttpHeaders.AUTHORIZATION, identity.authorizationHeader());
     }
 
     private static void setIfPresent(HttpHeaders headers, String name, String value) {
