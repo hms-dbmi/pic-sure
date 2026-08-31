@@ -89,7 +89,7 @@ class NamedDatasetMapperTest {
 
         NamedDataset entity = mapper.toEntity("bob@example.com", query, req);
 
-        assertThat(entity.getUser()).isEqualTo("x@example.com");
+        assertThat(entity.getUser()).isEqualTo("bob@example.com");
         assertThat(entity.getQuery()).isSameAs(query);
         assertThat(entity.getName()).isEqualTo("d2");
         assertThat(entity.getArchived()).isTrue();
