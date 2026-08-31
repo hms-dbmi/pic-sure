@@ -36,7 +36,7 @@ jobs:
       - name: Verify with Maven
         run: mvn -T1C -B verify -Dmaven.test.failure.ignore=true
       - name: Publish Surefire Report
-        uses: ScalableCapital/action-surefire-report@v2
+        uses: ScalableCapital/action-surefire-report@4004a71652495d6ed111f5b717c2cf9aa0f37627
         if: always() # Ensures reports publish even if the Maven step failed
         with:
           report_paths: '**/target/surefire-reports/TEST-*.xml'
