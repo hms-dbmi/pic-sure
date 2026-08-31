@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,9 +45,6 @@ public class AuthorizationServiceTest {
 
     @MockBean
     private RoleService roleService;
-
-    @MockBean
-    private BdcConsentBasedAccessRuleEvaluator bdcConsentBasedAccessRuleEvaluator;
 
     @MockBean
     private UserConsentsRepository userConsentsRepository;
@@ -207,6 +205,11 @@ public class AuthorizationServiceTest {
         AR_Fields_IS_NOT_EMPTY.setType(AccessRule.TypeNaming.IS_NOT_EMPTY);
     }
 
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
     @BeforeEach
     public void setUp() {
         MockitoAnnotations.openMocks(this);
@@ -214,9 +217,8 @@ public class AuthorizationServiceTest {
 
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
-        authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, bdcConsentBasedAccessRuleEvaluator, "fence,okta", userConsentsRepository
-        );
+        authorizationService =
+            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false);
     }
 
     @Test
@@ -273,35 +275,6 @@ public class AuthorizationServiceTest {
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
-
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
-
-        assertFalse(result);
-    }
-
-    @Test
-    public void testIsAuthorized_ConsentRule_NonQueryRequestBody_DeniedWithoutNPE() {
-        Application application = createTestApplication();
-        User user = createTestUser();
-
-        AccessRule consentRule = new AccessRule();
-        consentRule.setUuid(UUID.randomUUID());
-        consentRule.setName("AR_CONSENT_nhanes");
-        consentRule.setRule("$.query.query.categoryFilters.\\_consents\\[*]");
-        consentRule.setType(AccessRule.TypeNaming.USER_CONSENT_ACCESS);
-        consentRule.setValue("Nhanes");
-
-        for (Privilege privilege : user.getRoles().iterator().next().getPrivileges()) {
-            privilege.setAccessRules(Collections.singleton(consentRule));
-            privilege.setApplication(application);
-        }
-        configureUserSecurityContext(user);
-        user.setConnection(createFenceTestConnection());
-
-        // Introspection bodies for non-query endpoints carry no "query" node; a consent
-        // rule must deny them cleanly, not NPE into a 500.
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("Target Service", "/operations/dataset/named");
 
         boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
 
@@ -398,26 +371,51 @@ public class AuthorizationServiceTest {
         assertFalse(result);
     }
 
+    /** Deny by default: a privilege carrying no access rules grants nothing, so there is nothing for an empty rule set to pass. */
     @Test
-    public void testIsAuthorized_NoRequestBody() {
+    public void testIsAuthorized_RulelessPrivilegeIsDenied() {
         Application application = createTestApplication();
         User user = createTestUser();
+        configureUserSecurityContext(user);
+        user.getRoles().iterator().next().getPrivileges().forEach(privilege -> {
+            privilege.setApplication(application);
+            privilege.setAccessRules(Set.of());
+        });
+        application.setPrivileges(user.getPrivilegesByApplication(application));
+
+        boolean result = authorizationService.isAuthorized(application, null, user, false).result();
+
+        assertFalse(result);
+    }
+
+    @Test
+    public void testIsAuthorized_NoRequestBodyDoesNotBypassAccessRules() {
+        Application application = createTestApplication();
+        User user = createTestUser();
+        AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
+        accessRule.setRule("$.test");
+        accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        accessRule.setValue("value");
+        for (Privilege privilege : user.getRoles().iterator().next().getPrivileges()) {
+            privilege.setAccessRules(Set.of(accessRule));
+            privilege.setApplication(application);
+        }
         configureUserSecurityContext(user);
         application.setPrivileges(user.getPrivilegesByApplication(application));
 
         boolean result = authorizationService.isAuthorized(application, null, user, false).result();
 
-        assertTrue(result);
+        assertFalse(result);
     }
 
     @Test
-    public void testIsAuthorized_NoPrivileges() {
+    public void testIsAuthorized_NoRequestBodyDoesNotBypassPrivileges() {
         Application application = createTestApplication();
         User user = createTestUser();
-        user.setConnection(createFenceTestConnection());
 
         user.getRoles().iterator().next().setPrivileges(Collections.emptySet());
-        boolean result = authorizationService.isAuthorized(application, new HashMap<>(), user, false).result();
+        boolean result = authorizationService.isAuthorized(application, null, user, false).result();
 
         assertFalse(result);
     }

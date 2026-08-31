@@ -24,6 +24,7 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
+import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
@@ -61,11 +62,16 @@ public class QueryService {
     private final OperationsClient operationsClient;
     private final ResourceWebClient hpds;
     private final HpdsBackendSelector selector;
+    private final ConsentAuthorizationService consentAuthorization;
 
-    public QueryService(OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector) {
+    public QueryService(
+        OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector,
+        ConsentAuthorizationService consentAuthorization
+    ) {
         this.operationsClient = operationsClient;
         this.hpds = hpds;
         this.selector = selector;
+        this.consentAuthorization = consentAuthorization;
     }
 
     public record QuerySyncResponse(byte[] body, String queryMetadata) {
@@ -74,17 +80,22 @@ public class QueryService {
     // --- create / sync ---
 
     public QueryStatus query(String backend, QueryRequest req) {
-        return create(backend, req, false);
+        return create(backend, req, false, null);
     }
 
     public QueryStatus queryV3(String backend, QueryRequest req) {
-        return create(backend, req, true);
+        return queryV3(backend, req, null);
     }
 
-    private QueryStatus create(String backend, QueryRequest req, boolean v3) {
+    public QueryStatus queryV3(String backend, QueryRequest req, String authorizationHeader) {
+        return create(backend, req, true, authorizationHeader);
+    }
+
+    private QueryStatus create(String backend, QueryRequest req, boolean v3, String authorizationHeader) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
+        consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend, v3); // URL + service token
 
         QueryStatus results = hpds.query(target, req); // HPDS call first (parity: query() calls HPDS then persists)
@@ -108,9 +119,14 @@ public class QueryService {
     }
 
     public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource) {
+        return querySync(backend, req, requestSource, null);
+    }
+
+    public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource, String authorizationHeader) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
+        consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend, true); // sync's only remaining caller is the v3 ingress
         String version = CURRENT_VERSION;
 
@@ -180,12 +196,22 @@ public class QueryService {
     }
 
     public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, QueryRequest req) {
+        return queryResult(backend, picsureId, req, null);
+    }
+
+    public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
         StoredQuery stored = load(picsureId);
+        consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
         return hpds.queryResult(selector.select(backend, isV3(stored)), stored.resourceResultId(), req);
     }
 
     public ResponseEntity<String> queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req) {
+        return queryResultSignedUrl(backend, picsureId, req, null);
+    }
+
+    public ResponseEntity<String> queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
         StoredQuery stored = load(picsureId);
+        consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
         // DECISION 9 FIX: dispatch on STORED version for signed-url too (the legacy WAR omitted this).
         return hpds.queryResultSignedUrl(selector.select(backend, isV3(stored)), stored.resourceResultId(), req);
     }
@@ -220,10 +246,15 @@ public class QueryService {
     // --- metadata (DB-only, no HPDS) ---
 
     public QueryStatus queryMetadata(UUID id) {
+        return queryMetadata("open", id, null);
+    }
+
+    public QueryStatus queryMetadata(String backend, UUID id, String authorizationHeader) {
         if (id == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query id");
         }
         StoredQuery stored = load(id);
+        consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
 
         QueryStatus response = new QueryStatus();
         response.setPicsureResultId(stored.picsureId());
