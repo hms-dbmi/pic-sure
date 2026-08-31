@@ -132,6 +132,29 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void shouldSkipServiceConsentLookup() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/user/me/consents");
+        request.addHeader("X-Client-Type", "service");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        verify(loggingClient, never()).send(any(LoggingEvent.class));
+    }
+
+    @Test
+    void shouldLogUserConsentLookup() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/user/me/consents");
+        request.setAttribute(AuditAttributes.EVENT_TYPE, "ACCESS");
+        request.setAttribute(AuditAttributes.ACTION, "user.profile");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        verify(loggingClient).send(any(LoggingEvent.class));
+    }
+
+    @Test
     void shouldCategorizeAdminUserModify() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/user");
         request.setAttribute(AuditAttributes.EVENT_TYPE, "ADMIN");

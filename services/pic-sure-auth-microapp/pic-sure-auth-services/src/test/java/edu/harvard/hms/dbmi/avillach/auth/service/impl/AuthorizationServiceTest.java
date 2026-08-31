@@ -6,8 +6,8 @@ import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentBasedAccessRuleEvaluator;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
@@ -44,10 +44,12 @@ public class AuthorizationServiceTest {
     private RoleService roleService;
 
     @MockBean
-    private BdcConsentBasedAccessRuleEvaluator bdcConsentBasedAccessRuleEvaluator;
-
-    @MockBean
     private UserConsentsRepository userConsentsRepository;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @BeforeEach
     public void setUp() {
@@ -55,9 +57,8 @@ public class AuthorizationServiceTest {
         SecurityContextHolder.setContext(securityContext);
 
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
-        authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, bdcConsentBasedAccessRuleEvaluator, "fence,okta,open", userConsentsRepository
-        );
+        authorizationService =
+            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false);
     }
 
     @Test
@@ -184,25 +185,51 @@ public class AuthorizationServiceTest {
         assertFalse(result);
     }
 
+    /** Deny by default: a privilege carrying no access rules grants nothing, so there is nothing for an empty rule set to pass. */
     @Test
-    public void testIsAuthorized_NoRequestBody() {
+    public void testIsAuthorized_RulelessPrivilegeIsDenied() {
         Application application = createTestApplication();
         User user = createTestUser();
+        configureUserSecurityContext(user);
+        user.getRoles().iterator().next().getPrivileges().forEach(privilege -> {
+            privilege.setApplication(application);
+            privilege.setAccessRules(Set.of());
+        });
+        application.setPrivileges(user.getPrivilegesByApplication(application));
+
+        boolean result = authorizationService.isAuthorized(application, null, user, false).result();
+
+        assertFalse(result);
+    }
+
+    @Test
+    public void testIsAuthorized_NoRequestBodyDoesNotBypassAccessRules() {
+        Application application = createTestApplication();
+        User user = createTestUser();
+        AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
+        accessRule.setRule("$.test");
+        accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        accessRule.setValue("value");
+        for (Privilege privilege : user.getRoles().iterator().next().getPrivileges()) {
+            privilege.setAccessRules(Set.of(accessRule));
+            privilege.setApplication(application);
+        }
         configureUserSecurityContext(user);
         application.setPrivileges(user.getPrivilegesByApplication(application));
 
         boolean result = authorizationService.isAuthorized(application, null, user, false).result();
 
-        assertTrue(result);
+        assertFalse(result);
     }
 
     @Test
-    public void testIsAuthorized_NoPrivileges() {
+    public void testIsAuthorized_NoRequestBodyDoesNotBypassPrivileges() {
         Application application = createTestApplication();
         User user = createTestUser();
 
         user.getRoles().iterator().next().setPrivileges(Collections.emptySet());
-        boolean result = authorizationService.isAuthorized(application, new HashMap<>(), user, false).result();
+        boolean result = authorizationService.isAuthorized(application, null, user, false).result();
 
         assertFalse(result);
     }

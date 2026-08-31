@@ -8,9 +8,11 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -33,6 +35,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
 import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
@@ -76,6 +79,9 @@ class HpdsQueryControllerTest {
     @MockitoBean
     private OperationsClient operationsClient;
 
+    @MockitoBean
+    private ConsentAuthorizationService consentAuthorization;
+
     @BeforeEach
     void resetStubs() {
         hpds.resetAll();
@@ -93,11 +99,27 @@ class HpdsQueryControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
+                .header("Authorization", "Bearer caller-token").content("{\"query\":\"q\"}")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.resourceResultId").value("rr-3"));
 
+        verify(consentAuthorization).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
         verify(operationsClient).save(argThat((SaveQueryRequest r) -> "3".equals(r.version())));
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query")));
+    }
+
+    @Test
+    void v3SyncQueryForwardsCallerAuthorizationForConsentScoping() throws Exception {
+        hpds.stubFor(
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/sync")).willReturn(aResponse().withStatus(200).withBody("{\"count\":1}"))
+        );
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+
+        mockMvc.perform(
+            post("/hpds/auth/v3/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer caller-token").content("{\"query\":\"q\"}")
+        ).andExpect(status().isOk());
+
+        verify(consentAuthorization).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
     }
 
     // --- read ops dispatch on the STORED version, never the ingress path's version ---
@@ -113,10 +135,56 @@ class HpdsQueryControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/v3/query/{id}/result", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .contentType(MediaType.APPLICATION_JSON).content("{}")
+                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
         ).andExpect(status().isOk());
 
+        verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query/rr-1/result"))); // NOT /v3
+    }
+
+    @Test
+    void signedUrlForwardsCallerAuthorizationForSavedConsentVerification() throws Exception {
+        UUID id = UUID.randomUUID();
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", null, null);
+        when(operationsClient.get(id)).thenReturn(stored);
+        hpds.stubFor(
+            WireMock.post(urlEqualTo("/PIC-SURE/query/rr-1/signed-url")).willReturn(okJson("{\"url\":\"https://example.test/result\"}"))
+        );
+
+        mockMvc.perform(
+            post("/hpds/auth/v3/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+        ).andExpect(status().isOk());
+
+        verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
+    }
+
+    @Test
+    void metadataForwardsCallerAuthorizationForSavedConsentVerification() throws Exception {
+        UUID id = UUID.randomUUID();
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
+        when(operationsClient.get(id)).thenReturn(stored);
+
+        mockMvc.perform(
+            get("/hpds/auth/v3/query/{id}/metadata", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token")
+        ).andExpect(status().isOk());
+
+        verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
+    }
+
+    @Test
+    void metadataPostForwardsCallerAuthorizationForSavedConsentVerification() throws Exception {
+        UUID id = UUID.randomUUID();
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
+        when(operationsClient.get(id)).thenReturn(stored);
+
+        mockMvc.perform(
+            post("/hpds/auth/v3/query/{id}/metadata", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token")
+        ).andExpect(status().isOk());
+
+        verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
     }
 
     // --- upstream failures surface as 502, not 200/500 ---
