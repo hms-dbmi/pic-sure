@@ -35,13 +35,12 @@ jobs:
       # pic-sure-bom import, so no bootstrap, token, or warm cache is needed.
       - name: Verify with Maven
         run: mvn -T1C -B verify -Dmaven.test.failure.ignore=true
-        with:
-          fail_on_test_failures: true
       - name: Publish Surefire Report
         uses: ScalableCapital/action-surefire-report@v2
         if: always() # Ensures reports publish even if the Maven step failed
         with:
           report_paths: '**/target/surefire-reports/TEST-*.xml'
+          fail_on_test_failures: true
 
   lint:
     name: Spotless (dictionary)
