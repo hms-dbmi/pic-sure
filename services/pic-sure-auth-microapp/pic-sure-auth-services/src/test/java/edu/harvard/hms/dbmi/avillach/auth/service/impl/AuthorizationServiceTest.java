@@ -57,8 +57,9 @@ public class AuthorizationServiceTest {
         SecurityContextHolder.setContext(securityContext);
 
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
-        authorizationService =
-            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false);
+        authorizationService = new AuthorizationService(
+            accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false, false
+        );
     }
 
     @Test

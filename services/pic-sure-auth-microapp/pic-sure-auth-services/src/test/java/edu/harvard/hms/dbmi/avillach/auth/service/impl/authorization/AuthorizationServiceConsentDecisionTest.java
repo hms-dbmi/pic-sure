@@ -141,7 +141,9 @@ class AuthorizationServiceConsentDecisionTest {
     }
 
     private AuthorizationService service(boolean enabled) {
-        return new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, enabled);
+        return new AuthorizationService(
+            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, enabled, false
+        );
     }
 
     private void givenConsents(Map<String, Set<String>> consents) {

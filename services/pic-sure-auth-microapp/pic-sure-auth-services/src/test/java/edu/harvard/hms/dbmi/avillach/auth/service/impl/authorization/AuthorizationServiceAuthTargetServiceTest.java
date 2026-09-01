@@ -35,7 +35,7 @@ class AuthorizationServiceAuthTargetServiceTest {
         when(roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME)).thenReturn(openAccessRole);
 
         authorizationService =
-            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false);
+            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false, false);
     }
 
     @ParameterizedTest
