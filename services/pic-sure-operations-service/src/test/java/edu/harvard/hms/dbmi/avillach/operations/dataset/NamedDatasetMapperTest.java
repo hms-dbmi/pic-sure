@@ -6,6 +6,8 @@ import java.sql.Date;
 import java.util.Map;
 import java.util.UUID;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
@@ -16,12 +18,12 @@ class NamedDatasetMapperTest {
     private final NamedDatasetMapper mapper = new NamedDatasetMapper();
 
     @Test
-    void toDtoCopiesAllFieldsIncludingTheNestedQuery() {
+    void toDtoCopiesAllFieldsIncludingTheNestedQuery() throws JsonProcessingException {
         UUID datasetId = UUID.randomUUID();
         UUID queryId = UUID.randomUUID();
         Query query = new Query();
         query.setUuid(queryId);
-        query.setQuery("{\"query\":{}}");
+        query.setQuery("{\"select\":{}}");
         query.setStartTime(new Date(1690000000000L));
         query.setStatus(PicSureStatus.AVAILABLE);
         NamedDataset entity =
@@ -36,7 +38,7 @@ class NamedDatasetMapperTest {
         assertThat(dto.archived()).isTrue();
         assertThat(dto.metadata()).containsEntry("k", "v");
         assertThat(dto.query().uuid()).isEqualTo(queryId);
-        assertThat(dto.query().query()).isEqualTo("{\"query\":{}}");
+        assertThat(new ObjectMapper().readValue(dto.query().query(), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class)).isNotNull();
         assertThat(dto.query().startTime()).isEqualTo(1690000000000L);
         assertThat(dto.query().status()).isEqualTo(PicSureStatus.AVAILABLE);
     }
@@ -63,6 +65,19 @@ class NamedDatasetMapperTest {
         NamedDatasetDto dto = mapper.toDto(entity);
 
         assertThat(dto.query()).isNull();
+    }
+
+    @Test
+    void toDtoConvertsV1Query() throws JsonProcessingException {
+        Query query = new Query();
+        query.setUuid(UUID.randomUUID());
+        query.setQuery("{\"categoryFilters\":{}}");
+        NamedDataset entity = new NamedDataset().setUser("alice@example.com").setName("d1").setQuery(query);
+        entity.setUuid(UUID.randomUUID());
+
+        NamedDatasetDto dto = mapper.toDto(entity);
+
+        assertThat(new ObjectMapper().readValue(dto.query().query(), edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class)).isNotNull();
     }
 
     @Test

@@ -132,10 +132,10 @@ public class Query {
         return outStr.toString();
     }
 
-    public void setQuery(String queryStr) {
+    public Query setQuery(String queryStr) {
         if (queryStr == null || queryStr.length() == 0) {
             this.query = new byte[0];
-            return;
+            return this;
         }
 
         try (ByteArrayOutputStream obj = new ByteArrayOutputStream(); GZIPOutputStream gzip = new GZIPOutputStream(obj)) {
@@ -145,6 +145,7 @@ public class Query {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        return this;
     }
 
     public byte[] getMetadata() {
