@@ -6,6 +6,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsOverrideRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
@@ -65,6 +66,8 @@ public class UserServiceTest {
     @MockitoBean
     private UserConsentsRepository userConsentsRepository;
     @MockitoBean
+    private UserConsentsOverrideRepository userConsentsOverrideRepository;
+    @MockitoBean
     private FenceMappingUtility fenceMappingUtility;
 
     @BeforeEach
@@ -77,7 +80,7 @@ public class UserServiceTest {
 
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         userService = new UserService(
-            basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, fenceMappingUtility,
+            basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, userConsentsOverrideRepository, fenceMappingUtility,
             defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null
         );
     }
@@ -610,6 +613,44 @@ public class UserServiceTest {
         verify(userConsentsRepository).save(userConsentsCaptor.capture());
         assertEquals(Set.of("phs1234.c1"), userConsentsCaptor.getValue().getConsents());
     }
+
+
+    @Test
+    public void updateUserConsents_overrideConsents() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of("phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P")));
+        User user = createTestUser();
+
+        when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(null);
+        UserConsentsOverride userConsentsOverride = new UserConsentsOverride();
+        userConsentsOverride.setConsentsOverride(new ConsentsOverride().setConsents(Set.of("phs456.c2"))).setEnabled(true);
+        when(userConsentsOverrideRepository.findByUserId(user.getUuid())).thenReturn(userConsentsOverride);
+
+
+        userService.updateUserConsents(user, Set.of("phs1234.c1"));
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(Set.of("phs456.c2"), userConsentsCaptor.getValue().getConsents());
+    }
+
+    @Test
+    public void updateUserConsents_overrideConsentsDisabled() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of("phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P")));
+        User user = createTestUser();
+
+        when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(null);
+        UserConsentsOverride userConsentsOverride = new UserConsentsOverride();
+        userConsentsOverride.setConsentsOverride(new ConsentsOverride().setConsents(Set.of("phs456.c2"))).setEnabled(false);
+        when(userConsentsOverrideRepository.findByUserId(user.getUuid())).thenReturn(userConsentsOverride);
+
+
+        userService.updateUserConsents(user, Set.of("phs1234.c1"));
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(Set.of("phs1234.c1"), userConsentsCaptor.getValue().getConsents());
+    }
+
 
     @Test
     public void getUserConsents_returnsStoredConsentsOfAuthenticatedUser() {

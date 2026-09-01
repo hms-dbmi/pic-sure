@@ -39,12 +39,12 @@ public class UserConsents extends BaseEntity {
         return this;
     }
 
-    protected static class ConsentsJsonConverter implements AttributeConverter<Map<String, Set<String>>, String> {
+    protected static class ConsentsJsonConverter implements AttributeConverter<Set<String>, String> {
         private static final ObjectMapper objectMapper = new ObjectMapper();
-        private static final TypeReference<Map<String, Set<String>>> SET_OF_STRING_TYPE_REF = new TypeReference<Map<String, Set<String>>>() {};
+        private static final TypeReference<Set<String>> SET_OF_STRING_TYPE_REF = new TypeReference<Set<String>>() {};
 
         @Override
-        public String convertToDatabaseColumn(Map<String, Set<String>> strings) {
+        public String convertToDatabaseColumn(Set<String> strings) {
             try {
                 return objectMapper.writeValueAsString(strings);
             } catch (JsonProcessingException e) {
@@ -53,7 +53,7 @@ public class UserConsents extends BaseEntity {
         }
 
         @Override
-        public Map<String, Set<String>> convertToEntityAttribute(String s) {
+        public Set<String> convertToEntityAttribute(String s) {
             try {
                 return objectMapper.readValue(s, SET_OF_STRING_TYPE_REF);
             } catch (JsonProcessingException e) {
