@@ -14,9 +14,8 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
@@ -45,10 +44,7 @@ public class Query {
 
     private Date readyTime;
 
-    // Resource is responsible for mapping internal status to picsurestatus.
-    // No @Enumerated annotation in the legacy entity -> default JPA enum mapping is ORDINAL;
-    // made explicit here to preserve that mapping unambiguously.
-    @Enumerated(EnumType.ORDINAL)
+    @Convert(converter = PicSureStatusConverter.class)
     private PicSureStatus status;
 
     private String resourceResultId;
