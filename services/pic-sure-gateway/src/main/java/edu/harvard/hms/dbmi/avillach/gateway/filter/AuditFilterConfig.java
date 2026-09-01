@@ -37,7 +37,7 @@ public class AuditFilterConfig {
 
     @Bean
     public LoggingClient loggingClient() {
-        return LoggingClientFactory.create("gateway");
+        return LoggingClientFactory.create("api");
     }
 
     @Bean
