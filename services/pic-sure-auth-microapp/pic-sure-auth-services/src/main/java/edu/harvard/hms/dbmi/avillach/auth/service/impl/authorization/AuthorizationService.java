@@ -59,12 +59,14 @@ public class AuthorizationService {
 
     private final UserConsentsRepository userConsentsRepository;
     private final boolean consentBasedAuthorizationEnabled;
+    private boolean enablePublicAccess;
 
     @Autowired
     public AuthorizationService(
         AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
         @Value("${strict.authorization.applications.connections}") String strictConnections, UserConsentsRepository userConsentsRepository,
-        @Value("${consent.based.authorization.enabled:true}") boolean consentBasedAuthorizationEnabled
+        @Value("${consent.based.authorization.enabled:true}") boolean consentBasedAuthorizationEnabled,
+        @Value("${enable.public.access:false}") boolean enablePublicAccess
     ) {
         this.accessRuleService = accessRuleService;
         this.sessionService = sessionService;
@@ -74,6 +76,7 @@ public class AuthorizationService {
         }
         this.userConsentsRepository = userConsentsRepository;
         this.consentBasedAuthorizationEnabled = consentBasedAuthorizationEnabled;
+        this.enablePublicAccess = enablePublicAccess;
         logger.info("Consent-based authorization enabled: {}", consentBasedAuthorizationEnabled);
     }
 
@@ -263,7 +266,7 @@ public class AuthorizationService {
 
         if (requestBody instanceof Map<?, ?> requestDetails) {
             Object targetService = requestDetails.get("Target Service");
-            if (targetService instanceof String targetServicePath && isAuthTargetService(targetServicePath)) {
+            if (targetService instanceof String targetServicePath && isAuthTargetService(targetServicePath) && !enablePublicAccess) {
                 logger.info(
                     "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ AUTH BACKEND PATH {} IS NOT AVAILABLE TO OPEN ACCESS",
                     targetServicePath
