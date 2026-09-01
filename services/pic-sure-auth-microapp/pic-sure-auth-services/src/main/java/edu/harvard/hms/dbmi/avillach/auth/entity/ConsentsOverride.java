@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * <p>A named set of consents that can be assigned to users in place of the consents they would
- * normally be granted. Linked to users via {@link UserConsentsOverride}.</p>
+ * <p>A set of consents that can be assigned to users in place of the consents they would
+ * normally be granted.</p>
  */
 @Entity(name = "consents_override")
 public class ConsentsOverride extends BaseEntity {

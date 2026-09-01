@@ -614,6 +614,44 @@ public class UserServiceTest {
         assertEquals(Set.of("phs1234.c1"), userConsentsCaptor.getValue().getConsents());
     }
 
+
+    @Test
+    public void updateUserConsents_overrideConsents() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of("phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P")));
+        User user = createTestUser();
+
+        when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(null);
+        UserConsentsOverride userConsentsOverride = new UserConsentsOverride();
+        userConsentsOverride.setConsentsOverride(new ConsentsOverride().setConsents(Set.of("phs456.c2"))).setEnabled(true);
+        when(userConsentsOverrideRepository.findByUserId(user.getUuid())).thenReturn(userConsentsOverride);
+
+
+        userService.updateUserConsents(user, Set.of("phs1234.c1"));
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(Set.of("phs456.c2"), userConsentsCaptor.getValue().getConsents());
+    }
+
+    @Test
+    public void updateUserConsents_overrideConsentsDisabled() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of("phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P")));
+        User user = createTestUser();
+
+        when(userConsentsRepository.findByUserId(user.getUuid())).thenReturn(null);
+        UserConsentsOverride userConsentsOverride = new UserConsentsOverride();
+        userConsentsOverride.setConsentsOverride(new ConsentsOverride().setConsents(Set.of("phs456.c2"))).setEnabled(false);
+        when(userConsentsOverrideRepository.findByUserId(user.getUuid())).thenReturn(userConsentsOverride);
+
+
+        userService.updateUserConsents(user, Set.of("phs1234.c1"));
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(Set.of("phs1234.c1"), userConsentsCaptor.getValue().getConsents());
+    }
+
+
     @Test
     public void getUserConsents_returnsStoredConsentsOfAuthenticatedUser() {
         User user = createTestUser();

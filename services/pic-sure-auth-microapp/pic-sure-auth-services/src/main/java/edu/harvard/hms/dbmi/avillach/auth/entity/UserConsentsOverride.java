@@ -7,8 +7,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * <p>Assigns a {@link ConsentsOverride} to a single user. At most one row exists per user, and it
- * only applies while {@code enabled} is set.</p>
+ * <p>A {@link ConsentsOverride} for a single user that overrides the consents they would normally be granted.</p>
  */
 @Entity(name = "user_consents_override")
 public class UserConsentsOverride extends BaseEntity {
