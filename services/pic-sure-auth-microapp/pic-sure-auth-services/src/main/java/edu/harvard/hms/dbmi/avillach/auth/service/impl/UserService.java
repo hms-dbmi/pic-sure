@@ -644,7 +644,7 @@ public class UserService {
     private Set<String> getUserConsents(User user, Set<String> userConsentStrings) {
         UserConsentsOverride overrideConsents = userConsentsOverrideRepository.findByUserId(user.getUuid());
         if (overrideConsents != null && overrideConsents.isEnabled()) {
-            return overrideConsents.getConsents();
+            return overrideConsents.getConsentsOverride().getConsents();
         } else {
             return new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
         }

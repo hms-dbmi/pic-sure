@@ -1,29 +1,27 @@
 package edu.harvard.hms.dbmi.avillach.auth.entity;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.persistence.AttributeConverter;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
+import jakarta.persistence.*;
 
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * <p>Assigns a {@link ConsentsOverride} to a single user. At most one row exists per user, and it
+ * only applies while {@code enabled} is set.</p>
+ */
 @Entity(name = "user_consents_override")
 public class UserConsentsOverride extends BaseEntity {
 
-    @Column(unique = true, name = "user_id")
+    @Column(unique = true, nullable = false, name = "user_id")
     private UUID userId;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "consents_override_id", nullable = false)
+    private ConsentsOverride consentsOverride;
 
-    @Convert(converter = ConsentsJsonConverter.class)
-    private Set<String> consents;
-
-    @Column(name = "enabled")
-    private boolean enabled;
+    @Column(nullable = false)
+    private boolean enabled = true;
 
     public UUID getUserId() {
         return userId;
@@ -34,12 +32,12 @@ public class UserConsentsOverride extends BaseEntity {
         return this;
     }
 
-    public Set<String> getConsents() {
-        return consents;
+    public ConsentsOverride getConsentsOverride() {
+        return consentsOverride;
     }
 
-    public UserConsentsOverride setConsents(Set<String> consents) {
-        this.consents = consents;
+    public UserConsentsOverride setConsentsOverride(ConsentsOverride consentsOverride) {
+        this.consentsOverride = consentsOverride;
         return this;
     }
 
@@ -52,26 +50,4 @@ public class UserConsentsOverride extends BaseEntity {
         return this;
     }
 
-    protected static class ConsentsJsonConverter implements AttributeConverter<Map<String, Set<String>>, String> {
-        private static final ObjectMapper objectMapper = new ObjectMapper();
-        private static final TypeReference<Map<String, Set<String>>> SET_OF_STRING_TYPE_REF = new TypeReference<Map<String, Set<String>>>() {};
-
-        @Override
-        public String convertToDatabaseColumn(Map<String, Set<String>> strings) {
-            try {
-                return objectMapper.writeValueAsString(strings);
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        @Override
-        public Map<String, Set<String>> convertToEntityAttribute(String s) {
-            try {
-                return objectMapper.readValue(s, SET_OF_STRING_TYPE_REF);
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
 }
