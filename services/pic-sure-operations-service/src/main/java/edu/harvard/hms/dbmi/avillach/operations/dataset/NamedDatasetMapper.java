@@ -4,8 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
@@ -25,6 +29,7 @@ public class NamedDatasetMapper {
      */
     private static final ObjectMapper V1_QUERY_MAPPER =
             JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+    private static Logger log = LogManager.getLogger(NamedDatasetMapper.class);
 
     public NamedDatasetDto toDto(NamedDataset e) {
         return new NamedDatasetDto(e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery()), e.getArchived(), e.getMetadata());
@@ -55,7 +60,8 @@ public class NamedDatasetMapper {
             edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query v3 = QueryTranslator.translate(v1);
             return V1_QUERY_MAPPER.writeValueAsString(v3);
         } catch (JsonProcessingException | UntranslatableQueryException e) {
-            throw new RuntimeException(e);
+            log.warn("Failed to convert query from v1 to v3: {}", e.getMessage());
+            throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unable to convert query from v1 to v3");
         }
     }
 
