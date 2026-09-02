@@ -218,7 +218,7 @@ public class AuthorizationServiceTest {
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
         authorizationService =
-            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false);
+            new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false, false);
     }
 
     @Test
