@@ -1,7 +1,10 @@
-version: '3.3'
+name: "${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME to a unique worktree-specific project name}"
 services:
   variant-loader:
-    image: dbmi/pic-sure-hpds-etl:master_62b8ef6
+    image: ${PIC_SURE_HPDS_ETL_IMAGE:?Set PIC_SURE_HPDS_ETL_IMAGE to a worktree-specific image tag}
+    build:
+      context: ../..
+      dockerfile: docker/pic-sure-hpds-etl/Dockerfile
     environment:
       - HEAPSIZE=26000
       - LOADER_NAME=VCFLocalLoader
