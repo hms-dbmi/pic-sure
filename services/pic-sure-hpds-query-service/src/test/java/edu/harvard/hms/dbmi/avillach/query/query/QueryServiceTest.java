@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import java.util.Map;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.mockito.InOrder;
@@ -127,12 +128,12 @@ class QueryServiceTest {
     }
 
     @Test
-    void createNeverPersistsResourceCredentials() {
-        // SECURITY: credentials ride the in-memory request to HPDS only; the payload sent to operations-service for storage must not
-        // carry them (they would otherwise sit at rest and echo back through /metadata queryJson).
+    void createNeverPersistsResourceCredentials() throws Exception {
+        // SECURITY: QueryRequest no longer models a credential map, and a legacy body that still sends one must not survive into the
+        // payload stored by operations-service (it would otherwise sit at rest and echo back through /metadata queryJson).
         UUID picsureId = UUID.randomUUID();
-        QueryRequest request = req();
-        request.setResourceCredentials(Map.of("BEARER_TOKEN", "secret"));
+        QueryRequest request =
+            new ObjectMapper().readValue("{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}", QueryRequest.class);
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
         when(operationsClient.save(any())).thenReturn(picsureId);
 

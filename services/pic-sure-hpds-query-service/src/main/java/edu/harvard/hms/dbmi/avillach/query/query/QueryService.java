@@ -160,20 +160,16 @@ public class QueryService {
     }
 
     /**
-     * null query → null blob; else the serialized QueryRequest with {@code resourceCredentials} removed. Credentials are only ever needed
-     * for the live HPDS call (which uses the in-memory request); nothing reads them back from operations-service (dispatch re-strips as
-     * defense in depth), so they must never reach the persistence store or the /metadata queryJson echo.
+     * null query → null blob; else the serialized QueryRequest. {@code QueryRequest} no longer carries a credential map, so what reaches
+     * the persistence store and the /metadata queryJson echo holds nothing secret; operations-service still strips the field off rows
+     * written before its removal.
      */
     private String serializeQuery(QueryRequest req) {
         if (req.getQuery() == null) {
             return null;
         }
         try {
-            JsonNode node = MAPPER.valueToTree(req);
-            if (node instanceof ObjectNode obj) {
-                obj.remove("resourceCredentials");
-            }
-            return MAPPER.writeValueAsString(node);
+            return MAPPER.writeValueAsString(req);
         } catch (IllegalArgumentException | JsonProcessingException e) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrectly formatted request");
         }

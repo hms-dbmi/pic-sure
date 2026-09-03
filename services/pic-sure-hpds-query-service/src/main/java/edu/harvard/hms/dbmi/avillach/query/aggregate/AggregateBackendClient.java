@@ -81,12 +81,11 @@ public class AggregateBackendClient {
 
     // ---- internals ----
 
-    /** Inject the configured resourceUUID (was target.resource.id) + carry inbound query/credentials. */
+    /** Inject the configured resourceUUID (was target.resource.id) + carry the inbound query. */
     private QueryRequest chain(QueryRequest in) {
         QueryRequest out = new GeneralQueryRequest();
         if (in != null) {
             out.setQuery(in.getQuery());
-            out.setResourceCredentials(in.getResourceCredentials());
             out.setResourceUUID(in.getResourceUUID());
         }
         String targetId = props.getTargetResourceId();
