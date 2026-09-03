@@ -11,18 +11,15 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 
 /**
- * Ports the legacy WAR's {@code PicsureSearchService.search}/{@code searchGenomicConceptValues} (:46-109) minus Resource + AuditContext.
- * Backend (auth/open) comes from the ingress {@code {backend}} path segment via {@link HpdsBackendSelector}, mirroring
- * {@link edu.harvard.hms.dbmi.avillach.query.query.QueryService}.
+ * Executes search and concept-value requests against the backend selected by the ingress {@code {backend}} path segment through
+ * {@link HpdsBackendSelector}.
  *
- * <p><b>Search is NOT versioned downstream</b>: unlike the query-lifecycle calls, the legacy WAR's {@code PicsureSearchService} always hit
- * HPDS at the backend's base path with no {@code /v3} suffix, even though the controller layer accepts both v1 and v3 ingress paths. This
- * class always resolves the backend with {@code v3=false} to preserve that (search endpoints on HPDS are not versioned).
+ * <p><b>Search is not versioned downstream:</b> although the controller accepts v1 and v3 ingress paths, this class resolves the backend
+ * with {@code v3=false} because HPDS search endpoints have no version suffix.
  *
- * <p>Also preserves that search/values calls carry NO service token: {@link ResourceWebClient#search} and
- * {@link ResourceWebClient#searchConceptValues} take a plain base URL string (not an {@code HpdsTarget}), so the per-backend service token
- * resolved by {@link HpdsBackendSelector} is never attached -- parity with {@code PicsureSearchService}, which never set
- * {@code BEARER_TOKEN} on these calls.
+ * <p>Search and values calls carry no service token: {@link ResourceWebClient#search} and {@link ResourceWebClient#searchConceptValues}
+ * take a plain base URL string (not an {@code HpdsTarget}), so the per-backend service token resolved by {@link HpdsBackendSelector} is
+ * never attached.
  */
 @Service
 public class SearchService {

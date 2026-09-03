@@ -20,10 +20,7 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.VariantListProcessor} and updated to use new Query
- * entity
- */
+/** Processes v3 variant-list queries. */
 @Component
 public class VariantListV3Processor implements HpdsV3Processor {
 

@@ -58,8 +58,7 @@ class AggregateBackendClientTest {
 
     @Test
     void querySyncSendsBearerTokenAndPropagatesMetadata() {
-        // finding I5: HPDS emits the metadata under "queryMetadata" (the legacy WAR's ResourceWebClient.QUERY_METADATA_FIELD); the
-        // client must surface that exact header. Stubbing the real name here (not the constant) keeps this a genuine contract check.
+        // HPDS emits metadata under "queryMetadata". Stubbing the literal name keeps this a genuine contract check.
         hpds.stubFor(
             post(urlEqualTo("/query/sync")).withHeader("Content-Type", WireMock.containing("application/json"))
                 .willReturn(aResponse().withStatus(200).withHeader("queryMetadata", "abc").withBody("42"))

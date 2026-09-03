@@ -30,8 +30,7 @@ public class PatientProcessor implements HpdsProcessor {
     @Override
     public void runQuery(Query query, AsyncResult asyncResult) {
         LOG.info("Pulling results for query {}", query.getId());
-        // floating all this in memory is a bit gross, but the whole list of
-        // patient IDs was already there, so I don't feel too bad
+        // Materialize patient ids before appending them to the result stream.
         List<String[]> allPatients = abstractProcessor.getPatientSubsetForQuery(query).stream()
             .map(patient -> new String[]{patient.toString()})
             .toList();

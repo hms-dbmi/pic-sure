@@ -22,9 +22,7 @@ import java.util.concurrent.RejectedExecutionException;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 
-/**
- * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult} and updated to use new Query entity
- */
+/** Tracks asynchronous v3 query execution and its result state. */
 public class AsyncResult implements Runnable, Comparable<AsyncResult> {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncResult.class);

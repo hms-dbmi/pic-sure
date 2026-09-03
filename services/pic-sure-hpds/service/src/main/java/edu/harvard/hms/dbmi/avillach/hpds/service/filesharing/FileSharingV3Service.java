@@ -12,12 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Map;
 
-/**
- * Used for sharing data. Given a query, this service will write phenotypic and genomic data into a directory
- *
- * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService} and updated to use new
- * Query entity
- */
+/** Writes phenotypic and genomic results from v3 queries into the sharing directory. */
 @Service
 public class FileSharingV3Service {
 

@@ -9,8 +9,8 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      # The pic-sure MySQL schema (Configuration/NamedDataset/Query) already exists and is owned by the legacy Flyway
-      # migrations -- this service must never generate or alter DDL against it.
+      # The PIC-SURE MySQL schema for Configuration, NamedDataset, and Query is managed by Flyway;
+      # this service must never generate or alter its DDL.
       ddl-auto: none
       naming:
         # CRITICAL / LOAD-BEARING: Spring Boot's default SpringPhysicalNamingStrategy snake_cases identifiers even when

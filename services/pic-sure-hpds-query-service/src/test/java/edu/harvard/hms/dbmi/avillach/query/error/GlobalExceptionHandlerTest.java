@@ -12,9 +12,8 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 
 /**
- * Unit tests for {@link GlobalExceptionHandler}: HPDS-upstream failures map to 502 (the WAR returned 500 for this case; HPDS is upstream
- * infrastructure so 502 is the honest status), {@link PicsureException} maps to its own carried status, and any other unmapped exception
- * maps to 500 -- all three sharing the commons {@code {errorType,message,requestId}} body shape.
+ * Unit tests for {@link GlobalExceptionHandler}: HPDS upstream failures map to 502, {@link PicsureException} maps to its carried status,
+ * and any other unmapped exception maps to 500. All three share the commons {@code {errorType,message,requestId}} body shape.
  */
 class GlobalExceptionHandlerTest {
 

@@ -30,24 +30,22 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 
 /**
- * Direct port of {@code AggregateDataSharingResourceRS}/{@code AggregateDataSharingResourceRSV3}'s orchestration -- the querySync
- * obfuscation dispatch, the {@code CROSS_COUNT} query alteration ({@code changeQueryToOpenCrossCount}), and the continuous-suppression
- * rule. Stores no {@code Query} rows itself (this module is DB-free); the async open submit ({@link #query}) delegates persistence and HPDS
- * dispatch to {@link QueryService} (which persists over HTTP via operations-service), and does not implement {@code RequestScopedHeader}
- * (dead code in the WAR -- dropped) or perform inline audit logging (handled in the gateway).
+ * Orchestrates querySync obfuscation, {@code CROSS_COUNT} query scoping through {@code changeQueryToOpenCrossCount}, and continuous-result
+ * suppression. This DB-free module stores no {@code Query} rows; async open submissions ({@link #query}) delegate persistence and HPDS
+ * dispatch to {@link QueryService}, which persists through operations-service. Audit logging is handled by the gateway.
  *
- * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the exact 10-type allow-list from the WAR; a type not on it is rejected with
- * a 400 rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold/variance
+ * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the complete 10-type allow-list; a type not on it is rejected with a 400
+ * rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold and variance
  * obfuscation (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT) versus a raw pass-through (INFO_COLUMN_LISTING,
- * OBSERVATION_COUNT, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, VCF_EXCERPT -- none of these were obfuscated
- * in the WAR either). Any divergence here is a privacy regression.
+ * OBSERVATION_COUNT, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, and VCF_EXCERPT). Any divergence here is a
+ * privacy regression.
  */
 @Service
 public class AggregateService {
 
     private static final String STUDIES_CONSENTS_PATH = "\\_studies_consents\\";
 
-    /** Exact port of the WAR's {@code querySync} allow-list (identical in v1 and v3). */
+    /** Result types accepted by {@code querySync} for both v1 and v3. */
     private static final Set<String> ALLOWED_RESULT_TYPES = Set.of(
         "COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT", "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT",
         "CONTINUOUS_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY", "AGGREGATE_VCF_EXCERPT", "VCF_EXCERPT"
@@ -73,17 +71,13 @@ public class AggregateService {
     // ---- async open submit ----
 
     /**
-     * Async open-channel submit. Direct port of the WAR aggregate resources' {@code query()} entry point
-     * ({@code AggregateDataSharingResourceRS.query} / {@code RSV3.query}): validate the request and -- only for a {@code CROSS_COUNT}
-     * submission -- rewrite it via {@link #changeQueryToOpenCrossCount} (force {@code CROSS_COUNT} + inject the full study-consents
-     * allow-list under the variant's consents field) BEFORE it is persisted and dispatched. Non-{@code CROSS_COUNT} types are forwarded
-     * unchanged, exactly as the WAR's async {@code query()} did (it had no allow-list; that guard existed only on {@code querySync}).
+     * Validates an async open-channel submission. A {@code CROSS_COUNT} request is rewritten through {@link #changeQueryToOpenCrossCount}
+     * before persistence and dispatch, forcing {@code CROSS_COUNT} and injecting the full study-consents allow-list under the variant's
+     * consent field. Other result types pass through unchanged; the allow-list applies only to {@code querySync}.
      *
-     * <p><b>Consent-scoping fix (I6):</b> persistence + HPDS dispatch are delegated to {@link QueryService} (the module's DB-free create
-     * flow), so the STORED query is the REWRITTEN one. Every later status/result/signed-url/metadata call -- served by the v3 read ingress
-     * ({@code /hpds/{backend}/v3/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller}) off the stored query --
-     * therefore operates on the safe, consent-scoped query rather than the raw submission. This closes the gap where an unwired open async
-     * path dispatched the raw query with no consent-scoping.
+     * <p>Persistence and HPDS dispatch are delegated to {@link QueryService}, so the rewritten query is the one stored. Later status,
+     * result, signed-url, and metadata calls through {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller} therefore
+     * operate on the consent-scoped query.
      */
     public QueryStatus query(QueryRequest req, AggregateVariant variant) {
         checkQuery(req);
@@ -128,7 +122,7 @@ public class AggregateService {
     }
 
     /**
-     * Dispatches on {@code expectedResultType} to the matching obfuscation path. Types allow-listed but not obfuscated in the WAR
+     * Dispatches on {@code expectedResultType} to the matching obfuscation path. Types that are allowed but not obfuscated
      * (INFO_COLUMN_LISTING, OBSERVATION_COUNT, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, VCF_EXCERPT) fall
      * through unmodified.
      */
@@ -179,7 +173,7 @@ public class AggregateService {
         }
     }
 
-    /** Replaces the WAR's {@code ResourceRepository.getById(visualizationResourceId)} with the configured viz URL (DB-free). */
+    /** Sends continuous results to the configured visualization URL for binning. */
     private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(
         QueryRequest req, Map<String, Map<String, Integer>> continuous, AggregateVariant variant
     ) throws IOException {

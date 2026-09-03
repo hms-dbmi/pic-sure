@@ -35,9 +35,8 @@ import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**
- * DB-free port of the legacy WAR's {@code PicsureQueryServiceTest}: every place the brief expected a local
- * {@code QueryRepository}/{@code Query} entity now goes through {@link OperationsClient} instead (create/sync persist via
- * {@code operationsClient.save}/{@code update}; read ops load via {@code operationsClient.get}).
+ * Covers the DB-free query lifecycle. Create and sync operations persist through {@link OperationsClient#save} and update; read operations
+ * load through {@link OperationsClient#get}.
  */
 class QueryServiceTest {
 
@@ -166,7 +165,7 @@ class QueryServiceTest {
         var resp = service.querySync("auth", req(), "UI");
 
         assertThat(new String(resp.body())).isEqualTo("body");
-        // resourceResultId persisted = the picsureId when no header (maintain WAR behavior)
+        // Persist the generated PIC-SURE id when the response has no resource result header.
         verify(operationsClient)
             .update(eq(picsureId), argThat((UpdateQueryRequest u) -> picsureId.toString().equals(u.resourceResultId())));
     }

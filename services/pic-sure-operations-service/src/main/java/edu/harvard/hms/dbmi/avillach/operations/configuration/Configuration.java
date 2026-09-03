@@ -13,13 +13,7 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
-/**
- * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.entity.Configuration} (javax/CDI). The
- * {@code patch(ConfigurationRequest)}/{@code fromRequest(ConfigurationRequest)}/ {@code toString()} convenience methods were intentionally
- * dropped: they depended on the javax {@code ConfigurationRequest} DTO (not ported — out of scope, see task description) and on the JSON-P
- * ({@code javax.json}) API, neither of which is needed by the persistence layer. Downstream services define their own request/response DTOs
- * and mappers.
- */
+/** Persistence model for configuration values; request and response mapping is handled outside the entity. */
 @Schema(description = "A Configuration object containing name, kind, enabled status, and description.")
 @Entity(name = "configuration")
 @Table(
@@ -29,10 +23,7 @@ import jakarta.persistence.UniqueConstraint;
 )
 public class Configuration {
 
-    // Hibernate 6+: a UUID-typed id with a bare @GeneratedValue (AUTO strategy) is generated via
-    // the built-in random UUID generator. This replaces the legacy javax
-    // `@GenericGenerator(strategy = "org.hibernate.id.UUIDGenerator")`, which Hibernate 6 removed;
-    // both produce a random UUID, so the persisted values and BINARY(16) column are unaffected.
+    // Hibernate generates a random UUID for a UUID-typed id with a bare @GeneratedValue.
     @Id
     @GeneratedValue
     @Column(columnDefinition = "BINARY(16)")
@@ -46,8 +37,7 @@ public class Configuration {
     @Column(length = 255)
     private String kind;
 
-    // Quoted: VALUE is a reserved word in H2 (not in MySQL, where legacy leaves it unquoted); see
-    // the equivalent note on NamedDataset.user.
+    // Quoted because H2 reserves VALUE; Hibernate renders the appropriate quoting for each dialect.
     @Schema(description = "The configuration value")
     @Lob
     @Column(name = "\"value\"", columnDefinition = "TEXT")

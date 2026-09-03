@@ -123,7 +123,7 @@ class ResourceWebClientTest {
     }
 
     @Test
-    void searchDoesNotInjectServiceToken() { // parity with PicsureSearchService (no BEARER_TOKEN)
+    void searchDoesNotInjectServiceToken() { // Search requests do not send a service token.
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/search")).withHeader("Authorization", absent())
                 .willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}"))
