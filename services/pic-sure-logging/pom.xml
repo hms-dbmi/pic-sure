@@ -18,19 +18,26 @@
 
     <properties>
         <!-- Stays Javalin (the one non-Spring service, spec §17.3); Javalin is not BOM-governed. -->
-        <javalin.version>6.7.0</javalin.version>
+        <javalin.version>7.2.3</javalin.version>
         <java-jwt.version>4.4.0</java-jwt.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
-            <!-- Javalin 6.x embeds Jetty 11; without this import the platform BOM's Jetty 12
-                 pins win over Javalin's transitives (NoSuchMethodError at server start).
-                 A module's own dependencyManagement outranks the inherited one. -->
+            <!-- Javalin 7.2.3 uses Jetty 12.1.12. Keep its core and EE10 modules aligned here
+                 because the platform's Spring BOM manages a different Jetty line, and a
+                 module's own dependencyManagement outranks the inherited one. -->
             <dependency>
                 <groupId>org.eclipse.jetty</groupId>
                 <artifactId>jetty-bom</artifactId>
-                <version>11.0.25</version>
+                <version>12.1.12</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jetty.ee10</groupId>
+                <artifactId>jetty-ee10-bom</artifactId>
+                <version>12.1.12</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

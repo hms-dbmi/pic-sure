@@ -8,14 +8,17 @@ on:
       - labeled
       - unlabeled
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
 
   check_labels:
     name: Check labels
     runs-on: ubuntu-latest
     steps:
-      - uses: docker://agilepathway/pull-request-label-checker:latest
+      - uses: docker://agilepathway/pull-request-label-checker@sha256:14f5f3dfda922496d07d53494e2d2b42885165f90677a1c03d600059b7706a61
         with:
           one_of: breaking-change,enhancement,bug,documentation,ignore-for-release,dependencies
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-
