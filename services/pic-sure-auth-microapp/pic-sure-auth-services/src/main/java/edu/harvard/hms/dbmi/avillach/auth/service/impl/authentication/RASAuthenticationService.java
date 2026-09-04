@@ -78,7 +78,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
      */
     @Override
     public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
-        logger.info("RAS OKTA LOGIN ATTEMPT ___ CODE {}", authRequest.get("code"));
+        logger.info("RAS OKTA LOGIN ATTEMPT");
+        logger.debug("RAS OKTA LOGIN ATTEMPT ___ CODE {}", authRequest.get("code"));
 
         JsonNode userToken = null;
         JsonNode introspectResponse = null;
@@ -93,10 +94,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         }
 
         if (introspectResponse == null) {
-            logger.info(
-                "LOGIN FAILED ___ USER NOT AUTHENTICATED ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse,
-                authRequest.get("code")
-            );
+            logger.info("LOGIN FAILED ___ USER NOT AUTHENTICATED ___ NO INTROSPECTION RESPONSE");
+            logger.debug("LOGIN FAILED ___ USER NOT AUTHENTICATED ___ NO INTROSPECTION RESPONSE ___ CODE {}", authRequest.get("code"));
             return null;
         }
 
@@ -106,7 +105,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         Optional<User> initializedUser = initializeUser(introspectResponse);
         if (initializedUser.isEmpty()) {
-            logger.info("LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA INTROSPECTION DATA ___ CODE {}", authRequest.get("code"));
+            logger.info("LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA INTROSPECTION DATA");
+            logger.debug("LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA INTROSPECTION DATA ___ CODE {}", authRequest.get("code"));
             return null;
         }
 
@@ -122,11 +122,12 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         if (responseMap != null) {
             responseMap.put("oktaIdToken", idToken);
             logger.info(
-                "LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
-                user.getSubject(), user.getUuid().toString(),
+                "LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {}", user.getSubject(),
+                user.getUuid().toString(),
                 user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                responseMap.get("expirationDate"), authRequest.get("code")
+                responseMap.get("expirationDate")
             );
+            logger.debug("LOGIN SUCCESS ___ USER {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
         }
 
         return responseMap;
@@ -134,18 +135,21 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
     private boolean isActiveIntrospectionResponse(JsonNode introspectResponse, String code) {
         if (!introspectResponse.has("active") || introspectResponse.get("active").isNull()) {
-            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM ___ CODE {}", code);
+            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM");
+            logger.debug("LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM ___ CODE {}", code);
             return false;
         }
 
         JsonNode activeClaim = introspectResponse.get("active");
         if (!activeClaim.isBoolean()) {
-            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION ACTIVE CLAIM IS NOT BOOLEAN ___ VALUE {} ___ CODE {}", activeClaim, code);
+            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION ACTIVE CLAIM IS NOT BOOLEAN ___ VALUE {}", activeClaim);
+            logger.debug("LOGIN FAILED ___ OKTA INTROSPECTION ACTIVE CLAIM IS NOT BOOLEAN ___ CODE {}", code);
             return false;
         }
 
         if (!activeClaim.booleanValue()) {
-            logger.info("LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE ___ CODE {}", code);
+            logger.info("LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE");
+            logger.debug("LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE ___ CODE {}", code);
             return false;
         }
 
@@ -155,12 +159,14 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     private Optional<Passport> extractAndVerifyPassport(Map<String, String> authRequest, JsonNode introspectResponse, User user) {
         Optional<Passport> rasPassport = this.rasPassPortService.extractPassport(introspectResponse);
         if (rasPassport.isEmpty()) {
-            logger.info("LOGIN FAILED ___ NO RAS PASSPORT FOUND ___ USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
+            logger.info("LOGIN FAILED ___ NO RAS PASSPORT FOUND ___ USER: {}", user.getSubject());
+            logger.debug("LOGIN FAILED ___ NO RAS PASSPORT FOUND ___ USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
             return Optional.empty();
         }
 
         if (rasPassPortService.isExpired(rasPassport.get())) {
-            logger.error(
+            logger.error("validateRASPassport() LOGIN FAILED ___ PASSPORT IS EXPIRED ___ USER: {}", user.getSubject());
+            logger.debug(
                 "validateRASPassport() LOGIN FAILED ___ PASSPORT IS EXPIRED ___ USER: {} ___ CODE {}", user.getSubject(),
                 authRequest.get("code")
             );
@@ -170,8 +176,12 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         if (!rasPassport.get().getIss().equals(this.rasPassportIssuer)) {
             logger.error(
                 "validateRASPassport() LOGIN FAILED ___ PASSPORT ISSUER IS NOT CORRECT ___ USER: {} ___ "
-                    + "EXPECTED ISSUER {} ___ ACTUAL ISSUER {} ___ CODE {}",
-                user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss(), authRequest.get("code")
+                    + "EXPECTED ISSUER {} ___ ACTUAL ISSUER {}",
+                user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss()
+            );
+            logger.debug(
+                "validateRASPassport() LOGIN FAILED ___ PASSPORT ISSUER IS NOT CORRECT ___ USER: {} ___ CODE {}", user.getSubject(),
+                authRequest.get("code")
             );
             return Optional.empty();
         }
@@ -179,7 +189,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     }
 
     protected User updateRasUserRoles(String code, User user, Passport rasPassport) {
-        logger.info("RAS PASSPORT FOUND ___ USER: {} ___ PASSPORT: {} ___ CODE {}", user.getSubject(), rasPassport, code);
+        logger.info("RAS PASSPORT FOUND ___ USER: {}", user.getSubject());
+        logger.debug("RAS PASSPORT FOUND ___ USER: {} ___ PASSPORT: {} ___ CODE {}", user.getSubject(), rasPassport, code);
         Set<Optional<Ga4ghPassportV1>> ga4ghPassports = rasPassport.getGa4ghPassportV1().stream().map(JWTUtil::parseGa4ghPassportV1)
             .filter(Optional::isPresent).collect(Collectors.toSet());
         Set<RasDbgapPermission> dbgapPermissions = this.rasPassPortService.ga4ghPassportToRasDbgapPermissions(ga4ghPassports);
@@ -204,7 +215,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         User currentUser = user.get();
         currentUser.setGeneralMetadata(generateRasUserMetadata(currentUser).toString());
-        logger.info("USER METADATA SUCCESSFULLY ADDED - USER DATA: {}", currentUser.getGeneralMetadata());
+        logger.info("USER METADATA SUCCESSFULLY ADDED ___ USER {}", currentUser.getSubject());
+        logger.debug("USER METADATA SUCCESSFULLY ADDED ___ USER DATA: {}", currentUser.getGeneralMetadata());
 
         cacheEvictionService.evictCache(currentUser);
         return Optional.of(currentUser);
@@ -278,7 +290,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         String passport = introspectResponse.get("passport_jwt_v11").toString();
         user.setPassport(passport);
         userService.save(user);
-        logger.info("RAS PASSPORT SUCCESSFULLY ADDED TO USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
+        logger.info("RAS PASSPORT SUCCESSFULLY ADDED TO USER: {}", user.getSubject());
+        logger.debug("RAS PASSPORT SUCCESSFULLY ADDED TO USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
     }
 
     @Override
