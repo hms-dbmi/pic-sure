@@ -20,13 +20,6 @@ public class SessionService {
 
     private static final Logger logger = LoggerFactory.getLogger(SessionService.class);
 
-    /**
-     * A token is minted a moment before {@link #startSession(String)} records the session, and the JWT {@code iat}
-     * claim is only second-granular, so a token belonging to the session that just began can carry a timestamp
-     * slightly earlier than that session's start. Anything older than this allowance came from an earlier session.
-     */
-    private static final long ISSUED_AT_ALLOWANCE_MS = 5000L;
-
     private final long sessionMaxDuration;
     private final CacheManager cacheManager;
     private final LoggingClient loggingClient;
@@ -38,8 +31,13 @@ public class SessionService {
         this.loggingClient = loggingClient;
     }
 
-    @CachePut(value = "sessions")
-    public long startSession(String userSubject) {
+    /**
+     * @param tokenIssuedAt the {@code iat} of the token minted for this login. The session is anchored to it rather
+     * than to the wall clock so that a token and its own session share an exact start, which lets
+     * {@link #isTokenIssuedBeforeCurrentSession} compare them without a tolerance window. Null falls back to now.
+     */
+    @CachePut(value = "sessions", key = "#userSubject")
+    public long startSession(String userSubject, Date tokenIssuedAt) {
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
                 loggingClient.send(LoggingEvent.builder("AUTH").action("session.start")
@@ -49,10 +47,10 @@ public class SessionService {
                 logger.warn("Failed to send SESSION_START audit log event", e);
             }
         }
-        return System.currentTimeMillis();
+        return tokenIssuedAt != null ? tokenIssuedAt.getTime() : System.currentTimeMillis();
     }
 
-    @CacheEvict(value = "sessions")
+    @CacheEvict(value = "sessions", key = "#userSubject")
     public void endSession(String userSubject) {
         // No audit logging here — endSession is called from evictCache() which fires on
         // logout, passport invalidation, and login flows. The callers log their own
@@ -93,8 +91,7 @@ public class SessionService {
             return false;
         }
 
-        return getCachedSessionStartTime(userSubject)
-            .map(sessionStartTime -> issuedAt.getTime() < sessionStartTime - ISSUED_AT_ALLOWANCE_MS).orElse(false);
+        return getCachedSessionStartTime(userSubject).map(sessionStartTime -> issuedAt.getTime() < sessionStartTime).orElse(false);
     }
 
 }

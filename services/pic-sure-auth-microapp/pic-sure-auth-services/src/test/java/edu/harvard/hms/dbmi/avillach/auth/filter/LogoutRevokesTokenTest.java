@@ -55,6 +55,7 @@ class LogoutRevokesTokenTest {
     private AnnotationConfigApplicationContext context;
     private CacheManager cacheManager;
     private SessionService sessionService;
+    private Date tokenIssuedAt;
     private CustomLogoutHandler logoutHandler;
     private JWTFilter filter;
     private FilterChain filterChain;
@@ -89,7 +90,8 @@ class LogoutRevokesTokenTest {
         when(jws.getPayload()).thenReturn(claims);
         when(claims.get("sub", String.class)).thenReturn(SUBJECT);
         when(claims.getSubject()).thenReturn(SUBJECT);
-        when(claims.getIssuedAt()).thenReturn(new Date(System.currentTimeMillis() - ONE_MINUTE_MS));
+        tokenIssuedAt = new Date(System.currentTimeMillis() - ONE_MINUTE_MS);
+        when(claims.getIssuedAt()).thenReturn(tokenIssuedAt);
         when(jwtUtil.parseTokenAllowingExpiration(TOKEN)).thenReturn(java.util.Optional.of(claims));
 
         Privilege privilege = new Privilege();
@@ -144,11 +146,26 @@ class LogoutRevokesTokenTest {
         logout();
         SecurityContextHolder.clearContext();
 
-        sessionService.startSession(SUBJECT);
+        sessionService.startSession(SUBJECT, new Date());
 
         MockHttpServletResponse afterSecondLogin = callAdminEndpoint();
         assertEquals(401, afterSecondLogin.getStatus(), "A token from the abandoned session must not be revived by a new login");
         assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    /**
+     * startSession carries a second argument now, so pin what it writes: the session must be keyed by subject and
+     * hold the issuing token's own issued-at. Getting either wrong silently breaks every check built on it.
+     */
+    @Test
+    void startingASessionAnchorsItToTheTokenThatOpenedIt() {
+        Date issuedAt = new Date(System.currentTimeMillis() - 30_000);
+
+        sessionService.startSession(SUBJECT, issuedAt);
+
+        Cache.ValueWrapper stored = cacheManager.getCache("sessions").get(SUBJECT);
+        assertNotNull(stored, "the session must be cached under the subject alone");
+        assertEquals(issuedAt.getTime(), stored.get());
     }
 
     /**
@@ -161,20 +178,20 @@ class LogoutRevokesTokenTest {
         loginAMinuteAgo();
         logout();
 
-        sessionService.startSession(SUBJECT);
+        sessionService.startSession(SUBJECT, new Date());
         logout();
 
         assertFalse(sessionService.isSessionExpired(SUBJECT), "A stale token must not be able to end the current session");
     }
 
     /**
-     * Back-dates the first login so the second one is distinguishable from it. {@code startSession} stamps
-     * {@code System.currentTimeMillis()}, and the cache is the same store its {@code @CachePut} writes to.
+     * The login that minted this token, a minute ago. Anchored to the token's own issued-at exactly as
+     * {@code startSession} does in production; the cache is the same store its {@code @CachePut} writes to.
      */
     private void loginAMinuteAgo() {
         Cache sessions = cacheManager.getCache("sessions");
         assertNotNull(sessions);
-        sessions.put(SUBJECT, System.currentTimeMillis() - ONE_MINUTE_MS);
+        sessions.put(SUBJECT, tokenIssuedAt.getTime());
     }
 
     private MockHttpServletResponse callAdminEndpoint() throws Exception {
