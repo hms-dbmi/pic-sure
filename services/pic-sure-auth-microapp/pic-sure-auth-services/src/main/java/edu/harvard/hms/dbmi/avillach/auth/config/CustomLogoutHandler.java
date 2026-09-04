@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.config;
 
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -23,11 +24,15 @@ public class CustomLogoutHandler implements LogoutHandler {
     private final UserService userService;
     private final CacheEvictionService cacheEvictionService;
     private final JWTUtil jwtUtil;
+    private final SessionService sessionService;
 
-    public CustomLogoutHandler(UserService userService, CacheEvictionService cacheEvictionService, JWTUtil jwtUtil) {
+    public CustomLogoutHandler(
+        UserService userService, CacheEvictionService cacheEvictionService, JWTUtil jwtUtil, SessionService sessionService
+    ) {
         this.userService = userService;
         this.cacheEvictionService = cacheEvictionService;
         this.jwtUtil = jwtUtil;
+        this.sessionService = sessionService;
     }
 
     @Override
@@ -51,13 +56,23 @@ public class CustomLogoutHandler implements LogoutHandler {
         }
 
         String subject = payload.get().getSubject();
-        if (StringUtils.isNotBlank(subject)) {
-            logger.info("logout() Logging out User: {}", subject);
-            this.cacheEvictionService.evictCache(subject);
-            this.userService.removeUserPassport(subject);
-
-            // Populate AuditAttributes for the AuditLoggingFilter to include in its event
-            AuditAttributes.putMetadata(request, "user_subject", subject);
+        if (StringUtils.isBlank(subject)) {
+            return;
         }
+
+        // /logout is permit-listed and LogoutFilter runs ahead of JWTFilter, so this is the only place the logout
+        // request's token is checked. Without this, anyone holding a token from a session the user already left
+        // could end the session they are using now.
+        if (sessionService.isTokenIssuedBeforeCurrentSession(subject, payload.get().getIssuedAt())) {
+            logger.warn("logout() Ignoring a logout presented with a token from an ended session for subject: {}", subject);
+            return;
+        }
+
+        logger.info("logout() Logging out User: {}", subject);
+        this.cacheEvictionService.evictCache(subject);
+        this.userService.removeUserPassport(subject);
+
+        // Populate AuditAttributes for the AuditLoggingFilter to include in its event
+        AuditAttributes.putMetadata(request, "user_subject", subject);
     }
 }
