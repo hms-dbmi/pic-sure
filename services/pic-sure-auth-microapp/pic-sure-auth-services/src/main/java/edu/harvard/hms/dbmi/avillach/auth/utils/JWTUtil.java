@@ -113,6 +113,28 @@ public class JWTUtil {
         return jws;
     }
 
+    /**
+     * Verifies the token's signature and returns its claims even when the token is past its expiration. A user whose
+     * token has idled out still needs to be able to log out, and an expired token whose signature checks out names
+     * its subject just as reliably as a live one.
+     *
+     * @return the claims, or empty if the signature or structure could not be verified
+     */
+    public Optional<Claims> parseTokenAllowingExpiration(String token) {
+        String clientSecret = getDecodedClientSecret();
+        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+
+        try {
+            return Optional.of(Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload());
+        } catch (ExpiredJwtException e) {
+            // Thrown after the signature is verified, so these claims are as trustworthy as any other.
+            return Optional.ofNullable(e.getClaims());
+        } catch (JwtException | IllegalArgumentException e) {
+            logger.error("parseTokenAllowingExpiration() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     public static Optional<String> getTokenFromAuthorizationHeader(String authorizationHeader) {
         if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
             return Optional.ofNullable(authorizationHeader);

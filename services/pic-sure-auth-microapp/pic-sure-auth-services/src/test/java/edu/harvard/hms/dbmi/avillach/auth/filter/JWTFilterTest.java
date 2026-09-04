@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -38,7 +39,8 @@ class JWTFilterTest {
         TOSService tosService = mock(TOSService.class);
         JWTUtil jwtUtil = mock(JWTUtil.class);
         CustomUserDetailService userDetailsService = mock(CustomUserDetailService.class);
-        JWTFilter filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService);
+        SessionService sessionService = mock(SessionService.class);
+        JWTFilter filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService, sessionService);
         FilterChain filterChain = mock(FilterChain.class);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user/me/consents");
         MockHttpServletResponse response = new MockHttpServletResponse();

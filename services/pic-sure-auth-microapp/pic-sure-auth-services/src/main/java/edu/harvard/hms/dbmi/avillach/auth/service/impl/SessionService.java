@@ -11,6 +11,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.stereotype.Service;
 
+import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 
@@ -30,8 +31,13 @@ public class SessionService {
         this.loggingClient = loggingClient;
     }
 
-    @CachePut(value = "sessions")
-    public long startSession(String userSubject) {
+    /**
+     * @param tokenIssuedAt the {@code iat} of the token minted for this login. The session is anchored to it rather
+     * than to the wall clock so that a token and its own session share an exact start, which lets
+     * {@link #isTokenIssuedBeforeCurrentSession} compare them without a tolerance window. Null falls back to now.
+     */
+    @CachePut(value = "sessions", key = "#userSubject")
+    public long startSession(String userSubject, Date tokenIssuedAt) {
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
                 loggingClient.send(LoggingEvent.builder("AUTH").action("session.start")
@@ -41,10 +47,10 @@ public class SessionService {
                 logger.warn("Failed to send SESSION_START audit log event", e);
             }
         }
-        return System.currentTimeMillis();
+        return tokenIssuedAt != null ? tokenIssuedAt.getTime() : System.currentTimeMillis();
     }
 
-    @CacheEvict(value = "sessions")
+    @CacheEvict(value = "sessions", key = "#userSubject")
     public void endSession(String userSubject) {
         // No audit logging here — endSession is called from evictCache() which fires on
         // logout, passport invalidation, and login flows. The callers log their own
@@ -70,6 +76,22 @@ public class SessionService {
     public boolean isSessionExpired(String userSubject) {
         Optional<Long> sessionStartTime = getCachedSessionStartTime(userSubject);
         return sessionStartTime.map(aLong -> System.currentTimeMillis() - aLong > sessionMaxDuration).orElse(true);
+    }
+
+    /**
+     * Whether the token was minted before the subject's current session began, which means it belongs to a session
+     * that has already ended. Ending a session only clears the subject's entry, so logging back in would otherwise
+     * make every still-unexpired token from the previous session valid again.
+     *
+     * @param userSubject User::getSubject()
+     * @param issuedAt the token's {@code iat} claim, or null if it carries none
+     */
+    public boolean isTokenIssuedBeforeCurrentSession(String userSubject, Date issuedAt) {
+        if (issuedAt == null) {
+            return false;
+        }
+
+        return getCachedSessionStartTime(userSubject).map(sessionStartTime -> issuedAt.getTime() < sessionStartTime).orElse(false);
     }
 
 }

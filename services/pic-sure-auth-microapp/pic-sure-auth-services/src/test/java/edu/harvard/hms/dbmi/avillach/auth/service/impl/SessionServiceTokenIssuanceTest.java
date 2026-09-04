@@ -1,0 +1,81 @@
+package edu.harvard.hms.dbmi.avillach.auth.service.impl;
+
+import java.util.Date;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Boundaries of the ALS-12756 check that keeps a token from a logged-out session from being revived by the next
+ * login. The cache is the real one {@code @CachePut}/{@code @CacheEvict} write to, so entries are set directly.
+ */
+class SessionServiceTokenIssuanceTest {
+
+    private static final String SUBJECT = "admin-subject";
+    private static final long EIGHT_HOURS_MS = 8 * 60 * 60 * 1000L;
+
+    private ConcurrentMapCacheManager cacheManager;
+    private SessionService sessionService;
+
+    @BeforeEach
+    void setUp() {
+        cacheManager = new ConcurrentMapCacheManager("sessions");
+        sessionService = new SessionService(EIGHT_HOURS_MS, cacheManager, null);
+    }
+
+    @Test
+    void aTokenOlderThanTheCurrentSessionBelongsToAPreviousOne() {
+        sessionStartedAt(System.currentTimeMillis());
+
+        assertTrue(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, new Date(System.currentTimeMillis() - 60_000)));
+    }
+
+    @Test
+    void aTokenFromTheCurrentSessionIsAccepted() {
+        sessionStartedAt(System.currentTimeMillis() - 60_000);
+
+        assertFalse(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, new Date(System.currentTimeMillis() - 30_000)));
+    }
+
+    /**
+     * The production invariant: {@code startSession} anchors the session to the issuing token's own {@code iat}, so a
+     * token of the current session carries exactly the session's start and needs no tolerance window to be accepted.
+     */
+    @Test
+    void theTokenThatOpenedTheSessionIsAccepted() {
+        long now = System.currentTimeMillis();
+        sessionStartedAt(now);
+
+        assertFalse(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, new Date(now)));
+    }
+
+    /**
+     * No tolerance window: a token from a hair before the current session is still from a previous one.
+     */
+    @Test
+    void aTokenFromJustBeforeTheCurrentSessionIsRejected() {
+        long now = System.currentTimeMillis();
+        sessionStartedAt(now);
+
+        assertTrue(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, new Date(now - 1)));
+    }
+
+    @Test
+    void withoutASessionThereIsNothingToCompareAgainst() {
+        assertFalse(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, new Date(0)));
+    }
+
+    @Test
+    void aTokenWithoutAnIssuedAtClaimIsLeftToTheSessionExpiryCheck() {
+        sessionStartedAt(System.currentTimeMillis());
+
+        assertFalse(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, null));
+    }
+
+    private void sessionStartedAt(long epochMillis) {
+        cacheManager.getCache("sessions").put(SUBJECT, epochMillis);
+    }
+}
