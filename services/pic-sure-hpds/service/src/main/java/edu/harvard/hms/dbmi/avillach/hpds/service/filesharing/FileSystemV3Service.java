@@ -16,7 +16,10 @@ import java.nio.file.Path;
 
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
-/** Writes v3 asynchronous query results to the configured sharing filesystem. */
+/**
+ * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSystemService} and updated to use new
+ * Query entity
+ */
 @Service
 public class FileSystemV3Service {
 

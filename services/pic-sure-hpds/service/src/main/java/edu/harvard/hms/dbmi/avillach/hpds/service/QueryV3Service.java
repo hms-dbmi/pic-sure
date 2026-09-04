@@ -142,7 +142,7 @@ public class QueryV3Service {
         AsyncResult asyncResult = results.get(queryId);
         int queueDepth =
             asyncResult.getQuery().select().size() > SMALL_JOB_LIMIT ? largeTaskExecutionQueue.size() : smallTaskExecutionQueue.size();
-        // Report queue depth for the executor selected by the query width.
+        // note: code copied from this method in QueryService was removed, it was obviously not working
         return asyncResult.setQueueDepth(queueDepth);
     }
 

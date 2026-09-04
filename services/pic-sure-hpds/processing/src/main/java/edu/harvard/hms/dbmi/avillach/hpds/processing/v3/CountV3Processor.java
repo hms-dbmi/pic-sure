@@ -17,7 +17,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-/** Processes v3 count queries. */
+/**
+ * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor} and updated to use new Query entity
+ */
 @Component
 public class CountV3Processor implements HpdsV3Processor {
 
@@ -103,13 +105,16 @@ public class CountV3Processor implements HpdsV3Processor {
     }
 
     /**
-     * Returns a separate count for each field in the requiredFields and categoryFilters query. <p> The v3 query lets a user add multiple
-     * filters on the same variable (e.g. sex=male OR sex=female). Filters are grouped by concept path so each variable produces exactly one
-     * entry rather than later filters overwriting earlier ones. <p> A cross count reports each concept's distribution across the cohort. A
-     * category is included when it has members in the cohort, OR when it was explicitly named ("called out") by a value filter. This means
-     * a value filter never hides cohort members that arrived via an OR branch on another concept (sex=male OR age-required still shows
-     * females that have an age), while a value the user specifically asked for is always shown even when its cohort count is zero.
-     * Categories that are neither called out nor present in the cohort are omitted, so AND-narrowed concepts do not sprout empty bars.
+     * Returns a separate count for each field in the requiredFields and categoryFilters query.
+     * <p>
+     * The v3 query lets a user add multiple filters on the same variable (e.g. sex=male OR sex=female). Filters are grouped by concept path
+     * so each variable produces exactly one entry rather than later filters overwriting earlier ones.
+     * <p>
+     * A cross count reports each concept's distribution across the cohort. A category is included when it has members in the cohort, OR when
+     * it was explicitly named ("called out") by a value filter. This means a value filter never hides cohort members that arrived via an OR
+     * branch on another concept (sex=male OR age-required still shows females that have an age), while a value the user specifically asked
+     * for is always shown even when its cohort count is zero. Categories that are neither called out nor present in the cohort are omitted,
+     * so AND-narrowed concepts do not sprout empty bars.
      *
      * @param query
      * @return a map of categorical data and their counts
@@ -159,11 +164,12 @@ public class CountV3Processor implements HpdsV3Processor {
     }
 
     /**
-     * Returns the distribution of observed values for each continuous concept in the query. <p> A continuous concept reports the
-     * distribution of every observed value across the cohort. Each filter's min/max only constrains the cohort (handled by the query
-     * executor); it does not limit which values are shown. So a range filter never hides cohort members that arrived via an OR branch on
-     * another concept (age&gt;50 OR sex=male still shows the younger ages of the OR'd males), and multiple range filters on the same
-     * concept collapse to one entry since every patient is counted once from the cube.
+     * Returns the distribution of observed values for each continuous concept in the query.
+     * <p>
+     * A continuous concept reports the distribution of every observed value across the cohort. Each filter's min/max only constrains the
+     * cohort (handled by the query executor); it does not limit which values are shown. So a range filter never hides cohort members that
+     * arrived via an OR branch on another concept (age&gt;50 OR sex=male still shows the younger ages of the OR'd males), and multiple range
+     * filters on the same concept collapse to one entry since every patient is counted once from the cube.
      *
      * @param query
      * @return a map of numerical data and their counts

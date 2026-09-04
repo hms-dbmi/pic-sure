@@ -21,6 +21,10 @@ import java.util.*;
  * only be exported once.
  *
  * @author nchu
+ *
+ *         Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries.TimeseriesProcessor} and updated
+ *         to use new Query entity
+ *
  */
 @Component
 public class TimeseriesV3Processor implements HpdsV3Processor {

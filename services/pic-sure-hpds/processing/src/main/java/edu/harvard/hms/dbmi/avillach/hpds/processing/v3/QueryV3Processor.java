@@ -20,8 +20,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Handles v3 DATAFRAME export queries for HPDS.
+ * This class handles DATAFRAME export queries for HPDS.
  * @author nchu
+ *
+ *         Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.QueryProcessor} and updated to use new
+ *         Query entity
  */
 @Component
 public class QueryV3Processor implements HpdsV3Processor {

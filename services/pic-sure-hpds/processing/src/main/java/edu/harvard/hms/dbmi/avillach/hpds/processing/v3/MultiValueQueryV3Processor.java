@@ -15,7 +15,10 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-/** Processes v3 queries that return multiple selected values per patient. */
+/**
+ * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.MultiValueQueryProcessor} and updated to use new
+ * Query entity
+ */
 @Component
 public class MultiValueQueryV3Processor implements HpdsV3Processor {
 

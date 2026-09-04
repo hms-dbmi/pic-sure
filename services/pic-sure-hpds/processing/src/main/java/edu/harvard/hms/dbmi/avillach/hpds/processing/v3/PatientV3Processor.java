@@ -8,7 +8,10 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-/** Processes v3 patient-list queries. */
+/**
+ * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.patient.PatientProcessor} and updated to use new
+ * Query entity
+ */
 @Component
 public class PatientV3Processor implements HpdsV3Processor {
 
@@ -28,7 +31,8 @@ public class PatientV3Processor implements HpdsV3Processor {
     @Override
     public void runQuery(Query query, AsyncResult asyncResult) {
         LOG.info("Pulling results for query {}", query.id());
-        // Materialize patient ids before appending them to the result stream.
+        // floating all this in memory is a bit gross, but the whole list of
+        // patient IDs was already there, so I don't feel too bad
         List<String[]> allPatients =
             queryExecutor.getPatientSubsetForQuery(query).stream().map(patient -> new String[] {patient.toString()}).toList();
         LOG.info("Writing results for query {}", query.id());

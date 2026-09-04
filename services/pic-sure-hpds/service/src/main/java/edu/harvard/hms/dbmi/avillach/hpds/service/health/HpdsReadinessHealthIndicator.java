@@ -11,8 +11,9 @@ import org.springframework.stereotype.Component;
  * Deep readiness for HPDS: a real "data ready" signal rather than just port-up. HPDS has no DataSource, so this replaces the built-in db
  * indicator.
  *
- * <p>Reads the phenotype metadata and genomic stores directly. {@link PhenotypeMetaStore} is the shared metadata source of truth for v1,
- * v2, and v3 processors, and a {@link GenomicProcessor} bean is always present as a no-op fallback when genomic support is not configured.
+ * <p>Reads the phenotype metadata and genomic stores directly rather than through {@code AbstractProcessor}, which is legacy V1/V2
+ * machinery not used by the V3 query path. {@link PhenotypeMetaStore} is the shared metadata source of truth for both the legacy and V3
+ * processors, and a {@link GenomicProcessor} bean is always present (a no-op fallback when genomic support is not configured).
  *
  * <p>Genomic data is optional — open-access and phenotype-only deployments run without it. When genomic support is not configured
  * ({@code hpds.genomicProcessor.impl} unset), readiness depends on phenotype data alone and the genomic store is not inspected. When it is
