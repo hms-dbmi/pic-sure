@@ -16,16 +16,16 @@ import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
 /**
  * Translates between the {@code pic-sure-api-data} {@link NamedDataset} entity and this service's DTOs. Pure field mapping -- the
- * {@code Query} referenced by {@code queryId} is resolved/persisted by {@link NamedDatasetService} (via {@code QueryRepository}) and handed
- * in already-loaded, mirroring the legacy WAR's {@code NamedDatasetService}.
+ * {@code Query} referenced by {@code queryId} is resolved and persisted by {@link NamedDatasetService} through {@code QueryRepository},
+ * then handed to this mapper already loaded.
  */
 @Component
 public class NamedDatasetMapper {
 
     /**
-     * Lenient mapper used ONLY to deserialize a stored v1 {@code query} node in {@link #convertQuery(Query)}: unknown fields on a stored row that
-     * predate the current v1 {@code Query} model must not abort translation, so this mapper does not fail on
-     * unknown properties. Never used for anything else in this class.
+     * Lenient mapper used ONLY to deserialize a stored v1 {@code query} node in {@link #convertQuery(Query)}: unknown fields on a stored
+     * row that predate the current v1 {@code Query} model must not abort translation, so this mapper does not fail on unknown properties.
+     * Never used for anything else in this class.
      */
     private static final ObjectMapper V1_QUERY_MAPPER =
             JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
@@ -65,7 +65,7 @@ public class NamedDatasetMapper {
         }
     }
 
-    /** Preserves PicsureQueryService.isV3Query: version major == "3" (null-safe). */
+    /** Returns whether the stored query's major version is 3. */
     static boolean isV3(Query query) {
         String v = query.getVersion();
         return v != null && v.split("\\.")[0].equals("3");

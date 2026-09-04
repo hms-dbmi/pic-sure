@@ -18,12 +18,7 @@ import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
-/**
- * Note: the plan brief this task was ported from assumed a {@code PicsureNotFoundException} subclass and an {@code ex.status()}-style
- * accessor. Neither exists in the actual {@code pic-sure-spring-commons} built for this monorepo (it ships only the single public
- * {@link PicsureException}, carrying status via {@code getStatus()}) -- so every not-found case here asserts {@code PicsureException} with
- * {@code HttpStatus.NOT_FOUND}, consistent with how the 409 duplicate case is already expressed.
- */
+/** Tests configuration behavior using the shared {@link PicsureException} status contract. */
 class ConfigurationServiceTest {
 
     ConfigurationRepository repo = mock(ConfigurationRepository.class);

@@ -47,7 +47,7 @@ public class QueryPersistenceService {
         entity.setStatus(parseStatus(req.status()));
         entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
-        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned, like the legacy WAR's create path
+        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned creation time
         return repo.save(entity).getUuid();
     }
 
@@ -62,7 +62,7 @@ public class QueryPersistenceService {
         if (req.status() != null) {
             PicSureStatus newStatus = parseStatus(req.status());
             if (newStatus == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
-                entity.setReadyTime(new Date(System.currentTimeMillis())); // first AVAILABLE transition, like the legacy WAR
+                entity.setReadyTime(new Date(System.currentTimeMillis())); // first AVAILABLE transition only
             }
             entity.setStatus(newStatus);
         }

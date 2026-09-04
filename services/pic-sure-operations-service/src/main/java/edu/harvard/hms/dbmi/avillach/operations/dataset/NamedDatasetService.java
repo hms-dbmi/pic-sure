@@ -14,17 +14,15 @@ import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 
 /**
- * Ports the legacy WildFly {@code NamedDatasetService}. User-scoping is pushed into SQL via {@code NamedDatasetRepository}'s
- * {@code findByUser}/{@code findByUuidAndUser}, replacing the WAR's in-Java owner check; the owner key is the caller's EMAIL, derived here
- * from the {@link GatewayUser} via {@link #requireEmail} (the identity-completeness check lives in this service, not the controller).
- * Because the lookup is scoped at the SQL layer, a caller reading/mutating another user's dataset gets exactly the same 404 as a
- * genuinely-missing uuid -- there is no separate 403 branch, and existence is never leaked to a non-owning caller (same posture as
- * {@code ConfigurationService}'s not-found handling).
+ * Manages named datasets with user scoping enforced in SQL through {@code NamedDatasetRepository}'s
+ * {@code findByUser}/{@code findByUuidAndUser}. The owner key is the caller's email, derived here from the {@link GatewayUser} via
+ * {@link #requireEmail} (the identity-completeness check lives in this service, not the controller). Because the lookup is scoped at the
+ * SQL layer, a caller reading/mutating another user's dataset gets exactly the same 404 as a genuinely-missing uuid -- there is no separate
+ * 403 branch, and existence is never leaked to a non-owning caller (same posture as {@code ConfigurationService}'s not-found handling).
  *
  * <p>{@code archived} is not a list filter -- {@code findByUser} returns archived and non-archived rows alike; there is no soft-delete.
  *
- * <p>{@code queryId} is resolved to a persisted {@code Query} via {@code QueryRepository.findById}, 404 when absent (preserving the WAR's
- * "query not found" branch).
+ * <p>{@code queryId} is resolved to a persisted {@code Query} via {@code QueryRepository.findById}, returning 404 when absent.
  *
  * <p>{@code NamedDataset} carries a DB-level unique constraint on {@code (queryId, user)}. Rather than a check-then-save pre-check (which
  * would race under concurrent requests), {@link #create} and {@link #update} (when it repoints the query) use {@code saveAndFlush} inside a

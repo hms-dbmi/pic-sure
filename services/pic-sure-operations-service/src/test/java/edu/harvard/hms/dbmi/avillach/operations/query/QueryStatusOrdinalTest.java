@@ -18,10 +18,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**
- * Covers reading {@code query.status} values that {@link PicSureStatus} does not define. Rows written by two legacy branches that each
- * shipped an unmerged fifth constant hold a 4, and under {@code @Enumerated(EnumType.ORDINAL)} loading one threw
- * {@code ArrayIndexOutOfBoundsException: Index 4 out of bounds for length 4}. Because {@code named_dataset} select-fetches its query per
- * row, that failed the whole {@code GET /dataset/named} list rather than the one entry.
+ * Covers reading {@code query.status} values that {@link PicSureStatus} does not define. Persisted rows may contain an ordinal of 4, and
+ * under {@code @Enumerated(EnumType.ORDINAL)} loading one threw {@code ArrayIndexOutOfBoundsException: Index 4 out of bounds for length 4}.
+ * Because {@code named_dataset} select-fetches its query per row, that failed the whole {@code GET /dataset/named} list rather than the one
+ * entry.
  *
  * <p>Uses its own H2 database rather than the shared {@code ops} one because {@link #dropStatusCheckConstraints} issues DDL, which no
  * surrounding transaction rolls back.
@@ -71,9 +71,7 @@ class QueryStatusOrdinalTest {
         assertThat(repo.findById(available).orElseThrow().getStatus()).isEqualTo(PicSureStatus.AVAILABLE);
     }
 
-    /**
-     * The on-disk encoding must not change: the legacy WildFly WAR reads the same column, and every row already in the table is an ordinal.
-     */
+    /** The on-disk encoding must not change because existing rows store enum ordinals. */
     @Test
     void writingAStatusStillStoresItsOrdinal() {
         Query entity = new Query();

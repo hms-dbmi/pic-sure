@@ -16,8 +16,8 @@ import jakarta.servlet.http.HttpServletRequest;
 /**
  * FIX 1 (critical, defense-in-depth): {@link InboundIdentityHeaderSanitizingFilter} is registered UNCONDITIONALLY in
  * {@code ObservabilityConfig} as an independent trust boundary, separate from {@code IdentityPropagationFilter} in the always-on DB-free
- * auth chain. These tests exercise the filter standalone: even if the auth chain were ever bypassed or misconfigured, or WildFly is
- * nonetheless configured to trust these headers directly from the gateway, this filter must still strip them.
+ * auth chain. These tests exercise the filter standalone: even if the auth chain were bypassed or misconfigured, this filter must still
+ * strip client-supplied identity headers.
  */
 class InboundIdentityHeaderSanitizingFilterTest {
 

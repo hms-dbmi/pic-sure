@@ -38,9 +38,8 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@link HttpServletRequest#getContextPath()} off {@link HttpServletRequest#getRequestURI()} before comparing, rather than testing the raw
  * URI directly: {@code getRequestURI()} INCLUDES any context path, so under a non-empty {@code server.servlet.context-path} the raw URI
  * would never start with the literal string {@code "/internal/"} even for a request the container correctly dispatches to
- * {@link InternalQueryController} -- which used to make this exact check silently skip the token gate. (Deliberately not
- * {@code getServletPath()}: that is populated per the target servlet's own mapping style -- e.g. empty in some test/mock harnesses --
- * whereas context-path-stripping only ever depends on {@code getContextPath()}, which is reliable in both real containers and MockMvc.)
+ * {@link InternalQueryController}. {@code getServletPath()} is not used because it depends on the target servlet's mapping style and can be
+ * empty in test harnesses; context-path stripping is reliable in both real containers and MockMvc.
  *
  * <p>Runs independently of (and does not need to be woven into) {@link edu.harvard.hms.dbmi.avillach.operations.config.WebSecurityConfig}'s
  * Spring Security chain, which already {@code permitAll()}s these paths at that layer -- this filter is what actually gates them.

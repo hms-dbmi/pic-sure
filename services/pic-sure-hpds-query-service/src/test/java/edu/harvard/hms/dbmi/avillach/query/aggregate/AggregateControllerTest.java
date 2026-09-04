@@ -35,11 +35,10 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * MockMvc coverage of {@link AggregateController} (the v1 obfuscation ingress at {@code /hpds/open/query/sync}), with
- * {@link AggregateService} replaced by a Mockito mock (the obfuscation logic itself is exhaustively covered by
- * {@link AggregateServiceTest}) -- this class exists to prove the CONTROLLER WIRING: a literal {@code /hpds/open/query/sync} request must
- * be dispatched to this controller (and therefore through obfuscation). The generic v1 ingress was removed, so other backends' v1 routes
- * ({@code /hpds/auth/query/sync}) no longer exist at all -- they 404 rather than falling through to any other controller.
+ * MockMvc coverage of {@link AggregateController} (the v1 obfuscation ingress at {@code /hpds/open/query/sync}), with a mocked
+ * {@link AggregateService}; {@link AggregateServiceTest} covers the obfuscation logic. These tests verify that a literal
+ * {@code /hpds/open/query/sync} request reaches this controller and therefore passes through obfuscation. Other backends' v1 routes, such
+ * as {@code /hpds/auth/query/sync}, are unsupported and return 404.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc

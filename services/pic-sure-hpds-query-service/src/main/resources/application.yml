@@ -49,8 +49,8 @@ aggregate:
   # reused here so the aggregate obfuscation path talks to the same open HPDS backend.
   hpds-open-url: ${HPDS_OPEN_URL:}
   hpds-open-token: ${HPDS_OPEN_TOKEN:}
-  # VISUALIZATION_URL: base URL of the visualization service; replaces the WAR's DB ResourceRepository.getById()
-  # lookup. Blank = no binning configured (continuous cross-count obfuscation falls back to raw per-value counts).
+  # VISUALIZATION_URL: base URL of the visualization service. Blank = no binning configured
+  # (continuous cross-count obfuscation falls back to raw per-value counts).
   visualization-url: ${VISUALIZATION_URL:}
   visualization-resource-id: ${AGGREGATE_VISUALIZATION_RESOURCE_ID:}
   target-resource-id: ${AGGREGATE_TARGET_RESOURCE_ID:}

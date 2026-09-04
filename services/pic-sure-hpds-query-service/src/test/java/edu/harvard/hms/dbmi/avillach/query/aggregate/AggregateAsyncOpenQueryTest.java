@@ -37,15 +37,15 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
 
 /**
- * Full-context proof of finding I6 (async open path consent-scoping). Real {@link AggregateService} +
- * {@link edu.harvard.hms.dbmi.avillach.query.query.QueryService} + HpdsBackendSelector/ResourceWebClient; WireMock stands in for the open
- * HPDS backend (the {@code /search} study-consents lookup and the {@code /PIC-SURE/query} async submit), and a Mockito
+ * Full-context coverage of async open-path consent scoping using the real {@link AggregateService},
+ * {@link edu.harvard.hms.dbmi.avillach.query.query.QueryService}, HpdsBackendSelector, and ResourceWebClient. WireMock stands in for the
+ * open HPDS backend (the {@code /search} study-consents lookup and the {@code /PIC-SURE/query} async submit), and a Mockito
  * {@link OperationsClient} stands in for operations-service persistence (this module is DB-free).
  *
  * <p>Asserts: (a) {@code POST /hpds/open/query} for a CROSS_COUNT submission is rewritten (force CROSS_COUNT + inject the study-consents
  * allow-list) and the REWRITTEN query is what gets persisted AND dispatched -- so any later status/result read served off the stored query
- * is already consent-scoped; (b) the generic authorized path {@code /hpds/auth/v3/query} is UNTOUCHED (no rewrite, no consent lookup); (c)
- * a WAR-rejected shape (missing {@code expectedResultType}) is still a 400 before any backend/persistence call.
+ * is already consent-scoped; (b) the generic authorized path {@code /hpds/auth/v3/query} is untouched; and (c) a request missing
+ * {@code expectedResultType} returns 400 before any backend or persistence call.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
