@@ -163,8 +163,6 @@ public class JWTFilter extends OncePerRequestFilter {
                 logger.info("UserID: {} is not a long term token and not a PSAMA application token.", userId);
                 String realClaimsSubject = jws.getPayload().getSubject();
 
-                // Logout ends the user's session, so a token outliving the session that issued it is a revoked
-                // token. Long-term tokens are exempt above: they are API keys with their own lifecycle.
                 Date issuedAt = jws.getPayload().getIssuedAt();
                 if (
                     this.sessionService.isSessionExpired(realClaimsSubject)

@@ -72,7 +72,6 @@ public class CustomLogoutHandler implements LogoutHandler {
         this.cacheEvictionService.evictCache(subject);
         this.userService.removeUserPassport(subject);
 
-        // Populate AuditAttributes for the AuditLoggingFilter to include in its event
         AuditAttributes.putMetadata(request, "user_subject", subject);
     }
 }

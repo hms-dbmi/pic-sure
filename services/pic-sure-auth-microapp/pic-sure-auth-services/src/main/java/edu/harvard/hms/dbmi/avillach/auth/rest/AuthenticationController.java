@@ -78,10 +78,11 @@ public class AuthenticationController {
             return ResponseEntity.badRequest().body("authenticationService is null");
         }
 
+        long loginStartedAt = System.currentTimeMillis();
         HashMap<String, String> authenticate = authenticationService.authenticate(authRequest, request.getServerName());
         if (!CollectionUtils.isEmpty(authenticate)) {
             if (authenticate.containsKey("userId")) {
-                sessionService.startSession(authenticate.get("userId"), issuedAtOf(authenticate.get("token")));
+                sessionService.startSession(authenticate.get("userId"), issuedAtOf(authenticate.get("token"), loginStartedAt));
             } else {
                 logger.error("authentication() userId authentication is null");
                 logger.error("User claims must contain a userId to start their session.");
@@ -102,20 +103,22 @@ public class AuthenticationController {
     }
 
     /**
-     * The session is anchored to the issuing token's own {@code iat} so the two share an exact start time, which is
-     * what lets SessionService tell a token of this session from one of a session the user already left. Falls back
-     * to the wall clock if the token is absent or unreadable, which only widens the check by under a second.
+     * Use the token's own {@code iat} as the session start. JWT timestamps have second precision, so anchoring to the
+     * wall clock instead would leave the token that just opened the session looking older than it. If the issued-at
+     * cannot be read, fall back to the second the login began, which no token minted during it can precede.
      */
-    private Date issuedAtOf(String token) {
+    private Date issuedAtOf(String token, long loginStartedAt) {
+        Date loginStartedAtSecond = new Date(loginStartedAt / 1000 * 1000);
         if (token == null) {
-            return null;
+            return loginStartedAtSecond;
         }
 
         try {
-            return this.jwtUtil.parseToken(token).getPayload().getIssuedAt();
+            Date issuedAt = this.jwtUtil.parseToken(token).getPayload().getIssuedAt();
+            return issuedAt != null ? issuedAt : loginStartedAtSecond;
         } catch (Exception e) {
             logger.warn("authentication() Could not read the issued-at claim of the token just minted: {}", e.getMessage());
-            return null;
+            return loginStartedAtSecond;
         }
     }
 }
