@@ -123,10 +123,9 @@ public class JWTFilter extends OncePerRequestFilter {
                 if (!request.getRequestURI().endsWith("token/inspect") && !request.getRequestURI().endsWith("open/validate")) {
                     logger.error("{} attempted to perform request {} token may be compromised.", userId, request.getRequestURI());
                     sendAuthFailure(request, "compromised_token", "App token on wrong endpoint");
-                    response.sendError(
-                        HttpServletResponse.SC_UNAUTHORIZED,
-                        "Application tokens can only be used to inspect tokens or validate open access."
-                    );
+                    // Deliberately generic: naming the endpoints an application token does work on would map them
+                    // out for whoever is probing with it. The log line above carries the detail for operators.
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
                     return;
                 }
 

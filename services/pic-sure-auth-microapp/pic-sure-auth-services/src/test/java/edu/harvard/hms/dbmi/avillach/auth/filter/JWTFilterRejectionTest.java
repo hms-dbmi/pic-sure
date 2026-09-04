@@ -22,6 +22,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -72,6 +73,10 @@ class JWTFilterRejectionTest {
         assertEquals(401, response.getStatus());
         assertNull(SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain, never()).doFilter(any(), any());
+        assertFalse(
+            response.getErrorMessage().contains("token/inspect") || response.getErrorMessage().contains("open/validate"),
+            "the response must not tell a caller probing with an application token which endpoints it does work on"
+        );
     }
 
     /**
