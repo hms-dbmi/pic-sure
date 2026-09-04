@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.query.query;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Locale;
+import java.util.Set;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -58,6 +60,9 @@ public class QueryService {
     private static final ObjectMapper V1_QUERY_MAPPER =
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final String CURRENT_VERSION = "3";
+
+    /** Result types HPDS serves only through the asynchronous submit/status/result flow. */
+    private static final Set<String> ASYNC_ONLY_RESULT_TYPES = Set.of("DATAFRAME", "DATAFRAME_TIMESERIES", "PATIENTS");
 
     private final OperationsClient operationsClient;
     private final ResourceWebClient hpds;
@@ -126,6 +131,7 @@ public class QueryService {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
+        rejectAsyncOnlyResultType(req);
         consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend, true); // sync's only remaining caller is the v3 ingress
         String version = CURRENT_VERSION;
@@ -138,6 +144,54 @@ public class QueryService {
         operationsClient.update(picsureId, new UpdateQueryRequest(null, resourceResultId, null));
 
         return new QuerySyncResponse(down.body(), down.queryMetadata());
+    }
+
+    /**
+     * Result types HPDS backs with an asynchronous job are not served on {@code /query/sync}: the caller submits with {@code POST /query},
+     * polls {@code /query/{id}/status}, then collects {@code /query/{id}/result}, which is what the frontend export flow and the Python
+     * adapter's PFB export already do.
+     *
+     * <p>HPDS answers 400 for these on its own sync route, but {@link ResourceWebClient} turns any 4xx into an
+     * {@code HpdsCommunicationException}, which would reach the caller as an opaque upstream failure. Rejecting here keeps the explanation,
+     * and rejecting before {@code operationsClient.save} avoids persisting a query row for a request that cannot be served.
+     *
+     * @param req the incoming query request
+     * @throws PicsureException with status 400 when the requested result type is asynchronous-only
+     */
+    private static void rejectAsyncOnlyResultType(QueryRequest req) {
+        String resultType = expectedResultType(req);
+        if (resultType != null && ASYNC_ONLY_RESULT_TYPES.contains(resultType)) {
+            throw new PicsureException(
+                HttpStatus.BAD_REQUEST, "bad_request",
+                "Result type " + resultType + " is served asynchronously. Submit it with POST /query, poll "
+                    + "/query/{resourceQueryId}/status, then collect it from /query/{resourceQueryId}/result."
+            );
+        }
+    }
+
+    /**
+     * Reads {@code expectedResultType} out of the untyped query body, which arrives either as a map or as a JSON string.
+     *
+     * @param req the incoming query request
+     * @return the upper-cased result type, or null when the body carries none
+     */
+    private static String expectedResultType(QueryRequest req) {
+        Object query = req.getQuery();
+        if (query == null) {
+            return null;
+        }
+        JsonNode node;
+        if (query instanceof String text) {
+            try {
+                node = MAPPER.readTree(text);
+            } catch (JsonProcessingException e) {
+                return null;
+            }
+        } else {
+            node = MAPPER.valueToTree(query);
+        }
+        JsonNode resultType = node.get("expectedResultType");
+        return resultType == null || resultType.isNull() ? null : resultType.asText().toUpperCase(Locale.ENGLISH);
     }
 
     /** Port of copyQuery's metadata assembly (PicsureQueryService.java:380-419) minus Resource + AuditContext. */

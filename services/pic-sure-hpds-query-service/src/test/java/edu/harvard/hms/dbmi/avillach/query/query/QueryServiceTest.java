@@ -48,6 +48,39 @@ class QueryServiceTest {
     ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
     QueryService service = new QueryService(operationsClient, hpds, selector, consent);
 
+    /**
+     * HPDS no longer serves the asynchronous result types on {@code /query/sync}. Rejecting them here rather than letting HPDS answer 400
+     * keeps the explanation intact -- {@code ResourceWebClient} wraps any 4xx into an {@code HpdsCommunicationException}, which would
+     * surface as an opaque gateway error -- and avoids persisting a query row for a request that cannot be served.
+     */
+    @Test
+    void querySyncRejectsAsyncOnlyResultTypesBeforePersistingOrCallingHpds() {
+        for (String resultType : new String[] {"DATAFRAME", "DATAFRAME_TIMESERIES", "PATIENTS"}) {
+            GeneralQueryRequest req = new GeneralQueryRequest();
+            req.setQuery(Map.of("expectedResultType", resultType));
+
+            assertThatThrownBy(() -> service.querySync("auth", req, null, null)).isInstanceOf(PicsureException.class)
+                .hasMessageContaining(resultType).hasMessageContaining("/query");
+        }
+
+        verify(operationsClient, never()).save(any());
+        verify(hpds, never()).querySync(any(), any(), any());
+    }
+
+    @Test
+    void querySyncStillServesSynchronousResultTypes() {
+        GeneralQueryRequest req = new GeneralQueryRequest();
+        req.setQuery(Map.of("expectedResultType", "CROSS_COUNT"));
+        UUID picsureId = UUID.randomUUID();
+        when(operationsClient.save(any())).thenReturn(picsureId);
+        when(hpds.querySync(any(), any(), any())).thenReturn(new ResourceWebClient.QuerySyncResult("{}".getBytes(), null));
+
+        QueryService.QuerySyncResponse response = service.querySync("auth", req, null, null);
+
+        assertThat(response.body()).isNotNull();
+        verify(hpds).querySync(any(), any(), any());
+    }
+
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();
         p.setAuthUrl("http://hpds/PIC-SURE");

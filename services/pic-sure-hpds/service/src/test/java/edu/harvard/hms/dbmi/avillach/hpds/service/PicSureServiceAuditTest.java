@@ -19,7 +19,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
-import edu.harvard.hms.dbmi.avillach.hpds.service.util.SyncQueryWaiter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -39,7 +38,7 @@ class PicSureServiceAuditTest {
         abstractProcessor = mock(AbstractProcessor.class);
         service = new PicSureService(
             queryService, mock(CountProcessor.class), mock(VariantListProcessor.class), abstractProcessor, mock(Paginator.class),
-            mock(SignUrlService.class), mock(FileSharingService.class), mock(TestDataService.class), mock(SyncQueryWaiter.class)
+            mock(SignUrlService.class), mock(FileSharingService.class), mock(TestDataService.class)
         );
 
         request = new MockHttpServletRequest();
@@ -154,8 +153,7 @@ class PicSureServiceAuditTest {
         PicSureService serviceWithRealPaginator = new PicSureService(
             queryService, mock(CountProcessor.class), mock(VariantListProcessor.class),
             abstractProcessor, paginator, mock(SignUrlService.class), mock(FileSharingService.class),
-            mock(TestDataService.class),
-            mock(SyncQueryWaiter.class)
+            mock(TestDataService.class)
         );
 
         ReflectionTestUtils.setField(serviceWithRealPaginator, "httpRequest", request);
