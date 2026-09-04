@@ -77,7 +77,7 @@ public class AggregateBackendClient {
 
     // ---- internals ----
 
-    /** Carries the inbound query and credentials, injecting the configured resource UUID when present. */
+    /** Carries the inbound query */
     private QueryRequest chain(QueryRequest in) {
         QueryRequest out = new GeneralQueryRequest();
         if (in != null) {
