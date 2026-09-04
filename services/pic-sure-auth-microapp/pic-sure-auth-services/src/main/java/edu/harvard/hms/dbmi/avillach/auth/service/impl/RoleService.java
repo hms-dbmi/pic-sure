@@ -2,6 +2,9 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +48,67 @@ public class RoleService {
     public List<Role> addRoles(List<Role> roles) {
         checkPrivilegeAssociation(roles);
         return roleRepository.saveAll(roles);
+    }
+
+    /**
+     * Creates roles from allowlisted request records. Privileges are resolved from storage by UUID; the identifier is generated on persist.
+     *
+     * @param requests the create requests
+     * @return the persisted roles
+     * @throws IllegalArgumentException if a referenced privilege does not exist
+     */
+    @Transactional
+    public List<Role> createFrom(List<RoleCreateRequest> requests) {
+        List<Role> roles = new ArrayList<>(requests.size());
+        for (RoleCreateRequest request : requests) {
+            Role role = new Role();
+            role.setName(request.name());
+            role.setDescription(request.description());
+            role.setPrivileges(resolvePrivileges(request.privileges()));
+            roles.add(role);
+        }
+        return roleRepository.saveAll(roles);
+    }
+
+    /**
+     * Applies allowlisted updates to existing roles. A member left out of the request leaves the stored value unchanged.
+     *
+     * @param requests the update requests
+     * @return the persisted roles
+     * @throws IllegalArgumentException if the role or a referenced privilege does not exist
+     */
+    @Transactional
+    public List<Role> updateFrom(List<RoleUpdateRequest> requests) {
+        List<Role> roles = new ArrayList<>(requests.size());
+        for (RoleUpdateRequest request : requests) {
+            Role role = roleRepository.findById(request.uuid())
+                .orElseThrow(() -> new IllegalArgumentException("Role not found - uuid: " + request.uuid()));
+            if (request.name() != null) {
+                role.setName(request.name());
+            }
+            if (request.description() != null) {
+                role.setDescription(request.description());
+            }
+            if (request.privileges() != null) {
+                role.setPrivileges(resolvePrivileges(request.privileges()));
+            }
+            roles.add(role);
+        }
+        return roleRepository.saveAll(roles);
+    }
+
+    private Set<Privilege> resolvePrivileges(Set<EntityIdRef> privilegeRefs) {
+        if (privilegeRefs == null) {
+            return null;
+        }
+        Set<Privilege> privileges = new HashSet<>();
+        for (EntityIdRef ref : privilegeRefs) {
+            privileges.add(
+                this.privilegeService.findById(ref.uuid())
+                    .orElseThrow(() -> new IllegalArgumentException("Privilege not found - uuid: " + ref.uuid()))
+            );
+        }
+        return privileges;
     }
 
     /**

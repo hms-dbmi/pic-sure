@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 
+import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -35,6 +36,8 @@ public class RoleServiceTest {
 
     @MockBean
     private PrivilegeRepository privilegeRepo;
+    @MockBean
+    private ApplicationRepository applicationRepository;
 
     @MockBean
     private SecurityContext securityContext;
