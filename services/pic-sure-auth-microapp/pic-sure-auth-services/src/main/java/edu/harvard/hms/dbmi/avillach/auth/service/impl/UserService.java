@@ -18,6 +18,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentsBuilder;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
+import edu.harvard.hms.dbmi.avillach.auth.utils.LogCorrelation;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
@@ -102,7 +103,10 @@ public class UserService {
         HashMap<String, String> responseMap = new HashMap<String, String>();
 
         HashMap<String, Object> claimsMap = userClaims.toHashMap();
-        logger.debug("getUserProfileResponse() using claims:{}", claimsMap.toString());
+        logger.debug(
+            "getUserProfileResponse() using claims ___ userRef {} ___ fields {}", LogCorrelation.reference(userClaims.getSub()),
+            claimsMap.keySet().stream().sorted().toList()
+        );
         String token =
             this.jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claimsMap, userClaims.getSub(), this.tokenExpirationTime);
 

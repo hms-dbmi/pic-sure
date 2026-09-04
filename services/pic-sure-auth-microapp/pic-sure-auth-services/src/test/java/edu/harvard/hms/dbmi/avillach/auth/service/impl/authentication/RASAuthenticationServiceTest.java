@@ -192,6 +192,71 @@ public class RASAuthenticationServiceTest {
         verify(userService, times(1)).ensureBaselineRoles(user);
     }
 
+    /**
+     * The OAuth authorization code is a single-use bearer secret and the RAS passport carries stable identity and transaction identifiers.
+     * Neither may reach a log line; an allowlisted correlation value may.
+     */
+    @Test
+    public void passportAcceptanceLogsNeitherTheAuthorizationCodeNorThePassport() throws JsonProcessingException {
+        String introspectionResponse =
+            "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\",\"passport_jwt_v11\":\""
+                + exampleRasPassport + "\"}";
+        JsonNode parsed = new ObjectMapper().readTree(introspectionResponse);
+        Passport passport = this.rasPassPortService.extractPassport(parsed).orElseThrow();
+        User user = createTestUser();
+        when(rasPassPortService.ga4ghPassportToRasDbgapPermissions(any())).thenReturn(new HashSet<>());
+        when(userService.ensureBaselineRoles(any(User.class))).thenReturn(user);
+        when(userService.updateUserConsents(any(), any())).thenReturn(user);
+
+        this.rasAuthenticationService.updateRasUserRoles(code, user, passport);
+
+        assertNoLogContains(code);
+        assertNoLogContains(passport.getJti());
+        assertNoLogContains(passport.getTxn());
+        assertNoLogContains(passport.getSub());
+        assertNoLogContains("Passport{");
+    }
+
+    @Test
+    public void passportIssuerMismatchLogsNeitherTheAuthorizationCodeNorTheSubject() {
+        String introspectionResponse = "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\","
+            + "\"userid\":\"test_userid\",\"preferred_username\":\"testuser\",\"passport_jwt_v11\":\"" + exampleRasPassport + "\"}";
+        mockTokenAndIntrospectionResponses(introspectionResponse);
+        User user = createTestUser();
+        user.setSubject("okta-ras|mismatch-subject");
+        when(userService.createRasUser(any(), any())).thenReturn(Optional.of(user));
+        RASAuthenticationService serviceWithWrongIssuer = new RASAuthenticationService(
+            userService, restClientUtil, true, "test.com", "", "", "", "https://an-issuer-the-passport-does-not-carry", rasPassPortService,
+            connectionService, cacheEvictionService
+        );
+        serviceWithWrongIssuer.setRasConnection(rasConnectionForTest());
+
+        assertNull(serviceWithWrongIssuer.authenticate(authRequest, testDomain));
+
+        assertTrue(hasLogMessage("PASSPORT ISSUER IS NOT CORRECT"), "the rejection itself must still be recorded");
+        assertNoLogContains(code);
+        assertNoLogContains("okta-ras|mismatch-subject");
+    }
+
+    private void assertNoLogContains(String secret) {
+        assertNotNull(secret);
+        for (ILoggingEvent event : logAppender.list) {
+            assertFalse(
+                event.getFormattedMessage().contains(secret),
+                "log line leaked a value that must never be logged: " + event.getFormattedMessage()
+            );
+        }
+    }
+
+    private Connection rasConnectionForTest() {
+        Connection rasConnection = new Connection();
+        rasConnection.setSubPrefix("okta-ras|");
+        rasConnection.setUuid(UUID.randomUUID());
+        rasConnection.setId("okta-ras");
+        rasConnection.setLabel("RAS");
+        return rasConnection;
+    }
+
     private void mockTokenAndIntrospectionResponses(String introspectionResponse) {
         String tokenResponse = "{\"access_token\":\"" + testAccessToken + "\",\"id_token\":\"SomeRandomToken\"}";
         String payload = "token_type_hint=access_token&token=" + testAccessToken;
