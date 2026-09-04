@@ -423,20 +423,12 @@ public class PicSureService {
             case DATAFRAME:
             case DATAFRAME_TIMESERIES:
             case PATIENTS:
-                QueryStatus status = query(resultRequest).getBody();
-                while (status.getResourceStatus().equalsIgnoreCase("RUNNING") || status.getResourceStatus().equalsIgnoreCase("PENDING")) {
-                    status = queryStatus(UUID.fromString(status.getResourceResultId()), null);
-                }
-                log.info(status.toString());
-
-                AsyncResult result = queryService.getResultFor(status.getResourceResultId());
-                if (result.getStatus() == AsyncResult.Status.SUCCESS) {
-                    result.getStream().open();
-                    return queryOkResponse(
-                        new String(result.getStream().readAllBytes(), StandardCharsets.UTF_8), incomingQuery, MediaType.TEXT_PLAIN
-                    );
-                }
-                return ResponseEntity.status(400).contentType(MediaType.APPLICATION_JSON).body("Status : " + result.getStatus().name());
+                // Backed by an asynchronous HPDS job. Serving it here meant polling the job to completion on the request
+                // thread, so one queued query held a servlet worker for as long as it stayed queued.
+                return ResponseEntity.status(400).contentType(MediaType.APPLICATION_JSON).body(
+                    "Result type " + incomingQuery.getExpectedResultType() + " is served asynchronously. Submit it with POST /query, poll "
+                        + "/query/{resourceQueryId}/status, then collect it from /query/{resourceQueryId}/result."
+                );
 
             case CROSS_COUNT:
                 return queryOkResponse(countProcessor.runCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
