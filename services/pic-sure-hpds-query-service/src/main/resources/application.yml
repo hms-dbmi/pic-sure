@@ -52,8 +52,6 @@ aggregate:
   # VISUALIZATION_URL: base URL of the visualization service; replaces the WAR's DB ResourceRepository.getById()
   # lookup. Blank = no binning configured (continuous cross-count obfuscation falls back to raw per-value counts).
   visualization-url: ${VISUALIZATION_URL:}
-  visualization-resource-id: ${AGGREGATE_VISUALIZATION_RESOURCE_ID:}
-  target-resource-id: ${AGGREGATE_TARGET_RESOURCE_ID:}
   connect-timeout-sec: 10
   read-timeout-sec: 60
   obfuscation:

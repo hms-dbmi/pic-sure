@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
-import java.util.UUID;
-
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -21,8 +19,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * Pooled client to the open HPDS backend (+ visualization service) that the aggregate/obfuscation surface talks to. Direct port of
  * {@code AggregateDataSharingResourceRS}'s {@code postRequest}/{@code getHttpResponse} plumbing: every downstream call carries
  * {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} (the WAR's {@code Bearer <getTargetPicsureToken()>} -- no regression), and every call
- * builds a fresh chained request body that carries the inbound query/credentials/resourceUUID but overrides the resourceUUID with the
- * configured {@code targetResourceId} when one is set (WAR's {@code createChainRequest}/info-request inline chaining).
+ * builds a fresh chained request body carrying the inbound query (WAR's {@code createChainRequest}/info-request inline chaining). The WAR
+ * also injected a configured {@code targetResourceId} as the body's resourceUUID; nothing downstream reads that field, so the injection and
+ * its property are gone.
  *
  * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list),
  * {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup) and {@link #binContinuous} (visualization binning). The
@@ -59,7 +58,7 @@ public class AggregateBackendClient {
         return postJson(openUrl("/search"), chain(req), SearchResults.class);
     }
 
-    /** Raw body + propagated queryMetadata header. The chained body carries the FULL request (resourceUUID injected). */
+    /** Raw body + propagated queryMetadata header. */
     public ResponseEntity<String> querySync(QueryRequest req, AggregateVariant variant) {
         String uri = openUrl(variant.downstreamVersionPrefix + "/query/sync");
         try {
@@ -69,7 +68,7 @@ public class AggregateBackendClient {
         }
     }
 
-    /** Visualization /bin/continuous (v3 prepends /v3). vizRequest already carries the viz resourceUUID. */
+    /** Visualization /bin/continuous (v3 prepends /v3). */
     public String binContinuous(QueryRequest vizRequest, AggregateVariant variant) {
         String uri = props.getVisualizationUrl() + variant.downstreamVersionPrefix + "/bin/continuous";
         try {
@@ -81,16 +80,11 @@ public class AggregateBackendClient {
 
     // ---- internals ----
 
-    /** Inject the configured resourceUUID (was target.resource.id) + carry the inbound query. */
+    /** Carry the inbound query into a fresh downstream body. */
     private QueryRequest chain(QueryRequest in) {
         QueryRequest out = new GeneralQueryRequest();
         if (in != null) {
             out.setQuery(in.getQuery());
-            out.setResourceUUID(in.getResourceUUID());
-        }
-        String targetId = props.getTargetResourceId();
-        if (targetId != null && !targetId.isEmpty()) {
-            out.setResourceUUID(UUID.fromString(targetId));
         }
         return out;
     }

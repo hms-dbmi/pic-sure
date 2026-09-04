@@ -19,10 +19,6 @@ public class AggregateProperties {
      * fallback).
      */
     private String visualizationUrl;
-    /** Optional resourceUUID injected into the visualization /bin/continuous request body (parity with the WAR). */
-    private String visualizationResourceId;
-    /** Optional resourceUUID injected into every downstream HPDS request body (was target.resource.id). */
-    private String targetResourceId;
     private int connectTimeoutSec = 10;
     private int readTimeoutSec = 60;
 
@@ -80,22 +76,6 @@ public class AggregateProperties {
 
     public void setVisualizationUrl(String u) {
         this.visualizationUrl = u;
-    }
-
-    public String getVisualizationResourceId() {
-        return visualizationResourceId;
-    }
-
-    public void setVisualizationResourceId(String id) {
-        this.visualizationResourceId = id;
-    }
-
-    public String getTargetResourceId() {
-        return targetResourceId;
-    }
-
-    public void setTargetResourceId(String id) {
-        this.targetResourceId = id;
     }
 
     public int getConnectTimeoutSec() {

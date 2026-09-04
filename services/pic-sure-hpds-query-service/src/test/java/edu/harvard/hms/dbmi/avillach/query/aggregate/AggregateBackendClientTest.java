@@ -9,8 +9,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.UUID;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -96,16 +94,14 @@ class AggregateBackendClientTest {
     }
 
     @Test
-    void injectsConfiguredTargetResourceId() {
-        String id = UUID.randomUUID().toString();
-        AggregateProperties props = properties();
-        props.setTargetResourceId(id);
-        AggregateBackendClient c = new AggregateBackendClient(RestClient.builder().build(), props);
-
+    void chainedBodyCarriesTheQueryOnly() {
         hpds.stubFor(post(urlEqualTo("/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
-        c.search(req("\\_studies_consents\\"));
+        client().search(req("\\_studies_consents\\"));
 
-        hpds.verify(postRequestedFor(urlEqualTo("/search")).withRequestBody(matchingJsonPath("$.resourceUUID", WireMock.equalTo(id))));
+        hpds.verify(
+            postRequestedFor(urlEqualTo("/search")).withRequestBody(matchingJsonPath("$.query", WireMock.equalTo("\\_studies_consents\\")))
+                .withRequestBody(matchingJsonPath("$[?(@.resourceUUID == null)]"))
+        );
     }
 
     @Test

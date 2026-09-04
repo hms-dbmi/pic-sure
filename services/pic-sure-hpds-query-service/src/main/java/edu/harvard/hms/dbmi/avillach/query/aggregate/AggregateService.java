@@ -5,7 +5,6 @@ import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -185,10 +184,6 @@ public class AggregateService {
     ) throws IOException {
         QueryRequest vizRequest = new GeneralQueryRequest();
         vizRequest.setQuery(continuous);
-        String vizId = props.getVisualizationResourceId();
-        if (vizId != null && !vizId.isBlank()) {
-            vizRequest.setResourceUUID(UUID.fromString(vizId));
-        }
         String binResponse = backend.binContinuous(vizRequest, variant);
         return objectMapper.readValue(binResponse, new TypeReference<>() {});
     }
