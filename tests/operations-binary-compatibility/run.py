@@ -64,12 +64,12 @@ EXPECTED_BINARY_CHECKSUMS = {
 }
 
 AIO_FEATURE_PATHS = [
-    "Baseline/auth/V6__ADD_BANNER_MANAGEMENT_ACCESS_RULE.sql",
-    "Baseline/auth/V7__EXPAND_BANNER_MANAGEMENT_ACCESS_RULE.sql",
-    "Baseline/auth/V8__AUTHORIZE_BANNER_REORDER.sql",
-    "Baseline/auth/V9__ALLOW_BANNER_DISABLE_ROUTE.sql",
-    "Baseline/auth/V10__ALLOW_BANNER_ARCHIVE_ROUTE.sql",
-    "Baseline/auth/V11__ALLOW_BANNER_RESTORE_ROUTE.sql",
+    "Baseline/auth/V7__ADD_BANNER_MANAGEMENT_ACCESS_RULE.sql",
+    "Baseline/auth/V8__EXPAND_BANNER_MANAGEMENT_ACCESS_RULE.sql",
+    "Baseline/auth/V9__AUTHORIZE_BANNER_REORDER.sql",
+    "Baseline/auth/V10__ALLOW_BANNER_DISABLE_ROUTE.sql",
+    "Baseline/auth/V11__ALLOW_BANNER_ARCHIVE_ROUTE.sql",
+    "Baseline/auth/V12__ALLOW_BANNER_RESTORE_ROUTE.sql",
     "Baseline/picsure/V10__CREATE_BANNER_OCCURRENCE.sql",
     "Baseline/picsure/V11__CREATE_BANNER_VERSION.sql",
     "Baseline/picsure/V12__CREATE_BANNER_PRIORITY_ALLOCATOR.sql",
@@ -79,12 +79,12 @@ BDC_FEATURE_PATHS = [
     f"app-infrastructure/db/{tenant}/{section}/{filename}"
     for tenant in ("bdc", "aim-ahead")
     for section, filename in (
-        ("auth", "V22__Add_Banner_Management_Access_Rule.sql") if tenant == "bdc" else ("auth", "V24__Add_Banner_Management_Access_Rule.sql"),
-        ("auth", "V23__Expand_Banner_Management_Access_Rule.sql") if tenant == "bdc" else ("auth", "V25__Expand_Banner_Management_Access_Rule.sql"),
-        ("auth", "V24__Authorize_Banner_Reorder.sql") if tenant == "bdc" else ("auth", "V26__Authorize_Banner_Reorder.sql"),
-        ("auth", "V25__Allow_Banner_Disable_Route.sql") if tenant == "bdc" else ("auth", "V27__Allow_Banner_Disable_Route.sql"),
-        ("auth", "V26__Allow_Banner_Archive_Route.sql") if tenant == "bdc" else ("auth", "V28__Allow_Banner_Archive_Route.sql"),
-        ("auth", "V27__Allow_Banner_Restore_Route.sql") if tenant == "bdc" else ("auth", "V29__Allow_Banner_Restore_Route.sql"),
+        ("auth", "V25__Add_Banner_Management_Access_Rule.sql") if tenant == "bdc" else ("auth", "V27__Add_Banner_Management_Access_Rule.sql"),
+        ("auth", "V26__Expand_Banner_Management_Access_Rule.sql") if tenant == "bdc" else ("auth", "V28__Expand_Banner_Management_Access_Rule.sql"),
+        ("auth", "V27__Authorize_Banner_Reorder.sql") if tenant == "bdc" else ("auth", "V29__Authorize_Banner_Reorder.sql"),
+        ("auth", "V28__Allow_Banner_Disable_Route.sql") if tenant == "bdc" else ("auth", "V30__Allow_Banner_Disable_Route.sql"),
+        ("auth", "V29__Allow_Banner_Archive_Route.sql") if tenant == "bdc" else ("auth", "V31__Allow_Banner_Archive_Route.sql"),
+        ("auth", "V30__Allow_Banner_Restore_Route.sql") if tenant == "bdc" else ("auth", "V32__Allow_Banner_Restore_Route.sql"),
         ("picsure", "V9__CREATE_BANNER_OCCURRENCE.sql"),
         ("picsure", "V10__CREATE_BANNER_VERSION.sql"),
         ("picsure", "V11__CREATE_BANNER_PRIORITY_ALLOCATOR.sql"),
