@@ -106,11 +106,14 @@ public class JWTFilter extends OncePerRequestFilter {
                 if (request.getRequestURI().startsWith("/auth/user/me")) {
                     String realClaimsSubject = jws.getPayload().getSubject().substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length() + 1);
 
-                    setSecurityContextForUser(request, response, realClaimsSubject);
+                    if (!setSecurityContextForUser(request, response, realClaimsSubject)) {
+                        return;
+                    }
                 } else {
                     logger.error("the long term token with subject, {}, cannot access to PSAMA.", userId);
                     sendAuthFailure(request, "long_term_token_rejected", "Long term token on non-/me endpoint");
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Long term tokens cannot be used to access to PSAMA.");
+                    return;
                 }
             } else if (userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
                 logger.info("User Authentication Starts with {}", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
@@ -120,7 +123,11 @@ public class JWTFilter extends OncePerRequestFilter {
                 if (!request.getRequestURI().endsWith("token/inspect") && !request.getRequestURI().endsWith("open/validate")) {
                     logger.error("{} attempted to perform request {} token may be compromised.", userId, request.getRequestURI());
                     sendAuthFailure(request, "compromised_token", "App token on wrong endpoint");
-                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User is deactivated");
+                    response.sendError(
+                        HttpServletResponse.SC_UNAUTHORIZED,
+                        "Application tokens can only be used to inspect tokens or validate open access."
+                    );
+                    return;
                 }
 
                 String applicationId = userId.split("\\|")[1];
@@ -150,6 +157,7 @@ public class JWTFilter extends OncePerRequestFilter {
                         HttpServletResponse.SC_UNAUTHORIZED,
                         "Your token has been inactivated, please contact admin to grab you the latest one."
                     );
+                    return;
                 }
 
                 // This is the application token that is being used to authenticate the user by other applications
@@ -158,7 +166,9 @@ public class JWTFilter extends OncePerRequestFilter {
             } else {
                 logger.info("UserID: {} is not a long term token and not a PSAMA application token.", userId);
                 // Authenticate as User
-                setSecurityContextForUser(request, response, jws.getPayload().getSubject());
+                if (!setSecurityContextForUser(request, response, jws.getPayload().getSubject())) {
+                    return;
+                }
             }
 
             filterChain.doFilter(request, response);
@@ -184,8 +194,12 @@ public class JWTFilter extends OncePerRequestFilter {
      * @param request the HttpServletRequest object
      * @param response the HttpServletResponse object
      * @param realClaimsSubject the subject of the user's claims in the JWT token
+     * @return true when the user was authenticated. False means an error response has already been sent and the
+     * caller must not continue the filter chain. Note this is not the only rejection signal: an unknown or
+     * deactivated subject still propagates an exception out of the filter rather than returning false.
      */
-    private void setSecurityContextForUser(HttpServletRequest request, HttpServletResponse response, String realClaimsSubject) {
+    private boolean setSecurityContextForUser(HttpServletRequest request, HttpServletResponse response, String realClaimsSubject)
+        throws IOException {
         logger.debug("Setting security context for user: {}", realClaimsSubject);
 
         CustomUserDetails authenticatedUser = (CustomUserDetails) this.customUserDetailService.loadUserByUsername(realClaimsSubject);
@@ -214,13 +228,8 @@ public class JWTFilter extends OncePerRequestFilter {
             sendAuthFailure(request, "tos_not_accepted", "User must accept terms of service");
             // If user has not accepted terms of service and is attempted to get information other than the terms of service, don't
             // authenticate
-            try {
-                response.sendError(HttpServletResponse.SC_FORBIDDEN, "User must accept terms of service");
-                // Return early to prevent setting up security context
-                return;
-            } catch (IOException e) {
-                logger.error("Failed to send response.", e);
-            }
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "User must accept terms of service");
+            return false;
         }
 
         Set<Role> userRoles = authenticatedUser.getUser().getRoles();
@@ -229,13 +238,8 @@ public class JWTFilter extends OncePerRequestFilter {
         ) {
             logger.error("User doesn't have any roles or privileges.");
             sendAuthFailure(request, "no_roles_or_privileges", "User has no roles or privileges");
-            try {
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User doesn't have any roles or privileges.");
-                // Return early to prevent setting up security context
-                return;
-            } catch (IOException e) {
-                logger.error("Failed to send response.", e);
-            }
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User doesn't have any roles or privileges.");
+            return false;
         }
 
         logger.debug(
@@ -250,6 +254,7 @@ public class JWTFilter extends OncePerRequestFilter {
         // Populate AuditAttributes for the AuditLoggingFilter to include in its event.
         // user_id and user_email are read from SecurityContext by the filter directly.
         AuditAttributes.putMetadata(request, "auth_result", "success");
+        return true;
     }
 
     private void sendAuthFailure(HttpServletRequest request, String reason, String message) {
