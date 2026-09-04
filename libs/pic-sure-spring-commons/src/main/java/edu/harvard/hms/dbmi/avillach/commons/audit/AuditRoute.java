@@ -3,9 +3,9 @@ package edu.harvard.hms.dbmi.avillach.commons.audit;
 import java.util.regex.Pattern;
 
 /**
- * A single audit route rule, re-expressing the shape of the legacy AuditLoggingFilter's route table (a {@code Pattern} plus an optional
- * HTTP method, mapped to an {@code eventType}/{@code action} pair). {@code method == null} means "any method". {@code useFind} selects
- * {@code matcher.find()} (pattern may match anywhere in the path) vs {@code matcher.matches()} (pattern must match the whole path).
+ * A single audit route rule: a {@code Pattern} plus an optional HTTP method mapped to an {@code eventType}/{@code action} pair.
+ * {@code method == null} means "any method". {@code useFind} selects {@code matcher.find()} (pattern may match anywhere in the path) vs
+ * {@code matcher.matches()} (pattern must match the whole path).
  */
 public final class AuditRoute {
 

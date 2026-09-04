@@ -3,25 +3,23 @@ package edu.harvard.hms.dbmi.avillach.query.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Aggregate/obfuscation config (replaces the WAR's {@code resource.properties} + DB resource lookup). The {@code @ConfigurationProperties}
- * bean is declared/enabled in the aggregate wiring config (a later task); this class is a plain bindable POJO so it can also be constructed
- * directly in tests.
+ * Aggregate and obfuscation configuration. The {@code @ConfigurationProperties} bean is enabled by the aggregate wiring config; this class
+ * remains a plain bindable POJO so tests can construct it directly.
  */
 @ConfigurationProperties(prefix = "aggregate")
 public class AggregateProperties {
 
     /** Open HPDS backend; same value as HPDS_OPEN_URL (the query service's open backend). */
     private String hpdsOpenUrl;
-    /** Bearer token for the open HPDS backend (+ visualization); same value as HPDS_OPEN_TOKEN. Was target.picsure.token. */
+    /** Bearer token for the open HPDS backend and visualization service; same value as HPDS_OPEN_TOKEN. */
     private String hpdsOpenToken;
     /**
-     * Visualization service base URL; replaces the DB ResourceRepository.getById(visualizationResourceId). Blank = no binning (raw
-     * fallback).
+     * Visualization service base URL. Blank means continuous obfuscation uses raw per-value counts without binning.
      */
     private String visualizationUrl;
-    /** Optional resourceUUID injected into the visualization /bin/continuous request body (parity with the WAR). */
+    /** Optional resource UUID injected into the visualization {@code /bin/continuous} request body. */
     private String visualizationResourceId;
-    /** Optional resourceUUID injected into every downstream HPDS request body (was target.resource.id). */
+    /** Optional resource UUID injected into every downstream HPDS request body. */
     private String targetResourceId;
     private int connectTimeoutSec = 10;
     private int readTimeoutSec = 60;

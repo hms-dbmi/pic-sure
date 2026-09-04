@@ -41,8 +41,8 @@ import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
 import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
 
 /**
- * Full-context MockMvc coverage of the {@code /hpds/{backend}/v3/query/**} ingress: {@link HpdsQueryV3Controller} (the sole query lifecycle
- * ingress -- the legacy v1 ingress was removed) against a real {@link edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector}/
+ * Full-context MockMvc coverage of the sole query lifecycle ingress at {@code /hpds/{backend}/v3/query/**}. It exercises
+ * {@link HpdsQueryV3Controller} against a real {@link edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector}/
  * {@link edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient} pair, WireMock standing in for HPDS, and a Mockito
  * {@link OperationsClient} standing in for pic-sure-operations-service (this module is DB-free -- there is no embedded DB to run against).
  * The real {@code WebSecurityConfig} filter chain is exercised too (no mocked security), so the auth-required assertion is a genuine
@@ -229,7 +229,7 @@ class HpdsQueryControllerTest {
             .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 
-    // --- the legacy v1 ingress routes were removed ---
+    // --- unsupported v1 ingress routes ---
 
     @Test
     void legacyV1QueryRouteIsGone() throws Exception {

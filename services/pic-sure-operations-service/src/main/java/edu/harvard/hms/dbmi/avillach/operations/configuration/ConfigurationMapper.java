@@ -3,11 +3,7 @@ package edu.harvard.hms.dbmi.avillach.operations.configuration;
 import org.springframework.stereotype.Component;
 
 
-/**
- * Translates between the {@code pic-sure-api-data} {@link Configuration} entity and this service's DTOs. Replicates the partial-update
- * semantics of the legacy entity's {@code fromRequest}/{@code patch} helpers, which were intentionally dropped from the ported entity (they
- * depended on the javax {@code ConfigurationRequest} DTO and the JSON-P API).
- */
+/** Translates between the {@link Configuration} entity and DTOs, including partial-update semantics. */
 @Component
 public class ConfigurationMapper {
 
@@ -15,12 +11,12 @@ public class ConfigurationMapper {
         return new ConfigurationDto(c.getUuid(), c.getName(), c.getKind(), c.getValue(), c.getDescription(), c.getMarkForDelete());
     }
 
-    /** Build a fresh entity from a create request (mirrors the legacy {@code Configuration.fromRequest}). */
+    /** Builds a fresh entity from a create request. */
     public Configuration toEntity(ConfigurationRequestDto req) {
         return applyPatch(new Configuration(), req);
     }
 
-    /** Apply only the non-null fields (mirrors the legacy {@code Configuration.patch} -- PATCH semantics). */
+    /** Applies only non-null fields for PATCH semantics. */
     public Configuration applyPatch(Configuration c, ConfigurationRequestDto req) {
         if (req.name() != null) {
             c.setName(req.name());

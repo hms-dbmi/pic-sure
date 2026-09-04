@@ -13,10 +13,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-/**
- * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.entity.convert.JsonConverter} (javax) verbatim other than the
- * {@code jakarta.persistence.AttributeConverter} import.
- */
+/** Converts metadata maps to and from their JSON database representation. */
 public class JsonConverter implements AttributeConverter<Map<String, Object>, String> {
     private final Logger logger = LoggerFactory.getLogger(JsonConverter.class);
 

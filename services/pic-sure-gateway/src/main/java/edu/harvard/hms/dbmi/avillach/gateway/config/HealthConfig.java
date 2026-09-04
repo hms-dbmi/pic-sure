@@ -17,8 +17,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.health.SystemHealthService;
 import edu.harvard.hms.dbmi.avillach.gateway.health.SystemStatusController;
 
 /**
- * Registers the deep-health pieces as Spring beans so the {@code /system/status} legacy text controller and the {@code /actuator/health}
- * composite can consume them.
+ * Registers deep-health components for the {@code /system/status} text endpoint and {@code /actuator/health} composite.
  */
 @Configuration
 @EnableConfigurationProperties(DownstreamHealthProperties.class)

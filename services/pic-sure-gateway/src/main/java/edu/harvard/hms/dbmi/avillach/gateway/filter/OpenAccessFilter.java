@@ -22,10 +22,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Handles no-bearer requests when open access is enabled, short-circuiting before {@code PsamaIntrospectionFilter} runs. Triggers when open
- * access is enabled and {@code Authorization} is blank or at most 7 characters ({@code JWTFilter.java:154-157}). The open-access payload
- * contains the decoded path Spring resolved as {@code "Target Service"} plus {@code ipAddress}; it does not contain a token or request
- * body. PSAMA returns a bare boolean. Routes selected by the shared {@link PublicEndpointPolicy}, a real bearer token, or disabled open
- * access pass through untouched.
+ * access is enabled and {@code Authorization} is blank or at most 7 characters. The open-access payload contains the decoded path Spring
+ * resolved as {@code "Target Service"} plus {@code ipAddress}; it does not contain a token or request body. PSAMA returns a bare boolean.
+ * Routes selected by the shared {@link PublicEndpointPolicy}, a real bearer token, or disabled open access pass through untouched.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
@@ -59,7 +58,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         }
 
         String authz = req.getHeader("Authorization");
-        boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // JWTFilter.java:154-157
+        boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // Missing or empty Bearer value.
 
         if (!openAccessEnabled || !noToken) {
             chain.doFilter(req, resp);
@@ -70,7 +69,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         Map<String, Object> body = new HashMap<>();
         body.put("request", queryMap);
         String hostMarker = openAccessIpAddress(req);
-        body.put("ipAddress", hostMarker); // NO token field (JWTFilter.java:389-394)
+        body.put("ipAddress", hostMarker); // Open-access validation sends no token field.
 
         boolean granted;
         try {
@@ -100,7 +99,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         chain.doFilter(req, resp);
     }
 
-    /** {@code "OPEN_ACCESS:<host>"} marker sent as {@code ipAddress} to PSAMA's open-access validate endpoint (JWTFilter.java:389-394). */
+    /** Builds the {@code "OPEN_ACCESS:<host>"} marker sent as {@code ipAddress} to PSAMA's open-access validation endpoint. */
     private static String openAccessIpAddress(HttpServletRequest req) {
         return "OPEN_ACCESS:" + (req.getServerName() == null ? "unknown" : req.getServerName());
     }

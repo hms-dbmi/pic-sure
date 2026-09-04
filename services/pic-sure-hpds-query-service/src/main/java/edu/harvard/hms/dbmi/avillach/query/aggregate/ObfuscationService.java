@@ -18,10 +18,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Pure obfuscation math ported from {@code edu.harvard.hms.dbmi.avillach.AggregateDataSharingResourceRS} (identical across the WAR's V1 and
- * V3 variants). This is the privacy-critical surface: the threshold/variance/salt math, the randomize() logic, and the "&lt; threshold"
- * suppression rule must match the WAR EXACTLY -- any divergence changes what counts get suppressed/perturbed, which is a privacy
- * regression.
+ * Implements privacy-critical obfuscation math for both v1 and v3 aggregate requests. The threshold, variance, salt, randomization, and
+ * "&lt; threshold" suppression rules determine which counts are suppressed or perturbed; unintended divergence is a privacy regression.
  */
 @Service
 public class ObfuscationService {
@@ -49,9 +47,8 @@ public class ObfuscationService {
     }
 
     /**
-     * Generates a random variance for the request based on the passed entityString. The variance is between -variance and +variance: the
-     * salt is appended to the entityString, hashed, and the hashcode is taken mod (variance * 2 + 1), shifted down by variance. Ported
-     * verbatim from the WAR's generateRequestVariance().
+     * Generates a deterministic request variance between {@code -variance} and {@code +variance}. The salt is appended to the entity
+     * string, hashed, and reduced modulo {@code variance * 2 + 1}, then shifted down by {@code variance}.
      */
     int generateRequestVariance(String entityString) {
         return Math.abs((entityString + randomSalt).hashCode()) % (variance * 2 + 1) - variance;
@@ -137,10 +134,8 @@ public class ObfuscationService {
     }
 
     /**
-     * Suppress continuous when the study-consents cross-count is below threshold or zero. The WAR ran this check on an already-obfuscated
-     * map, so only the display forms "&lt; threshold" and "0" could appear; here the caller passes the RAW backend cross-count, so raw
-     * numerics (e.g. "5") must be compared numerically or a below-threshold cohort's distribution leaks. Missing or unparseable counts fail
-     * closed (suppress).
+     * Suppresses continuous results when the raw study-consents cross-count is below the threshold. Numeric strings are compared directly;
+     * missing or unparseable counts fail closed and are suppressed.
      */
     public boolean shouldSuppressContinuousCrossCounts(Map<String, String> crossCounts) {
         String v = crossCounts == null ? null : crossCounts.get(STUDIES_CONSENTS_KEY);
@@ -194,7 +189,7 @@ public class ObfuscationService {
         return result;
     }
 
-    /** Jackson hands Object-typed counts (Integer/Long/Double/String); narrow to int, preserving the WAR's breadth. */
+    /** Narrows Jackson's Object-typed Integer, Long, Double, or numeric String counts to int. */
     static int toInt(Object value) {
         if (value instanceof Number n) return n.intValue();
         if (value instanceof String s) return Integer.parseInt(s);

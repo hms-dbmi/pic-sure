@@ -4,9 +4,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Public JSON shape for a {@code NamedDataset}, mirroring the legacy {@code NamedDatasetRS} wire shape. Kept separate from the
- * {@code pic-sure-api-data} JPA entity so the persistence model (and the gzip-compressed {@code Query} blob it references) never leaks
- * directly onto the wire -- the referenced query is projected through {@link NamedDatasetQueryDto} instead.
+ * Public JSON shape for a {@code NamedDataset}. Kept separate from the JPA entity so the persistence model and its gzip-compressed
+ * {@code Query} blob never leak directly onto the wire; the referenced query is projected through {@link NamedDatasetQueryDto}.
  *
  * <p>The nested {@code query} object (rather than a flat {@code queryId}) is load-bearing: the frontend's {@code mapDataset()} reads
  * {@code query.query}, {@code query.uuid}, {@code query.startTime} and {@code query.status} off it, and derives its own {@code queryId}
