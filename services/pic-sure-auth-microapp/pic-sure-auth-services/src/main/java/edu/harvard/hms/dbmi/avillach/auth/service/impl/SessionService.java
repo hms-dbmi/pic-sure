@@ -11,6 +11,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.stereotype.Service;
 
+import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 
@@ -18,6 +19,13 @@ import java.util.Optional;
 public class SessionService {
 
     private static final Logger logger = LoggerFactory.getLogger(SessionService.class);
+
+    /**
+     * A token is minted a moment before {@link #startSession(String)} records the session, and the JWT {@code iat}
+     * claim is only second-granular, so a token belonging to the session that just began can carry a timestamp
+     * slightly earlier than that session's start. Anything older than this allowance came from an earlier session.
+     */
+    private static final long ISSUED_AT_ALLOWANCE_MS = 5000L;
 
     private final long sessionMaxDuration;
     private final CacheManager cacheManager;
@@ -70,6 +78,23 @@ public class SessionService {
     public boolean isSessionExpired(String userSubject) {
         Optional<Long> sessionStartTime = getCachedSessionStartTime(userSubject);
         return sessionStartTime.map(aLong -> System.currentTimeMillis() - aLong > sessionMaxDuration).orElse(true);
+    }
+
+    /**
+     * Whether the token was minted before the subject's current session began, which means it belongs to a session
+     * that has already ended. Ending a session only clears the subject's entry, so logging back in would otherwise
+     * make every still-unexpired token from the previous session valid again.
+     *
+     * @param userSubject User::getSubject()
+     * @param issuedAt the token's {@code iat} claim, or null if it carries none
+     */
+    public boolean isTokenIssuedBeforeCurrentSession(String userSubject, Date issuedAt) {
+        if (issuedAt == null) {
+            return false;
+        }
+
+        return getCachedSessionStartTime(userSubject)
+            .map(sessionStartTime -> issuedAt.getTime() < sessionStartTime - ISSUED_AT_ALLOWANCE_MS).orElse(false);
     }
 
 }

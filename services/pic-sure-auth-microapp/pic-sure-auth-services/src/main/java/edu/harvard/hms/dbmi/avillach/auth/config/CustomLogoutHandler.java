@@ -14,6 +14,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.web.authentication.logout.LogoutHandler;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 @Component
 public class CustomLogoutHandler implements LogoutHandler {
 
@@ -31,7 +33,7 @@ public class CustomLogoutHandler implements LogoutHandler {
     @Override
     public void logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
         String bearer = request.getHeader("Authorization");
-        if (!bearer.startsWith("Bearer ")) {
+        if (bearer == null || !bearer.startsWith("Bearer ")) {
             return;
         }
 
@@ -40,9 +42,15 @@ public class CustomLogoutHandler implements LogoutHandler {
             return;
         }
 
-        Claims payload = jwtUtil.parseToken(token).getPayload();
-        String subject = payload.getSubject();
+        // Expiration is deliberately ignored: a token that idled out still names the session to end, and the
+        // sessions it belongs to can outlive it (application.max.session.length is far longer than the token TTL).
+        Optional<Claims> payload = jwtUtil.parseTokenAllowingExpiration(token);
+        if (payload.isEmpty()) {
+            logger.warn("logout() The token presented for logout could not be verified; no session to end.");
+            return;
+        }
 
+        String subject = payload.get().getSubject();
         if (StringUtils.isNotBlank(subject)) {
             logger.info("logout() Logging out User: {}", subject);
             this.cacheEvictionService.evictCache(subject);

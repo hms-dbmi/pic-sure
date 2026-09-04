@@ -151,6 +151,15 @@ public class TokenService {
             return tokenInspection;
         }
 
+        // A token minted before the current session began belongs to a session the user has already logged out of.
+        // isAuthorized() below only sees that *a* session is live, not which one issued this token.
+        if (!isLongTermToken && sessionService.isTokenIssuedBeforeCurrentSession(subject, jws.getPayload().getIssuedAt())) {
+            logger.error("_inspectToken() token for subject {} was issued before the current session started", subject);
+            tokenInspection.setMessage("Your session has expired. Please log in again.");
+            tokenInspection.addField("active", false);
+            return tokenInspection;
+        }
+
         // Verify token is active and authorized
         boolean isAuthorizationPassed = false;
         String errorMsg = null;
@@ -248,8 +257,11 @@ public class TokenService {
             return new InvalidRefreshToken("User has been deactivated.");
         }
 
-        if (!JWTUtil.isLongTermToken(claims.getSubject()) && sessionService.isSessionExpired(claims.getSubject())) {
-            logger.info("refreshToken() The user has just is being logged out. The user's session has expired.");
+        if (
+            !JWTUtil.isLongTermToken(subject) && (sessionService.isSessionExpired(subject)
+                || sessionService.isTokenIssuedBeforeCurrentSession(subject, claims.getIssuedAt()))
+        ) {
+            logger.info("refreshToken() The token presented for refresh belongs to a session that has ended.");
             return new InvalidRefreshToken("Your session has expired. Please log in again.");
         }
 

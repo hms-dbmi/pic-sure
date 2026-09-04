@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
@@ -32,6 +33,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -55,16 +57,18 @@ public class JWTFilter extends OncePerRequestFilter {
 
     private final JWTUtil jwtUtil;
     private final CustomUserDetailService customUserDetailService;
+    private final SessionService sessionService;
 
     @Autowired
     public JWTFilter(
         TOSService tosService, @Value("${application.user.id.claim}") String userClaimId, JWTUtil jwtUtil,
-        CustomUserDetailService customUserDetailService
+        CustomUserDetailService customUserDetailService, SessionService sessionService
     ) {
         this.tosService = tosService;
         this.userClaimId = userClaimId;
         this.jwtUtil = jwtUtil;
         this.customUserDetailService = customUserDetailService;
+        this.sessionService = sessionService;
     }
 
     /**
@@ -157,8 +161,23 @@ public class JWTFilter extends OncePerRequestFilter {
                 setSecurityContextForApplication(request, customApplicationDetails);
             } else {
                 logger.info("UserID: {} is not a long term token and not a PSAMA application token.", userId);
+                String realClaimsSubject = jws.getPayload().getSubject();
+
+                // Logout ends the user's session, so a token outliving the session that issued it is a revoked
+                // token. Long-term tokens are exempt above: they are API keys with their own lifecycle.
+                Date issuedAt = jws.getPayload().getIssuedAt();
+                if (
+                    this.sessionService.isSessionExpired(realClaimsSubject)
+                        || this.sessionService.isTokenIssuedBeforeCurrentSession(realClaimsSubject, issuedAt)
+                ) {
+                    logger.warn("Rejecting a token for subject {} that outlived the session it was issued for.", realClaimsSubject);
+                    sendAuthFailure(request, "session_ended", "Token belongs to an ended session for subject: " + realClaimsSubject);
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Your session has expired. Please log in again.");
+                    return;
+                }
+
                 // Authenticate as User
-                setSecurityContextForUser(request, response, jws.getPayload().getSubject());
+                setSecurityContextForUser(request, response, realClaimsSubject);
             }
 
             filterChain.doFilter(request, response);
