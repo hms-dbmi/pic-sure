@@ -45,7 +45,7 @@ public class AggregateService {
 
     private static final String STUDIES_CONSENTS_PATH = "\\_studies_consents\\";
 
-    /** Result types accepted by {@code querySync} for both v1 and v3. */
+    /** Result types accepted by {@code querySync} */
     private static final Set<String> ALLOWED_RESULT_TYPES = Set.of(
         "COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT", "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT",
         "CONTINUOUS_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY", "AGGREGATE_VCF_EXCERPT", "VCF_EXCERPT"
