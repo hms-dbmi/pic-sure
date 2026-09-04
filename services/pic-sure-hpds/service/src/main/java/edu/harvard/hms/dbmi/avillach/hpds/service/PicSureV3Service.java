@@ -22,6 +22,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingV3Service;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
+import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryTimeoutException;
+import edu.harvard.hms.dbmi.avillach.hpds.service.util.SyncQueryWaiter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +49,7 @@ public class PicSureV3Service {
     public PicSureV3Service(
         QueryV3Service queryService, CountV3Processor countProcessor, VariantListV3Processor variantListProcessor,
         QueryExecutor queryExecutor, Paginator paginator, SignUrlService signUrlService, FileSharingV3Service fileSharingService,
-        TestDataService testDataService
+        TestDataService testDataService, SyncQueryWaiter syncQueryWaiter
     ) {
         this.queryService = queryService;
         this.countProcessor = countProcessor;
@@ -57,6 +59,7 @@ public class PicSureV3Service {
         this.fileSharingService = fileSharingService;
         this.signUrlService = signUrlService;
         this.testDataService = testDataService;
+        this.syncQueryWaiter = syncQueryWaiter;
         Crypto.loadDefaultKey();
     }
 
@@ -79,6 +82,8 @@ public class PicSureV3Service {
     private final FileSharingV3Service fileSharingService;
 
     private final TestDataService testDataService;
+
+    private final SyncQueryWaiter syncQueryWaiter;
 
     @Autowired
     private HttpServletRequest httpRequest;
@@ -400,13 +405,27 @@ public class PicSureV3Service {
             case DATAFRAME:
             case DATAFRAME_TIMESERIES:
             case PATIENTS:
-                QueryStatus status = query(resultRequest).getBody();
-                while (status.getResourceStatus().equalsIgnoreCase("RUNNING") || status.getResourceStatus().equalsIgnoreCase("PENDING")) {
-                    status = queryStatus(UUID.fromString(status.getResourceResultId()), null);
+                QueryStatus status;
+                try {
+                    status = syncQueryWaiter.awaitTerminal(query(resultRequest).getBody(), queryId -> queryStatus(queryId, null));
+                } catch (QueryTimeoutException e) {
+                    log.warn("Abandoning synchronous wait for query {}", e.getResourceResultId());
+                    return ResponseEntity.status(504).contentType(MediaType.APPLICATION_JSON).body(e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Interrupted while waiting for a synchronous query", e);
+                    return ResponseEntity.status(503).contentType(MediaType.APPLICATION_JSON).body("Query wait was interrupted");
+                }
+                if (status == null || status.getResourceResultId() == null) {
+                    log.error("Query submission returned no result id");
+                    return ResponseEntity.status(500).build();
                 }
                 log.info(status.toString());
 
                 AsyncResult result = queryService.getResultFor(UUID.fromString(status.getResourceResultId()));
+                if (result == null) {
+                    return ResponseEntity.status(404).build();
+                }
                 if (result.getStatus() == AsyncResult.Status.SUCCESS) {
                     result.getStream().open();
                     return queryOkResponse(

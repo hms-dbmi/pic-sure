@@ -22,6 +22,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingV3Service;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
+import edu.harvard.hms.dbmi.avillach.hpds.service.util.SyncQueryWaiter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -40,14 +41,8 @@ class PicSureV3ServiceAuditTest {
         queryService = mock(QueryV3Service.class);
         queryExecutor = mock(QueryExecutor.class);
         service = new PicSureV3Service(
-            queryService,
-            mock(CountV3Processor.class),
-            mock(VariantListV3Processor.class),
-            queryExecutor,
-            mock(Paginator.class),
-            mock(SignUrlService.class),
-            mock(FileSharingV3Service.class),
-            mock(TestDataService.class)
+            queryService, mock(CountV3Processor.class), mock(VariantListV3Processor.class), queryExecutor, mock(Paginator.class),
+            mock(SignUrlService.class), mock(FileSharingV3Service.class), mock(TestDataService.class), mock(SyncQueryWaiter.class)
         );
 
         request = new MockHttpServletRequest();
@@ -150,7 +145,8 @@ class PicSureV3ServiceAuditTest {
         PicSureV3Service serviceWithRealPaginator = new PicSureV3Service(
             queryService, mock(CountV3Processor.class), mock(VariantListV3Processor.class),
             queryExecutor, paginator, mock(SignUrlService.class), mock(FileSharingV3Service.class),
-            mock(TestDataService.class)
+            mock(TestDataService.class),
+            mock(SyncQueryWaiter.class)
         );
 
         ReflectionTestUtils.setField(serviceWithRealPaginator, "httpRequest", request);
