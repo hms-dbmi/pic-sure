@@ -80,7 +80,9 @@ public class Application extends BaseEntity implements Principal {
     }
 
     /**
-     * <p>Inner class that returns limited attributes back to an application user.</p>
+     * <p>Inner class that returns limited attributes back to an application user. It deliberately omits {@code token}: the read endpoints
+     * serialize this shape so an application's bearer credential is never part of a lookup or listing response. The token is disclosed only
+     * by the explicit {@code SUPER_ADMIN} token-refresh endpoint.</p>
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public static class ApplicationForDisplay {
@@ -134,10 +136,24 @@ public class Application extends BaseEntity implements Principal {
             this.url = url;
             return this;
         }
+
+        /**
+         * Projects a persisted application onto the token-free display shape.
+         *
+         * @param application the persisted application
+         * @return the display projection
+         */
+        public static ApplicationForDisplay from(Application application) {
+            return new ApplicationForDisplay().setUuid(application.getUuid() == null ? null : application.getUuid().toString())
+                .setName(application.getName()).setDescription(application.getDescription()).setUrl(application.getUrl())
+                .setEnable(application.isEnable());
+        }
     }
-    
+
     public String toString() {
-    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + enable + " ___ " + url + " ___ " + (privileges==null?"NO PRIVILEGES DEFINED" : privileges.stream().map(Privilege::toString).collect(Collectors.joining(",")));
+        return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + enable + " ___ " + url + " ___ "
+            + (privileges == null ? "NO PRIVILEGES DEFINED"
+                : privileges.stream().map(Privilege::toString).collect(Collectors.joining(",")));
     }
 
 }
