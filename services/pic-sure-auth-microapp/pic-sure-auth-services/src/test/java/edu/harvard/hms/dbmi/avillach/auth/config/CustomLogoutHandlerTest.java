@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.config;
 
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
@@ -21,6 +22,7 @@ class CustomLogoutHandlerTest {
     private UserService userService;
     private CacheEvictionService cacheEvictionService;
     private JWTUtil jwtUtil;
+    private SessionService sessionService;
     private CustomLogoutHandler handler;
 
     @BeforeEach
@@ -28,7 +30,8 @@ class CustomLogoutHandlerTest {
         userService = mock(UserService.class);
         cacheEvictionService = mock(CacheEvictionService.class);
         jwtUtil = mock(JWTUtil.class);
-        handler = new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil);
+        sessionService = mock(SessionService.class);
+        handler = new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil, sessionService);
     }
 
     @Test

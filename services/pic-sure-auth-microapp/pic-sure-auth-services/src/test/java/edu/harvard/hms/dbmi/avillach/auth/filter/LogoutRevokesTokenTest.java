@@ -32,6 +32,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
@@ -106,7 +107,7 @@ class LogoutRevokesTokenTest {
         when(tosService.hasUserAcceptedLatest(SUBJECT)).thenReturn(true);
 
         CacheEvictionService cacheEvictionService = new CacheEvictionService(sessionService, mock(AccessRuleService.class));
-        logoutHandler = new CustomLogoutHandler(mock(UserService.class), cacheEvictionService, jwtUtil);
+        logoutHandler = new CustomLogoutHandler(mock(UserService.class), cacheEvictionService, jwtUtil, sessionService);
         filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService, sessionService);
         filterChain = mock(FilterChain.class);
     }
@@ -148,6 +149,22 @@ class LogoutRevokesTokenTest {
         MockHttpServletResponse afterSecondLogin = callAdminEndpoint();
         assertEquals(401, afterSecondLogin.getStatus(), "A token from the abandoned session must not be revived by a new login");
         assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    /**
+     * /logout is permitAll and Spring's LogoutFilter runs ahead of JWTFilter, so the logout request never faces the
+     * filter's session check. Without its own check the handler would evict purely on the token's subject, letting
+     * anyone holding a token from an abandoned session end the session the user is currently using.
+     */
+    @Test
+    void aTokenFromAnEndedSessionCannotEndTheCurrentOne() throws Exception {
+        loginAMinuteAgo();
+        logout();
+
+        sessionService.startSession(SUBJECT);
+        logout();
+
+        assertFalse(sessionService.isSessionExpired(SUBJECT), "A stale token must not be able to end the current session");
     }
 
     /**
