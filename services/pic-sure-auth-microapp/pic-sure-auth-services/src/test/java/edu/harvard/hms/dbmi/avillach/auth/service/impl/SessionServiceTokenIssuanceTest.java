@@ -41,15 +41,26 @@ class SessionServiceTokenIssuanceTest {
     }
 
     /**
-     * The token is minted just before the session is recorded and its {@code iat} is truncated to whole seconds, so a
-     * token stamped a fraction before its own session's start still belongs to it.
+     * The production invariant: {@code startSession} anchors the session to the issuing token's own {@code iat}, so a
+     * token of the current session carries exactly the session's start and needs no tolerance window to be accepted.
      */
     @Test
-    void aTokenStampedJustBeforeItsOwnSessionStartIsAccepted() {
+    void theTokenThatOpenedTheSessionIsAccepted() {
         long now = System.currentTimeMillis();
         sessionStartedAt(now);
 
-        assertFalse(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, new Date(now - 1_500)));
+        assertFalse(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, new Date(now)));
+    }
+
+    /**
+     * No tolerance window: a token from a hair before the current session is still from a previous one.
+     */
+    @Test
+    void aTokenFromJustBeforeTheCurrentSessionIsRejected() {
+        long now = System.currentTimeMillis();
+        sessionStartedAt(now);
+
+        assertTrue(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, new Date(now - 1)));
     }
 
     @Test

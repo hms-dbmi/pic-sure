@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.AuthenticationServiceRegistry;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -38,11 +40,15 @@ public class AuthenticationController {
 
     private final AuthenticationServiceRegistry authenticationServiceRegistry;
     private final SessionService sessionService;
+    private final JWTUtil jwtUtil;
 
     @Autowired
-    public AuthenticationController(AuthenticationServiceRegistry authenticationServiceRegistry, SessionService sessionService) {
+    public AuthenticationController(
+        AuthenticationServiceRegistry authenticationServiceRegistry, SessionService sessionService, JWTUtil jwtUtil
+    ) {
         this.authenticationServiceRegistry = authenticationServiceRegistry;
         this.sessionService = sessionService;
+        this.jwtUtil = jwtUtil;
     }
 
     @Operation(description = "The authentication endpoint for retrieving a valid user token")
@@ -75,7 +81,7 @@ public class AuthenticationController {
         HashMap<String, String> authenticate = authenticationService.authenticate(authRequest, request.getServerName());
         if (!CollectionUtils.isEmpty(authenticate)) {
             if (authenticate.containsKey("userId")) {
-                sessionService.startSession(authenticate.get("userId"));
+                sessionService.startSession(authenticate.get("userId"), issuedAtOf(authenticate.get("token")));
             } else {
                 logger.error("authentication() userId authentication is null");
                 logger.error("User claims must contain a userId to start their session.");
@@ -93,5 +99,23 @@ public class AuthenticationController {
         AuditAttributes.putMetadata(request, "login_result", "failure");
         AuditAttributes.putMetadata(request, "reason", "authentication_failed");
         return PICSUREResponse.unauthorizedError("User not authenticated.");
+    }
+
+    /**
+     * The session is anchored to the issuing token's own {@code iat} so the two share an exact start time, which is
+     * what lets SessionService tell a token of this session from one of a session the user already left. Falls back
+     * to the wall clock if the token is absent or unreadable, which only widens the check by under a second.
+     */
+    private Date issuedAtOf(String token) {
+        if (token == null) {
+            return null;
+        }
+
+        try {
+            return this.jwtUtil.parseToken(token).getPayload().getIssuedAt();
+        } catch (Exception e) {
+            logger.warn("authentication() Could not read the issued-at claim of the token just minted: {}", e.getMessage());
+            return null;
+        }
     }
 }
