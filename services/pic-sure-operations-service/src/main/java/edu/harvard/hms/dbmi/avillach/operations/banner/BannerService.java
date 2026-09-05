@@ -204,7 +204,6 @@ public class BannerService {
         }
 
         String actor = user.getUserId();
-        // Disabling changes only lifecycle bookkeeping: content, schedule, priority, and every published version stay as they are.
         BannerOccurrence saved = repository.saveAndFlush(
             banner.setStatus(BannerStatus.DISABLED).setDisabledAt(now).setDisabledBy(actor).setUpdatedAt(now).setUpdatedBy(actor)
         );
@@ -228,11 +227,7 @@ public class BannerService {
         return ArchivedBannerDto.from(saved);
     }
 
-    /**
-     * Retires an occurrence without auditing, so a caller that archives as part of a larger action reports only its own event. Archiving is
-     * retention bookkeeping: content, schedule, priority, provenance, and every stored version stay as they are, and the priority allocator
-     * is untouched because an archiveable occurrence was already outside the orderable queue.
-     */
+    /** Callers emit the audit event so restore can archive its source without producing a separate archive event. */
     private BannerOccurrence markArchived(BannerOccurrence banner, Instant now, String actor) {
         return repository.saveAndFlush(
             banner.setStatus(BannerStatus.ARCHIVED).setArchivedAt(now).setArchivedBy(actor).setUpdatedAt(now).setUpdatedBy(actor)
