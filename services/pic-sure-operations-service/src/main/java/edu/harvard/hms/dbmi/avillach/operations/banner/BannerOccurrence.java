@@ -6,6 +6,8 @@ import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -20,6 +22,8 @@ import jakarta.persistence.Table;
 @Entity(name = "banner_occurrence")
 @Table(name = "banner_occurrence")
 public class BannerOccurrence {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(BannerOccurrence.class);
 
     @Id
     @GeneratedValue
@@ -180,7 +184,11 @@ public class BannerOccurrence {
     }
 
     public List<BannerPageTarget> getPageTargets() {
-        return pageTargets == null ? null : BannerPageTargets.fromStoredJson(pageTargets);
+        List<BannerPageTarget> targets = BannerPageTargets.fromStoredJson(pageTargets);
+        if (targets == null) {
+            LOGGER.warn("Ignoring banner {} because its stored page targets are invalid", uuid);
+        }
+        return targets;
     }
 
     public BannerOccurrence setPageTargets(List<BannerPageTarget> pageTargets) {

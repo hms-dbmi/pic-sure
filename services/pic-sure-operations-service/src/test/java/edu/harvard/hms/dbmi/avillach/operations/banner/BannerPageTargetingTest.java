@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +27,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
@@ -140,8 +143,9 @@ class BannerPageTargetingTest {
     }
 
     @ParameterizedTest
+    @ExtendWith(OutputCaptureExtension.class)
     @ValueSource(strings = {"[]", "[{\"kind\":\"FUTURE\",\"path\":\"/hidden\"}]"})
-    void malformedStoredTargetsAreOmittedWithoutTakingAnyFeedDown(String storedTargets) throws Exception {
+    void malformedStoredTargetsAreOmittedWithoutTakingAnyFeedDown(String storedTargets, CapturedOutput output) throws Exception {
         JsonNode malformed = publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/hidden\"}]"));
         publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
         UUID malformedUuid = UUID.fromString(malformed.get("uuid").asText());
@@ -155,6 +159,7 @@ class BannerPageTargetingTest {
             .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
             .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
+        assertThat(output.getOut()).contains("Ignoring banner " + malformedUuid + " because its stored page targets are invalid");
     }
 
     @Test

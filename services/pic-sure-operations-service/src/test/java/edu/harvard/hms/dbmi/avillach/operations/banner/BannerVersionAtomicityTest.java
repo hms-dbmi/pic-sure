@@ -68,6 +68,7 @@ class BannerVersionAtomicityTest {
     @Test
     void versionAppendFailureRollsBackAPublishedScheduleEdit() {
         ManagementBannerDto published = service.publish(request("<p>Original</p>"), ADMIN);
+        Instant persistedStart = bannerRepository.findById(published.uuid()).orElseThrow().getStartAt();
         Instant futureStart = published.startAt().plusSeconds(600).truncatedTo(ChronoUnit.MINUTES).plusSeconds(60);
         doThrow(new IllegalStateException("version storage unavailable")).when(versionRepository).saveAndFlush(any(BannerVersion.class));
 
@@ -75,7 +76,7 @@ class BannerVersionAtomicityTest {
             .isInstanceOf(IllegalStateException.class).hasMessage("version storage unavailable");
 
         BannerOccurrence occurrence = bannerRepository.findById(published.uuid()).orElseThrow();
-        assertThat(occurrence.getStartAt()).isEqualTo(published.startAt());
+        assertThat(occurrence.getStartAt()).isEqualTo(persistedStart);
         assertThat(occurrence.getEndAt()).isNull();
         assertThat(versionRepository.findAll()).hasSize(1);
     }
