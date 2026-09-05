@@ -125,9 +125,7 @@ class BannerManagementAuthorizationTest {
     }
 
     private static Stream<String> rejectedManagementPaths() {
-        return Stream.concat(
-            ROUTES.rejected().stream(), Stream.of("/operations/banners/active/v2", "/operations/banners/active/v2/")
-        );
+        return ROUTES.rejected().stream();
     }
 
     private static RouteFixture loadRouteFixture() {

@@ -41,8 +41,7 @@ spring:
             # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
             # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
             # /operations/** is served by operations-service, the sole DB owner.
-            # /operations/configuration/** plus exact GET /operations/banners/active and
-            # GET /operations/banners/active/v2 carry public-read carve-outs in
+            # /operations/configuration/** plus exact GET /operations/banners/active carry public-read carve-outs in
             # PublicEndpointPolicy, shared by both authentication filters — everything else (POST/PATCH/DELETE, all
             # /operations/configuration/admin/**, and all of /operations/dataset/**) is introspected as usual by the
             # always-on auth chain.

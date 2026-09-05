@@ -22,8 +22,6 @@ import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 @Service
 public class BannerService {
 
-    static final String SYSTEM_MIGRATION_ACTOR = "SYSTEM_MIGRATION";
-
     private static final Comparator<ManagementBannerDto> MANAGEMENT_ORDER =
         Comparator.comparingInt((ManagementBannerDto banner) -> lifecycleOrder(banner.lifecycle()))
             .thenComparing(BannerService::orderablePriority, Comparator.nullsLast(Comparator.naturalOrder()))
@@ -50,13 +48,8 @@ public class BannerService {
     }
 
     @Transactional(readOnly = true)
-    public List<ActiveBannerDto> targetedActiveBanners() {
-        return loadActiveBanners();
-    }
-
-    @Transactional(readOnly = true)
-    public List<ActiveBannerDto> legacyAllPagesActiveBanners() {
-        return loadActiveBanners().stream().filter(banner -> BannerPageTargets.isAllPages(banner.pageTargets())).toList();
+    public List<ActiveBannerDto> activeBanners() {
+        return repository.findActive(clock.instant()).stream().flatMap(banner -> ActiveBannerDto.from(banner).stream()).toList();
     }
 
     @Transactional(readOnly = true)
@@ -64,10 +57,6 @@ public class BannerService {
         Instant now = clock.instant();
         return repository.findAllManaged().stream().flatMap(banner -> ManagementBannerDto.from(banner, now).stream())
             .sorted(MANAGEMENT_ORDER).toList();
-    }
-
-    private List<ActiveBannerDto> loadActiveBanners() {
-        return repository.findActive(clock.instant()).stream().flatMap(banner -> ActiveBannerDto.from(banner).stream()).toList();
     }
 
     @Transactional
@@ -266,12 +255,6 @@ public class BannerService {
         Instant requestedStart = request.startAt() == null ? banner.getStartAt() : request.startAt();
         validateChangedPublishedSchedule(banner, requestedStart, request.endAt(), now);
         int currentVersionNumber = versionRepository.findMaximumVersionNumber(banner.getUuid());
-        if (currentVersionNumber == 0) {
-            String publishedBy = banner.getPublishedBy();
-            String versionActor = publishedBy == null || publishedBy.isEmpty() ? SYSTEM_MIGRATION_ACTOR : publishedBy;
-            versionRepository.saveAndFlush(BannerVersion.snapshot(banner, 1, publicationTime(banner), versionActor));
-            currentVersionNumber = 1;
-        }
 
         BannerOccurrence candidate = apply(request, new BannerOccurrence()).setStartAt(requestedStart).setEndAt(request.endAt());
         candidate.setPresentationHash(hasher.hash(candidate));
@@ -385,13 +368,6 @@ public class BannerService {
     private boolean hasMaterialChange(BannerOccurrence current, BannerOccurrence candidate) {
         return !candidate.getPresentationHash().equals(hasher.hash(current))
             || !Objects.equals(candidate.getStartAt(), current.getStartAt()) || !Objects.equals(candidate.getEndAt(), current.getEndAt());
-    }
-
-    private static Instant publicationTime(BannerOccurrence banner) {
-        if (banner.getPublishedAt() != null) {
-            return banner.getPublishedAt();
-        }
-        return banner.getUpdatedAt() != null ? banner.getUpdatedAt() : banner.getCreatedAt();
     }
 
     private static int lifecycleOrder(BannerLifecycle lifecycle) {

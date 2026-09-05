@@ -178,7 +178,7 @@ class BannerArchiveTest {
         service.archive(disabled, ARCHIVER);
 
         assertThat(service.managedBanners()).extracting(ManagementBannerDto::uuid).containsExactly(active);
-        assertThat(service.targetedActiveBanners()).extracting(ActiveBannerDto::uuid).containsExactly(active);
+        assertThat(service.activeBanners()).extracting(ActiveBannerDto::uuid).containsExactly(active);
     }
 
     private List<VersionState> storedVersions(UUID uuid) {

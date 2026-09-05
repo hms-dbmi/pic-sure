@@ -1,3 +1,5 @@
+USE picsure;
+
 CREATE TABLE banner_occurrence
 (
     uuid                 BINARY(16)   NOT NULL,
@@ -34,18 +36,40 @@ CREATE TABLE banner_occurrence
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_bin;
 
-INSERT INTO banner_occurrence (
-    uuid, status, html_content, title, appearance, icon, dismissible, audience, placement, page_targets,
-    start_at, priority, presentation_hash, created_at, created_by, updated_at, updated_by, published_at, published_by
-) VALUES (
-    UUID_TO_BIN('00000000-0000-0000-0000-000000000001'), 'PUBLISHED', '<p>Pre-migration bytes</p>',
-    'Pre-migration title', 'WARNING', 'WARNING', FALSE, 'SIGNED_IN', 'SITE_TOP',
-    JSON_ARRAY(JSON_OBJECT('kind', 'EXACT', 'path', '/help')), '2026-08-27 12:00:00.000000', 1,
-    REPEAT('a', 64), '2026-08-27 11:00:00.000000', 'creator', '2026-08-27 12:00:00.000000', 'publisher',
-    '2026-08-27 12:00:00.000000', 'publisher'
-), (
-    UUID_TO_BIN('00000000-0000-0000-0000-000000000002'), 'PUBLISHED', '<p>Missing publication time</p>',
-    'Legacy title', 'PRIMARY', 'NONE', TRUE, 'EVERYONE', 'SITE_TOP', JSON_ARRAY(JSON_OBJECT('kind', 'ALL')),
-    '2026-08-27 13:00:00.000000', 2, REPEAT('b', 64), '2026-08-27 10:00:00.000000', 'creator',
-    '2026-08-27 13:00:00.000000', 'updater', NULL, NULL
-);
+CREATE TABLE banner_version
+(
+    uuid                 BINARY(16)   NOT NULL,
+    banner_uuid          BINARY(16)   NOT NULL,
+    version_number       INT          NOT NULL,
+    html_content         TEXT         NOT NULL,
+    title                VARCHAR(120) DEFAULT NULL,
+    appearance           VARCHAR(16)  NOT NULL,
+    icon                 VARCHAR(16)  NOT NULL,
+    dismissible          BOOLEAN      NOT NULL,
+    audience             VARCHAR(16)  NOT NULL,
+    placement            VARCHAR(32)  NOT NULL,
+    page_targets         JSON         NOT NULL,
+    start_at             DATETIME(6)  DEFAULT NULL,
+    end_at               DATETIME(6)  DEFAULT NULL,
+    presentation_hash    CHAR(64)     NOT NULL,
+    effective_at         DATETIME(6)  NOT NULL,
+    actor                VARCHAR(255) NOT NULL,
+    PRIMARY KEY (uuid),
+    CONSTRAINT fk_banner_version_occurrence
+        FOREIGN KEY (banner_uuid) REFERENCES banner_occurrence (uuid),
+    CONSTRAINT uq_banner_version_number UNIQUE (banner_uuid, version_number)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_bin;
+
+CREATE TABLE banner_priority_allocator
+(
+    id            TINYINT NOT NULL,
+    next_priority INT     NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT chk_banner_priority_allocator_singleton CHECK (id = 1)
+) ENGINE = InnoDB;
+
+-- The banner tables are created empty in this same migration, so the allocator starts at 1.
+INSERT INTO banner_priority_allocator (id, next_priority)
+VALUES (1, 1);

@@ -100,19 +100,17 @@ class BannerPageTargetingTest {
         mockMvc.perform(get("/banners").headers(adminHeaders())).andExpect(status().isOk())
             .andExpect(jsonPath("$[0].pageTargets[0].kind").value("EXACT"))
             .andExpect(jsonPath("$[0].pageTargets[0].path").value("/help"));
-        mockMvc.perform(get("/banners/active/v2")).andExpect(status().isOk())
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
             .andExpect(jsonPath("$[0].pageTargets[2].kind").value("PARAMETERIZED"))
             .andExpect(jsonPath("$[0].pageTargets[3].path").value("/admin")).andExpect(jsonPath("$[0].createdBy").doesNotExist());
     }
 
     @Test
-    void legacyFeedReturnsOnlyAllPagesWhileVersionedFeedCarriesTheFullClientFilteredContract() throws Exception {
+    void activeFeedIncludesAllPagesAndTargetedBanners() throws Exception {
         JsonNode targeted = publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/help\"}]"));
         publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
 
-        mockMvc.perform(get("/banners/active")).andExpect(status().isOk()).andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)))
-            .andExpect(jsonPath("$[0].pageTargets[0].kind").value("ALL"));
-        mockMvc.perform(get("/banners/active/v2")).andExpect(status().isOk())
+        mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
             .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(2)))
             .andExpect(jsonPath("$[0].uuid").value(targeted.get("uuid").asText()))
             .andExpect(jsonPath("$[0].htmlContent").value("<p>Page-targeted notice</p>"))
@@ -130,22 +128,21 @@ class BannerPageTargetingTest {
             .andExpect(jsonPath("$[1].pageTargets[0].kind").value("ALL"));
     }
 
-    @Test
-    void malformedStoredTargetsAreOmittedWithoutTakingAnyFeedDown() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"[]", "[{\"kind\":\"FUTURE\",\"path\":\"/hidden\"}]"})
+    void malformedStoredTargetsAreOmittedWithoutTakingAnyFeedDown(String storedTargets) throws Exception {
         JsonNode malformed = publish(objectMapper.readTree("[{\"kind\":\"EXACT\",\"path\":\"/hidden\"}]"));
         publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
         UUID malformedUuid = UUID.fromString(malformed.get("uuid").asText());
         jdbcTemplate.update(
             "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = ?",
-            "[{\"kind\":\"FUTURE\",\"path\":\"/hidden\"}]", malformedUuid
+            storedTargets, malformedUuid
         );
         entityManager.clear();
 
         mockMvc.perform(get("/banners").headers(adminHeaders())).andExpect(status().isOk())
             .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
         mockMvc.perform(get("/banners/active")).andExpect(status().isOk())
-            .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
-        mockMvc.perform(get("/banners/active/v2")).andExpect(status().isOk())
             .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
     }
 

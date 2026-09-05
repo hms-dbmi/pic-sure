@@ -106,7 +106,7 @@ class BannerSchedulingTest {
         ManagementBannerDto managed =
             service.managedBanners().stream().filter(banner -> banner.uuid().equals(scheduled.uuid())).findFirst().orElseThrow();
         assertThat(managed.lifecycle()).isEqualTo(lifecycle);
-        assertThat(service.targetedActiveBanners()).hasSize(activeCount);
+        assertThat(service.activeBanners()).hasSize(activeCount);
         assertThat(repository.findById(scheduled.uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.PUBLISHED);
     }
 
@@ -124,7 +124,7 @@ class BannerSchedulingTest {
 
         assertThat(service.managedBanners()).singleElement()
             .satisfies(banner -> assertThat(banner.lifecycle()).isEqualTo(BannerLifecycle.ACTIVE));
-        assertThat(service.targetedActiveBanners()).extracting(ActiveBannerDto::uuid).containsExactly(scheduled.uuid());
+        assertThat(service.activeBanners()).extracting(ActiveBannerDto::uuid).containsExactly(scheduled.uuid());
     }
 
     @ParameterizedTest(name = "rejects start {0} and end {1}")
@@ -157,10 +157,10 @@ class BannerSchedulingTest {
         reset(loggingClient);
         clock.set(start);
         service.managedBanners();
-        service.targetedActiveBanners();
+        service.activeBanners();
         clock.set(end);
         service.managedBanners();
-        service.targetedActiveBanners();
+        service.activeBanners();
         verify(loggingClient, org.mockito.Mockito.never()).send(org.mockito.ArgumentMatchers.any());
         assertThat(repository.findById(scheduled[0].uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.PUBLISHED);
     }
@@ -173,7 +173,7 @@ class BannerSchedulingTest {
 
         assertThat(saved.status()).isEqualTo(BannerStatus.SAVED);
         assertThat(saved.startAt()).isEqualTo(start);
-        assertThat(service.targetedActiveBanners()).isEmpty();
+        assertThat(service.activeBanners()).isEmpty();
 
         ManagementBannerDto scheduled = service.publishDraft(saved.uuid(), request(start, end), ADMIN);
 
@@ -310,7 +310,7 @@ class BannerSchedulingTest {
         reset(loggingClient);
         clock.set(futureStart);
         service.managedBanners();
-        service.targetedActiveBanners();
+        service.activeBanners();
         verifyNoInteractions(loggingClient);
         assertThat(updated[0].lifecycle()).isEqualTo(BannerLifecycle.SCHEDULED);
     }

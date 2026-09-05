@@ -33,10 +33,6 @@ final class BannerPageTargets {
         return normalized;
     }
 
-    static boolean isAllPages(List<BannerPageTarget> targets) {
-        return targets != null && targets.size() == 1 && targets.getFirst().kind() == BannerPageTargetKind.ALL;
-    }
-
     private static BannerPageTarget normalize(BannerPageTarget target) {
         if (target == null || target.kind() == null) {
             throw PicsureExceptions.badRequest("Each page target needs a kind");
@@ -108,9 +104,6 @@ final class BannerPageTargets {
     static List<BannerPageTarget> fromStoredJson(JsonNode stored) {
         if (stored == null || !stored.isArray()) {
             return null;
-        }
-        if (stored.isEmpty()) {
-            return List.of(BannerPageTarget.all());
         }
 
         try {

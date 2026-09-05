@@ -230,36 +230,6 @@ class BannerVersioningTest {
         assertThat(versionRepository.count()).isZero();
     }
 
-    @Test
-    void lazyBootstrapFallsBackToStoredUpdateTimeWhenPublicationTimeIsMissing() throws Exception {
-        ManagementBannerDto published = service.publish(
-            request(
-                "<p>Legacy state</p>", "Legacy", BannerAppearance.WARNING, BannerIcon.WARNING, false, BannerAudience.SIGNED_IN,
-                "[{\"kind\":\"EXACT\",\"path\":\"/legacy\"}]"
-            ), FIRST_ADMIN
-        );
-        versionRepository.deleteAll();
-        BannerOccurrence legacy = bannerRepository.findById(published.uuid()).orElseThrow();
-        Instant storedUpdateTime = PUBLISHED_AT.plusSeconds(900);
-        legacy.setPublishedAt(null).setPublishedBy(null).setUpdatedAt(storedUpdateTime);
-        bannerRepository.saveAndFlush(legacy);
-        clock.set(UPDATED_AT);
-
-        service.update(
-            published.uuid(),
-            request(
-                "<p>Corrected state</p>", "Corrected", BannerAppearance.ERROR, BannerIcon.ERROR, true, BannerAudience.EVERYONE,
-                "[{\"kind\":\"ALL\"}]"
-            ), SECOND_ADMIN
-        );
-
-        List<BannerVersion> versions = versionsFor(versionRepository, published.uuid());
-        assertThat(versions).extracting(BannerVersion::getVersionNumber).containsExactly(1, 2);
-        assertThat(versions.getFirst().getHtmlContent()).isEqualTo("<p>Legacy state</p>");
-        assertThat(versions.getFirst().getEffectiveAt()).isEqualTo(storedUpdateTime);
-        assertThat(versions.getFirst().getActor()).isEqualTo(BannerService.SYSTEM_MIGRATION_ACTOR);
-    }
-
     private PublishBannerRequest request(
         String htmlContent, String title, BannerAppearance appearance, BannerIcon icon, boolean dismissible, BannerAudience audience,
         String pageTargets

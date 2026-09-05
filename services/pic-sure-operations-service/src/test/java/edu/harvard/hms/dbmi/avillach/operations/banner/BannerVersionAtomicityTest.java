@@ -34,9 +34,6 @@ class BannerVersionAtomicityTest {
     private BannerRepository bannerRepository;
 
     @Autowired
-    private BannerPresentationHasher hasher;
-
-    @Autowired
     private BannerPriorityAllocatorRepository allocatorRepository;
 
     @MockitoSpyBean
@@ -78,27 +75,6 @@ class BannerVersionAtomicityTest {
         assertThat(occurrence.getStartAt()).isEqualTo(published.startAt());
         assertThat(occurrence.getEndAt()).isNull();
         assertThat(versionRepository.findAll()).hasSize(1);
-    }
-
-    @Test
-    void lazyBootstrapFailureRollsBackWithoutChangingAnOldBinaryOccurrence() {
-        Instant publishedAt = Instant.parse("2026-08-27T12:00:00Z");
-        BannerOccurrence oldBinary = new BannerOccurrence().setStatus(BannerStatus.PUBLISHED).setHtmlContent("<p>Original</p>")
-            .setTitle("Notice").setAppearance(BannerAppearance.PRIMARY).setIcon(BannerIcon.NONE).setDismissible(true)
-            .setAudience(BannerAudience.EVERYONE).setPlacement(BannerPlacement.SITE_TOP).setPageTargets(List.of(BannerPageTarget.all()))
-            .setStartAt(publishedAt).setPriority(1).setCreatedAt(publishedAt).setCreatedBy("old-admin").setUpdatedAt(publishedAt)
-            .setUpdatedBy("old-admin").setPublishedAt(publishedAt).setPublishedBy("old-admin");
-        oldBinary.setPresentationHash(hasher.hash(oldBinary));
-        oldBinary = bannerRepository.saveAndFlush(oldBinary);
-        UUID bannerUuid = oldBinary.getUuid();
-        doThrow(new IllegalStateException("version storage unavailable")).when(versionRepository).saveAndFlush(any(BannerVersion.class));
-
-        assertThatThrownBy(() -> service.update(bannerUuid, request("<p>Changed</p>"), ADMIN)).isInstanceOf(IllegalStateException.class)
-            .hasMessage("version storage unavailable");
-
-        BannerOccurrence occurrence = bannerRepository.findById(bannerUuid).orElseThrow();
-        assertThat(occurrence.getHtmlContent()).isEqualTo("<p>Original</p>");
-        assertThat(versionRepository.findAll()).isEmpty();
     }
 
     @Test

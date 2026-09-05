@@ -25,7 +25,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
  * redundant with the catch-all rule below). Spring Security performs no authentication/authorization for these paths because it isn't the
  * real gate: {@code edu.harvard.hms.dbmi.avillach.operations.query.InternalTokenFilter}, registered by {@code InternalTokenFilterConfig}
  * against the exact same {@code /internal/*} URL pattern, is what actually enforces the shared-secret check on every request the container
- * routes here.</li> <li>{@code GET /banners/active} and {@code GET /banners/active/v2} -- public, UNAUTHENTICATED banner delivery.</li>
+ * routes here.</li> <li>{@code GET /banners/active} -- public, UNAUTHENTICATED banner delivery.</li>
  * <li>{@code /dataset/**} -- requires an
  * authenticated caller, i.e. the gateway supplied {@code X-User-Id}. Spring Security's {@code authenticated()} already excludes the default
  * anonymous principal (see {@code AuthenticatedAuthorizationManager}), so a request with no identity is correctly rejected rather than
@@ -54,7 +54,7 @@ public class WebSecurityConfig {
                 auth -> auth.requestMatchers("/actuator/health", "/actuator/info", "/v3/api-docs/**", "/swagger-ui/**", "/openapi/**")
                     .permitAll().requestMatchers("/configuration/admin/**").hasAuthority(SUPER_ADMIN)
                     .requestMatchers(HttpMethod.GET, "/configuration", "/configuration/*").permitAll().requestMatchers("/internal/**")
-                    .permitAll().requestMatchers(HttpMethod.GET, "/banners/active", "/banners/active/v2").permitAll()
+                    .permitAll().requestMatchers(HttpMethod.GET, "/banners/active").permitAll()
                     .requestMatchers("/dataset/**")
                     .authenticated().requestMatchers("/banners/**").hasAnyAuthority(ADMIN, SUPER_ADMIN).anyRequest().permitAll()
             ).build();
