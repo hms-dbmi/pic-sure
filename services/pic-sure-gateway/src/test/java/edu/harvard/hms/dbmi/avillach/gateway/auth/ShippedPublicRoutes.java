@@ -17,6 +17,7 @@ public final class ShippedPublicRoutes {
         return List.of(
             new PublicRoute("/system/status", MatchKind.EXACT, Set.of("GET"), null, "SYSTEM_MONITOR"),
             new PublicRoute("/openapi.json", MatchKind.SUFFIX, null, null, null),
+            new PublicRoute("/operations/banners/active", MatchKind.EXACT, Set.of("GET"), null, null),
             new PublicRoute("/operations/configuration", MatchKind.SINGLE_SEGMENT_CHILD, Set.of("GET"), Set.of("admin"), null),
             prefix("/logging"), prefix("/actuator"), prefix("/openapi"), prefix("/swagger-ui")
         );
