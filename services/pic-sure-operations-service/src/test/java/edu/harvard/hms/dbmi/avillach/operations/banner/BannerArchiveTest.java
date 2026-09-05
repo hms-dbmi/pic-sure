@@ -60,6 +60,9 @@ class BannerArchiveTest {
     void cleanDatabase() {
         versionRepository.deleteAll();
         repository.deleteAll();
+        priorityAllocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
     }
 
     private static Stream<Arguments> archiveableOccurrences() {

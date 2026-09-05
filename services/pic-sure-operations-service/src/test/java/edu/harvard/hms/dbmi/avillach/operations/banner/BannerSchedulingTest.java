@@ -40,6 +40,9 @@ class BannerSchedulingTest {
     private static final GatewayUser ADMIN = new GatewayUser("admin-id", "admin-subject", "admin@example.org", "ADMIN", Set.of("ADMIN"));
 
     @Autowired
+    private BannerPriorityAllocatorRepository allocatorRepository;
+
+    @Autowired
     private BannerService service;
 
     @Autowired
@@ -64,6 +67,9 @@ class BannerSchedulingTest {
         repository.deleteAll();
         clock.set(NOW);
         reset(loggingClient);
+        allocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
     }
 
     @ParameterizedTest(name = "{0}")

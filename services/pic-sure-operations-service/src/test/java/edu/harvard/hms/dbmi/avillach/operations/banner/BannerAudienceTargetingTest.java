@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -53,6 +54,9 @@ class BannerAudienceTargetingTest {
     );
 
     @Autowired
+    private BannerPriorityAllocatorRepository allocatorRepository;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -66,6 +70,13 @@ class BannerAudienceTargetingTest {
 
     @MockitoBean
     private LoggingClient loggingClient;
+
+    @BeforeEach
+    void seedPriorityAllocator() {
+        allocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
+    }
 
     @ParameterizedTest
     @EnumSource(BannerAudience.class)

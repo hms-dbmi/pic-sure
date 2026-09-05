@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -49,6 +50,9 @@ class BannerPageTargetingTest {
     private static final Instant NOW = Instant.parse("2026-08-28T12:00:00Z");
 
     @Autowired
+    private BannerPriorityAllocatorRepository allocatorRepository;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -68,6 +72,13 @@ class BannerPageTargetingTest {
 
     @MockitoBean
     private LoggingClient loggingClient;
+
+    @BeforeEach
+    void seedPriorityAllocator() {
+        allocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
+    }
 
     @Test
     void normalizesTargetsForStorageManagementFeedAndPublishedVersion() throws Exception {

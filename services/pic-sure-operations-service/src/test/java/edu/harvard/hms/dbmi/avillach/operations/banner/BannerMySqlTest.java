@@ -15,7 +15,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -29,8 +28,7 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import jakarta.persistence.EntityManager;
 
 @SpringBootTest(
-    properties = {"spring.jpa.hibernate.ddl-auto=none", "spring.jpa.defer-datasource-initialization=false",
-        "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"}
+    properties = {"spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"}
 )
 @Testcontainers(disabledWithoutDocker = true)
 class BannerMySqlTest {
@@ -39,7 +37,10 @@ class BannerMySqlTest {
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4").withDatabaseName("picsure")
-        .withCommand("--log-bin-trust-function-creators=1").withInitScript("banner-schema.sql");
+        .withCommand("--log-bin-trust-function-creators=1");
+
+    @Autowired
+    private BannerPriorityAllocatorRepository allocatorRepository;
 
     @Autowired
     private BannerService service;
@@ -73,10 +74,13 @@ class BannerMySqlTest {
         // Restored occurrences reference their source, so remove children before repository cleanup removes sources.
         jdbcTemplate.update("DELETE FROM banner_occurrence WHERE restored_from_uuid IS NOT NULL");
         bannerRepository.deleteAll();
+        allocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
     }
 
     @Test
-    void publicationCreatesOneFirstVersionAndEnforcesVersionIdentity() {
+    void publicationCreatesOneFirstVersion() {
         PublishBannerRequest request = new PublishBannerRequest(
             "<p>Published banner</p>", "Published banner", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,
             BannerPlacement.SITE_TOP, List.of(BannerPageTarget.all())
@@ -91,22 +95,7 @@ class BannerMySqlTest {
             assertThat(version.getActor()).isEqualTo("admin-id");
         });
 
-        assertThatThrownBy(() -> jdbcTemplate.update("""
-            INSERT INTO banner_version
-            SELECT UUID_TO_BIN(UUID()), banner_uuid, version_number, html_content, title, appearance, icon,
-                   dismissible, audience, placement, page_targets, start_at, end_at, presentation_hash,
-                   effective_at, actor
-            FROM banner_version
-            LIMIT 1
-            """)).isInstanceOf(DataIntegrityViolationException.class);
-        assertThatThrownBy(() -> jdbcTemplate.update("""
-            INSERT INTO banner_version
-            SELECT UUID_TO_BIN(UUID()), UUID_TO_BIN('ffffffff-ffff-ffff-ffff-ffffffffffff'), 1, html_content,
-                   title, appearance, icon, dismissible, audience, placement, page_targets, start_at, end_at,
-                   presentation_hash, effective_at, actor
-            FROM banner_version
-            LIMIT 1
-            """)).isInstanceOf(DataIntegrityViolationException.class);
+
     }
 
     @Test

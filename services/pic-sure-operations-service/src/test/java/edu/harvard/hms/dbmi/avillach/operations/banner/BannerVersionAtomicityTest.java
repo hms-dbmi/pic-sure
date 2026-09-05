@@ -46,6 +46,9 @@ class BannerVersionAtomicityTest {
     void cleanDatabase() {
         versionRepository.deleteAll();
         bannerRepository.deleteAll();
+        allocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
     }
 
     @Test

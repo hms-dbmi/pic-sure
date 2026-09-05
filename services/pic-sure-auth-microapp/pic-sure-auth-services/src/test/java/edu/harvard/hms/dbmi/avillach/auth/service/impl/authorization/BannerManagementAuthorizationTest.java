@@ -5,19 +5,14 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
@@ -32,7 +27,8 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 
 class BannerManagementAuthorizationTest {
 
-    private static final RouteFixture ROUTES = loadRouteFixture();
+    private static final String MANAGEMENT_PATH_PATTERN =
+        "^/operations/banners(?:/?|/saved/?|/order/?|/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:/?|/publish/?|/disable/?|/archive/?|/restore/?))$";
 
     private Application picsure;
     private AuthorizationService authorizationService;
@@ -53,7 +49,7 @@ class BannerManagementAuthorizationTest {
 
     @Test
     void bannerManagementRequiresTheApplicationScopedAdminPrivilege() {
-        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", ROUTES.pattern());
+        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", MANAGEMENT_PATH_PATTERN);
         Privilege globalAdmin = privilege("ADMIN", null, bannerRoute);
         Privilege scopedBannerManagement = privilege("BANNER_MANAGEMENT", picsure, bannerRoute);
         Privilege ordinaryQuery = privilege("PIC_SURE_ANY_QUERY", picsure, routeRule("AR_QUERY", "^/query(/.*)?$"));
@@ -101,9 +97,30 @@ class BannerManagementAuthorizationTest {
     }
 
     @ParameterizedTest
-    @MethodSource("allowedManagementPaths")
+    @ValueSource(strings = {
+        "/operations/banners",
+        "/operations/banners/",
+        "/operations/banners/saved",
+        "/operations/banners/saved/",
+        "/operations/banners/order",
+        "/operations/banners/order/",
+        "/operations/banners/00000000-0000-0000-0000-000000000001",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/",
+        "/operations/banners/ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB/publish",
+        "/operations/banners/ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB/publish/",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/disable",
+        "/operations/banners/ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB/disable/",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/archive",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/archive/",
+        "/operations/banners/ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB/archive",
+        "/operations/banners/ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB/archive/",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/restore",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/restore/",
+        "/operations/banners/ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB/restore",
+        "/operations/banners/ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB/restore/"
+    })
     void bannerManagementPrivilegeAllowsOnlyTheManagementRoutes(String path) {
-        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", ROUTES.pattern());
+        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", MANAGEMENT_PATH_PATTERN);
         Privilege scopedBannerManagement = privilege("BANNER_MANAGEMENT", picsure, bannerRoute);
 
         assertThat(authorizationService.isAuthorized(picsure, Map.of("Target Service", path), user(scopedBannerManagement), false).result())
@@ -111,37 +128,47 @@ class BannerManagementAuthorizationTest {
     }
 
     @ParameterizedTest
-    @MethodSource("rejectedManagementPaths")
+    @ValueSource(strings = {
+        "/operations/banners/active",
+        "/operations/banners/active/",
+        "/operations/banners/saved/extra",
+        "/operations/banners/order/extra",
+        "/operations/banners/orders",
+        "/operations/banners/not-a-uuid",
+        "/operations/banners/00000000-0000-0000-0000-00000000000g",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/publish/extra",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/disable/extra",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/disabled",
+        "/operations/banners/disable",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/saved",
+        "/operations/banners//saved",
+        "/operations/banner",
+        "/prefix/operations/banners",
+        "/operations/banners-extra",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/archive/extra",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/archives",
+        "/operations/banners/archive",
+        "/operations/banners/not-a-uuid/archive",
+        "/operations/banners/00000000-0000-0000-0000-00000000000g/archive",
+        "/operations/banners//archive",
+        "/prefix/operations/banners/00000000-0000-0000-0000-000000000001/archive",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/archive?force=true",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/restore/extra",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/restores",
+        "/operations/banners/restore",
+        "/operations/banners/not-a-uuid/restore",
+        "/operations/banners/00000000-0000-0000-0000-00000000000g/restore",
+        "/operations/banners//restore",
+        "/prefix/operations/banners/00000000-0000-0000-0000-000000000001/restore",
+        "/operations/banners/00000000-0000-0000-0000-000000000001/restore?force=true",
+        "/operations/banners?status=SAVED"
+    })
     void bannerManagementPrivilegeRejectsPublicAndUnrecognizedDescendants(String path) {
-        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", ROUTES.pattern());
+        AccessRule bannerRoute = routeRule("AR_BANNER_MANAGEMENT_GATEWAY", MANAGEMENT_PATH_PATTERN);
         Privilege scopedBannerManagement = privilege("BANNER_MANAGEMENT", picsure, bannerRoute);
 
         assertThat(authorizationService.isAuthorized(picsure, Map.of("Target Service", path), user(scopedBannerManagement), false).result())
             .isFalse();
-    }
-
-    private static Stream<String> allowedManagementPaths() {
-        return ROUTES.allowed().stream();
-    }
-
-    private static Stream<String> rejectedManagementPaths() {
-        return ROUTES.rejected().stream();
-    }
-
-    private static RouteFixture loadRouteFixture() {
-        Properties properties = new Properties();
-        try (InputStream fixture = BannerManagementAuthorizationTest.class.getResourceAsStream("/banner-management-routes.properties")) {
-            if (fixture == null) {
-                throw new IllegalStateException("Missing banner-management-routes.properties");
-            }
-            properties.load(fixture);
-        } catch (IOException e) {
-            throw new IllegalStateException("Could not load banner management route fixture", e);
-        }
-        return new RouteFixture(
-            properties.getProperty("pattern"), List.of(properties.getProperty("allowed").split(",")),
-            List.of(properties.getProperty("rejected").split(","))
-        );
     }
 
     private AccessRule routeRule(String name, String value) {
@@ -176,6 +203,4 @@ class BannerManagementAuthorizationTest {
         return user;
     }
 
-    private record RouteFixture(String pattern, List<String> allowed, List<String> rejected) {
-    }
 }

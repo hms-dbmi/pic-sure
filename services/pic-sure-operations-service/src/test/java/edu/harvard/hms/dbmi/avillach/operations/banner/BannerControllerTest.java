@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -63,6 +64,13 @@ class BannerControllerTest {
 
     @MockitoBean
     private LoggingClient loggingClient;
+
+    @BeforeEach
+    void seedPriorityAllocator() {
+        priorityAllocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
+    }
 
     @Test
     void activeFeedIsAnonymousStartInclusiveEndExclusiveAndPriorityOrdered() throws Exception {

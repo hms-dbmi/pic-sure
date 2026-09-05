@@ -43,6 +43,9 @@ class BannerVersioningTest {
         new GatewayUser("second-admin", "second-subject", "second@example.org", "ADMIN", Set.of("ADMIN"));
 
     @Autowired
+    private BannerPriorityAllocatorRepository allocatorRepository;
+
+    @Autowired
     private BannerService service;
 
     @Autowired
@@ -66,6 +69,9 @@ class BannerVersioningTest {
         versionRepository.deleteAll();
         bannerRepository.deleteAll();
         clock.set(PUBLISHED_AT);
+        allocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
     }
 
     @Test
