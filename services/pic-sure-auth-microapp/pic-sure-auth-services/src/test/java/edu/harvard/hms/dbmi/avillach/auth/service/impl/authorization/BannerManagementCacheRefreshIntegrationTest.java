@@ -241,11 +241,6 @@ class BannerManagementCacheRefreshIntegrationTest {
         }
 
         @Bean
-        BdcConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator() {
-            return mock(BdcConsentBasedAccessRuleEvaluator.class);
-        }
-
-        @Bean
         UserConsentsRepository userConsentsRepository() {
             return mock(UserConsentsRepository.class);
         }
@@ -253,11 +248,10 @@ class BannerManagementCacheRefreshIntegrationTest {
         @Bean
         AuthorizationService authorizationService(
             AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
-            BdcConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator, UserConsentsRepository userConsentsRepository
+            UserConsentsRepository userConsentsRepository
         ) {
             return new AuthorizationService(
-                accessRuleService, sessionService, roleService, consentBasedAccessRuleEvaluator, "OKTA,FENCE,OPEN,RAS",
-                userConsentsRepository
+                accessRuleService, sessionService, roleService, "OKTA,FENCE,OPEN,RAS", userConsentsRepository, false, false
             );
         }
     }

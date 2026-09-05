@@ -47,7 +47,7 @@ class BannerManagementAuthorizationTest {
         when(sessions.isSessionExpired(anyString())).thenReturn(false);
         authorizationService = new AuthorizationService(
             new AccessRuleService(mock(AccessRuleRepository.class), "false"), sessions, mock(RoleService.class),
-            mock(BdcConsentBasedAccessRuleEvaluator.class), "OKTA,FENCE,OPEN,RAS", mock(UserConsentsRepository.class)
+            "OKTA,FENCE,OPEN,RAS", mock(UserConsentsRepository.class), false, false
         );
     }
 
