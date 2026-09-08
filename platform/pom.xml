@@ -31,9 +31,25 @@
         <logback.version>1.6.3</logback.version>
         <!-- Structured logging encoder (not governed by the Spring BOMs) -->
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+        <!-- Ahead of the 2.21.4 that spring-boot-dependencies ${spring-boot.version}
+             manages. 2.21.5 carries the jackson-databind fix; drop this override once
+             the Spring BOM catches up. -->
+        <jackson-bom.version>2.21.5</jackson-bom.version>
     </properties>
     <dependencyManagement>
         <dependencies>
+            <!-- MUST stay above spring-boot-dependencies. Maven resolves
+                 dependencyManagement first-declaration-wins, and this reactor does not
+                 inherit spring-boot-starter-parent, so the ${jackson-bom.version}
+                 property alone cannot override an imported BOM. Reorder this and the
+                 Jackson pin silently reverts to the Spring-managed version. -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson-bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
