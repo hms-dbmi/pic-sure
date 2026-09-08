@@ -107,4 +107,38 @@ class HpdsHealthIndicatorTest {
         assertThat(h.getStatus()).isEqualTo(Status.DOWN);
         assertThat(elapsedMs).isLessThan(10_000); // well under the 15s stub delay -- the read timeout fired, the probe did not wait it out
     }
+
+    /**
+     * A backend this deployment does not run leaves its {@code HPDS_*_URL} unset, and an unset env var binds to the empty string rather
+     * than null. AIM-AHEAD runs the auth instance only, so a blank base means "not deployed here" and must be skipped: probing it resolves
+     * a host with no DNS record and flips this service DOWN in the gateway's aggregate view.
+     */
+    @Test
+    void skipsUnconfiguredOpenBackend() {
+        hpds.resetAll();
+        hpds.stubFor(get(urlEqualTo("/actuator/health")).willReturn(aResponse().withStatus(200)));
+        HpdsProperties p = props();
+        p.setOpenUrl("");
+
+        Health h = new HpdsHealthIndicator(p, RestClient.builder().build()).health();
+
+        assertThat(h.getStatus()).isEqualTo(Status.UP);
+        assertThat(h.getDetails()).containsOnlyKeys(p.getAuthUrl());
+    }
+
+    /**
+     * Skipping blank bases must not turn a fully unconfigured service into a false UP: with no backend at all there is nothing this service
+     * can answer a query with, so it reports DOWN loudly instead of an empty green.
+     */
+    @Test
+    void downWhenNoBackendIsConfiguredAtAll() {
+        HpdsProperties p = new HpdsProperties();
+        p.setAuthUrl("");
+        p.setOpenUrl("");
+
+        Health h = new HpdsHealthIndicator(p, RestClient.builder().build()).health();
+
+        assertThat(h.getStatus()).isEqualTo(Status.DOWN);
+        assertThat(h.getDetails()).containsEntry("hpds", "no backend configured");
+    }
 }
