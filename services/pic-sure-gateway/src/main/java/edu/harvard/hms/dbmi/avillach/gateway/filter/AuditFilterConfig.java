@@ -15,10 +15,8 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 
 /**
- * Wires the audit-emission filter: {@link LoggingClient} (env-driven, no-op when unconfigured), the verified route table (mirrors the
- * legacy WAR {@code AuditLoggingFilter.java:55-65}, minus the removed {@code PROXY} row -- there is no {@code /proxy} prefix in the new
- * per-service scheme), and the {@link AuditLoggingFilter} registration itself at {@link #AUDIT_FILTER_ORDER}, ahead of every filter that
- * can short-circuit the chain.
+ * Wires the audit-emission filter: {@link LoggingClient} (env-driven, no-op when unconfigured), the verified route table, and the
+ * {@link AuditLoggingFilter} registration itself at {@link #AUDIT_FILTER_ORDER}, ahead of every filter that can short-circuit the chain.
  */
 @Configuration
 public class AuditFilterConfig {
@@ -42,7 +40,7 @@ public class AuditFilterConfig {
 
     @Bean
     public AuditRouteTable auditRouteTable() {
-        // First match wins (query/sync before query). Mirrors WAR AuditLoggingFilter.java:55-65 minus PROXY.
+        // First match wins, so query/sync must precede query.
         return new AuditRouteTable(
             List.of(
                 new AuditRoute(Pattern.compile(PFX + "/query/sync/?$"), "POST", "QUERY", "query.sync"),
@@ -59,9 +57,8 @@ public class AuditFilterConfig {
 
     @Bean
     public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit) {
-        // VERIFIED skip-list (AuditLoggingFilter.java:122-127): ends-with /system/status, /openapi.json (base
-        // class); contains /info/, /bin/continuous, /logging (was /proxy/pic-sure-logging/ -- no /proxy prefix in
-        // the new scheme). Gateway-local /actuator, /openapi, /swagger-ui added on top (net-new concerns).
+        // The base filter skips paths ending in /system/status or /openapi.json and paths containing /info/,
+        // /bin/continuous, or /logging. Gateway-local actuator and API-documentation paths are also skipped.
         AuditLoggingFilter filter = new AuditLoggingFilter(
             client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui")
         );

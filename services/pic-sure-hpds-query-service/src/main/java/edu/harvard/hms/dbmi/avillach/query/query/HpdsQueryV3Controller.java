@@ -20,10 +20,9 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * The sole HPDS query lifecycle ingress: {@code /hpds/{backend}/v3/query/**}. {@code {backend}} is {@code auth} or {@code open} (validated
- * downstream by {@link QueryService} via {@code HpdsBackendSelector}). The legacy v1 ingress ({@code /hpds/{backend}/query/**}) was
- * removed; new queries are always stored as version {@code "3"}. Read ops still dispatch HPDS-side on the STORED query's version, so
- * previously stored v1 rows remain retrievable via their v1 routes.
+ * The sole HPDS query lifecycle ingress: {@code /hpds/{backend}/v3/query/**}. {@code {backend}} is {@code auth} or {@code open}, validated
+ * downstream by {@link QueryService} through {@code HpdsBackendSelector}. New queries are stored as version {@code "3"}; read operations
+ * dispatch to HPDS using the stored query version so v1 rows remain retrievable.
  */
 @RestController
 @RequestMapping("/hpds/{backend}/v3")
@@ -95,10 +94,8 @@ public class HpdsQueryV3Controller {
     }
 
     /**
-     * Re-emits the {@code queryMetadata} response header like the WAR's querySync, as application/json. WAR fidelity: PicsureRSv3 declares
-     * class-level {@code @Produces("application/json")} and querySync has NO method-level override -- only {@code /query/{id}/result} is
-     * octet-stream. Labeling sync octet-stream breaks the frontend, whose api layer intentionally treats octet-stream responses as binary
-     * downloads (ArrayBuffer), swallowing count results.
+     * Re-emits the {@code queryMetadata} response header with an {@code application/json} content type. Only {@code /query/{id}/result}
+     * uses octet-stream; labeling sync responses as octet-stream makes the frontend treat count results as binary downloads.
      */
     static ResponseEntity<byte[]> syncResponse(QueryService.QuerySyncResponse r) {
         ResponseEntity.BodyBuilder b = ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON);

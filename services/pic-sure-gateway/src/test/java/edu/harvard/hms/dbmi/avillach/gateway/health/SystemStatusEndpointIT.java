@@ -25,9 +25,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * End-to-end wiring check over real HTTP: {@code /system/status} composed through the real Spring context (HealthConfig bean ->
- * SystemHealthService -> SystemStatusController), against a WireMock downstream that is down, proving the legacy plain-text DEGRADED
- * contract survives the full stack, not just the unit-level fake in {@link SystemStatusControllerTest}.
+ * End-to-end check of the {@code /system/status} plain-text DEGRADED contract through the real Spring context, using a WireMock downstream
+ * that reports unhealthy. {@link SystemStatusControllerTest} covers the unit-level behavior.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class SystemStatusEndpointIT {

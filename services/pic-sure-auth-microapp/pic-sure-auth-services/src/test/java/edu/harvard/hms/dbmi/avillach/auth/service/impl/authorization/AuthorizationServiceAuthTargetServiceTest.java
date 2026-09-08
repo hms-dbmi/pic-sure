@@ -67,9 +67,8 @@ class AuthorizationServiceAuthTargetServiceTest {
     }
 
     /**
-     * Deny by default reaches open access too. An open-access role with no rules used to grant every path; now it grants none, so an
-     * environment that wants anonymous reads has to say so with a rule. On BDC that rule is {@code AR_ALLOW_HPDS_OPEN_INGRESS}, attached by
-     * migration to {@code MANAGED_PRIV_OPEN_ACCESS}.
+     * Deny by default applies to open access too. An open-access role with no rules grants no paths, so environments that allow anonymous
+     * reads must configure an explicit rule. BDC attaches {@code AR_ALLOW_HPDS_OPEN_INGRESS} to {@code MANAGED_PRIV_OPEN_ACCESS}.
      */
     @Test
     void anonymousCallerIsDeniedOnEveryPathWhenOpenRoleHasNoRules() {

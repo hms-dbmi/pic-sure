@@ -17,16 +17,11 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 /**
- * Regression test for the finding that {@link InternalTokenFilter} used to gate {@code /internal/**} by checking
- * {@code request.getRequestURI().startsWith("/internal/")} directly -- which silently breaks under a non-empty
- * {@code server.servlet.context-path}, because {@code getRequestURI()} includes the context path prefix (e.g.
- * {@code /ops/internal/queries/...}), so it never starts with the literal string {@code "/internal/"} even though the
- * {@code DispatcherServlet} still routes the request straight to {@link InternalQueryController}.
+ * Verifies that {@link InternalTokenFilter} gates {@code /internal/**} under a non-empty {@code server.servlet.context-path}.
+ * {@code getRequestURI()} includes the context prefix, while servlet filter mappings are context-relative.
  *
- * <p>Boots the full application under {@code server.servlet.context-path=/ops} and proves the filter -- now registered via
- * {@code InternalTokenFilterConfig} as a {@code FilterRegistrationBean<InternalTokenFilter>} with a container-level
- * {@code addUrlPatterns("/internal/*")} (matched relative to the context path, exactly like the servlet mapping that dispatches to the
- * controller) -- still runs and still gates the request under that context path.
+ * <p>The full application runs under {@code server.servlet.context-path=/ops}; the filter is registered through
+ * {@code InternalTokenFilterConfig} with a context-relative {@code addUrlPatterns("/internal/*")} mapping.
  *
  * <p>Requests below use the CONTEXT-RELATIVE path ({@code /internal/queries/...}), not the {@code /ops}-prefixed one:
  * {@link TestRestTemplate}'s root URI already incorporates {@code server.servlet.context-path} (see {@code LocalHostUriTemplateHandler}),

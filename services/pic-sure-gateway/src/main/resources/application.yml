@@ -6,15 +6,13 @@ spring:
       server:
         webmvc:
           routes:
-            # Explicit clean-prefix route for the logging service, replacing the
-            # legacy /proxy/pic-sure-logging relay. StripPrefix=1 drops the leading /logging segment
-            # because the logging service (Javalin) serves its API at root (/audit,
-            # /health, /info) — mirroring the old /proxy relay's prefix strip. /logging is
-            # on the introspection allow-list, so it is not authenticated.
+            # StripPrefix=1 drops the leading /logging segment because the logging service
+            # serves its API at root (/audit, /health, /info). /logging is on the
+            # introspection allow-list, so it is not authenticated.
             # /dictionary and /visualization are AUTHENTICATED (not on the
             # allow-list): the introspection filter runs on the pre-strip public path
-            # (Target Service = /dictionary/x), which the PSAMA access-rule
-            # migrations now authorize (^/dictionary(/.*)?$ / ^/visualization(/.*)?$).
+            # (Target Service = /dictionary/x). PSAMA access rules authorize
+            # ^/dictionary(/.*)?$ and ^/visualization(/.*)?$.
             # Same StripPrefix=1 as /logging (dictionary-api and the visualization
             # container both serve their APIs at root).
             # /hpds is handled separately below (query-service ingress).

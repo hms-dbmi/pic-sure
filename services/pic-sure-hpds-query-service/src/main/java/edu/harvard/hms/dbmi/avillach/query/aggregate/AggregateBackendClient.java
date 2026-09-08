@@ -16,12 +16,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 
 /**
- * Pooled client to the open HPDS backend (+ visualization service) that the aggregate/obfuscation surface talks to. Direct port of
- * {@code AggregateDataSharingResourceRS}'s {@code postRequest}/{@code getHttpResponse} plumbing: every downstream call carries
- * {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} (the WAR's {@code Bearer <getTargetPicsureToken()>} -- no regression), and every call
- * builds a fresh chained request body carrying the inbound query (WAR's {@code createChainRequest}/info-request inline chaining). The WAR
- * also injected a configured {@code targetResourceId} as the body's resourceUUID; nothing downstream reads that field, so the injection and
- * its property are gone.
+ * Pooled client for the open HPDS backend and visualization service used by the aggregate and obfuscation surface. Every downstream call
+ * carries {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} and builds a fresh request body that carries only the inbound query. Neither the
+ * caller's resource UUID nor a configured target resource id reaches the downstream body, because no downstream endpoint reads that field.
  *
  * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list),
  * {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup) and {@link #binContinuous} (visualization binning). The
@@ -39,10 +36,8 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 public class AggregateBackendClient {
 
     /**
-     * The HPDS response header carrying the query/result metadata (e.g. the result id). Sourced from the module's own
-     * {@link ResourceWebClient#QUERY_METADATA_FIELD} so the aggregate sync path reads AND re-emits the SAME header name
-     * ({@code "queryMetadata"}) that the legacy WAR's {@code ResourceWebClient} and both aggregate resources
-     * ({@code AggregateDataSharingResourceRS}/{@code RSV3}) used -- never a divergent literal that would silently drop the header.
+     * The HPDS response header carrying query and result metadata, such as the result id. Referencing
+     * {@link ResourceWebClient#QUERY_METADATA_FIELD} ensures the aggregate sync path reads and re-emits the same header name.
      */
     public static final String QUERY_METADATA_FIELD = ResourceWebClient.QUERY_METADATA_FIELD;
 
@@ -80,7 +75,7 @@ public class AggregateBackendClient {
 
     // ---- internals ----
 
-    /** Carry the inbound query into a fresh downstream body. */
+    /** Carries the inbound query into a fresh downstream body. */
     private QueryRequest chain(QueryRequest in) {
         QueryRequest out = new GeneralQueryRequest();
         if (in != null) {

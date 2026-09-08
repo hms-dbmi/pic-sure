@@ -19,17 +19,14 @@ import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
 /**
- * RestClient port of the legacy {@code ResourceWebClient} (pic-sure-resource-api). Query-lifecycle calls ({@link #query},
- * {@link #queryStatus}, {@link #queryResult}, {@link #queryResultSignedUrl}, {@link #querySync}) inject
- * {@code Authorization: Bearer <backend service token>} -- parity with the WAR's {@code createHeaders(...BEARER_TOKEN...)} after
- * {@code PicsureQueryService} put {@code resource.getToken()} into the credentials. {@link #search} and {@link #searchConceptValues} inject
- * NO service token -- parity with {@code PicsureSearchService}, which never set {@code BEARER_TOKEN}. HPDS non-2xx / IO errors surface as
- * {@link HpdsCommunicationException} (mapped to 502 upstream).
+ * HTTP client for HPDS. Query-lifecycle calls ({@link #query}, {@link #queryStatus}, {@link #queryResult}, {@link #queryResultSignedUrl},
+ * and {@link #querySync}) inject {@code Authorization: Bearer <backend service token>}. {@link #search} and {@link #searchConceptValues}
+ * send no service token. HPDS non-2xx and I/O errors surface as {@link HpdsCommunicationException}, which maps to 502 upstream.
  */
 @Component
 public class ResourceWebClient {
 
-    /** Verified field name on the legacy ResourceWebClient (ResourceWebClient.java:43). */
+    /** HPDS response header containing query metadata. */
     public static final String QUERY_METADATA_FIELD = "queryMetadata";
 
     private final RestClient http;
@@ -41,7 +38,7 @@ public class ResourceWebClient {
     public record QuerySyncResult(byte[] body, String queryMetadata) {
     }
 
-    // --- query lifecycle: inject the per-backend service token (parity with the WAR's resource.getToken()) ---
+    // --- query lifecycle: inject the per-backend service token ---
 
     public QueryStatus query(HpdsTarget target, QueryRequest req) {
         return postJson(target, target.baseUrl() + "/query", req, QueryStatus.class);
@@ -51,7 +48,7 @@ public class ResourceWebClient {
         return postJson(target, target.baseUrl() + "/query/" + resourceResultId + "/status", req, QueryStatus.class);
     }
 
-    /** Octet-stream, FULLY BUFFERED -- parity with ResourceWebClient.queryResult/readBytesFromResponse. */
+    /** Returns a fully buffered octet-stream response. */
     public ResponseEntity<byte[]> queryResult(HpdsTarget target, String resourceResultId, QueryRequest req) {
         try {
             return http.post().uri(target.baseUrl() + "/query/" + resourceResultId + "/result").headers(h -> authorize(h, target))
@@ -61,7 +58,7 @@ public class ResourceWebClient {
         }
     }
 
-    /** JSON string, FULLY BUFFERED -- parity with ResourceWebClient.queryResultSignedUrl. */
+    /** Returns a fully buffered JSON string response. */
     public ResponseEntity<String> queryResultSignedUrl(HpdsTarget target, String resourceResultId, QueryRequest req) {
         try {
             return http.post().uri(target.baseUrl() + "/query/" + resourceResultId + "/signed-url").headers(h -> authorize(h, target))
@@ -87,7 +84,7 @@ public class ResourceWebClient {
         }
     }
 
-    // --- search: NO service token (parity with PicsureSearchService, which never set BEARER_TOKEN) ---
+    // --- search: no service token ---
 
     public SearchResults search(String base, QueryRequest req) {
         try {

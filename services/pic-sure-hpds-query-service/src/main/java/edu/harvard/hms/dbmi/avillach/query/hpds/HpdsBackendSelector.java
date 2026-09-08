@@ -8,9 +8,8 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 
 /**
  * Maps the ingress {@code {backend}} path segment ("auth" or "open") to the HPDS call target: the backend's absolute base URL and its
- * service token. v3 endpoints compose the base by appending {@code /v3} (preserving the legacy WAR's {@code resourceRSPath + "/v3/"}
- * convention). Query-lifecycle calls use {@code target.token()} (Bearer auth); search/values calls use only {@code target.baseUrl()} -- no
- * token.
+ * service token. v3 endpoints append {@code /v3} to the base URL. Query-lifecycle calls use {@code target.token()} for Bearer
+ * authentication; search and values calls use only {@code target.baseUrl()} and send no token.
  */
 @Component
 public class HpdsBackendSelector {

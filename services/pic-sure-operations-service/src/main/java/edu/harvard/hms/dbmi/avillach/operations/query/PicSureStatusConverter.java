@@ -13,9 +13,8 @@ import jakarta.persistence.Converter;
  * enum does not define as {@code null} instead of throwing.
  *
  * <p>{@code @Enumerated(EnumType.ORDINAL)} cannot do that: Hibernate's {@code EnumJavaType.fromByte} indexes the constant array with no
- * range check, so a single unmapped row fails the whole request. The deployed table holds such rows -- two legacy branches each shipped a
- * fifth constant that never reached main (FEDERATED in 2023-10, NOT_FOUND in 2026-05), so a stored 4 decodes to a different status in each
- * history and no constant added here could resolve which.
+ * range check, so a single unmapped row fails the whole request. The deployed table contains undefined ordinals whose intended status is
+ * ambiguous, so they must decode to {@code null}.
  *
  * <p>Writes still emit the ordinal into the same {@code int(11)} column, so the stored encoding is unchanged in both directions.
  */

@@ -23,18 +23,13 @@ import jakarta.persistence.Lob;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**
- * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.entity.Query} (javax/CDI). The {@code resourceId} FK /
- * {@code @ManyToOne Resource resource} association is intentionally dropped: the {@code resource} registry table/entity is being removed in
- * this migration, the {@code query.resourceId} column is nullable (see legacy V1__CREATE_PICSURE_INITIAL.sql), and the platform services do
- * not read or write it (new rows simply leave it NULL until the column itself is dropped).
+ * Persistence model for the {@code query} table. The nullable {@code resourceId} column is intentionally unmapped because platform services
+ * do not read or write the resource registry association.
  */
 @Entity(name = "query")
 public class Query {
 
-    // Hibernate 6+: a UUID-typed id with a bare @GeneratedValue (AUTO strategy) is generated via
-    // the built-in random UUID generator. This replaces the legacy javax
-    // `@GenericGenerator(strategy = "org.hibernate.id.UUIDGenerator")`, which Hibernate 6 removed;
-    // both produce a random UUID, so the persisted values and BINARY(16) column are unaffected.
+    // Hibernate generates a random UUID for a UUID-typed id with a bare @GeneratedValue.
     @Id
     @GeneratedValue
     @Column(columnDefinition = "BINARY(16)")

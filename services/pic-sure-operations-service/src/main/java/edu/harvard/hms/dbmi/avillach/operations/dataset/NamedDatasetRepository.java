@@ -8,12 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 
 /**
- * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.repository.NamedDatasetRepository} (CDI/{@code BaseRepository}), which had
- * no custom finder methods beyond generic CRUD.
- *
- * <p>{@code findByUser}/{@code findByUuidAndUser} are added proactively (not present in legacy) because the downstream platform service
- * expects them from this foundational module, replacing the WAR's in-Java owner check with SQL-level user scoping. They are simple derived
- * queries on existing columns ({@code uuid}, {@code user}) and carry no risk to the entities/mappings this unit is responsible for.
+ * Provides generic CRUD plus owner-scoped derived queries on the existing {@code uuid} and {@code user} columns. Applying user scoping in
+ * SQL prevents callers from loading another user's dataset before ownership is checked.
  */
 public interface NamedDatasetRepository extends JpaRepository<NamedDataset, UUID> {
 
