@@ -16,6 +16,12 @@ Add bullets only for distinct behavior changes or essential review details.
 Do not repeat the opening, list files, or recap tests.
 Only include measured claims about impact.
 Remove the bullet if the opening says everything needed.
+
+Bad: Updated worktree creation across the sidebar, command palette,
+and thread actions. Removed the old context inheritance helpers.
+
+Good: Starting a thread from an existing worktree ignored your
+"new worktree" preference. Now that preference applies consistently.
 -->
 
 [Brief problem or feature description and solution.]
