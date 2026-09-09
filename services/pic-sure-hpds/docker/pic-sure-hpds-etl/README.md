@@ -10,20 +10,18 @@ The specific requirements for the sql.properties file will depend on your enviro
 Build the current ETL artifacts from the repository root before running a loader:
 ```
 mvn -pl services/pic-sure-hpds/etl -am package -DskipTests
-export PIC_SURE_HPDS_ETL_WORKTREE_ID=checkmarx-critical-high
-export PIC_SURE_HPDS_ETL_IMAGE="pic-sure-hpds-etl:${PIC_SURE_HPDS_ETL_WORKTREE_ID}-$(git rev-parse --short HEAD)"
-export COMPOSE_PROJECT_NAME="pic-sure-hpds-etl-${PIC_SURE_HPDS_ETL_WORKTREE_ID}"
 ```
 
-Once this is done, run the loader. The compose files build a local image from the
-current source instead of downloading a historical image. The required image tag
-includes both an explicit unique worktree identifier and the checked-out commit, and
-the required Compose project name includes the same identifier. Choose a different
-lowercase identifier in every concurrent worktree so images, containers, and networks
-cannot overwrite one another:
+Once this is done, run the loader. The compose files build `pic-sure-hpds-etl:local`
+from the checked-out source rather than pulling a historical image, so pass `--build`
+whenever the source has changed:
 ```
 docker compose -f docker-compose-sql-loader.yml up --build
 ```
+Every checkout builds to the same `pic-sure-hpds-etl:local` tag, so `--build` is what
+guarantees you are running your own source. Set `COMPOSE_PROJECT_NAME` if you need
+containers from two checkouts to coexist.
+
 The logs will show all concepts as they are loaded and some other information. Once this process exits, you should have two new files in the hpds folder:
 ```
 columnMeta.javabin

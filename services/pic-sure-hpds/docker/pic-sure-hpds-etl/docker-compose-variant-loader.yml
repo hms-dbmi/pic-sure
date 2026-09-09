@@ -1,7 +1,7 @@
-name: "${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME to a unique worktree-specific project name}"
+name: pic-sure-hpds-etl-variant-loader
 services:
   variant-loader:
-    image: ${PIC_SURE_HPDS_ETL_IMAGE:?Set PIC_SURE_HPDS_ETL_IMAGE to a worktree-specific image tag}
+    image: pic-sure-hpds-etl:local
     build:
       context: ../..
       dockerfile: docker/pic-sure-hpds-etl/Dockerfile
