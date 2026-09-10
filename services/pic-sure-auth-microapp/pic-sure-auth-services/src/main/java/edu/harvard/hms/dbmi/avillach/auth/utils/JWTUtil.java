@@ -93,6 +93,19 @@ public class JWTUtil {
         return jwt_token;
     }
 
+    public Optional<Date> extractIssuedAt(String token) {
+        if (token == null) {
+            return Optional.empty();
+        }
+
+        try {
+            return Optional.ofNullable(parseToken(token).getPayload().getIssuedAt());
+        } catch (Exception e) {
+            logger.warn("Could not read the issued-at claim of the token: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     public Jws<Claims> parseToken(String token) {
         String clientSecret = getDecodedClientSecret();
         SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));

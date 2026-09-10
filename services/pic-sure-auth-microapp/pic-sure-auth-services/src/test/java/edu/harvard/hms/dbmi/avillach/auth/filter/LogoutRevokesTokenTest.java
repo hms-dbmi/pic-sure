@@ -150,7 +150,7 @@ class LogoutRevokesTokenTest {
         logout();
         SecurityContextHolder.clearContext();
 
-        sessionService.startSession(SUBJECT, new Date());
+        sessionService.startSession(SUBJECT, new Date(), System.currentTimeMillis());
 
         MockHttpServletResponse afterSecondLogin = callAdminEndpoint();
         assertEquals(401, afterSecondLogin.getStatus(), "A token from the abandoned session must not be revived by a new login");
@@ -158,14 +158,14 @@ class LogoutRevokesTokenTest {
     }
 
     /**
-     * startSession carries a second argument now, so pin what it writes: the session must be keyed by subject and
-     * hold the issuing token's own issued-at. Getting either wrong silently breaks every check built on it.
+     * The session must be keyed by subject and hold the issuing token's own issued-at. Getting either wrong
+     * silently breaks every check built on it.
      */
     @Test
     void startingASessionAnchorsItToTheTokenThatOpenedIt() {
         Date issuedAt = new Date(System.currentTimeMillis() - 30_000);
 
-        sessionService.startSession(SUBJECT, issuedAt);
+        sessionService.startSession(SUBJECT, issuedAt, System.currentTimeMillis());
 
         Cache.ValueWrapper stored = cacheManager.getCache("sessions").get(SUBJECT);
         assertNotNull(stored, "the session must be cached under the subject alone");
@@ -182,7 +182,7 @@ class LogoutRevokesTokenTest {
         loginAMinuteAgo();
         logout();
 
-        sessionService.startSession(SUBJECT, new Date());
+        sessionService.startSession(SUBJECT, new Date(), System.currentTimeMillis());
         logout();
 
         assertFalse(sessionService.isSessionExpired(SUBJECT), "A stale token must not be able to end the current session");

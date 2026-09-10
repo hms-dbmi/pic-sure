@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.io.IOException;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -82,7 +81,9 @@ public class AuthenticationController {
         HashMap<String, String> authenticate = authenticationService.authenticate(authRequest, request.getServerName());
         if (!CollectionUtils.isEmpty(authenticate)) {
             if (authenticate.containsKey("userId")) {
-                sessionService.startSession(authenticate.get("userId"), issuedAtOf(authenticate.get("token"), loginStartedAt));
+                sessionService.startSession(
+                    authenticate.get("userId"), jwtUtil.extractIssuedAt(authenticate.get("token")).orElse(null), loginStartedAt
+                );
             } else {
                 logger.error("authentication() userId authentication is null");
                 logger.error("User claims must contain a userId to start their session.");
@@ -100,25 +101,5 @@ public class AuthenticationController {
         AuditAttributes.putMetadata(request, "login_result", "failure");
         AuditAttributes.putMetadata(request, "reason", "authentication_failed");
         return PICSUREResponse.unauthorizedError("User not authenticated.");
-    }
-
-    /**
-     * Use the token's own {@code iat} as the session start. JWT timestamps have second precision, so anchoring to the
-     * wall clock instead would leave the token that just opened the session looking older than it. If the issued-at
-     * cannot be read, fall back to the second the login began, which no token minted during it can precede.
-     */
-    private Date issuedAtOf(String token, long loginStartedAt) {
-        Date loginStartedAtSecond = new Date(loginStartedAt / 1000 * 1000);
-        if (token == null) {
-            return loginStartedAtSecond;
-        }
-
-        try {
-            Date issuedAt = this.jwtUtil.parseToken(token).getPayload().getIssuedAt();
-            return issuedAt != null ? issuedAt : loginStartedAtSecond;
-        } catch (Exception e) {
-            logger.warn("authentication() Could not read the issued-at claim of the token just minted: {}", e.getMessage());
-            return loginStartedAtSecond;
-        }
     }
 }
