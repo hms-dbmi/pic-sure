@@ -100,6 +100,9 @@ public class JWTUtil {
 
         try {
             return Optional.ofNullable(parseToken(token).getPayload().getIssuedAt());
+        } catch (NotAuthorizedException e) {
+            // parseToken already records verification failures.
+            return Optional.empty();
         } catch (Exception e) {
             logger.warn("Could not read the issued-at claim of the token: {}", e.getMessage());
             return Optional.empty();

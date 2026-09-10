@@ -82,7 +82,7 @@ public class AuthenticationController {
         if (!CollectionUtils.isEmpty(authenticate)) {
             if (authenticate.containsKey("userId")) {
                 sessionService.startSession(
-                    authenticate.get("userId"), jwtUtil.extractIssuedAt(authenticate.get("token")).orElse(null), loginStartedAt
+                    authenticate.get("userId"), jwtUtil.extractIssuedAt(authenticate.get("token")), loginStartedAt
                 );
             } else {
                 logger.error("authentication() userId authentication is null");

@@ -165,8 +165,17 @@ public class JWTFilter extends OncePerRequestFilter {
 
                 Date issuedAt = jws.getPayload().getIssuedAt();
                 if (!this.sessionService.isTokenValidForCurrentSession(realClaimsSubject, issuedAt)) {
-                    logger.warn("Rejecting a token for subject {} that is not valid for the current session.", realClaimsSubject);
-                    sendAuthFailure(request, "session_ended", "Token is not valid for the current session for subject: " + realClaimsSubject);
+                    String reason;
+                    String message;
+                    if (issuedAt == null) {
+                        reason = "missing_issued_at";
+                        message = "Token has no issued-at claim";
+                    } else {
+                        reason = "session_ended";
+                        message = "Token is not valid for the current session";
+                    }
+                    logger.warn("Rejecting a token for subject {}: {}.", realClaimsSubject, message);
+                    sendAuthFailure(request, reason, message + " for subject: " + realClaimsSubject);
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Your session has expired. Please log in again.");
                     return;
                 }

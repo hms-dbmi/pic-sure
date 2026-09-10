@@ -38,7 +38,7 @@ public class SessionService {
      * @param loginStartedAt fallback when the issued-at is unavailable, rounded down to JWT second precision
      */
     @CachePut(value = "sessions", key = "#userSubject")
-    public long startSession(String userSubject, Date tokenIssuedAt, long loginStartedAt) {
+    public long startSession(String userSubject, Optional<Date> tokenIssuedAt, long loginStartedAt) {
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
                 loggingClient.send(LoggingEvent.builder("AUTH").action("session.start")
@@ -48,7 +48,7 @@ public class SessionService {
                 logger.warn("Failed to send SESSION_START audit log event", e);
             }
         }
-        return tokenIssuedAt != null ? tokenIssuedAt.getTime() : loginStartedAt / 1000 * 1000;
+        return tokenIssuedAt.map(Date::getTime).orElse(loginStartedAt / 1000 * 1000);
     }
 
     @CacheEvict(value = "sessions", key = "#userSubject")

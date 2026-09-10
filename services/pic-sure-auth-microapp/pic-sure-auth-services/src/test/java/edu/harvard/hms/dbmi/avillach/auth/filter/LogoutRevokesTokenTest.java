@@ -16,6 +16,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.servlet.FilterChain;
 import java.util.Date;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -150,7 +151,7 @@ class LogoutRevokesTokenTest {
         logout();
         SecurityContextHolder.clearContext();
 
-        sessionService.startSession(SUBJECT, new Date(), System.currentTimeMillis());
+        sessionService.startSession(SUBJECT, Optional.of(new Date()), System.currentTimeMillis());
 
         MockHttpServletResponse afterSecondLogin = callAdminEndpoint();
         assertEquals(401, afterSecondLogin.getStatus(), "A token from the abandoned session must not be revived by a new login");
@@ -165,7 +166,7 @@ class LogoutRevokesTokenTest {
     void startingASessionAnchorsItToTheTokenThatOpenedIt() {
         Date issuedAt = new Date(System.currentTimeMillis() - 30_000);
 
-        sessionService.startSession(SUBJECT, issuedAt, System.currentTimeMillis());
+        sessionService.startSession(SUBJECT, Optional.of(issuedAt), System.currentTimeMillis());
 
         Cache.ValueWrapper stored = cacheManager.getCache("sessions").get(SUBJECT);
         assertNotNull(stored, "the session must be cached under the subject alone");
@@ -182,7 +183,7 @@ class LogoutRevokesTokenTest {
         loginAMinuteAgo();
         logout();
 
-        sessionService.startSession(SUBJECT, new Date(), System.currentTimeMillis());
+        sessionService.startSession(SUBJECT, Optional.of(new Date()), System.currentTimeMillis());
         logout();
 
         assertFalse(sessionService.isSessionExpired(SUBJECT), "A stale token must not be able to end the current session");

@@ -1,11 +1,16 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,6 +43,16 @@ class JWTUtilIssuedAtTest {
     }
 
     @Test
+    void anUnreadableTokenIsLoggedOnlyOnce() {
+        assertFailureLoggedOnce(jwtUtil, Level.ERROR);
+    }
+
+    @Test
+    void unexpectedExtractionFailuresStillLogAWarning() {
+        assertFailureLoggedOnce(new JWTUtil("short", false), Level.WARN);
+    }
+
+    @Test
     void returnsEmptyWhenTheSignatureIsInvalid() {
         String token = signedToken("an-entirely-different-secret-of-sufficient-length", new Date());
 
@@ -50,6 +65,25 @@ class JWTUtilIssuedAtTest {
             .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8))).compact();
 
         assertTrue(jwtUtil.extractIssuedAt(token).isEmpty());
+    }
+
+    private void assertFailureLoggedOnce(JWTUtil parser, Level expectedLevel) {
+        Logger logger = (Logger) LoggerFactory.getLogger(JWTUtil.class);
+        Level originalLevel = logger.getLevel();
+        logger.setLevel(Level.WARN);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            assertTrue(parser.extractIssuedAt("not-a-jwt").isEmpty());
+
+            assertEquals(1, appender.list.size());
+            assertEquals(expectedLevel, appender.list.get(0).getLevel());
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+            logger.setLevel(originalLevel);
+        }
     }
 
     private String signedToken(String secret, Date issuedAt) {
