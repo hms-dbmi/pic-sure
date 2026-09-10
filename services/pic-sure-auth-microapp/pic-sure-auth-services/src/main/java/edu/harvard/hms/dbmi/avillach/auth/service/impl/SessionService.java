@@ -34,10 +34,11 @@ public class SessionService {
     /**
      * @param tokenIssuedAt the {@code iat} of the token minted for this login. The session is anchored to it rather
      * than to the wall clock so that a token and its own session share an exact start, which lets
-     * {@link #isTokenValidForCurrentSession} compare them without a tolerance window. Null falls back to now.
+     * {@link #isTokenValidForCurrentSession} compare them without a tolerance window.
+     * @param loginStartedAt fallback when the issued-at is unavailable, rounded down to JWT second precision
      */
     @CachePut(value = "sessions", key = "#userSubject")
-    public long startSession(String userSubject, Date tokenIssuedAt) {
+    public long startSession(String userSubject, Date tokenIssuedAt, long loginStartedAt) {
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
                 loggingClient.send(LoggingEvent.builder("AUTH").action("session.start")
@@ -47,7 +48,7 @@ public class SessionService {
                 logger.warn("Failed to send SESSION_START audit log event", e);
             }
         }
-        return tokenIssuedAt != null ? tokenIssuedAt.getTime() : System.currentTimeMillis();
+        return tokenIssuedAt != null ? tokenIssuedAt.getTime() : loginStartedAt / 1000 * 1000;
     }
 
     @CacheEvict(value = "sessions", key = "#userSubject")
