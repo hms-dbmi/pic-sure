@@ -7,9 +7,6 @@ import org.springframework.context.annotation.Import;
 import edu.harvard.hms.dbmi.avillach.commons.error.GatewayExceptionAdvice;
 
 /**
- * Entry point for pic-sure-operations-service: the sole owner of the pic-sure MySQL {@code Configuration}, {@code NamedDataset}, and
- * {@code Query} tables. Exposes {@code /configuration/**}, {@code /dataset/**}, and (later) an internal query API.
- *
  * <p>The JPA entities and repositories live under this application's own base package ({@code edu.harvard.hms.dbmi.avillach.operations},
  * co-located with each feature's service/mapper), so Spring Boot's default same-package {@code @EntityScan}/repository auto-detection finds
  * them without any explicit scan configuration.
