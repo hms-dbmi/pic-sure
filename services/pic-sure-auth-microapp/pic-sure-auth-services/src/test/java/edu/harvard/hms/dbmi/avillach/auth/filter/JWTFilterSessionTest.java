@@ -15,13 +15,15 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.servlet.FilterChain;
-import java.util.Date;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -66,11 +68,22 @@ class JWTFilterSessionTest {
         SecurityContextHolder.clearContext();
     }
 
-    @ParameterizedTest(name = "admin token rejection with issued-at present: {0}")
-    @ValueSource(booleans = {true, false})
-    void adminTokenRejectionRecordsWhetherIssuedAtIsMissing(boolean hasIssuedAt) throws Exception {
+    static Stream<Arguments> rejectedSessionIds() {
+        return Stream.of(
+            Arguments.of("previous-session", "session_ended"),
+            Arguments.of(null, "missing_session_id"),
+            Arguments.of("", "invalid_session_id"),
+            Arguments.of(" ", "invalid_session_id"),
+            Arguments.of(123, "invalid_session_id"),
+            Arguments.of(Map.of("id", "session"), "invalid_session_id")
+        );
+    }
+
+    @ParameterizedTest(name = "session ID {0} is audited as {1}")
+    @MethodSource("rejectedSessionIds")
+    void adminTokenRejectionRecordsTheSessionFailure(Object sessionId, String reason) throws Exception {
         Claims claims = stubUserToken("admin-subject", "admin@example.org", "ADMIN");
-        when(claims.getIssuedAt()).thenReturn(hasIssuedAt ? new Date() : null);
+        when(claims.get("sid")).thenReturn(sessionId);
         when(sessionService.isTokenValidForCurrentSession(eq("admin-subject"), any())).thenReturn(false);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user");
         request.addHeader("Authorization", "Bearer user-token");
@@ -80,7 +93,7 @@ class JWTFilterSessionTest {
 
         assertEquals(401, response.getStatus());
         assertEquals(
-            hasIssuedAt ? "session_ended" : "missing_issued_at", AuditAttributes.getMetadata(request).get("auth_failure_reason")
+            reason, AuditAttributes.getMetadata(request).get("auth_failure_reason")
         );
         assertNull(SecurityContextHolder.getContext().getAuthentication(), "A rejected token must not be authenticated");
         verify(filterChain, never()).doFilter(any(), any());
@@ -169,7 +182,7 @@ class JWTFilterSessionTest {
         when(jws.getPayload()).thenReturn(claims);
         when(claims.get("sub", String.class)).thenReturn(subject);
         when(claims.getSubject()).thenReturn(subject);
-        when(claims.getIssuedAt()).thenReturn(new Date());
+        when(claims.get("sid")).thenReturn("current-session");
         stubUser(subject, email, privilegeName);
         return claims;
     }

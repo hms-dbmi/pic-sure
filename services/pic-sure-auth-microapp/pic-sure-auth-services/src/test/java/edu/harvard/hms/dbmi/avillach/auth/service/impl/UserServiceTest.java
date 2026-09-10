@@ -59,6 +59,8 @@ public class UserServiceTest {
     @MockBean
     private LoggingClient loggingClient;
     private JWTUtil jwtUtil;
+    @MockBean
+    private SessionService sessionService;
 
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
     private final long longTermTokenExpirationTime = 2592000000L;
@@ -85,7 +87,7 @@ public class UserServiceTest {
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         userService = new UserService(
             basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, fenceMappingUtility,
-            defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null
+            defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null, sessionService
         );
     }
 
