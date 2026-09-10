@@ -111,7 +111,10 @@ public class SessionService {
             .orElse(false);
     }
 
-    /** Expiration does not prevent cleanup, but only the matching session can authorize it. */
+    /**
+     * Expiration does not prevent cleanup, but only the matching session can authorize it.
+     * Failed cleanup requires an external logout retry; a successful new login replaces the revoked session.
+     */
     public boolean endSessionIfCurrent(String userSubject, Object sessionId, Runnable cleanup) {
         if (userSubject == null || userSubject.isBlank() || !(sessionId instanceof String id) || id.isBlank()) {
             return false;
