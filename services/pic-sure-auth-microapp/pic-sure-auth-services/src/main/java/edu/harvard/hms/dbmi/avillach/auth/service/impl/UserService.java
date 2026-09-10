@@ -58,6 +58,7 @@ public class UserService {
     public long longTermTokenExpirationTime;
 
     private final JWTUtil jwtUtil;
+    private final SessionService sessionService;
 
     private final List<String> tokenInclusionRoles;
     private final LoggingClient loggingClient;
@@ -68,7 +69,7 @@ public class UserService {
         RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
         @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
-        @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
+        @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient, SessionService sessionService
     ) {
         this.basicMailService = basicMailService;
         this.tosService = tosService;
@@ -86,6 +87,7 @@ public class UserService {
             longTermTokenExpirationTime > 0 ? longTermTokenExpirationTime : defaultLongTermTokenExpirationTime;
         this.tokenInclusionRoles = Arrays.asList(tokenInclusionRoles.split(","));
         this.loggingClient = loggingClient;
+        this.sessionService = sessionService;
     }
 
     public HashMap<String, String> getUserProfileResponse(UserClaims userClaims) {
@@ -97,8 +99,10 @@ public class UserService {
         logger.debug("getUserProfileResponse() started");
         HashMap<String, String> responseMap = new HashMap<String, String>();
 
+        String sessionId = UUID.randomUUID().toString();
         HashMap<String, Object> claimsMap = userClaims.toHashMap();
-        logger.debug("getUserProfileResponse() using claims:{}", claimsMap.toString());
+        logger.debug("getUserProfileResponse() source claims:{}", claimsMap.toString());
+        claimsMap.put("sid", sessionId);
         String token =
             this.jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claimsMap, userClaims.getSub(), this.tokenExpirationTime);
 
@@ -120,6 +124,7 @@ public class UserService {
         logger.debug("getUserProfileResponse() uuid field is set");
         responseMap.put("uuid", userClaims.getUuid());
 
+        sessionService.startSession(userClaims.getSub(), sessionId);
         logger.debug("getUserProfileResponse() finished");
         return responseMap;
     }

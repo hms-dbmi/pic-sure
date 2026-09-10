@@ -21,6 +21,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.context.annotation.Bean;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpHeaders;
@@ -35,8 +38,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@ContextConfiguration(classes = {RASPassPortService.class, RASAuthenticationService.class, ApplicationContext.class})
+@ContextConfiguration(classes = {RASAuthenticationServiceTest.SessionConfiguration.class, RASPassPortService.class, RASAuthenticationService.class, ApplicationContext.class})
 public class RASAuthenticationServiceTest {
+
+    @TestConfiguration
+    static class SessionConfiguration {
+        @Bean
+        SessionService sessionService() {
+            return new SessionService(8 * 60 * 60 * 1000, new ConcurrentMapCacheManager("sessions"), null);
+        }
+    }
 
     @MockBean
     private UserService userService;
@@ -73,7 +84,7 @@ public class RASAuthenticationServiceTest {
 
         rasAuthenticationService = new RASAuthenticationService(
             userService, restClientUtil, true, "test.com", "", "", "", "https://stsstg.nih.gov", rasPassPortService, connectionService,
-            cacheEvictionService
+            cacheEvictionService, new SessionService(8 * 60 * 60 * 1000, new ConcurrentMapCacheManager("sessions"), null)
         );
 
         Connection rasConnection = new Connection();

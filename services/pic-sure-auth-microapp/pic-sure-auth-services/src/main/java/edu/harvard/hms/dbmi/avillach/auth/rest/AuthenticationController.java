@@ -2,8 +2,6 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
-import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.AuthenticationServiceRegistry;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -38,16 +36,12 @@ public class AuthenticationController {
     private final static Logger logger = LoggerFactory.getLogger(AuthenticationController.class.getName());
 
     private final AuthenticationServiceRegistry authenticationServiceRegistry;
-    private final SessionService sessionService;
-    private final JWTUtil jwtUtil;
 
     @Autowired
     public AuthenticationController(
-        AuthenticationServiceRegistry authenticationServiceRegistry, SessionService sessionService, JWTUtil jwtUtil
+        AuthenticationServiceRegistry authenticationServiceRegistry
     ) {
         this.authenticationServiceRegistry = authenticationServiceRegistry;
-        this.sessionService = sessionService;
-        this.jwtUtil = jwtUtil;
     }
 
     @Operation(description = "The authentication endpoint for retrieving a valid user token")
@@ -77,16 +71,10 @@ public class AuthenticationController {
             return ResponseEntity.badRequest().body("authenticationService is null");
         }
 
-        long loginStartedAt = System.currentTimeMillis();
         HashMap<String, String> authenticate = authenticationService.authenticate(authRequest, request.getServerName());
         if (!CollectionUtils.isEmpty(authenticate)) {
-            if (authenticate.containsKey("userId")) {
-                sessionService.startSession(
-                    authenticate.get("userId"), jwtUtil.extractIssuedAt(authenticate.get("token")), loginStartedAt
-                );
-            } else {
-                logger.error("authentication() userId authentication is null");
-                logger.error("User claims must contain a userId to start their session.");
+            if (!authenticate.containsKey("userId")) {
+                logger.error("Authentication response must contain a userId.");
                 AuditAttributes.putMetadata(request, "login_result", "failure");
                 AuditAttributes.putMetadata(request, "reason", "missing_user_id");
                 return PICSUREResponse.unauthorizedError("User not authenticated.");

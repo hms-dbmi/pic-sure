@@ -151,8 +151,8 @@ public class TokenService {
             return tokenInspection;
         }
 
-        // Authorization below checks session expiry but cannot check the token's issued-at claim.
-        if (!isLongTermToken && !sessionService.isTokenValidForCurrentSession(subject, jws.getPayload().getIssuedAt())) {
+        // Authorization below checks session expiry but cannot check which session issued the token.
+        if (!isLongTermToken && !sessionService.isTokenValidForCurrentSession(subject, jws.getPayload().get("sid"))) {
             logger.error("_inspectToken() token for subject {} does not belong to a live session", subject);
             tokenInspection.setMessage("Your session has expired. Please log in again.");
             tokenInspection.addField("active", false);
@@ -256,11 +256,12 @@ public class TokenService {
             return new InvalidRefreshToken("User has been deactivated.");
         }
 
-        if (!JWTUtil.isLongTermToken(subject) && !sessionService.isTokenValidForCurrentSession(subject, claims.getIssuedAt())) {
+        if (!JWTUtil.isLongTermToken(subject) && !sessionService.isTokenValidForCurrentSession(subject, claims.get("sid"))) {
             logger.info("refreshToken() The token presented for refresh belongs to a session that has ended.");
             return new InvalidRefreshToken("Your session has expired. Please log in again.");
         }
 
+        // Preserve the incoming sid even if another login replaces the session during refresh.
         Map<String, Object> claimsMap = new HashMap<>(claims);
         claimsMap.put("roles", userService.addRoleClaims(loadUser));
 
