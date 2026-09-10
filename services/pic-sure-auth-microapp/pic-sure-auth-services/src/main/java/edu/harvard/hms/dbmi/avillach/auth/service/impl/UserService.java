@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
@@ -603,9 +604,8 @@ public class UserService {
             return current_user;
         } catch (Exception ex) {
             logger.error("ensureBaselineRoles() Could not add roles to user, because {}", ex.getMessage());
+            throw new NotAuthorizedException("Unable to update user roles. Please contact the administrator.");
         }
-
-        return null;
     }
 
 
