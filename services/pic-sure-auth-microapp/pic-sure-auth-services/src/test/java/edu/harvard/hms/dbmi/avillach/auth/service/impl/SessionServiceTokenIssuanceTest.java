@@ -69,10 +69,54 @@ class SessionServiceTokenIssuanceTest {
     }
 
     @Test
-    void aTokenWithoutAnIssuedAtClaimIsLeftToTheSessionExpiryCheck() {
+    void aTokenWithoutIssuedAtIsNotClassifiedAsOlder() {
         sessionStartedAt(System.currentTimeMillis());
 
         assertFalse(sessionService.isTokenIssuedBeforeCurrentSession(SUBJECT, null));
+    }
+
+    @Test
+    void currentSessionValidationRejectsAMissingSession() {
+        assertFalse(sessionService.isTokenValidForCurrentSession(SUBJECT, new Date()));
+    }
+
+    @Test
+    void currentSessionValidationRejectsAMissingIssuedAt() {
+        sessionStartedAt(System.currentTimeMillis());
+
+        assertFalse(sessionService.isTokenValidForCurrentSession(SUBJECT, null));
+    }
+
+    @Test
+    void currentSessionValidationRejectsAnExpiredSession() {
+        long start = System.currentTimeMillis() - EIGHT_HOURS_MS - 60_000;
+        sessionStartedAt(start);
+
+        assertFalse(sessionService.isTokenValidForCurrentSession(SUBJECT, new Date(start)));
+    }
+
+    @Test
+    void currentSessionValidationRejectsATokenBeforeTheSessionStart() {
+        long start = System.currentTimeMillis() - 60_000;
+        sessionStartedAt(start);
+
+        assertFalse(sessionService.isTokenValidForCurrentSession(SUBJECT, new Date(start - 1)));
+    }
+
+    @Test
+    void currentSessionValidationAcceptsTheLoginToken() {
+        long start = System.currentTimeMillis() - 60_000;
+        sessionStartedAt(start);
+
+        assertTrue(sessionService.isTokenValidForCurrentSession(SUBJECT, new Date(start)));
+    }
+
+    @Test
+    void currentSessionValidationAcceptsARefreshedToken() {
+        long start = System.currentTimeMillis() - 60_000;
+        sessionStartedAt(start);
+
+        assertTrue(sessionService.isTokenValidForCurrentSession(SUBJECT, new Date(start + 30_000)));
     }
 
     private void sessionStartedAt(long epochMillis) {

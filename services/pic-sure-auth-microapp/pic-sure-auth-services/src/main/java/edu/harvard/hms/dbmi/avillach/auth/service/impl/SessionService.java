@@ -34,7 +34,7 @@ public class SessionService {
     /**
      * @param tokenIssuedAt the {@code iat} of the token minted for this login. The session is anchored to it rather
      * than to the wall clock so that a token and its own session share an exact start, which lets
-     * {@link #isTokenIssuedBeforeCurrentSession} compare them without a tolerance window. Null falls back to now.
+     * {@link #isTokenValidForCurrentSession} compare them without a tolerance window. Null falls back to now.
      */
     @CachePut(value = "sessions", key = "#userSubject")
     public long startSession(String userSubject, Date tokenIssuedAt) {
@@ -79,9 +79,27 @@ public class SessionService {
     }
 
     /**
+     * Authentication requires both a live session and an issued-at claim. Logout uses the separate issuance
+     * comparison so that an expired session can still receive cleanup.
+     */
+    public boolean isTokenValidForCurrentSession(String userSubject, Date issuedAt) {
+        if (issuedAt == null) {
+            return false;
+        }
+
+        return getCachedSessionStartTime(userSubject)
+            .map(sessionStart -> issuedAt.getTime() >= sessionStart
+                && System.currentTimeMillis() - sessionStart <= sessionMaxDuration)
+            .orElse(false);
+    }
+
+    /**
      * Whether the token was minted before the subject's current session began, which means it belongs to a session
      * that has already ended. Ending a session only clears the subject's entry, so logging back in would otherwise
      * make every still-unexpired token from the previous session valid again.
+     *
+     * This comparison alone does not establish that a session exists or is live; authentication must use
+     * {@link #isTokenValidForCurrentSession} instead.
      *
      * @param userSubject User::getSubject()
      * @param issuedAt the token's {@code iat} claim, or null if it carries none

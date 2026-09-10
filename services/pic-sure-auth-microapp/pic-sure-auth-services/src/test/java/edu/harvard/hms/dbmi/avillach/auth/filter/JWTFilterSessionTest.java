@@ -64,9 +64,9 @@ class JWTFilterSessionTest {
     }
 
     @Test
-    void adminTokenIsRejectedAfterLogoutEndedTheSession() throws Exception {
+    void adminTokenIsRejectedWhenItsSessionIsInvalid() throws Exception {
         stubUserToken("admin-subject", "admin@example.org", "ADMIN");
-        when(sessionService.isSessionExpired("admin-subject")).thenReturn(true);
+        when(sessionService.isTokenValidForCurrentSession(eq("admin-subject"), any())).thenReturn(false);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user");
         request.addHeader("Authorization", "Bearer user-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -79,33 +79,12 @@ class JWTFilterSessionTest {
     }
 
     /**
-     * Logging back in re-creates the session entry that logout removed, so "a session is live" is not on its own
-     * enough to trust a token — the token also has to belong to that session.
-     */
-    @Test
-    void tokenIssuedBeforeTheCurrentSessionIsRejected() throws Exception {
-        stubUserToken("admin-subject", "admin@example.org", "ADMIN");
-        when(sessionService.isSessionExpired("admin-subject")).thenReturn(false);
-        when(sessionService.isTokenIssuedBeforeCurrentSession(eq("admin-subject"), any())).thenReturn(true);
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user");
-        request.addHeader("Authorization", "Bearer user-token");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        filter.doFilter(request, response, filterChain);
-
-        assertEquals(401, response.getStatus());
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
-        verify(filterChain, never()).doFilter(any(), any());
-    }
-
-    /**
      * The gateway introspects every resource request with a PSAMA application token. That branch must stay clear of
      * the user-session check, or a single misplaced guard takes down all data access.
      */
     @Test
     void applicationTokenIsNotSubjectToTheUserSessionCheck() throws Exception {
-        when(sessionService.isSessionExpired(any())).thenReturn(true);
-        when(sessionService.isTokenIssuedBeforeCurrentSession(any(), any())).thenReturn(true);
+        when(sessionService.isTokenValidForCurrentSession(any(), any())).thenReturn(false);
 
         Claims claims = mock(Claims.class);
         @SuppressWarnings("unchecked")
@@ -133,7 +112,7 @@ class JWTFilterSessionTest {
     @Test
     void userTokenIsAcceptedWhileTheSessionIsStillLive() throws Exception {
         stubUserToken("researcher-subject", "researcher@example.org", "QUERY");
-        when(sessionService.isSessionExpired("researcher-subject")).thenReturn(false);
+        when(sessionService.isTokenValidForCurrentSession(eq("researcher-subject"), any())).thenReturn(true);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user/me");
         request.addHeader("Authorization", "Bearer user-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -161,7 +140,7 @@ class JWTFilterSessionTest {
         when(claims.get("sub", String.class)).thenReturn(longTermSubject);
         when(claims.getSubject()).thenReturn(longTermSubject);
         stubUser("researcher-subject", "researcher@example.org", "QUERY");
-        when(sessionService.isSessionExpired(any())).thenReturn(true);
+        when(sessionService.isTokenValidForCurrentSession(any(), any())).thenReturn(false);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user/me");
         request.addHeader("Authorization", "Bearer long-term-token");
