@@ -108,7 +108,7 @@ class AuthenticationControllerSessionAnchorTest {
     void fallbackSessionStartRoundsDownTheProvidedLoginTime() {
         long loginStartedAt = 1_700_000_000_789L;
 
-        sessionService.startSession(USER_ID, null, loginStartedAt);
+        sessionService.startSession(USER_ID, Optional.empty(), loginStartedAt);
 
         assertEquals(1_700_000_000_000L, context.getBean(CacheManager.class).getCache("sessions").get(USER_ID).get());
     }

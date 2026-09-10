@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
@@ -19,6 +20,8 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -63,9 +66,11 @@ class JWTFilterSessionTest {
         SecurityContextHolder.clearContext();
     }
 
-    @Test
-    void adminTokenIsRejectedWhenItsSessionIsInvalid() throws Exception {
-        stubUserToken("admin-subject", "admin@example.org", "ADMIN");
+    @ParameterizedTest(name = "admin token rejection with issued-at present: {0}")
+    @ValueSource(booleans = {true, false})
+    void adminTokenRejectionRecordsWhetherIssuedAtIsMissing(boolean hasIssuedAt) throws Exception {
+        Claims claims = stubUserToken("admin-subject", "admin@example.org", "ADMIN");
+        when(claims.getIssuedAt()).thenReturn(hasIssuedAt ? new Date() : null);
         when(sessionService.isTokenValidForCurrentSession(eq("admin-subject"), any())).thenReturn(false);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user");
         request.addHeader("Authorization", "Bearer user-token");
@@ -74,7 +79,10 @@ class JWTFilterSessionTest {
         filter.doFilter(request, response, filterChain);
 
         assertEquals(401, response.getStatus());
-        assertNull(SecurityContextHolder.getContext().getAuthentication(), "A logged-out token must not be authenticated");
+        assertEquals(
+            hasIssuedAt ? "session_ended" : "missing_issued_at", AuditAttributes.getMetadata(request).get("auth_failure_reason")
+        );
+        assertNull(SecurityContextHolder.getContext().getAuthentication(), "A rejected token must not be authenticated");
         verify(filterChain, never()).doFilter(any(), any());
     }
 
@@ -153,7 +161,7 @@ class JWTFilterSessionTest {
         verify(filterChain).doFilter(request, response);
     }
 
-    private void stubUserToken(String subject, String email, String privilegeName) {
+    private Claims stubUserToken(String subject, String email, String privilegeName) {
         Claims claims = mock(Claims.class);
         @SuppressWarnings("unchecked")
         Jws<Claims> jws = mock(Jws.class);
@@ -163,6 +171,7 @@ class JWTFilterSessionTest {
         when(claims.getSubject()).thenReturn(subject);
         when(claims.getIssuedAt()).thenReturn(new Date());
         stubUser(subject, email, privilegeName);
+        return claims;
     }
 
     private void stubUser(String subject, String email, String privilegeName) {
