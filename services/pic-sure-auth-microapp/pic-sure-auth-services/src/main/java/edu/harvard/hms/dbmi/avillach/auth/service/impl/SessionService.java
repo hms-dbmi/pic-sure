@@ -73,9 +73,10 @@ public class SessionService {
     public void endSession(String userSubject) {
         synchronized (sessionLock(userSubject)) {
             Cache cache = cacheManager.getCache("sessions");
-            // A failed login must not discard ownership retained for unfinished logout cleanup.
-            if (cache != null && getSession(userSubject).filter(Session::revoked).isEmpty()) {
-                cache.evict(userSubject);
+            // A failed login can leave the old passport stored, so retain ownership for logout cleanup.
+            if (cache != null) {
+                getSession(userSubject).ifPresent(session ->
+                    cache.put(userSubject, new Session(session.id(), session.startedAt(), true)));
             }
         }
     }

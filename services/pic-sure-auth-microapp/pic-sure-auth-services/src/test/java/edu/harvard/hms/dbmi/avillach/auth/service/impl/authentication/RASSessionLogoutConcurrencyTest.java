@@ -17,6 +17,8 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -131,12 +133,15 @@ class RASSessionLogoutConcurrencyTest {
         verify(users, never()).removeUserPassport(anyString());
     }
 
-    @Test
-    void aFailedLoginDoesNotDiscardAnEarlierLogoutCleanupRetry() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void aFailedLoginPreservesLogoutCleanupForLiveAndRevokedSessions(boolean earlierCleanupFailed) {
         ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager("sessions");
         SessionService sessions = new SessionService(3_600_000, cacheManager, null);
         UserService users = mock(UserService.class);
-        when(users.createRasUser(any(), any())).thenReturn(Optional.of(user()));
+        User existingUser = user();
+        existingUser.setPassport("original passport");
+        when(users.createRasUser(any(), any())).thenReturn(Optional.of(existingUser));
         CacheEvictionService eviction = new CacheEvictionService(sessions, mock(AccessRuleService.class));
         Connection connection = new Connection();
         connection.setLabel("RAS");
@@ -156,15 +161,24 @@ class RASSessionLogoutConcurrencyTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer " + token);
         CustomLogoutHandler logout = new CustomLogoutHandler(users, eviction, jwt, sessions);
-        doThrow(new IllegalStateException("Passport storage unavailable")).doNothing()
-            .when(users).removeUserPassport(SUBJECT);
-        assertThrows(IllegalStateException.class, () -> logout.logout(request, new MockHttpServletResponse(), null));
+        assertTrue(sessions.isTokenValidForCurrentSession(SUBJECT, "original"));
+        if (earlierCleanupFailed) {
+            doThrow(new IllegalStateException("Passport storage unavailable")).when(users).removeUserPassport(SUBJECT);
+            assertThrows(IllegalStateException.class, () -> logout.logout(request, new MockHttpServletResponse(), null));
+        }
+        doAnswer(invocation -> {
+            existingUser.setPassport(null);
+            return null;
+        }).when(users).removeUserPassport(SUBJECT);
 
         assertNull(ras.authenticate(Map.of("code", "failed-login"), "localhost"));
         assertFalse(sessions.isTokenValidForCurrentSession(SUBJECT, "original"));
+        assertTrue(sessions.isSessionExpired(SUBJECT));
+        assertEquals("original passport", existingUser.getPassport());
         logout.logout(request, new MockHttpServletResponse(), null);
 
-        verify(users, times(2)).removeUserPassport(SUBJECT);
+        assertNull(existingUser.getPassport());
+        verify(users, times(earlierCleanupFailed ? 2 : 1)).removeUserPassport(SUBJECT);
         assertNull(cacheManager.getCache("sessions").get(SUBJECT));
     }
 
