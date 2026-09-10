@@ -71,7 +71,7 @@ public class TokenServiceTest {
 
         SecurityContextHolder.setContext(securityContext);
         when(securityContext.getAuthentication()).thenReturn(authentication);
-        when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
+        when(sessionService.isTokenValidForCurrentSession(any(String.class), any())).thenReturn(true);
         when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
             .thenReturn(new EvaluateAccessRuleResult(true, Set.of(), "test-rule"));
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
@@ -119,7 +119,7 @@ public class TokenServiceTest {
         inputMap.put("token", token);
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(sessionService.isTokenIssuedBeforeCurrentSession(eq(user.getSubject()), any())).thenReturn(true);
+        when(sessionService.isTokenValidForCurrentSession(eq(user.getSubject()), any())).thenReturn(false);
 
         Map<String, Object> response = tokenService.inspectToken(inputMap);
 

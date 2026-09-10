@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -56,6 +57,8 @@ class LogoutRevokesTokenTest {
     private CacheManager cacheManager;
     private SessionService sessionService;
     private Date tokenIssuedAt;
+    private Claims claims;
+    private UserService userService;
     private CustomLogoutHandler logoutHandler;
     private JWTFilter filter;
     private FilterChain filterChain;
@@ -83,7 +86,7 @@ class LogoutRevokesTokenTest {
         sessionService = context.getBean(SessionService.class);
 
         JWTUtil jwtUtil = mock(JWTUtil.class);
-        Claims claims = mock(Claims.class);
+        claims = mock(Claims.class);
         @SuppressWarnings("unchecked")
         Jws<Claims> jws = mock(Jws.class);
         when(jwtUtil.parseToken(TOKEN)).thenReturn(jws);
@@ -109,7 +112,8 @@ class LogoutRevokesTokenTest {
         when(tosService.hasUserAcceptedLatest(SUBJECT)).thenReturn(true);
 
         CacheEvictionService cacheEvictionService = new CacheEvictionService(sessionService, mock(AccessRuleService.class));
-        logoutHandler = new CustomLogoutHandler(mock(UserService.class), cacheEvictionService, jwtUtil, sessionService);
+        userService = mock(UserService.class);
+        logoutHandler = new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil, sessionService);
         filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService, sessionService);
         filterChain = mock(FilterChain.class);
     }
@@ -182,6 +186,27 @@ class LogoutRevokesTokenTest {
         logout();
 
         assertFalse(sessionService.isSessionExpired(SUBJECT), "A stale token must not be able to end the current session");
+    }
+
+    @Test
+    void aUserTokenWithoutIssuedAtCannotAuthenticate() throws Exception {
+        loginAMinuteAgo();
+        when(claims.getIssuedAt()).thenReturn(null);
+
+        assertEquals(401, callAdminEndpoint().getStatus());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
+    void logoutStillClearsThePassportAndCacheAfterTheSessionExpires() {
+        long sessionStart = System.currentTimeMillis() - 9 * 60 * 60 * 1000L;
+        cacheManager.getCache("sessions").put(SUBJECT, sessionStart);
+        when(claims.getIssuedAt()).thenReturn(new Date(sessionStart));
+
+        logout();
+
+        assertNull(cacheManager.getCache("sessions").get(SUBJECT));
+        verify(userService).removeUserPassport(SUBJECT);
     }
 
     /**
