@@ -6,14 +6,13 @@ import ch.qos.logback.core.read.ListAppender;
 import edu.harvard.dbmi.avillach.logging.config.AppConfig;
 import io.javalin.Javalin;
 import io.javalin.testtools.JavalinTest;
-import okhttp3.MediaType;
-import okhttp3.RequestBody;
-import okhttp3.Response;
+import io.javalin.testtools.Response;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.net.http.HttpRequest;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -22,10 +21,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class AppIntegrationTest {
 
     private static final String API_KEY = "integration-test-key";
-    private static final MediaType JSON = MediaType.get("application/json");
 
     private ListAppender<ILoggingEvent> listAppender;
     private Logger auditLogger;
+
+    private static HttpRequest.BodyPublisher jsonBody(String body) {
+        return HttpRequest.BodyPublishers.ofString(body);
+    }
 
     private AppConfig createTestConfig() {
         return new AppConfig(
@@ -52,7 +54,7 @@ class AppIntegrationTest {
     void validRequestReturns202() {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
-            RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\",\"action\":\"execute\"}", JSON);
+            var body = jsonBody("{\"event_type\":\"QUERY\",\"action\":\"execute\"}");
             Response response = client.request("/audit", builder ->
                 builder.post(body)
                     .header("X-API-Key", API_KEY)
@@ -69,7 +71,7 @@ class AppIntegrationTest {
     void missingApiKeyReturns401() {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
-            RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\"}", JSON);
+            var body = jsonBody("{\"event_type\":\"QUERY\"}");
             Response response = client.request("/audit", builder ->
                 builder.post(body)
                     .header("Content-Type", "application/json")
@@ -83,7 +85,7 @@ class AppIntegrationTest {
     void wrongApiKeyReturns401() {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
-            RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\"}", JSON);
+            var body = jsonBody("{\"event_type\":\"QUERY\"}");
             Response response = client.request("/audit", builder ->
                 builder.post(body)
                     .header("X-API-Key", "wrong-key")
@@ -98,7 +100,7 @@ class AppIntegrationTest {
     void badJsonReturns400() {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
-            RequestBody body = RequestBody.create("not-json", JSON);
+            var body = jsonBody("not-json");
             Response response = client.request("/audit", builder ->
                 builder.post(body)
                     .header("X-API-Key", API_KEY)
@@ -113,7 +115,7 @@ class AppIntegrationTest {
     void missingEventTypeReturns400() {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
-            RequestBody body = RequestBody.create("{\"action\":\"execute\"}", JSON);
+            var body = jsonBody("{\"action\":\"execute\"}");
             Response response = client.request("/audit", builder ->
                 builder.post(body)
                     .header("X-API-Key", API_KEY)
@@ -144,7 +146,7 @@ class AppIntegrationTest {
                 "email", "user@example.com"
             ));
 
-            RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\"}", JSON);
+            var body = jsonBody("{\"event_type\":\"QUERY\"}");
             Response response = client.request("/audit", builder ->
                 builder.post(body)
                     .header("X-API-Key", API_KEY)
@@ -164,7 +166,7 @@ class AppIntegrationTest {
     void requestIdFromHeaderAppearsInLog() {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
-            RequestBody body = RequestBody.create("{\"event_type\":\"QUERY\"}", JSON);
+            var body = jsonBody("{\"event_type\":\"QUERY\"}");
             Response response = client.request("/audit", builder ->
                 builder.post(body)
                     .header("X-API-Key", API_KEY)
@@ -197,7 +199,7 @@ class AppIntegrationTest {
     void infoReturns200WithoutAuth() {
         Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
         JavalinTest.test(app, (server, client) -> {
-            RequestBody body = RequestBody.create("{}", JSON);
+            var body = jsonBody("{}");
             Response response = client.request("/info", builder ->
                 builder.post(body)
                     .header("Content-Type", "application/json")

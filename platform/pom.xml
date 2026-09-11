@@ -41,6 +41,7 @@
         <netty.version>4.1.137.Final</netty.version>
         <log4j2.version>2.25.5</log4j2.version>
         <postgresql.version>42.7.12</postgresql.version>
+        <bouncycastle.version>1.84</bouncycastle.version>
         <!-- Not Spring-managed at all; it arrives transitively at 1.24.0 in test scope.
              The advisories name 1.26.0, but that release calls the commons-codec class
              Charsets, which commons-codec 1.18.0 (the Boot-managed version) removed, so
@@ -85,6 +86,11 @@
                 <groupId>org.postgresql</groupId>
                 <artifactId>postgresql</artifactId>
                 <version>${postgresql.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>

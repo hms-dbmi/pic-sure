@@ -17,20 +17,28 @@
     <name>PIC-SURE Audit Logging Service</name>
 
     <properties>
-        <!-- Stays Javalin (the one non-Spring service, spec §17.3); Javalin is not BOM-governed. -->
-        <javalin.version>6.7.0</javalin.version>
+        <!-- Stays Javalin (the one non-Spring service, spec §17.3); Javalin is not BOM-governed.
+             Javalin 7 supplies Jetty 12, which contains the fixes unavailable on Jetty 11. -->
+        <javalin.version>7.2.3</javalin.version>
+        <jetty.version>12.1.12</jetty.version>
         <java-jwt.version>4.4.0</java-jwt.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
-            <!-- Javalin 6.x embeds Jetty 11; without this import the platform BOM's Jetty 12
-                 pins win over Javalin's transitives (NoSuchMethodError at server start).
-                 A module's own dependencyManagement outranks the inherited one. -->
+            <!-- Keep Javalin on the Jetty release it was built and tested against instead of
+                 allowing the inherited Spring BOM to downgrade its Jetty 12.1 dependencies. -->
             <dependency>
                 <groupId>org.eclipse.jetty</groupId>
                 <artifactId>jetty-bom</artifactId>
-                <version>11.0.26</version>
+                <version>${jetty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jetty.ee10</groupId>
+                <artifactId>jetty-ee10-bom</artifactId>
+                <version>${jetty.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
