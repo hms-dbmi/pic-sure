@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
@@ -33,8 +34,10 @@ public class NamedDatasetMapper {
     private static final Logger log = LogManager.getLogger(NamedDatasetMapper.class);
     private static final List<String> LEGACY_FIELDS = List.of(
         "categoryFilters", "numericFilters", "fields", "crossCountFields", "requiredFields", "anyRecordOf", "anyRecordOfMulti",
-        "variantInfoFilters", "expectedResultType"
+        "variantInfoFilters"
     );
+
+    private static final List<String> V3_FIELDS = List.of("phenotypicClause", "select", "genomicFilters", "authorizationFilters");
 
     public NamedDatasetDto toDto(NamedDataset e) {
         return new NamedDatasetDto(e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery()), e.getArchived(), e.getMetadata());
@@ -50,56 +53,51 @@ public class NamedDatasetMapper {
         );
     }
 
-    /**
-     * Normalize the saved request to a wrapper with an object-valued v3 {@code query} member. Legacy rows usually contain a request
-     * wrapper, sometimes with a string-encoded inner query; other rows store the query body directly. Translate only the inner body so
-     * request fields cannot silently deserialize into an empty legacy query. The stored row is not changed.
-     */
+    /** Returns a v3 request wrapper without changing the stored query. */
     private static String convertQuery(Query q) {
         String stored = q.getQuery();
         if (stored == null || stored.isBlank()) {
             return stored;
         }
         try {
-            JsonNode root = QUERY_MAPPER.readTree(stored);
-            if (!(root instanceof ObjectNode object)) {
-                throw new IllegalArgumentException("Expected a saved request or query object");
-            }
-            object.remove("resourceCredentials");
-            ObjectNode wrapper = object.has("query") ? object : QUERY_MAPPER.createObjectNode();
-            JsonNode inner = object.has("query") ? object.get("query") : object;
-            if (inner.isTextual()) {
-                inner = QUERY_MAPPER.readTree(inner.textValue());
-            }
-            if (inner == null || !inner.isObject()) {
-                throw new IllegalArgumentException("Expected an object-valued query");
-            }
-            boolean hasV3Fields =
-                inner.has("phenotypicClause") || inner.has("select") || inner.has("genomicFilters") || inner.has("authorizationFilters");
-            if (isV3(q) || hasV3Fields) {
-                if (!hasV3Fields && !inner.has("expectedResultType")) {
-                    throw new IllegalArgumentException("Unrecognized v3 query");
-                }
-                // Validate known field types, but preserve the original v3 body and any historical extra fields.
-                QUERY_MAPPER.treeToValue(inner, edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class);
-                // The frontend identifies v3 queries by this field, including an explicit null for an empty cohort filter.
-                if (!inner.has("phenotypicClause")) {
-                    ((ObjectNode) inner).putNull("phenotypicClause");
-                }
-            } else {
-                if (LEGACY_FIELDS.stream().noneMatch(inner::has)) {
-                    throw new IllegalArgumentException("Unrecognized legacy query");
-                }
-                edu.harvard.hms.dbmi.avillach.hpds.data.query.Query legacy =
-                    QUERY_MAPPER.treeToValue(inner, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
-                inner = QUERY_MAPPER.valueToTree(QueryTranslator.translate(legacy));
-            }
-            wrapper.set("query", inner);
+            ObjectNode request = requireObject(QUERY_MAPPER.readTree(stored));
+            request.remove("resourceCredentials");
+            JsonNode body = request.has("query") ? request.get("query") : request;
+            // Some historical requests JSON-encode their inner query a second time.
+            ObjectNode query = requireObject(body.isTextual() ? QUERY_MAPPER.readTree(body.textValue()) : body);
+            ObjectNode wrapper = request.has("query") ? request : QUERY_MAPPER.createObjectNode();
+            wrapper.set("query", toV3(query, isV3(q) || hasAny(query, V3_FIELDS)));
             return QUERY_MAPPER.writeValueAsString(wrapper);
         } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException e) {
             log.warn("Unable to convert saved query {} to v3", q.getUuid());
             throw new PicsureException(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unable to convert saved query to v3");
         }
+    }
+
+    private static ObjectNode toV3(ObjectNode query, boolean v3) throws JsonProcessingException, UntranslatableQueryException {
+        // Ignoring unknown properties is safe only after recognizing a query, rather than an unrelated object.
+        if (!query.has("expectedResultType") && !hasAny(query, v3 ? V3_FIELDS : LEGACY_FIELDS)) {
+            throw new IllegalArgumentException("Unrecognized saved query");
+        }
+        if (!v3) {
+            var legacy = QUERY_MAPPER.treeToValue(query, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
+            return QUERY_MAPPER.valueToTree(QueryTranslator.translate(legacy));
+        }
+        // Validate types without dropping historical extra fields. The frontend needs the v3 discriminator even when null.
+        QUERY_MAPPER.treeToValue(query, edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class);
+        query.putIfAbsent("phenotypicClause", NullNode.getInstance());
+        return query;
+    }
+
+    private static ObjectNode requireObject(JsonNode node) {
+        if (node instanceof ObjectNode object) {
+            return object;
+        }
+        throw new IllegalArgumentException("Expected a query object");
+    }
+
+    private static boolean hasAny(ObjectNode query, List<String> fields) {
+        return fields.stream().anyMatch(query::has);
     }
 
     /** Returns whether the stored query's major version is 3. */
