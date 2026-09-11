@@ -25,9 +25,15 @@ Every checkout builds to the same `pic-sure-hpds-etl:local` tag. Set
 `COMPOSE_PROJECT_NAME` if you need containers from two checkouts to coexist.
 
 The loaders run as the non-root `etl` user (UID 1000). Docker Desktop remaps
-bind-mount ownership, so on macOS and Windows this needs nothing from you. On Linux
-the mounted `hpds/` directory must be writable by the UID the container runs as, so
-if it is owned by a different user, pass your own:
+bind-mount ownership, so this needs nothing from you on macOS, or on Windows when the
+checkout sits on a Windows drive. A checkout inside the WSL2 Linux filesystem is real
+ext4 and follows the Linux rules below.
+
+On Linux, every mounted directory must be writable by the UID the container runs as.
+`hpds/`, `hpds/all/` and `vcfLoad/` are in the checkout so they carry your ownership;
+if you point a loader at a directory Docker has to create, the daemon makes it
+`root:root` and the loader cannot write to it. Where the UIDs do not line up, pass
+your own:
 ```
 ETL_UID=$(id -u) ETL_GID=$(id -g) docker compose -f docker-compose-sql-loader.yml up --build
 ```

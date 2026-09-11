@@ -26,7 +26,7 @@ COPY /docker/pic-sure-hpds-etl/LowRAMMultiCSVLoader-jar-with-dependencies.jar .
 COPY /docker/pic-sure-hpds-etl/CreateColumnmetaCSV-jar-with-dependencies.jar .
 COPY /docker/pic-sure-hpds-etl/create_key.sh .
 
-RUN chown -R etl:etl /app
+ENV GNUPGHOME=/tmp/.gnupg
 
 USER etl:etl
 

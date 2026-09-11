@@ -1,0 +1,4 @@
+**/target/
+.git/
+docker/pic-sure-hpds-etl/hpds/
+docker/pic-sure-hpds-etl/vcfLoad/
