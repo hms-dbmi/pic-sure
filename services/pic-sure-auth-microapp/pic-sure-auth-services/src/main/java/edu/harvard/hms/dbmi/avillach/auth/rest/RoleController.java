@@ -2,6 +2,9 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleUpdateRequest;
+import jakarta.validation.Valid;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -23,8 +26,8 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * <p>Endpoint for service handling business logic for user roles.
- * <br>Note: Users with admin level access can view roles, but only super admin users can modify them.</p>
+ * <p>Endpoint for service handling business logic for user roles. <br>Note: Users with admin level access can view roles, but only super
+ * admin users can modify them.</p>
  */
 @Tag(name = "Role Management")
 @Controller
@@ -43,8 +46,8 @@ public class RoleController {
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<?> getRoleById(
-            @Parameter(description = "The UUID of the Role to fetch information about")
-            @PathVariable("roleId") String roleId) {
+        @Parameter(description = "The UUID of the Role to fetch information about") @PathVariable("roleId") String roleId
+    ) {
         Optional<Role> optionalRole = this.roleService.getRoleById(roleId);
         if (optionalRole.isEmpty()) {
             return PICSUREResponse.protocolError("Role is not found by given role ID: " + roleId);
@@ -66,10 +69,11 @@ public class RoleController {
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addRole(
-            @Parameter(required = true, description = "A list of Roles in JSON format")
-            @RequestBody List<Role> roles, HttpServletRequest request) {
-        AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
-        List<Role> savedRoles = this.roleService.addRoles(roles);
+        @Parameter(required = true, description = "A list of Roles in JSON format") @Valid @RequestBody List<RoleCreateRequest> requests,
+        HttpServletRequest request
+    ) {
+        AuditAttributes.putMetadata(request, "role_count", String.valueOf(requests.size()));
+        List<Role> savedRoles = this.roleService.createFrom(requests);
         return PICSUREResponse.success("All roles are added.", savedRoles);
     }
 
@@ -78,10 +82,12 @@ public class RoleController {
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(produces = "application/json")
     public ResponseEntity<?> updateRole(
-            @Parameter(required = true, description = "A list of Roles with fields to be updated in JSON format")
-            @RequestBody List<Role> roles, HttpServletRequest request) {
-        AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
-        List<Role> updatedRoles = this.roleService.updateRoles(roles);
+        @Parameter(
+            required = true, description = "A list of Roles with fields to be updated in JSON format"
+        ) @Valid @RequestBody List<RoleUpdateRequest> requests, HttpServletRequest request
+    ) {
+        AuditAttributes.putMetadata(request, "role_count", String.valueOf(requests.size()));
+        List<Role> updatedRoles = this.roleService.updateFrom(requests);
         if (updatedRoles.isEmpty()) {
             return PICSUREResponse.protocolError("No Role(s) has been updated.");
         }
@@ -94,15 +100,17 @@ public class RoleController {
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<?> removeById(
-            @Parameter(required = true, description = "A valid Role Id")
-            @PathVariable("roleId") final String roleId, HttpServletRequest request) {
+        @Parameter(required = true, description = "A valid Role Id") @PathVariable("roleId") final String roleId, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "role_id", roleId);
         Optional<List<Role>> roles = this.roleService.removeRoleById(roleId);
         if (roles.isEmpty()) {
             return PICSUREResponse.protocolError("Role not found - uuid: " + roleId);
         }
 
-        return PICSUREResponse.success(MessageFormat.format("Successfully deleted role by id: {0}, listing rest of the role(s) as below", roleId), roles.get());
+        return PICSUREResponse.success(
+            MessageFormat.format("Successfully deleted role by id: {0}, listing rest of the role(s) as below", roleId), roles.get()
+        );
     }
 
 
