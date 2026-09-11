@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.HashMap;
 import java.util.UUID;
 
 public class QueryRequestTest {
@@ -16,7 +15,6 @@ public class QueryRequestTest {
     public void shouldSerializeGeneralQueryRequest() throws JsonProcessingException {
         GeneralQueryRequest expected = new GeneralQueryRequest();
         expected.setQuery(null);
-        expected.setResourceCredentials(new HashMap<>());
         expected.setResourceUUID(UUID.randomUUID());
         String json = mapper.writeValueAsString(expected);
 
@@ -51,5 +49,23 @@ public class QueryRequestTest {
 
         Assert.assertTrue("unknown @type must fall back to the defaultImpl", parsed instanceof GeneralQueryRequest);
         Assert.assertEquals("q", parsed.getQuery());
+    }
+
+    /**
+     * Legacy callers (older adapters, saved notebooks, the frontend's optional request field) still put a {@code resourceCredentials} map
+     * on the wire. Nothing reads it, so it must deserialize as a surplus field via {@code @JsonIgnoreProperties(ignoreUnknown = true)}
+     * rather than 400, and it must never come back out in a re-serialized request.
+     */
+    @Test
+    public void shouldIgnoreLegacyResourceCredentialsOnTheWire() throws JsonProcessingException {
+        String json =
+            "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"legacy\"},\"query\":\"q\",\"resourceUUID\":\"" + UUID.randomUUID() + "\"}";
+
+        QueryRequest parsed = mapper.readValue(json, QueryRequest.class);
+
+        Assert.assertEquals("q", parsed.getQuery());
+        Assert.assertFalse(
+            "a re-serialized request must not carry credentials", mapper.writeValueAsString(parsed).contains("resourceCredentials")
+        );
     }
 }
