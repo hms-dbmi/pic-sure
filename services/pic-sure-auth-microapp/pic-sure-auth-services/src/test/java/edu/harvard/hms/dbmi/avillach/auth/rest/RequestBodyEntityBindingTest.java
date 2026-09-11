@@ -40,8 +40,6 @@ class RequestBodyEntityBindingTest {
      * syntactically valid code, whichever domain lands last.
      */
     private static final Set<String> AWAITING_REMEDIATION = Set.of(new String[] {
-        "AccessRuleController#addAccessRule binds AccessRule",
-        "AccessRuleController#updateAccessRule binds AccessRule",
         "PrivilegeController#addPrivilege binds Privilege",
         "PrivilegeController#updatePrivilege binds Privilege",
         "RoleController#addRole binds Role",

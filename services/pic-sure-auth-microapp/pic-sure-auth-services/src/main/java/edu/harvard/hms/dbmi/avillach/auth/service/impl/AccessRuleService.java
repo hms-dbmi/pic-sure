@@ -9,6 +9,9 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.model.AccessRuleEvaluationNode;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AccessRuleCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AccessRuleUpdateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
@@ -21,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class AccessRuleService {
@@ -70,6 +74,98 @@ public class AccessRuleService {
 
     public List<AccessRule> updateAccessRules(List<AccessRule> accessRules) {
         return this.accessRuleRepo.saveAll(accessRules);
+    }
+
+    /**
+     * Creates access rules from allowlisted request records. The identifier is generated on persist, and the entity's transient
+     * {@code mergedValues}/{@code mergedName} evaluation state is not reachable from a request body.
+     *
+     * @param requests the create requests
+     * @return the persisted rules
+     * @throws IllegalArgumentException if a referenced gate or sub-rule does not exist
+     */
+    @Transactional
+    public List<AccessRule> createFrom(List<AccessRuleCreateRequest> requests) {
+        List<AccessRule> rules = new ArrayList<>(requests.size());
+        for (AccessRuleCreateRequest request : requests) {
+            AccessRule rule = new AccessRule();
+            rule.setName(request.name());
+            rule.setDescription(request.description());
+            rule.setType(request.type());
+            rule.setRule(request.rule());
+            rule.setValue(request.value());
+            rule.setCheckMapKeyOnly(request.checkMapKeyOnly() != null && request.checkMapKeyOnly());
+            rule.setCheckMapNode(request.checkMapNode() != null && request.checkMapNode());
+            rule.setEvaluateOnlyByGates(request.evaluateOnlyByGates() != null && request.evaluateOnlyByGates());
+            rule.setGateAnyRelation(request.gateAnyRelation() != null && request.gateAnyRelation());
+            rule.setGates(resolveRules(request.gates()));
+            rule.setSubAccessRule(resolveRules(request.subAccessRule()));
+            rules.add(rule);
+        }
+        return this.accessRuleRepo.saveAll(rules);
+    }
+
+    /**
+     * Applies allowlisted updates to existing access rules. A member left out of the request leaves the stored value unchanged.
+     *
+     * @param requests the update requests
+     * @return the persisted rules
+     * @throws IllegalArgumentException if a rule, gate, or sub-rule does not exist
+     */
+    @Transactional
+    public List<AccessRule> updateFrom(List<AccessRuleUpdateRequest> requests) {
+        List<AccessRule> rules = new ArrayList<>(requests.size());
+        for (AccessRuleUpdateRequest request : requests) {
+            AccessRule rule = this.accessRuleRepo.findById(request.uuid())
+                .orElseThrow(() -> new IllegalArgumentException("Cannot find accessRule by input UUID: " + request.uuid()));
+            if (request.name() != null) {
+                rule.setName(request.name());
+            }
+            if (request.description() != null) {
+                rule.setDescription(request.description());
+            }
+            if (request.type() != null) {
+                rule.setType(request.type());
+            }
+            if (request.rule() != null) {
+                rule.setRule(request.rule());
+            }
+            if (request.value() != null) {
+                rule.setValue(request.value());
+            }
+            if (request.checkMapKeyOnly() != null) {
+                rule.setCheckMapKeyOnly(request.checkMapKeyOnly());
+            }
+            if (request.checkMapNode() != null) {
+                rule.setCheckMapNode(request.checkMapNode());
+            }
+            if (request.evaluateOnlyByGates() != null) {
+                rule.setEvaluateOnlyByGates(request.evaluateOnlyByGates());
+            }
+            if (request.gateAnyRelation() != null) {
+                rule.setGateAnyRelation(request.gateAnyRelation());
+            }
+            if (request.gates() != null) {
+                rule.setGates(resolveRules(request.gates()));
+            }
+            if (request.subAccessRule() != null) {
+                rule.setSubAccessRule(resolveRules(request.subAccessRule()));
+            }
+            rules.add(rule);
+        }
+        return this.accessRuleRepo.saveAll(rules);
+    }
+
+    private Set<AccessRule> resolveRules(Set<EntityIdRef> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return refs == null ? null : new HashSet<>();
+        }
+        Set<UUID> uuids = refs.stream().map(EntityIdRef::uuid).collect(Collectors.toSet());
+        List<AccessRule> found = this.accessRuleRepo.findAllById(uuids);
+        if (found.size() != uuids.size()) {
+            throw new IllegalArgumentException("Cannot find all access rules by input UUIDs: " + uuids);
+        }
+        return new HashSet<>(found);
     }
 
     @Transactional
