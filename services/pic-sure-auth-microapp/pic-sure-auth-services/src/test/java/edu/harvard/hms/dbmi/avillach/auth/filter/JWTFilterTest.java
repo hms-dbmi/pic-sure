@@ -1,8 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.auth.filter;
 
+import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
@@ -15,11 +17,14 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -68,5 +73,43 @@ class JWTFilterTest {
         verify(filterChain).doFilter(request, response);
         assertEquals(200, response.getStatus());
         assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    /**
+     * The gateway introspects every authenticated request against these two endpoints with the PSAMA application
+     * token, so this is the branch all data access in the system depends on. Pin it: a current application token on
+     * a permitted endpoint must reach the chain authenticated as the application.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"/auth/token/inspect", "/auth/open/validate"})
+    void currentApplicationTokenReachesThePermittedEndpoints(String uri) throws Exception {
+        TOSService tosService = mock(TOSService.class);
+        JWTUtil jwtUtil = mock(JWTUtil.class);
+        CustomUserDetailService userDetailsService = mock(CustomUserDetailService.class);
+        JWTFilter filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService);
+        FilterChain filterChain = mock(FilterChain.class);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", uri);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        request.addHeader("Authorization", "Bearer app-token");
+
+        Claims claims = mock(Claims.class);
+        @SuppressWarnings("unchecked")
+        Jws<Claims> jws = mock(Jws.class);
+        when(jwtUtil.parseToken("app-token")).thenReturn(jws);
+        when(jws.getPayload()).thenReturn(claims);
+        when(claims.get("sub", String.class)).thenReturn(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|app-uuid");
+
+        Application application = new Application();
+        application.setName("PIC-SURE");
+        application.setToken("app-token");
+        when(userDetailsService.loadUserByUsername("application:app-uuid")).thenReturn(new CustomApplicationDetails(application));
+
+        filter.doFilter(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        assertEquals(200, response.getStatus());
+        assertInstanceOf(
+            CustomApplicationDetails.class, SecurityContextHolder.getContext().getAuthentication().getPrincipal()
+        );
     }
 }
