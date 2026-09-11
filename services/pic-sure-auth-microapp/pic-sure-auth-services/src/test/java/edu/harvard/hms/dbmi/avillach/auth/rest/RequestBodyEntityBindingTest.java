@@ -33,26 +33,12 @@ class RequestBodyEntityBindingTest {
     private static final String CONTROLLER_PACKAGE = "edu.harvard.hms.dbmi.avillach.auth.rest";
     private static final String ENTITY_PACKAGE = "edu.harvard.hms.dbmi.avillach.auth.entity";
 
-    /**
-     * Endpoints still awaiting conversion, while the fix lands one domain at a time. Each domain branch deletes its own two lines, so this
-     * set only ever shrinks; the final branch removes it along with the two assertions that reference it. Entries are one per line, and the
-     * array initializer permits a trailing comma on every one, so sibling branches deleting different domains always merge and always leave
-     * syntactically valid code, whichever domain lands last.
-     */
-    private static final Set<String> AWAITING_REMEDIATION = Set.of(new String[] {
-    });
 
     @Test
-    void onlyEndpointsAwaitingRemediationBindAPersistenceEntity() {
-        Set<String> found = new TreeSet<>(entityBindingEndpoints());
+    void noControllerTakesAPersistenceEntityAsAParameter() {
+        Set<String> offenders = new TreeSet<>(entityBindingEndpoints());
 
-        Set<String> unlisted = new TreeSet<>(found);
-        unlisted.removeAll(AWAITING_REMEDIATION);
-        assertTrue(unlisted.isEmpty(), "Request bodies must not bind JPA entities: " + unlisted);
-
-        Set<String> alreadyFixed = new TreeSet<>(AWAITING_REMEDIATION);
-        alreadyFixed.removeAll(found);
-        assertTrue(alreadyFixed.isEmpty(), "These no longer bind an entity; delete them from AWAITING_REMEDIATION: " + alreadyFixed);
+        assertTrue(offenders.isEmpty(), "Controller parameters must not be JPA entities: " + offenders);
     }
 
     private static List<String> entityBindingEndpoints() {
