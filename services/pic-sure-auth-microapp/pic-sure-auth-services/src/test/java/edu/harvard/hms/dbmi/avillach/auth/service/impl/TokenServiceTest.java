@@ -29,6 +29,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -70,7 +71,7 @@ public class TokenServiceTest {
 
         SecurityContextHolder.setContext(securityContext);
         when(securityContext.getAuthentication()).thenReturn(authentication);
-        when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
+        when(sessionService.isTokenValidForCurrentSession(any(String.class), any())).thenReturn(true);
         when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
             .thenReturn(new EvaluateAccessRuleResult(true, Set.of(), "test-rule"));
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
@@ -99,6 +100,31 @@ public class TokenServiceTest {
         assertTrue((Boolean) response.get("active"));
         assertEquals(user.getSubject(), response.get("sub"));
         assertEquals(user.getPrivilegeNameSet(), response.get("privileges"));
+    }
+
+    /**
+     * ALS-12756: the gateway authorizes every resource request through this endpoint, so a token from a session the
+     * user has already logged out of must be reported inactive here too — not just on PSAMA's own endpoints.
+     */
+    @Test
+    public void testInspectToken_rejectsTokenIssuedBeforeTheCurrentSession() {
+        Application application = createTestApplication();
+        configureApplicationSecurityContext(application);
+
+        User user = createTestUser();
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("sub", user.getSubject());
+        String token = jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, user.getSubject(), testTokenExpiration);
+        Map<String, Object> inputMap = new HashMap<>();
+        inputMap.put("token", token);
+
+        when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
+        when(sessionService.isTokenValidForCurrentSession(eq(user.getSubject()), any())).thenReturn(false);
+
+        Map<String, Object> response = tokenService.inspectToken(inputMap);
+
+        assertFalse((Boolean) response.get("active"));
+        assertEquals("Your session has expired. Please log in again.", response.get("message"));
     }
 
     @Test

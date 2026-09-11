@@ -151,6 +151,14 @@ public class TokenService {
             return tokenInspection;
         }
 
+        // Authorization below checks session expiry but cannot check the token's issued-at claim.
+        if (!isLongTermToken && !sessionService.isTokenValidForCurrentSession(subject, jws.getPayload().getIssuedAt())) {
+            logger.error("_inspectToken() token for subject {} does not belong to a live session", subject);
+            tokenInspection.setMessage("Your session has expired. Please log in again.");
+            tokenInspection.addField("active", false);
+            return tokenInspection;
+        }
+
         // Verify token is active and authorized
         boolean isAuthorizationPassed = false;
         String errorMsg = null;
@@ -248,8 +256,8 @@ public class TokenService {
             return new InvalidRefreshToken("User has been deactivated.");
         }
 
-        if (!JWTUtil.isLongTermToken(claims.getSubject()) && sessionService.isSessionExpired(claims.getSubject())) {
-            logger.info("refreshToken() The user has just is being logged out. The user's session has expired.");
+        if (!JWTUtil.isLongTermToken(subject) && !sessionService.isTokenValidForCurrentSession(subject, claims.getIssuedAt())) {
+            logger.info("refreshToken() The token presented for refresh belongs to a session that has ended.");
             return new InvalidRefreshToken("Your session has expired. Please log in again.");
         }
 
