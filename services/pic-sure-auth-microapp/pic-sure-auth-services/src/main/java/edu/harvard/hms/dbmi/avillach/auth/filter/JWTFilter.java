@@ -33,7 +33,6 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Date;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -163,13 +162,16 @@ public class JWTFilter extends OncePerRequestFilter {
                 logger.info("UserID: {} is not a long term token and not a PSAMA application token.", userId);
                 String realClaimsSubject = jws.getPayload().getSubject();
 
-                Date issuedAt = jws.getPayload().getIssuedAt();
-                if (!this.sessionService.isTokenValidForCurrentSession(realClaimsSubject, issuedAt)) {
+                Object sessionId = jws.getPayload().get("sid");
+                if (!this.sessionService.isTokenValidForCurrentSession(realClaimsSubject, sessionId)) {
                     String reason;
                     String message;
-                    if (issuedAt == null) {
-                        reason = "missing_issued_at";
-                        message = "Token has no issued-at claim";
+                    if (sessionId == null) {
+                        reason = "missing_session_id";
+                        message = "Token has no session ID claim";
+                    } else if (!(sessionId instanceof String id) || id.isBlank()) {
+                        reason = "invalid_session_id";
+                        message = "Token has an invalid session ID claim";
                     } else {
                         reason = "session_ended";
                         message = "Token is not valid for the current session";

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
@@ -58,6 +59,7 @@ public class UserService {
     public long longTermTokenExpirationTime;
 
     private final JWTUtil jwtUtil;
+    private final SessionService sessionService;
 
     private final List<String> tokenInclusionRoles;
     private final LoggingClient loggingClient;
@@ -68,7 +70,7 @@ public class UserService {
         RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
         @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
-        @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
+        @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient, SessionService sessionService
     ) {
         this.basicMailService = basicMailService;
         this.tosService = tosService;
@@ -86,6 +88,7 @@ public class UserService {
             longTermTokenExpirationTime > 0 ? longTermTokenExpirationTime : defaultLongTermTokenExpirationTime;
         this.tokenInclusionRoles = Arrays.asList(tokenInclusionRoles.split(","));
         this.loggingClient = loggingClient;
+        this.sessionService = sessionService;
     }
 
     public HashMap<String, String> getUserProfileResponse(UserClaims userClaims) {
@@ -97,8 +100,10 @@ public class UserService {
         logger.debug("getUserProfileResponse() started");
         HashMap<String, String> responseMap = new HashMap<String, String>();
 
+        String sessionId = UUID.randomUUID().toString();
         HashMap<String, Object> claimsMap = userClaims.toHashMap();
-        logger.debug("getUserProfileResponse() using claims:{}", claimsMap.toString());
+        logger.debug("getUserProfileResponse() source claims:{}", claimsMap.toString());
+        claimsMap.put("sid", sessionId);
         String token =
             this.jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claimsMap, userClaims.getSub(), this.tokenExpirationTime);
 
@@ -120,6 +125,7 @@ public class UserService {
         logger.debug("getUserProfileResponse() uuid field is set");
         responseMap.put("uuid", userClaims.getUuid());
 
+        sessionService.startSession(userClaims.getSub(), sessionId);
         logger.debug("getUserProfileResponse() finished");
         return responseMap;
     }
@@ -598,9 +604,8 @@ public class UserService {
             return current_user;
         } catch (Exception ex) {
             logger.error("ensureBaselineRoles() Could not add roles to user, because {}", ex.getMessage());
+            throw new NotAuthorizedException("Unable to update user roles. Please contact the administrator.");
         }
-
-        return null;
     }
 
 

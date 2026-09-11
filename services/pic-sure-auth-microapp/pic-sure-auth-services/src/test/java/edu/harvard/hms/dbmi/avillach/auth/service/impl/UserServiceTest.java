@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
@@ -59,6 +60,8 @@ public class UserServiceTest {
     @MockBean
     private LoggingClient loggingClient;
     private JWTUtil jwtUtil;
+    @MockBean
+    private SessionService sessionService;
 
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
     private final long longTermTokenExpirationTime = 2592000000L;
@@ -85,7 +88,7 @@ public class UserServiceTest {
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         userService = new UserService(
             basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, fenceMappingUtility,
-            defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null
+            defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null, sessionService
         );
     }
 
@@ -558,6 +561,19 @@ public class UserServiceTest {
             roleNamesOf(savedUser.getValue()),
             "the baseline roles that do exist must still be attached, and the user's pre-existing roles kept"
         );
+    }
+
+    @Test
+    public void ensureBaselineRoles_persistenceFails_rejectsAuthentication() {
+        User user = createTestUser();
+        when(roleService.findByNames(anySet())).thenReturn(
+            Map.of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME))
+        );
+        when(userRepository.save(user)).thenThrow(new IllegalStateException("synthetic database failure"));
+
+        NotAuthorizedException exception = assertThrows(NotAuthorizedException.class, () -> userService.ensureBaselineRoles(user));
+
+        assertEquals("Unable to update user roles. Please contact the administrator.", exception.getMessage());
     }
 
     private Set<String> roleNamesOf(User user) {

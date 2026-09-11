@@ -11,12 +11,16 @@ import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.BasicMailService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OauthUserMatchingService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.context.annotation.Bean;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -37,8 +41,16 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@ContextConfiguration(classes = {AuthenticationService.class})
+@ContextConfiguration(classes = {AuthenticationServiceTest.SessionConfiguration.class, AuthenticationService.class})
 public class AuthenticationServiceTest {
+
+    @TestConfiguration
+    static class SessionConfiguration {
+        @Bean
+        SessionService sessionService() {
+            return new SessionService(8 * 60 * 60 * 1000, new ConcurrentMapCacheManager("sessions"), null);
+        }
+    }
 
     @MockBean
     private OauthUserMatchingService matchingService;
@@ -68,7 +80,8 @@ public class AuthenticationServiceTest {
         String redirectURI = "http://dummyRedirectUri.com";
         authRequest.put("redirectURI", redirectURI);
 
-        authenticationService = new Auth0AuthenticationService(matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost", cacheEvictionService);
+        authenticationService = new Auth0AuthenticationService(matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost", cacheEvictionService,
+            new SessionService(8 * 60 * 60 * 1000, new ConcurrentMapCacheManager("sessions"), null));
     }
 
     // Tests missing parameters in the authentication request
