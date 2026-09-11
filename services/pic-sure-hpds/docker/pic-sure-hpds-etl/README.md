@@ -7,10 +7,37 @@ To load your I2B2 registry data, fill out the hpds/sql.properties file with your
 
 The specific requirements for the sql.properties file will depend on your environment. The encryption_key file must have only 32 hexadecimal characters and no other content.
 
-Once this is done, run the loader:
+Build the current ETL artifacts from the repository root before running a loader:
 ```
-docker-compose -f docker-compose-sql-loader.yml up
+mvn -pl services/pic-sure-hpds/etl -am package -DskipTests
 ```
+
+Once this is done, run the loader. The compose files build `pic-sure-hpds-etl:local`
+from this checkout rather than pulling a historical image:
+```
+docker compose -f docker-compose-sql-loader.yml up --build
+```
+`--build` only re-copies the staged loader jars into the image; it does not compile
+them. After any change to ETL Java source, re-run the `mvn package` command above
+before `--build`, or the image will carry stale loader code.
+
+Every checkout builds to the same `pic-sure-hpds-etl:local` tag. Set
+`COMPOSE_PROJECT_NAME` if you need containers from two checkouts to coexist.
+
+The loaders run as the non-root `etl` user (UID 1000). Docker Desktop remaps
+bind-mount ownership, so this needs nothing from you on macOS, or on Windows when the
+checkout sits on a Windows drive. A checkout inside the WSL2 Linux filesystem is real
+ext4 and follows the Linux rules below.
+
+On Linux, every mounted directory must be writable by the UID the container runs as.
+`hpds/`, `hpds/all/` and `vcfLoad/` are in the checkout so they carry your ownership;
+if you point a loader at a directory Docker has to create, the daemon makes it
+`root:root` and the loader cannot write to it. Where the UIDs do not line up, pass
+your own:
+```
+ETL_UID=$(id -u) ETL_GID=$(id -g) docker compose -f docker-compose-sql-loader.yml up --build
+```
+
 The logs will show all concepts as they are loaded and some other information. Once this process exits, you should have two new files in the hpds folder:
 ```
 columnMeta.javabin
@@ -31,4 +58,3 @@ Number of patients vs expected number of patients.
 Total number of facts.
 
 These values are dumped into the log of the loading process at the end, immediately preceded with statistics for each concept.
-
