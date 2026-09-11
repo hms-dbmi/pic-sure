@@ -44,7 +44,7 @@ public class App {
         ApiKeyAuthMiddleware authMiddleware = new ApiKeyAuthMiddleware(config.auditApiKey());
 
         Javalin app = Javalin.create(javalinConfig -> {
-            javalinConfig.showJavalinBanner = false;
+            javalinConfig.startup.showJavalinBanner = false;
             javalinConfig.http.maxRequestSize = 1_048_576L; // 1MB
             javalinConfig.bundledPlugins.enableCors(cors -> {
                 cors.addRule(rule -> {
@@ -55,18 +55,15 @@ public class App {
                     }
                 });
             });
-        });
-
-        app.before("/audit", authMiddleware::authenticate);
-
-        app.post("/audit", auditHandler::handle);
-        app.post("/info", infoHandler::handle);
-        app.get("/health", healthHandler::handle);
-
-        app.exception(Exception.class, (e, ctx) -> {
-            log.error("Unhandled exception", e);
-            ctx.status(500);
-            ctx.json(Map.of("status", "error", "message", "Internal server error"));
+            javalinConfig.routes.before("/audit", authMiddleware::authenticate);
+            javalinConfig.routes.post("/audit", auditHandler::handle);
+            javalinConfig.routes.post("/info", infoHandler::handle);
+            javalinConfig.routes.get("/health", healthHandler::handle);
+            javalinConfig.routes.exception(Exception.class, (e, ctx) -> {
+                log.error("Unhandled exception", e);
+                ctx.status(500);
+                ctx.json(Map.of("status", "error", "message", "Internal server error"));
+            });
         });
 
         return app;
