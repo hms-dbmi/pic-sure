@@ -28,7 +28,7 @@ public class NamedDatasetMapper {
      * Never used for anything else in this class.
      */
     private static final ObjectMapper V1_QUERY_MAPPER =
-            JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+        JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static Logger log = LogManager.getLogger(NamedDatasetMapper.class);
 
     public NamedDatasetDto toDto(NamedDataset e) {
@@ -56,7 +56,8 @@ public class NamedDatasetMapper {
             return q.getQuery();
         }
         try {
-            edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1 = V1_QUERY_MAPPER.readValue(q.getQuery(), edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
+            edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1 =
+                V1_QUERY_MAPPER.readValue(q.getQuery(), edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
             edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query v3 = QueryTranslator.translate(v1);
             return V1_QUERY_MAPPER.writeValueAsString(v3);
         } catch (JsonProcessingException | UntranslatableQueryException e) {

@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
-import java.util.UUID;
-
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -19,8 +17,8 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 
 /**
  * Pooled client for the open HPDS backend and visualization service used by the aggregate and obfuscation surface. Every downstream call
- * carries {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} and builds a fresh request body containing the inbound query, credentials, and
- * resource UUID. A configured {@code targetResourceId} overrides the inbound resource UUID.
+ * carries {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} and builds a fresh request body that carries only the inbound query. Neither the
+ * caller's resource UUID nor a configured target resource id reaches the downstream body, because no downstream endpoint reads that field.
  *
  * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list),
  * {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup) and {@link #binContinuous} (visualization binning). The
@@ -55,7 +53,7 @@ public class AggregateBackendClient {
         return postJson(openUrl("/search"), chain(req), SearchResults.class);
     }
 
-    /** Raw body + propagated queryMetadata header. The chained body carries the FULL request (resourceUUID injected). */
+    /** Raw body + propagated queryMetadata header. */
     public ResponseEntity<String> querySync(QueryRequest req, AggregateVariant variant) {
         String uri = openUrl(variant.downstreamVersionPrefix + "/query/sync");
         try {
@@ -65,7 +63,7 @@ public class AggregateBackendClient {
         }
     }
 
-    /** Visualization /bin/continuous (v3 prepends /v3). vizRequest already carries the viz resourceUUID. */
+    /** Visualization /bin/continuous (v3 prepends /v3). */
     public String binContinuous(QueryRequest vizRequest, AggregateVariant variant) {
         String uri = props.getVisualizationUrl() + variant.downstreamVersionPrefix + "/bin/continuous";
         try {
@@ -77,17 +75,11 @@ public class AggregateBackendClient {
 
     // ---- internals ----
 
-    /** Carries the inbound query */
+    /** Carries the inbound query into a fresh downstream body. */
     private QueryRequest chain(QueryRequest in) {
         QueryRequest out = new GeneralQueryRequest();
         if (in != null) {
             out.setQuery(in.getQuery());
-            out.setResourceCredentials(in.getResourceCredentials());
-            out.setResourceUUID(in.getResourceUUID());
-        }
-        String targetId = props.getTargetResourceId();
-        if (targetId != null && !targetId.isEmpty()) {
-            out.setResourceUUID(UUID.fromString(targetId));
         }
         return out;
     }

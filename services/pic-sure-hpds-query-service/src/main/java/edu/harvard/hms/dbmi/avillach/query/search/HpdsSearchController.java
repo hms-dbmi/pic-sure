@@ -32,8 +32,8 @@ public class HpdsSearchController {
 
     @GetMapping(value = {"/hpds/{backend}/search/values", "/hpds/{backend}/v3/search/values"}, consumes = "*/*")
     public PaginatedSearchResult<?> values(
-        @PathVariable("backend") String backend,
-        @RequestBody(required = false) QueryRequest req, @RequestParam(name = "genomicConceptPath", required = false) String conceptPath,
+        @PathVariable("backend") String backend, @RequestBody(required = false) QueryRequest req,
+        @RequestParam(name = "genomicConceptPath", required = false) String conceptPath,
         @RequestParam(name = "query", required = false) String query, @RequestParam(name = "page", required = false) Integer page,
         @RequestParam(name = "size", required = false) Integer size
     ) {

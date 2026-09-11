@@ -24,8 +24,9 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
  * backend base (auth/open -- in AIO they're typically the same URL and collapse to a single probe) with a short GET to
  * {@code {origin(base)}{healthPath}} -- HPDS exposes Actuator at the host root, not under the {@code /PIC-SURE} query context, so the probe
  * uses the base URL's origin ({@code scheme://authority}), not the full query base; {@code UP} only when every distinct base responds with
- * a 2xx. The gateway composes this service's own deep health into its aggregate view -- this indicator does not cascade into probing
- * anything beyond HPDS itself.
+ * a 2xx. A backend whose URL is unset counts as not deployed rather than as unreachable and is skipped entirely; when neither backend is
+ * configured the indicator reports DOWN. The gateway composes this service's own deep health into its aggregate view -- this indicator does
+ * not cascade into probing anything beyond HPDS itself.
  *
  * <p>The probe client uses its OWN short, health-check-specific connect/read timeouts ({@link #HEALTH_CONNECT_TIMEOUT_SEC}/
  * {@link #HEALTH_READ_TIMEOUT_SEC}) rather than {@link HpdsProperties#getConnectTimeoutSec()}/{@link HpdsProperties#getReadTimeoutSec()} --
@@ -71,11 +72,11 @@ public class HpdsHealthIndicator implements HealthIndicator {
     @Override
     public Health health() {
         Set<String> bases = new LinkedHashSet<>(); // dedup auth/open (collapse in AIO)
-        if (props.getAuthUrl() != null) {
-            bases.add(props.getAuthUrl());
-        }
-        if (props.getOpenUrl() != null) {
-            bases.add(props.getOpenUrl());
+        addIfConfigured(bases, props.getAuthUrl());
+        addIfConfigured(bases, props.getOpenUrl());
+
+        if (bases.isEmpty()) {
+            return Health.down().withDetail("hpds", "no backend configured").build();
         }
 
         Health.Builder result = Health.up();
@@ -91,6 +92,17 @@ public class HpdsHealthIndicator implements HealthIndicator {
             }
         }
         return down ? result.status(Status.DOWN).build() : result.build();
+    }
+
+    /**
+     * Adds a backend base to the probe set only when this deployment actually runs that backend. An unset {@code HPDS_*_URL} binds to the
+     * empty string rather than null, so a blank base means "not deployed here" (a stack built without an open HPDS instance, for example)
+     * and must not be probed: its host has no DNS record, and probing it would flip the whole service DOWN in the gateway's aggregate view.
+     */
+    private static void addIfConfigured(Set<String> bases, String base) {
+        if (base != null && !base.isBlank()) {
+            bases.add(base);
+        }
     }
 
     /**

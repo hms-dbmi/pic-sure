@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.service;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -69,7 +71,7 @@ class QueryServiceClientTest {
             .andExpect(header("X-Request-Id", "request-1")).andExpect(header("Accept", MediaType.ALL_VALUE))
             .andExpect(content().contentType(MediaType.APPLICATION_JSON))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
-            .andExpect(content().json("{\"resourceCredentials\":{}}"))
+            .andExpect(content().string(not(containsString("resourceCredentials"))))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
         Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
