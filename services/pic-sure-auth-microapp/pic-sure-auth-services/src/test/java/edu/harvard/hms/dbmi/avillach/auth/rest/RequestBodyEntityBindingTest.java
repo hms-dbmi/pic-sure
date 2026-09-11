@@ -42,8 +42,6 @@ class RequestBodyEntityBindingTest {
     private static final Set<String> AWAITING_REMEDIATION = Set.of(new String[] {
         "AccessRuleController#addAccessRule binds AccessRule",
         "AccessRuleController#updateAccessRule binds AccessRule",
-        "ConnectionWebController#addConnection binds Connection",
-        "ConnectionWebController#updateConnection binds Connection",
         "PrivilegeController#addPrivilege binds Privilege",
         "PrivilegeController#updatePrivilege binds Privilege",
         "RoleController#addRole binds Role",
