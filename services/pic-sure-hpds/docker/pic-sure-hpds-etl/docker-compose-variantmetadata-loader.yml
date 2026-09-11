@@ -2,6 +2,7 @@ name: pic-sure-hpds-etl-variantmetadata-loader
 services:
   variantmetadata-loader:
     image: pic-sure-hpds-etl:local
+    user: "${ETL_UID:-1000}:${ETL_GID:-1000}"
     build:
       context: ../..
       dockerfile: docker/pic-sure-hpds-etl/Dockerfile

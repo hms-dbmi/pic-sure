@@ -13,14 +13,24 @@ mvn -pl services/pic-sure-hpds/etl -am package -DskipTests
 ```
 
 Once this is done, run the loader. The compose files build `pic-sure-hpds-etl:local`
-from the checked-out source rather than pulling a historical image, so pass `--build`
-whenever the source has changed:
+from this checkout rather than pulling a historical image:
 ```
 docker compose -f docker-compose-sql-loader.yml up --build
 ```
-Every checkout builds to the same `pic-sure-hpds-etl:local` tag, so `--build` is what
-guarantees you are running your own source. Set `COMPOSE_PROJECT_NAME` if you need
-containers from two checkouts to coexist.
+`--build` only re-copies the staged loader jars into the image; it does not compile
+them. After any change to ETL Java source, re-run the `mvn package` command above
+before `--build`, or the image will carry stale loader code.
+
+Every checkout builds to the same `pic-sure-hpds-etl:local` tag. Set
+`COMPOSE_PROJECT_NAME` if you need containers from two checkouts to coexist.
+
+The loaders run as the non-root `etl` user (UID 1000). Docker Desktop remaps
+bind-mount ownership, so on macOS and Windows this needs nothing from you. On Linux
+the mounted `hpds/` directory must be writable by the UID the container runs as, so
+if it is owned by a different user, pass your own:
+```
+ETL_UID=$(id -u) ETL_GID=$(id -g) docker compose -f docker-compose-sql-loader.yml up --build
+```
 
 The logs will show all concepts as they are loaded and some other information. Once this process exits, you should have two new files in the hpds folder:
 ```

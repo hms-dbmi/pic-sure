@@ -4,6 +4,9 @@ RUN apk upgrade --no-cache && \
     apk add --no-cache gnupg openssl && \
     rm -rf /var/cache/apk/* /tmp/*
 
+RUN addgroup -g 1000 etl && \
+    adduser -D -u 1000 -G etl etl
+
 WORKDIR /app
 COPY /docker/pic-sure-hpds-etl/SQLLoader-jar-with-dependencies.jar .
 COPY /docker/pic-sure-hpds-etl/CSVLoader-jar-with-dependencies.jar .
@@ -22,5 +25,9 @@ COPY /docker/pic-sure-hpds-etl/SequentialLoader-jar-with-dependencies.jar .
 COPY /docker/pic-sure-hpds-etl/LowRAMMultiCSVLoader-jar-with-dependencies.jar .
 COPY /docker/pic-sure-hpds-etl/CreateColumnmetaCSV-jar-with-dependencies.jar .
 COPY /docker/pic-sure-hpds-etl/create_key.sh .
+
+RUN chown -R etl:etl /app
+
+USER etl:etl
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Xmx${HEAPSIZE:-2048}m -jar ${LOADER_NAME:-CSVLoader}-jar-with-dependencies.jar $LOADER_ARGS"]
