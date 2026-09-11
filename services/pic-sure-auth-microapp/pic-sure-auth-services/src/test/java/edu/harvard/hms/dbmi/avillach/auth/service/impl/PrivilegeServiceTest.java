@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +30,8 @@ public class PrivilegeServiceTest {
 
     @MockBean
     private PrivilegeRepository privilegeRepository;
+    @MockBean
+    private ApplicationRepository applicationRepository;
 
     @MockBean
     private SecurityContext securityContext;

@@ -2,6 +2,9 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PrivilegeCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PrivilegeUpdateRequest;
+import jakarta.validation.Valid;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.PrivilegeService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -20,8 +23,8 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * <p>Endpoint for service handling business logic for privileges.
- * <br>Note: Only users with the super admin role can access this endpoint.</p>
+ * <p>Endpoint for service handling business logic for privileges. <br>Note: Only users with the super admin role can access this
+ * endpoint.</p>
  */
 @Tag(name = "Privilege Management")
 @RestController
@@ -40,8 +43,8 @@ public class PrivilegeController {
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{privilegeId}", produces = "application/json")
     public ResponseEntity<?> getPrivilegeById(
-            @Parameter(description="The UUID of the privilege to fetch information about")
-            @PathVariable("privilegeId") String privilegeId) {
+        @Parameter(description = "The UUID of the privilege to fetch information about") @PathVariable("privilegeId") String privilegeId
+    ) {
         Privilege privilegeById = this.privilegeService.getPrivilegeById(privilegeId);
 
         if (privilegeById == null) {
@@ -65,11 +68,12 @@ public class PrivilegeController {
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Privilege>> addPrivilege(
-            @Parameter(required = true, description = "A list of privileges in JSON format")
-            @RequestBody List<Privilege> privileges, HttpServletRequest request){
-        AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
-        privileges = this.privilegeService.addPrivileges(privileges);
-        return PICSUREResponse.success(privileges);
+        @Parameter(
+            required = true, description = "A list of privileges in JSON format"
+        ) @Valid @RequestBody List<PrivilegeCreateRequest> requests, HttpServletRequest request
+    ) {
+        AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(requests.size()));
+        return PICSUREResponse.success(this.privilegeService.createFrom(requests));
     }
 
     @Operation(description = "Update a list of privileges, will only update the fields listed, requires SUPER_ADMIN role")
@@ -77,11 +81,12 @@ public class PrivilegeController {
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Privilege>> updatePrivilege(
-            @Parameter(required = true, description = "A list of privilege with fields to be updated in JSON format")
-            @RequestBody List<Privilege> privileges, HttpServletRequest request){
-            AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
-            privileges = this.privilegeService.updatePrivileges(privileges);
-            return ResponseEntity.ok(privileges);
+        @Parameter(
+            required = true, description = "A list of privilege with fields to be updated in JSON format"
+        ) @Valid @RequestBody List<PrivilegeUpdateRequest> requests, HttpServletRequest request
+    ) {
+        AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(requests.size()));
+        return ResponseEntity.ok(this.privilegeService.updateFrom(requests));
     }
 
     @Operation(description = "DELETE an privilege by Id only if the privilege is not associated by others, requires SUPER_ADMIN role")
@@ -89,8 +94,9 @@ public class PrivilegeController {
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{privilegeId}", produces = "application/json")
     public ResponseEntity<List<Privilege>> removeById(
-            @Parameter(required = true, description = "A valid privilege Id")
-            @PathVariable("privilegeId") final String privilegeId, HttpServletRequest request) {
+        @Parameter(required = true, description = "A valid privilege Id") @PathVariable("privilegeId") final String privilegeId,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "privilege_id", privilegeId);
         List<Privilege> privileges = this.privilegeService.deletePrivilegeByPrivilegeId(privilegeId);
         return ResponseEntity.ok(privileges);
