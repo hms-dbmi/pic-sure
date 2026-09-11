@@ -14,6 +14,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.mail.MessagingException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -67,6 +68,11 @@ public class UserServiceTest {
     private UserConsentsRepository userConsentsRepository;
     @MockBean
     private FenceMappingUtility fenceMappingUtility;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @BeforeEach
     public void setUp() {
@@ -497,8 +503,8 @@ public class UserServiceTest {
         .of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME, RoleService.MANAGED_ROLE_NAMED_DATASET);
 
     /**
-     * Every user reaches authorized data through the baseline roles alone now that dbGaP-derived roles are gone. MANUAL_ROLE_AUTH_ACCESS in
-     * particular carries USER_CONSENT_ACCESS, so if it stops being attached here the user is silently left with no consent-based access.
+     * Every user reaches authorized data through the baseline roles alone now that dbGaP-derived roles are gone. The auth access role
+     * carries the route rules needed before consent scoping, so losing it denies authorized requests before their consents can be applied.
      */
     @Test
     public void ensureBaselineRoles_allBaselineRolesExist_allAreAttachedAndPersisted() {

@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 /**
  * Base {@code @RestControllerAdvice} mapping {@link PicsureException} to its carried status with an additive JSON body of
  * {@code {errorType, message, requestId}}, where {@code requestId} comes from {@code MDC[requestId]} (set by
- * {@code edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter}). Kept minimal and non-final so gateway/WAR call sites can extend
- * it with additional {@code @ExceptionHandler}s.
+ * {@code edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter}). Kept minimal and non-final so downstream services can extend it
+ * with additional {@code @ExceptionHandler}s.
  */
 @RestControllerAdvice
 public class GatewayExceptionAdvice {

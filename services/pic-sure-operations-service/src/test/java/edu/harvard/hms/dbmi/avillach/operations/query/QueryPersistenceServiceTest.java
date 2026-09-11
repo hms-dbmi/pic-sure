@@ -112,7 +112,7 @@ class QueryPersistenceServiceTest {
 
     @Test
     void timingFieldsOnMigratedRowsRoundTripThroughGet() {
-        // rows migrated from the legacy schema already carry timing; the internal API must return it
+        // The internal API returns timing already stored on persisted rows.
         Query legacy = new Query();
         legacy.setQuery("{}");
         legacy.setStartTime(java.sql.Date.valueOf("2024-01-02"));

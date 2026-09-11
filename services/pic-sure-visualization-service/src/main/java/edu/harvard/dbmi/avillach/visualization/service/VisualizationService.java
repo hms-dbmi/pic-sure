@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.service;
 
+import edu.harvard.dbmi.avillach.visualization.error.ConsentDeniedException;
 import edu.harvard.dbmi.avillach.visualization.error.HpdsUpstreamException;
 import edu.harvard.dbmi.avillach.visualization.error.VisualizationException;
 import edu.harvard.dbmi.avillach.visualization.model.*;
@@ -85,6 +86,9 @@ public class VisualizationService {
                     "Query service returned HTTP {} for {} {} query", e.getStatusCode().value(), accessType.getValue(),
                     descriptor.resultType(), e
                 );
+                if (e.getStatusCode().value() == 403) {
+                    throw new ConsentDeniedException("Consent does not permit this visualization query", e);
+                }
                 throw new HpdsUpstreamException(
                     "Query service request failed with status " + e.getStatusCode().value() + ": " + e.getStatusText(), e
                 );

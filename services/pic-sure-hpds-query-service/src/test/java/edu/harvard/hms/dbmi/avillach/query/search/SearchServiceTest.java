@@ -21,11 +21,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 
 /**
- * Ports the legacy WAR's {@code PicsureSearchServiceTest} coverage of {@code search}/{@code searchGenomicConceptValues} minus Resource +
- * AuditContext: backend resolution comes from the ingress {@code {backend}} path segment via {@link HpdsBackendSelector}, and both calls go
- * through {@link ResourceWebClient#search} / {@link ResourceWebClient#searchConceptValues}, which never receive an {@code Authorization}
- * header (verified indirectly here by asserting only the non-versioned base URL string is passed -- the client itself is the thing that
- * omits the token; see {@code ResourceWebClientTest} for that half of the parity guarantee).
+ * Covers {@code search} and {@code searchGenomicConceptValues}. Backend resolution comes from the ingress {@code {backend}} path segment
+ * through {@link HpdsBackendSelector}. Both calls use {@link ResourceWebClient#search} or {@link ResourceWebClient#searchConceptValues},
+ * which receive only the non-versioned base URL and no token parameter.
  */
 class SearchServiceTest {
 

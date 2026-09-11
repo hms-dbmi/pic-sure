@@ -8,12 +8,10 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
 
 /**
- * Pins FIX 2: the auth-boundary RestClients ({@link PsamaClient}, {@link QueryAuthFetcher}) must never be built with unbounded connect/read
- * timeouts. A hung PSAMA or query-service response must not stall the synchronous auth filter chain or a Tomcat worker indefinitely. The
- * bounds are configurable, so this pins that the client reads them from configuration and that the default stays bounded.
+ * Pins the auth-boundary PSAMA client timeouts. The bounds are configurable, so this pins that the client reads them from configuration and
+ * that the default stays bounded.
  */
 class SecurityConfigTest {
 
@@ -23,7 +21,7 @@ class SecurityConfigTest {
 
         assertThat(settings.connectTimeout()).isEqualTo(Duration.ofSeconds(2));
         assertThat(settings.readTimeout()).isEqualTo(Duration.ofSeconds(10));
-        // Both must be non-zero/non-null -- a zero or absent timeout means "wait forever" for the underlying HTTP client.
+        // Both must be non-zero/non-null. A zero or absent timeout means "wait forever" for the underlying HTTP client.
         assertThat(settings.connectTimeout()).isPositive();
         assertThat(settings.readTimeout()).isPositive();
     }
@@ -37,18 +35,16 @@ class SecurityConfigTest {
     }
 
     @Test
-    void psamaClientAndQueryAuthFetcherBeansBuildSuccessfullyWithTimeoutBoundedClients() {
+    void psamaClientBuildsSuccessfullyWithTimeoutBoundedClient() {
         SecurityConfig config = new SecurityConfig();
-        GatewaySecurityProperties props = props(null, null);
 
-        assertThat(config.psamaClient(props)).isNotNull();
-        assertThat(config.queryAuthFetcher(props)).isNotNull();
+        assertThat(config.psamaClient(props(null, null))).isNotNull();
     }
 
     private static GatewaySecurityProperties props(Duration connect, Duration read) {
         return new GatewaySecurityProperties(
             List.of(), List.of("/hpds/open"), false, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token",
-            "http://operations.local", "internal-token", connect, read
+            connect, read
         );
     }
 }

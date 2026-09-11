@@ -8,9 +8,8 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import edu.harvard.hms.dbmi.avillach.operations.query.InternalTokenFilter;
 
 /**
- * Pure unit test for the {@link InternalTokenFilterConfig} bean method itself: proves the registration is scoped to the container-level
- * {@code /internal/*} URL pattern (not the default {@code /*}), which is the actual fix for path-gating that used to rely solely on
- * {@code InternalTokenFilter#shouldNotFilter} comparing the raw request URI.
+ * Verifies that the {@link InternalTokenFilterConfig} bean scopes registration to the container-level {@code /internal/*} URL pattern
+ * rather than the default {@code /*}.
  */
 class InternalTokenFilterConfigTest {
 

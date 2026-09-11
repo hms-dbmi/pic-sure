@@ -24,7 +24,8 @@ public class PicsureMetadataController {
     }
 
     private QueryFormat distributionQueryFormat() {
-        return new QueryFormat().setName("PIC-SURE Visualization Distributions").setDescription("Request format for POST /distributions")
+        return new QueryFormat().setName("PIC-SURE Visualization Distributions")
+            .setDescription("Request format for POST /{backend}/distributions")
             .setSpecification(Map.of("query", "PIC-SURE HPDS v3 query used to generate distribution charts"));
     }
 }

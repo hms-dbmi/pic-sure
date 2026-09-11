@@ -14,9 +14,8 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
@@ -24,18 +23,13 @@ import jakarta.persistence.Lob;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**
- * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.entity.Query} (javax/CDI). The {@code resourceId} FK /
- * {@code @ManyToOne Resource resource} association is intentionally dropped: the {@code resource} registry table/entity is being removed in
- * this migration, the {@code query.resourceId} column is nullable (see legacy V1__CREATE_PICSURE_INITIAL.sql), and the platform services do
- * not read or write it (new rows simply leave it NULL until the column itself is dropped).
+ * Persistence model for the {@code query} table. The nullable {@code resourceId} column is intentionally unmapped because platform services
+ * do not read or write the resource registry association.
  */
 @Entity(name = "query")
 public class Query {
 
-    // Hibernate 6+: a UUID-typed id with a bare @GeneratedValue (AUTO strategy) is generated via
-    // the built-in random UUID generator. This replaces the legacy javax
-    // `@GenericGenerator(strategy = "org.hibernate.id.UUIDGenerator")`, which Hibernate 6 removed;
-    // both produce a random UUID, so the persisted values and BINARY(16) column are unaffected.
+    // Hibernate generates a random UUID for a UUID-typed id with a bare @GeneratedValue.
     @Id
     @GeneratedValue
     @Column(columnDefinition = "BINARY(16)")
@@ -45,10 +39,7 @@ public class Query {
 
     private Date readyTime;
 
-    // Resource is responsible for mapping internal status to picsurestatus.
-    // No @Enumerated annotation in the legacy entity -> default JPA enum mapping is ORDINAL;
-    // made explicit here to preserve that mapping unambiguously.
-    @Enumerated(EnumType.ORDINAL)
+    @Convert(converter = PicSureStatusConverter.class)
     private PicSureStatus status;
 
     private String resourceResultId;
@@ -132,10 +123,10 @@ public class Query {
         return outStr.toString();
     }
 
-    public void setQuery(String queryStr) {
+    public Query setQuery(String queryStr) {
         if (queryStr == null || queryStr.length() == 0) {
             this.query = new byte[0];
-            return;
+            return this;
         }
 
         try (ByteArrayOutputStream obj = new ByteArrayOutputStream(); GZIPOutputStream gzip = new GZIPOutputStream(obj)) {
@@ -145,6 +136,7 @@ public class Query {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        return this;
     }
 
     public byte[] getMetadata() {

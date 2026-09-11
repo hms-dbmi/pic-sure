@@ -10,14 +10,8 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
- * Shared assembly for this module's pooled {@link RestClient}s (Apache HttpComponents 5). {@link HpdsClientConfig},
- * {@link AggregateHttpClientConfig} and {@link OperationsClientConfig} previously each duplicated the same
- * {@code PoolingHttpClientConnectionManager} + {@code ConnectionConfig} + request-factory wiring; only pool sizing, timeouts and per-client
- * defaults (base URL, default headers) differ, so the common part lives here and each config applies its own defaults to the returned
- * builder.
- *
- * <p>Future work: this builder is a candidate for {@code pic-sure-spring-commons} so other services (e.g. the gateway) can share it, but
- * that is a cross-module API decision deliberately not taken here.
+ * Shared assembly for this module's pooled Apache HttpComponents 5 {@link RestClient}s. It provides connection-manager, timeout, and
+ * request-factory wiring; each client configuration supplies its own pool sizing and defaults.
  */
 final class PooledRestClients {
 

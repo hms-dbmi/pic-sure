@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -13,13 +15,16 @@ import static org.mockito.Mockito.when;
 import java.util.Map;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.mockito.InOrder;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
@@ -31,9 +36,8 @@ import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**
- * DB-free port of the legacy WAR's {@code PicsureQueryServiceTest}: every place the brief expected a local
- * {@code QueryRepository}/{@code Query} entity now goes through {@link OperationsClient} instead (create/sync persist via
- * {@code operationsClient.save}/{@code update}; read ops load via {@code operationsClient.get}).
+ * Covers the DB-free query lifecycle. Create and sync operations persist through {@link OperationsClient#save} and update; read operations
+ * load through {@link OperationsClient#get}.
  */
 class QueryServiceTest {
 
@@ -41,7 +45,8 @@ class QueryServiceTest {
     ResourceWebClient hpds = mock(ResourceWebClient.class);
     HpdsProperties props = props();
     HpdsBackendSelector selector = new HpdsBackendSelector(props);
-    QueryService service = new QueryService(operationsClient, hpds, selector);
+    ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
+    QueryService service = new QueryService(operationsClient, hpds, selector, consent);
 
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();
@@ -106,12 +111,28 @@ class QueryServiceTest {
     }
 
     @Test
-    void createNeverPersistsResourceCredentials() {
-        // SECURITY: credentials ride the in-memory request to HPDS only; the payload sent to operations-service for storage must not
-        // carry them (they would otherwise sit at rest and echo back through /metadata queryJson).
-        UUID picsureId = UUID.randomUUID();
+    void createScopesBeforeCallingHpdsOrPersistence() {
+        ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent);
         QueryRequest request = req();
-        request.setResourceCredentials(Map.of("BEARER_TOKEN", "secret"));
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+
+        scopedService.queryV3("auth", request, "Bearer caller-token");
+
+        InOrder order = inOrder(consent, hpds, operationsClient);
+        order.verify(consent).scopeQuery("auth", request, "Bearer caller-token");
+        order.verify(hpds).query(any(HpdsTarget.class), eq(request));
+        order.verify(operationsClient).save(any());
+    }
+
+    @Test
+    void createNeverPersistsResourceCredentials() throws Exception {
+        // SECURITY: QueryRequest no longer models a credential map, and a legacy body that still sends one must not survive into the
+        // payload stored by operations-service (it would otherwise sit at rest and echo back through /metadata queryJson).
+        UUID picsureId = UUID.randomUUID();
+        QueryRequest request =
+            new ObjectMapper().readValue("{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}", QueryRequest.class);
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
         when(operationsClient.save(any())).thenReturn(picsureId);
 
@@ -145,7 +166,7 @@ class QueryServiceTest {
         var resp = service.querySync("auth", req(), "UI");
 
         assertThat(new String(resp.body())).isEqualTo("body");
-        // resourceResultId persisted = the picsureId when no header (maintain WAR behavior)
+        // Persist the generated PIC-SURE id when the response has no resource result header.
         verify(operationsClient)
             .update(eq(picsureId), argThat((UpdateQueryRequest u) -> picsureId.toString().equals(u.resourceResultId())));
     }
@@ -160,6 +181,23 @@ class QueryServiceTest {
         service.querySync("auth", req(), "UI");
 
         verify(operationsClient).update(eq(picsureId), argThat((UpdateQueryRequest u) -> "hpds-meta-id".equals(u.resourceResultId())));
+    }
+
+    @Test
+    void syncScopesBeforePersistenceOrHpds() {
+        ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent);
+        QueryRequest request = req();
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        when(hpds.querySync(any(HpdsTarget.class), any(), any()))
+            .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), "rr-9"));
+
+        scopedService.querySync("auth", request, "UI", "Bearer caller-token");
+
+        InOrder order = inOrder(consent, operationsClient, hpds);
+        order.verify(consent).scopeQuery("auth", request, "Bearer caller-token");
+        order.verify(operationsClient).save(any());
+        order.verify(hpds).querySync(any(HpdsTarget.class), eq(request), eq("UI"));
     }
 
     // --- read ops ---
@@ -207,6 +245,38 @@ class QueryServiceTest {
     }
 
     @Test
+    void resultVerifiesSavedConsentAfterLoadingAndBeforeHpds() {
+        UUID id = UUID.randomUUID();
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "AVAILABLE", "3", null);
+        when(operationsClient.get(id)).thenReturn(stored);
+        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"), any()))
+            .thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
+
+        service.queryResult("auth", id, req(), "Bearer caller-token");
+
+        InOrder order = inOrder(operationsClient, consent, hpds);
+        order.verify(operationsClient).get(id);
+        order.verify(consent).verifyReadAccess("auth", stored, "Bearer caller-token");
+        order.verify(hpds).queryResult(any(HpdsTarget.class), eq("rr-2"), any());
+    }
+
+    @Test
+    void signedUrlVerifiesSavedConsentAfterLoadingAndBeforeHpds() {
+        UUID id = UUID.randomUUID();
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "AVAILABLE", "3", null);
+        when(operationsClient.get(id)).thenReturn(stored);
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"), any()))
+            .thenReturn(org.springframework.http.ResponseEntity.ok("{}"));
+
+        service.queryResultSignedUrl("auth", id, req(), "Bearer caller-token");
+
+        InOrder order = inOrder(operationsClient, consent, hpds);
+        order.verify(operationsClient).get(id);
+        order.verify(consent).verifyReadAccess("auth", stored, "Bearer caller-token");
+        order.verify(hpds).queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"), any());
+    }
+
+    @Test
     void statusUsesStoredResourceResultIdAndV1ForNullVersionAndPersistsNewStatus() {
         UUID id = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(id, "{\"resourceUUID\":\"" + UUID.randomUUID() + "\"}", "rr-7", "PENDING", null, null);
@@ -233,6 +303,7 @@ class QueryServiceTest {
         QueryStatus out = service.queryStatus("auth", id, req());
 
         assertThat(out.getResourceID()).isEqualTo(resourceUuid);
+        verify(consent, never()).verifyReadAccess(any(), any(), any());
     }
 
     // --- metadata ---
@@ -252,6 +323,19 @@ class QueryServiceTest {
         assertThat(out.getResultMetadata()).containsKey("queryResultMetadata");
         assertThat((String) out.getResultMetadata().get("queryResultMetadata")).contains("commonAreaUUID");
         org.mockito.Mockito.verifyNoInteractions(hpds);
+    }
+
+    @Test
+    void metadataVerifiesSavedConsentAfterLoading() {
+        UUID id = UUID.randomUUID();
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
+        when(operationsClient.get(id)).thenReturn(stored);
+
+        service.queryMetadata("auth", id, "Bearer caller-token");
+
+        InOrder order = inOrder(operationsClient, consent);
+        order.verify(operationsClient).get(id);
+        order.verify(consent).verifyReadAccess("auth", stored, "Bearer caller-token");
     }
 
     @Test

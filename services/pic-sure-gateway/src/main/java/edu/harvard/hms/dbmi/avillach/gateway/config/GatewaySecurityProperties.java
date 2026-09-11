@@ -17,14 +17,9 @@ public record GatewaySecurityProperties(
     List<String> openPathPrefixes, boolean openAccessEnabled,
     // GATEWAY_AUTH_MAX_BODY_BYTES -- auth-buffering cap; 413 over it
     int maxBodyBytes, String introspectionUrl, String openAccessValidateUrl, String serviceToken,
-    // OPERATIONS_SERVICE_URL -- for QueryAuthFetcher dispatch (dispatch lives on operations-service,
-    // the sole DB owner)
-    String operationsServiceUrl,
-    // QUERY_SERVICE_INTERNAL_TOKEN -- X-PIC-SURE-INTERNAL-TOKEN, same value sent to operations-service now
-    String queryServiceInternalToken,
-    // GATEWAY_AUTH_CONNECT_TIMEOUT / GATEWAY_AUTH_READ_TIMEOUT. Bounds on the auth-boundary HTTP clients,
-    // meaning PSAMA introspection, open-validate, and query-service dispatch. Never raise past the ~60s at the
-    // proxy layers (httpd Timeout, ALB idle timeout), where the wait becomes a 504 anyway.
+    // GATEWAY_AUTH_CONNECT_TIMEOUT / GATEWAY_AUTH_READ_TIMEOUT. Bounds on the PSAMA introspection and
+    // open-validate clients. Never raise past the ~60s at the proxy layers (httpd Timeout, ALB idle timeout),
+    // where the wait becomes a 504 anyway.
     Duration authConnectTimeout, Duration authReadTimeout
 ) {
 

@@ -15,10 +15,8 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import org.springframework.http.HttpMethod;
 
 /**
- * The gateway previously registered no {@code @ControllerAdvice} at all, so anything unmapped answered with Boot's
- * {@code {timestamp,status,error,path}}. These pin the replacement -- and, just as importantly, pin that the catch-all does NOT relabel
- * statuses Spring MVC already decided (a naive {@code @ExceptionHandler(Exception.class)} swallows 404s and 4xx alike, since it wins the
- * depth comparison against them).
+ * Verifies the gateway's exception response shape and ensures the catch-all does not relabel statuses already selected by Spring MVC. A
+ * broad {@code @ExceptionHandler(Exception.class)} can otherwise swallow 404 and other 4xx responses because it wins the depth comparison.
  */
 class GatewayExceptionHandlerTest {
 

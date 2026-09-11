@@ -16,7 +16,7 @@ class GatewaySecurityPropertiesTest {
     private static GatewaySecurityProperties props(Duration connect, Duration read) {
         return new GatewaySecurityProperties(
             List.of(), List.of("/hpds/open"), false, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token",
-            "http://operations.local", "internal-token", connect, read
+            connect, read
         );
     }
 
@@ -46,8 +46,7 @@ class GatewaySecurityPropertiesTest {
 
     @Test
     void openPathPrefixesDefaultToEmptyWhenUnset() {
-        GatewaySecurityProperties props =
-            new GatewaySecurityProperties(null, null, false, 1024, "", "", "", "http://operations.local", "", null, null);
+        GatewaySecurityProperties props = new GatewaySecurityProperties(null, null, false, 1024, "", "", "", null, null);
 
         assertThat(props.openPathPrefixes()).isEmpty();
         assertThat(props.allowListPrefixes()).isEmpty();

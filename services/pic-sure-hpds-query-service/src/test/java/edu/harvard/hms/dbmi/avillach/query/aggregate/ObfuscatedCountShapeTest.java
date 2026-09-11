@@ -11,10 +11,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Ported (JUnit 4 -> JUnit 5) from the WAR's {@code edu.harvard.hms.dbmi.avillach.ObfuscatedCountShapeTest}, which verified that the
- * obfuscation methods produce the rich {@code {count, display, variance}} shape required by the visualization-resource for
- * Plotly-compatible chart values. The WAR exercised both the V1 and V3 {@code AggregateDataSharingResourceRS} copies (identical math in
- * both); here there is a single {@link ObfuscationService}, so this pins the same golden values against that one implementation.
+ * Verifies that obfuscation produces the {@code {count, display, variance}} shape required for Plotly-compatible visualization values. Both
+ * v1 and v3 requests use the same {@link ObfuscationService}, so these tests pin one set of golden values for both paths.
  */
 class ObfuscatedCountShapeTest {
 
@@ -80,8 +78,7 @@ class ObfuscatedCountShapeTest {
 
     @Test
     void toInt_acceptsAllJacksonNumberRuntimeTypes() {
-        // Jackson deserializes JSON numbers into Integer when they fit, Long for larger magnitudes, Double when
-        // decimal. The replacement must accept all of these, matching the WAR's toInt() breadth.
+        // Jackson may deserialize JSON numbers as Integer, Long, or Double; all numeric representations are accepted.
         assertThat(ObfuscationService.toInt(Integer.valueOf(42))).isEqualTo(42);
         assertThat(ObfuscationService.toInt(Long.valueOf(42L))).isEqualTo(42);
         assertThat(ObfuscationService.toInt(Double.valueOf(42.0))).isEqualTo(42);

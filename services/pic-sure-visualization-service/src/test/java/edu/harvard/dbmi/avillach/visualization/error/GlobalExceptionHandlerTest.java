@@ -115,8 +115,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void upstreamFailureIs502AndMessageNamesQueryService() {
-        // The 502 is raised by this service, so its message is the first thing an operator reads. It previously named a
-        // direct HPDS call that no longer happens -- the immediate upstream is now pic-sure-hpds-query-service.
+        // The error message identifies pic-sure-hpds-query-service as the immediate upstream.
         HpdsUpstreamException e = new HpdsUpstreamException("Query service request failed: connection refused", new RuntimeException());
 
         ResponseEntity<Map<String, String>> response = handler.handleHpdsUpstreamException(e);

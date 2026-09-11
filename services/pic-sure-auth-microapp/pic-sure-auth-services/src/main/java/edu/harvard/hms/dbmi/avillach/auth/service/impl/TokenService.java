@@ -46,11 +46,11 @@ public class TokenService {
     private final UserService userService;
 
     @Autowired
-    public TokenService(AuthorizationService authorizationService, UserRepository userRepository,
-                        @Value("${application.token.expiration.time}") long tokenExpirationTime,
-                        JWTUtil jwtUtil,
-                        SessionService sessionService,
-                        UserService userService) {
+    public TokenService(
+        AuthorizationService authorizationService, UserRepository userRepository,
+        @Value("${application.token.expiration.time}") long tokenExpirationTime, JWTUtil jwtUtil, SessionService sessionService,
+        UserService userService
+    ) {
         this.authorizationService = authorizationService;
         this.userRepository = userRepository;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
@@ -167,23 +167,11 @@ public class TokenService {
         }
 
         // Authorize token based on application privileges
-        if (application.getPrivileges() == null || application.getPrivileges().isEmpty()) {
-            isAuthorizationPassed = true;
-            logger.info(
-                "ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO APP PRIVILEGES DEFINED",
-                user.getUuid(), user.getEmail(), user.getName(), inputMap.get("request"), application.getName()
-            );
-        } else if (!isLongTermTokenCompromised && user.getRoles() != null) {
+        if (!isLongTermTokenCompromised && user.getRoles() != null) {
             EvaluateAccessRuleResult evaluateAccessRuleResult =
                 authorizationService.isAuthorized(application, inputMap.get("request"), user, isLongTermToken);
             isAuthorizationPassed = evaluateAccessRuleResult.result();
-            evaluateAccessRuleResult.query().ifPresent(query -> {
-                try {
-                    tokenInspection.addField("query", new ObjectMapper().writeValueAsString(query));
-                } catch (JsonProcessingException e) {
-                    throw new RuntimeException(e);
-                }
-            });
+            errorMsg = evaluateAccessRuleResult.denialReason().orElse(null);
         } else if (!isLongTermTokenCompromised) {
             errorMsg = "User doesn't have enough privileges.";
         }
@@ -269,12 +257,8 @@ public class TokenService {
         claimsMap.put("roles", userService.addRoleClaims(loadUser));
 
         Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + this.tokenExpirationTime);
-        String refreshedToken = this.jwtUtil.createJwtToken(
-                claims.getId(),
-                claims.getIssuer(),
-                claimsMap,
-                subject,
-                this.tokenExpirationTime);
+        String refreshedToken =
+            this.jwtUtil.createJwtToken(claims.getId(), claims.getIssuer(), claimsMap, subject, this.tokenExpirationTime);
 
         logger.debug("Finished RefreshToken and new token has been generated.");
         return new ValidRefreshToken(refreshedToken, ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());

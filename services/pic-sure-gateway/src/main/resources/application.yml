@@ -6,15 +6,13 @@ spring:
       server:
         webmvc:
           routes:
-            # Explicit clean-prefix route for the logging service, replacing the
-            # legacy /proxy/pic-sure-logging relay. StripPrefix=1 drops the leading /logging segment
-            # because the logging service (Javalin) serves its API at root (/audit,
-            # /health, /info) — mirroring the old /proxy relay's prefix strip. /logging is
-            # on the introspection allow-list, so it is not authenticated.
+            # StripPrefix=1 drops the leading /logging segment because the logging service
+            # serves its API at root (/audit, /health, /info). /logging is on the
+            # introspection allow-list, so it is not authenticated.
             # /dictionary and /visualization are AUTHENTICATED (not on the
             # allow-list): the introspection filter runs on the pre-strip public path
-            # (Target Service = /dictionary/x), which the PSAMA access-rule
-            # migrations now authorize (^/dictionary(/.*)?$ / ^/visualization(/.*)?$).
+            # (Target Service = /dictionary/x). PSAMA access rules authorize
+            # ^/dictionary(/.*)?$ and ^/visualization(/.*)?$.
             # Same StripPrefix=1 as /logging (dictionary-api and the visualization
             # container both serve their APIs at root).
             # /hpds is handled separately below (query-service ingress).
@@ -42,9 +40,8 @@ spring:
             # Query-service and operations-service ingress. Unlike the routes
             # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
             # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
-            # /operations/** is served by operations-service, the sole DB owner (also home to
-            # the internal query dispatch API PsamaIntrospectionFilter/QueryAuthFetcher calls for result/signed-url
-            # auth). /operations/configuration/** carries a public-GET carve-out in PublicEndpointPolicy, shared by
+            # /operations/** is served by operations-service, the sole DB owner.
+            # /operations/configuration/** carries a public-GET carve-out in PublicEndpointPolicy, shared by
             # both authentication filters — everything else (POST/PATCH/DELETE, all
             # /operations/configuration/admin/**, and all of /operations/dataset/**) is introspected as usual by the
             # always-on auth chain.
@@ -117,17 +114,9 @@ picsure:
       introspection-url: ${TOKEN_INTROSPECTION_URL:}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}
       service-token: ${TOKEN_INTROSPECTION_TOKEN:}
-      # Same default as the /operations route uri above (and the aio deep-health downstream): this is a
-      # non-secret internal DNS name, not an env-specific secret. It MUST NOT default to empty -- it is the
-      # base URL QueryAuthFetcher GETs for /query/{id}/result and /signed-url authorization, and an empty
-      # value yields a relative URI whose IllegalArgumentException ("URI with undefined scheme") is not a
-      # RestClientException, so it escapes QueryAuthFetcher's fail-closed catches AND the gateway's
-      # PicsureException-only advice, surfacing as a bare 500 on downloads alone.
-      operations-service-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
-      query-service-internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
-      # Auth-boundary HTTP client timeouts for PSAMA introspection, open-validate, and query-service dispatch.
-      # Bounded so a hung upstream cannot pin Tomcat workers. Never raise past the ~60s at the proxy layers
-      # (httpd Timeout, ALB idle timeout), where the wait becomes a 504 anyway. A non-positive value counts as unset.
+      # Auth-boundary HTTP client timeouts for PSAMA introspection and open-validate. Bounded so a hung upstream
+      # cannot pin Tomcat workers. Never raise past the ~60s at the proxy layers (httpd Timeout, ALB idle
+      # timeout), where the wait becomes a 504 anyway. A non-positive value counts as unset.
       auth-connect-timeout: ${GATEWAY_AUTH_CONNECT_TIMEOUT:2s}
       auth-read-timeout: ${GATEWAY_AUTH_READ_TIMEOUT:10s}
       # Requests here take the open-access path even when a bearer token is present. The query-service selects the

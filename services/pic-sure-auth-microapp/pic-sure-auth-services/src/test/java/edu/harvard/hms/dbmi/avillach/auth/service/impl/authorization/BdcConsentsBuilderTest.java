@@ -25,9 +25,8 @@ public class BdcConsentsBuilderTest {
     );
 
     /**
-     * A user with no dbGaP permissions at all must still receive every public study in {@code \_consents\}. This is the guarantee that
-     * replaced {@code RoleService.getPublicAccessRoles()}: deleting those roles is only safe because this builder injects public studies
-     * unconditionally. If this regresses, public studies silently disappear for every unauthorized user.
+     * A user with no dbGaP permissions must still receive every public study in {@code \_consents\}. This builder injects public studies
+     * unconditionally so they remain available to users without authorized studies.
      */
     @Test
     public void createConsents_userWithNoDbgapPermissions_stillReceivesPublicStudies() {

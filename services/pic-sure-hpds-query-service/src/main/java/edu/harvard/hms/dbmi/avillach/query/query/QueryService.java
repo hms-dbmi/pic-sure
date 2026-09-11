@@ -24,6 +24,7 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
+import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
@@ -33,16 +34,12 @@ import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
 import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
 
 /**
- * Ports the legacy WAR's {@code PicsureQueryService} (create/sync/status/result/signed-url/metadata) into a DB-free service: every place
- * the legacy code read/wrote a local {@code Query} JPA entity, this class instead calls {@link OperationsClient} over HTTP. There is no
- * local UUID generation and no local {@code Query} entity anywhere in this module -- operations-service is the sole source of the {@code
- * picsureId} and the sole persistence store.
+ * Implements the create, sync, status, result, signed-url, and metadata query lifecycle without a local database. Persistence goes through
+ * {@link OperationsClient} over HTTP; operations-service generates each {@code picsureId} and is the sole query store.
  *
- * <p><b>Decision 9 (the signed-url bug fix):</b> {@link #queryStatus}, {@link #queryResult}, and {@link #queryResultSignedUrl} all dispatch
- * to HPDS using the backend implied by the ingress {@code {backend}} path segment (auth/open) AND the v3-ness of the STORED query's {@code
- * version} field (never a value passed in on the request). The legacy WAR applied this "stored version decides v1 vs v3" rule to status and
- * result, but not to signed-url ({@code PicsureQueryService.java:197+}) -- a v1-path signed-url request for a v3-stored query never reached
- * HPDS's {@code /v3} routes. Here all three read ops share the same {@link #isV3(StoredQuery)} check, closing that gap.
+ * <p>{@link #queryStatus}, {@link #queryResult}, and {@link #queryResultSignedUrl} dispatch to the backend selected by the ingress
+ * {@code {backend}} segment and the stored query's {@code version}. The request cannot override the stored version, and all three read
+ * operations share the same {@link #isV3(StoredQuery)} check.
  */
 @Service
 public class QueryService {
@@ -61,11 +58,16 @@ public class QueryService {
     private final OperationsClient operationsClient;
     private final ResourceWebClient hpds;
     private final HpdsBackendSelector selector;
+    private final ConsentAuthorizationService consentAuthorization;
 
-    public QueryService(OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector) {
+    public QueryService(
+        OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector,
+        ConsentAuthorizationService consentAuthorization
+    ) {
         this.operationsClient = operationsClient;
         this.hpds = hpds;
         this.selector = selector;
+        this.consentAuthorization = consentAuthorization;
     }
 
     public record QuerySyncResponse(byte[] body, String queryMetadata) {
@@ -74,20 +76,25 @@ public class QueryService {
     // --- create / sync ---
 
     public QueryStatus query(String backend, QueryRequest req) {
-        return create(backend, req, false);
+        return create(backend, req, false, null);
     }
 
     public QueryStatus queryV3(String backend, QueryRequest req) {
-        return create(backend, req, true);
+        return queryV3(backend, req, null);
     }
 
-    private QueryStatus create(String backend, QueryRequest req, boolean v3) {
+    public QueryStatus queryV3(String backend, QueryRequest req, String authorizationHeader) {
+        return create(backend, req, true, authorizationHeader);
+    }
+
+    private QueryStatus create(String backend, QueryRequest req, boolean v3, String authorizationHeader) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
+        consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend, v3); // URL + service token
 
-        QueryStatus results = hpds.query(target, req); // HPDS call first (parity: query() calls HPDS then persists)
+        QueryStatus results = hpds.query(target, req); // Call HPDS before persisting the query.
         String version = v3 ? CURRENT_VERSION : null;
         String metadataBase64 = buildMetadataBase64(results);
 
@@ -98,7 +105,7 @@ public class QueryService {
         );
         results.setPicsureResultId(picsureId);
 
-        if (results.getResourceResultId() == null) { // create-time fallback (PRESERVE)
+        if (results.getResourceResultId() == null) { // Use the generated PIC-SURE id when HPDS omits its result id.
             String fallbackId = picsureId.toString();
             results.setResourceResultId(fallbackId);
             operationsClient.update(picsureId, new UpdateQueryRequest(null, fallbackId, null));
@@ -108,13 +115,18 @@ public class QueryService {
     }
 
     public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource) {
+        return querySync(backend, req, requestSource, null);
+    }
+
+    public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource, String authorizationHeader) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
+        consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend, true); // sync's only remaining caller is the v3 ingress
         String version = CURRENT_VERSION;
 
-        // persist FIRST (parity: sync persists then calls HPDS)
+        // Persist before calling HPDS so the sync query has a PIC-SURE id.
         UUID picsureId = operationsClient.save(new SaveQueryRequest(serializeQuery(req), null, null, version, null));
 
         ResourceWebClient.QuerySyncResult down = hpds.querySync(target, req, requestSource);
@@ -124,7 +136,7 @@ public class QueryService {
         return new QuerySyncResponse(down.body(), down.queryMetadata());
     }
 
-    /** Port of copyQuery's metadata assembly (PicsureQueryService.java:380-419) minus Resource + AuditContext. */
+    /** Serializes non-empty result metadata as base64-encoded UTF-8 JSON. */
     private String buildMetadataBase64(QueryStatus response) {
         Map<String, Object> meta = response.getResultMetadata();
         if (meta == null) {
@@ -144,20 +156,16 @@ public class QueryService {
     }
 
     /**
-     * null query → null blob; else the serialized QueryRequest with {@code resourceCredentials} removed. Credentials are only ever needed
-     * for the live HPDS call (which uses the in-memory request); nothing reads them back from operations-service (dispatch re-strips as
-     * defense in depth), so they must never reach the persistence store or the /metadata queryJson echo.
+     * null query → null blob; else the serialized QueryRequest. {@code QueryRequest} no longer carries a credential map, so what reaches
+     * the persistence store and the /metadata queryJson echo holds nothing secret; operations-service still strips the field off rows
+     * written before its removal.
      */
     private String serializeQuery(QueryRequest req) {
         if (req.getQuery() == null) {
             return null;
         }
         try {
-            JsonNode node = MAPPER.valueToTree(req);
-            if (node instanceof ObjectNode obj) {
-                obj.remove("resourceCredentials");
-            }
-            return MAPPER.writeValueAsString(node);
+            return MAPPER.writeValueAsString(req);
         } catch (IllegalArgumentException | JsonProcessingException e) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrectly formatted request");
         }
@@ -180,13 +188,23 @@ public class QueryService {
     }
 
     public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, QueryRequest req) {
+        return queryResult(backend, picsureId, req, null);
+    }
+
+    public ResponseEntity<byte[]> queryResult(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
         StoredQuery stored = load(picsureId);
+        consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
         return hpds.queryResult(selector.select(backend, isV3(stored)), stored.resourceResultId(), req);
     }
 
     public ResponseEntity<String> queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req) {
+        return queryResultSignedUrl(backend, picsureId, req, null);
+    }
+
+    public ResponseEntity<String> queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
         StoredQuery stored = load(picsureId);
-        // DECISION 9 FIX: dispatch on STORED version for signed-url too (the legacy WAR omitted this).
+        consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
+        // Dispatch signed-url requests using the stored query version.
         return hpds.queryResultSignedUrl(selector.select(backend, isV3(stored)), stored.resourceResultId(), req);
     }
 
@@ -197,7 +215,7 @@ public class QueryService {
         return operationsClient.get(picsureId); // throws PicsureException(NOT_FOUND) on an unknown id
     }
 
-    /** Preserves PicsureQueryService.isV3Query: version major == "3" (null-safe). */
+    /** Returns whether the stored query's major version is 3. */
     static boolean isV3(StoredQuery query) {
         String v = query.version();
         return v != null && v.split("\\.")[0].equals(CURRENT_VERSION);
@@ -220,10 +238,15 @@ public class QueryService {
     // --- metadata (DB-only, no HPDS) ---
 
     public QueryStatus queryMetadata(UUID id) {
+        return queryMetadata("open", id, null);
+    }
+
+    public QueryStatus queryMetadata(String backend, UUID id, String authorizationHeader) {
         if (id == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query id");
         }
         StoredQuery stored = load(id);
+        consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
 
         QueryStatus response = new QueryStatus();
         response.setPicsureResultId(stored.picsureId());

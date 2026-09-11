@@ -34,14 +34,17 @@ public final class AuditLoggingContext {
         }
     }
 
-    public static void addDistributionRequestMetadata(HttpServletRequest request, String accessType, Query query, int subQueryCount) {
+    public static void addDistributionRequestMetadata(
+        HttpServletRequest request, String backend, String gatewayAccessType, Query query, int subQueryCount
+    ) {
         addMetadata(request, "route", "distributions");
-        addMetadata(request, "access_type", accessType);
+        addMetadata(request, "backend", backend);
+        addMetadata(request, "gateway_access_type", gatewayAccessType);
         List<String> selectedConceptPaths = selectedConceptPaths(query);
         addMetadata(request, "selected_concept_paths", selectedConceptPaths);
         addMetadata(request, "selected_concept_count", selectedConceptPaths.size());
         addMetadata(request, "subquery_count", subQueryCount);
-        request.setAttribute(ACCESS_TYPE_ATTR, accessType);
+        request.setAttribute(ACCESS_TYPE_ATTR, backend);
     }
 
     public static void addDistributionResponseMetadata(HttpServletRequest request, VisualizationResponse response) {

@@ -20,10 +20,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Base {@link OncePerRequestFilter} that maps each non-skipped request to an {@link AuditRoute} and emits an audit event via the
- * {@link LoggingClient}, mirroring the legacy {@code edu.harvard.dbmi.avillach.security.AuditLoggingFilter}'s route table and skip-list
- * semantics (DB-free, no JAX-RS). {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway subclasses can widen
- * the skip set (e.g. interim/pass-through paths).
+ * Base {@link OncePerRequestFilter} that maps each non-skipped request to an {@link AuditRoute} and emits an audit event through the
+ * {@link LoggingClient}. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway subclasses can widen the skip
+ * set for pass-through paths.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 

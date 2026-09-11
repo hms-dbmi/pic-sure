@@ -20,7 +20,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
  * The sole read/write path onto the {@code query} table for the internal query API ({@link InternalQueryController}).
- * Persists/loads/updates {@link Query} rows and produces the gateway-only dispatch payload -- the stored query JSON with
+ * Persists/loads/updates {@link Query} rows and produces the gateway-only dispatch payload -- the stored query JSON with any legacy
  * {@code resourceCredentials} stripped, per the fixed {@code QueryAuthFetcher} contract ({@code {queryJson: "<string>"}}).
  *
  * <p>{@code status} travels on the wire as the {@link PicSureStatus} enum NAME, never its ordinal, so callers never need the enum type; an
@@ -47,7 +47,7 @@ public class QueryPersistenceService {
         entity.setStatus(parseStatus(req.status()));
         entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
-        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned, like the legacy WAR's create path
+        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned creation time
         return repo.save(entity).getUuid();
     }
 
@@ -62,7 +62,7 @@ public class QueryPersistenceService {
         if (req.status() != null) {
             PicSureStatus newStatus = parseStatus(req.status());
             if (newStatus == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
-                entity.setReadyTime(new Date(System.currentTimeMillis())); // first AVAILABLE transition, like the legacy WAR
+                entity.setReadyTime(new Date(System.currentTimeMillis())); // first AVAILABLE transition only
             }
             entity.setStatus(newStatus);
         }
@@ -76,9 +76,9 @@ public class QueryPersistenceService {
     }
 
     /**
-     * Gateway-only auth-fetch payload: the stored query JSON, re-serialized as a STRING with {@code resourceCredentials} removed. 404 when
-     * the row is absent (the gateway's {@code QueryAuthFetcher} fails closed on that). A blank/absent stored query body yields {@code null}
-     * (never a 500) -- malformed JSON is logged and also yields {@code null} rather than leaking the raw unparsed body.
+     * Gateway-only auth-fetch payload: the stored query JSON, re-serialized as a STRING with any legacy {@code resourceCredentials}
+     * removed. 404 when the row is absent (the gateway's {@code QueryAuthFetcher} fails closed on that). A blank/absent stored query body
+     * yields {@code null} (never a 500) -- malformed JSON is logged and also yields {@code null} rather than leaking the raw unparsed body.
      */
     @Transactional(readOnly = true)
     public String dispatchQueryJson(UUID picsureId) {
@@ -116,9 +116,10 @@ public class QueryPersistenceService {
     }
 
     /**
-     * SECURITY: {@code resourceCredentials} must never be persisted (writers now strip before sending) nor returned to any internal reader
-     * -- this covers rows stored before writers stripped. Bodies without the field pass through byte-identical; malformed JSON passes
-     * through unchanged (it cannot carry a parseable credentials field, and dispatch already nulls it).
+     * SECURITY: {@code resourceCredentials} must never be persisted nor returned to any internal reader. {@code QueryRequest} dropped the
+     * field, so current writers cannot produce one; this remains for rows stored while they could. Bodies without the field pass through
+     * byte-identical; malformed JSON passes through unchanged (it cannot carry a parseable credentials field, and dispatch already nulls
+     * it).
      */
     private static String stripResourceCredentials(String json) {
         if (json == null || json.isBlank()) {

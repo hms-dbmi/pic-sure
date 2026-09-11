@@ -31,8 +31,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * five {@code X-User-*} headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES},
  * {@code _PRIVILEGES}) plus {@link GatewayUserResolver#HEADER_ACCESS_TYPE} are gateway-owned: the wrapper NEVER falls through to the raw
  * client request for them. Whatever the gateway resolved (possibly nothing) is authoritative -- a client cannot spoof these by sending its
- * own values, even where the gateway resolved an empty/null value (e.g. open-access requests, users with no privileges). For
- * {@code X-Picsure-Access-Type} that is load-bearing: it is how downstream services choose the authorized vs open HPDS backend.
+ * own values, even where the gateway resolved an empty/null value (e.g. open-access requests, users with no privileges).
+ * {@code X-Picsure-Access-Type} records which gateway authentication flow admitted the request. Downstream backend routing uses explicit
+ * path segments instead.
  */
 public class IdentityPropagationFilter extends OncePerRequestFilter {
 

@@ -18,15 +18,14 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import jakarta.validation.Valid;
 
 /**
- * Ports the legacy WildFly {@code ConfigurationRS}. Mappings are slash-less on purpose: Spring 6 -- unlike the legacy JAX-RS runtime, which
- * matched both forms -- serves EXACTLY the declared form, and PIC-SURE clients call slash-less URLs. Authorization is enforced entirely by
+ * Exposes configuration reads and administrative writes. Mappings are slash-less because Spring 6 serves exactly the declared form and
+ * PIC-SURE clients use slash-less URLs. Authorization is enforced entirely by
  * {@link edu.harvard.hms.dbmi.avillach.operations.config.WebSecurityConfig} ({@code /configuration/admin/**} requires {@code SUPER_ADMIN};
  * the two plain {@code GET}s below are public) -- this controller carries no auth code of its own, and its mappings must match those
  * security-layer paths exactly.
  *
- * <p>Admin writes return {@code 200 + entity body} (matching the WAR's documented {@code 200} response and {@code PICSUREResponse.success},
- * including DELETE returning the deleted configuration) -- a deliberate divergence from other surfaces' {@code 201} create, kept to
- * preserve the documented config contract.
+ * <p>Admin writes return {@code 200 + entity body}, including DELETE returning the deleted configuration. This differs from surfaces that
+ * return {@code 201} for creates and preserves the documented configuration API contract.
  */
 @RestController
 @RequestMapping("/configuration")

@@ -16,8 +16,8 @@ import jakarta.servlet.http.HttpServletRequest;
 /**
  * FIX 1 (critical, defense-in-depth): {@link InboundIdentityHeaderSanitizingFilter} is registered UNCONDITIONALLY in
  * {@code ObservabilityConfig} as an independent trust boundary, separate from {@code IdentityPropagationFilter} in the always-on DB-free
- * auth chain. These tests exercise the filter standalone: even if the auth chain were ever bypassed or misconfigured, or WildFly is
- * nonetheless configured to trust these headers directly from the gateway, this filter must still strip them.
+ * auth chain. These tests exercise the filter standalone: even if the auth chain were bypassed or misconfigured, this filter must still
+ * strip client-supplied identity headers.
  */
 class InboundIdentityHeaderSanitizingFilterTest {
 
@@ -90,6 +90,21 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void stripsReservedServiceClientTypeFromExternalRequests() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/auth/user/me/consents");
+        request.addHeader("x-client-type", "SERVICE");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        HttpServletRequest wrapped = captured.get();
+        assertThat(wrapped.getHeader("X-Client-Type")).isNull();
+        assertThat(wrapped.getHeaders("x-client-type").hasMoreElements()).isFalse();
+        assertThat(Collections.list(wrapped.getHeaderNames())).doesNotContain("x-client-type");
+    }
+
+    @Test
     void headerStrippingIsCaseInsensitive() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
         request.addHeader("x-user-privileges", "SYSTEM,ADMIN");
@@ -107,9 +122,8 @@ class InboundIdentityHeaderSanitizingFilterTest {
 
     @Test
     void stripsClientSuppliedAccessTypeHeaderRegardlessOfCase() throws Exception {
-        // X-Picsure-Access-Type selects the authorized vs open HPDS backend downstream, so a client-supplied value is a
-        // direct attempt to read non-obfuscated data. It gets the same unconditional strip as the X-User-* set.
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/distributions");
+        // The gateway owns X-Picsure-Access-Type, so it gets the same unconditional strip as the X-User-* set.
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/auth/distributions");
         request.addHeader("x-picsure-access-type", "authorized");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
