@@ -2,6 +2,9 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
+import jakarta.validation.Valid;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -68,10 +71,11 @@ public class UserController {
     @RolesAllowed({ADMIN})
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addUser(
-        @Parameter(required = true, description = "A list of user in JSON format") @RequestBody List<User> users, HttpServletRequest request
+        @Parameter(required = true, description = "A list of user in JSON format") @Valid @RequestBody List<UserCreateRequest> requests,
+        HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
-        List<User> addedUsers = this.userService.addUsers(users);
+        AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(requests.size()));
+        List<User> addedUsers = this.userService.createFrom(requests);
         if (addedUsers == null) {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
@@ -88,9 +92,9 @@ public class UserController {
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @RolesAllowed({ADMIN})
     @PutMapping(produces = "application/json")
-    public ResponseEntity<?> updateUser(@RequestBody List<User> users, HttpServletRequest request) {
-        AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
-        List<User> updatedUsers = this.userService.updateUser(users);
+    public ResponseEntity<?> updateUser(@Valid @RequestBody List<UserUpdateRequest> requests, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(requests.size()));
+        List<User> updatedUsers = this.userService.updateFrom(requests);
         if (updatedUsers == null) {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
