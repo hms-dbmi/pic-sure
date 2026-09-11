@@ -15,6 +15,7 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
@@ -143,12 +144,29 @@ class NamedDatasetMapperTest {
         """;
 
     @ParameterizedTest
-    @NullSource
     @ValueSource(strings = {"3", "3.0.0"})
     void preservesV3ContentsAndProvidesAWrapper(String version) throws Exception {
         for (String stored : java.util.List.of(V3, "{\"query\":" + V3 + "}", "{\"query\":" + JSON.writeValueAsString(V3) + "}")) {
             assertThat(mapped(stored, version).get("query")).isEqualTo(JSON.readTree(V3));
         }
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "1.0", "2", "4", "."})
+    void treatsEveryNonV3VersionAsV2EvenWithV3NamedExtraFields(String version) throws Exception {
+        ObjectNode legacy = (ObjectNode) JSON.readTree(LEGACY);
+        legacy.set("select", JSON.valueToTree(java.util.List.of("unrelated-extra-field")));
+        legacy.putNull("phenotypicClause");
+        assertConvertedQuery(mapped(JSON.writeValueAsString(legacy), version).get("query"));
+    }
+
+    @Test
+    void trustsTheV3VersionWithoutRequiringRecognizedFieldNames() throws Exception {
+        JsonNode result = mapped("{\"query\":{\"historical\":true}}", "3");
+        assertThat(result.at("/query/historical").asBoolean()).isTrue();
+        assertThat(result.path("query").has("phenotypicClause")).isTrue();
+        assertThat(result.at("/query/phenotypicClause").isNull()).isTrue();
     }
 
     @Test

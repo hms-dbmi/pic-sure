@@ -34,10 +34,8 @@ public class NamedDatasetMapper {
     private static final Logger log = LogManager.getLogger(NamedDatasetMapper.class);
     private static final List<String> LEGACY_FIELDS = List.of(
         "categoryFilters", "numericFilters", "fields", "crossCountFields", "requiredFields", "anyRecordOf", "anyRecordOfMulti",
-        "variantInfoFilters"
+        "variantInfoFilters", "expectedResultType"
     );
-
-    private static final List<String> V3_FIELDS = List.of("phenotypicClause", "select", "genomicFilters", "authorizationFilters");
 
     public NamedDatasetDto toDto(NamedDataset e) {
         return new NamedDatasetDto(e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery()), e.getArchived(), e.getMetadata());
@@ -66,7 +64,7 @@ public class NamedDatasetMapper {
             // Some historical requests JSON-encode their inner query a second time.
             ObjectNode query = requireObject(body.isTextual() ? QUERY_MAPPER.readTree(body.textValue()) : body);
             ObjectNode wrapper = request.has("query") ? request : QUERY_MAPPER.createObjectNode();
-            wrapper.set("query", toV3(query, isV3(q) || hasAny(query, V3_FIELDS)));
+            wrapper.set("query", toV3(query, isV3(q)));
             return QUERY_MAPPER.writeValueAsString(wrapper);
         } catch (JsonProcessingException | UntranslatableQueryException | IllegalArgumentException e) {
             log.warn("Unable to convert saved query {} to v3", q.getUuid());
@@ -75,11 +73,11 @@ public class NamedDatasetMapper {
     }
 
     private static ObjectNode toV3(ObjectNode query, boolean v3) throws JsonProcessingException, UntranslatableQueryException {
-        // Ignoring unknown properties is safe only after recognizing a query, rather than an unrelated object.
-        if (!query.has("expectedResultType") && !hasAny(query, v3 ? V3_FIELDS : LEGACY_FIELDS)) {
-            throw new IllegalArgumentException("Unrecognized saved query");
-        }
         if (!v3) {
+            // Reject unrelated objects before lenient V2 deserialization can silently turn them into empty queries.
+            if (LEGACY_FIELDS.stream().noneMatch(query::has)) {
+                throw new IllegalArgumentException("Unrecognized saved V2 query");
+            }
             var legacy = QUERY_MAPPER.treeToValue(query, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
             return QUERY_MAPPER.valueToTree(QueryTranslator.translate(legacy));
         }
@@ -96,14 +94,10 @@ public class NamedDatasetMapper {
         throw new IllegalArgumentException("Expected a query object");
     }
 
-    private static boolean hasAny(ObjectNode query, List<String> fields) {
-        return fields.stream().anyMatch(query::has);
-    }
-
-    /** Returns whether the stored query's major version is 3. */
+    /** The stored version determines the format: 3.x is V3; all other values, including null, are V2. */
     static boolean isV3(Query query) {
         String v = query.getVersion();
-        return v != null && v.split("\\.")[0].equals("3");
+        return v != null && (v.equals("3") || v.startsWith("3."));
     }
 
     /** {@code user} is the caller's EMAIL (owner key); {@code query} is pre-resolved by the service. */

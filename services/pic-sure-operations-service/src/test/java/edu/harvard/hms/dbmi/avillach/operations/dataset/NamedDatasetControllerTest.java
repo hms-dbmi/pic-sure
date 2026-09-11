@@ -41,7 +41,7 @@ class NamedDatasetControllerTest {
 
     private static final String ALICE = "alice@example.com";
     private static final String BOB = "bob@example.com";
-    private static final String QUERY_BODY = "{\"select\":[]}";
+    private static final String QUERY_BODY = "{\"categoryFilters\":{}}";
 
     @Autowired
     private MockMvc mockMvc;
@@ -226,7 +226,7 @@ class NamedDatasetControllerTest {
         String emptyV3QueryString =
             "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
         Query query = new Query();
-        query.setQuery(emptyV3QueryString);
+        query.setQuery(emptyV3QueryString).setVersion("3");
         query = queryRepo.save(query);
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("with-query").setQuery(query));
 
