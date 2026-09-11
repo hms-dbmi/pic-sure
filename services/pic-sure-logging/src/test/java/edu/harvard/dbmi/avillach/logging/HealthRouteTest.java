@@ -24,8 +24,7 @@ class HealthRouteTest {
 
     private static AppConfig testConfig() {
         return new AppConfig(
-            "test-api-key", "testapp", "testplatform", "test", "testhost",
-            0, "*",
+            "test-api-key", "testapp", "testplatform", "test", "testhost", 0, "*",
             Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
         );
     }

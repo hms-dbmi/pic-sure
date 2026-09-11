@@ -5,7 +5,6 @@ import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -165,7 +164,7 @@ public class AggregateService {
 
         if (props.hasVisualization()) {
             Map<String, Map<String, Integer>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
-            Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(req, continuous, variant);
+            Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(continuous, variant);
             return objectMapper.writeValueAsString(obfuscation.obfuscateCrossCount(generatedVariance, binned));
         } else {
             Map<String, Map<String, Object>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
@@ -175,15 +174,10 @@ public class AggregateService {
 
     /** Sends continuous results to the configured visualization URL for binning. */
     private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(
-        QueryRequest req, Map<String, Map<String, Integer>> continuous, AggregateVariant variant
+        Map<String, Map<String, Integer>> continuous, AggregateVariant variant
     ) throws IOException {
         QueryRequest vizRequest = new GeneralQueryRequest();
         vizRequest.setQuery(continuous);
-        vizRequest.setResourceCredentials(req.getResourceCredentials());
-        String vizId = props.getVisualizationResourceId();
-        if (vizId != null && !vizId.isBlank()) {
-            vizRequest.setResourceUUID(UUID.fromString(vizId));
-        }
         String binResponse = backend.binContinuous(vizRequest, variant);
         return objectMapper.readValue(binResponse, new TypeReference<>() {});
     }

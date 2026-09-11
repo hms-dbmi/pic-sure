@@ -31,9 +31,88 @@
         <logback.version>1.6.3</logback.version>
         <!-- Structured logging encoder (not governed by the Spring BOMs) -->
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+        <!-- Ahead of the 2.21.4 that spring-boot-dependencies ${spring-boot.version}
+             manages. 2.21.5 carries the jackson-databind fix; drop this override once
+             the Spring BOM catches up. -->
+        <jackson-bom.version>2.21.5</jackson-bom.version>
+        <!-- Also ahead of the Spring BOM, for the same reason. Apache never published
+             tomcat 10.1.58, so the advisories that name it are fixed by 10.1.59. -->
+        <tomcat.version>10.1.59</tomcat.version>
+        <netty.version>4.1.137.Final</netty.version>
+        <log4j2.version>2.25.5</log4j2.version>
+        <postgresql.version>42.7.12</postgresql.version>
+        <!-- Not Spring-managed at all; it arrives transitively at 1.24.0 in test scope.
+             The advisories name 1.26.0, but that release calls the commons-codec class
+             Charsets, which commons-codec 1.18.0 (the Boot-managed version) removed, so
+             it breaks testcontainers at TarArchiveOutputStream. 1.26.1 replaced that call
+             with StandardCharsets; this takes the current 1.28.0. -->
+        <commons-compress.version>1.28.0</commons-compress.version>
+        <!-- Pulled in by commons-compress 1.26+, which 1.24.0 did not depend on. Boot
+             manages 3.17.0, which the advisories flag; 3.18.0 is what commons-compress
+             itself asks for. -->
+        <commons-lang3.version>3.18.0</commons-lang3.version>
     </properties>
     <dependencyManagement>
         <dependencies>
+            <!-- Security overrides. Every entry down to spring-boot-dependencies MUST stay
+                 above it. Maven resolves dependencyManagement first-declaration-wins, and
+                 this reactor does not inherit spring-boot-starter-parent, so the matching
+                 ${...version} properties cannot override an imported BOM on their own.
+                 Reorder any of these and the pin silently reverts to the Spring-managed
+                 version, with no build error. Drop each one once Boot catches up. -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson-bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-bom</artifactId>
+                <version>${log4j2.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-compress</artifactId>
+                <version>${commons-compress.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>${commons-lang3.version}</version>
+            </dependency>
+            <!-- Apache publishes no BOM for the embedded Tomcat artifacts, so each one
+                 the reactor resolves is listed by hand. -->
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-core</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-el</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-websocket</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>

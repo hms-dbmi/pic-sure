@@ -184,7 +184,6 @@ public class QueryServiceClient {
     private Object requestBody(Query subQuery) {
         GeneralQueryRequest request = new GeneralQueryRequest();
         request.setQuery(subQuery);
-        request.setResourceCredentials(Map.of());
         return request;
     }
 
