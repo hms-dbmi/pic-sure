@@ -48,8 +48,6 @@ class RequestBodyEntityBindingTest {
         "RoleController#updateRole binds Role",
         "UserController#addUser binds User",
         "UserController#updateUser binds User",
-        "UserMetadataMappingWebController#addMapping binds UserMetadataMapping",
-        "UserMetadataMappingWebController#updateMapping binds UserMetadataMapping",
     });
 
     @Test
