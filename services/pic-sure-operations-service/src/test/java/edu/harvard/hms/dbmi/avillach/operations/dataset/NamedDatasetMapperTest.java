@@ -143,17 +143,16 @@ class NamedDatasetMapperTest {
         "expectedResultType":"DATAFRAME","picsureId":null,"id":null}
         """;
 
-    @ParameterizedTest
-    @ValueSource(strings = {"3", "3.0.0"})
-    void preservesV3ContentsAndProvidesAWrapper(String version) throws Exception {
+    @Test
+    void preservesV3ContentsAndProvidesAWrapper() throws Exception {
         for (String stored : java.util.List.of(V3, "{\"query\":" + V3 + "}", "{\"query\":" + JSON.writeValueAsString(V3) + "}")) {
-            assertThat(mapped(stored, version).get("query")).isEqualTo(JSON.readTree(V3));
+            assertThat(mapped(stored, "3").get("query")).isEqualTo(JSON.readTree(V3));
         }
     }
 
     @ParameterizedTest
     @NullSource
-    @ValueSource(strings = {"", "1.0", "2", "4", "."})
+    @ValueSource(strings = {"", "1.0", "2", "3.0", "3.0.0", "4", "."})
     void treatsEveryNonV3VersionAsV2EvenWithV3NamedExtraFields(String version) throws Exception {
         ObjectNode legacy = (ObjectNode) JSON.readTree(LEGACY);
         legacy.set("select", JSON.valueToTree(java.util.List.of("unrelated-extra-field")));

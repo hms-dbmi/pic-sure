@@ -94,10 +94,9 @@ public class NamedDatasetMapper {
         throw new IllegalArgumentException("Expected a query object");
     }
 
-    /** The stored version determines the format: 3.x is V3; all other values, including null, are V2. */
+    /** The stored version determines the format: "3" is V3; all other values, including null, are V2. */
     static boolean isV3(Query query) {
-        String v = query.getVersion();
-        return v != null && (v.equals("3") || v.startsWith("3."));
+        return "3".equals(query.getVersion());
     }
 
     /** {@code user} is the caller's EMAIL (owner key); {@code query} is pre-resolved by the service. */
