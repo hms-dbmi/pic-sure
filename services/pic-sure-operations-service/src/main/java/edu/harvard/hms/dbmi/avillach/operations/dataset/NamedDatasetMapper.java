@@ -28,7 +28,6 @@ import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 @Component
 public class NamedDatasetMapper {
 
-    // Historical query bodies can contain fields that are no longer part of the HPDS model.
     private static final ObjectMapper QUERY_MAPPER =
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final Logger log = LogManager.getLogger(NamedDatasetMapper.class);
