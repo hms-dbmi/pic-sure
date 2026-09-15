@@ -16,15 +16,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /**
- * Checkmarx reports a missing {@code Strict-Transport-Security} header against {@code GatewayErrors#write}, the helper
- * {@code BufferingFilter} uses for its 413 short-circuit. That helper sets only a status, a content type, and a body; response headers come
- * from Spring Security's {@code HeadersConfigurer}, which neither gateway filter chain disables.
+ * Pins where the {@code Strict-Transport-Security} header on a gateway response comes from. {@code GatewayErrors#write}, the helper
+ * {@code BufferingFilter} uses for its 413 short-circuit, sets only a status, a content type, and a body. Response headers come from Spring
+ * Security's {@code HeadersConfigurer}, which neither gateway filter chain disables, so an error written by a servlet filter that runs
+ * ahead of Spring MVC still carries the header.
  *
- * <p>These two tests separate the framework behavior from the deployment assertion. Over a secure request the header IS written, even on a
- * response produced by a servlet filter that runs before Spring MVC. Over a non-secure request it is NOT -- Spring Security's HSTS writer
- * is conditional on {@code request.isSecure()}. That second case is exactly why TLS-forwarding behavior at the production edge still has to
- * be verified there: if the ingress terminates TLS and the gateway does not see the request as secure, no HSTS header is emitted no matter
- * what this code does.
+ * <p>The two tests separate the framework behavior from the deployment assertion. Over a secure request the header is written. Over a plain
+ * request it is not, because Spring Security's HSTS writer is conditional on {@code request.isSecure()}. That second case is why TLS
+ * forwarding at the production edge still has to be verified there. If the ingress terminates TLS and the gateway does not see the request
+ * as secure, no HSTS header is emitted no matter what this code does.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
