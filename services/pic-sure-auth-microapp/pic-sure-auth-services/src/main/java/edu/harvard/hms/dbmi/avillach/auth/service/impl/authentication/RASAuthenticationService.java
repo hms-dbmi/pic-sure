@@ -16,6 +16,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -78,7 +79,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
      */
     @Override
     public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
-        logger.info("RAS OKTA LOGIN ATTEMPT ___ CODE {}", authRequest.get("code"));
+        logWithCode(Level.INFO, authRequest.get("code"), "RAS OKTA LOGIN ATTEMPT");
 
         JsonNode userToken = null;
         JsonNode introspectResponse = null;
@@ -93,10 +94,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         }
 
         if (introspectResponse == null) {
-            logger.info(
-                "LOGIN FAILED ___ USER NOT AUTHENTICATED ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse,
-                authRequest.get("code")
-            );
+            logWithCode(Level.INFO, authRequest.get("code"), "LOGIN FAILED ___ USER NOT AUTHENTICATED ___ NO INTROSPECTION RESPONSE");
             return null;
         }
 
@@ -106,7 +104,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         Optional<User> initializedUser = initializeUser(introspectResponse);
         if (initializedUser.isEmpty()) {
-            logger.info("LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA INTROSPECTION DATA ___ CODE {}", authRequest.get("code"));
+            logWithCode(Level.INFO, authRequest.get("code"), "LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA INTROSPECTION DATA");
             return null;
         }
 
@@ -121,11 +119,12 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         if (responseMap != null) {
             responseMap.put("oktaIdToken", idToken);
-            logger.info(
-                "LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
-                user.getSubject(), user.getUuid().toString(),
+            logWithCode(
+                Level.INFO, authRequest.get("code"),
+                "LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {}", user.getSubject(),
+                user.getUuid().toString(),
                 user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                responseMap.get("expirationDate"), authRequest.get("code")
+                responseMap.get("expirationDate")
             );
         }
 
@@ -134,18 +133,18 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
     private boolean isActiveIntrospectionResponse(JsonNode introspectResponse, String code) {
         if (!introspectResponse.has("active") || introspectResponse.get("active").isNull()) {
-            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM ___ CODE {}", code);
+            logWithCode(Level.INFO, code, "LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM");
             return false;
         }
 
         JsonNode activeClaim = introspectResponse.get("active");
         if (!activeClaim.isBoolean()) {
-            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION ACTIVE CLAIM IS NOT BOOLEAN ___ VALUE {} ___ CODE {}", activeClaim, code);
+            logWithCode(Level.INFO, code, "LOGIN FAILED ___ OKTA INTROSPECTION ACTIVE CLAIM IS NOT BOOLEAN ___ VALUE {}", activeClaim);
             return false;
         }
 
         if (!activeClaim.booleanValue()) {
-            logger.info("LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE ___ CODE {}", code);
+            logWithCode(Level.INFO, code, "LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE");
             return false;
         }
 
@@ -155,23 +154,24 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     private Optional<Passport> extractAndVerifyPassport(Map<String, String> authRequest, JsonNode introspectResponse, User user) {
         Optional<Passport> rasPassport = this.rasPassPortService.extractPassport(introspectResponse);
         if (rasPassport.isEmpty()) {
-            logger.info("LOGIN FAILED ___ NO RAS PASSPORT FOUND ___ USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
+            logWithCode(Level.INFO, authRequest.get("code"), "LOGIN FAILED ___ NO RAS PASSPORT FOUND ___ USER: {}", user.getSubject());
             return Optional.empty();
         }
 
         if (rasPassPortService.isExpired(rasPassport.get())) {
-            logger.error(
-                "validateRASPassport() LOGIN FAILED ___ PASSPORT IS EXPIRED ___ USER: {} ___ CODE {}", user.getSubject(),
-                authRequest.get("code")
+            logWithCode(
+                Level.ERROR, authRequest.get("code"), "validateRASPassport() LOGIN FAILED ___ PASSPORT IS EXPIRED ___ USER: {}",
+                user.getSubject()
             );
             return Optional.empty();
         }
 
         if (!rasPassport.get().getIss().equals(this.rasPassportIssuer)) {
-            logger.error(
+            logWithCode(
+                Level.ERROR, authRequest.get("code"),
                 "validateRASPassport() LOGIN FAILED ___ PASSPORT ISSUER IS NOT CORRECT ___ USER: {} ___ "
-                    + "EXPECTED ISSUER {} ___ ACTUAL ISSUER {} ___ CODE {}",
-                user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss(), authRequest.get("code")
+                    + "EXPECTED ISSUER {} ___ ACTUAL ISSUER {}",
+                user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss()
             );
             return Optional.empty();
         }
@@ -179,7 +179,11 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     }
 
     protected User updateRasUserRoles(String code, User user, Passport rasPassport) {
-        logger.info("RAS PASSPORT FOUND ___ USER: {} ___ PASSPORT: {} ___ CODE {}", user.getSubject(), rasPassport, code);
+        if (logger.isDebugEnabled()) {
+            logger.debug("RAS PASSPORT FOUND ___ USER: {} ___ PASSPORT: {} ___ CODE {}", user.getSubject(), rasPassport, code);
+        } else {
+            logger.info("RAS PASSPORT FOUND ___ USER: {}", user.getSubject());
+        }
         Set<Optional<Ga4ghPassportV1>> ga4ghPassports = rasPassport.getGa4ghPassportV1().stream().map(JWTUtil::parseGa4ghPassportV1)
             .filter(Optional::isPresent).collect(Collectors.toSet());
         Set<RasDbgapPermission> dbgapPermissions = this.rasPassPortService.ga4ghPassportToRasDbgapPermissions(ga4ghPassports);
@@ -204,7 +208,11 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         User currentUser = user.get();
         currentUser.setGeneralMetadata(generateRasUserMetadata(currentUser).toString());
-        logger.info("USER METADATA SUCCESSFULLY ADDED - USER DATA: {}", currentUser.getGeneralMetadata());
+        if (logger.isDebugEnabled()) {
+            logger.debug("USER METADATA SUCCESSFULLY ADDED ___ USER DATA: {}", currentUser.getGeneralMetadata());
+        } else {
+            logger.info("USER METADATA SUCCESSFULLY ADDED ___ USER {}", currentUser.getSubject());
+        }
 
         cacheEvictionService.evictCache(currentUser);
         return Optional.of(currentUser);
@@ -278,7 +286,27 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         String passport = introspectResponse.get("passport_jwt_v11").toString();
         user.setPassport(passport);
         userService.save(user);
-        logger.info("RAS PASSPORT SUCCESSFULLY ADDED TO USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
+        logWithCode(Level.INFO, authRequest.get("code"), "RAS PASSPORT SUCCESSFULLY ADDED TO USER: {}", user.getSubject());
+    }
+
+    /**
+     * Writes one login-flow line at the given level. When DEBUG is enabled the OAuth authorization code is appended so a development
+     * environment can follow a single login across lines. Otherwise the line is written without it, so a production log never carries the
+     * code and no line is duplicated between levels.
+     *
+     * @param level the level the line is written at regardless of whether the code is appended
+     * @param code the authorization code for this login attempt
+     * @param message the message, with a {@code {}} placeholder for each entry of {@code args}
+     * @param args the placeholder values, in order
+     */
+    private void logWithCode(Level level, String code, String message, Object... args) {
+        if (logger.isDebugEnabled()) {
+            Object[] withCode = Arrays.copyOf(args, args.length + 1);
+            withCode[args.length] = code;
+            logger.atLevel(level).log(message + " ___ CODE {}", withCode);
+        } else {
+            logger.atLevel(level).log(message, args);
+        }
     }
 
     @Override

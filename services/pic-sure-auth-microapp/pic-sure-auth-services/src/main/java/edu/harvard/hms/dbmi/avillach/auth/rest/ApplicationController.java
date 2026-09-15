@@ -39,8 +39,9 @@ public class ApplicationController {
         this.applicationService = applicationService;
     }
 
-    @Operation(description = "GET information of one Application with the UUID, no role restrictions")
+    @Operation(description = "GET information of one Application with the UUID, requires SUPER_ADMIN role")
     @AuditEvent(type = "OTHER", action = "application.read")
+    @RolesAllowed({SUPER_ADMIN})
     @GetMapping(value = "/{applicationId}")
     public ResponseEntity<?> getApplicationById(
         @Parameter(required = true, description = "The UUID of the application to fetch information about") @PathVariable(
@@ -53,14 +54,16 @@ public class ApplicationController {
             return PICSUREResponse.protocolError("Application is not found by given Application ID: " + applicationId);
         }
 
-        return PICSUREResponse.success(entityById.get());
+        return PICSUREResponse.success(Application.ApplicationForDisplay.from(entityById.get()));
     }
 
-    @Operation(description = "GET a list of existing Applications, no role restrictions")
+    @Operation(description = "GET a list of existing Applications, requires SUPER_ADMIN role")
     @AuditEvent(type = "OTHER", action = "application.list")
+    @RolesAllowed({SUPER_ADMIN})
     @GetMapping
-    public ResponseEntity<List<Application>> getApplicationAll() {
-        return PICSUREResponse.success(applicationService.getAllApplications());
+    public ResponseEntity<List<Application.ApplicationForDisplay>> getApplicationAll() {
+        return PICSUREResponse
+            .success(applicationService.getAllApplications().stream().map(Application.ApplicationForDisplay::from).toList());
     }
 
     @Operation(description = "POST a list of Applications, requires SUPER_ADMIN role")
