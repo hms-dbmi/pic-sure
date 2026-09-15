@@ -17,12 +17,12 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 
 /**
  * This service's own exception-to-HTTP mapping. {@code pic-sure-spring-commons}' {@code GatewayExceptionAdvice} already maps
- * {@link PicsureException} to its carried status with the {@code {errorType,message,requestId}} body shape -- that handler is duplicated
- * here (identical behavior) rather than relied upon exclusively, because Spring's {@code ExceptionHandlerExceptionResolver} picks the FIRST
+ * {@link PicsureException} to its carried status with the {@code {errorType,message,requestId}} body shape. That handler is duplicated here
+ * (identical behavior) rather than relied upon exclusively, because Spring's {@code ExceptionHandlerExceptionResolver} picks the FIRST
  * {@code @ControllerAdvice} bean (in an unspecified-by-us order) that has ANY matching handler for a given exception, not the most-specific
  * match across all beans. Keeping a self-contained {@link PicsureException} handler in this same class guarantees this advice always
  * resolves the most specific handler for its own {@link #unknown} catch-all, regardless of whichever advice bean Spring happens to consult
- * first -- {@code GatewayExceptionAdvice}'s equivalent handler (if consulted first) produces the identical response.
+ * first. {@code GatewayExceptionAdvice}'s equivalent handler, if consulted first, produces the identical response.
  *
  * <p>Adds three mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 because HPDS is upstream
  * infrastructure, {@link NoResourceFoundException} -&gt; 404 for route absence, and any other unmapped exception -&gt; 500. All share the
@@ -40,8 +40,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HpdsCommunicationException.class)
     public ResponseEntity<Map<String, Object>> hpdsUnavailable(HpdsCommunicationException e) {
-        // The cause is a RestClientException whose message carries the HPDS status and response body (e.g. "403 ...
-        // Resource is locked") -- without logging it here, the 502 is undiagnosable from this service's logs.
+        // The cause is a RestClientException whose message carries the HPDS status and response body. Without logging it
+        // here, the 502 is undiagnosable from this service's logs.
         logger.error("HPDS call failed, returning 502", e);
         return body(HttpStatus.BAD_GATEWAY, "upstream_unavailable", e.getMessage());
     }

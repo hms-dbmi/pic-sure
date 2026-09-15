@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -156,35 +157,32 @@ class QueryServiceTest {
 
     // --- sync ---
 
+    /** HPDS omits the header only for INFO_COLUMN_LISTING, which is a listing rather than a query, so there is nothing to record. */
     @Test
-    void syncFallsBackToPicsureIdWhenNoMetadataHeader() {
-        UUID picsureId = UUID.randomUUID();
-        when(operationsClient.save(any())).thenReturn(picsureId);
+    void syncPersistsNothingWhenHpdsReturnsNoQueryId() {
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
             .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), null));
 
         var resp = service.querySync("auth", req(), "UI");
 
         assertThat(new String(resp.body())).isEqualTo("body");
-        // Persist the generated PIC-SURE id when the response has no resource result header.
-        verify(operationsClient)
-            .update(eq(picsureId), argThat((UpdateQueryRequest u) -> picsureId.toString().equals(u.resourceResultId())));
+        verifyNoInteractions(operationsClient);
     }
 
     @Test
-    void syncUsesMetadataHeaderAsResourceResultIdWhenPresent() {
-        UUID picsureId = UUID.randomUUID();
-        when(operationsClient.save(any())).thenReturn(picsureId);
+    void syncSavesMetadataHeaderAsResourceResultIdInOneWrite() {
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
             .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), "hpds-meta-id"));
 
         service.querySync("auth", req(), "UI");
 
-        verify(operationsClient).update(eq(picsureId), argThat((UpdateQueryRequest u) -> "hpds-meta-id".equals(u.resourceResultId())));
+        verify(operationsClient).save(argThat((SaveQueryRequest s) -> "hpds-meta-id".equals(s.resourceResultId())));
+        verify(operationsClient, never()).update(any(), any());
     }
 
     @Test
-    void syncScopesBeforePersistenceOrHpds() {
+    void syncScopesThenCallsHpdsBeforePersisting() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
         QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent);
         QueryRequest request = req();
@@ -196,8 +194,19 @@ class QueryServiceTest {
 
         InOrder order = inOrder(consent, operationsClient, hpds);
         order.verify(consent).scopeQuery("auth", request, "Bearer caller-token");
-        order.verify(operationsClient).save(any());
         order.verify(hpds).querySync(any(HpdsTarget.class), eq(request), eq("UI"));
+        order.verify(operationsClient).save(any());
+    }
+
+    @Test
+    void syncDoesNotPersistAQueryHpdsRejected() {
+        when(hpds.querySync(any(HpdsTarget.class), any(), any()))
+            .thenThrow(new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Result type DATAFRAME is served asynchronously."));
+
+        assertThatThrownBy(() -> service.querySync("auth", req(), "UI")).isInstanceOf(PicsureException.class)
+            .hasMessageContaining("served asynchronously");
+
+        verify(operationsClient, never()).save(any());
     }
 
     // --- read ops ---
@@ -353,7 +362,7 @@ class QueryServiceTest {
     /**
      * A row written before the federated removal stores a serialized FederatedQueryRequest. queryMetadata must still read it: it parses the
      * stored blob into a plain {@code Map} via {@code MAPPER.readValue(..., Object.class)}, so {@code "@type"} is just another map key and
-     * any value — known, unknown, or garbage — parses fine. That's why this test would still pass if the blob's {@code "@type"} were
+     * any value parses fine, whether known, unknown, or garbage. That's why this test would still pass if the blob's {@code "@type"} were
      * replaced with a nonsense value: it pins the parse path, not the subtype registry. The subtype-registry fallback (via
      * {@code QueryRequest}'s {@code defaultImpl}) is separately pinned by
      * {@code QueryRequestTest.shouldDeserializeRemovedFederatedTypeAsGeneralQueryRequest} in pic-sure-api-model.
