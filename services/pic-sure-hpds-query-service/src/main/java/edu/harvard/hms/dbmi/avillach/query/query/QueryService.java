@@ -118,6 +118,11 @@ public class QueryService {
         return querySync(backend, req, requestSource, null);
     }
 
+    /**
+     * Runs a query on HPDS's synchronous route and records it. HPDS returns its query id in the {@code queryMetadata} header for every
+     * result type it computes as a query; INFO_COLUMN_LISTING is a listing rather than a query and carries no id, so nothing is recorded
+     * for it. An HPDS rejection propagates from {@link ResourceWebClient} before anything is persisted.
+     */
     public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource, String authorizationHeader) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
@@ -126,12 +131,10 @@ public class QueryService {
         HpdsTarget target = selector.select(backend, true); // sync's only remaining caller is the v3 ingress
         String version = CURRENT_VERSION;
 
-        // Persist before calling HPDS so the sync query has a PIC-SURE id.
-        UUID picsureId = operationsClient.save(new SaveQueryRequest(serializeQuery(req), null, null, version, null));
-
         ResourceWebClient.QuerySyncResult down = hpds.querySync(target, req, requestSource);
-        String resourceResultId = down.queryMetadata() != null ? down.queryMetadata() : picsureId.toString();
-        operationsClient.update(picsureId, new UpdateQueryRequest(null, resourceResultId, null));
+        if (down.queryMetadata() != null) {
+            operationsClient.save(new SaveQueryRequest(serializeQuery(req), down.queryMetadata(), null, version, null));
+        }
 
         return new QuerySyncResponse(down.body(), down.queryMetadata());
     }

@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
@@ -409,6 +408,10 @@ public class PicSureService {
         return paginator.paginate(matchingValues, page, size);
     }
 
+    /**
+     * Serves the result types HPDS computes on the request thread. Every other type is backed by an asynchronous job, so the switch default
+     * refuses it with a 400 that points at {@code POST /query}, {@code /query/{id}/status} and {@code /query/{id}/result}.
+     */
     private ResponseEntity _querySync(QueryRequest resultRequest) throws IOException {
         Query incomingQuery;
         incomingQuery = convertIncomingQuery(resultRequest);
@@ -419,24 +422,6 @@ public class PicSureService {
             case INFO_COLUMN_LISTING:
                 List<InfoColumnMeta> infoColumnMeta = abstractProcessor.getInfoStoreMeta();
                 return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(infoColumnMeta);
-
-            case DATAFRAME:
-            case DATAFRAME_TIMESERIES:
-            case PATIENTS:
-                QueryStatus status = query(resultRequest).getBody();
-                while (status.getResourceStatus().equalsIgnoreCase("RUNNING") || status.getResourceStatus().equalsIgnoreCase("PENDING")) {
-                    status = queryStatus(UUID.fromString(status.getResourceResultId()), null);
-                }
-                log.info(status.toString());
-
-                AsyncResult result = queryService.getResultFor(status.getResourceResultId());
-                if (result.getStatus() == AsyncResult.Status.SUCCESS) {
-                    result.getStream().open();
-                    return queryOkResponse(
-                        new String(result.getStream().readAllBytes(), StandardCharsets.UTF_8), incomingQuery, MediaType.TEXT_PLAIN
-                    );
-                }
-                return ResponseEntity.status(400).contentType(MediaType.APPLICATION_JSON).body("Status : " + result.getStatus().name());
 
             case CROSS_COUNT:
                 return queryOkResponse(countProcessor.runCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
@@ -466,8 +451,10 @@ public class PicSureService {
                 return queryOkResponse(String.valueOf(countProcessor.runCounts(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN);
 
             default:
-                // no valid type
-                return ResponseEntity.status(500).build();
+                return ResponseEntity.status(400).contentType(MediaType.TEXT_PLAIN).body(
+                    "Result type " + incomingQuery.getExpectedResultType() + " is served asynchronously. Submit it with POST /query, poll "
+                        + "/query/{resourceQueryId}/status, then collect it from /query/{resourceQueryId}/result."
+                );
         }
     }
 
