@@ -9,12 +9,12 @@ class ObfuscatedCountTest {
 
     @Test
     void carriesFieldsAndValueEquality() {
-        ObfuscatedCount a = new ObfuscatedCount(0, "< 10", 9);
-        ObfuscatedCount b = new ObfuscatedCount(0, "< 10", 9);
+        ObfuscatedCount a = new ObfuscatedCount(0, "< 10", 10);
+        ObfuscatedCount b = new ObfuscatedCount(0, "< 10", 10);
         assertThat(a).isEqualTo(b);
         assertThat(a.display()).isEqualTo("< 10");
         assertThat(a.count()).isZero();
-        assertThat(a.variance()).isEqualTo(9);
+        assertThat(a.variance()).isEqualTo(10);
     }
 
     @Test

@@ -35,10 +35,9 @@ import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
  * dispatch to {@link QueryService}, which persists through operations-service. Audit logging is handled by the gateway.
  *
  * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the complete 10-type allow-list; a type not on it is rejected with a 400
- * rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold and variance
- * obfuscation (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT) versus a raw pass-through (INFO_COLUMN_LISTING,
- * OBSERVATION_COUNT, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, and VCF_EXCERPT). Any divergence here is a
- * privacy regression.
+ * rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold obfuscation
+ * (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT) versus a raw pass-through (INFO_COLUMN_LISTING, OBSERVATION_COUNT,
+ * OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, and VCF_EXCERPT). Any divergence here is a privacy regression.
  */
 @Service
 public class AggregateService {
@@ -145,7 +144,7 @@ public class AggregateService {
         }
     }
 
-    /** No matter the type, fetch the CROSS_COUNT incl. ALL study consents (used for variance + suppression). */
+    /** No matter the type, fetch the CROSS_COUNT incl. ALL study consents (used for suppression). */
     private String getCrossCountForQuery(QueryRequest req, AggregateVariant variant) {
         changeQueryToOpenCrossCount(req, variant);
         return backend.querySync(req, variant).getBody();
@@ -157,7 +156,6 @@ public class AggregateService {
             return null;
         }
         Map<String, String> crossCounts = objectMapper.readValue(crossCountJson, new TypeReference<>() {});
-        int generatedVariance = obfuscation.generateVarianceWithCrossCounts(crossCounts);
 
         if (obfuscation.shouldSuppressContinuousCrossCounts(crossCounts)) {
             return null;
@@ -166,10 +164,10 @@ public class AggregateService {
         if (props.hasVisualization()) {
             Map<String, Map<String, Integer>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
             Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(req, continuous, variant);
-            return objectMapper.writeValueAsString(obfuscation.obfuscateCrossCount(generatedVariance, binned));
+            return objectMapper.writeValueAsString(obfuscation.obfuscateContinuousCrossCount(binned));
         } else {
             Map<String, Map<String, Object>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
-            return objectMapper.writeValueAsString(obfuscation.obfuscateCrossCount(generatedVariance, continuous));
+            return objectMapper.writeValueAsString(obfuscation.obfuscateContinuousCrossCount(continuous));
         }
     }
 

@@ -27,9 +27,27 @@ public class AggregateProperties {
     private final Obfuscation obfuscation = new Obfuscation();
 
     public static class Obfuscation {
+        /** COUNT and CROSS_COUNT. Zero disables obfuscation entirely -- supported, for deployments whose data is open by design. */
         private int threshold = 10; // ApplicationProperties.DEFAULT_OBFUSCATION_THRESHOLD
-        private int variance = 3; // ApplicationProperties.DEFAULT_OBFUSCATION_VARIANCE
-        private String salt; // null/blank => random UUID at startup (ObfuscationService)
+        /**
+         * Multiple of {@link #threshold} used for chart buckets when no explicit chart threshold is configured. Charts expose the shape of
+         * a distribution rather than a single number, so they default to a stricter cutoff than the count path.
+         */
+        private static final int DEFAULT_CHART_THRESHOLD_MULTIPLE = 2;
+
+        /**
+         * CATEGORICAL_CROSS_COUNT chart buckets. Null means "derive from {@link #threshold}", so raising the count threshold tightens
+         * charts with it instead of silently leaving them looser.
+         */
+        private Integer categoricalThreshold;
+        /** CONTINUOUS_CROSS_COUNT chart buckets; same derivation as {@link #categoricalThreshold}. */
+        private Integer continuousThreshold;
+        /**
+         * Ceiling, in raw counts, on the variance a CROSS_COUNT aggregate may accumulate from suppressed descendants. Without it a concept
+         * with many small children -- notably the injected study-consents list, whose parent is every consent path's prefix -- accumulates
+         * a band wide enough to make its own total meaningless. Should be at least as large as {@code threshold}.
+         */
+        private int maxVariance = 50;
 
         public int getThreshold() {
             return threshold;
@@ -39,21 +57,34 @@ public class AggregateProperties {
             this.threshold = t;
         }
 
-        public int getVariance() {
-            return variance;
+        public int getCategoricalThreshold() {
+            return categoricalThreshold != null ? categoricalThreshold : defaultChartThreshold();
         }
 
-        public void setVariance(int v) {
-            this.variance = v;
+        public void setCategoricalThreshold(Integer t) {
+            this.categoricalThreshold = t;
         }
 
-        public String getSalt() {
-            return salt;
+        public int getContinuousThreshold() {
+            return continuousThreshold != null ? continuousThreshold : defaultChartThreshold();
         }
 
-        public void setSalt(String s) {
-            this.salt = s;
+        public void setContinuousThreshold(Integer t) {
+            this.continuousThreshold = t;
         }
+
+        private int defaultChartThreshold() {
+            return threshold * DEFAULT_CHART_THRESHOLD_MULTIPLE;
+        }
+
+        public int getMaxVariance() {
+            return maxVariance;
+        }
+
+        public void setMaxVariance(int v) {
+            this.maxVariance = v;
+        }
+
     }
 
     public String getHpdsOpenUrl() {

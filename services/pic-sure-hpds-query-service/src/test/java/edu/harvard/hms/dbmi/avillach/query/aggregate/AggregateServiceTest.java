@@ -32,9 +32,7 @@ class AggregateServiceTest {
 
     private ObfuscationService obfuscation() {
         AggregateProperties p = new AggregateProperties();
-        p.getObfuscation().setThreshold(10);
-        p.getObfuscation().setVariance(3);
-        p.getObfuscation().setSalt("fixed");
+        p.getObfuscation().setThreshold(5); // what deployed environments are configured for
         return new ObfuscationService(p, new VisualizationFormatter());
     }
 
@@ -73,21 +71,21 @@ class AggregateServiceTest {
     @Test
     void countBelowThresholdIsFloored() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("5"));
+        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("3"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V1);
-        assertThat(out.getBody()).isEqualTo("< 10");
+        assertThat(out.getBody()).isEqualTo("< 5");
     }
 
     @Test
-    void countAtOrAboveThresholdIsVarianceRandomized() {
+    void countAtOrAboveThresholdIsReportedExactly() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("100"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V1);
-        assertThat(out.getBody()).matches("\\d+ ±3");
+        assertThat(out.getBody()).isEqualTo("100");
     }
 
     @Test
@@ -96,13 +94,13 @@ class AggregateServiceTest {
         // changeQueryToOpenCrossCount first searches consents, then the backend returns the cross counts
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any(), eq(AggregateVariant.V1)))
-            .thenReturn(ResponseEntity.ok("{\"\\\\study\\\\a\\\\\":\"5\",\"\\\\study\\\\b\\\\\":\"100\"}"));
+            .thenReturn(ResponseEntity.ok("{\"\\\\study\\\\a\\\\\":\"3\",\"\\\\study\\\\b\\\\\":\"100\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CROSS_COUNT"), AggregateVariant.V1);
         Map<String, String> body = mapper.readValue(out.getBody(), Map.class);
-        assertThat(body.get("\\study\\a\\")).isEqualTo("< 10");
-        assertThat(body.get("\\study\\b\\")).matches("\\d+ ±3");
+        assertThat(body.get("\\study\\a\\")).isEqualTo("< 5");
+        assertThat(body.get("\\study\\b\\")).isEqualTo("100");
     }
 
     @Test
@@ -150,6 +148,7 @@ class AggregateServiceTest {
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CATEGORICAL_CROSS_COUNT"), AggregateVariant.V1);
+        // chart thresholds derive from the count threshold at 2x, so male=5 is suppressed against 10, not 5
         assertThat(out.getBody()).contains("\"male\"").contains("< 10");
     }
 
@@ -158,7 +157,7 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
-            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"< 10\"}"));
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"< 5\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V1);
@@ -172,7 +171,7 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
-            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"5\"}"));
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"3\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V1);
@@ -188,7 +187,8 @@ class AggregateServiceTest {
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V1);
-        assertThat(out.getBody()).contains("\"5\"").matches(s -> s.matches(".*±3.*"));
+        // continuous threshold is 2 x 5 = 10, so raw 100 sits in [100, 110) -> midpoint 105, band 5
+        assertThat(out.getBody()).contains("\"5\"").contains("\"count\":105").contains("\"variance\":5");
     }
 
     @Test

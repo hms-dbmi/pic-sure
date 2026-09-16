@@ -21,9 +21,7 @@ class ObfuscatedCountShapeTest {
     @BeforeEach
     void setup() {
         AggregateProperties props = new AggregateProperties();
-        props.getObfuscation().setThreshold(10);
-        props.getObfuscation().setVariance(3);
-        props.getObfuscation().setSalt("salt-for-test");
+        props.getObfuscation().setThreshold(5);
         subject = new ObfuscationService(props, new VisualizationFormatter());
     }
 
@@ -33,8 +31,8 @@ class ObfuscatedCountShapeTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().count()).isZero();
-        assertThat(result.get().display()).isEqualTo("< 10");
-        assertThat(result.get().variance()).isEqualTo(9);
+        assertThat(result.get().display()).isEqualTo("< 5");
+        assertThat(result.get().variance()).isEqualTo(4);
     }
 
     @Test
@@ -43,37 +41,19 @@ class ObfuscatedCountShapeTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().count()).isZero();
-        assertThat(result.get().display()).isEqualTo("< 10");
-        assertThat(result.get().variance()).isEqualTo(9);
+        assertThat(result.get().display()).isEqualTo("< 5");
+        assertThat(result.get().variance()).isEqualTo(4);
     }
 
     @Test
     void applyThresholdFloor_atOrAboveThreshold_returnsEmpty() {
-        assertThat(subject.applyThresholdFloor(10)).isEmpty();
+        assertThat(subject.applyThresholdFloor(5)).isEmpty();
         assertThat(subject.applyThresholdFloor(999)).isEmpty();
     }
 
     @Test
     void applyThresholdFloor_stringOverload_nonNumeric_returnsEmpty() {
         assertThat(subject.applyThresholdFloor("not-a-number")).isEmpty();
-    }
-
-    @Test
-    void randomize_appliesVariance_returnsNumericDisplayAndVariance() {
-        ObfuscatedCount result = subject.randomize(100, 2);
-
-        assertThat(result.count()).isEqualTo(102);
-        assertThat(result.display()).isEqualTo("102 ±3");
-        assertThat(result.variance()).isEqualTo(3);
-    }
-
-    @Test
-    void randomize_floorsAtThreshold_whenVarianceTakesItBelow() {
-        ObfuscatedCount result = subject.randomize(10, -5);
-
-        assertThat(result.count()).isEqualTo(10);
-        assertThat(result.display()).isEqualTo("10 ±3");
-        assertThat(result.variance()).isEqualTo(3);
     }
 
     @Test
@@ -102,11 +82,11 @@ class ObfuscatedCountShapeTest {
     @Test
     void jsonShape_serializesAsCountDisplayAndVarianceFields() throws JsonProcessingException {
         ObjectMapper mapper = new ObjectMapper();
-        ObfuscatedCount value = new ObfuscatedCount(222, "222 ±3", 3);
+        ObfuscatedCount value = new ObfuscatedCount(222, "222 ±20", 20);
 
         String json = mapper.writeValueAsString(value);
 
-        assertThat(json).isEqualTo("{\"count\":222,\"display\":\"222 ±3\",\"variance\":3}");
+        assertThat(json).isEqualTo("{\"count\":222,\"display\":\"222 ±20\",\"variance\":20}");
 
         ObfuscatedCount roundTripped = mapper.readValue(json, ObfuscatedCount.class);
         assertThat(roundTripped).isEqualTo(value);
@@ -114,7 +94,7 @@ class ObfuscatedCountShapeTest {
 
     /**
      * Exact (authorized) values serialize variance as an explicit null, and below-threshold values pin the {@code {count: 0, variance:
-     * threshold-1}} encoding the frontend's band rule depends on.
+     * threshold}} encoding the frontend's band rule depends on. Variance now reports inherited uncertainty, never a randomization band.
      */
     @Test
     void jsonShape_nullVarianceAndBelowThresholdEncoding() throws JsonProcessingException {
@@ -124,6 +104,6 @@ class ObfuscatedCountShapeTest {
             .isEqualTo("{\"count\":45000,\"display\":\"45000\",\"variance\":null}");
 
         ObfuscatedCount belowThreshold = subject.applyThresholdFloor(3).orElseThrow(IllegalStateException::new);
-        assertThat(mapper.writeValueAsString(belowThreshold)).isEqualTo("{\"count\":0,\"display\":\"< 10\",\"variance\":9}");
+        assertThat(mapper.writeValueAsString(belowThreshold)).isEqualTo("{\"count\":0,\"display\":\"< 5\",\"variance\":4}");
     }
 }

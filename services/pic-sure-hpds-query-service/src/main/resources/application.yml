@@ -57,9 +57,14 @@ aggregate:
   connect-timeout-sec: 10
   read-timeout-sec: 60
   obfuscation:
+    # Set to 0 to disable obfuscation entirely (values pass through exactly).
     threshold: ${AGGREGATE_OBFUSCATION_THRESHOLD:10}
-    variance: ${AGGREGATE_OBFUSCATION_VARIANCE:3}
-    salt: ${AGGREGATE_OBFUSCATION_SALT:}
+    # Chart buckets. Left unset these derive from `threshold` (2x it), so raising the count threshold
+    # tightens charts with it rather than leaving them silently looser.
+    categorical-threshold: ${AGGREGATE_OBFUSCATION_CATEGORICAL_THRESHOLD:}
+    continuous-threshold: ${AGGREGATE_OBFUSCATION_CONTINUOUS_THRESHOLD:}
+    # Ceiling on the variance a CROSS_COUNT aggregate accumulates from suppressed descendants.
+    max-variance: ${AGGREGATE_OBFUSCATION_MAX_VARIANCE:50}
 
 management:
   endpoints:
