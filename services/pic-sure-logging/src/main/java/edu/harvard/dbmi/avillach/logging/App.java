@@ -31,8 +31,10 @@ public class App {
             app.stop();
         }));
 
-        log.info("Audit logging service started: app={}, platform={}, environment={}, hostname={}, port={}, allowedOrigin={}",
-            config.app(), config.platform(), config.environment(), config.hostname(), config.port(), config.allowedOrigin());
+        log.info(
+            "Audit logging service started: app={}, platform={}, environment={}, hostname={}, port={}, allowedOrigin={}", config.app(),
+            config.platform(), config.environment(), config.hostname(), config.port(), config.allowedOrigin()
+        );
     }
 
     public static Javalin createApp(AppConfig config, AtomicBoolean readiness) {
