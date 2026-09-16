@@ -32,6 +32,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     private final boolean isEnabled;
     private final RASPassPortService rasPassPortService;
     private final CacheEvictionService cacheEvictionService;
+    private final SessionService sessionService;
     private Connection rasConnection;
     private final String rasPassportIssuer;
 
@@ -50,7 +51,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         @Value("${ras.okta.idp.provider.uri}") String idp_provider_uri, @Value("${ras.okta.connection.id}") String connectionId,
         @Value("${ras.okta.client.id}") String clientId, @Value("${ras.okta.client.secret}") String clientSecret,
         @Value("${ras.passport.issuer}") String rasPassportIssuer, RASPassPortService rasPassPortService,
-        ConnectionWebService connectionService, CacheEvictionService cacheEvictionService
+        ConnectionWebService connectionService, CacheEvictionService cacheEvictionService, SessionService sessionService
     ) {
         super(idp_provider_uri, clientId, clientSecret, restClientUtil);
 
@@ -66,6 +67,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         this.rasConnection = connectionService.getConnectionByLabel("RAS");
         this.cacheEvictionService = cacheEvictionService;
+        this.sessionService = sessionService;
     }
 
     /**
@@ -111,25 +113,28 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         }
 
         User user = initializedUser.get();
-        Optional<Passport> rasPassport = extractAndVerifyPassport(authRequest, introspectResponse, user);
-        if (rasPassport.isEmpty()) return null;
-        user = updateRasUserRoles(authRequest.get("code"), user, rasPassport.get());
-        setUserPassport(authRequest, introspectResponse, user);
-        UserClaims userClaims = buildUserClaims(user, introspectResponse, rasPassport.get());
+        synchronized (sessionService.sessionLock(user.getSubject())) {
+            cacheEvictionService.evictCache(user);
+            Optional<Passport> rasPassport = extractAndVerifyPassport(authRequest, introspectResponse, user);
+            if (rasPassport.isEmpty()) return null;
+            user = updateRasUserRoles(authRequest.get("code"), user, rasPassport.get());
+            setUserPassport(authRequest, introspectResponse, user);
+            UserClaims userClaims = buildUserClaims(user, introspectResponse, rasPassport.get());
 
-        HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
+            HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
 
-        if (responseMap != null) {
-            responseMap.put("oktaIdToken", idToken);
-            logger.info(
-                "LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
-                user.getSubject(), user.getUuid().toString(),
-                user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                responseMap.get("expirationDate"), authRequest.get("code")
-            );
+            if (responseMap != null) {
+                responseMap.put("oktaIdToken", idToken);
+                logger.info(
+                    "LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
+                    user.getSubject(), user.getUuid().toString(),
+                    user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
+                    responseMap.get("expirationDate"), authRequest.get("code")
+                );
+            }
+
+            return responseMap;
         }
-
-        return responseMap;
     }
 
     private boolean isActiveIntrospectionResponse(JsonNode introspectResponse, String code) {
@@ -206,7 +211,6 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         currentUser.setGeneralMetadata(generateRasUserMetadata(currentUser).toString());
         logger.info("USER METADATA SUCCESSFULLY ADDED - USER DATA: {}", currentUser.getGeneralMetadata());
 
-        cacheEvictionService.evictCache(currentUser);
         return Optional.of(currentUser);
     }
 

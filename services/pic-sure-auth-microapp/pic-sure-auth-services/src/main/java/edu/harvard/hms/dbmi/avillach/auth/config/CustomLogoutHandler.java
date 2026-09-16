@@ -63,15 +63,16 @@ public class CustomLogoutHandler implements LogoutHandler {
         // /logout is permit-listed and LogoutFilter runs ahead of JWTFilter, so this is the only place the logout
         // request's token is checked. Without this, anyone holding a token from a session the user already left
         // could end the session they are using now.
-        if (sessionService.isTokenIssuedBeforeCurrentSession(subject, payload.get().getIssuedAt())) {
-            logger.warn("logout() Ignoring a logout presented with a token from an ended session for subject: {}", subject);
+        boolean ended = sessionService.endSessionIfCurrent(subject, payload.get().get("sid"), () -> {
+            this.cacheEvictionService.evictCache(subject);
+            this.userService.removeUserPassport(subject);
+        });
+        if (!ended) {
+            logger.warn("logout() Ignoring a logout that does not identify the current session for subject: {}", subject);
             return;
         }
 
         logger.info("logout() Logging out User: {}", subject);
-        this.cacheEvictionService.evictCache(subject);
-        this.userService.removeUserPassport(subject);
-
         AuditAttributes.putMetadata(request, "user_subject", subject);
     }
 }
