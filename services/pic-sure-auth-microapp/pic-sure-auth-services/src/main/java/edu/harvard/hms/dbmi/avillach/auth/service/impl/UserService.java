@@ -4,8 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.harvard.hms.dbmi.avillach.auth.config.SelfRegistrationConfig;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.UserRegistrationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
@@ -54,6 +56,7 @@ public class UserService {
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
     private final UserConsentsRepository userConsentsRepository;
     private final FenceMappingUtility fenceMappingUtility;
+    private final SelfRegistrationConfig selfRegistrationConfig;
 
     public long longTermTokenExpirationTime;
 
@@ -66,7 +69,7 @@ public class UserService {
     public UserService(
         BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
         RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
-        @Value("${application.token.expiration.time}") long tokenExpirationTime,
+        SelfRegistrationConfig selfRegistrationConfig, @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
         @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
     ) {
@@ -77,6 +80,7 @@ public class UserService {
         this.roleService = roleService;
         this.userConsentsRepository = userConsentsRepository;
         this.fenceMappingUtility = fenceMappingUtility;
+        this.selfRegistrationConfig = selfRegistrationConfig;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         logger.info("Token Expiration Time : {}", tokenExpirationTime);
         this.jwtUtil = jwtUtil;
@@ -431,6 +435,35 @@ public class UserService {
 
     public User save(User user) {
         return this.userRepository.save(user);
+    }
+
+    /**
+     * Public self-registration. Creates a pending, unmatched user for an admin to review and approve
+     * (mirroring the admin-invite shape created by {@link #addUsers(List)}) - active, roles, connection
+     * and subject are never taken from the caller since this endpoint has no authenticated principal.
+     */
+    @Transactional
+    public User registerUser(UserRegistrationRequest request) {
+        if (StringUtils.isBlank(request.getEmail())) {
+            throw new IllegalArgumentException("Email is required to register.");
+        }
+
+        Connection connection = selfRegistrationConfig.getConnection();
+        if (userRepository.findByEmailAndConnectionId(request.getEmail(), connection.getId()).isPresent()) {
+            throw new IllegalArgumentException("An account with this email already exists.");
+        }
+
+        User newUser = new User();
+        newUser.setEmail(request.getEmail());
+        newUser.setGeneralMetadata(request.getGeneralMetadata());
+        newUser.setConnection(connection);
+        newUser.setRoles(new HashSet<>());
+        newUser.setActive(false);
+        newUser.setMatched(false);
+
+        newUser = save(newUser);
+        logger.info("registerUser() created pending user, uuid: {}, email: {}", newUser.getUuid(), newUser.getEmail());
+        return newUser;
     }
 
     public User findOrCreate(User newUser) {

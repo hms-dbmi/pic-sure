@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.auth.config.SelfRegistrationConfig;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.model.UserRegistrationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -14,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -34,11 +37,13 @@ public class UserController {
     private final static Logger logger = LoggerFactory.getLogger(UserController.class);
 
     private final UserService userService;
+    private final SelfRegistrationConfig selfRegistrationConfig;
 
 
     @Autowired
-    public UserController(UserService userService) {
+    public UserController(UserService userService, SelfRegistrationConfig selfRegistrationConfig) {
         this.userService = userService;
+        this.selfRegistrationConfig = selfRegistrationConfig;
     }
 
     @Operation(description = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
@@ -61,6 +66,18 @@ public class UserController {
     public ResponseEntity<List<User>> getUserAll() {
         List<User> entityAll = this.userService.getAllUsers();
         return PICSUREResponse.success(entityAll);
+    }
+
+    @Operation(description = "Public self-registration; creates an inactive user with no roles, pending admin review")
+    @AuditEvent(type = "OTHER", action = "user.register")
+    @PostMapping(path = "/register", produces = "application/json")
+    public ResponseEntity<?> registerUser(@RequestBody UserRegistrationRequest request) {
+        if (!selfRegistrationConfig.isEnabled()) {
+            return PICSUREResponse.error(HttpStatus.SERVICE_UNAVAILABLE, "Self-registration is not enabled on this deployment", null);
+        }
+
+        this.userService.registerUser(request);
+        return PICSUREResponse.success();
     }
 
     @Operation(description = "POST a list of users, requires ADMIN role")

@@ -1,9 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.hms.dbmi.avillach.auth.config.SelfRegistrationConfig;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.UserRegistrationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
@@ -68,6 +70,8 @@ public class UserServiceTest {
     private UserConsentsRepository userConsentsRepository;
     @MockBean
     private FenceMappingUtility fenceMappingUtility;
+    @MockBean
+    private SelfRegistrationConfig selfRegistrationConfig;
 
     @AfterEach
     void clearSecurityContext() {
@@ -85,7 +89,7 @@ public class UserServiceTest {
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         userService = new UserService(
             basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, fenceMappingUtility,
-            defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null
+            selfRegistrationConfig, defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null
         );
     }
 
@@ -203,6 +207,69 @@ public class UserServiceTest {
             assertEquals(1, result.size());
             assertEquals(user, result.getFirst());
         });
+    }
+
+    @Test
+    public void testRegisterUser() {
+        Connection connection = createTestConnection();
+        when(selfRegistrationConfig.getConnection()).thenReturn(connection);
+        when(userRepository.findByEmailAndConnectionId("new.user@email.com", connection.getId())).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        UserRegistrationRequest request = new UserRegistrationRequest();
+        request.setEmail("new.user@email.com");
+        request.setGeneralMetadata("{\"firstName\":\"New\"}");
+
+        User result = userService.registerUser(request);
+
+        assertNotNull(result);
+        assertEquals("new.user@email.com", result.getEmail());
+        assertEquals(connection, result.getConnection());
+        assertFalse(result.isActive());
+        assertFalse(result.isMatched());
+        assertNull(result.getSubject());
+        assertTrue(result.getRoles().isEmpty());
+    }
+
+    @Test
+    public void testRegisterUser_IgnoresClientSuppliedTrustFields() {
+        // UserRegistrationRequest has no active/roles/connection/subject fields at all, so a malicious
+        // caller cannot influence them through the request body - this test documents that guarantee.
+        Connection connection = createTestConnection();
+        when(selfRegistrationConfig.getConnection()).thenReturn(connection);
+        when(userRepository.findByEmailAndConnectionId(anyString(), anyString())).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        UserRegistrationRequest request = new UserRegistrationRequest();
+        request.setEmail("new.user@email.com");
+
+        User result = userService.registerUser(request);
+
+        assertFalse(result.isActive());
+        assertNotNull(result.getRoles());
+        assertTrue(result.getRoles().isEmpty());
+    }
+
+    @Test
+    public void testRegisterUser_DuplicateEmail() {
+        Connection connection = createTestConnection();
+        when(selfRegistrationConfig.getConnection()).thenReturn(connection);
+        when(userRepository.findByEmailAndConnectionId("existing@email.com", connection.getId()))
+            .thenReturn(Optional.of(createTestUser()));
+
+        UserRegistrationRequest request = new UserRegistrationRequest();
+        request.setEmail("existing@email.com");
+
+        assertThrows(IllegalArgumentException.class, () -> userService.registerUser(request));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    public void testRegisterUser_MissingEmail() {
+        UserRegistrationRequest request = new UserRegistrationRequest();
+
+        assertThrows(IllegalArgumentException.class, () -> userService.registerUser(request));
+        verify(userRepository, never()).save(any(User.class));
     }
 
     @Test
@@ -688,6 +755,14 @@ public class UserServiceTest {
         user.setActive(true);
 
         return user;
+    }
+
+    private Connection createTestConnection() {
+        Connection connection = new Connection();
+        connection.setUuid(UUID.randomUUID());
+        connection.setId("TEST_CONNECTION");
+        connection.setLabel("Test Connection");
+        return connection;
     }
 
     private Role createTestRole() {
