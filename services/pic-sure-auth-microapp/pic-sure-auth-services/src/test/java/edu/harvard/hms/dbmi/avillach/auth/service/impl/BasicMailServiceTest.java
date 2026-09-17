@@ -85,6 +85,16 @@ public class BasicMailServiceTest {
     }
 
     @Test
+    public void testSendNewRegistrationPendingEmail_NoTemplate() throws MessagingException {
+        User user = new User();
+        user.setEmail("pending@test.com");
+        basicMailService.setNewRegistrationTemplate(null);
+
+        basicMailService.sendNewRegistrationPendingEmail(user);
+        verify(mailSender, never()).send(any(MimeMessage.class));
+    }
+
+    @Test
     public void testSendEmail_EmptyParams() throws MessagingException {
         basicMailService.sendEmail(accessTemplate, "", "", new Object());
         verify(mailSender, never()).send(any(MimeMessage.class));

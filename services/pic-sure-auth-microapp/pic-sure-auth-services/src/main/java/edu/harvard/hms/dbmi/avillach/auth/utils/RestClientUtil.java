@@ -54,6 +54,18 @@ public class RestClientUtil {
         return restClient.post().uri(uri).headers(h -> h.addAll(headers)).body(body).retrieve().toEntity(String.class);
     }
 
+    // The ability to set the timeout for a given request: a one-off client with a
+    // dedicated request factory, so the shared client's settings are never mutated.
+    public ResponseEntity<String> retrievePostResponseWithRequestConfiguration(
+        String uri, HttpHeaders headers, String body, int timeoutMs
+    ) throws HttpClientErrorException {
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
+        factory.setConnectTimeout(timeoutMs);
+        factory.setConnectionRequestTimeout(timeoutMs);
+        RestClient timeoutBoundClient = RestClient.builder().requestFactory(factory).build();
+        return timeoutBoundClient.post().uri(uri).headers(h -> h.addAll(headers)).body(body).retrieve().toEntity(String.class);
+    }
+
     public ResponseEntity<String> retrievePostResponse(String uri, HttpEntity<MultiValueMap<String, String>> requestEntity)
         throws HttpClientErrorException {
         return restClient.post().uri(uri).headers(h -> h.addAll(requestEntity.getHeaders())).body(requestEntity.getBody()).retrieve()

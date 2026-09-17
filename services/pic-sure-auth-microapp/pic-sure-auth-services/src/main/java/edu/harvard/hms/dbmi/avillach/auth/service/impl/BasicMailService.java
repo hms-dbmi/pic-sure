@@ -35,6 +35,7 @@ public class BasicMailService implements MailService {
 	private static final MustacheFactory mf = new DefaultMustacheFactory();
 	private Mustache accessTemplate = compileTemplate("accessEmail.mustache");
 	private Mustache deniedTemplate = compileTemplate("deniedAccessEmail.mustache");
+	private Mustache newRegistrationTemplate = compileTemplate("newRegistrationEmail.mustache");
 	private final JavaMailSender mailSender;
 	private final String templatePath;
 	private final String systemName;
@@ -106,6 +107,22 @@ public class BasicMailService implements MailService {
 	}
 
 	/**
+	 * Send email to admins about a new pending self-registration awaiting review.
+	 * @param user The newly registered, pending (inactive, roleless) user
+	 */
+	@Override
+	public void sendNewRegistrationPendingEmail(User user) throws MessagingException {
+		if (newRegistrationTemplate == null) {
+			logger.debug("No template for new registration email, not sending");
+		} else {
+			sendEmail(
+				newRegistrationTemplate, this.adminUsers, "New user registration pending review on " + this.systemName,
+				Map.of("email", user.getEmail() != null ? user.getEmail() : "", "systemName", this.systemName)
+			);
+		}
+	}
+
+	/**
 	 * Generate email from template and send it.
 	 * @param emailTemplate Name of the template.
 	 * @param to Recipients
@@ -135,5 +152,9 @@ public class BasicMailService implements MailService {
 
 	public void setAccessTemplate(Mustache accessTemplate) {
 		this.accessTemplate = accessTemplate;
+	}
+
+	public void setNewRegistrationTemplate(Mustache newRegistrationTemplate) {
+		this.newRegistrationTemplate = newRegistrationTemplate;
 	}
 }

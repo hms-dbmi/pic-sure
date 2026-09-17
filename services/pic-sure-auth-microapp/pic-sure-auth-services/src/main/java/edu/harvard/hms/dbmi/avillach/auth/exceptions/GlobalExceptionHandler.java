@@ -75,6 +75,23 @@ public class GlobalExceptionHandler {
     }
     
     /**
+     * Handles IdpProvisioningException, thrown when creating/disabling a user's account with the
+     * identity provider fails (e.g. the Okta Workflow call errors or times out).
+     *
+     * @param ex The exception
+     * @return A response with HTTP 502 Bad Gateway status and an admin-facing message
+     */
+    @ExceptionHandler(IdpProvisioningException.class)
+    public ResponseEntity<?> handleIdpProvisioning(IdpProvisioningException ex) {
+        logger.error("IdP provisioning failed: {}", ex.getMessage());
+        return PICSUREResponse.error(
+            HttpStatus.BAD_GATEWAY,
+            "Failed to provision user with the identity provider, please retry or contact support",
+            ex.getMessage()
+        );
+    }
+
+    /**
      * Handles IllegalArgumentException, which is commonly used for validation errors.
      * 
      * @param ex The exception

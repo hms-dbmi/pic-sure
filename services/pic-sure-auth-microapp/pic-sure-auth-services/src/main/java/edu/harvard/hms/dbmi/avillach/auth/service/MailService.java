@@ -10,5 +10,7 @@ public interface MailService {
 
     void sendDeniedAccessEmail(JsonNode userInfo) throws MessagingException;
 
+    void sendNewRegistrationPendingEmail(User user) throws MessagingException;
+
     void sendEmail(Mustache emailTemplate, String to, String subject, Object scope) throws MessagingException;
 }

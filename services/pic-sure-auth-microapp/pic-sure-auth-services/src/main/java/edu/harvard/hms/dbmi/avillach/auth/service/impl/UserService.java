@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.harvard.hms.dbmi.avillach.auth.config.OktaProvisioningConfig;
 import edu.harvard.hms.dbmi.avillach.auth.config.SelfRegistrationConfig;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
@@ -57,6 +58,8 @@ public class UserService {
     private final UserConsentsRepository userConsentsRepository;
     private final FenceMappingUtility fenceMappingUtility;
     private final SelfRegistrationConfig selfRegistrationConfig;
+    private final OktaProvisioningConfig oktaProvisioningConfig;
+    private final OktaProvisioningService oktaProvisioningService;
 
     public long longTermTokenExpirationTime;
 
@@ -69,7 +72,8 @@ public class UserService {
     public UserService(
         BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
         RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
-        SelfRegistrationConfig selfRegistrationConfig, @Value("${application.token.expiration.time}") long tokenExpirationTime,
+        SelfRegistrationConfig selfRegistrationConfig, OktaProvisioningConfig oktaProvisioningConfig,
+        OktaProvisioningService oktaProvisioningService, @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
         @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
     ) {
@@ -81,6 +85,8 @@ public class UserService {
         this.userConsentsRepository = userConsentsRepository;
         this.fenceMappingUtility = fenceMappingUtility;
         this.selfRegistrationConfig = selfRegistrationConfig;
+        this.oktaProvisioningConfig = oktaProvisioningConfig;
+        this.oktaProvisioningService = oktaProvisioningService;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         logger.info("Token Expiration Time : {}", tokenExpirationTime);
         this.jwtUtil = jwtUtil;
@@ -295,18 +301,17 @@ public class UserService {
         User currentUser = customUserDetails.getUser();
         checkAssociation(users);
         boolean allowUpdate = true;
+        Map<UUID, User> originalUsersByUuid = new HashMap<>();
         for (User user : users) {
-            Optional<User> originalUser = this.userRepository.findById(user.getUuid());
-            if (!allowUpdateSuperAdminRole(currentUser, user, originalUser.orElse(null))) {
+            User originalUser = this.userRepository.findById(user.getUuid()).orElse(null);
+            originalUsersByUuid.put(user.getUuid(), originalUser);
+            if (!allowUpdateSuperAdminRole(currentUser, user, originalUser)) {
                 allowUpdate = false;
                 break;
             }
         }
 
-        if (allowUpdate) {
-            users = this.userRepository.saveAll(users);
-            return users;
-        } else {
+        if (!allowUpdate) {
             logger.error(
                 "updateUser() user - {} - with roles [{}] - is not allowed to grant or remove " + AuthNaming.AuthRoleNaming.SUPER_ADMIN
                     + " privilege.",
@@ -315,6 +320,34 @@ public class UserService {
             throw new IllegalArgumentException(
                 "Not allowed to update a user with changes associated to " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege."
             );
+        }
+
+        // IdP provisioning happens before the save, and its failure propagates uncaught (rolling back
+        // this @Transactional method) - a user must never be left active locally with no way to log in.
+        for (User user : users) {
+            applyIdpProvisioningTransition(originalUsersByUuid.get(user.getUuid()), user);
+        }
+
+        users = this.userRepository.saveAll(users);
+        return users;
+    }
+
+    /**
+     * Detects an inactive-to-active (approval) or active-to-inactive (deactivation) transition and, if
+     * so configured, provisions/deprovisions the user's account with the IdP.
+     */
+    private void applyIdpProvisioningTransition(User originalUser, User updatedUser) {
+        if (originalUser == null) {
+            return;
+        }
+
+        boolean wasActive = originalUser.isActive();
+        boolean isNowActive = updatedUser.isActive();
+
+        if (!wasActive && isNowActive && oktaProvisioningConfig.isEnabled()) {
+            oktaProvisioningService.provisionUser(updatedUser);
+        } else if (wasActive && !isNowActive && oktaProvisioningConfig.isDeprovisioningEnabled()) {
+            oktaProvisioningService.deprovisionUser(updatedUser);
         }
     }
 
@@ -463,6 +496,14 @@ public class UserService {
 
         newUser = save(newUser);
         logger.info("registerUser() created pending user, uuid: {}, email: {}", newUser.getUuid(), newUser.getEmail());
+
+        try {
+            basicMailService.sendNewRegistrationPendingEmail(newUser);
+        } catch (MessagingException e) {
+            // Registration itself already succeeded - a failed notification shouldn't fail the request.
+            logger.error("Failed to send new-registration notification email for user {}: {}", newUser.getUuid(), e.getMessage());
+        }
+
         return newUser;
     }
 
