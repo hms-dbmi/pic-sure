@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import edu.harvard.hms.dbmi.avillach.auth.config.OktaProvisioningConfig;
 import edu.harvard.hms.dbmi.avillach.auth.config.SelfRegistrationConfig;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
@@ -15,6 +14,7 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.hms.dbmi.avillach.auth.service.IdpProvisioningService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentsBuilder;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
@@ -58,8 +58,7 @@ public class UserService {
     private final UserConsentsRepository userConsentsRepository;
     private final FenceMappingUtility fenceMappingUtility;
     private final SelfRegistrationConfig selfRegistrationConfig;
-    private final OktaProvisioningConfig oktaProvisioningConfig;
-    private final OktaProvisioningService oktaProvisioningService;
+    private final IdpProvisioningRegistry idpProvisioningRegistry;
 
     public long longTermTokenExpirationTime;
 
@@ -72,8 +71,8 @@ public class UserService {
     public UserService(
         BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
         RoleService roleService, UserConsentsRepository userConsentsRepository, FenceMappingUtility fenceMappingUtility,
-        SelfRegistrationConfig selfRegistrationConfig, OktaProvisioningConfig oktaProvisioningConfig,
-        OktaProvisioningService oktaProvisioningService, @Value("${application.token.expiration.time}") long tokenExpirationTime,
+        SelfRegistrationConfig selfRegistrationConfig, IdpProvisioningRegistry idpProvisioningRegistry,
+        @Value("${application.token.expiration.time}") long tokenExpirationTime,
         @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
         @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
     ) {
@@ -85,8 +84,7 @@ public class UserService {
         this.userConsentsRepository = userConsentsRepository;
         this.fenceMappingUtility = fenceMappingUtility;
         this.selfRegistrationConfig = selfRegistrationConfig;
-        this.oktaProvisioningConfig = oktaProvisioningConfig;
-        this.oktaProvisioningService = oktaProvisioningService;
+        this.idpProvisioningRegistry = idpProvisioningRegistry;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         logger.info("Token Expiration Time : {}", tokenExpirationTime);
         this.jwtUtil = jwtUtil;
@@ -333,21 +331,24 @@ public class UserService {
     }
 
     /**
-     * Detects an inactive-to-active (approval) or active-to-inactive (deactivation) transition and, if
-     * so configured, provisions/deprovisions the user's account with the IdP.
+     * Detects an inactive-to-active (approval) or active-to-inactive (deactivation) transition and, if a
+     * provisioning backend applies to this user's connection, provisions/deprovisions their IdP account.
+     * A connection with no matching backend is a no-op, not an error - most connections won't have one.
      */
     private void applyIdpProvisioningTransition(User originalUser, User updatedUser) {
-        if (originalUser == null) {
+        if (originalUser == null || originalUser.isActive() == updatedUser.isActive()) {
             return;
         }
 
-        boolean wasActive = originalUser.isActive();
-        boolean isNowActive = updatedUser.isActive();
+        Optional<IdpProvisioningService> idpProvisioningService = idpProvisioningRegistry.findFor(updatedUser.getConnection());
+        if (idpProvisioningService.isEmpty()) {
+            return;
+        }
 
-        if (!wasActive && isNowActive && oktaProvisioningConfig.isEnabled()) {
-            oktaProvisioningService.provisionUser(updatedUser);
-        } else if (wasActive && !isNowActive && oktaProvisioningConfig.isDeprovisioningEnabled()) {
-            oktaProvisioningService.deprovisionUser(updatedUser);
+        if (updatedUser.isActive()) {
+            idpProvisioningService.get().provisionUser(updatedUser);
+        } else if (idpProvisioningService.get().isDeprovisioningEnabled()) {
+            idpProvisioningService.get().deprovisionUser(updatedUser);
         }
     }
 

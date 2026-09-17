@@ -4,9 +4,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.config.OktaProvisioningConfig;
+import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.IdpProvisioningException;
 import edu.harvard.hms.dbmi.avillach.auth.model.OktaProvisionUserRequest;
+import edu.harvard.hms.dbmi.avillach.auth.service.IdpProvisioningService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -24,7 +26,9 @@ import java.util.Map;
 
 /**
  * <p>Calls the Okta Workflow webhook that provisions/deprovisions a user's Okta account, triggered when
- * an admin approves or deactivates a pic-sure user (see {@link UserService#updateUser(List)}).</p>
+ * an admin approves or deactivates a pic-sure user (see {@link UserService#updateUser(List)}, resolved
+ * via {@link IdpProvisioningRegistry}). Applies only to the single {@link Connection} configured via
+ * {@code OKTA_WORKFLOW_CONNECTION_ID} (see {@link #supports(Connection)}).</p>
  *
  * <p>This is a webhook invocation, not Okta's Management API - the Workflow itself (configured in Okta,
  * outside this codebase) does the actual account creation. Callers must treat a thrown {@link
@@ -32,7 +36,7 @@ import java.util.Map;
  * UserService}, which calls this before saving so a failure here blocks the local activation/deactivation.</p>
  */
 @Service
-public class OktaProvisioningService {
+public class OktaWorkflowProvisioningService implements IdpProvisioningService {
 
     private static final String STATUS_ACTIVE = "active";
     private static final String STATUS_INACTIVE = "inactive";
@@ -44,15 +48,28 @@ public class OktaProvisioningService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
-    public OktaProvisioningService(RestClientUtil restClientUtil, OktaProvisioningConfig oktaProvisioningConfig) {
+    public OktaWorkflowProvisioningService(RestClientUtil restClientUtil, OktaProvisioningConfig oktaProvisioningConfig) {
         this.restClientUtil = restClientUtil;
         this.oktaProvisioningConfig = oktaProvisioningConfig;
     }
 
+    @Override
+    public boolean supports(Connection connection) {
+        return oktaProvisioningConfig.isEnabled() && connection != null && oktaProvisioningConfig.getConnection() != null
+            && oktaProvisioningConfig.getConnection().getId().equals(connection.getId());
+    }
+
+    @Override
+    public boolean isDeprovisioningEnabled() {
+        return oktaProvisioningConfig.isDeprovisioningEnabled();
+    }
+
+    @Override
     public void provisionUser(User user) {
         invokeWorkflow(user, STATUS_ACTIVE);
     }
 
+    @Override
     public void deprovisionUser(User user) {
         invokeWorkflow(user, STATUS_INACTIVE);
     }

@@ -16,6 +16,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -25,11 +26,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class OktaProvisioningServiceTest {
+public class OktaWorkflowProvisioningServiceTest {
 
     private final RestClientUtil restClientUtil = mock(RestClientUtil.class);
     private final OktaProvisioningConfig oktaProvisioningConfig = mock(OktaProvisioningConfig.class);
-    private final OktaProvisioningService service = new OktaProvisioningService(restClientUtil, oktaProvisioningConfig);
+    private final OktaWorkflowProvisioningService service = new OktaWorkflowProvisioningService(restClientUtil, oktaProvisioningConfig);
+
+    private static final Connection CONFIGURED_CONNECTION = new Connection().setId("TEST_CONNECTION").setLabel("Test IdP");
 
     @BeforeEach
     public void setUp() {
@@ -38,6 +41,8 @@ public class OktaProvisioningServiceTest {
         when(oktaProvisioningConfig.getApplicationAccess()).thenReturn("PICSURE");
         when(oktaProvisioningConfig.getDivision()).thenReturn("PICSURE");
         when(oktaProvisioningConfig.getDefaultUserType()).thenReturn("PIC-SURE User");
+        when(oktaProvisioningConfig.isEnabled()).thenReturn(true);
+        when(oktaProvisioningConfig.getConnection()).thenReturn(CONFIGURED_CONNECTION);
 
         when(restClientUtil.retrievePostResponseWithRequestConfiguration(anyString(), any(HttpHeaders.class), anyString(), anyInt()))
             .thenReturn(new ResponseEntity<>("{}", HttpStatus.OK));
@@ -48,9 +53,30 @@ public class OktaProvisioningServiceTest {
         user.setUuid(UUID.randomUUID());
         user.setEmail("new.user@example.com");
         user.setGeneralMetadata("{\"firstName\":\"New\",\"lastName\":\"User\"}");
-        Connection connection = new Connection().setId("TEST_CONNECTION").setLabel("Test IdP");
-        user.setConnection(connection);
+        user.setConnection(new Connection().setId("TEST_CONNECTION").setLabel("Test IdP"));
         return user;
+    }
+
+    @Test
+    public void supports_matchingConnectionId() {
+        assertTrue(service.supports(new Connection().setId("TEST_CONNECTION")));
+    }
+
+    @Test
+    public void supports_nonMatchingConnectionId() {
+        assertFalse(service.supports(new Connection().setId("SOME_OTHER_CONNECTION")));
+    }
+
+    @Test
+    public void supports_nullConnection() {
+        assertFalse(service.supports(null));
+    }
+
+    @Test
+    public void supports_falseWhenDisabled() {
+        when(oktaProvisioningConfig.isEnabled()).thenReturn(false);
+
+        assertFalse(service.supports(new Connection().setId("TEST_CONNECTION")));
     }
 
     @Test

@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import edu.harvard.hms.dbmi.avillach.auth.config.OktaProvisioningConfig;
 import edu.harvard.hms.dbmi.avillach.auth.config.SelfRegistrationConfig;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.IdpProvisioningException;
@@ -12,6 +11,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.IdpProvisioningService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -75,9 +75,7 @@ public class UserServiceTest {
     @MockBean
     private SelfRegistrationConfig selfRegistrationConfig;
     @MockBean
-    private OktaProvisioningConfig oktaProvisioningConfig;
-    @MockBean
-    private OktaProvisioningService oktaProvisioningService;
+    private IdpProvisioningRegistry idpProvisioningRegistry;
 
     @AfterEach
     void clearSecurityContext() {
@@ -95,8 +93,8 @@ public class UserServiceTest {
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         userService = new UserService(
             basicMailService, tosService, userRepository, connectionRepository, roleService, userConsentsRepository, fenceMappingUtility,
-            selfRegistrationConfig, oktaProvisioningConfig, oktaProvisioningService, defaultTokenExpirationTime,
-            longTermTokenExpirationTime, mockJwtUtil, "ADMIN,SUPER_ADMIN", null
+            selfRegistrationConfig, idpProvisioningRegistry, defaultTokenExpirationTime, longTermTokenExpirationTime, mockJwtUtil,
+            "ADMIN,SUPER_ADMIN", null
         );
     }
 
@@ -365,7 +363,29 @@ public class UserServiceTest {
     }
 
     @Test
-    public void testUpdateUser_ActivationTriggersOktaProvisioningWhenEnabled() {
+    public void testUpdateUser_ActivationTriggersProvisioningWhenConnectionSupported() {
+        User originalUser = createTestUser();
+        originalUser.setActive(false);
+        User updatedUser = createTestUser();
+        updatedUser.setUuid(originalUser.getUuid());
+        updatedUser.setActive(true);
+        IdpProvisioningService idpProvisioningService = mock(IdpProvisioningService.class);
+
+        configureUserSecurityContext(createTestUser());
+        when(userRepository.findById(updatedUser.getUuid())).thenReturn(Optional.of(originalUser));
+        when(userRepository.saveAll(List.of(updatedUser))).thenReturn(List.of(updatedUser));
+        when(idpProvisioningRegistry.findFor(updatedUser.getConnection())).thenReturn(Optional.of(idpProvisioningService));
+        doAnswer(invocation -> new HashSet<>(updatedUser.getRoles())).when(roleService).getRolesByIds(anySet());
+
+        List<User> result = userService.updateUser(List.of(updatedUser));
+
+        assertNotNull(result);
+        verify(idpProvisioningService).provisionUser(updatedUser);
+        verify(idpProvisioningService, never()).deprovisionUser(any());
+    }
+
+    @Test
+    public void testUpdateUser_ActivationSkipsProvisioningWhenNoConnectionMatch() {
         User originalUser = createTestUser();
         originalUser.setActive(false);
         User updatedUser = createTestUser();
@@ -375,49 +395,28 @@ public class UserServiceTest {
         configureUserSecurityContext(createTestUser());
         when(userRepository.findById(updatedUser.getUuid())).thenReturn(Optional.of(originalUser));
         when(userRepository.saveAll(List.of(updatedUser))).thenReturn(List.of(updatedUser));
-        when(oktaProvisioningConfig.isEnabled()).thenReturn(true);
+        when(idpProvisioningRegistry.findFor(updatedUser.getConnection())).thenReturn(Optional.empty());
         doAnswer(invocation -> new HashSet<>(updatedUser.getRoles())).when(roleService).getRolesByIds(anySet());
 
         List<User> result = userService.updateUser(List.of(updatedUser));
 
         assertNotNull(result);
-        verify(oktaProvisioningService).provisionUser(updatedUser);
-        verify(oktaProvisioningService, never()).deprovisionUser(any());
     }
 
     @Test
-    public void testUpdateUser_ActivationSkipsOktaProvisioningWhenDisabled() {
+    public void testUpdateUser_ActivationBlockedWhenProvisioningFails() {
         User originalUser = createTestUser();
         originalUser.setActive(false);
         User updatedUser = createTestUser();
         updatedUser.setUuid(originalUser.getUuid());
         updatedUser.setActive(true);
+        IdpProvisioningService idpProvisioningService = mock(IdpProvisioningService.class);
 
         configureUserSecurityContext(createTestUser());
         when(userRepository.findById(updatedUser.getUuid())).thenReturn(Optional.of(originalUser));
-        when(userRepository.saveAll(List.of(updatedUser))).thenReturn(List.of(updatedUser));
-        when(oktaProvisioningConfig.isEnabled()).thenReturn(false);
+        when(idpProvisioningRegistry.findFor(updatedUser.getConnection())).thenReturn(Optional.of(idpProvisioningService));
         doAnswer(invocation -> new HashSet<>(updatedUser.getRoles())).when(roleService).getRolesByIds(anySet());
-
-        List<User> result = userService.updateUser(List.of(updatedUser));
-
-        assertNotNull(result);
-        verify(oktaProvisioningService, never()).provisionUser(any());
-    }
-
-    @Test
-    public void testUpdateUser_ActivationBlockedWhenOktaProvisioningFails() {
-        User originalUser = createTestUser();
-        originalUser.setActive(false);
-        User updatedUser = createTestUser();
-        updatedUser.setUuid(originalUser.getUuid());
-        updatedUser.setActive(true);
-
-        configureUserSecurityContext(createTestUser());
-        when(userRepository.findById(updatedUser.getUuid())).thenReturn(Optional.of(originalUser));
-        when(oktaProvisioningConfig.isEnabled()).thenReturn(true);
-        doAnswer(invocation -> new HashSet<>(updatedUser.getRoles())).when(roleService).getRolesByIds(anySet());
-        doThrow(new IdpProvisioningException("boom")).when(oktaProvisioningService).provisionUser(updatedUser);
+        doThrow(new IdpProvisioningException("boom")).when(idpProvisioningService).provisionUser(updatedUser);
 
         assertThrows(IdpProvisioningException.class, () -> userService.updateUser(List.of(updatedUser)));
         verify(userRepository, never()).saveAll(anyList());
@@ -430,18 +429,20 @@ public class UserServiceTest {
         User updatedUser = createTestUser();
         updatedUser.setUuid(originalUser.getUuid());
         updatedUser.setActive(false);
+        IdpProvisioningService idpProvisioningService = mock(IdpProvisioningService.class);
+        when(idpProvisioningService.isDeprovisioningEnabled()).thenReturn(true);
 
         configureUserSecurityContext(createTestUser());
         when(userRepository.findById(updatedUser.getUuid())).thenReturn(Optional.of(originalUser));
         when(userRepository.saveAll(List.of(updatedUser))).thenReturn(List.of(updatedUser));
-        when(oktaProvisioningConfig.isDeprovisioningEnabled()).thenReturn(true);
+        when(idpProvisioningRegistry.findFor(updatedUser.getConnection())).thenReturn(Optional.of(idpProvisioningService));
         doAnswer(invocation -> new HashSet<>(updatedUser.getRoles())).when(roleService).getRolesByIds(anySet());
 
         List<User> result = userService.updateUser(List.of(updatedUser));
 
         assertNotNull(result);
-        verify(oktaProvisioningService).deprovisionUser(updatedUser);
-        verify(oktaProvisioningService, never()).provisionUser(any());
+        verify(idpProvisioningService).deprovisionUser(updatedUser);
+        verify(idpProvisioningService, never()).provisionUser(any());
     }
 
     @Test
@@ -451,17 +452,19 @@ public class UserServiceTest {
         User updatedUser = createTestUser();
         updatedUser.setUuid(originalUser.getUuid());
         updatedUser.setActive(false);
+        IdpProvisioningService idpProvisioningService = mock(IdpProvisioningService.class);
+        when(idpProvisioningService.isDeprovisioningEnabled()).thenReturn(false);
 
         configureUserSecurityContext(createTestUser());
         when(userRepository.findById(updatedUser.getUuid())).thenReturn(Optional.of(originalUser));
         when(userRepository.saveAll(List.of(updatedUser))).thenReturn(List.of(updatedUser));
-        when(oktaProvisioningConfig.isDeprovisioningEnabled()).thenReturn(false);
+        when(idpProvisioningRegistry.findFor(updatedUser.getConnection())).thenReturn(Optional.of(idpProvisioningService));
         doAnswer(invocation -> new HashSet<>(updatedUser.getRoles())).when(roleService).getRolesByIds(anySet());
 
         List<User> result = userService.updateUser(List.of(updatedUser));
 
         assertNotNull(result);
-        verify(oktaProvisioningService, never()).deprovisionUser(any());
+        verify(idpProvisioningService, never()).deprovisionUser(any());
     }
 
     @Test
