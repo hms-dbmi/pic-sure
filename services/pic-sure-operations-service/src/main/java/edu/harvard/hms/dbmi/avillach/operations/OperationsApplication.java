@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 import org.springframework.context.annotation.Import;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.GatewayExceptionAdvice;
@@ -17,7 +18,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.GatewayExceptionAdvice;
  * <p>{@link GatewayExceptionAdvice} (from {@code pic-sure-spring-commons}) is imported explicitly because it lives outside this
  * application's base package, so component scanning alone would not pick it up.
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @Import(GatewayExceptionAdvice.class)
 public class OperationsApplication {
 
