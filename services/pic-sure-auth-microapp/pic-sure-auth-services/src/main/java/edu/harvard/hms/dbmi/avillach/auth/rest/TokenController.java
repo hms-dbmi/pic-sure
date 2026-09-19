@@ -44,13 +44,17 @@ public class TokenController {
         this.tokenService = tokenService;
     }
 
-    @Operation(description = "Token introspection endpoint for user to retrieve a valid token")
+    @Operation(
+        summary = "Introspect a token on behalf of an application",
+        description = "Token introspection endpoint for user to retrieve a valid token"
+    )
     @AuditEvent(type = "ACCESS", action = "token.introspect")
     @PostMapping(path = "/inspect", produces = "application/json")
     public ResponseEntity<Map<String, Object>> inspectToken(
-            @Parameter(required = true, description = "A JSON object that at least" +
-                    " include a user the token for validation")
-            @RequestBody Map<String, Object> inputMap, HttpServletRequest request) {
+        @Parameter(
+            required = true, description = "A JSON object that at least" + " include a user the token for validation"
+        ) @RequestBody Map<String, Object> inputMap, HttpServletRequest request
+    ) {
         Map<String, Object> resultMap = this.tokenService.inspectToken(inputMap);
 
         boolean active = Boolean.TRUE.equals(resultMap.getOrDefault("active", false));
@@ -81,7 +85,7 @@ public class TokenController {
         return PICSUREResponse.success(resultMap);
     }
 
-    @Operation(description = "To refresh current user's token if the user is an active user")
+    @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user")
     @AuditEvent(type = "ACCESS", action = "token.refresh")
     @GetMapping(path = "/refresh", produces = "application/json")
     public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request) {
@@ -95,7 +99,8 @@ public class TokenController {
 
         if (refreshTokenResp instanceof ValidRefreshToken validRefreshToken) {
             AuditAttributes.putMetadata(request, "token_refresh_result", "success");
-            return PICSUREResponse.success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
+            return PICSUREResponse
+                .success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
         }
 
         return PICSUREResponse.success();
