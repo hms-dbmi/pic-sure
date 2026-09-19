@@ -24,8 +24,10 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * <p>Endpoint for service handling business logic for access rules.</p> <p>Note: Only users with the super admin role can access this
- * endpoint.</p> <p> Path: /accessRule
+ * <p>Endpoint for service handling business logic for access rules.</p>
+ * <p>Note: Only users with the super admin role can access this endpoint.</p>
+ * <p>
+ * Path: /accessRule
  */
 @Tag(name = "Access Rule Management", description = "Access rules that gate what a privilege permits")
 @Controller
