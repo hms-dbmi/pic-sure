@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -45,13 +46,20 @@ public class AuthenticationController {
         this.sessionService = sessionService;
     }
 
-    @Operation(description = "The authentication endpoint for retrieving a valid user token")
+    @Operation(
+        summary = "Exchange an identity provider's code for a PIC-SURE token",
+        description = "The authentication endpoint for retrieving a valid user token"
+    )
+    @ApiResponse(responseCode = "401", description = "The provider rejected the code")
     @AuditEvent(type = "AUTH", action = "auth.login")
     @PostMapping(path = "/authentication/{idpProvider}", consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> authentication(
-            @PathVariable("idpProvider") String idpProvider,
-            @Parameter(required = true, description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI")
-            @RequestBody Map<String, String> authRequest, HttpServletRequest request) throws IOException {
+        @PathVariable("idpProvider") String idpProvider,
+        @Parameter(
+            required = true,
+            description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI"
+        ) @RequestBody Map<String, String> authRequest, HttpServletRequest request
+    ) throws IOException {
         logger.debug("authentication() starting...");
         logger.debug("authentication() requestHost: {}", request.getServerName());
 
