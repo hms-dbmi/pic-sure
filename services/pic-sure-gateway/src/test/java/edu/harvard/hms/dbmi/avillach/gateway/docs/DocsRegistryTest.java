@@ -96,4 +96,9 @@ class DocsRegistryTest {
     void hpdsQueryServiceIsRegistered() throws Exception {
         assertRegistered("hpds-query-service", "HPDS query service", "/v3/api-docs", "/picsure");
     }
+
+    @Test
+    void visualizationIsRegistered() throws Exception {
+        assertRegistered("visualization", "Visualization service", "/v3/api-docs", "/picsure/visualization");
+    }
 }
