@@ -18,6 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * The sole HPDS query lifecycle ingress: {@code /hpds/{backend}/v3/query/**}. {@code {backend}} is {@code auth} or {@code open}, validated
@@ -26,6 +30,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  */
 @RestController
 @RequestMapping("/hpds/{backend}/v3")
+@Tag(name = "Queries", description = "Run, poll, and fetch HPDS queries on the auth or open backend")
 public class HpdsQueryV3Controller {
 
     private final QueryService service;
@@ -35,6 +40,16 @@ public class HpdsQueryV3Controller {
     }
 
     @PostMapping("/query")
+    @Operation(summary = "Submit an asynchronous query")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"),
+            @ApiResponse(responseCode = "400", description = "Unknown backend or missing query data"),
+            @ApiResponse(responseCode = "403", description = "Consent does not permit this query"),
+            @ApiResponse(responseCode = "410", description = "Institutional (federated) queries are no longer supported"),
+            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "503", description = "Backend not configured"),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+    )
     public QueryStatus query(
         @PathVariable("backend") String backend, @RequestBody QueryRequest req,
         @RequestParam(name = "isInstitute", required = false) Boolean isInstitute,
@@ -45,6 +60,15 @@ public class HpdsQueryV3Controller {
     }
 
     @PostMapping("/query/sync")
+    @Operation(summary = "Run a query and return its result inline")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"),
+            @ApiResponse(responseCode = "400", description = "Unknown backend or missing query data"),
+            @ApiResponse(responseCode = "403", description = "Consent does not permit this query"),
+            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "503", description = "Backend not configured"),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+    )
     public ResponseEntity<byte[]> querySync(
         @PathVariable("backend") String backend, @RequestBody QueryRequest req,
         @RequestHeader(name = "request-source", required = false) String requestSource,
@@ -54,11 +78,28 @@ public class HpdsQueryV3Controller {
     }
 
     @PostMapping("/query/{id}/status")
+    @Operation(summary = "Status of a submitted query")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
+            @ApiResponse(responseCode = "404", description = "Unknown query id"),
+            @ApiResponse(responseCode = "502", description = "Query lookup or HPDS call failed"),
+            @ApiResponse(responseCode = "503", description = "Backend not configured"),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+    )
     public QueryStatus status(@PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req) {
         return service.queryStatus(backend, id, req);
     }
 
     @PostMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @Operation(summary = "Result bytes of a completed query")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
+            @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
+            @ApiResponse(responseCode = "404", description = "Unknown query id"),
+            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "503", description = "Backend not configured"),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+    )
     public ResponseEntity<byte[]> result(
         @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
@@ -67,6 +108,15 @@ public class HpdsQueryV3Controller {
     }
 
     @PostMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "A signed URL for a completed query's result")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
+            @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
+            @ApiResponse(responseCode = "404", description = "Unknown query id"),
+            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "503", description = "Backend not configured"),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+    )
     public ResponseEntity<String> signedUrl(
         @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
@@ -75,6 +125,14 @@ public class HpdsQueryV3Controller {
     }
 
     @RequestMapping(path = "/query/{id}/metadata", method = {RequestMethod.GET, RequestMethod.POST})
+    @Operation(summary = "Metadata of a submitted query")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Missing query id"),
+            @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
+            @ApiResponse(responseCode = "404", description = "Unknown query id"),
+            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+    )
     public QueryStatus metadata(
         @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
