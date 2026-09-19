@@ -108,6 +108,10 @@ picsure:
     token: ${PICSURE_APPLICATION_TOKEN:}
     header-name: X-Application-Token
   gateway:
+    docs:
+      enabled: ${GATEWAY_DOCS_ENABLED:true}
+      public-base: ${GATEWAY_DOCS_PUBLIC_BASE:/picsure}
+      services: []
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}
