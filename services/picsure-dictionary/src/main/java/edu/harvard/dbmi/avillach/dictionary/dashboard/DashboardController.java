@@ -2,7 +2,6 @@ package edu.harvard.dbmi.avillach.dictionary.dashboard;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +19,6 @@ public class DashboardController {
     }
 
     @Operation(summary = "The dashboard table")
-    @ApiResponse(responseCode = "200", description = "OK")
     @AuditEvent(type = "OTHER", action = "dashboard.read")
     @GetMapping("/dashboard")
     public ResponseEntity<Dashboard> getDashboard() {
