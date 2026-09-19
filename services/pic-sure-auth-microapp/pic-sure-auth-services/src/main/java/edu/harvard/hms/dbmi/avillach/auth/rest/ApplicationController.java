@@ -7,6 +7,8 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,11 +24,9 @@ import java.util.Optional;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * <p>Endpoint for registering and administering applications.
- * <br>
- * Note: Only users with the super admin role can access this endpoint.</p>
+ * <p>Endpoint for registering and administering applications. <br> Note: Only users with the super admin role can access this endpoint.</p>
  */
-@Tag(name = "Application Management")
+@Tag(name = "Application Management", description = "Registered client applications and their tokens")
 @Controller
 @RequestMapping(value = "/application")
 public class ApplicationController {
@@ -38,12 +38,15 @@ public class ApplicationController {
         this.applicationService = applicationService;
     }
 
-    @Operation(description = "GET information of one Application with the UUID, no role restrictions")
+    @Operation(summary = "Read one application", description = "GET information of one Application with the UUID, no role restrictions")
+    @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "OTHER", action = "application.read")
     @GetMapping(value = "/{applicationId}")
     public ResponseEntity<?> getApplicationById(
-            @Parameter(required = true, description = "The UUID of the application to fetch information about")
-            @PathVariable("applicationId") String applicationId) {
+        @Parameter(required = true, description = "The UUID of the application to fetch information about") @PathVariable(
+            "applicationId"
+        ) String applicationId
+    ) {
         Optional<Application> entityById = applicationService.getApplicationByID(applicationId);
 
         if (entityById.isEmpty()) {
@@ -53,56 +56,75 @@ public class ApplicationController {
         return PICSUREResponse.success(entityById.get());
     }
 
-    @Operation(description = "GET a list of existing Applications, no role restrictions")
+    @Operation(summary = "List every application", description = "GET a list of existing Applications, no role restrictions")
     @AuditEvent(type = "OTHER", action = "application.list")
     @GetMapping
     public ResponseEntity<List<Application>> getApplicationAll() {
         return PICSUREResponse.success(applicationService.getAllApplications());
     }
 
-    @Operation(description = "POST a list of Applications, requires SUPER_ADMIN role")
+    @Operation(summary = "Create applications", description = "POST a list of Applications, requires SUPER_ADMIN role")
     @AuditEvent(type = "ADMIN", action = "application.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Application>> addApplication(
-            @Parameter(required = true, description = "A list of AccessRule in JSON format")
-            @RequestBody List<Application> applications, HttpServletRequest request) {
+        @Parameter(required = true, description = "A list of AccessRule in JSON format") @RequestBody List<Application> applications,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "app_count", String.valueOf(applications.size()));
         applications = applicationService.addNewApplications(applications);
         return PICSUREResponse.success(applications);
     }
 
-    @Operation(description = "Update a list of Applications, will only update the fields listed, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Update the given fields of applications",
+        description = "Update a list of Applications, will only update the fields listed, requires SUPER_ADMIN role"
+    )
     @AuditEvent(type = "ADMIN", action = "application.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Application>> updateApplication(
-            @Parameter(required = true, description = "A list of AccessRule with fields to be updated in JSON format")
-            @RequestBody List<Application> applications, HttpServletRequest request) {
+        @Parameter(
+            required = true, description = "A list of AccessRule with fields to be updated in JSON format"
+        ) @RequestBody List<Application> applications, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "app_count", String.valueOf(applications.size()));
         applications = applicationService.updateApplications(applications);
         return PICSUREResponse.success(applications);
     }
 
-    @Operation(description = "Refresh a token of an application by application Id, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Issue a new token for an application",
+        description = "Refresh a token of an application by application Id, requires SUPER_ADMIN role"
+    )
+    @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "ADMIN", action = "application.token_refresh")
     @RolesAllowed({SUPER_ADMIN})
     @GetMapping(value = "/refreshToken/{applicationId}")
     public ResponseEntity<Map<String, String>> refreshApplicationToken(
-            @Parameter(required = true, description = "A valid application Id")
-            @PathVariable("applicationId") String applicationId, HttpServletRequest request) {
+        @Parameter(required = true, description = "A valid application Id") @PathVariable("applicationId") String applicationId,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "app_id", applicationId);
         String newApplicationToken = applicationService.refreshApplicationToken(applicationId);
         return PICSUREResponse.success(Map.of("token", newApplicationToken));
     }
 
-    @Operation(description = "DELETE an Application by Id only if the application is not associated by others, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Delete an application that nothing references",
+        description = "DELETE an Application by Id only if the application is not associated by others, requires SUPER_ADMIN role"
+    )
+    @ApiResponses(
+        {@ApiResponse(responseCode = "400", description = "No application with that UUID"),
+            @ApiResponse(responseCode = "409", description = "Other entities still reference this application")}
+    )
     @AuditEvent(type = "ADMIN", action = "application.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(value = "/{applicationId}")
     public ResponseEntity<?> removeById(
-            @Parameter(required = true, description = "A valid accessRule Id")
-            @PathVariable("applicationId") final String applicationId, HttpServletRequest request) {
+        @Parameter(required = true, description = "A valid accessRule Id") @PathVariable("applicationId") final String applicationId,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "app_id", applicationId);
         try {
             List<Application> applications = applicationService.deleteApplicationById(applicationId);

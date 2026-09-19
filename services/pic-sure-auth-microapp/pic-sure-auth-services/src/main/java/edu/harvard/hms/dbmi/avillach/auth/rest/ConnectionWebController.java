@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,10 +22,10 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * <p>Endpoint for service handling business logic for connections to PSAMA. <br>
- * Note: Only users with the super admin role can access this endpoint.</p>
+ * <p>Endpoint for service handling business logic for connections to PSAMA. <br> Note: Only users with the super admin role can access this
+ * endpoint.</p>
  */
-@Tag(name = "Connection Management")
+@Tag(name = "Connection Management", description = "Identity provider connections")
 @Controller
 @RequestMapping("/connection")
 public class ConnectionWebController {
@@ -37,13 +38,18 @@ public class ConnectionWebController {
         this.connectionWebService = connectionWebSerivce;
     }
 
-    @Operation(description = "GET information of one Connection with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @Operation(
+        summary = "Read one connection", description = "GET information of one Connection with the UUID, requires ADMIN or SUPER_ADMIN role"
+    )
+    @ApiResponse(responseCode = "400", description = "No connection with that UUID")
     @AuditEvent(type = "OTHER", action = "connection.read")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
     @RolesAllowed({SUPER_ADMIN, ADMIN})
     public ResponseEntity<?> getConnectionById(
-            @Parameter(required = true, description = "The UUID of the Connection to fetch information about")
-            @PathVariable("connectionId") String connectionId) {
+        @Parameter(required = true, description = "The UUID of the Connection to fetch information about") @PathVariable(
+            "connectionId"
+        ) String connectionId
+    ) {
         try {
             Connection connectionById = connectionWebService.getConnectionById(connectionId);
             return ResponseEntity.ok(connectionById);
@@ -52,7 +58,7 @@ public class ConnectionWebController {
         }
     }
 
-    @Operation(description = "GET a list of existing Connection, requires SUPER_ADMIN or ADMIN role")
+    @Operation(summary = "List every connection", description = "GET a list of existing Connection, requires SUPER_ADMIN or ADMIN role")
     @AuditEvent(type = "OTHER", action = "connection.list")
     @GetMapping
     @RolesAllowed({SUPER_ADMIN, ADMIN})
@@ -61,13 +67,14 @@ public class ConnectionWebController {
         return ResponseEntity.ok(allConnections);
     }
 
-    @Operation(description = "POST a list of Connections, requires SUPER_ADMIN role")
+    @Operation(summary = "Create connections", description = "POST a list of Connections, requires SUPER_ADMIN role")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<?> addConnection(
-            @Parameter(required = true, description = "A list of Connections in JSON format")
-            @RequestBody List<Connection> connections, HttpServletRequest request) {
+        @Parameter(required = true, description = "A list of Connections in JSON format") @RequestBody List<Connection> connections,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connections.size()));
         try {
             connections = connectionWebService.addConnection(connections);
@@ -78,25 +85,35 @@ public class ConnectionWebController {
         return PICSUREResponse.success("All connections are added.", connections);
     }
 
-    @Operation(description = "Update a list of Connections, will only update the fields listed, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Update the given fields of connections",
+        description = "Update a list of Connections, will only update the fields listed, requires SUPER_ADMIN role"
+    )
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<List<Connection>> updateConnection(
-            @Parameter(required = true, description = "A list of Connection with fields to be updated in JSON format")
-            @RequestBody List<Connection> connections, HttpServletRequest request) {
+        @Parameter(
+            required = true, description = "A list of Connection with fields to be updated in JSON format"
+        ) @RequestBody List<Connection> connections, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connections.size()));
         List<Connection> responseEntity = connectionWebService.updateConnections(connections);
         return ResponseEntity.ok(responseEntity);
     }
 
-    @Operation(description = "DELETE an Connection by Id only if the Connection is not associated by others, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Delete a connection that nothing references",
+        description = "DELETE an Connection by Id only if the Connection is not associated by others, requires SUPER_ADMIN role"
+    )
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this connection")
     @AuditEvent(type = "ADMIN", action = "connection.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{connectionId}", produces = "application/json")
     public ResponseEntity<List<Connection>> removeById(
-            @Parameter(required = true, description = "A valid connection Id")
-            @PathVariable("connectionId") final String connectionId, HttpServletRequest request) {
+        @Parameter(required = true, description = "A valid connection Id") @PathVariable("connectionId") final String connectionId,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "connection_id", connectionId);
         List<Connection> connections = connectionWebService.removeConnectionById(connectionId);
         return ResponseEntity.ok(connections);
