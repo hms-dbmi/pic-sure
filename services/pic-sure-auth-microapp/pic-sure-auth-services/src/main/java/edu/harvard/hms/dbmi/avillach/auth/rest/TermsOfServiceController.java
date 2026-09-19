@@ -34,7 +34,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 /**
  * <p>Endpoint for creating and updating terms of service entities. Records when a user accepts a term of service.</p>
  */
-@Tag(name = "Terms of Service Management")
+@Tag(name = "Terms of Service Management", description = "Terms of service text and acceptance")
 @Controller
 @RequestMapping("/tos")
 public class TermsOfServiceController {

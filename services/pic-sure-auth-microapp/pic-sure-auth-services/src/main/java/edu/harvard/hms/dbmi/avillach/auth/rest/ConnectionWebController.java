@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,7 +25,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  * <p>Endpoint for service handling business logic for connections to PSAMA. <br> Note: Only users with the super admin role can access this
  * endpoint.</p>
  */
-@Tag(name = "Connection Management")
+@Tag(name = "Connection Management", description = "Identity provider connections")
 @Controller
 @RequestMapping("/connection")
 public class ConnectionWebController {
@@ -40,6 +41,7 @@ public class ConnectionWebController {
     @Operation(
         summary = "Read one connection", description = "GET information of one Connection with the UUID, requires ADMIN or SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "400", description = "No connection with that UUID")
     @AuditEvent(type = "OTHER", action = "connection.read")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
     @RolesAllowed({SUPER_ADMIN, ADMIN})
@@ -104,6 +106,7 @@ public class ConnectionWebController {
         summary = "Delete a connection that nothing references",
         description = "DELETE an Connection by Id only if the Connection is not associated by others, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this connection")
     @AuditEvent(type = "ADMIN", action = "connection.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{connectionId}", produces = "application/json")
