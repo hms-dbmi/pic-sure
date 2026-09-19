@@ -111,7 +111,12 @@ picsure:
     docs:
       enabled: ${GATEWAY_DOCS_ENABLED:true}
       public-base: ${GATEWAY_DOCS_PUBLIC_BASE:/picsure}
-      services: []
+      services:
+        - name: operations
+          title: Operations service
+          url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
+          docs-path: /operations/v3/api-docs
+          public-prefix: ${picsure.gateway.docs.public-base}/operations
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

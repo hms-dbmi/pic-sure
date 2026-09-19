@@ -60,6 +60,16 @@
             <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
             <artifactId>pic-sure-hpds-model</artifactId>
         </dependency>
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-openapi</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-openapi</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <groupId>com.mysql</groupId>
