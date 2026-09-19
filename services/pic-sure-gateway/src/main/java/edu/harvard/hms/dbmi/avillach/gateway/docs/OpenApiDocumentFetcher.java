@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.gateway.docs;
 
 import java.io.IOException;
+import java.net.URI;
 import java.time.Duration;
 
 import org.slf4j.Logger;
@@ -48,8 +49,8 @@ public class OpenApiDocumentFetcher {
     public ObjectNode fetch(DocumentedService service) {
         String body;
         try {
-            body = http.get().uri(service.documentUrl()).accept(MediaType.APPLICATION_JSON).retrieve().body(String.class);
-        } catch (RestClientException ex) {
+            body = http.get().uri(URI.create(service.documentUrl())).accept(MediaType.APPLICATION_JSON).retrieve().body(String.class);
+        } catch (RestClientException | IllegalArgumentException ex) {
             log.warn("OpenAPI document fetch failed for {} at {}: {}", service.name(), service.documentUrl(), ex.getMessage());
             throw new UpstreamUnavailable(service.name(), ex);
         }
@@ -57,9 +58,16 @@ public class OpenApiDocumentFetcher {
         try {
             node = body == null ? null : json.readTree(body);
         } catch (IOException ex) {
+            log.warn(
+                "OpenAPI document fetch failed for {} at {}: response body is not valid JSON: {}", service.name(), service.documentUrl(),
+                ex.getMessage()
+            );
             throw new UpstreamUnavailable(service.name(), ex);
         }
         if (node == null || !node.isObject()) {
+            log.warn(
+                "OpenAPI document fetch failed for {} at {}: upstream body is not a JSON object", service.name(), service.documentUrl()
+            );
             throw new UpstreamUnavailable(service.name(), "upstream body is not a JSON object");
         }
         return (ObjectNode) node;

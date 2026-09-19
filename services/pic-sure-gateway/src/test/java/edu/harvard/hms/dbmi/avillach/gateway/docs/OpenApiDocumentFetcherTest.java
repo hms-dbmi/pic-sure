@@ -77,4 +77,10 @@ class OpenApiDocumentFetcherTest {
         upstream.stubFor(get(urlEqualTo("/demo/v3/api-docs")).willReturn(aResponse().withStatus(200).withBody("not json")));
         assertThatThrownBy(() -> fetcher.fetch(service)).isInstanceOf(UpstreamUnavailable.class);
     }
+
+    @Test
+    void uriTemplateCharactersInTheDocsPathDoNotThrowIllegalArgumentException() {
+        DocumentedService templated = new DocumentedService("demo", "Demo", upstream.baseUrl(), "/v3/api-docs/{x}", "/picsure/demo");
+        assertThatThrownBy(() -> fetcher.fetch(templated)).isInstanceOf(UpstreamUnavailable.class);
+    }
 }

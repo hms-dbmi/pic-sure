@@ -35,7 +35,7 @@ class DocsDisabledTest {
 
     @Test
     void everyConsolePathIs404() {
-        for (String path : List.of("/openapi", "/openapi/demo", "/swagger-ui", "/swagger-ui/swagger-ui.css")) {
+        for (String path : List.of("/openapi", "/openapi/demo", "/swagger-ui", "/swagger-ui/", "/swagger-ui/swagger-ui.css")) {
             assertThat(rest.getForEntity("http://127.0.0.1:" + port + path, String.class).getStatusCode().value()).as(path).isEqualTo(404);
         }
     }
