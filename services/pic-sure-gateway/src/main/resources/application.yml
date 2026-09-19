@@ -132,6 +132,11 @@ picsure:
           url: ${VISUALIZATION_URL:http://visualization}
           docs-path: /v3/api-docs
           public-prefix: ${picsure.gateway.docs.public-base}/visualization
+        - name: psama
+          title: PSAMA
+          url: ${PSAMA_URL:http://psama:8090}
+          docs-path: /auth/v3/api-docs
+          public-prefix: /psama
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}
