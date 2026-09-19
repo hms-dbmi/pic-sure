@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PIC-SURE API</title>
+  <link rel="stylesheet" href="swagger-ui/swagger-ui.css">
+  <link rel="stylesheet" href="swagger-ui/index.css">
+  <link rel="icon" type="image/png" href="swagger-ui/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="swagger-ui/favicon-16x16.png" sizes="16x16">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="swagger-ui/swagger-ui-bundle.js"></script>
+  <script src="swagger-ui/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function () {
+      var mount = document.getElementById('swagger-ui');
+      fetch('openapi', { headers: { Accept: 'application/json' } })
+        .then(function (response) {
+          if (!response.ok) { throw new Error('index responded ' + response.status); }
+          return response.json();
+        })
+        .then(function (index) {
+          if (index.length === 0) {
+            mount.textContent = 'No API documents are registered on this gateway.';
+            return;
+          }
+          window.ui = SwaggerUIBundle({
+            urls: index.map(function (entry) { return { url: entry.url, name: entry.title }; }),
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            queryConfigEnabled: false,
+            presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+            plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+            layout: 'StandaloneLayout'
+          });
+        })
+        .catch(function (error) {
+          mount.textContent = 'The API document index could not be loaded: ' + error.message;
+        });
+    };
+  </script>
+</body>
+</html>
