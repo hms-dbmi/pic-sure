@@ -45,7 +45,7 @@
                         </goals>
                         <configuration>
                             <includes>
-                                <include>**/OpenApiDocumentAssertions*.class</include>
+                                <include>**/OpenApiDocumentAssertions.class</include>
                             </includes>
                         </configuration>
                     </execution>
