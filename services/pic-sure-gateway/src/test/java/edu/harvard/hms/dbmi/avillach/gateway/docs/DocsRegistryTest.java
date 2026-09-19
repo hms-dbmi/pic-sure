@@ -101,4 +101,9 @@ class DocsRegistryTest {
     void visualizationIsRegistered() throws Exception {
         assertRegistered("visualization", "Visualization service", "/v3/api-docs", "/picsure/visualization");
     }
+
+    @Test
+    void psamaIsRegistered() throws Exception {
+        assertRegistered("psama", "PSAMA", "/auth/v3/api-docs", "/psama");
+    }
 }
