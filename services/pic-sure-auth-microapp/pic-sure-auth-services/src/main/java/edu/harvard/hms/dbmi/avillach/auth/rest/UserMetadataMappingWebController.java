@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,7 +26,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  * <p>Endpoint for service handling business logic for user metadata mapping.</p> <p><Note: Only users with the super admin role can access
  * this endpoint.</p>
  */
-@Tag(name = "User Metadata Mapping Management")
+@Tag(name = "User Metadata Mapping Management", description = "Mappings from identity provider claims to user metadata")
 @Controller
 @RequestMapping("/mapping")
 public class UserMetadataMappingWebController {
@@ -105,6 +106,7 @@ public class UserMetadataMappingWebController {
         summary = "Delete a mapping that nothing references",
         description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this mapping")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{mappingId}", produces = "application/json")

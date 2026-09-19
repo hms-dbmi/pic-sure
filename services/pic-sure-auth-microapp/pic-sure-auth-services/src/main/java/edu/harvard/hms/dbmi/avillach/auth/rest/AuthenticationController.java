@@ -9,6 +9,7 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -30,7 +31,7 @@ import java.util.Map;
 /**
  * <p>The authentication endpoint for PSAMA.</p>
  */
-@Tag(name = "Authentication")
+@Tag(name = "Authentication", description = "Exchange an identity provider login for a PIC-SURE token")
 @Controller
 @RequestMapping("/")
 public class AuthenticationController {
@@ -50,7 +51,10 @@ public class AuthenticationController {
         summary = "Exchange an identity provider's code for a PIC-SURE token",
         description = "The authentication endpoint for retrieving a valid user token"
     )
-    @ApiResponse(responseCode = "401", description = "The provider rejected the code")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "400", description = "Unknown identity provider or empty request"),
+            @ApiResponse(responseCode = "401", description = "The provider rejected the code")}
+    )
     @AuditEvent(type = "AUTH", action = "auth.login")
     @PostMapping(path = "/authentication/{idpProvider}", consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> authentication(

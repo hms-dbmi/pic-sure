@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +27,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 /**
  * <p>Endpoint for service handling business logic for users.</p>
  */
-@Tag(name = "User Management")
+@Tag(name = "User Management", description = "Users, their roles, and the caller's own profile")
 @Controller
 @RequestMapping("/user")
 public class UserController {
@@ -42,6 +43,7 @@ public class UserController {
     }
 
     @Operation(summary = "Read one user", description = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
+    @ApiResponse(responseCode = "400", description = "No user with that UUID")
     @AuditEvent(type = "OTHER", action = "user.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{userId}", produces = "application/json")

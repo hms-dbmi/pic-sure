@@ -30,7 +30,7 @@ import java.util.Map;
  * authorization {@link AuthorizationService} at the access rule level, but this endpoint handles token validation and pre-check at the
  * privilege level.</p>
  */
-@Tag(name = "Token Management")
+@Tag(name = "Token Management", description = "Token introspection and refresh")
 @Controller
 @RequestMapping("/token")
 public class TokenController {

@@ -6,6 +6,7 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.*;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +27,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  * <p>Endpoint for service handling business logic for access rules.</p> <p>Note: Only users with the super admin role can access this
  * endpoint.</p> <p> Path: /accessRule
  */
-@Tag(name = "Access Rule Management")
+@Tag(name = "Access Rule Management", description = "Access rules that gate what a privilege permits")
 @Controller
 @RequestMapping(value = "/accessRule")
 public class AccessRuleController {
@@ -105,6 +106,7 @@ public class AccessRuleController {
         summary = "Delete an access rule that nothing references",
         description = "DELETE an AccessRule by Id only if the accessRule is not associated by others, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this access rule")
     @AuditEvent(type = "ADMIN", action = "access_rule.delete")
     @RolesAllowed(SUPER_ADMIN)
     @DeleteMapping(path = "/{accessRuleId}")

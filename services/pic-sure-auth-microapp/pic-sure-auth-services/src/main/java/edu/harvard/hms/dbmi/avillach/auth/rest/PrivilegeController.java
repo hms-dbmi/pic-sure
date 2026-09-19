@@ -8,6 +8,7 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +24,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  * <p>Endpoint for service handling business logic for privileges. <br>Note: Only users with the super admin role can access this
  * endpoint.</p>
  */
-@Tag(name = "Privilege Management")
+@Tag(name = "Privilege Management", description = "Privileges granted through roles")
 @RestController
 @RequestMapping("/privilege")
 public class PrivilegeController {
@@ -38,6 +39,7 @@ public class PrivilegeController {
     @Operation(
         summary = "Read one privilege", description = "GET information of one Privilege with the UUID, requires ADMIN or SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "400", description = "No privilege with that UUID")
     @AuditEvent(type = "OTHER", action = "privilege.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{privilegeId}", produces = "application/json")
@@ -96,6 +98,7 @@ public class PrivilegeController {
         summary = "Delete a privilege that nothing references",
         description = "DELETE an privilege by Id only if the privilege is not associated by others, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this privilege")
     @AuditEvent(type = "ADMIN", action = "privilege.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{privilegeId}", produces = "application/json")

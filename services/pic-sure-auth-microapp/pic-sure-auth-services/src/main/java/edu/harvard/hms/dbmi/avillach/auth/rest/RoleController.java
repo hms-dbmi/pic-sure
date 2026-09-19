@@ -7,6 +7,8 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +28,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  * <p>Endpoint for service handling business logic for user roles. <br>Note: Users with admin level access can view roles, but only super
  * admin users can modify them.</p>
  */
-@Tag(name = "Role Management")
+@Tag(name = "Role Management", description = "Roles that bundle privileges for users")
 @Controller
 @RequestMapping("/role")
 public class RoleController {
@@ -39,6 +41,7 @@ public class RoleController {
     }
 
     @Operation(summary = "Read one role", description = "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @ApiResponse(responseCode = "400", description = "No role with that UUID")
     @AuditEvent(type = "OTHER", action = "role.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json", path = "/{roleId}")
@@ -97,6 +100,10 @@ public class RoleController {
     @Operation(
         summary = "Delete a role that nothing references",
         description = "DELETE an Role by Id only if the Role is not associated by others, requires SUPER_ADMIN role"
+    )
+    @ApiResponses(
+        {@ApiResponse(responseCode = "400", description = "No role with that UUID"),
+            @ApiResponse(responseCode = "409", description = "Other entities still reference this role")}
     )
     @AuditEvent(type = "ADMIN", action = "role.delete")
     @RolesAllowed({SUPER_ADMIN})
