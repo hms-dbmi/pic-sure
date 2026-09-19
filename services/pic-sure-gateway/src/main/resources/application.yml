@@ -117,6 +117,11 @@ picsure:
           url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
           docs-path: /operations/v3/api-docs
           public-prefix: ${picsure.gateway.docs.public-base}/operations
+        - name: dictionary
+          title: Dictionary
+          url: ${DICTIONARY_URL:http://dictionary-api}
+          docs-path: /v3/api-docs
+          public-prefix: ${picsure.gateway.docs.public-base}/dictionary
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

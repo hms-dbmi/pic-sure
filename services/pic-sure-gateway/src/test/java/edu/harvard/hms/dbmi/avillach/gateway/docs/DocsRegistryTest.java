@@ -86,4 +86,9 @@ class DocsRegistryTest {
     void operationsIsRegistered() throws Exception {
         assertRegistered("operations", "Operations service", "/operations/v3/api-docs", "/picsure/operations");
     }
+
+    @Test
+    void dictionaryIsRegistered() throws Exception {
+        assertRegistered("dictionary", "Dictionary", "/v3/api-docs", "/picsure/dictionary");
+    }
 }
