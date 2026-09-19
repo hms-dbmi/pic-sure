@@ -23,8 +23,8 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * <p>Endpoint for service handling business logic for user metadata mapping.</p> <p><Note: Only users with the super admin role can access
- * this endpoint.</p>
+ * <p>Endpoint for service handling business logic for user metadata mapping.</p>
+ * <p><Note: Only users with the super admin role can access this endpoint.</p>
  */
 @Tag(name = "User Metadata Mapping Management", description = "Mappings from identity provider claims to user metadata")
 @Controller
