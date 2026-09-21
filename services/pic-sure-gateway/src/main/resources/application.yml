@@ -7,7 +7,7 @@ spring:
         webmvc:
           routes:
             # StripPrefix=1 drops the leading /logging segment because the logging service
-            # serves its API at root (/audit, /health, /info). /logging is on the
+            # serves its API at root (/audit, /health). /logging is on the
             # introspection allow-list, so it is not authenticated.
             # /dictionary and /visualization are AUTHENTICATED (not on the
             # allow-list): the introspection filter runs on the pre-strip public path

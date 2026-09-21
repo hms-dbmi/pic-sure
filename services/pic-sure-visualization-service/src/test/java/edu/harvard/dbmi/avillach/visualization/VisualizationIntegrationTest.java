@@ -204,16 +204,6 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void info_returnsResourceInfo() throws Exception {
-        MvcResult result =
-            mockMvc.perform(post("/info").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk()).andReturn();
-
-        String content = result.getResponse().getContentAsString();
-        assertTrue(content.contains("PIC-SURE Visualization Service"));
-        assertTrue(content.contains("queryFormats"));
-    }
-
-    @Test
     void queryFormat_returnsDistributionFormat() throws Exception {
         MvcResult result = mockMvc.perform(post("/query/format").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isOk()).andReturn();
