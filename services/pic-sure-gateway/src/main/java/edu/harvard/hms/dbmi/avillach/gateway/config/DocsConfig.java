@@ -24,7 +24,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.health.DownstreamHealthProperties;
  * Wires the docs console behind the {@code GATEWAY_DOCS_ENABLED} kill switch ({@code picsure.gateway.docs.enabled}, default true). When the
  * switch is off none of these beans exist and every {@code /openapi} and {@code /swagger-ui} path falls through to the gateway's 404, since
  * it has no catch-all route. Both router functions sit at highest precedence, the {@link HealthConfig} pattern, so they are tried before
- * the proxy routes.
+ * the proxy routes. {@code GATEWAY_DOCS_UI_ENABLED=false} removes only the three Swagger UI beans; the documents keep serving.
  */
 @Configuration
 @ConditionalOnProperty(prefix = "picsure.gateway.docs", name = "enabled", matchIfMissing = true)
@@ -42,11 +42,13 @@ public class DocsConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.docs", name = "ui-enabled", matchIfMissing = true)
     public SwaggerUiAssets swaggerUiAssets() {
         return new SwaggerUiAssets();
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.docs", name = "ui-enabled", matchIfMissing = true)
     public SwaggerUiHandlers swaggerUiHandlers(SwaggerUiAssets assets, ObjectMapper json) {
         return new SwaggerUiHandlers(assets, json);
     }
@@ -60,6 +62,7 @@ public class DocsConfig {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
+    @ConditionalOnProperty(prefix = "picsure.gateway.docs", name = "ui-enabled", matchIfMissing = true)
     public RouterFunction<ServerResponse> swaggerUiRoutes(SwaggerUiHandlers handlers) {
         return RouterFunctions.route(RequestPredicates.GET("/swagger-ui"), handlers::viewer)
             .andRoute(RequestPredicates.GET("/swagger-ui/"), handlers::viewerTrailingSlash)
