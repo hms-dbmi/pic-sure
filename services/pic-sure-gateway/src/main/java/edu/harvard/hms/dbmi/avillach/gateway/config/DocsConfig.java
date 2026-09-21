@@ -17,6 +17,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.docs.DocsHandlers;
 import edu.harvard.hms.dbmi.avillach.gateway.docs.DocsProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.docs.OpenApiDocumentFetcher;
 import edu.harvard.hms.dbmi.avillach.gateway.docs.SwaggerUiAssets;
+import edu.harvard.hms.dbmi.avillach.gateway.docs.SwaggerUiHandlers;
 import edu.harvard.hms.dbmi.avillach.gateway.health.DownstreamHealthProperties;
 
 /**
@@ -36,13 +37,18 @@ public class DocsConfig {
     }
 
     @Bean
+    public DocsHandlers docsHandlers(DocsProperties props, OpenApiDocumentFetcher fetcher, ObjectMapper json) {
+        return new DocsHandlers(props, fetcher, json);
+    }
+
+    @Bean
     public SwaggerUiAssets swaggerUiAssets() {
         return new SwaggerUiAssets();
     }
 
     @Bean
-    public DocsHandlers docsHandlers(DocsProperties props, OpenApiDocumentFetcher fetcher, SwaggerUiAssets assets, ObjectMapper json) {
-        return new DocsHandlers(props, fetcher, assets, json);
+    public SwaggerUiHandlers swaggerUiHandlers(SwaggerUiAssets assets, ObjectMapper json) {
+        return new SwaggerUiHandlers(assets, json);
     }
 
     @Bean
@@ -54,7 +60,7 @@ public class DocsConfig {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
-    public RouterFunction<ServerResponse> swaggerUiRoutes(DocsHandlers handlers) {
+    public RouterFunction<ServerResponse> swaggerUiRoutes(SwaggerUiHandlers handlers) {
         return RouterFunctions.route(RequestPredicates.GET("/swagger-ui"), handlers::viewer)
             .andRoute(RequestPredicates.GET("/swagger-ui/"), handlers::viewerTrailingSlash)
             .andRoute(RequestPredicates.GET("/swagger-ui/{asset}"), handlers::asset);

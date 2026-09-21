@@ -20,8 +20,7 @@ class DocsHandlersTest {
     void emptyRegistryIndexIsAnEmptyArray() throws Exception {
         ObjectMapper json = new ObjectMapper();
         DocsHandlers handlers = new DocsHandlers(
-            new DocsProperties(true, "/picsure", List.of()), OpenApiDocumentFetcher.withTimeouts(100, 100, json), new SwaggerUiAssets(),
-            json
+            new DocsProperties(true, "/picsure", List.of()), OpenApiDocumentFetcher.withTimeouts(100, 100, json), json
         );
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/openapi");
         MockHttpServletResponse response = new MockHttpServletResponse();
