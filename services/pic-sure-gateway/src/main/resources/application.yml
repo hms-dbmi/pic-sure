@@ -7,10 +7,10 @@ spring:
         webmvc:
           routes:
             # StripPrefix=1 drops the leading /logging segment because the logging service
-            # serves its API at root (/audit, /health, /info). /logging is on the
-            # introspection allow-list, so it is not authenticated.
-            # /dictionary and /visualization are AUTHENTICATED (not on the
-            # allow-list): the introspection filter runs on the pre-strip public path
+            # serves its API at root (/audit, /health, /info). /logging is a
+            # public-routes prefix entry, so it is not authenticated.
+            # /dictionary and /visualization are AUTHENTICATED (not in
+            # public-routes): the introspection filter runs on the pre-strip public path
             # (Target Service = /dictionary/x). PSAMA access rules authorize
             # ^/dictionary(/.*)?$ and ^/visualization(/.*)?$.
             # Same StripPrefix=1 as /logging (dictionary-api and the visualization
@@ -41,7 +41,7 @@ spring:
             # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
             # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
             # /operations/** is served by operations-service, the sole DB owner.
-            # /operations/configuration/** carries a public-GET carve-out in PublicEndpointPolicy, shared by
+            # /operations/configuration/** carries a public-GET carve-out in public-routes below, shared by
             # both authentication filters — everything else (POST/PATCH/DELETE, all
             # /operations/configuration/admin/**, and all of /operations/dataset/**) is introspected as usual by the
             # always-on auth chain.
@@ -114,10 +114,27 @@ picsure:
       introspection-url: ${TOKEN_INTROSPECTION_URL:}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}
       service-token: ${TOKEN_INTROSPECTION_TOKEN:}
-      # Allowed list of prefixes that do not require authentication. The logging service has its own access key
-      # for security. The other paths are publicly available.
-      allow-list-prefixes:
-        - /logging
-        - /actuator
-        - /openapi
-        - /swagger-ui
+      # Every route the gateway serves without a token. First match in list order decides; anything unmatched is
+      # introspected. match is one of exact, prefix (segment boundary), suffix, or single-segment-child (the path
+      # itself or exactly one further segment not in deny). An empty methods list means any method. A malformed
+      # entry fails startup. PublicRoutesBindingTest pins this block, so editing it means editing that test.
+      # The logging service has its own access key; the other paths are publicly available.
+      public-routes:
+        - path: /system/status
+          match: exact
+          methods: [GET]
+          audit-username: SYSTEM_MONITOR
+        - path: /openapi.json
+          match: suffix
+        - path: /operations/configuration
+          match: single-segment-child
+          methods: [GET]
+          deny: [admin]
+        - path: /logging
+          match: prefix
+        - path: /actuator
+          match: prefix
+        - path: /openapi
+          match: prefix
+        - path: /swagger-ui
+          match: prefix

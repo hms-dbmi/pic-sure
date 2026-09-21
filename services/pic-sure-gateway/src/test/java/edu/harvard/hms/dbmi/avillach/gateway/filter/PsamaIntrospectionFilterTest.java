@@ -24,6 +24,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ShippedPublicRoutes;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -31,9 +32,7 @@ import jakarta.servlet.http.HttpServletResponse;
 class PsamaIntrospectionFilterTest {
 
     private PsamaIntrospectionFilter filter(PsamaClient client, AuditContext audit) {
-        return new PsamaIntrospectionFilter(
-            client, audit, new PublicEndpointPolicy(List.of("/actuator", "/openapi", "/swagger-ui", "/logging"))
-        );
+        return new PsamaIntrospectionFilter(client, audit, new PublicEndpointPolicy(ShippedPublicRoutes.routes()));
     }
 
     @Test
