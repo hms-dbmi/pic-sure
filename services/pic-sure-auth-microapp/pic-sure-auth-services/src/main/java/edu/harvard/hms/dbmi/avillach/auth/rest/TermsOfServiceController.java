@@ -11,6 +11,7 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -50,6 +51,7 @@ public class TermsOfServiceController {
     }
 
     @Operation(summary = "The current terms of service as HTML", description = "GET the latest Terms of Service")
+    @ApiResponse(responseCode = "200", description = "The current terms of service as HTML")
     @AuditEvent(type = "ACCESS", action = "tos.view")
     @GetMapping(path = "/latest", produces = "text/html")
     public ResponseEntity<String> getLatestTermsOfService() {
@@ -58,6 +60,7 @@ public class TermsOfServiceController {
     }
 
     @Operation(summary = "Replace the terms of service", description = "Update the Terms of Service html body")
+    @ApiResponse(responseCode = "200", description = "The stored terms of service")
     @AuditEvent(type = "ADMIN", action = "tos.update")
     @RolesAllowed({AuthNaming.AuthRoleNaming.ADMIN, SUPER_ADMIN})
     @PostMapping(path = "/update", consumes = "text/html", produces = "application/json")
@@ -79,6 +82,7 @@ public class TermsOfServiceController {
     @Operation(
         summary = "Whether the caller has accepted the current terms", description = "GET if current user has acceptted his TOS or not"
     )
+    @ApiResponse(responseCode = "200", description = "True when the caller has accepted the current terms")
     @AuditEvent(type = "ACCESS", action = "tos.view")
     @GetMapping(produces = "text/plain")
     public ResponseEntity<Boolean> hasUserAcceptedTOS() {
@@ -92,6 +96,7 @@ public class TermsOfServiceController {
     @Operation(
         summary = "Accept the current terms for the caller", description = "Endpoint for current user to accept his terms of service"
     )
+    @ApiResponse(responseCode = "200", description = "The caller's acceptance record")
     @AuditEvent(type = "ACCESS", action = "tos.accept")
     @PostMapping(path = "/accept", produces = "application/json")
     public ResponseEntity<?> acceptTermsOfService(HttpServletRequest request) {

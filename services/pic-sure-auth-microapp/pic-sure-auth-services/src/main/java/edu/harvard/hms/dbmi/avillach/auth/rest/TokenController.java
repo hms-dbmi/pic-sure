@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -48,6 +49,7 @@ public class TokenController {
         summary = "Introspect a token on behalf of an application",
         description = "Token introspection endpoint for user to retrieve a valid token"
     )
+    @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active")
     @AuditEvent(type = "ACCESS", action = "token.introspect")
     @PostMapping(path = "/inspect", produces = "application/json")
     public ResponseEntity<Map<String, Object>> inspectToken(
@@ -86,6 +88,8 @@ public class TokenController {
     }
 
     @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user")
+    @ApiResponse(responseCode = "200", description = "A refreshed token and its expiration date")
+    @ApiResponse(responseCode = "400", description = "The refresh token is not valid")
     @AuditEvent(type = "ACCESS", action = "token.refresh")
     @GetMapping(path = "/refresh", produces = "application/json")
     public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request) {

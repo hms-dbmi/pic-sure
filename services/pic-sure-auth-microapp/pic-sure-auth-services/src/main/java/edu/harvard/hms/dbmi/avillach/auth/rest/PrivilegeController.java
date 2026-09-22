@@ -40,6 +40,7 @@ public class PrivilegeController {
         summary = "Read one privilege", description = "GET information of one Privilege with the UUID, requires ADMIN or SUPER_ADMIN role"
     )
     @ApiResponse(responseCode = "400", description = "No privilege with that UUID")
+    @ApiResponse(responseCode = "200", description = "The privilege")
     @AuditEvent(type = "OTHER", action = "privilege.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{privilegeId}", produces = "application/json")
@@ -56,6 +57,7 @@ public class PrivilegeController {
     }
 
     @Operation(summary = "List every privilege", description = "GET a list of existing privileges, requires ADMIN or SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "Every privilege")
     @AuditEvent(type = "OTHER", action = "privilege.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json")
@@ -65,6 +67,7 @@ public class PrivilegeController {
     }
 
     @Operation(summary = "Create privileges", description = "POST a list of privileges, requires SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "The created privileges")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(consumes = "application/json", produces = "application/json")
@@ -81,6 +84,7 @@ public class PrivilegeController {
         summary = "Update the given fields of privileges",
         description = "Update a list of privileges, will only update the fields listed, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The updated privileges")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(consumes = "application/json", produces = "application/json")
@@ -99,6 +103,7 @@ public class PrivilegeController {
         description = "DELETE an privilege by Id only if the privilege is not associated by others, requires SUPER_ADMIN role"
     )
     @ApiResponse(responseCode = "409", description = "Other entities still reference this privilege")
+    @ApiResponse(responseCode = "200", description = "The remaining privileges")
     @AuditEvent(type = "ADMIN", action = "privilege.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{privilegeId}", produces = "application/json")

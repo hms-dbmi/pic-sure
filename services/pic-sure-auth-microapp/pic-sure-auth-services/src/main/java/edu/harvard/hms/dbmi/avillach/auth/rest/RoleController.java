@@ -42,6 +42,7 @@ public class RoleController {
 
     @Operation(summary = "Read one role", description = "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role")
     @ApiResponse(responseCode = "400", description = "No role with that UUID")
+    @ApiResponse(responseCode = "200", description = "The role")
     @AuditEvent(type = "OTHER", action = "role.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json", path = "/{roleId}")
@@ -56,6 +57,7 @@ public class RoleController {
     }
 
     @Operation(summary = "List every role", description = "GET a list of existing Roles, requires ADMIN or SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "Every role")
     @AuditEvent(type = "OTHER", action = "role.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping
@@ -65,6 +67,7 @@ public class RoleController {
     }
 
     @Operation(summary = "Create roles", description = "POST a list of Roles, requires SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "The created roles")
     @AuditEvent(type = "ADMIN", action = "role.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(produces = "application/json")
@@ -81,6 +84,7 @@ public class RoleController {
         summary = "Update the given fields of roles",
         description = "Update a list of Roles, will only update the fields listed, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The updated roles")
     @AuditEvent(type = "ADMIN", action = "role.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(produces = "application/json")
@@ -105,6 +109,7 @@ public class RoleController {
         {@ApiResponse(responseCode = "400", description = "No role with that UUID"),
             @ApiResponse(responseCode = "409", description = "Other entities still reference this role")}
     )
+    @ApiResponse(responseCode = "200", description = "The remaining roles")
     @AuditEvent(type = "ADMIN", action = "role.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(produces = "application/json", path = "/{roleId}")
