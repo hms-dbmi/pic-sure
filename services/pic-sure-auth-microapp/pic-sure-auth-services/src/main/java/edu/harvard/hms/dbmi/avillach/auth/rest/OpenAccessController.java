@@ -37,7 +37,7 @@ public class OpenAccessController {
     @RequestMapping(value = "/validate", produces = "application/json")
     public ResponseEntity<?> validate(
         @Parameter(
-            required = true, description = "A JSON object that at least" + " include a user the token for validation"
+            required = true, description = "A JSON object that at least includes a user and the token for validation"
         ) @RequestBody Map<String, Object> inputMap, HttpServletRequest request
     ) {
         if (!openIdpProviderIsEnabled) {
