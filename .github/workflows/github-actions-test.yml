@@ -35,6 +35,11 @@ jobs:
       # pic-sure-bom import, so no bootstrap, token, or warm cache is needed.
       - name: Verify with Maven
         run: mvn -T1C -B verify -Dmaven.test.failure.ignore=true
+      # Reads the target/classes the previous step just produced. Deliberately without
+      # maven.test.failure.ignore: the reactor step carries that flag, so a convention
+      # violation has to fail loudly here or it would be masked.
+      - name: Check API conventions
+        run: mvn -B -f tools/api-conventions/pom.xml test -Dreactor.root=.
       - name: Publish Surefire Report
         uses: ScalableCapital/action-surefire-report@4004a71652495d6ed111f5b717c2cf9aa0f37627
         if: always() # Ensures reports publish even if the Maven step failed
