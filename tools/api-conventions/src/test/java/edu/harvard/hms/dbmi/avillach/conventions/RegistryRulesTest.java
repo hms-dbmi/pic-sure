@@ -28,6 +28,7 @@ class RegistryRulesTest {
 
         assertEquals(1, violations.size(), violations.toString());
         assertTrue(violations.get(0).contains("services/empty"), violations.get(0));
+        assertTrue(violations.get(0).contains("declares no controller (stale registry entry?)"), violations.get(0));
     }
 
     @Test
@@ -38,6 +39,7 @@ class RegistryRulesTest {
 
         assertEquals(1, violations.size(), violations.toString());
         assertTrue(violations.get(0).contains("services/gone"), violations.get(0));
+        assertTrue(violations.get(0).contains("was not compiled (run make build)"), violations.get(0));
     }
 
     @Test

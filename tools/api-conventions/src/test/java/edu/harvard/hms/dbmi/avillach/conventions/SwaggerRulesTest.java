@@ -16,7 +16,7 @@ class SwaggerRulesTest {
         new ClassFileImporter().importPackages("edu.harvard.hms.dbmi.avillach.conventions.fixtures");
 
     @Test
-    void r1FlagsOnlyTheUntaggedController() {
+    void r1FlagsControllersWithNeitherOrBothAnnotations() {
         List<String> violations = SwaggerRules.tagOrHidden("fixtures", FIXTURES);
 
         assertEquals(2, violations.size(), violations.toString());
