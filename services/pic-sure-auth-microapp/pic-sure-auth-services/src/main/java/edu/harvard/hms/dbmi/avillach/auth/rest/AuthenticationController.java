@@ -52,10 +52,10 @@ public class AuthenticationController {
         description = "The authentication endpoint for retrieving a valid user token"
     )
     @ApiResponses(
-        {@ApiResponse(responseCode = "400", description = "Unknown identity provider or empty request"),
+        {@ApiResponse(responseCode = "200", description = "A PIC-SURE token for the authenticated user"),
+            @ApiResponse(responseCode = "400", description = "Unknown identity provider or empty request"),
             @ApiResponse(responseCode = "401", description = "The provider rejected the code")}
     )
-    @ApiResponse(responseCode = "200", description = "A PIC-SURE token for the authenticated user")
     @AuditEvent(type = "AUTH", action = "auth.login")
     @PostMapping(path = "/authentication/{idpProvider}", consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> authentication(

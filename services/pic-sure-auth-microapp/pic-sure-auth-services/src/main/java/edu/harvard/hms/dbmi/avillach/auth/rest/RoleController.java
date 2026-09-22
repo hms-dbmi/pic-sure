@@ -41,8 +41,8 @@ public class RoleController {
     }
 
     @Operation(summary = "Read one role", description = "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role")
-    @ApiResponse(responseCode = "400", description = "No role with that UUID")
     @ApiResponse(responseCode = "200", description = "The role")
+    @ApiResponse(responseCode = "400", description = "No role with that UUID")
     @AuditEvent(type = "OTHER", action = "role.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json", path = "/{roleId}")
@@ -106,10 +106,10 @@ public class RoleController {
         description = "DELETE an Role by Id only if the Role is not associated by others, requires SUPER_ADMIN role"
     )
     @ApiResponses(
-        {@ApiResponse(responseCode = "400", description = "No role with that UUID"),
+        {@ApiResponse(responseCode = "200", description = "The remaining roles"),
+            @ApiResponse(responseCode = "400", description = "No role with that UUID"),
             @ApiResponse(responseCode = "409", description = "Other entities still reference this role")}
     )
-    @ApiResponse(responseCode = "200", description = "The remaining roles")
     @AuditEvent(type = "ADMIN", action = "role.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(produces = "application/json", path = "/{roleId}")

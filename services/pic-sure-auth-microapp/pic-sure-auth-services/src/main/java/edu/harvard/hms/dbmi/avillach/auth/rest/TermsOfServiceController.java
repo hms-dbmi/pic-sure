@@ -96,7 +96,7 @@ public class TermsOfServiceController {
     @Operation(
         summary = "Accept the current terms for the caller", description = "Endpoint for current user to accept his terms of service"
     )
-    @ApiResponse(responseCode = "200", description = "The caller's acceptance record")
+    @ApiResponse(responseCode = "200", description = "The terms were accepted")
     @AuditEvent(type = "ACCESS", action = "tos.accept")
     @PostMapping(path = "/accept", produces = "application/json")
     public ResponseEntity<?> acceptTermsOfService(HttpServletRequest request) {

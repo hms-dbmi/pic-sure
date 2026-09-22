@@ -114,8 +114,8 @@ public class AccessRuleController {
         summary = "Delete an access rule that nothing references",
         description = "DELETE an AccessRule by Id only if the accessRule is not associated by others, requires SUPER_ADMIN role"
     )
-    @ApiResponse(responseCode = "409", description = "Other entities still reference this access rule")
     @ApiResponse(responseCode = "200", description = "The remaining access rules")
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this access rule")
     @AuditEvent(type = "ADMIN", action = "access_rule.delete")
     @RolesAllowed(SUPER_ADMIN)
     @DeleteMapping(path = "/{accessRuleId}")

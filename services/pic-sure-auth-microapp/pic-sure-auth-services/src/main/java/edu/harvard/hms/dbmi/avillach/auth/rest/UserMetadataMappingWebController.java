@@ -110,8 +110,8 @@ public class UserMetadataMappingWebController {
         summary = "Delete a mapping that nothing references",
         description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others, requires SUPER_ADMIN role"
     )
-    @ApiResponse(responseCode = "409", description = "Other entities still reference this mapping")
     @ApiResponse(responseCode = "200", description = "The remaining mappings")
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this mapping")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{mappingId}", produces = "application/json")

@@ -39,8 +39,8 @@ public class PrivilegeController {
     @Operation(
         summary = "Read one privilege", description = "GET information of one Privilege with the UUID, requires ADMIN or SUPER_ADMIN role"
     )
-    @ApiResponse(responseCode = "400", description = "No privilege with that UUID")
     @ApiResponse(responseCode = "200", description = "The privilege")
+    @ApiResponse(responseCode = "400", description = "No privilege with that UUID")
     @AuditEvent(type = "OTHER", action = "privilege.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{privilegeId}", produces = "application/json")
@@ -102,8 +102,8 @@ public class PrivilegeController {
         summary = "Delete a privilege that nothing references",
         description = "DELETE an privilege by Id only if the privilege is not associated by others, requires SUPER_ADMIN role"
     )
-    @ApiResponse(responseCode = "409", description = "Other entities still reference this privilege")
     @ApiResponse(responseCode = "200", description = "The remaining privileges")
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this privilege")
     @AuditEvent(type = "ADMIN", action = "privilege.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{privilegeId}", produces = "application/json")
