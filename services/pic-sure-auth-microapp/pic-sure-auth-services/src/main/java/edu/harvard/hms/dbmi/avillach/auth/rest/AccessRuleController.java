@@ -45,6 +45,8 @@ public class AccessRuleController {
         summary = "Read one access rule",
         description = "GET information of one AccessRule with the UUID, requires ADMIN or SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The access rule")
+    @ApiResponse(responseCode = "404", description = "No access rule has that id")
     @AuditEvent(type = "OTHER", action = "access_rule.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(value = "/{accessRuleId}")
@@ -61,6 +63,7 @@ public class AccessRuleController {
     }
 
     @Operation(summary = "List every access rule", description = "GET a list of existing AccessRules, requires ADMIN or SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "Every access rule")
     @AuditEvent(type = "OTHER", action = "access_rule.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping("")
@@ -70,6 +73,8 @@ public class AccessRuleController {
     }
 
     @Operation(summary = "Create access rules", description = "POST a list of AccessRules, requires SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "The created access rules")
+    @ApiResponse(responseCode = "400", description = "No access rules were added")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @RolesAllowed(SUPER_ADMIN)
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -91,6 +96,7 @@ public class AccessRuleController {
         summary = "Update the given fields of access rules",
         description = "Update a list of AccessRules, will only update the fields listed, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The updated access rules")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @RolesAllowed(SUPER_ADMIN)
     @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -109,6 +115,7 @@ public class AccessRuleController {
         description = "DELETE an AccessRule by Id only if the accessRule is not associated by others, requires SUPER_ADMIN role"
     )
     @ApiResponse(responseCode = "409", description = "Other entities still reference this access rule")
+    @ApiResponse(responseCode = "200", description = "The remaining access rules")
     @AuditEvent(type = "ADMIN", action = "access_rule.delete")
     @RolesAllowed(SUPER_ADMIN)
     @DeleteMapping(path = "/{accessRuleId}")
@@ -124,6 +131,7 @@ public class AccessRuleController {
         summary = "The rule types an access rule may use",
         description = "GET all types listed for the rule in accessRule that could be used, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values")
     @AuditEvent(type = "OTHER", action = "access_rule.types")
     @RolesAllowed(SUPER_ADMIN)
     @GetMapping(path = "/allTypes", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
