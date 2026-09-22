@@ -64,8 +64,8 @@ public final class Annotations {
      * @param annotation the annotation to read
      * @param property the property name
      * @return the property's value as a string when it was set explicitly, empty when the annotation
-     *     relies on that property's default. ArchUnit reports only explicitly set properties, which is
-     *     what lets a missing summary be told apart from an empty one.
+     *     relies on that property's default. The rules do not depend on which of those two a given
+     *     ArchUnit version reports, because every property they read has a blank default.
      */
     public static Optional<String> string(JavaAnnotation<?> annotation, String property) {
         return annotation.getProperties().containsKey(property)

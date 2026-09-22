@@ -26,7 +26,7 @@ class ControllersTest {
 
         assertEquals(
             List.of(
-                "BadResponsesController", "BlankTagController", "GoodController",
+                "BadResponsesController", "BlankTagController", "BothTagAndHiddenController", "GoodController",
                 "HiddenController", "NoOperationController", "UntaggedController"
             ),
             names
@@ -39,7 +39,7 @@ class ControllersTest {
 
         List<String> handlers = Controllers.handlerMethods(good).stream().map(JavaMethod::getName).sorted().toList();
 
-        assertEquals(List.of("create", "read"), handlers);
+        assertEquals(List.of("create", "hiddenMethod", "read"), handlers);
     }
 
     @Test

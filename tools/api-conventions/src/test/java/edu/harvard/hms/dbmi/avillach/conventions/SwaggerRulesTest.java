@@ -19,8 +19,9 @@ class SwaggerRulesTest {
     void r1FlagsOnlyTheUntaggedController() {
         List<String> violations = SwaggerRules.tagOrHidden("fixtures", FIXTURES);
 
-        assertEquals(1, violations.size(), violations.toString());
-        assertTrue(violations.get(0).contains("UntaggedController"), violations.get(0));
+        assertEquals(2, violations.size(), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("UntaggedController")), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("BothTagAndHiddenController") && v.contains("both")), violations.toString());
         assertTrue(violations.get(0).contains("fixtures"), violations.get(0));
     }
 
@@ -37,9 +38,10 @@ class SwaggerRulesTest {
     void r3FlagsAMissingOperationAndABlankSummaryAndNothingElse() {
         List<String> violations = SwaggerRules.operationHasSummary("fixtures", FIXTURES);
 
-        assertEquals(2, violations.size(), violations.toString());
+        assertEquals(3, violations.size(), violations.toString());
         assertTrue(violations.stream().anyMatch(v -> v.contains("NoOperationController#read")), violations.toString());
         assertTrue(violations.stream().anyMatch(v -> v.contains("NoOperationController#create")), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("NoOperationController#absentSummary")), violations.toString());
     }
 
     @Test
@@ -48,6 +50,7 @@ class SwaggerRulesTest {
 
         assertTrue(violations.stream().noneMatch(v -> v.contains("HiddenController")), violations.toString());
         assertTrue(violations.stream().noneMatch(v -> v.contains("helper")), violations.toString());
+        assertTrue(violations.stream().noneMatch(v -> v.contains("hiddenMethod")), violations.toString());
     }
 
     @Test
@@ -67,5 +70,6 @@ class SwaggerRulesTest {
         List<String> violations = SwaggerRules.responsesAreDeclared("fixtures", FIXTURES);
 
         assertTrue(violations.stream().noneMatch(v -> v.contains("GoodController")), violations.toString());
+        assertTrue(violations.stream().noneMatch(v -> v.contains("hiddenMethod")), violations.toString());
     }
 }
