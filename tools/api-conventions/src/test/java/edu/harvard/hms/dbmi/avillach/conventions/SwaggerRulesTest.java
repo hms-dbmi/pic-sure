@@ -32,4 +32,21 @@ class SwaggerRulesTest {
         assertTrue(violations.get(0).contains("BlankTagController"), violations.get(0));
         assertTrue(violations.get(0).contains("description"), violations.get(0));
     }
+
+    @Test
+    void r3FlagsAMissingOperationAndABlankSummaryAndNothingElse() {
+        List<String> violations = SwaggerRules.operationHasSummary("fixtures", FIXTURES);
+
+        assertEquals(2, violations.size(), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("NoOperationController#read")), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("NoOperationController#create")), violations.toString());
+    }
+
+    @Test
+    void r3ExemptsAHiddenClassAndIgnoresNonHandlers() {
+        List<String> violations = SwaggerRules.operationHasSummary("fixtures", FIXTURES);
+
+        assertTrue(violations.stream().noneMatch(v -> v.contains("HiddenController")), violations.toString());
+        assertTrue(violations.stream().noneMatch(v -> v.contains("helper")), violations.toString());
+    }
 }

@@ -7,6 +7,7 @@ import java.util.Optional;
 import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaMethod;
 
 /**
  * The swagger annotation rules, as pure functions over imported classes. Each returns every violation it
@@ -59,6 +60,41 @@ public final class SwaggerRules {
             }
         }
         return violations;
+    }
+
+    /**
+     * R3: in a Tag class, every handler method not itself Hidden carries an Operation with a non-blank
+     * summary. A Hidden class exempts all of its methods, which is R5.
+     *
+     * @param module the module path, used in the violation text
+     * @param classes that module's imported classes
+     * @return one violation per offending handler method
+     */
+    public static List<String> operationHasSummary(String module, JavaClasses classes) {
+        List<String> violations = new ArrayList<>();
+        for (JavaClass controller : documentedControllers(classes)) {
+            for (JavaMethod method : Controllers.handlerMethods(controller)) {
+                if (Annotations.has(method, Annotations.HIDDEN)) {
+                    continue;
+                }
+                Optional<JavaAnnotation<?>> operation = Annotations.get(method, Annotations.OPERATION);
+                if (operation.isEmpty()) {
+                    violations.add(at(module, controller, method.getName()) + " has no @Operation");
+                    continue;
+                }
+                if (Annotations.string(operation.get(), "summary").filter(value -> !value.isBlank()).isEmpty()) {
+                    violations.add(at(module, controller, method.getName()) + " @Operation has a missing or blank summary");
+                }
+            }
+        }
+        return violations;
+    }
+
+    static List<JavaClass> documentedControllers(JavaClasses classes) {
+        return Controllers.of(classes).stream()
+            .filter(controller -> !Annotations.has(controller, Annotations.HIDDEN))
+            .filter(controller -> Annotations.has(controller, Annotations.TAG))
+            .toList();
     }
 
     static String at(String module, JavaClass controller) {
