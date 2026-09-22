@@ -48,6 +48,15 @@ class ModuleRegistryTest {
     }
 
     @Test
+    void rejectsALineWithNoSeparator() {
+        IllegalArgumentException thrown = assertThrows(
+            IllegalArgumentException.class,
+            () -> ModuleRegistry.parse(new StringReader("services/b\n"))
+        );
+        assertTrue(thrown.getMessage().contains("services/b"), thrown.getMessage());
+    }
+
+    @Test
     void rejectsADuplicateEntry() {
         assertThrows(
             IllegalArgumentException.class,
