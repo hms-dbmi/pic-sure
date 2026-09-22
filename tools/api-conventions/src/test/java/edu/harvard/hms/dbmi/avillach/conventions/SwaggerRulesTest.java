@@ -49,4 +49,23 @@ class SwaggerRulesTest {
         assertTrue(violations.stream().noneMatch(v -> v.contains("HiddenController")), violations.toString());
         assertTrue(violations.stream().noneMatch(v -> v.contains("helper")), violations.toString());
     }
+
+    @Test
+    void r4FlagsMissingCodesBlankDescriptionsAndMissingSuccess() {
+        List<String> violations = SwaggerRules.responsesAreDeclared("fixtures", FIXTURES);
+
+        assertEquals(5, violations.size(), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("#none") && v.contains("declares no @ApiResponse")), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("#badCode") && v.contains("okay")), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("#badCode") && v.contains("no 2xx")), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("#blankDescription") && v.contains("description")), violations.toString());
+        assertTrue(violations.stream().anyMatch(v -> v.contains("#errorOnly") && v.contains("no 2xx")), violations.toString());
+    }
+
+    @Test
+    void r4AcceptsBothASingleResponseAndAContainer() {
+        List<String> violations = SwaggerRules.responsesAreDeclared("fixtures", FIXTURES);
+
+        assertTrue(violations.stream().noneMatch(v -> v.contains("GoodController")), violations.toString());
+    }
 }

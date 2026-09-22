@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.conventions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -15,6 +16,8 @@ import com.tngtech.archunit.core.domain.JavaMethod;
  * fix into 63 build runs.
  */
 public final class SwaggerRules {
+
+    private static final Pattern RESPONSE_CODE = Pattern.compile("\\d{3}|default");
 
     private SwaggerRules() {}
 
@@ -103,5 +106,73 @@ public final class SwaggerRules {
 
     static String at(String module, JavaClass controller, String method) {
         return at(module, controller) + "#" + method;
+    }
+
+    /**
+     * R4: every documented handler declares at least one response and at least one 2xx among them, and
+     * each declared response carries a three digit code or {@code default} together with a non-blank
+     * description. Responses may be declared directly, inside an ApiResponses container, or through the
+     * Operation's responses property.
+     *
+     * <p>The 2xx clause is what stops an endpoint being published as though it can only fail. Several
+     * handlers documented a 404 or a 409 and nothing else.
+     *
+     * @param module the module path, used in the violation text
+     * @param classes that module's imported classes
+     * @return one violation per offending handler method or malformed response
+     */
+    public static List<String> responsesAreDeclared(String module, JavaClasses classes) {
+        List<String> violations = new ArrayList<>();
+        for (JavaClass controller : documentedControllers(classes)) {
+            for (JavaMethod method : Controllers.handlerMethods(controller)) {
+                if (Annotations.has(method, Annotations.HIDDEN)) {
+                    continue;
+                }
+                String where = at(module, controller, method.getName());
+                List<JavaAnnotation<?>> responses = responsesOn(method);
+                if (responses.isEmpty()) {
+                    violations.add(where + " declares no @ApiResponse");
+                    continue;
+                }
+                boolean success = false;
+                for (JavaAnnotation<?> response : responses) {
+                    String code = Annotations.string(response, "responseCode").orElse("");
+                    if (!RESPONSE_CODE.matcher(code).matches()) {
+                        violations.add(where + " @ApiResponse has an invalid responseCode '" + code + "'");
+                    } else if (code.startsWith("2")) {
+                        success = true;
+                    }
+                    if (Annotations.string(response, "description").filter(value -> !value.isBlank()).isEmpty()) {
+                        violations.add(where + " @ApiResponse " + code + " has a missing or blank description");
+                    }
+                }
+                if (!success) {
+                    violations.add(where + " declares no 2xx @ApiResponse");
+                }
+            }
+        }
+        return violations;
+    }
+
+    private static List<JavaAnnotation<?>> responsesOn(JavaMethod method) {
+        List<JavaAnnotation<?>> responses = new ArrayList<>();
+        Annotations.get(method, Annotations.API_RESPONSE).ifPresent(responses::add);
+        Annotations.get(method, Annotations.API_RESPONSES).ifPresent(container -> responses.addAll(nested(container, "value")));
+        Annotations.get(method, Annotations.OPERATION).ifPresent(operation -> responses.addAll(nested(operation, "responses")));
+        return responses;
+    }
+
+    private static List<JavaAnnotation<?>> nested(JavaAnnotation<?> annotation, String property) {
+        Object value = annotation.getProperties().get(property);
+        if (!(value instanceof Object[] entries)) {
+            return List.of();
+        }
+        List<JavaAnnotation<?>> nested = new ArrayList<>();
+        for (Object entry : entries) {
+            if (entry instanceof JavaAnnotation<?> inner) {
+                nested.add(inner);
+            }
+        }
+        return nested;
     }
 }
