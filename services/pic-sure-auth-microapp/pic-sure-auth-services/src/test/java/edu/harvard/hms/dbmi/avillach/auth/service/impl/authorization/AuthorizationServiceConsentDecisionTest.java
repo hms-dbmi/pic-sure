@@ -88,7 +88,7 @@ class AuthorizationServiceConsentDecisionTest {
 
     @Test
     void consentHolderIsAuthorizedWithoutQueryInspection() {
-        givenConsents(Map.of("\\_consents\\", Set.of("phs001062.c1")));
+        givenConsents(Set.of("phs001062.c1"));
         Map<String, Object> request =
             Map.of("Target Service", "/future/path", "query", Map.of("unexpected", Map.of("expectedResultType", 9999)));
 
@@ -110,8 +110,19 @@ class AuthorizationServiceConsentDecisionTest {
     }
 
     @Test
-    void emptyConsentValuesCountAsNoConsents() {
-        givenConsents(Map.of("\\_consents\\", Set.of()));
+    void emptyConsentSetCountsAsNoConsents() {
+        givenConsents(Set.of());
+
+        EvaluateAccessRuleResult result =
+            service(true).isAuthorized(application, Map.of("Target Service", "/visualization/auth/distributions"), user, false);
+
+        assertFalse(result.result());
+    }
+
+    /** A consents row can carry a blank entry rather than no entries; that is still nothing the user can query. */
+    @Test
+    void blankConsentValuesCountAsNoConsents() {
+        givenConsents(Set.of(""));
 
         EvaluateAccessRuleResult result =
             service(true).isAuthorized(application, Map.of("Target Service", "/visualization/auth/distributions"), user, false);
@@ -121,7 +132,7 @@ class AuthorizationServiceConsentDecisionTest {
 
     @Test
     void emptyAccessRuleSetIsDeniedWithCause() {
-        givenConsents(Map.of("\\_consents\\", Set.of("phs001062.c1")));
+        givenConsents(Set.of("phs001062.c1"));
         when(accessRuleService.cachedPreProcessAccessRules(any(), any())).thenReturn(Set.of());
 
         EvaluateAccessRuleResult result =
@@ -146,7 +157,7 @@ class AuthorizationServiceConsentDecisionTest {
         );
     }
 
-    private void givenConsents(Map<String, Set<String>> consents) {
+    private void givenConsents(Set<String> consents) {
         when(userConsentsRepository.findByUserId(user.getUuid()))
             .thenReturn(new UserConsents().setUserId(user.getUuid()).setConsents(consents));
     }
