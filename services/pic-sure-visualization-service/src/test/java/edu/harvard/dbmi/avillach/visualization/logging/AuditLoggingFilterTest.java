@@ -131,7 +131,6 @@ class AuditLoggingFilterTest {
 
     @Test
     void doFilter_skipsHealthAndCompatibilityRoutes() throws ServletException, IOException {
-        filter.doFilter(new MockHttpServletRequest("POST", "/info"), new MockHttpServletResponse(), new MockFilterChain());
         filter.doFilter(new MockHttpServletRequest("POST", "/query/format"), new MockHttpServletResponse(), new MockFilterChain());
         filter.doFilter(new MockHttpServletRequest("GET", "/actuator/health"), new MockHttpServletResponse(), new MockFilterChain());
 
