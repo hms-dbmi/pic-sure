@@ -46,7 +46,7 @@ public class HpdsQueryV3Controller {
             @ApiResponse(responseCode = "400", description = "Unknown backend or missing query data"),
             @ApiResponse(responseCode = "403", description = "Consent does not permit this query"),
             @ApiResponse(responseCode = "410", description = "Institutional (federated) queries are no longer supported"),
-            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
@@ -65,7 +65,7 @@ public class HpdsQueryV3Controller {
         {@ApiResponse(responseCode = "200", description = "OK"),
             @ApiResponse(responseCode = "400", description = "Unknown backend or missing query data"),
             @ApiResponse(responseCode = "403", description = "Consent does not permit this query"),
-            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
@@ -82,7 +82,7 @@ public class HpdsQueryV3Controller {
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
             @ApiResponse(responseCode = "404", description = "Unknown query id"),
-            @ApiResponse(responseCode = "502", description = "Query lookup or HPDS call failed"),
+            @ApiResponse(responseCode = "502", description = "Query lookup, HPDS call, or status update failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
@@ -96,7 +96,7 @@ public class HpdsQueryV3Controller {
         {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
             @ApiResponse(responseCode = "404", description = "Unknown query id"),
-            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
@@ -113,7 +113,7 @@ public class HpdsQueryV3Controller {
         {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
             @ApiResponse(responseCode = "404", description = "Unknown query id"),
-            @ApiResponse(responseCode = "502", description = "Consent or query lookup failed"),
+            @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
