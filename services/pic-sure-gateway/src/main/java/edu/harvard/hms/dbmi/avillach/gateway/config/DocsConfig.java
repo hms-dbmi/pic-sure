@@ -17,13 +17,14 @@ import edu.harvard.hms.dbmi.avillach.gateway.docs.DocsHandlers;
 import edu.harvard.hms.dbmi.avillach.gateway.docs.DocsProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.docs.OpenApiDocumentFetcher;
 import edu.harvard.hms.dbmi.avillach.gateway.docs.SwaggerUiAssets;
+import edu.harvard.hms.dbmi.avillach.gateway.docs.SwaggerUiHandlers;
 import edu.harvard.hms.dbmi.avillach.gateway.health.DownstreamHealthProperties;
 
 /**
  * Wires the docs console behind the {@code GATEWAY_DOCS_ENABLED} kill switch ({@code picsure.gateway.docs.enabled}, default true). When the
  * switch is off none of these beans exist and every {@code /openapi} and {@code /swagger-ui} path falls through to the gateway's 404, since
  * it has no catch-all route. Both router functions sit at highest precedence, the {@link HealthConfig} pattern, so they are tried before
- * the proxy routes.
+ * the proxy routes. {@code GATEWAY_DOCS_UI_ENABLED=false} removes only the three Swagger UI beans; the documents keep serving.
  */
 @Configuration
 @ConditionalOnProperty(prefix = "picsure.gateway.docs", name = "enabled", matchIfMissing = true)
@@ -36,13 +37,20 @@ public class DocsConfig {
     }
 
     @Bean
+    public DocsHandlers docsHandlers(DocsProperties props, OpenApiDocumentFetcher fetcher, ObjectMapper json) {
+        return new DocsHandlers(props, fetcher, json);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.docs", name = "ui-enabled", matchIfMissing = true)
     public SwaggerUiAssets swaggerUiAssets() {
         return new SwaggerUiAssets();
     }
 
     @Bean
-    public DocsHandlers docsHandlers(DocsProperties props, OpenApiDocumentFetcher fetcher, SwaggerUiAssets assets, ObjectMapper json) {
-        return new DocsHandlers(props, fetcher, assets, json);
+    @ConditionalOnProperty(prefix = "picsure.gateway.docs", name = "ui-enabled", matchIfMissing = true)
+    public SwaggerUiHandlers swaggerUiHandlers(SwaggerUiAssets assets, ObjectMapper json) {
+        return new SwaggerUiHandlers(assets, json);
     }
 
     @Bean
@@ -54,7 +62,8 @@ public class DocsConfig {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
-    public RouterFunction<ServerResponse> swaggerUiRoutes(DocsHandlers handlers) {
+    @ConditionalOnProperty(prefix = "picsure.gateway.docs", name = "ui-enabled", matchIfMissing = true)
+    public RouterFunction<ServerResponse> swaggerUiRoutes(SwaggerUiHandlers handlers) {
         return RouterFunctions.route(RequestPredicates.GET("/swagger-ui"), handlers::viewer)
             .andRoute(RequestPredicates.GET("/swagger-ui/"), handlers::viewerTrailingSlash)
             .andRoute(RequestPredicates.GET("/swagger-ui/{asset}"), handlers::asset);

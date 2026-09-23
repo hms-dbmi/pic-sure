@@ -1,13 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.gateway.docs;
 
-import java.time.Duration;
 import java.util.Optional;
 
 import org.slf4j.MDC;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.function.ServerRequest;
@@ -18,25 +14,18 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * The docs console's five handler functions: the index, one live document, the initializer page, its trailing-slash redirect, and the
- * webjar assets. The index and documents are {@code no-cache} because they are generated on every call; assets get one day because the
- * public URL carries no version while the bytes behind it change on a webjar bump. The redirect is relative because httpd strips
- * {@code /picsure} before the gateway sees a request, so an absolute {@code Location} would drop the prefix.
+ * The docs console's two document handler functions: the index and one live document. Both are {@code no-cache} because they are generated
+ * on every call.
  */
 public class DocsHandlers {
 
-    private static final CacheControl ONE_DAY = CacheControl.maxAge(Duration.ofDays(1)).cachePublic();
-
     private final DocsProperties props;
     private final OpenApiDocumentFetcher fetcher;
-    private final SwaggerUiAssets assets;
     private final ObjectMapper json;
-    private final Resource viewerPage = new ClassPathResource("swagger-ui/index.html");
 
-    public DocsHandlers(DocsProperties props, OpenApiDocumentFetcher fetcher, SwaggerUiAssets assets, ObjectMapper json) {
+    public DocsHandlers(DocsProperties props, OpenApiDocumentFetcher fetcher, ObjectMapper json) {
         this.props = props;
         this.fetcher = fetcher;
-        this.assets = assets;
         this.json = json;
     }
 
@@ -69,24 +58,6 @@ public class DocsHandlers {
         }
         ServersRewriter.rewrite(document, service.get().publicPrefix());
         return ServerResponse.ok().contentType(MediaType.APPLICATION_JSON).cacheControl(CacheControl.noCache()).body(document.toString());
-    }
-
-    /** {@code GET /swagger-ui}: the initializer page. */
-    public ServerResponse viewer(ServerRequest request) {
-        return ServerResponse.ok().contentType(MediaType.TEXT_HTML).cacheControl(CacheControl.noCache()).body(viewerPage);
-    }
-
-    /** {@code GET /swagger-ui/}: back to the canonical slash-less URL, relatively. */
-    public ServerResponse viewerTrailingSlash(ServerRequest request) {
-        return ServerResponse.status(HttpStatus.FOUND).header(HttpHeaders.LOCATION, "../swagger-ui").build();
-    }
-
-    /** {@code GET /swagger-ui/{asset}}: one of the six webjar files, or 404. */
-    public ServerResponse asset(ServerRequest request) {
-        String name = request.pathVariable("asset");
-        return assets.asset(name)
-            .map(asset -> ServerResponse.ok().contentType(asset.contentType()).cacheControl(ONE_DAY).body(asset.resource()))
-            .orElseGet(() -> notFound("No such asset: " + name));
     }
 
     private ServerResponse notFound(String message) {

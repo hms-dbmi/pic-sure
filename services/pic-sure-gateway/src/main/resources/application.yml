@@ -111,6 +111,7 @@ picsure:
     docs:
       enabled: ${GATEWAY_DOCS_ENABLED:true}
       public-base: ${GATEWAY_DOCS_PUBLIC_BASE:/picsure}
+      ui-enabled: ${GATEWAY_DOCS_UI_ENABLED:true}
       services:
         - name: operations
           title: Operations service
