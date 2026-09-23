@@ -12,6 +12,7 @@
         <module>libs/pic-sure-commons</module>
         <module>libs/pic-sure-logging-client</module>
         <module>libs/pic-sure-spring-commons</module>
+        <module>libs/pic-sure-openapi</module>
         <module>services/pic-sure-gateway</module>
         <module>services/pic-sure-operations-service</module>
         <module>services/pic-sure-hpds-query-service</module>
@@ -101,6 +102,7 @@
                     <executions>
                         <execution>
                             <goals>
+                                <goal>build-info</goal>
                                 <goal>repackage</goal>
                             </goals>
                         </execution>

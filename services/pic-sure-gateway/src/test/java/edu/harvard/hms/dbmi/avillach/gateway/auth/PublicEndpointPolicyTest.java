@@ -4,11 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicRoute.MatchKind;
+
+/**
+ * The method/path pairs below are the contract the shipped {@code public-routes} block has to keep. The policy under test is built from
+ * {@link ShippedPublicRoutes}; {@code PublicRoutesBindingTest} asserts the same pairs against the bound yaml.
+ */
 class PublicEndpointPolicyTest {
 
     private final PublicEndpointPolicy policy = policy();
@@ -54,15 +61,36 @@ class PublicEndpointPolicyTest {
     }
 
     @Test
-    void configuredPrefixesAreDefensivelyCopied() {
-        List<String> prefixes = new ArrayList<>(List.of("/logging"));
-        PublicEndpointPolicy copiedPolicy = new PublicEndpointPolicy(prefixes);
-        prefixes.clear();
+    void configuredRoutesAreDefensivelyCopied() {
+        List<PublicRoute> routes = new ArrayList<>(List.of(ShippedPublicRoutes.prefix("/logging")));
+        PublicEndpointPolicy copiedPolicy = new PublicEndpointPolicy(routes);
+        routes.clear();
 
         assertThat(copiedPolicy.evaluate("GET", "/logging/audit").publicEndpoint()).isTrue();
     }
 
+    @Test
+    void firstMatchingRouteInListOrderDecides() {
+        PublicEndpointPolicy ordered = new PublicEndpointPolicy(
+            List.of(
+                new PublicRoute("/status", MatchKind.EXACT, Set.of("GET"), null, "FIRST"),
+                new PublicRoute("/status", MatchKind.EXACT, null, null, "SECOND")
+            )
+        );
+
+        assertThat(ordered.evaluate("GET", "/status").auditUsername()).contains("FIRST");
+        assertThat(ordered.evaluate("POST", "/status").auditUsername()).contains("SECOND");
+    }
+
+    @Test
+    void noConfiguredRoutesProtectsEverything() {
+        PublicEndpointPolicy empty = new PublicEndpointPolicy(List.of());
+
+        assertThat(empty.evaluate("GET", "/system/status").publicEndpoint()).isFalse();
+        assertThat(empty.evaluate("GET", "/openapi.json").publicEndpoint()).isFalse();
+    }
+
     private static PublicEndpointPolicy policy() {
-        return new PublicEndpointPolicy(List.of("/actuator", "/openapi", "/swagger-ui", "/logging"));
+        return new PublicEndpointPolicy(ShippedPublicRoutes.routes());
     }
 }
