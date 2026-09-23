@@ -35,6 +35,29 @@ class DocsPropertiesTest {
     }
 
     @Test
+    void aBlankOrMissingTitleDefaultsToTheServiceName() {
+        assertThat(new DocumentedService("ops", null, "http://upstream:8080", null, "/picsure/ops").title()).isEqualTo("ops");
+        assertThat(new DocumentedService("ops", "   ", "http://upstream:8080", null, "/picsure/ops").title()).isEqualTo("ops");
+    }
+
+    @Test
+    void aMissingUrlIsRejected() {
+        assertThatThrownBy(() -> new DocumentedService("ops", "Title", null, null, "/picsure/ops"))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ops").hasMessageContaining("no url");
+        for (String blank : List.of("", "   ")) {
+            assertThatThrownBy(() -> new DocumentedService("ops", "Title", blank, null, "/picsure/ops")).as(blank)
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("no url");
+        }
+    }
+
+    @Test
+    void anEmptyPublicPrefixIsAllowedButAMissingOneIsNot() {
+        assertThat(new DocumentedService("ops", "Title", "http://upstream:8080", null, "").publicPrefix()).isEmpty();
+        assertThatThrownBy(() -> new DocumentedService("ops", "Title", "http://upstream:8080", null, null))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ops").hasMessageContaining("public-prefix");
+    }
+
+    @Test
     void duplicateNamesAreRejected() {
         assertThatThrownBy(() -> new DocsProperties(true, "/picsure", List.of(entry("ops"), entry("ops"))))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ops");

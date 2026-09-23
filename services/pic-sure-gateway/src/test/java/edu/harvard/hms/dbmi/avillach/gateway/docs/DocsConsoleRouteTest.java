@@ -57,7 +57,6 @@ class DocsConsoleRouteTest {
         r.add("picsure.gateway.docs.services[0].docs-path", () -> "/demo/v3/api-docs");
         r.add("picsure.gateway.docs.services[0].public-prefix", () -> "/picsure/demo");
         r.add("picsure.gateway.docs.services[1].name", () -> "second");
-        r.add("picsure.gateway.docs.services[1].title", () -> "Second service");
         r.add("picsure.gateway.docs.services[1].url", upstream::baseUrl);
         r.add("picsure.gateway.docs.services[1].public-prefix", () -> "/picsure/second");
         r.add("picsure.gateway.health.read-timeout-ms", () -> "500");
@@ -107,6 +106,7 @@ class DocsConsoleRouteTest {
         assertThat(index.get(0).get("title").asText()).isEqualTo("Demo service");
         assertThat(index.get(0).get("url").asText()).isEqualTo("openapi/demo");
         assertThat(index.get(1).get("name").asText()).isEqualTo("second");
+        assertThat(index.get(1).get("title").asText()).isEqualTo("second");
     }
 
     @Test
