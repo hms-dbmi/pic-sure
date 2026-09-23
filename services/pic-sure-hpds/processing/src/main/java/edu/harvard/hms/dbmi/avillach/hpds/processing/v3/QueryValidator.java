@@ -36,11 +36,11 @@ public class QueryValidator {
         Map<String, SummaryColumnMeta> metaStore = phenotypicQueryExecutor.getMetaStore();
 
         if (requireAuthorizationFilter) {
-            if (query.authorizationFilters().isEmpty()) {
+            if (query.userConsents().isEmpty()) {
                 log.warn(
-                    "Authorization filter is required for this query. To disable this requirement, set hpds.requireAuthorizationFilter=false"
+                    "User consents are required for this query. To disable this requirement, set hpds.requireAuthorizationFilter=false"
                 );
-                throw new IllegalArgumentException("Authorization filter is required for this query");
+                throw new IllegalArgumentException("User consents are required for this query");
             }
         }
 

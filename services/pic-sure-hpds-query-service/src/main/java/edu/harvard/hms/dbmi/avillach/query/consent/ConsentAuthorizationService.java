@@ -1,8 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.query.consent;
 
-import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,10 +16,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.UserConsent;
 import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
 
+/**
+ * Scopes auth-backend queries to the caller's consents. The caller's own {@code userConsents} are never trusted: whatever the body carries
+ * is replaced with the set PSAMA reports for the bearer token, which HPDS then uses to pick the phenotypic partitions it reads (see
+ * {@code PartitionedPhenotypicObservationStore}). The deprecated {@code authorizationFilters} are left untouched — they no longer carry
+ * authorization, so a client-supplied one can only narrow its own result.
+ */
 @Service
 public class ConsentAuthorizationService {
 
@@ -27,14 +33,10 @@ public class ConsentAuthorizationService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final PsamaConsentClient client;
-    private final ConsentFilterBuilder filterBuilder;
     private final boolean enabled;
 
-    public ConsentAuthorizationService(
-        PsamaConsentClient client, ConsentFilterBuilder filterBuilder, @Value("${consent.based.authorization.enabled:true}") boolean enabled
-    ) {
+    public ConsentAuthorizationService(PsamaConsentClient client, @Value("${consent.based.authorization.enabled:true}") boolean enabled) {
         this.client = client;
-        this.filterBuilder = filterBuilder;
         this.enabled = enabled;
         logger.info("Consent-based authorization enabled: {}", enabled);
     }
@@ -45,7 +47,7 @@ public class ConsentAuthorizationService {
         }
         requireAuthorizationHeader(authorizationHeader);
         Query query = request.getQuery() instanceof Query typed ? typed : MAPPER.convertValue(request.getQuery(), Query.class);
-        request.setQuery(filterBuilder.apply(query, client.fetch(authorizationHeader)));
+        request.setQuery(query.setUserConsents(asUserConsents(client.fetch(authorizationHeader))));
     }
 
     public void verifyReadAccess(String backend, StoredQuery stored, String authorizationHeader) {
@@ -53,25 +55,37 @@ public class ConsentAuthorizationService {
             return;
         }
         requireAuthorizationHeader(authorizationHeader);
-        List<AuthorizationFilter> savedFilters = savedFilters(stored);
-        Map<String, Set<String>> currentConsents = client.fetch(authorizationHeader);
-        boolean stillAuthorized = savedFilters.stream().allMatch(saved -> {
-            Set<String> currentValues = currentConsents.get(saved.conceptPath());
-            return saved.values() != null && !saved.values().isEmpty() && currentValues != null
-                && currentValues.containsAll(saved.values());
-        });
-        if (!stillAuthorized) {
+        Set<String> savedConsents = savedConsents(stored);
+        if (!client.fetch(authorizationHeader).containsAll(savedConsents)) {
             throw consentDenied();
         }
     }
 
-    private static List<AuthorizationFilter> savedFilters(StoredQuery stored) {
+    private static Set<UserConsent> asUserConsents(Set<String> consents) {
+        Set<UserConsent> userConsents = consents.stream().filter(Objects::nonNull).filter(consent -> !consent.isBlank())
+            .map(UserConsent::new).collect(Collectors.toSet());
+        if (userConsents.isEmpty()) {
+            throw consentDenied();
+        }
+        return userConsents;
+    }
+
+    /**
+     * The consents the query was scoped to when it was stored. A saved query with none of them predates consent scoping or was written by
+     * something that bypassed it, so it is not readable rather than readable by anyone.
+     */
+    private static Set<String> savedConsents(StoredQuery stored) {
         try {
-            JsonNode filters = MAPPER.readTree(stored.query()).path("query").path("authorizationFilters");
-            if (!filters.isArray() || filters.isEmpty()) {
+            JsonNode consents = MAPPER.readTree(stored.query()).path("query").path("userConsents");
+            if (!consents.isArray() || consents.isEmpty()) {
                 throw consentDenied();
             }
-            return MAPPER.convertValue(filters, new TypeReference<>() {});
+            Set<String> values = MAPPER.convertValue(consents, new TypeReference<Set<UserConsent>>() {}).stream().map(UserConsent::value)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+            if (values.isEmpty()) {
+                throw consentDenied();
+            }
+            return values;
         } catch (PicsureException error) {
             throw error;
         } catch (Exception error) {

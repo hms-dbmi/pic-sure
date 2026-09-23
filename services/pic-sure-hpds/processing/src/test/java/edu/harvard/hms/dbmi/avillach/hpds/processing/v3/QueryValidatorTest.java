@@ -94,20 +94,18 @@ class QueryValidatorTest {
     }
 
     @Test
-    public void validate_requireAuthorizationFilter_isValid() {
+    public void validate_requireUserConsents_isValid() {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, null, null);
-        Query query = new Query(
-            List.of(), List.of(new AuthorizationFilter("\\_consent\\", Set.of("studyABC"))), Set.of(), phenotypicFilter, List.of(), ResultType.COUNT,
-            null, null
-        );
+        Query query =
+            new Query(List.of(), List.of(), Set.of(new UserConsent("studyABC")), phenotypicFilter, List.of(), ResultType.COUNT, null, null);
 
         queryValidator = new QueryValidator(phenotypicQueryExecutor, phenotypicFilterValidator, true);
         queryValidator.validate(query);
     }
 
     @Test
-    public void validate_requireAuthorizationFilter_throwsException() {
+    public void validate_requireUserConsents_throwsException() {
         PhenotypicFilter phenotypicFilter =
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, null, null);
         Query query = new Query(List.of(), List.of(), Set.of(), phenotypicFilter, List.of(), ResultType.COUNT, null, null);

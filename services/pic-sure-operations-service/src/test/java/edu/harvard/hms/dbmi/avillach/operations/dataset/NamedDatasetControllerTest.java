@@ -245,7 +245,7 @@ class NamedDatasetControllerTest {
     void queryConvertedFromV1ToV3() throws Exception {
         String emptyV1QueryString = "{\"categoryFilters\":{}}";
         String emptyV3QueryString =
-            "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
+            "{\"select\":[],\"authorizationFilters\":[],\"userConsents\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
         Query query = new Query();
         query.setVersion("2");
         query.setQuery(emptyV1QueryString);

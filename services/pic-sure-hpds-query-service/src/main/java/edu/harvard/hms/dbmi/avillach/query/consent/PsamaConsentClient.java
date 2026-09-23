@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.query.consent;
 
-import java.util.Map;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -24,7 +23,7 @@ public class PsamaConsentClient {
         this.http = http;
     }
 
-    public Map<String, Set<String>> fetch(String authorizationHeader) {
+    public Set<String> fetch(String authorizationHeader) {
         try {
             UserConsentsResponse response = http.get().uri("/auth/user/me/consents").header(HttpHeaders.AUTHORIZATION, authorizationHeader)
                 .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_SERVICE).retrieve().body(UserConsentsResponse.class);
@@ -43,6 +42,6 @@ public class PsamaConsentClient {
         return new PicsureException(HttpStatus.BAD_GATEWAY, "consent_lookup_failed", "Unable to verify the caller's consents");
     }
 
-    record UserConsentsResponse(Map<String, Set<String>> consents) {
+    record UserConsentsResponse(Set<String> consents) {
     }
 }
