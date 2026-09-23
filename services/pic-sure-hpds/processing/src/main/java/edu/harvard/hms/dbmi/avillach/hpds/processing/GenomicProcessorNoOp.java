@@ -60,4 +60,9 @@ public class GenomicProcessorNoOp implements GenomicProcessor {
     public Map<String, Set<String>> getVariantMetadata(Collection<String> variantList) {
         return null;
     }
+
+    @Override
+    public Set<String> getAllVariants() {
+        return Set.of();
+    }
 }

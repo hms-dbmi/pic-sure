@@ -54,7 +54,9 @@ public class GenomicProcessorConfig {
             studyGroupedGenomicProcessors.add(new GenomicProcessorParentImpl(genomicProcessors));
         }
 
-        return new GenomicProcessorPatientMergingParentImpl(studyGroupedGenomicProcessors);
+        GenomicProcessorPatientMergingParentImpl genomicProcessor = new GenomicProcessorPatientMergingParentImpl(studyGroupedGenomicProcessors);
+        log.info("found {} unique variants", genomicProcessor.getAllVariants().size());
+        return genomicProcessor;
     }
 
     private static List<GenomicProcessor> getGenomicProcessors(File directory) {

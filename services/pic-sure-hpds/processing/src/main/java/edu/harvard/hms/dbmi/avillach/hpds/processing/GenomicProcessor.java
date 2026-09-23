@@ -30,4 +30,6 @@ public interface GenomicProcessor {
     List<InfoColumnMeta> getInfoColumnMeta();
 
     Map<String, Set<String>> getVariantMetadata(Collection<String> variantList);
+
+    Set<String> getAllVariants();
 }

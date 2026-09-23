@@ -117,4 +117,9 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
     public Map<String, Set<String>> getVariantMetadata(Collection<String> variantList) {
         throw new RuntimeException("Not implemented yet");
     }
+
+    @Override
+    public Set<String> getAllVariants() {
+        return Set.of();
+    }
 }

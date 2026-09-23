@@ -184,6 +184,11 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
                 }).orElseGet(Map::of);
     }
 
+    @Override
+    public Set<String> getAllVariants() {
+        return nodes.parallelStream().map(GenomicProcessor::getAllVariants).flatMap(Set::stream).collect(Collectors.toSet());
+    }
+
     private List<InfoColumnMeta> initInfoColumnsMeta() {
         return nodes.parallelStream()
                 .map(GenomicProcessor::getInfoColumnMeta)

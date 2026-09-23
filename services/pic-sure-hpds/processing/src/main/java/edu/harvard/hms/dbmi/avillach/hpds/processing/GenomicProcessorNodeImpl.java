@@ -414,4 +414,9 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
     public Map<String, Set<String>> getVariantMetadata(Collection<String> variantList) {
         return variantService.findByMultipleVariantSpec(variantList);
     }
+
+    @Override
+    public Set<String> getAllVariants() {
+        return Arrays.stream(variantService.getVariantIndex()).collect(Collectors.toSet());
+    }
 }
