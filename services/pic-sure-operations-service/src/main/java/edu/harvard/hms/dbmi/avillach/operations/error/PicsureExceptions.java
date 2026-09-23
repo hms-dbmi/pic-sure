@@ -5,9 +5,8 @@ import org.springframework.http.HttpStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * Shared factories for the {@link PicsureException} shapes this service raises, so each service class does not re-declare its own
- * status/error-type wiring ({@code ConfigurationService} and {@code NamedDatasetService} previously each carried private copies).
- * Entity-specific message text stays at the call site; only the status + machine-readable error type + common message template live here.
+ * Shared factories for the {@link PicsureException} shapes this service raises. Entity-specific message text stays at the call site; only
+ * the status, machine-readable error type, and common message template live here.
  */
 public final class PicsureExceptions {
 

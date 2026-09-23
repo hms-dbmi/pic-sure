@@ -36,8 +36,46 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void doFilter_recordsXClientTypeHeaderAsCaller() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/distributions");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(eventCaptor.capture(), any(), any());
+        assertEquals("PYTHON_ADAPTER", eventCaptor.getValue().getCaller());
+    }
+
+    @Test
+    void doFilter_leavesCallerUnsetWithoutTheXClientTypeHeader() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/distributions");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(eventCaptor.capture(), any(), any());
+        assertNull(eventCaptor.getValue().getCaller());
+    }
+
+    @Test
+    void doFilter_leavesCallerUnsetWhenTheXClientTypeHeaderIsEmpty() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/distributions");
+        request.addHeader("X-Client-Type", "");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(eventCaptor.capture(), any(), any());
+        assertNull(eventCaptor.getValue().getCaller());
+    }
+
+    @Test
     void doFilter_generatesRequestIdAndLogsDistributions() throws ServletException, IOException {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/distributions");
         request.setContentType("application/json");
         request.addHeader("Authorization", "Bearer token");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -55,7 +93,7 @@ class AuditLoggingFilterTest {
         assertEquals("visualization.distributions", event.getAction());
         assertEquals(response.getHeader("X-Request-Id"), event.getRequest().getRequestId());
         assertEquals("POST", event.getRequest().getMethod());
-        assertEquals("/distributions", event.getRequest().getUrl());
+        assertEquals("/auth/distributions", event.getRequest().getUrl());
     }
 
     @Test
@@ -102,7 +140,7 @@ class AuditLoggingFilterTest {
 
     @Test
     void doFilter_statusFailureAddsErrorMetadata() throws ServletException, IOException {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/open/distributions");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = (req, resp) -> ((MockHttpServletResponse) resp).setStatus(400);
 
@@ -117,7 +155,7 @@ class AuditLoggingFilterTest {
 
     @Test
     void doFilter_loggingClientThrowsDoesNotPropagate() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/distributions");
         MockHttpServletResponse response = new MockHttpServletResponse();
         doThrow(new RuntimeException("logging down")).when(loggingClient).send(any(), any(), any());
 

@@ -18,15 +18,11 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import jakarta.validation.Valid;
 
 /**
- * Ports the legacy WildFly {@code NamedDatasetRS}: {@code GET/POST /dataset/named} and {@code GET/PUT/DELETE /dataset/named/{id}}. Mappings
- * are slash-less on purpose: the frontend calls the slash-less form, and Spring 6 -- unlike the legacy JAX-RS runtime, which matched both
- * -- serves EXACTLY the declared form (a trailing-slash mapping 404s the slash-less request). Authorization is enforced in two layers:
- * {@code WebSecurityConfig} requires an authenticated caller for all of {@code /dataset/**} (the gateway must have supplied
- * {@code X-User-Id}); {@link NamedDatasetService} then email-scopes every operation, requiring and keying on the caller's email
- * ({@code GatewayUser#getEmail()}), never {@code userId}. This controller is a thin HTTP adapter -- identity validation lives in the
- * service.
- *
- * <p>DELETE is net-new relative to the legacy {@code NamedDatasetRS} (which had no delete endpoint) -- added here per the migration plan.
+ * Exposes {@code GET/POST /dataset/named} and {@code GET/PUT/DELETE /dataset/named/{id}}. Mappings are slash-less because the frontend uses
+ * that form and Spring 6 serves exactly the declared mapping. Authorization is enforced in two layers: {@code WebSecurityConfig} requires
+ * an authenticated caller for all of {@code /dataset/**} (the gateway must have supplied {@code X-User-Id}); {@link NamedDatasetService}
+ * then email-scopes every operation, requiring and keying on the caller's email ({@code GatewayUser#getEmail()}), never {@code userId}.
+ * This controller is a thin HTTP adapter -- identity validation lives in the service.
  */
 @RestController
 @RequestMapping("/dataset/named")

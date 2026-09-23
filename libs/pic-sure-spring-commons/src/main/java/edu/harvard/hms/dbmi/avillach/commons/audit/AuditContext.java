@@ -5,10 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Per-request holder for audit metadata (username, resource id, etc.), modeled on the legacy
- * {@code edu.harvard.dbmi.avillach.service.AuditContext}. Services populate this with domain-specific context; {@link AuditLoggingFilter}
- * merges it into the emitted logging event's metadata. No-arg-constructable so callers can scope one instance per request without a DI
- * container (e.g. a request-scoped Spring bean, or plain {@code new} in a filter chain).
+ * Per-request holder for audit metadata such as username and resource id. Services populate it with domain-specific context, and
+ * {@link AuditLoggingFilter} merges that context into the emitted event. It has a no-argument constructor so callers can scope one instance
+ * per request with or without a dependency-injection container.
  */
 public class AuditContext {
 

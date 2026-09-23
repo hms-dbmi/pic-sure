@@ -6,10 +6,9 @@ import java.security.NoSuchAlgorithmException;
 
 /**
  * Resolves a session identifier from an explicit header value, falling back to a deterministic hash of source IP and User-Agent. This
- * centralizes session ID logic that was previously duplicated across multiple PIC-SURE services. <p> The fallback hash uses SHA-256
- * truncated to 16 hex characters (64 bits), providing strong collision resistance even when many users share the same IP (e.g. behind a VPN
- * or institutional NAT). <p> No servlet dependency — accepts raw string values so it works in both javax.servlet (WildFly) and
- * jakarta.servlet (Spring Boot) environments.
+ * centralizes session ID logic for multiple PIC-SURE services. <p> The fallback hash uses SHA-256 truncated to 16 hex characters (64 bits),
+ * providing strong collision resistance even when many users share the same IP (e.g. behind a VPN or institutional NAT). <p> No servlet
+ * dependency — accepts raw string values for use across service integrations.
  */
 public final class SessionIdResolver {
 

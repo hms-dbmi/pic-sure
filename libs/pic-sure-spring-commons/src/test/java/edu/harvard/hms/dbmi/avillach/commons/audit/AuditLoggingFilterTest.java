@@ -109,6 +109,59 @@ class AuditLoggingFilterTest {
         assertThat(event.getRequest().getReferrer()).isEqualTo("https://picsure.example.org/explore");
     }
 
+    @Test
+    void xClientTypeHeaderLandsAsCallerOnTheEmittedEvent() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("PYTHON_ADAPTER");
+    }
+
+    @Test
+    void callerIsUnsetWhenTheXClientTypeHeaderIsAbsent() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isNull();
+    }
+
+    @Test
+    void callerIsUnsetWhenTheXClientTypeHeaderIsEmpty() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isNull();
+    }
+
     void srcIpIsTheRightmostXffEntrySoAClientSuppliedLeadingEntryIsNeverUsed() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);

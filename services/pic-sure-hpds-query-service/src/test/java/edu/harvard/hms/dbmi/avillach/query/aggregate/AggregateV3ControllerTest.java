@@ -64,6 +64,7 @@ class AggregateV3ControllerTest {
     static void hpdsProps(DynamicPropertyRegistry registry) {
         registry.add("hpds.auth-url", () -> "http://localhost:" + hpds.port() + "/PIC-SURE");
         registry.add("hpds.open-url", () -> "http://localhost:" + hpds.port() + "/PIC-SURE");
+        registry.add("consent.based.authorization.enabled", () -> false);
     }
 
     @Autowired

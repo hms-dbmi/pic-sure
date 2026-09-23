@@ -1,6 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.assertj.core.api.Assertions.assertThat;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
+import static org.hamcrest.Matchers.isA;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -36,7 +41,7 @@ class NamedDatasetControllerTest {
 
     private static final String ALICE = "alice@example.com";
     private static final String BOB = "bob@example.com";
-    private static final String QUERY_BODY = "{\"query\":{\"categoryFilters\":{}}}";
+    private static final String QUERY_BODY = "{\"categoryFilters\":{}}";
 
     @Autowired
     private MockMvc mockMvc;
@@ -61,8 +66,8 @@ class NamedDatasetControllerTest {
 
     @Test
     void listReturnsOnlyCallersDatasets() throws Exception {
-        Query aliceQuery = queryRepo.save(new Query());
-        Query bobQuery = queryRepo.save(new Query());
+        Query aliceQuery = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query bobQuery = queryRepo.save(new Query().setQuery(QUERY_BODY));
         namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("alice-1").setQuery(aliceQuery));
         namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bob-1").setQuery(bobQuery));
 
@@ -74,7 +79,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void createPersistsUnderCallersEmailAndReturns201() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
 
         mockMvc
             .perform(
@@ -96,7 +101,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void createSecondDatasetOverSameQueryAndUserReturns409() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
 
         mockMvc.perform(
             post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
@@ -124,7 +129,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void getOwnDatasetSucceeds() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
 
         mockMvc.perform(
@@ -146,7 +151,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void updateOwnDatasetSucceeds() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("old").setQuery(query));
 
         mockMvc.perform(
@@ -158,7 +163,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void updateAnotherUsersDatasetReturns404() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bobs").setQuery(query));
 
         mockMvc.perform(
@@ -170,7 +175,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void deleteOwnDatasetReturns204() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
 
         mockMvc.perform(
@@ -181,7 +186,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void deleteAnotherUsersDatasetReturns404() throws Exception {
-        Query query = queryRepo.save(new Query());
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bobs").setQuery(query));
 
         mockMvc.perform(
@@ -211,15 +216,17 @@ class NamedDatasetControllerTest {
                     .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
             ).andExpect(status().isOk()).andExpect(jsonPath("$[0].user").value(ALICE))
             .andExpect(jsonPath("$[0].query.uuid").value(savedQuery.getUuid().toString()))
-            .andExpect(jsonPath("$[0].query.query").value(QUERY_BODY)).andExpect(jsonPath("$[0].query.startTime").isNumber())
+            .andExpect(jsonPath("$[0].query.query").value(isA(String.class))).andExpect(jsonPath("$[0].query.startTime").isNumber())
             .andExpect(jsonPath("$[0].query.startTime").value(savedQuery.getStartTime().getTime()))
             .andExpect(jsonPath("$[0].query.status").value("AVAILABLE"));
     }
 
     @Test
     void queryBlobRoundTripsThroughTheLinkedNamedDataset() throws Exception {
+        String emptyV3QueryString =
+            "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
         Query query = new Query();
-        query.setQuery("{\"consentGroups\":[\"phs000001\"]}");
+        query.setQuery(emptyV3QueryString).setVersion("3");
         query = queryRepo.save(query);
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("with-query").setQuery(query));
 
@@ -228,9 +235,56 @@ class NamedDatasetControllerTest {
                 get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                     .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
             ).andExpect(status().isOk()).andExpect(jsonPath("$.query.uuid").value(query.getUuid().toString()))
-            .andExpect(jsonPath("$.query.query").value("{\"consentGroups\":[\"phs000001\"]}"));
+            .andExpect(jsonPath("$.query.query").value("{\"query\":" + emptyV3QueryString + "}"));
 
         Query reloaded = queryRepo.findById(query.getUuid()).orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(reloaded.getQuery()).isEqualTo("{\"consentGroups\":[\"phs000001\"]}");
+        assertThat(reloaded.getQuery()).isEqualTo(emptyV3QueryString);
+    }
+
+    @Test
+    void queryConvertedFromV1ToV3() throws Exception {
+        String emptyV1QueryString = "{\"categoryFilters\":{}}";
+        String emptyV3QueryString =
+            "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
+        Query query = new Query();
+        query.setVersion("2");
+        query.setQuery(emptyV1QueryString);
+        query = queryRepo.save(query);
+        NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("with-query").setQuery(query));
+
+        mockMvc
+            .perform(
+                get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.query.uuid").value(query.getUuid().toString()))
+            .andExpect(jsonPath("$.query.query").value("{\"query\":" + emptyV3QueryString + "}"));
+    }
+
+    @Test
+    void listAndDetailPreserveSavedLegacyFiltersWithoutUpdatingTheQueryRow() throws Exception {
+        String stored = """
+            {"query":{"categoryFilters":{"sex":["Female"]},"fields":["age"],"expectedResultType":"DATAFRAME"},
+            "commonAreaUUID":"common-id"}
+            """;
+        Query query = queryRepo.save(new Query().setQuery(stored).setVersion("2"));
+        NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("historical").setQuery(query));
+        ObjectMapper json = new ObjectMapper();
+        for (String path : List.of("/dataset/named", "/dataset/named/" + saved.getUuid())) {
+            String body = mockMvc.perform(
+                get(path).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice").header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            JsonNode response = json.readTree(body);
+            JsonNode dataset = response.isArray() ? response.get(0) : response;
+            JsonNode request = json.readTree(dataset.at("/query/query").asText());
+            assertThat(dataset.at("/query/uuid").asText()).isEqualTo(query.getUuid().toString());
+            assertThat(request.at("/query/select/0").asText()).isEqualTo("age");
+            assertThat(request.at("/query/phenotypicClause/conceptPath").asText()).isEqualTo("sex");
+            assertThat(request.at("/query/phenotypicClause/values/0").asText()).isEqualTo("Female");
+            assertThat(request.at("/query/expectedResultType").asText()).isEqualTo("DATAFRAME");
+            assertThat(request.path("commonAreaUUID").asText()).isEqualTo("common-id");
+        }
+        Query reloaded = queryRepo.findById(query.getUuid()).orElseThrow();
+        assertThat(json.readTree(reloaded.getQuery())).isEqualTo(json.readTree(stored));
+        assertThat(reloaded.getVersion()).isEqualTo("2");
     }
 }

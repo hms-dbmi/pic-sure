@@ -12,9 +12,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Ported from {@code edu.harvard.dbmi.avillach.util.VisualizationUtil} (pic-sure-util) -- only the methods the aggregate obfuscation path
- * uses ({@code skipKey}, {@code processResults} + its private helpers). Self-contained so the query service does not depend on the
- * WildFly-era pic-sure-util. Logic is an unmodified, instance-method port of the static original.
+ * Formats categorical aggregate results for visualization. It is self-contained so the query service needs no separate visualization
+ * utility dependency.
  */
 @Component
 public class VisualizationFormatter {

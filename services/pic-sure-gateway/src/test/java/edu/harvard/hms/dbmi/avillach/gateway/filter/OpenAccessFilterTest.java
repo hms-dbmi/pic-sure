@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -21,13 +20,12 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.client.RestClientException;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ShippedPublicRoutes;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,9 +33,7 @@ import jakarta.servlet.http.HttpServletResponse;
 class OpenAccessFilterTest {
 
     private OpenAccessFilter filter(PsamaClient client, AuditContext ctx, boolean enabled) {
-        return new OpenAccessFilter(
-            client, ctx, new ObjectMapper(), enabled, new PublicEndpointPolicy(List.of("/actuator", "/openapi", "/swagger-ui", "/logging"))
-        );
+        return new OpenAccessFilter(client, ctx, enabled, new PublicEndpointPolicy(ShippedPublicRoutes.routes()));
     }
 
     @Test
@@ -198,6 +194,7 @@ class OpenAccessFilterTest {
     private static BufferedRequestWrapper wrap(String authHeader, String uri, String method) {
         HttpServletRequest base = mock(HttpServletRequest.class);
         when(base.getRequestURI()).thenReturn(uri);
+        when(base.getContextPath()).thenReturn("");
         lenient().when(base.getMethod()).thenReturn(method);
         if (authHeader != null) when(base.getHeader("Authorization")).thenReturn(authHeader);
         lenient().when(base.getServerName()).thenReturn("aio.local");

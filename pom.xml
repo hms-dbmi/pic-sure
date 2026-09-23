@@ -12,6 +12,7 @@
         <module>libs/pic-sure-commons</module>
         <module>libs/pic-sure-logging-client</module>
         <module>libs/pic-sure-spring-commons</module>
+        <module>libs/pic-sure-openapi</module>
         <module>services/pic-sure-gateway</module>
         <module>services/pic-sure-operations-service</module>
         <module>services/pic-sure-hpds-query-service</module>
@@ -64,6 +65,12 @@
                     <version>3.14.0</version>
                     <configuration>
                         <release>${java.version}</release>
+                        <!-- Emit method parameter names (-parameters). spring-boot-starter-parent
+                             normally supplies this; these modules do not inherit it, so without
+                             this line Spring MVC cannot resolve implicitly-named @PathVariable /
+                             @RequestParam arguments and every such endpoint 500s at bind time
+                             ("parameter name information not available via reflection"). See ALS-12766. -->
+                        <parameters>true</parameters>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -95,6 +102,7 @@
                     <executions>
                         <execution>
                             <goals>
+                                <goal>build-info</goal>
                                 <goal>repackage</goal>
                             </goals>
                         </execution>

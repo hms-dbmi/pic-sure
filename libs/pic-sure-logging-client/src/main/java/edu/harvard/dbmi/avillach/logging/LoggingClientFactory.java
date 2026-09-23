@@ -6,8 +6,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Factory that creates a {@link LoggingClient} from environment variables, returning {@link LoggingClient#noOp()} when the service is not
  * configured. <p> Expected environment variables: <ul> <li>{@code LOGGING_SERVICE_URL} — base URL of the logging service</li>
- * <li>{@code LOGGING_API_KEY} — API key for authentication</li> </ul> <p> Used by Spring Boot apps (HPDS, PSAMA, dictionary). For JAX-RS
- * apps on WildFly, use JNDI injection with {@link LoggingClientConfig#builder(String, String)} directly.
+ * <li>{@code LOGGING_API_KEY} — API key for authentication</li> </ul> <p> Used by Spring Boot apps such as HPDS, PSAMA, and dictionary.
  */
 public final class LoggingClientFactory {
 

@@ -56,7 +56,7 @@ public class InternalQueryController {
 
     /**
      * MUST match the gateway's {@code QueryAuthFetcher} contract exactly: {@code {"queryJson": "<string>"}}, the stored query JSON
-     * re-serialized as a string with {@code resourceCredentials} stripped (or {@code null} for a blank stored query).
+     * re-serialized as a string with any legacy {@code resourceCredentials} stripped (or {@code null} for a blank stored query).
      */
     @GetMapping("/{picsureId}/dispatch")
     public Map<String, String> dispatch(@PathVariable("picsureId") UUID picsureId) {

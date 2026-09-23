@@ -31,7 +31,7 @@ public class OktaAuthenticationService {
      * Exchange the code for an access token. This is a call to the OKTA token endpoint. Documentation: <a
      * href="https://developer.okta.com/docs/reference/api/oidc/#token">Token</a>
      *
-     * @param host The UriInfo object from the JAX-RS context
+     * @param host the request host used to build the login redirect URI
      * @param code The code to exchange
      * @return The response from the token endpoint as a JsonNode
      */

@@ -555,7 +555,9 @@ public class UserService {
 
     /**
      * Attach the roles every authenticated user receives. Study-level authorization is carried by {@code user_consents} (see
-     * {@link #updateUserConsents}), not by roles, so no per-study role is derived here.
+     * {@link #updateUserConsents}), not by roles, so no per-study role is derived here. {@code MANUAL_ROLE_AUTH_ACCESS} also carries
+     * {@code AUTHORIZED_ACCESS}, a privilege with no access rule that the frontend reads to show the authorized data routes; detaching this
+     * role takes the UI away as well as the query.
      *
      * @param current_user User to be updated
      */

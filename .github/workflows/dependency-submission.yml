@@ -1,0 +1,34 @@
+name: Maven Dependency Submission
+
+# Only the default branch feeds GitHub's dependency graph, so other branches would
+# submit a snapshot that is never read.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    name: Submit resolved dependency graph
+    runs-on: ubuntu-latest
+    # Submitting a snapshot writes to the repository's dependency graph, which the
+    # workflow-level read-only default cannot do.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up JDK 25
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+      # Runs from the repository root on purpose: the reactor satisfies the
+      # pic-sure-bom import, and a service-level directory cannot resolve it.
+      - name: Submit dependency graph
+        uses: advanced-security/maven-dependency-submission-action@a64327a7329c9939cf675e458452febe1894a70c # v6.0.1
+        with:
+          maven-args: '-B -DskipTests'

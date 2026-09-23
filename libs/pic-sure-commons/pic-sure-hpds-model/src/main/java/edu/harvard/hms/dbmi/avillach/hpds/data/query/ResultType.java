@@ -13,11 +13,6 @@ public enum ResultType {
     )
     DATAFRAME,
 
-    @Schema(
-        description = "Create a `DATAFRAME`, but do not allow conventional access to it. Instead, the dataframe can be sent to a S3 bucket by an admin"
-    )
-    SECRET_ADMIN_DATAFRAME,
-
     @Schema(description = "Return one patient count for each concept path included in the `select` field of the Query")
     CROSS_COUNT,
 
