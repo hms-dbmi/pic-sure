@@ -10,7 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -19,8 +19,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * <p>Endpoint for service handling business logic for user metadata mapping.</p>
@@ -44,7 +42,7 @@ public class UserMetadataMappingWebController {
     )
     @ApiResponse(responseCode = "200", description = "Mappings for the named connection")
     @AuditEvent(type = "OTHER", action = "mapping.read")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "{connectionId}", produces = "application/json")
     public ResponseEntity<Connection> getMappingsForConnection(@PathVariable("connectionId") String connection) {
         Connection allMappingsForConnection = this.mappingService.getAllMappingsForConnection(connection);
@@ -57,7 +55,7 @@ public class UserMetadataMappingWebController {
     )
     @ApiResponse(responseCode = "200", description = "Every user metadata mapping")
     @AuditEvent(type = "OTHER", action = "mapping.list")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
     public ResponseEntity<List<UserMetadataMapping>> getAllMappings() {
         List<UserMetadataMapping> allMappings = mappingService.getAllMappings();
@@ -67,7 +65,7 @@ public class UserMetadataMappingWebController {
     @Operation(summary = "Create mappings", description = "POST a list of UserMetadataMappings, requires SUPER_ADMIN role")
     @ApiResponse(responseCode = "200", description = "The created mappings")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> addMapping(
         @Parameter(
@@ -90,7 +88,7 @@ public class UserMetadataMappingWebController {
     )
     @ApiResponse(responseCode = "200", description = "The updated mappings")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> updateMapping(
         @Parameter(
@@ -113,7 +111,7 @@ public class UserMetadataMappingWebController {
     @ApiResponse(responseCode = "200", description = "The remaining mappings")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this mapping")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{mappingId}", produces = "application/json")
     public ResponseEntity<List<UserMetadataMapping>> removeById(
         @Parameter(required = true, description = "A valid UserMetadataMapping Id") @PathVariable("mappingId") final String mappingId,

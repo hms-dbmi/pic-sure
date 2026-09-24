@@ -8,7 +8,7 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.*;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -20,8 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * <p>Endpoint for service handling business logic for access rules.</p>
@@ -48,7 +46,7 @@ public class AccessRuleController {
     @ApiResponse(responseCode = "200", description = "The access rule")
     @ApiResponse(responseCode = "404", description = "No access rule has that id")
     @AuditEvent(type = "OTHER", action = "access_rule.read")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{accessRuleId}")
     public ResponseEntity<?> getAccessRuleById(
         @Parameter(description = "The UUID of the accessRule to fetch information about") @PathVariable("accessRuleId") String accessRuleId
@@ -65,7 +63,7 @@ public class AccessRuleController {
     @Operation(summary = "List every access rule", description = "GET a list of existing AccessRules, requires ADMIN or SUPER_ADMIN role")
     @ApiResponse(responseCode = "200", description = "Every access rule")
     @AuditEvent(type = "OTHER", action = "access_rule.list")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping("")
     public ResponseEntity<List<AccessRule>> getAccessRuleAll() {
         List<AccessRule> allAccessRules = this.accessRuleService.getAllAccessRules();
@@ -76,7 +74,7 @@ public class AccessRuleController {
     @ApiResponse(responseCode = "200", description = "The created access rules")
     @ApiResponse(responseCode = "400", description = "No access rules were added")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
-    @RolesAllowed(SUPER_ADMIN)
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> addAccessRule(
         @Parameter(required = true, description = "A list of AccessRule in JSON format") @RequestBody List<AccessRule> accessRules,
@@ -98,7 +96,7 @@ public class AccessRuleController {
     )
     @ApiResponse(responseCode = "200", description = "The updated access rules")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
-    @RolesAllowed(SUPER_ADMIN)
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<AccessRule>> updateAccessRule(
         @Parameter(
@@ -117,7 +115,7 @@ public class AccessRuleController {
     @ApiResponse(responseCode = "200", description = "The remaining access rules")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this access rule")
     @AuditEvent(type = "ADMIN", action = "access_rule.delete")
-    @RolesAllowed(SUPER_ADMIN)
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{accessRuleId}")
     public ResponseEntity<List<AccessRule>> removeById(
         @Parameter(required = true, description = "A valid accessRule Id") @PathVariable("accessRuleId") final String accessRuleId,
@@ -133,7 +131,7 @@ public class AccessRuleController {
     )
     @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values")
     @AuditEvent(type = "OTHER", action = "access_rule.types")
-    @RolesAllowed(SUPER_ADMIN)
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping(path = "/allTypes", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Integer>> getAllTypes() {
         return PICSUREResponse.success(AccessRule.TypeNaming.getTypeNameMap());

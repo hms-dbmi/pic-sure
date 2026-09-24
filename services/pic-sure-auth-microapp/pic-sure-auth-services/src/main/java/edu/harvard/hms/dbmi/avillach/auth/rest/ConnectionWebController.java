@@ -9,7 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -18,8 +18,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * <p>Endpoint for service handling business logic for connections to PSAMA. <br> Note: Only users with the super admin role can access this
@@ -45,7 +43,7 @@ public class ConnectionWebController {
     @ApiResponse(responseCode = "400", description = "No connection with that UUID")
     @AuditEvent(type = "OTHER", action = "connection.read")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
-    @RolesAllowed({SUPER_ADMIN, ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'ADMIN')")
     public ResponseEntity<?> getConnectionById(
         @Parameter(required = true, description = "The UUID of the Connection to fetch information about") @PathVariable(
             "connectionId"
@@ -63,7 +61,7 @@ public class ConnectionWebController {
     @ApiResponse(responseCode = "200", description = "Every connection")
     @AuditEvent(type = "OTHER", action = "connection.list")
     @GetMapping
-    @RolesAllowed({SUPER_ADMIN, ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'ADMIN')")
     public ResponseEntity<List<Connection>> getAllConnections() {
         List<Connection> allConnections = connectionWebService.getAllConnections();
         return ResponseEntity.ok(allConnections);
@@ -72,7 +70,7 @@ public class ConnectionWebController {
     @Operation(summary = "Create connections", description = "POST a list of Connections, requires SUPER_ADMIN role")
     @ApiResponse(responseCode = "200", description = "The created connections")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<?> addConnection(
         @Parameter(required = true, description = "A list of Connections in JSON format") @RequestBody List<Connection> connections,
@@ -94,7 +92,7 @@ public class ConnectionWebController {
     )
     @ApiResponse(responseCode = "200", description = "The updated connections")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<List<Connection>> updateConnection(
         @Parameter(
@@ -113,7 +111,7 @@ public class ConnectionWebController {
     @ApiResponse(responseCode = "200", description = "The remaining connections")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this connection")
     @AuditEvent(type = "ADMIN", action = "connection.delete")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{connectionId}", produces = "application/json")
     public ResponseEntity<List<Connection>> removeById(
         @Parameter(required = true, description = "A valid connection Id") @PathVariable("connectionId") final String connectionId,
