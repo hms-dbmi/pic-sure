@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
@@ -11,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import java.net.ConnectException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,11 +24,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -55,6 +60,9 @@ class HpdsCallIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    private static final String AUTH_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync";
+    private static final String OPEN_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/open/v3/query/sync";
 
     private MockRestServiceServer mockServer;
 
@@ -228,25 +236,126 @@ class HpdsCallIntegrationTest {
         mockServer.verify();
     }
 
+    /**
+     * A 503 from the query service is a status the service did not expect, so it takes the non-403 status branch and surfaces as a 502
+     * whose message carries the downstream status.
+     */
     @Test
-    void distributions_hpdsTimeout_returns502BadGateway() throws Exception {
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
-            .andRespond(withServiceUnavailable());
+    void distributions_queryServiceReturns503_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andExpect(method(HttpMethod.POST)).andRespond(withServiceUnavailable());
 
+        mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error").value("Query service request failed with status 503: Service Unavailable"));
+
+        mockServer.verify();
+    }
+
+    /**
+     * A 4xx other than 403 from the query service is not a consent decision, so it is reported as a 502 carrying the downstream status
+     * rather than as a 403.
+     */
+    @Test
+    void distributions_queryServiceReturns404_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND).body("{\"error\":\"Not found\"}"));
+
+        mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error").value("Query service request failed with status 404: Not Found"));
+
+        mockServer.verify();
+    }
+
+    /**
+     * An I/O failure on the query-service call (connection refused, reset, or read timeout) reaches the service as a
+     * {@code ResourceAccessException} and surfaces as a 502 naming the I/O error.
+     */
+    @Test
+    void distributions_queryServiceUnreachable_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withException(new ConnectException("Connection refused")));
+
+        mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error", startsWith("Query service request failed: I/O error on POST request for \"" + AUTH_SYNC_URL)))
+            .andExpect(jsonPath("$.error", containsString("Connection refused")));
+
+        mockServer.verify();
+    }
+
+    /**
+     * A 200 from the query service whose body cannot be read as cross counts fails outside the HTTP and I/O branches, and the catch-all
+     * wraps it as a 502 naming the extraction failure.
+     */
+    @Test
+    void distributions_queryServiceReturnsUnreadableBody_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withSuccess("[\"not\", \"cross counts\"]", MediaType.APPLICATION_JSON));
+
+        mockMvc.perform(authDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error", startsWith("Query service request failed: Error while extracting response")));
+
+        mockServer.verify();
+    }
+
+    /** A 403 from the query service on the open path is reported as a consent denial, the same as on the auth path. */
+    @Test
+    void distributions_open_queryServiceConsentDenialReturns403() throws Exception {
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withStatus(HttpStatus.FORBIDDEN).body("{\"errorType\":\"consent_denied\"}"));
+
+        mockMvc.perform(openDistributions()).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorType").value("consent_denied"));
+
+        mockServer.verify();
+    }
+
+    /** A 500 from the query service on the open path surfaces as a 502 carrying the downstream status. */
+    @Test
+    void distributions_open_queryServiceReturns500_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withServerError().body("{\"error\":\"internal error\"}"));
+
+        mockMvc.perform(openDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error").value("Query service request failed with status 500: Internal Server Error"));
+
+        mockServer.verify();
+    }
+
+    /** An I/O failure on the open-path query-service call surfaces as a 502 naming the I/O error. */
+    @Test
+    void distributions_open_queryServiceUnreachable_returns502BadGateway() throws Exception {
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andExpect(method(HttpMethod.POST))
+            .andRespond(withException(new ConnectException("Connection refused")));
+
+        mockMvc.perform(openDistributions()).andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.error", startsWith("Query service request failed: I/O error on POST request for \"" + OPEN_SYNC_URL)));
+
+        mockServer.verify();
+    }
+
+    /**
+     * Builds an authorized-path distributions request for a single categorical filter, which decomposes into exactly one query-service
+     * call.
+     */
+    private MockHttpServletRequestBuilder authDistributions() throws Exception {
+        return post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
+            .content(singleCategoricalFilterBody());
+    }
+
+    /**
+     * Builds an open-path distributions request for a single categorical filter, which decomposes into exactly one query-service call.
+     */
+    private MockHttpServletRequestBuilder openDistributions() throws Exception {
+        return post("/open/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
+            .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(singleCategoricalFilterBody());
+    }
+
+    private String singleCategoricalFilterBody() throws Exception {
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
-
-        mockMvc.perform(
-            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
-                .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
-                .content(body)
-        ).andExpect(status().isBadGateway());
-
-        mockServer.verify();
+        return objectMapper.writeValueAsString(Map.of("query", query));
     }
 
     @Test
