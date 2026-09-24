@@ -204,6 +204,41 @@ class LoggingEventTest {
     }
 
     @Test
+    void serializesCallerAsATopLevelKey() {
+        LoggingEvent event = LoggingEvent.builder("QUERY").action("execute").caller("PYTHON_ADAPTER").build();
+
+        JsonNode json = mapper.valueToTree(event);
+        assertEquals("PYTHON_ADAPTER", json.get("caller").asText());
+    }
+
+    @Test
+    void omitsNullCaller() {
+        LoggingEvent event = LoggingEvent.builder("QUERY").action("execute").build();
+
+        JsonNode json = mapper.valueToTree(event);
+        assertFalse(json.has("caller"));
+    }
+
+    @Test
+    void roundTripPreservesCaller() throws Exception {
+        LoggingEvent original = LoggingEvent.builder("ACCESS").action("read").caller("R_ADAPTER").build();
+
+        String json = mapper.writeValueAsString(original);
+        LoggingEvent deserialized = mapper.readValue(json, LoggingEvent.class);
+
+        assertEquals("R_ADAPTER", deserialized.getCaller());
+    }
+
+    @Test
+    void withClientTypePreservesCaller() {
+        LoggingEvent original = LoggingEvent.builder("QUERY").action("execute").caller("R_ADAPTER").build();
+        LoggingEvent copy = original.withClientType("api");
+
+        assertEquals("R_ADAPTER", copy.getCaller());
+        assertEquals("api", copy.getClientType());
+    }
+
+    @Test
     void requestInfoAllFields() {
         RequestInfo request = RequestInfo.builder().requestId("req-123").method("POST").url("/query/sync").queryString("limit=100")
             .srcIp("10.0.0.1").destIp("10.0.0.2").destPort(8080).httpUserAgent("PIC-SURE/2.0").httpContentType("application/json")

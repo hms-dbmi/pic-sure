@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.service;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -69,7 +71,7 @@ class QueryServiceClientTest {
             .andExpect(header("X-Request-Id", "request-1")).andExpect(header("Accept", MediaType.ALL_VALUE))
             .andExpect(content().contentType(MediaType.APPLICATION_JSON))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
-            .andExpect(content().json("{\"resourceCredentials\":{}}"))
+            .andExpect(content().string(not(containsString("resourceCredentials"))))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
         Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
@@ -125,9 +127,8 @@ class QueryServiceClientTest {
 
     @Test
     void authorizationFiltersSurviveIntoTheSubQuery() throws Exception {
-        // REGRESSION GUARD (predev 502): PSAMA injects consent filters and the gateway's BodyMutationFilter swaps them
-        // into the body before this service sees it. Auth HPDS defaults hpds.requireAuthorizationFilter=true, so
-        // dropping them here makes every authorized distribution fail with "Authorization filter is required".
+        // The decomposer must preserve all filters while building a subquery. HQS replaces authorization filters from
+        // the caller's current consents before execution.
         mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync"))
             .andExpect(jsonPath("$.query.authorizationFilters[0].conceptPath").value("\\_consents\\"))
             .andExpect(jsonPath("$.query.authorizationFilters[0].values[0]").value("phs000001.c1"))

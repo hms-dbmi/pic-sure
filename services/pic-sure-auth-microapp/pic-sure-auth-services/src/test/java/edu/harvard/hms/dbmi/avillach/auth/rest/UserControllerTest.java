@@ -18,10 +18,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Dispatch-level tests for {@link UserController}, exercising real request routing through MockMvc. <p> GET /user/me/consents previously
- * declared {@code @PathVariable("userId")} while its mapping had no {@code {userId}} segment, so Spring raised MissingPathVariableException
- * on every call. Only dispatching a real request catches that class of mismatch — it is invisible to a direct unit call on the controller
- * method.
+ * Dispatch-level tests for {@link UserController}, exercising real request routing through MockMvc. A real request catches mapping and
+ * method-parameter mismatches that a direct controller call cannot detect.
  */
 public class UserControllerTest {
 

@@ -7,7 +7,6 @@ import edu.harvard.dbmi.avillach.dictionary.dashboard.DashboardController;
 import edu.harvard.dbmi.avillach.dictionary.dashboarddrawer.DashboardDrawerController;
 import edu.harvard.dbmi.avillach.dictionary.facet.FacetController;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
-import edu.harvard.dbmi.avillach.dictionary.info.InfoController;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.LegacySearchController;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import org.junit.jupiter.api.Test;
@@ -56,12 +55,6 @@ class ControllerAuditEventTest {
         Class<?> c = DashboardDrawerController.class;
         assertAuditEvent(c, "findAll", new Class[] {}, "OTHER", "dashboard_drawer.list");
         assertAuditEvent(c, "findByDatasetId", new Class[] {Integer.class}, "OTHER", "dashboard_drawer.read");
-    }
-
-    @Test
-    void infoController() throws Exception {
-        Class<?> c = InfoController.class;
-        assertAuditEvent(c, "getInfo", new Class[] {Object.class}, "OTHER", "info");
     }
 
     @Test

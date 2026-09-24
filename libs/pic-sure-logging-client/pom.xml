@@ -20,7 +20,6 @@
     <description>Lightweight client library for sending logging events to the PIC-SURE Logging service</description>
 
     <properties>
-        <jackson.version>2.16.0</jackson.version>
         <slf4j.version>1.7.36</slf4j.version>
     </properties>
 
@@ -28,7 +27,6 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>

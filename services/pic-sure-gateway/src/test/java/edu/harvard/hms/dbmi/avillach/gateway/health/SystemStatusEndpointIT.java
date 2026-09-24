@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.gateway.health;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,9 +25,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * End-to-end wiring check over real HTTP: {@code /system/status} composed through the real Spring context (HealthConfig bean ->
- * SystemHealthService -> SystemStatusController), against a WireMock downstream that is down, proving the legacy plain-text DEGRADED
- * contract survives the full stack, not just the unit-level fake in {@link SystemStatusControllerTest}.
+ * End-to-end check of the {@code /system/status} plain-text DEGRADED contract through the real Spring context, using a WireMock downstream
+ * that reports unhealthy. {@link SystemStatusControllerTest} covers the unit-level behavior.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class SystemStatusEndpointIT {
@@ -54,6 +55,7 @@ class SystemStatusEndpointIT {
         down = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         down.start();
         down.stubFor(get(urlEqualTo("/actuator/health")).willReturn(aResponse().withStatus(503)));
+        down.stubFor(post(urlEqualTo("/auth/open/validate")).willReturn(okJson("false")));
     }
 
     @AfterAll
@@ -66,6 +68,8 @@ class SystemStatusEndpointIT {
         r.add("picsure.gateway.health.downstreams[0].name", () -> "hpds");
         r.add("picsure.gateway.health.downstreams[0].base-url", () -> "http://127.0.0.1:" + down.port());
         r.add("picsure.gateway.health.downstreams[0].require-status-up", () -> "true");
+        r.add("picsure.gateway.security.open-access-enabled", () -> "true");
+        r.add("picsure.gateway.security.open-access-validate-url", () -> down.baseUrl() + "/auth/open/validate");
     }
 
     @Test
@@ -75,5 +79,6 @@ class SystemStatusEndpointIT {
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getHeaders().getContentType()).isNotNull().matches(t -> t.isCompatibleWith(MediaType.TEXT_PLAIN));
         assertThat(response.getBody()).isEqualTo("ONE OR MORE COMPONENTS DEGRADED");
+        down.verify(0, postRequestedFor(urlEqualTo("/auth/open/validate")));
     }
 }

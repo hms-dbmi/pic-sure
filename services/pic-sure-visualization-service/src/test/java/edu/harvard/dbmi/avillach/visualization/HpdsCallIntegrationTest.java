@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,9 +71,7 @@ class HpdsCallIntegrationTest {
         hpdsResponse.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000, "Black", 12000, "Asian", 8000)));
 
         mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
-            // The caller's Bearer token is NOT forwarded: query-service authorizes from the gateway's identity headers,
-            // which is what must reach it for its /hpds/** .authenticated() rule to pass.
-            .andExpect(headerDoesNotExist("Authorization")).andExpect(header("X-User-Id", "test-user"))
+            .andExpect(header("Authorization", "Bearer test-token")).andExpect(header("X-User-Id", "test-user"))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
@@ -80,12 +79,12 @@ class HpdsCallIntegrationTest {
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White", "Black")),
-            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isOk()).andReturn();
@@ -121,12 +120,12 @@ class HpdsCallIntegrationTest {
 
         Map<String, Object> query = Map.of(
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
-            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isOk()).andReturn();
@@ -163,13 +162,13 @@ class HpdsCallIntegrationTest {
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
-            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON)
-                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
         ).andExpect(status().isOk()).andReturn();
 
         mockServer.verify();
@@ -191,12 +190,12 @@ class HpdsCallIntegrationTest {
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
-            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isBadGateway()).andReturn();
@@ -210,6 +209,26 @@ class HpdsCallIntegrationTest {
     }
 
     @Test
+    void distributions_queryServiceConsentDenialReturns403() throws Exception {
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync"))
+            .andRespond(withStatus(org.springframework.http.HttpStatus.FORBIDDEN).body("{\"errorType\":\"consent_denied\"}"));
+
+        Map<String, Object> query = Map.of(
+            "phenotypicClause",
+            Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
+            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
+        );
+
+        mockMvc.perform(
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+                .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
+                .content(objectMapper.writeValueAsString(Map.of("query", query)))
+        ).andExpect(status().isForbidden()).andExpect(jsonPath("$.errorType").value("consent_denied"));
+
+        mockServer.verify();
+    }
+
+    @Test
     void distributions_hpdsTimeout_returns502BadGateway() throws Exception {
         mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withServiceUnavailable());
@@ -217,12 +236,12 @@ class HpdsCallIntegrationTest {
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
-            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
                 .content(body)
         ).andExpect(status().isBadGateway());
@@ -248,12 +267,12 @@ class HpdsCallIntegrationTest {
 
         Map<String, Object> query = Map.of(
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
-            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
+            "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of(), "expectedResultType", "COUNT"
         );
         String body = objectMapper.writeValueAsString(Map.of("query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON)
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON)
                 .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
         ).andExpect(status().isOk()).andReturn();
 

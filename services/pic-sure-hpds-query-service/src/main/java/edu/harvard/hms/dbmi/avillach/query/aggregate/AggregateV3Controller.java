@@ -9,14 +9,16 @@ import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * The v3 aggregate/obfuscation ingress: {@code POST /hpds/open/v3/query/sync} and {@code POST /hpds/open/v3/query}. Same delegation as
  * {@link AggregateController} except it passes {@link AggregateVariant#V3} to {@link AggregateService}, which yields the {@code select}
- * consents field (not {@code crossCountFields}) and the {@code /v3} downstream HPDS prefix. No inline audit here either -- the gateway
- * audits both variants identically, closing the WAR's v3 missing-audit gap. Both v3 aggregate resources
- * ({@code AggregateDataSharingResourceRSV3}) supported the async {@code query} submit, so it is mirrored here.
+ * consent field rather than {@code crossCountFields} and applies the {@code /v3} downstream HPDS prefix. The gateway audits both variants
+ * identically; this controller does not emit audit events directly.
  *
  * <p><b>Coexistence with {@code HpdsQueryV3Controller}:</b> that controller maps the generic, path-variable
  * {@code /hpds/{backend}/v3/query} and {@code /hpds/{backend}/v3/query/sync}. This controller maps the LITERAL {@code /hpds/open/v3/query}
@@ -26,7 +28,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  */
 @RestController
 @RequestMapping("/hpds/open/v3")
-@Tag(name = "aggregate-data-sharing (open, v3)")
+@Tag(name = "aggregate-data-sharing (open, v3)", description = "Open-access aggregate queries, v3 shape")
 public class AggregateV3Controller {
 
     private final AggregateService service;
@@ -36,11 +38,24 @@ public class AggregateV3Controller {
     }
 
     @PostMapping(value = "/query/sync", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Run an open aggregate query inline, v3 shape")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"),
+            @ApiResponse(responseCode = "400", description = "Missing query data or an unsupported result type"),
+            @ApiResponse(responseCode = "502", description = "Aggregate backend call failed")}
+    )
     public ResponseEntity<String> querySync(@RequestBody QueryRequest req) {
         return service.querySync(req, AggregateVariant.V3);
     }
 
     @PostMapping("/query")
+    @Operation(summary = "Submit an open aggregate query, v3 shape")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Missing query data"),
+            @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed"),
+            @ApiResponse(responseCode = "503", description = "Backend not configured"),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+    )
     public QueryStatus query(@RequestBody QueryRequest req) {
         return service.query(req, AggregateVariant.V3);
     }

@@ -19,10 +19,10 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.request.InternalEndpointGuardFilter;
@@ -73,14 +73,13 @@ class OpenAccessFilterOrderTest {
 
     private static List<FilterRegistrationBean<? extends Filter>> assembledRegistrations(PsamaClient psama) {
         GatewaySecurityProperties props = new GatewaySecurityProperties(
-            List.of(), true, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token",
-            "http://operations.local", "internal-token"
+            List.of(), true, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token"
         );
         SecurityConfig securityConfig = new SecurityConfig();
         ObservabilityConfig observabilityConfig = new ObservabilityConfig();
         return List.of(
             observabilityConfig.internalEndpointGuardFilter(),
-            securityConfig.openAccessFilter(psama, new AuditContext(), new ObjectMapper(), props),
+            securityConfig.openAccessFilter(psama, new AuditContext(), props, new PublicEndpointPolicy(List.of())),
             observabilityConfig.inboundIdentityHeaderSanitizingFilter()
         );
     }

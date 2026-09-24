@@ -22,9 +22,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * The explicit {@code /logging/**} route forwards to the logging service with the leading {@code /logging} segment stripped (the logging
- * service serves its API at root — {@code /audit}, {@code /health}). This replaces the legacy {@code /proxy/pic-sure-logging} relay. The
- * request must reach the logging stub via the explicit route (order 100); there is no catch-all fallback.
+ * The explicit {@code /logging/**} route forwards to the logging service with the leading {@code /logging} segment stripped because the
+ * service exposes {@code /audit} and {@code /health} at its root. The request must reach the logging stub through the order-100 route;
+ * there is no catch-all fallback.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class LoggingRouteTest {

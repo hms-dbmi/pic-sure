@@ -20,12 +20,12 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.client.RestClientException;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ShippedPublicRoutes;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,7 +33,7 @@ import jakarta.servlet.http.HttpServletResponse;
 class OpenAccessFilterTest {
 
     private OpenAccessFilter filter(PsamaClient client, AuditContext ctx, boolean enabled) {
-        return new OpenAccessFilter(client, ctx, new ObjectMapper(), enabled);
+        return new OpenAccessFilter(client, ctx, enabled, new PublicEndpointPolicy(ShippedPublicRoutes.routes()));
     }
 
     @Test
@@ -43,6 +43,20 @@ class OpenAccessFilterTest {
         BufferedRequestWrapper req = wrap("Bearer real-token");
         FilterChain chain = mock(FilterChain.class);
         f.doFilter(req, mock(HttpServletResponse.class), chain);
+        verify(chain).doFilter(eq(req), any());
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void enabledOpenAccessSkipsValidationForPublicSystemStatus() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(false);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+        BufferedRequestWrapper req = wrap(null, "/system/status", "GET");
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, new MockHttpServletResponse(), chain);
+
         verify(chain).doFilter(eq(req), any());
         verifyNoInteractions(client);
     }
@@ -218,9 +232,18 @@ class OpenAccessFilterTest {
     }
 
     private static BufferedRequestWrapper wrap(String authHeader, String apiKeyHeader) {
+        return wrap(authHeader, "/v3/search/abc", "POST", apiKeyHeader);
+    }
+
+    private static BufferedRequestWrapper wrap(String authHeader, String uri, String method) {
+        return wrap(authHeader, uri, method, null);
+    }
+
+    private static BufferedRequestWrapper wrap(String authHeader, String uri, String method, String apiKeyHeader) {
         HttpServletRequest base = mock(HttpServletRequest.class);
-        when(base.getRequestURI()).thenReturn("/v3/search/abc");
-        lenient().when(base.getMethod()).thenReturn("POST");
+        when(base.getRequestURI()).thenReturn(uri);
+        when(base.getContextPath()).thenReturn("");
+        lenient().when(base.getMethod()).thenReturn(method);
         if (authHeader != null) when(base.getHeader("Authorization")).thenReturn(authHeader);
         if (apiKeyHeader != null) when(base.getHeader(OpenAccessFilter.API_KEY_HEADER)).thenReturn(apiKeyHeader);
         lenient().when(base.getServerName()).thenReturn("aio.local");

@@ -8,9 +8,8 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 
 /**
  * Maps the ingress {@code {backend}} path segment ("auth" or "open") to the HPDS call target: the backend's absolute base URL and its
- * service token. v3 endpoints compose the base by appending {@code /v3} (preserving the legacy WAR's {@code resourceRSPath + "/v3/"}
- * convention). Query-lifecycle calls use {@code target.token()} (Bearer auth); search/values calls use only {@code target.baseUrl()} -- no
- * token.
+ * service token. v3 endpoints append {@code /v3} to the base URL. Query-lifecycle calls use {@code target.token()} for Bearer
+ * authentication; search and values calls use only {@code target.baseUrl()} and send no token.
  */
 @Component
 public class HpdsBackendSelector {
@@ -32,6 +31,8 @@ public class HpdsBackendSelector {
      * @param backend the ingress segment: "auth" or "open"
      * @param v3 whether the target endpoint is v3 (append "/v3" to the base)
      * @return the HPDS target (URL + service token) for that backend
+     * @throws PicsureException 400 if the segment is neither "auth" nor "open"; 503 if that backend has no URL configured, which is how a
+     *         stack built without an open HPDS instance presents (an unset {@code HPDS_OPEN_URL} binds to the empty string)
      */
     public HpdsTarget select(String backend, boolean v3) {
         String base;
@@ -47,6 +48,12 @@ public class HpdsBackendSelector {
             }
             default -> throw new PicsureException(
                 HttpStatus.BAD_REQUEST, "bad_request", "Unknown HPDS backend '" + backend + "' (expected 'auth' or 'open')"
+            );
+        }
+        if (base == null || base.isBlank()) {
+            throw new PicsureException(
+                HttpStatus.SERVICE_UNAVAILABLE, "backend_not_configured",
+                "HPDS backend '" + backend + "' is not configured in this deployment"
             );
         }
         return new HpdsTarget(v3 ? base + "/v3" : base, token);

@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import edu.harvard.dbmi.avillach.visualization.error.BadVisualizationRequestException;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
-import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import org.junit.jupiter.api.Test;
 
 class AccessTypeResolverTest {
@@ -13,37 +12,35 @@ class AccessTypeResolverTest {
     private final AccessTypeResolver resolver = new AccessTypeResolver();
 
     @Test
-    void resolvesAuthorized() {
-        assertEquals(AccessType.AUTHORIZED, resolver.resolve(GatewayUserResolver.ACCESS_TYPE_AUTHORIZED));
+    void resolvesAuthBackend() {
+        assertEquals(AccessType.AUTHORIZED, resolver.resolve("auth"));
     }
 
     @Test
     void resolvesOpen() {
-        assertEquals(AccessType.OPEN, resolver.resolve(GatewayUserResolver.ACCESS_TYPE_OPEN));
+        assertEquals(AccessType.OPEN, resolver.resolve("open"));
     }
 
     @Test
-    void resolveIsCaseInsensitiveAndTrims() {
-        assertEquals(AccessType.OPEN, resolver.resolve("  OPEN "));
-        assertEquals(AccessType.AUTHORIZED, resolver.resolve("Authorized"));
+    void backendMustBeAnExactPathSegment() {
+        assertThrows(BadVisualizationRequestException.class, () -> resolver.resolve(" OPEN "));
+        assertThrows(BadVisualizationRequestException.class, () -> resolver.resolve("authorized"));
+        assertThrows(BadVisualizationRequestException.class, () -> resolver.resolve("AUTH"));
     }
 
     @Test
-    void missingHeaderFailsClosed() {
-        // Absence means the request never traversed the gateway auth chain, so there is no trustworthy access type.
-        // Defaulting to AUTHORIZED would expose non-obfuscated counts; defaulting to OPEN would silently downgrade
-        // real users with nothing in the response to say so. Fail loudly instead.
+    void missingBackendFailsClosed() {
         BadVisualizationRequestException e = assertThrows(BadVisualizationRequestException.class, () -> resolver.resolve(null));
-        assertEquals("Missing or unrecognized X-Picsure-Access-Type header", e.getMessage());
+        assertEquals("Missing or unrecognized visualization backend", e.getMessage());
     }
 
     @Test
-    void blankHeaderFailsClosed() {
+    void blankBackendFailsClosed() {
         assertThrows(BadVisualizationRequestException.class, () -> resolver.resolve("   "));
     }
 
     @Test
-    void unrecognizedHeaderFailsClosed() {
+    void unrecognizedBackendFailsClosed() {
         assertThrows(BadVisualizationRequestException.class, () -> resolver.resolve("superuser"));
     }
 }

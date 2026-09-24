@@ -6,12 +6,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * Create/update request body for {@code /configuration/admin/**}. Mirrors {@code pic-sure-api-data}'s javax-validated
- * {@code ConfigurationRequest} verbatim, in the jakarta namespace, so this service stays self-contained.
+ * Create and update request body for {@code /configuration/admin/**}.
  *
- * <p>No {@code @NotNull}: the legacy {@code ConfigurationRS} did manual null checks for {@code name}/{@code kind}/{@code value} on create
- * (reproduced in {@link ConfigurationController}), and PATCH treats every field as optional (partial update). {@code uuid} is accepted only
- * to honor the "UUID cannot be changed" guard on PATCH.
+ * <p>There is no {@code @NotNull} because {@link ConfigurationController} performs create-time null checks while PATCH treats every field
+ * as optional. {@code uuid} is accepted only to enforce the "UUID cannot be changed" guard on PATCH.
  */
 public record ConfigurationRequestDto(
     UUID uuid, @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$") @Size(max = 255) String name,

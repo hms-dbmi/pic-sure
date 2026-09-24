@@ -75,4 +75,12 @@ mvn verify
 mvn -pl services/pic-sure-gateway -am verify
 ```
 
+Run Maven **from the repository root**. The reactor satisfies the `pic-sure-bom` import by
+itself — even on an empty `~/.m2`, with no package-registry credentials — which is exactly how
+CI builds. Builds started *inside* a module directory are different: that single-module build
+has no reactor siblings, so both the BOM import and any internal dependencies
+(`pic-sure-logging-client`, `pic-sure-spring-commons`, the model jars) must come from `~/.m2`,
+and no repository serves them. To iterate inside a module, install the reactor once first —
+`mvn -T1C install -DskipTests` from the root — and re-run it when sibling modules change.
+
 Formatting: Spotless (Eclipse formatter, config inherited from the root) — `mvn spotless:apply`.

@@ -24,16 +24,17 @@ import jakarta.servlet.http.HttpServletResponse;
  * inbound CLIENT request before anything downstream -- routing, the auth chain, or proxied services -- can ever see a client-supplied
  * value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxy legitimately appends to it, and consumers
  * ({@code AuditLoggingFilter}) take the RIGHTMOST entry -- the nearest trusted hop -- rather than the client-forgeable leftmost one.
- * {@code X-Session-Id}, {@code X-Client-Type}, and {@code request-source} are also deliberately left unstripped: they are intentionally
- * client-supplied telemetry, never authorization inputs. <p> {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter}
- * already hides the identity headers from the client, but this filter exists as an independent trust boundary: even if the DB-free auth
- * chain were ever bypassed or misconfigured, a client's own {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through
- * untouched -- that would be an identity/privilege-spoofing hole. This filter closes that hole unconditionally, independent of anything the
- * auth chain does. <p> Runs at order 25: after {@code OpenAccessFilter} (order 20) has extracted the optional API key for PSAMA, and before
- * the remaining DB-free auth chain (introspection order 30+). This ensures the secret never reaches downstream services while still
- * allowing open-access validation to consume it. {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50)
- * still runs afterward and sets the gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client
- * request for these names -- so normal propagation of resolved identity is unaffected by this filter running first.
+ * {@code X-Session-Id}, {@code request-source}, and ordinary {@code X-Client-Type} values are deliberately left unstripped as client
+ * telemetry. The reserved {@code X-Client-Type: service} value is stripped because downstream services use it to identify internal calls.
+ * <p> {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides the identity headers from the client,
+ * but this filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed or misconfigured, a client's
+ * own {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that would be an identity/privilege-spoofing
+ * hole. This filter closes that hole unconditionally, independent of anything the auth chain does. <p> Runs at order 25: after
+ * {@code OpenAccessFilter} (order 20) has extracted the optional API key for PSAMA, and before the remaining DB-free auth chain
+ * (introspection order 30+). This ensures the secret never reaches downstream services while still allowing open-access validation to
+ * consume it. {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward and sets the
+ * gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these names -- so
+ * normal propagation of resolved identity is unaffected by this filter running first.
  */
 public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter {
 
@@ -44,6 +45,9 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
     }
 
     static class SanitizedIdentityHeadersRequest extends HttpServletRequestWrapper {
+
+        private static final String CLIENT_TYPE_HEADER = "X-Client-Type";
+        private static final String SERVICE_CLIENT_TYPE = "service";
 
         /**
          * Gateway-owned identity headers, spoofable source-address headers, and the internal service token: always hidden from the raw
@@ -59,11 +63,16 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
             super(request);
         }
 
-        private static boolean isStripped(String name) {
+        private static boolean isAlwaysStripped(String name) {
             for (String stripped : STRIPPED_HEADERS) {
                 if (stripped.equalsIgnoreCase(name)) return true;
             }
             return false;
+        }
+
+        private boolean isStripped(String name) {
+            return isAlwaysStripped(name)
+                || (CLIENT_TYPE_HEADER.equalsIgnoreCase(name) && SERVICE_CLIENT_TYPE.equalsIgnoreCase(super.getHeader(name)));
         }
 
         @Override

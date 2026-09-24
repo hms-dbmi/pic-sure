@@ -207,7 +207,7 @@ class AggregateServiceTest {
         verify(backend).binContinuous(any(), eq(AggregateVariant.V1));
     }
 
-    // ---- async open submit (finding I6): CROSS_COUNT is consent-scoped, then persisted+dispatched via QueryService ----
+    // ---- async open submit: scope CROSS_COUNT before persistence and dispatch ----
 
     @Test
     void asyncOpenCrossCountIsRewrittenThenDispatchedViaQueryServiceV1() {
@@ -245,7 +245,7 @@ class AggregateServiceTest {
 
     @Test
     void asyncOpenNonCrossCountIsForwardedUnchanged() {
-        // WAR parity: the async query() only rewrites CROSS_COUNT; other types pass through unchanged (and fetch no consents).
+        // Async submissions rewrite only CROSS_COUNT; other types pass through without fetching consents.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
@@ -263,7 +263,7 @@ class AggregateServiceTest {
 
     @Test
     void asyncOpenQueryRejectsMissingExpectedResultTypeWith400() {
-        // WAR parity: the async query() rejected a missing expectedResultType (MISSING_DATA) before touching the backend.
+        // Reject a missing expectedResultType before touching the backend.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
@@ -275,9 +275,7 @@ class AggregateServiceTest {
 
     @Test
     void propagatesQueryMetadataHeaderUnderRealHpdsHeaderName() {
-        // NON-TAUTOLOGICAL (finding I5): the stub uses the REAL HPDS header literal "queryMetadata", NOT the constant. Under the old
-        // "resultMetadata" bug the service would read getFirst("resultMetadata") == null from this response and DROP the header, so this
-        // assertion would fail. It passes only when the constant resolves to the real name.
+        // Stub the literal HPDS header rather than the constant so this remains a contract check.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok().header("queryMetadata", "rid").body("12"));
         AggregateService svc = service(backend, new AggregateProperties());

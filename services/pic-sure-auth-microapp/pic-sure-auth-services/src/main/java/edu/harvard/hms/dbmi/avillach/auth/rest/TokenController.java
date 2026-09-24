@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -30,7 +31,7 @@ import java.util.Map;
  * authorization {@link AuthorizationService} at the access rule level, but this endpoint handles token validation and pre-check at the
  * privilege level.</p>
  */
-@Tag(name = "Token Management")
+@Tag(name = "Token Management", description = "Token introspection and refresh")
 @Controller
 @RequestMapping("/token")
 public class TokenController {
@@ -44,13 +45,18 @@ public class TokenController {
         this.tokenService = tokenService;
     }
 
-    @Operation(description = "Token introspection endpoint for user to retrieve a valid token")
+    @Operation(
+        summary = "Introspect a token on behalf of an application",
+        description = "Token introspection endpoint for user to retrieve a valid token"
+    )
+    @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active")
     @AuditEvent(type = "ACCESS", action = "token.introspect")
     @PostMapping(path = "/inspect", produces = "application/json")
     public ResponseEntity<Map<String, Object>> inspectToken(
-            @Parameter(required = true, description = "A JSON object that at least" +
-                    " include a user the token for validation")
-            @RequestBody Map<String, Object> inputMap, HttpServletRequest request) {
+        @Parameter(
+            required = true, description = "A JSON object that at least" + " include a user the token for validation"
+        ) @RequestBody Map<String, Object> inputMap, HttpServletRequest request
+    ) {
         Map<String, Object> resultMap = this.tokenService.inspectToken(inputMap);
 
         boolean active = Boolean.TRUE.equals(resultMap.getOrDefault("active", false));
@@ -81,7 +87,9 @@ public class TokenController {
         return PICSUREResponse.success(resultMap);
     }
 
-    @Operation(description = "To refresh current user's token if the user is an active user")
+    @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user")
+    @ApiResponse(responseCode = "200", description = "A refreshed token and its expiration date")
+    @ApiResponse(responseCode = "400", description = "The refresh token is not valid")
     @AuditEvent(type = "ACCESS", action = "token.refresh")
     @GetMapping(path = "/refresh", produces = "application/json")
     public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request) {
@@ -95,7 +103,8 @@ public class TokenController {
 
         if (refreshTokenResp instanceof ValidRefreshToken validRefreshToken) {
             AuditAttributes.putMetadata(request, "token_refresh_result", "success");
-            return PICSUREResponse.success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
+            return PICSUREResponse
+                .success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
         }
 
         return PICSUREResponse.success();

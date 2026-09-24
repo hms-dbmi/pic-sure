@@ -26,6 +26,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }
 
+    @ExceptionHandler(ConsentDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleConsentDenied(ConsentDeniedException e) {
+        logger.warn("Visualization consent denied: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("errorType", "consent_denied", "message", e.getMessage()));
+    }
+
     @ExceptionHandler(HpdsUpstreamException.class)
     public ResponseEntity<Map<String, String>> handleHpdsUpstreamException(HpdsUpstreamException e) {
         logger.error("Upstream query-service error: {}", e.getMessage());

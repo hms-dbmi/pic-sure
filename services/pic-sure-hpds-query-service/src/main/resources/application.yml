@@ -18,6 +18,16 @@ hpds:
   open-url: ${HPDS_OPEN_URL:}
   open-token: ${HPDS_OPEN_TOKEN:}
 
+psama:
+  base-url: ${PSAMA_URL:}
+  connect-timeout-sec: 2
+  read-timeout-sec: 10
+
+consent:
+  based:
+    authorization:
+      enabled: ${CONSENT_BASED_AUTHORIZATION_ENABLED:true}
+
 picsure:
   query:
     operations:
@@ -39,11 +49,9 @@ aggregate:
   # reused here so the aggregate obfuscation path talks to the same open HPDS backend.
   hpds-open-url: ${HPDS_OPEN_URL:}
   hpds-open-token: ${HPDS_OPEN_TOKEN:}
-  # VISUALIZATION_URL: base URL of the visualization service; replaces the WAR's DB ResourceRepository.getById()
-  # lookup. Blank = no binning configured (continuous cross-count obfuscation falls back to raw per-value counts).
+  # VISUALIZATION_URL: base URL of the visualization service. Blank = no binning configured
+  # (continuous cross-count obfuscation falls back to raw per-value counts).
   visualization-url: ${VISUALIZATION_URL:}
-  visualization-resource-id: ${AGGREGATE_VISUALIZATION_RESOURCE_ID:}
-  target-resource-id: ${AGGREGATE_TARGET_RESOURCE_ID:}
   connect-timeout-sec: 10
   read-timeout-sec: 60
   obfuscation:

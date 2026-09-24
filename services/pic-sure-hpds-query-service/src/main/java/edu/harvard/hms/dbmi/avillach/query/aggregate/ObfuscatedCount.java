@@ -6,8 +6,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * Direct port of {@code edu.harvard.hms.dbmi.avillach.ObfuscatedCount} from the WAR's pic-sure-aggregate-data-sharing-resource -- an
- * immutable {count, display, variance} carrier serialized to JSON.
+ * Immutable {@code {count, display, variance}} value serialized to JSON.
  */
 public final class ObfuscatedCount {
 

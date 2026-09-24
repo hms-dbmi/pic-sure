@@ -31,16 +31,6 @@
 		<aws.version>2.20.153</aws.version>
 		<spotless.version>2.46.1</spotless.version>
 	</properties>
-	<repositories>
-		<repository>
-			<id>github</id>
-			<name>GitHub HMS-DBMI Apache Maven Packages</name>
-			<url>https://maven.pkg.github.com/hms-dbmi/pic-sure-common</url>
-			<snapshots>
-				<enabled>true</enabled>
-			</snapshots>
-		</repository>
-	</repositories>
 	<build>
 		<pluginManagement>
 			<plugins>
@@ -152,11 +142,6 @@
 				<version>1.2</version>
 			</dependency>
 			<dependency>
-				<groupId>org.apache.commons</groupId>
-				<artifactId>commons-compress</artifactId>
-				<version>1.26.0</version>
-			</dependency>
-			<dependency>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-starter-tomcat</artifactId>
 				<scope>provided</scope>
@@ -257,11 +242,6 @@
 						<artifactId>commons-logging</artifactId>
 					</exclusion>
 				</exclusions>
-			</dependency>
-			<dependency>
-				<groupId>io.swagger.core.v3</groupId>
-				<artifactId>swagger-annotations</artifactId>
-				<version>2.2.40</version>
 			</dependency>
     </dependencies>
   </dependencyManagement>

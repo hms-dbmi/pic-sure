@@ -16,8 +16,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Buffers the request body (so downstream auth filters can read/mutate it), capped at GATEWAY_AUTH_MAX_BODY_BYTES. Over-cap → HTTP 413 with
- * the additive error body {errorType:REQUEST_BODY_TOO_LARGE,...} returned BEFORE PSAMA is ever called; body content is NEVER logged; a
+ * Buffers the request body for downstream routing, capped at GATEWAY_AUTH_MAX_BODY_BYTES. Over-cap requests receive HTTP 413 with the
+ * additive error body {errorType:REQUEST_BODY_TOO_LARGE,...} returned BEFORE PSAMA is ever called; body content is NEVER logged; a
  * body-too-large metric is emitted.
  */
 public class BufferingFilter extends OncePerRequestFilter {

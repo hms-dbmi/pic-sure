@@ -18,20 +18,13 @@ import jakarta.persistence.UniqueConstraint;
 
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
-/**
- * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.entity.NamedDataset} (javax/CDI). The JSON-P-based {@code toString()}
- * override was intentionally dropped (not needed by the persistence layer; would otherwise pull in the
- * {@code javax.json}/{@code jakarta.json} API for no functional benefit).
- */
+/** Persistence model for named datasets and their associated queries. */
 @Schema(description = "A NamedDataset object containing query, name, user, and archived status.")
 @Entity(name = "named_dataset")
 @Table(uniqueConstraints = {@UniqueConstraint(name = "unique_queryId_user", columnNames = {"queryId", "\"user\""})})
 public class NamedDataset {
 
-    // Hibernate 6+: a UUID-typed id with a bare @GeneratedValue (AUTO strategy) is generated via
-    // the built-in random UUID generator. This replaces the legacy javax
-    // `@GenericGenerator(strategy = "org.hibernate.id.UUIDGenerator")`, which Hibernate 6 removed;
-    // both produce a random UUID, so the persisted values and BINARY(16) column are unaffected.
+    // Hibernate generates a random UUID for a UUID-typed id with a bare @GeneratedValue.
     @Id
     @GeneratedValue
     @Column(columnDefinition = "BINARY(16)")
@@ -42,10 +35,7 @@ public class NamedDataset {
     @JoinColumn(name = "queryId")
     private Query query;
 
-    // Quoted so Hibernate emits a properly escaped identifier: `user` is not a real reserved word
-    // in MySQL (legacy's V5 migration backtick-quotes it defensively anyway) but H2 does reserve
-    // it, and the quoting is honored per-dialect (backticks on MySQL, double quotes on H2) rather
-    // than changing the physical column name.
+    // Quoted because H2 reserves `user`; Hibernate renders the appropriate identifier quoting for each dialect.
     @Schema(description = "The user identifier")
     @Column(name = "\"user\"", length = 255)
     private String user;
