@@ -60,6 +60,11 @@ class ApiConventionsTest {
     }
 
     @Test
+    void documentationDoesNotRestateGuardedAuthorities() {
+        report("R10", overDocumentedModules(SwaggerRules::documentationDoesNotRestateAuthorities));
+    }
+
+    @Test
     void noHandlerUsesAReplacedSecurityAnnotation() {
         report("R6", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
     }

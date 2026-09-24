@@ -21,6 +21,8 @@ class SecurityRulesTest {
     private static final JavaClasses PRE_POST_DISABLED = fixtures("prepostdisabled");
     private static final String KNOWN_CLASS = FIXTURES + ".known.KnownAuthorities";
     private static final Set<String> KNOWN = Set.of("ADMIN", "SUPER_ADMIN", "PRIV_DATA_ADMIN");
+    private static final JavaClasses SWAGGER_FIXTURES =
+        new ClassFileImporter().importPackages("edu.harvard.hms.dbmi.avillach.conventions.fixtures");
 
     private static JavaClasses fixtures(String subPackage) {
         return new ClassFileImporter().importPackages(FIXTURES + "." + subPackage);
@@ -121,13 +123,28 @@ class SecurityRulesTest {
 
     @Test
     void r9IgnoresAModuleWithNoGuards() {
-        JavaClasses swaggerFixtures =
-            new ClassFileImporter().importPackages("edu.harvard.hms.dbmi.avillach.conventions.fixtures");
-
-        assertEquals(List.of(), SecurityRules.methodSecurityEnabled("fixtures", swaggerFixtures));
+        assertEquals(List.of(), SecurityRules.methodSecurityEnabled("fixtures", SWAGGER_FIXTURES));
     }
 
     private static List<String> authorities(String expression) {
         return SecurityRules.authorities(expression).orElseThrow();
+    }
+
+    @Test
+    void r10FlagsDocumentationThatRestatesAGuardedAuthority() {
+        JavaClasses restated = fixtures("restated");
+
+        List<String> violations = SwaggerRules.documentationDoesNotRestateAuthorities("fixtures", restated);
+
+        assertEquals(3, violations.size(), violations.toString());
+        assertMentions(violations, "RestatingController @Tag description names ADMIN");
+        assertMentions(violations, "RestatingController#list @Operation description names ADMIN, SUPER_ADMIN");
+        assertMentions(violations, "RestatingController#delete @Operation summary names SUPER_ADMIN");
+        assertTrue(violations.stream().noneMatch(v -> v.contains("#create")), violations.toString());
+    }
+
+    @Test
+    void r10IgnoresAModuleWithNoGuards() {
+        assertEquals(List.of(), SwaggerRules.documentationDoesNotRestateAuthorities("fixtures", SWAGGER_FIXTURES));
     }
 }
