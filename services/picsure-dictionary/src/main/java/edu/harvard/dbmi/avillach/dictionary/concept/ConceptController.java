@@ -4,6 +4,10 @@ import edu.harvard.dbmi.avillach.dictionary.AuditAttributes;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +24,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 @Controller
+@Tag(name = "Concepts", description = "Search, detail, and tree views of dictionary concepts")
 public class ConceptController {
 
     private final ConceptService conceptService;
@@ -36,6 +41,9 @@ public class ConceptController {
     }
 
 
+    @Operation(summary = "Search concepts with a filter, paginated")
+    @ApiResponse(responseCode = "200", description = "A page of matching concepts")
+    @ApiResponse(responseCode = "500", description = "The concept search was interrupted")
     @AuditEvent(type = "SEARCH", action = "concept.search")
     @PostMapping(path = "/concepts")
     public ResponseEntity<Page<Concept>> listConcepts(
@@ -67,6 +75,8 @@ public class ConceptController {
         return ResponseEntity.ok(pageResp);
     }
 
+    @Operation(summary = "Page through every concept without a filter")
+    @ApiResponse(responseCode = "200", description = "A page of concepts")
     @AuditEvent(type = "DATA_ACCESS", action = "concept.dump")
     @GetMapping(path = "/concepts/dump")
     public ResponseEntity<Page<Concept>> dumpConcepts(
@@ -82,18 +92,29 @@ public class ConceptController {
         return ResponseEntity.ok(pageResp);
     }
 
+    @Operation(summary = "Detail for one concept path in a dataset")
+    @ApiResponse(responseCode = "200", description = "Detail for the concept path")
+    @ApiResponse(responseCode = "404", description = "No concept at that path")
     @AuditEvent(type = "SEARCH", action = "concept.detail")
     @PostMapping(path = "/concepts/detail/{dataset}")
     public ResponseEntity<Concept> conceptDetail(@PathVariable(name = "dataset") String dataset, @RequestBody() String conceptPath) {
         return conceptService.conceptDetail(dataset, conceptPath).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Detail for several concept paths")
+    @ApiResponse(responseCode = "200", description = "Detail for each requested concept path")
     @AuditEvent(type = "SEARCH", action = "concept.detail")
     @PostMapping(path = "/concepts/detail")
     public ResponseEntity<List<Concept>> conceptsDetail(@RequestBody() List<String> conceptPaths) {
         return ResponseEntity.ok(conceptService.conceptsWithDetail(conceptPaths));
     }
 
+    @Operation(summary = "Subtree under a concept path to a given depth")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The subtree under the concept path"),
+            @ApiResponse(responseCode = "400", description = "Depth outside 0 to the configured maximum"),
+            @ApiResponse(responseCode = "404", description = "No concept at that path")}
+    )
     @AuditEvent(type = "SEARCH", action = "concept.tree")
     @PostMapping(path = "/concepts/tree/{dataset}")
     public ResponseEntity<Concept> conceptTree(
@@ -106,6 +127,9 @@ public class ConceptController {
         return conceptService.conceptTree(dataset, conceptPath, depth).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Ancestors of a concept path")
+    @ApiResponse(responseCode = "200", description = "The concept path's ancestors")
+    @ApiResponse(responseCode = "404", description = "No concept at that path")
     @AuditEvent(type = "SEARCH", action = "concept.hierarchy")
     @PostMapping(path = "/concepts/hierarchy/{dataset}")
     public ResponseEntity<List<Concept>> conceptHierarchy(
@@ -118,6 +142,9 @@ public class ConceptController {
         return ResponseEntity.ok(body);
     }
 
+    @Operation(summary = "Every dataset's concept tree to a given depth")
+    @ApiResponse(responseCode = "200", description = "Every dataset's concept tree")
+    @ApiResponse(responseCode = "400", description = "Depth outside 0 to the configured maximum")
     @AuditEvent(type = "SEARCH", action = "concept.tree")
     @GetMapping(path = "/concepts/tree")
     public ResponseEntity<List<Concept>> allConceptTrees(
