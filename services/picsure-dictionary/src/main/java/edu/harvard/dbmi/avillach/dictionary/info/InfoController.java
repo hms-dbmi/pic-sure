@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.dictionary.info;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -16,6 +17,7 @@ import java.util.UUID;
 public class InfoController {
 
     @Operation(summary = "Identify this resource")
+    @ApiResponse(responseCode = "200", description = "This resource's identity and query format")
     @AuditEvent(type = "OTHER", action = "info")
     @PostMapping("/info")
     public ResponseEntity<InfoResponse> getInfo(@RequestBody Object ignored) {

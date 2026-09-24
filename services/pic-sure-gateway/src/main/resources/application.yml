@@ -111,6 +111,7 @@ picsure:
     docs:
       enabled: ${GATEWAY_DOCS_ENABLED:true}
       public-base: ${GATEWAY_DOCS_PUBLIC_BASE:/picsure}
+      ui-enabled: ${GATEWAY_DOCS_UI_ENABLED:true}
       services:
         - name: operations
           title: Operations service
@@ -127,6 +128,16 @@ picsure:
           url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
           docs-path: /v3/api-docs
           public-prefix: ${picsure.gateway.docs.public-base}
+        - name: visualization
+          title: Visualization service
+          url: ${VISUALIZATION_URL:http://visualization}
+          docs-path: /v3/api-docs
+          public-prefix: ${picsure.gateway.docs.public-base}/visualization
+        - name: psama
+          title: PSAMA
+          url: ${PSAMA_URL:http://psama:8090}
+          docs-path: /auth/v3/api-docs
+          public-prefix: /psama
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

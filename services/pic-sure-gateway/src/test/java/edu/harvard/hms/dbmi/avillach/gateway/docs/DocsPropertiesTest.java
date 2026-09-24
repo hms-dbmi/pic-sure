@@ -28,15 +28,16 @@ class DocsPropertiesTest {
 
     @Test
     void enabledAndPublicBaseHaveDefaults() {
-        DocsProperties props = new DocsProperties(null, null, null);
+        DocsProperties props = new DocsProperties(null, null, null, null);
         assertThat(props.enabled()).isTrue();
+        assertThat(props.uiEnabled()).isTrue();
         assertThat(props.publicBase()).isEqualTo("/picsure");
         assertThat(props.services()).isEmpty();
     }
 
     @Test
     void duplicateNamesAreRejected() {
-        assertThatThrownBy(() -> new DocsProperties(true, "/picsure", List.of(entry("ops"), entry("ops"))))
+        assertThatThrownBy(() -> new DocsProperties(true, true, "/picsure", List.of(entry("ops"), entry("ops"))))
             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ops");
     }
 
