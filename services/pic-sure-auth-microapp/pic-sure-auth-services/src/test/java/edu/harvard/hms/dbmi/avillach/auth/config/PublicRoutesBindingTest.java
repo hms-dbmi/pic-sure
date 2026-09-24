@@ -15,7 +15,8 @@ import org.springframework.test.web.servlet.MockMvc;
 /**
  * Boots PSAMA on the shipped {@code application.properties} and sends each request with no token through the real security filter chain.
  * Every public route must stay reachable without a token, and every protected request next to one must stay refused. Deleting, adding, or
- * loosening a public route fails here. The cache inspection controller is switched on so that {@code /cache} has a handler to reach.
+ * loosening a public route fails here. The cache inspection controller is switched on, so a {@code /cache} refusal comes from the chain and
+ * not from a missing handler.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -38,8 +39,7 @@ class PublicRoutesBindingTest {
     void shippedRoutesAreExactlyTheReviewedList() {
         assertThat(publicRoutes.shipped()).containsExactly(
             anyMethod("/actuator/health"), anyMethod("/actuator/info"), anyMethod("/authentication"), anyMethod("/authentication/**"),
-            anyMethod("/v3/api-docs/**"), anyMethod("/tos/latest"), anyMethod("/open/validate"), anyMethod("/logout"),
-            anyMethod("/cache/**")
+            anyMethod("/v3/api-docs/**"), anyMethod("/tos/latest"), anyMethod("/open/validate"), anyMethod("/logout")
         );
         assertThat(publicRoutes.additional()).isEmpty();
     }
@@ -54,7 +54,7 @@ class PublicRoutesBindingTest {
     @CsvSource(
         {"GET, /actuator/health", "GET, /actuator/info", "POST, /authentication", "POST, /authentication/okta", "GET, /authentication/x/y",
             "GET, /v3/api-docs", "GET, /v3/api-docs/swagger-config", "GET, /tos/latest", "POST, /open/validate", "GET, /open/validate",
-            "POST, /logout", "GET, /cache", "GET, /cache/mergedRulesCache"}
+            "POST, /logout"}
     )
     void publicRouteIsReachableWithoutAToken(String method, String path) {
         assertThat(statusWithoutToken(method, path)).isNotIn(401, 403);
@@ -65,7 +65,8 @@ class PublicRoutesBindingTest {
         {"GET, /user", "GET, /user/me", "GET, /user/me/consents", "POST, /user", "POST, /role", "GET, /privilege", "GET, /application",
             "DELETE, /application/abc", "GET, /accessRule", "GET, /connection", "GET, /mapping", "GET, /tos", "POST, /tos/update",
             "POST, /tos/accept", "GET, /tos/latest/x", "POST, /token/inspect", "GET, /token/refresh", "GET, /authenticationx",
-            "GET, /open/validate/x", "GET, /open", "GET, /actuator/env", "GET, /actuator", "GET, /v3/api-docsx"}
+            "GET, /open/validate/x", "GET, /open", "GET, /actuator/env", "GET, /actuator", "GET, /v3/api-docsx", "GET, /cache",
+            "GET, /cache/mergedRulesCache"}
     )
     void protectedRequestIsRefusedWithoutAToken(String method, String path) {
         assertThat(statusWithoutToken(method, path)).isEqualTo(403);
