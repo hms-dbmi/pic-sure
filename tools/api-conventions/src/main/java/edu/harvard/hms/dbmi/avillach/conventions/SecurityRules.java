@@ -7,13 +7,17 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaModifier;
 
 /**
  * The authorization rules, as pure functions over imported classes. The standard is one annotation in
@@ -30,6 +34,12 @@ public final class SecurityRules {
     public static final String PRE_AUTHORIZE = "org.springframework.security.access.prepost.PreAuthorize";
     public static final String ENABLE_METHOD_SECURITY =
         "org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity";
+
+    /**
+     * PSAMA's authority constants. Each public static String field's name is an authority a guard may
+     * require, the same list its {@code allRoles()} returns.
+     */
+    public static final String KNOWN_AUTHORITIES_CLASS = "edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming$AuthRoleNaming";
 
     private static final Map<String, String> REPLACED = new LinkedHashMap<>();
 
@@ -109,20 +119,22 @@ public final class SecurityRules {
 
     /**
      * R8: every {@code @PreAuthorize} is exactly {@code hasAnyAuthority('A', ...)} or
-     * {@code hasAuthority('A')}, with literal, distinct values.
+     * {@code hasAuthority('A')}, with literal, distinct values that are all known authority names. A
+     * misspelled name would compile and deny everyone.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
-     * @return one violation per expression outside that form
+     * @param known the authority names a guard may require
+     * @return one violation per expression outside that form or naming an unknown authority
      */
-    public static List<String> preAuthorizeNamesAuthorities(String module, JavaClasses classes) {
+    public static List<String> preAuthorizeNamesAuthorities(String module, JavaClasses classes, Set<String> known) {
         List<String> violations = new ArrayList<>();
         for (JavaClass type : sorted(classes)) {
             Annotations.get(type, PRE_AUTHORIZE)
-                .ifPresent(annotation -> check(annotation, SwaggerRules.at(module, type), violations));
+                .ifPresent(annotation -> check(annotation, SwaggerRules.at(module, type), known, violations));
             for (JavaMethod method : sortedMethods(type)) {
                 String at = SwaggerRules.at(module, type, method.getName());
-                Annotations.get(method, PRE_AUTHORIZE).ifPresent(annotation -> check(annotation, at, violations));
+                Annotations.get(method, PRE_AUTHORIZE).ifPresent(annotation -> check(annotation, at, known, violations));
             }
         }
         return violations;
@@ -156,6 +168,33 @@ public final class SecurityRules {
     }
 
     /**
+     * Collects the known authority names: the names of the public static String fields of one class,
+     * found in whichever module compiled it.
+     *
+     * @param modules every imported module
+     * @param className the fully qualified binary name of the constants class
+     * @return the field names
+     * @throws IllegalStateException when no module contains the class, because every guard would then
+     *     look unknown for the wrong reason
+     */
+    public static Set<String> knownAuthorities(Map<String, JavaClasses> modules, String className) {
+        for (JavaClasses classes : modules.values()) {
+            if (classes.contain(className)) {
+                Set<String> names = new TreeSet<>();
+                for (JavaField field : classes.get(className).getFields()) {
+                    Set<JavaModifier> modifiers = field.getModifiers();
+                    if (modifiers.containsAll(Set.of(JavaModifier.PUBLIC, JavaModifier.STATIC, JavaModifier.FINAL))
+                        && field.getRawType().isEquivalentTo(String.class)) {
+                        names.add(field.getName());
+                    }
+                }
+                return names;
+            }
+        }
+        throw new IllegalStateException(className + " is not in any compiled module; build the reactor first");
+    }
+
+    /**
      * Reads the authorities a standard {@code @PreAuthorize} expression names.
      *
      * @param expression the annotation's value
@@ -176,7 +215,7 @@ public final class SecurityRules {
         return one.matches() ? Optional.of(List.of(one.group(1))) : Optional.empty();
     }
 
-    private static void check(JavaAnnotation<?> annotation, String location, List<String> violations) {
+    private static void check(JavaAnnotation<?> annotation, String location, Set<String> known, List<String> violations) {
         String expression = Annotations.string(annotation, "value").orElse("");
         Optional<List<String>> values = authorities(expression);
         String quoted = location + " @PreAuthorize(\"" + expression + "\")";
@@ -184,6 +223,12 @@ public final class SecurityRules {
             violations.add(quoted + " is not hasAnyAuthority('A', ...) or hasAuthority('A') with literal values");
         } else if (new LinkedHashSet<>(values.get()).size() != values.get().size()) {
             violations.add(quoted + " names an authority more than once");
+        } else {
+            List<String> unknown = values.get().stream().filter(value -> !known.contains(value)).toList();
+            if (!unknown.isEmpty()) {
+                String names = String.join(", ", unknown);
+                violations.add(quoted + " names " + names + ", which is not a field of the known authority constants");
+            }
         }
     }
 

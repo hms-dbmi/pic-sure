@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -69,8 +70,9 @@ class ApiConventionsTest {
     }
 
     @Test
-    void preAuthorizeNamesAuthoritiesInTheStandardForm() {
-        report("R8", overAllModules(SecurityRules::preAuthorizeNamesAuthorities));
+    void preAuthorizeNamesKnownAuthoritiesInTheStandardForm() {
+        Set<String> known = SecurityRules.knownAuthorities(modules, SecurityRules.KNOWN_AUTHORITIES_CLASS);
+        report("R8", overAllModules((module, classes) -> SecurityRules.preAuthorizeNamesAuthorities(module, classes, known)));
     }
 
     @Test

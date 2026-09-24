@@ -58,6 +58,12 @@ public class GuardedController {
         return "";
     }
 
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMINN')")
+    @PutMapping("/misspelled")
+    public String misspelled() {
+        return "";
+    }
+
     @PreAuthorize("hasAnyAuthority('ADMIN', 'ADMIN')")
     @DeleteMapping("/repeated")
     public String repeated() {
