@@ -91,4 +91,19 @@ class DocsRegistryTest {
     void dictionaryIsRegistered() throws Exception {
         assertRegistered("dictionary", "Dictionary", "/v3/api-docs", "/picsure/dictionary");
     }
+
+    @Test
+    void hpdsQueryServiceIsRegistered() throws Exception {
+        assertRegistered("hpds-query-service", "HPDS query service", "/v3/api-docs", "/picsure");
+    }
+
+    @Test
+    void visualizationIsRegistered() throws Exception {
+        assertRegistered("visualization", "Visualization service", "/v3/api-docs", "/picsure/visualization");
+    }
+
+    @Test
+    void psamaIsRegistered() throws Exception {
+        assertRegistered("psama", "PSAMA", "/auth/v3/api-docs", "/psama");
+    }
 }
