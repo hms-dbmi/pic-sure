@@ -1,5 +1,7 @@
 <!--
 Title: [ALS-1234] Briefly describe why the change matters.
+Write it in the present imperative, like a commit subject:
+"Apply worktree preference", not "Applied" or "Applies".
 Use the actual ticket number. Without a ticket, use [CHORE] for
 maintenance or [Bug] for a bug fix. Never invent a ticket number.
 
