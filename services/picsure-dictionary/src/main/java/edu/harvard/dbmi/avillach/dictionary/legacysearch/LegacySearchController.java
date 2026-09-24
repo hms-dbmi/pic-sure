@@ -5,6 +5,7 @@ import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacyResponse;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchQuery;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,7 @@ public class LegacySearchController {
     }
 
     @Operation(summary = "Search in the legacy request and response shape")
+    @ApiResponse(responseCode = "200", description = "Search results in the legacy response shape")
     @AuditEvent(type = "SEARCH", action = "search.legacy")
     @RequestMapping(path = "/search")
     public ResponseEntity<LegacyResponse> legacySearch(@RequestBody String jsonString) throws IOException {

@@ -25,6 +25,7 @@ public class FacetController {
     }
 
     @Operation(summary = "Facet categories and counts for a filter")
+    @ApiResponse(responseCode = "200", description = "Facet categories with their counts")
     @AuditEvent(type = "SEARCH", action = "facet.search")
     @PostMapping(path = "/facets")
     public ResponseEntity<List<FacetCategory>> getFacets(@RequestBody Filter filter) {
@@ -32,6 +33,7 @@ public class FacetController {
     }
 
     @Operation(summary = "One facet within a category")
+    @ApiResponse(responseCode = "200", description = "The facet")
     @ApiResponse(responseCode = "404", description = "No facet with that name in the category")
     @AuditEvent(type = "SEARCH", action = "facet.detail")
     @GetMapping(path = "/facets/{facetCategory}/{facet}")
