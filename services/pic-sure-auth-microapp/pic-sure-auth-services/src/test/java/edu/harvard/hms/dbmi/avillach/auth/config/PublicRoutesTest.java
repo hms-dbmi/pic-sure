@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.BindException;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.mock.env.MockEnvironment;
@@ -60,6 +63,36 @@ class PublicRoutesTest {
         PublicRoute extra = new PublicRoute("/extra", Set.of("POST"));
         assertThat(routes.additional()).containsExactly(extra);
         assertThat(routes.all()).containsExactly(TOS, AUTHENTICATION, extra);
+    }
+
+    @Test
+    void environmentVariablesInTheDocumentedFormAddRoutes() throws Exception {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources().addFirst(
+            new SystemEnvironmentPropertySource(
+                StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+                Map.of(
+                    "SECURITY_PUBLICROUTES_ADDITIONAL_0_PATTERN", "/my/public/path/**", "SECURITY_PUBLICROUTES_ADDITIONAL_0_METHODS",
+                    "GET,POST", "SECURITY_PUBLICROUTES_ADDITIONAL_1_PATTERN", "/other"
+                )
+            )
+        );
+
+        assertThat(PublicRoutes.load(PACKAGED, environment).additional())
+            .containsExactly(new PublicRoute("/my/public/path/**", Set.of("GET", "POST")), new PublicRoute("/other", null));
+    }
+
+    @Test
+    void environmentVariableThatReplacesAShippedRouteIsRefused() {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources().addFirst(
+            new SystemEnvironmentPropertySource(
+                StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, Map.of("SECURITY_PUBLICROUTES_SHIPPED_0_PATTERN", "/user/**")
+            )
+        );
+
+        assertThatIllegalStateException().isThrownBy(() -> PublicRoutes.load(PACKAGED, environment))
+            .withMessageContaining("cannot be overridden");
     }
 
     @Test
