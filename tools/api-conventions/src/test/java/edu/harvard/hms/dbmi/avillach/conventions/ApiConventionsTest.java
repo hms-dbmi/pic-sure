@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Applies the rules to this reactor. Every rule reports its whole list, so one run names every problem
- * rather than the first.
+ * rather than the first. The swagger rules cover the modules the registry marks documented; the
+ * authorization rules cover every compiled module, because an unenforced guard is a problem wherever it sits.
  */
 class ApiConventionsTest {
 
@@ -55,6 +56,32 @@ class ApiConventionsTest {
     @Test
     void everyHandlerDeclaresItsResponses() {
         report("R4", overDocumentedModules(SwaggerRules::responsesAreDeclared));
+    }
+
+    @Test
+    void noHandlerUsesAReplacedSecurityAnnotation() {
+        report("R6", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
+    }
+
+    @Test
+    void preAuthorizeSitsOnlyOnHandlers() {
+        report("R7", overAllModules(SecurityRules::preAuthorizeOnlyOnHandlers));
+    }
+
+    @Test
+    void preAuthorizeNamesAuthoritiesInTheStandardForm() {
+        report("R8", overAllModules(SecurityRules::preAuthorizeNamesAuthorities));
+    }
+
+    @Test
+    void everyModuleWithGuardsEnablesMethodSecurity() {
+        report("R9", overAllModules(SecurityRules::methodSecurityEnabled));
+    }
+
+    private static List<String> overAllModules(Rule rule) {
+        List<String> violations = new ArrayList<>();
+        modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
+        return violations;
     }
 
     private static List<String> overDocumentedModules(Rule rule) {
