@@ -40,7 +40,7 @@ public class UserController {
         this.userService = userService;
     }
 
-    @Operation(summary = "Read one user", description = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
+    @Operation(summary = "Read one user", description = "GET information of one user with the UUID")
     @ApiResponse(responseCode = "200", description = "The user")
     @ApiResponse(responseCode = "400", description = "No user with that UUID")
     @AuditEvent(type = "OTHER", action = "user.read")
@@ -55,7 +55,7 @@ public class UserController {
         return PICSUREResponse.success(userById);
     }
 
-    @Operation(summary = "List every user", description = "GET a list of existing users, requires ADMIN or SUPER_ADMIN roles")
+    @Operation(summary = "List every user", description = "GET a list of existing users")
     @ApiResponse(responseCode = "200", description = "Every user")
     @AuditEvent(type = "OTHER", action = "user.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -65,7 +65,7 @@ public class UserController {
         return PICSUREResponse.success(entityAll);
     }
 
-    @Operation(summary = "Create users", description = "POST a list of users, requires ADMIN role")
+    @Operation(summary = "Create users", description = "POST a list of users")
     @ApiResponse(responseCode = "200", description = "The created users")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
@@ -89,7 +89,7 @@ public class UserController {
 
     @Operation(
         summary = "Update the given fields of users",
-        description = "Update a list of users, will only update the fields listed, requires ADMIN role"
+        description = "Update a list of users, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated users")
     @AuditEvent(type = "ADMIN", action = "user.modify")

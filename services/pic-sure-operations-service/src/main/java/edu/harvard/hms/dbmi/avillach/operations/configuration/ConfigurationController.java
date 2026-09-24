@@ -31,7 +31,7 @@ import jakarta.validation.Valid;
  * <p>Admin writes return {@code 200 + entity body}, including DELETE returning the deleted configuration. This differs from surfaces that
  * return {@code 201} for creates and preserves the documented configuration API contract.
  */
-@Tag(name = "Configuration", description = "Site configuration entries the UI reads; admin writes require SUPER_ADMIN")
+@Tag(name = "Configuration", description = "Site configuration entries the UI reads and administrators manage")
 @RestController
 @RequestMapping("/configuration")
 public class ConfigurationController {
