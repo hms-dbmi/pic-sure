@@ -96,7 +96,9 @@ In general, we follow the ["fork-and-pull" Git workflow](https://github.com/susa
 4. Commit changes to the branch
 5. Follow any formatting and testing guidelines specific to this repo
 6. Push changes to your fork
-7. Open a PR in our repository and follow the PR template so that we can efficiently review the changes.
+7. Open a PR in our repository and follow the
+   [pull request template](https://github.com/hms-dbmi/pic-sure/blob/main/.github/pull_request_template.md)
+   so that we can efficiently review the changes.
 
 Anyone can submit a pull request for PIC-SURE applications. Each pull request should include a
 unit test for any new code, as well as pass any available Github Action tests on the relevant
