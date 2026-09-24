@@ -73,6 +73,16 @@
 			<groupId>edu.harvard.dbmi.avillach</groupId>
 			<artifactId>pic-sure-logging-client</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-openapi</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-openapi</artifactId>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>

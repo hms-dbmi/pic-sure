@@ -31,6 +31,7 @@ class DocsDisabledTest {
         assertThat(context.getBeansOfType(DocsConfig.class)).isEmpty();
         assertThat(context.getBeansOfType(OpenApiDocumentFetcher.class)).isEmpty();
         assertThat(context.getBeansOfType(SwaggerUiAssets.class)).isEmpty();
+        assertThat(context.getBeansOfType(SwaggerUiHandlers.class)).isEmpty();
     }
 
     @Test
