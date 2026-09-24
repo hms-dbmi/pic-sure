@@ -21,10 +21,10 @@ within 5 business days.
 Documentation is a contribution like any other. If something in a README or in this guide is
 wrong or missing, open an issue or send a pull request against that file.
 
-To stand up the whole platform, follow the install steps in the
-[pic-sure-all-in-one README](https://github.com/hms-dbmi/pic-sure-all-in-one/blob/main/README.md). It
-asks for 32 GB of RAM and 8 cores, so most changes are easier to make and test in the repository they
-belong to.
+Most changes do not need the whole platform running. Working in the repository your change belongs
+to is faster, and the table below gives the build and test command for each one. If you do want the
+full stack, follow the install steps in the
+[pic-sure-all-in-one README](https://github.com/hms-dbmi/pic-sure-all-in-one/blob/main/README.md).
 
 ## Where does my change go?
 
@@ -63,8 +63,6 @@ anything that helps us reproduce it: the steps you took, your browser version an
 system, error output, screenshots, or code. Leave out anything sensitive, and never paste patient
 data or credentials into an issue.
 
-Before you submit, apply the `bug` label from the Labels menu beside the issue form.
-
 ## Suggesting enhancements
 
 If you have an idea for an enhancement, first take a look through the other submitted issues to
@@ -75,16 +73,12 @@ If no one else has suggested it, select "New Issue". The title should be a short
 requested feature, and the body should give the details that make the case: the use case it
 serves, who it helps, and any similar feature in another application we can look at.
 
-Before you submit, apply the `enhancement` label from the Labels menu beside the issue form.
-
 ## Asking questions
 
 If you have a question about how to use PIC-SURE, first look through the
 [PIC-SURE User Guide](https://pic-sure.gitbook.io/pic-sure) and the Issues tab to see whether it
 is already answered. If you still need help, select "New Issue", put your question in the title,
 and add any context in the body.
-
-Before you submit, apply the `question` label from the Labels menu beside the issue form.
 
 ## Submitting a pull request
 
