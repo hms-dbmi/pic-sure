@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -28,6 +29,7 @@ public class CacheController {
     }
 
     @Operation(summary = "List cache names")
+    @ApiResponse(responseCode = "200", description = "Names of every configured cache")
     @AuditEvent(type = "OTHER", action = "cache.list")
     @GetMapping
     public Collection<String> getCacheNames() {
@@ -35,6 +37,8 @@ public class CacheController {
     }
 
     @Operation(summary = "Dump one cache")
+    @ApiResponse(responseCode = "200", description = "The cache's native contents")
+    @ApiResponse(responseCode = "400", description = "No cache has that name")
     @AuditEvent(type = "OTHER", action = "cache.read")
     @GetMapping("/{cacheName}")
     public Object getCache(@PathVariable("cacheName") String cacheName) {

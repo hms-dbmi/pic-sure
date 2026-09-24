@@ -42,6 +42,7 @@ public class UserMetadataMappingWebController {
         summary = "Mappings for one connection",
         description = "GET information of one UserMetadataMapping with the UUID, requires ADMIN or SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "Mappings for the named connection")
     @AuditEvent(type = "OTHER", action = "mapping.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "{connectionId}", produces = "application/json")
@@ -54,6 +55,7 @@ public class UserMetadataMappingWebController {
         summary = "List every user metadata mapping",
         description = "GET a list of existing UserMetadataMappings, requires ADMIN or SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "Every user metadata mapping")
     @AuditEvent(type = "OTHER", action = "mapping.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json")
@@ -63,6 +65,7 @@ public class UserMetadataMappingWebController {
     }
 
     @Operation(summary = "Create mappings", description = "POST a list of UserMetadataMappings, requires SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "The created mappings")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(consumes = "application/json", produces = "application/json")
@@ -85,6 +88,7 @@ public class UserMetadataMappingWebController {
         summary = "Update the given fields of mappings",
         description = "Update a list of UserMetadataMappings, will only update the fields listed, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The updated mappings")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(consumes = "application/json", produces = "application/json")
@@ -106,6 +110,7 @@ public class UserMetadataMappingWebController {
         summary = "Delete a mapping that nothing references",
         description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The remaining mappings")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this mapping")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
     @RolesAllowed({SUPER_ADMIN})

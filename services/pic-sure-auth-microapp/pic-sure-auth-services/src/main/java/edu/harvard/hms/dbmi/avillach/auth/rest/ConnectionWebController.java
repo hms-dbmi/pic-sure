@@ -41,6 +41,7 @@ public class ConnectionWebController {
     @Operation(
         summary = "Read one connection", description = "GET information of one Connection with the UUID, requires ADMIN or SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The connection")
     @ApiResponse(responseCode = "400", description = "No connection with that UUID")
     @AuditEvent(type = "OTHER", action = "connection.read")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
@@ -59,6 +60,7 @@ public class ConnectionWebController {
     }
 
     @Operation(summary = "List every connection", description = "GET a list of existing Connection, requires SUPER_ADMIN or ADMIN role")
+    @ApiResponse(responseCode = "200", description = "Every connection")
     @AuditEvent(type = "OTHER", action = "connection.list")
     @GetMapping
     @RolesAllowed({SUPER_ADMIN, ADMIN})
@@ -68,6 +70,7 @@ public class ConnectionWebController {
     }
 
     @Operation(summary = "Create connections", description = "POST a list of Connections, requires SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "The created connections")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(produces = "application/json", consumes = "application/json")
@@ -89,6 +92,7 @@ public class ConnectionWebController {
         summary = "Update the given fields of connections",
         description = "Update a list of Connections, will only update the fields listed, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The updated connections")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(produces = "application/json", consumes = "application/json")
@@ -106,6 +110,7 @@ public class ConnectionWebController {
         summary = "Delete a connection that nothing references",
         description = "DELETE an Connection by Id only if the Connection is not associated by others, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The remaining connections")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this connection")
     @AuditEvent(type = "ADMIN", action = "connection.delete")
     @RolesAllowed({SUPER_ADMIN})

@@ -39,6 +39,7 @@ public class ApplicationController {
     }
 
     @Operation(summary = "Read one application", description = "GET information of one Application with the UUID, no role restrictions")
+    @ApiResponse(responseCode = "200", description = "The application")
     @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "OTHER", action = "application.read")
     @GetMapping(value = "/{applicationId}")
@@ -57,6 +58,7 @@ public class ApplicationController {
     }
 
     @Operation(summary = "List every application", description = "GET a list of existing Applications, no role restrictions")
+    @ApiResponse(responseCode = "200", description = "Every application")
     @AuditEvent(type = "OTHER", action = "application.list")
     @GetMapping
     public ResponseEntity<List<Application>> getApplicationAll() {
@@ -64,6 +66,7 @@ public class ApplicationController {
     }
 
     @Operation(summary = "Create applications", description = "POST a list of Applications, requires SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "The created applications")
     @AuditEvent(type = "ADMIN", action = "application.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(consumes = "application/json", produces = "application/json")
@@ -80,6 +83,7 @@ public class ApplicationController {
         summary = "Update the given fields of applications",
         description = "Update a list of Applications, will only update the fields listed, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The updated applications")
     @AuditEvent(type = "ADMIN", action = "application.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(consumes = "application/json", produces = "application/json")
@@ -97,6 +101,7 @@ public class ApplicationController {
         summary = "Issue a new token for an application",
         description = "Refresh a token of an application by application Id, requires SUPER_ADMIN role"
     )
+    @ApiResponse(responseCode = "200", description = "The application's new token")
     @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "ADMIN", action = "application.token_refresh")
     @RolesAllowed({SUPER_ADMIN})
@@ -115,7 +120,8 @@ public class ApplicationController {
         description = "DELETE an Application by Id only if the application is not associated by others, requires SUPER_ADMIN role"
     )
     @ApiResponses(
-        {@ApiResponse(responseCode = "400", description = "No application with that UUID"),
+        {@ApiResponse(responseCode = "200", description = "The remaining applications"),
+            @ApiResponse(responseCode = "400", description = "No application with that UUID"),
             @ApiResponse(responseCode = "409", description = "Other entities still reference this application")}
     )
     @AuditEvent(type = "ADMIN", action = "application.delete")

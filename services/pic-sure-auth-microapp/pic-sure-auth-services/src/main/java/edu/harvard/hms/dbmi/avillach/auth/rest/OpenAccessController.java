@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,7 @@ public class OpenAccessController {
     }
 
     @Operation(summary = "Validate an open-access request against the access rules")
+    @ApiResponse(responseCode = "200", description = "Whether the open access request is permitted")
     @AuditEvent(type = "ACCESS", action = "open.validate")
     @RequestMapping(value = "/validate", produces = "application/json")
     public ResponseEntity<?> validate(
