@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,7 +27,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 /**
  * <p>Endpoint for service handling business logic for users.</p>
  */
-@Tag(name = "User Management")
+@Tag(name = "User Management", description = "Users, their roles, and the caller's own profile")
 @Controller
 @RequestMapping("/user")
 public class UserController {
@@ -41,7 +42,9 @@ public class UserController {
         this.userService = userService;
     }
 
-    @Operation(description = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
+    @Operation(summary = "Read one user", description = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
+    @ApiResponse(responseCode = "200", description = "The user")
+    @ApiResponse(responseCode = "400", description = "No user with that UUID")
     @AuditEvent(type = "OTHER", action = "user.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{userId}", produces = "application/json")
@@ -54,7 +57,8 @@ public class UserController {
         return PICSUREResponse.success(userById);
     }
 
-    @Operation(description = "GET a list of existing users, requires ADMIN or SUPER_ADMIN roles")
+    @Operation(summary = "List every user", description = "GET a list of existing users, requires ADMIN or SUPER_ADMIN roles")
+    @ApiResponse(responseCode = "200", description = "Every user")
     @AuditEvent(type = "OTHER", action = "user.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json")
@@ -63,7 +67,8 @@ public class UserController {
         return PICSUREResponse.success(entityAll);
     }
 
-    @Operation(description = "POST a list of users, requires ADMIN role")
+    @Operation(summary = "Create users", description = "POST a list of users, requires ADMIN role")
+    @ApiResponse(responseCode = "200", description = "The created users")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @RolesAllowed({ADMIN})
     @PostMapping(produces = "application/json")
@@ -84,7 +89,11 @@ public class UserController {
         return PICSUREResponse.success(addedUsers);
     }
 
-    @Operation(description = "Update a list of users, will only update the fields listed, requires ADMIN role")
+    @Operation(
+        summary = "Update the given fields of users",
+        description = "Update a list of users, will only update the fields listed, requires ADMIN role"
+    )
+    @ApiResponse(responseCode = "200", description = "The updated users")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @RolesAllowed({ADMIN})
     @PutMapping(produces = "application/json")
@@ -108,7 +117,8 @@ public class UserController {
      * presented, it will refresh the long term token.
      *
      */
-    @Operation(description = "Retrieve information of current user")
+    @Operation(summary = "The caller's profile, optionally with a long-term token", description = "Retrieve information of current user")
+    @ApiResponse(responseCode = "200", description = "The caller's profile")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
     public ResponseEntity<?> getCurrentUser(
@@ -134,7 +144,8 @@ public class UserController {
      * @param httpHeaders the http headers
      * @return the refreshed long term token
      */
-    @Operation(description = "refresh the long term tokne of current user")
+    @Operation(summary = "Issue the caller a new long-term token", description = "refresh the long term tokne of current user")
+    @ApiResponse(responseCode = "200", description = "A new long term token for the caller")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
     public ResponseEntity<?> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
@@ -147,7 +158,8 @@ public class UserController {
         return PICSUREResponse.applicationError("Inner application error, please contact admin.");
     }
 
-    @Operation(description = "Retrieve consents of current user")
+    @Operation(summary = "The caller's consents", description = "Retrieve consents of current user")
+    @ApiResponse(responseCode = "200", description = "The caller's consents")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
     public ResponseEntity<?> getUserConsents() {
