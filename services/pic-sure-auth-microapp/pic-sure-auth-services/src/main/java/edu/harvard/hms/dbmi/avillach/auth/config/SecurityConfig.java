@@ -8,11 +8,13 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
 import org.springframework.security.config.core.GrantedAuthorityDefaults;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -31,11 +33,12 @@ public class SecurityConfig {
     private final AuthenticationProvider authenticationProvider;
     private final UserService userService;
     private final JWTUtil jwtUtil;
+    private final PublicRoutes publicRoutes;
 
     @Autowired
     public SecurityConfig(
         JWTFilter jwtFilter, AuditLoggingFilter auditLoggingFilter, AuthenticationProvider authenticationProvider, UserService userService,
-        CacheEvictionService cacheEvictionService, JWTUtil jwtUtil
+        CacheEvictionService cacheEvictionService, JWTUtil jwtUtil, PublicRoutes publicRoutes
     ) {
         this.jwtFilter = jwtFilter;
         this.auditLoggingFilter = auditLoggingFilter;
@@ -43,6 +46,7 @@ public class SecurityConfig {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.cacheEvictionService = cacheEvictionService;
+        this.publicRoutes = publicRoutes;
     }
 
     @Bean
@@ -53,13 +57,10 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable).sessionManagement((session) -> session.sessionCreationPolicy(STATELESS))
-            .authenticationProvider(authenticationProvider)
-            .authorizeHttpRequests(
-                (authorizeRequests) -> authorizeRequests.requestMatchers(
-                    "/actuator/health", "/actuator/info", "/authentication", "/authentication/**", "/v3/api-docs/**", "/tos/latest",
-                    "/open/validate", "/logout", "/cache/**"
-                ).permitAll().anyRequest().authenticated()
-            ).httpBasic(AbstractHttpConfigurer::disable).formLogin(AbstractHttpConfigurer::disable)
+            .authenticationProvider(authenticationProvider).authorizeHttpRequests((authorizeRequests) -> {
+                publicRoutes.all().forEach(route -> permit(authorizeRequests, route));
+                authorizeRequests.anyRequest().authenticated();
+            }).httpBasic(AbstractHttpConfigurer::disable).formLogin(AbstractHttpConfigurer::disable)
             // AuditLoggingFilter must wrap the entire chain (including LogoutFilter and JWTFilter)
             // so its try/finally captures events even when JWTFilter short-circuits or LogoutFilter handles /logout
             .addFilterBefore(auditLoggingFilter, LogoutFilter.class).addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
@@ -73,6 +74,16 @@ public class SecurityConfig {
             );
 
         return http.build();
+    }
+
+    private static void permit(
+        AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry authorizeRequests, PublicRoute route
+    ) {
+        if (route.methods().isEmpty()) {
+            authorizeRequests.requestMatchers(route.pattern()).permitAll();
+            return;
+        }
+        route.methods().forEach(method -> authorizeRequests.requestMatchers(HttpMethod.valueOf(method), route.pattern()).permitAll());
     }
 
     /**
