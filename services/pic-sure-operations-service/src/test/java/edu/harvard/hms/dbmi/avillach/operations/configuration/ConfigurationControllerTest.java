@@ -86,6 +86,20 @@ class ConfigurationControllerTest {
     }
 
     @Test
+    void anonymousAdminRequestsAreForbiddenBeforeTheBodyIsRead() throws Exception {
+        mockMvc.perform(
+            post("/configuration/admin").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"bad name!\",\"kind\":\"ui\",\"value\":\"true\"}")
+        ).andExpect(status().isForbidden());
+        mockMvc.perform(post("/configuration/admin").contentType(MediaType.APPLICATION_JSON).content("{nope"))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(patch("/configuration/admin/{id}", "not-a-uuid").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/configuration/admin/{id}", "not-a-uuid")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/configuration/admin")).andExpect(status().isForbidden());
+    }
+
+    @Test
     void adminCreateAsPlainAuthenticatedUserIsForbidden() throws Exception {
         mockMvc.perform(
             post("/configuration/admin").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")

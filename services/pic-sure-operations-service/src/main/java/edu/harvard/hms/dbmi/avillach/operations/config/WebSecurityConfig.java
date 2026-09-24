@@ -18,10 +18,13 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
  *
  * <p>Path rules, in the order they are declared (first match wins): <ol> <li>{@code /actuator/health}, {@code /actuator/info},
  * {@code /v3/api-docs/**}, {@code /swagger-ui/**}, {@code /openapi/**} -- unauthenticated (ops/tooling surfaces, never gated behind caller
- * identity).</li> <li>{@code GET /configuration} and {@code GET /configuration/*} -- public, UNAUTHENTICATED reads (slash-less, matching
- * the controller's mappings). The gateway allow-lists these paths at its introspection layer, so they arrive with NO {@code X-User-*}
- * headers at all; security here must not require an identity that will never be present.</li> <li>{@code /internal/**} -- explicitly
- * {@code permitAll()} at THIS layer (belt-and-suspenders, redundant with the catch-all rule below). Spring Security performs no
+ * identity).</li> <li>{@code /configuration/admin/**} -- requires an authenticated caller, for every HTTP method. Declared before the
+ * public-read rule below so it wins for {@code GET} too. It asks only for an identity: the {@code SUPER_ADMIN} requirement lives in each
+ * handler's {@code @PreAuthorize}. Rejecting anonymous callers here means they get 403 before the request body is read or validated, rather
+ * than a 400 that describes the body.</li> <li>{@code GET /configuration} and {@code GET /configuration/*} -- public, UNAUTHENTICATED reads
+ * (slash-less, matching the controller's mappings). The gateway allow-lists these paths at its introspection layer, so they arrive with NO
+ * {@code X-User-*} headers at all; security here must not require an identity that will never be present.</li> <li>{@code /internal/**} --
+ * explicitly {@code permitAll()} at THIS layer (belt-and-suspenders, redundant with the catch-all rule below). Spring Security performs no
  * authentication/authorization for these paths because it isn't the real gate:
  * {@code edu.harvard.hms.dbmi.avillach.operations.query.InternalTokenFilter}, registered by {@code InternalTokenFilterConfig} against the
  * exact same {@code /internal/*} URL pattern, is what actually enforces the shared-secret check on every request the container routes
@@ -47,8 +50,9 @@ public class WebSecurityConfig {
             .addFilterBefore(new GatewayPrivilegesFilter(), AuthorizationFilter.class)
             .authorizeHttpRequests(
                 auth -> auth.requestMatchers("/actuator/health", "/actuator/info", "/v3/api-docs/**", "/swagger-ui/**", "/openapi/**")
-                    .permitAll().requestMatchers(HttpMethod.GET, "/configuration", "/configuration/*").permitAll()
-                    .requestMatchers("/internal/**").permitAll().requestMatchers("/dataset/**").authenticated().anyRequest().permitAll()
+                    .permitAll().requestMatchers("/configuration/admin/**").authenticated()
+                    .requestMatchers(HttpMethod.GET, "/configuration", "/configuration/*").permitAll().requestMatchers("/internal/**")
+                    .permitAll().requestMatchers("/dataset/**").authenticated().anyRequest().permitAll()
             ).build();
     }
 }
