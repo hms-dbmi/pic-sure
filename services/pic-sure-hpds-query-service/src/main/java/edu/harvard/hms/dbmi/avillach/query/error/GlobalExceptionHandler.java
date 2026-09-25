@@ -14,6 +14,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.Nullable;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
@@ -130,12 +132,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Reads Spring's detail for a client error. A type mismatch names only the parameter, because Spring's own detail quotes the client's
-     * value.
+     * Reads Spring's detail for a client error, replacing the details that quote client input: a type mismatch names only the parameter,
+     * and a 405 or 415 gets fixed text instead of the request's method or Content-Type.
      */
     private static String clientErrorDetail(Exception ex, @Nullable Object body) {
         if (ex instanceof TypeMismatchException mismatch) {
-            return "Invalid value for '" + mismatch.getPropertyName() + "'";
+            String name = mismatch.getPropertyName();
+            return name == null ? "Invalid value for a request parameter" : "Invalid value for '" + name + "'";
+        }
+        if (ex instanceof HttpRequestMethodNotSupportedException) {
+            return "This endpoint does not support the request method.";
+        }
+        if (ex instanceof HttpMediaTypeNotSupportedException) {
+            return "This endpoint does not accept the request's content type.";
         }
         return body instanceof ProblemDetail problem ? problem.getDetail() : null;
     }

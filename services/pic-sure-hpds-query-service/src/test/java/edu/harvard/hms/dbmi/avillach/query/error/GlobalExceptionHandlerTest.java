@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.ServletWebRequest;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
@@ -42,5 +45,15 @@ class GlobalExceptionHandlerTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(resp.getBody()).containsKey("errorType").containsKey("message").containsKey("requestId");
+    }
+
+    @Test
+    void typeMismatchWithoutAPropertyNameStillReadsCleanly() throws Exception {
+        ResponseEntity<Object> resp =
+            handler.handleException(new TypeMismatchException("abc", Integer.class), new ServletWebRequest(new MockHttpServletRequest()));
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(resp.getBody())
+            .isInstanceOfSatisfying(Map.class, body -> assertThat(body).containsEntry("message", "Invalid value for a request parameter"));
     }
 }
