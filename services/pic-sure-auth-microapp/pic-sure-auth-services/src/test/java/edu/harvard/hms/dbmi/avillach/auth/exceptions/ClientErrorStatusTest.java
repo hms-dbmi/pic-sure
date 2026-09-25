@@ -68,6 +68,11 @@ class ClientErrorStatusTest {
             throw new NoResourceFoundException(HttpMethod.GET, "/probe/missing");
         }
 
+        @GetMapping(path = "/page", produces = "text/html")
+        public String page() {
+            return "<p>page</p>";
+        }
+
         @GetMapping("/boom")
         public String boom() {
             throw new IllegalStateException("internal detail");
@@ -107,7 +112,7 @@ class ClientErrorStatusTest {
         mockMvc.perform(post("/probe/body").contentType(MediaType.TEXT_PLAIN).content("name")).andExpect(status().isUnsupportedMediaType())
             .andExpect(header().string(HttpHeaders.ACCEPT, containsString("application/json")))
             .andExpect(jsonPath("$.message").value("Unsupported Media Type"))
-            .andExpect(jsonPath("$.content").value("Content-Type 'text/plain' is not supported."));
+            .andExpect(jsonPath("$.content").value("This endpoint does not accept the request's content type."));
     }
 
     @Test
@@ -121,23 +126,32 @@ class ClientErrorStatusTest {
     void wrongMethodIs405WithAllow() throws Exception {
         mockMvc.perform(get("/probe/body")).andExpect(status().isMethodNotAllowed()).andExpect(header().string(HttpHeaders.ALLOW, "POST"))
             .andExpect(jsonPath("$.message").value("Method Not Allowed"))
-            .andExpect(jsonPath("$.content").value("Method 'GET' is not supported."));
+            .andExpect(jsonPath("$.content").value("This endpoint does not support the request method."));
     }
 
     @Test
     void missingRequiredParameterIs400() throws Exception {
         mockMvc.perform(get("/probe/search")).andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Bad Request"))
-            .andExpect(jsonPath("$.content").value("Required parameter 'q' is not present."));
+            .andExpect(jsonPath("$.content").value("The request is missing a required value or contains an invalid one."));
     }
 
     @Test
     void missingResourceIs404() throws Exception {
-        mockMvc.perform(get("/probe/missing")).andExpect(status().isNotFound()).andExpect(jsonPath("$.message").value("Not Found"));
+        mockMvc.perform(get("/probe/missing")).andExpect(status().isNotFound()).andExpect(jsonPath("$.message").value("Not Found"))
+            .andExpect(jsonPath("$.content").value("The requested resource does not exist."));
     }
 
     @Test
     void unmappedPathIs404() throws Exception {
-        mockMvc.perform(get("/nope")).andExpect(status().isNotFound()).andExpect(jsonPath("$.message").value("Not Found"));
+        mockMvc.perform(get("/nope")).andExpect(status().isNotFound()).andExpect(jsonPath("$.message").value("Not Found"))
+            .andExpect(jsonPath("$.content").value("The requested resource does not exist."));
+    }
+
+    @Test
+    void unacceptableMediaTypeIs406() throws Exception {
+        mockMvc.perform(get("/probe/page").accept(MediaType.APPLICATION_JSON)).andExpect(status().isNotAcceptable())
+            .andExpect(jsonPath("$.message").value("Not Acceptable"))
+            .andExpect(jsonPath("$.content").value("This endpoint cannot produce any of the accepted media types."));
     }
 
     @Test

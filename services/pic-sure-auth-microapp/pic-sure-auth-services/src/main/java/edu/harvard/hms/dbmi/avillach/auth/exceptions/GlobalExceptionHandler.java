@@ -200,8 +200,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * Writes every response the base class produces in this service's {@code {message, content}} shape, keeping the status and headers it
-     * chose. A 4xx carries the status's reason phrase and Spring's detail; a 5xx is logged and carries the same fixed text as
-     * {@link #handleGenericException}. A body an override already built passes through unchanged.
+     * chose. A 4xx carries the status's reason phrase and fixed text that never quotes the request; a 5xx is logged and carries the same
+     * fixed text as {@link #handleGenericException}. A body an override already built passes through unchanged.
      *
      * @param ex the exception being handled
      * @param body the body built so far, or {@code null}
@@ -223,7 +223,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             logger.error("Unhandled exception: ", ex);
             unified = PICSUREResponse.error(UNEXPECTED_MESSAGE, UNEXPECTED_CONTENT).getBody();
         } else {
-            unified = PICSUREResponse.error(reasonPhrase(statusCode), detail(framework.getBody())).getBody();
+            unified = PICSUREResponse.error(reasonPhrase(statusCode), clientErrorContent(statusCode)).getBody();
         }
         return new ResponseEntity<>(unified, framework.getHeaders(), framework.getStatusCode());
     }
@@ -233,8 +233,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return resolved == null ? "Request could not be completed" : resolved.getReasonPhrase();
     }
 
-    private static String detail(@Nullable Object body) {
-        String detail = body instanceof ProblemDetail problem ? problem.getDetail() : null;
-        return detail == null || detail.isBlank() ? "Request could not be completed" : detail;
+    /**
+     * Fixed text for each client error the base class produces. Spring's own detail can quote the request's path, method or Content-Type,
+     * and this service never echoes client input.
+     */
+    private static String clientErrorContent(HttpStatusCode statusCode) {
+        return switch (statusCode.value()) {
+            case 400 -> "The request is missing a required value or contains an invalid one.";
+            case 404 -> "The requested resource does not exist.";
+            case 405 -> "This endpoint does not support the request method.";
+            case 406 -> "This endpoint cannot produce any of the accepted media types.";
+            case 413 -> "The request is too large.";
+            case 415 -> "This endpoint does not accept the request's content type.";
+            default -> "The request could not be completed.";
+        };
     }
 }
