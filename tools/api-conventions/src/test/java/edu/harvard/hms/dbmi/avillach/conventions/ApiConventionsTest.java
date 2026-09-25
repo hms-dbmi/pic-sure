@@ -65,6 +65,11 @@ class ApiConventionsTest {
     }
 
     @Test
+    void noMappingPathEndsInASlash() {
+        report("R16", overDocumentedModules(RoutingRules::noTrailingSlash));
+    }
+
+    @Test
     void noHandlerUsesAReplacedSecurityAnnotation() {
         report("no-replaced-security-annotations", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
     }
