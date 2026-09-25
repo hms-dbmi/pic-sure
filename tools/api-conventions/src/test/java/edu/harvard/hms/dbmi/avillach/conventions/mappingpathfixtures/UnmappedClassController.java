@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.conventions.routingfixtures;
+package edu.harvard.hms.dbmi.avillach.conventions.mappingpathfixtures;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
