@@ -66,7 +66,7 @@ public class CountV3Processor implements HpdsV3Processor {
         Set<Integer> baseQueryPatientSet = queryExecutor.getPatientSubsetForQuery(query);
         query.select().parallelStream().forEach((String concept) -> {
             try {
-                phenotypicObservationStore.getCube(concept).ifPresent(cube -> {
+                phenotypicObservationStore.getCube(concept, query.consentValues()).ifPresent(cube -> {
                     int observationCount = (int) Arrays.stream(cube.sortedByKey()).filter(keyAndValue -> {
                         return baseQueryPatientSet.contains(keyAndValue.getKey());
                     }).count();
@@ -92,8 +92,8 @@ public class CountV3Processor implements HpdsV3Processor {
         query.select().parallelStream().forEach((String concept) -> {
             try {
                 Query safeCopy = new Query(
-                    List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, concept, null, null, null, null), List.of(),
-                    null, null, null
+                    List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, concept, null, null, null, null),
+                    List.of(), null, null, null
                 );
                 int matchingPatients = Sets.intersection(queryExecutor.getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size();
                 counts.put(concept, matchingPatients);
@@ -127,7 +127,7 @@ public class CountV3Processor implements HpdsV3Processor {
             String conceptPath = entry.getKey();
 
             TreeMap<String, TreeSet<Integer>> categoryMap = (TreeMap<String, TreeSet<Integer>>) phenotypicObservationStore
-                .getCube(conceptPath).map(PhenoCube::getCategoryMap).orElseGet(TreeMap::new);
+                .getCube(conceptPath, query.consentValues()).map(PhenoCube::getCategoryMap).orElseGet(TreeMap::new);
 
             Set<String> calledOutValues = entry.getValue().stream().filter(PhenotypicFilter::isCategoricalFilter)
                 .flatMap(filter -> filter.values().stream()).collect(Collectors.toSet());
@@ -178,7 +178,7 @@ public class CountV3Processor implements HpdsV3Processor {
 
         Map<String, Map<Double, Integer>> conceptMap = new TreeMap<>();
         for (String conceptPath : conceptPaths) {
-            KeyAndValue<Double>[] pairs = phenotypicObservationStore.getCube(conceptPath)
+            KeyAndValue<Double>[] pairs = phenotypicObservationStore.getCube(conceptPath, query.consentValues())
                 .map(phenoCube -> ((PhenoCube<Double>) phenoCube).getEntriesForValueRange(null, null))
                 .orElseGet(() -> new KeyAndValue[] {});
             Map<Double, Integer> countMap = new TreeMap<>();

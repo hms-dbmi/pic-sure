@@ -15,7 +15,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.QueryExecutor;
@@ -47,7 +46,7 @@ public class PicSureV3Service {
     public PicSureV3Service(
         QueryV3Service queryService, CountV3Processor countProcessor, VariantListV3Processor variantListProcessor,
         QueryExecutor queryExecutor, Paginator paginator, SignUrlService signUrlService, FileSharingV3Service fileSharingService,
-        TestDataService testDataService, UserRequestContext userRequestContext
+        TestDataService testDataService
     ) {
         this.queryService = queryService;
         this.countProcessor = countProcessor;
@@ -57,7 +56,6 @@ public class PicSureV3Service {
         this.fileSharingService = fileSharingService;
         this.signUrlService = signUrlService;
         this.testDataService = testDataService;
-        this.userRequestContext = userRequestContext;
         Crypto.loadDefaultKey();
     }
 
@@ -81,7 +79,6 @@ public class PicSureV3Service {
 
     private final TestDataService testDataService;
 
-    private final UserRequestContext userRequestContext;
 
     @Autowired
     private HttpServletRequest httpRequest;
@@ -155,7 +152,6 @@ public class PicSureV3Service {
         Object queryObject = queryJson.getQuery();
         Query query = deserializeQuery(queryObject);
 
-        this.userRequestContext.setUserConsents(query.userConsents().stream().map(UserConsent::value).collect(Collectors.toSet()));
         return query;
     }
 

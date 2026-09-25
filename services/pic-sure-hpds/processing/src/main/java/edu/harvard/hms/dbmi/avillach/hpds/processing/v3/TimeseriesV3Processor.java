@@ -77,11 +77,11 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
         Set<String> exportedConceptPaths = new HashSet<>();
         Collection<String> pathList = queryExecutor.getAllConceptPaths(query);
 
-        addDataForConcepts(pathList, exportedConceptPaths, idList, result);
+        addDataForConcepts(pathList, exportedConceptPaths, idList, result, query.consentValues());
     }
 
     private void addDataForConcepts(
-        Collection<String> pathList, Set<String> exportedConceptPaths, Set<Integer> idList, AsyncResult result
+        Collection<String> pathList, Set<String> exportedConceptPaths, Set<Integer> idList, AsyncResult result, Set<String> consents
     ) {
         for (String conceptPath : pathList) {
             // skip concepts we may already have encountered
@@ -89,7 +89,7 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
                 continue;
             }
             ArrayList<String[]> dataEntries = new ArrayList<>();
-            Optional<PhenoCube<?>> maybeCube = phenotypicObservationStore.getCube(conceptPath);
+            Optional<PhenoCube<?>> maybeCube = phenotypicObservationStore.getCube(conceptPath, consents);
             if (maybeCube.isEmpty()) {
                 log.warn("Attempting export of non-existant concept: {}", conceptPath);
                 continue;

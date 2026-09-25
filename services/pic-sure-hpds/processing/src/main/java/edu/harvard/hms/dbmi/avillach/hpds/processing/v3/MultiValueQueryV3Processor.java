@@ -83,19 +83,20 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
         ArrayList<Integer> columnIndex = queryExecutor.useResidentCubesFirst(paths, columnCount);
 
         // todo: investigate if the parallel stream will thrash the cache if the number of executors is > number of resident cubes
+        Set<String> consents = query.consentValues();
         columnIndex.parallelStream().forEach((columnId) -> {
             String columnPath = paths.get(columnId - 1);
-            Map<Integer, List<String>> patientIdToValueMap = processColumn(ids, columnPath);
+            Map<Integer, List<String>> patientIdToValueMap = processColumn(ids, columnPath, consents);
             pathToPatientToValueMap.put(columnPath, patientIdToValueMap);
         });
 
         return pathToPatientToValueMap;
     }
 
-    private Map<Integer, List<String>> processColumn(TreeSet<Integer> patientIds, String path) {
+    private Map<Integer, List<String>> processColumn(TreeSet<Integer> patientIds, String path, Set<String> consents) {
 
         Map<Integer, List<String>> patientIdToValueMap = new HashMap<>();
-        Optional<PhenoCube<?>> cubeOptional = phenotypicObservationStore.getCube(path);
+        Optional<PhenoCube<?>> cubeOptional = phenotypicObservationStore.getCube(path, consents);
 
         return cubeOptional.map(cube -> {
             KeyAndValue<?>[] cubeValues = cube.sortedByKey();

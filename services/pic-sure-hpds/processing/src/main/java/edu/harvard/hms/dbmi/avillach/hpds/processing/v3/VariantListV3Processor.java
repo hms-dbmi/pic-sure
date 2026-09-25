@@ -130,7 +130,7 @@ public class VariantListV3Processor implements HpdsV3Processor {
 
         Optional<PhenoCube<?>> idCube = Optional.empty();
         if (!idCubeName.contentEquals("NONE")) {
-            idCube = phenotypicObservationStore.getCube(idCubeName);
+            idCube = phenotypicObservationStore.getCube(idCubeName, query.consentValues());
         }
 
         //

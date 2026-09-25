@@ -4,12 +4,9 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Sets;
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.util.SetUtils;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,11 +42,12 @@ public class PhenotypicQueryExecutor {
     }
 
     public Set<Integer> getPatientSet(Query query) {
+        Set<String> consents = query.consentValues();
         if (query.phenotypicClause() != null) {
-            return evaluatePhenotypicClause(query.phenotypicClause());
+            return evaluatePhenotypicClause(query.phenotypicClause(), consents);
         } else {
-            // if there are no phenotypic queries, return all patients
-            return phenotypicObservationStore.getPatientIds();
+            // if there are no phenotypic queries, return all patients the caller's consents grant
+            return phenotypicObservationStore.getPatientIds(consents);
         }
     }
 
@@ -61,47 +59,47 @@ public class PhenotypicQueryExecutor {
         }).collect(Collectors.toList());
     }
 
-    private Set<Integer> evaluatePhenotypicClause(PhenotypicClause phenotypicClause) {
+    private Set<Integer> evaluatePhenotypicClause(PhenotypicClause phenotypicClause, Set<String> consents) {
         return switch (phenotypicClause) {
-            case PhenotypicSubquery phenotypicSubquery -> evaluatePhenotypicSubquery(phenotypicSubquery);
-            case PhenotypicFilter phenotypicFilter -> evaluatePhenotypicFilter(phenotypicFilter);
+            case PhenotypicSubquery phenotypicSubquery -> evaluatePhenotypicSubquery(phenotypicSubquery, consents);
+            case PhenotypicFilter phenotypicFilter -> evaluatePhenotypicFilter(phenotypicFilter, consents);
         };
     }
 
-    private Set<Integer> evaluatePhenotypicFilter(PhenotypicFilter phenotypicFilter) {
+    private Set<Integer> evaluatePhenotypicFilter(PhenotypicFilter phenotypicFilter, Set<String> consents) {
         return switch (phenotypicFilter.phenotypicFilterType()) {
-            case FILTER -> evaluateFilterFilter(phenotypicFilter);
-            case REQUIRED -> evaluateRequiredFilter(phenotypicFilter);
-            case ANY_RECORD_OF -> evaluateAnyRecordOfFilter(phenotypicFilter);
+            case FILTER -> evaluateFilterFilter(phenotypicFilter, consents);
+            case REQUIRED -> evaluateRequiredFilter(phenotypicFilter, consents);
+            case ANY_RECORD_OF -> evaluateAnyRecordOfFilter(phenotypicFilter, consents);
         };
     }
 
-    private Set<Integer> evaluateAnyRecordOfFilter(PhenotypicFilter phenotypicFilter) {
+    private Set<Integer> evaluateAnyRecordOfFilter(PhenotypicFilter phenotypicFilter, Set<String> consents) {
         Set<String> matchingConcepts = getChildConceptPaths(phenotypicFilter.conceptPath());
         Set<Integer> ids = new TreeSet<>();
         for (String concept : matchingConcepts) {
-            ids.addAll(phenotypicObservationStore.getAllKeys(concept));
+            ids.addAll(phenotypicObservationStore.getAllKeys(concept, consents));
         }
         return ids;
     }
 
-    private Set<Integer> evaluateFilterFilter(PhenotypicFilter phenotypicFilter) {
+    private Set<Integer> evaluateFilterFilter(PhenotypicFilter phenotypicFilter, Set<String> consents) {
         if (phenotypicFilter.values() != null) {
-            return phenotypicObservationStore.getKeysForValues(phenotypicFilter.conceptPath(), phenotypicFilter.values());
+            return phenotypicObservationStore.getKeysForValues(phenotypicFilter.conceptPath(), phenotypicFilter.values(), consents);
         } else if (phenotypicFilter.max() != null || phenotypicFilter.min() != null) {
             return phenotypicObservationStore
-                .getKeysForRange(phenotypicFilter.conceptPath(), phenotypicFilter.min(), phenotypicFilter.max());
+                .getKeysForRange(phenotypicFilter.conceptPath(), phenotypicFilter.min(), phenotypicFilter.max(), consents);
         } else {
             throw new IllegalArgumentException("Either values or one of min/max must be set for a filter");
         }
     }
 
-    private Set<Integer> evaluateRequiredFilter(PhenotypicFilter phenotypicFilter) {
-        return new HashSet<>(phenotypicObservationStore.getAllKeys(phenotypicFilter.conceptPath()));
+    private Set<Integer> evaluateRequiredFilter(PhenotypicFilter phenotypicFilter, Set<String> consents) {
+        return new HashSet<>(phenotypicObservationStore.getAllKeys(phenotypicFilter.conceptPath(), consents));
     }
 
-    private Set<Integer> evaluatePhenotypicSubquery(PhenotypicSubquery phenotypicSubquery) {
-        return phenotypicSubquery.phenotypicClauses().parallelStream().map(this::evaluatePhenotypicClause)
+    private Set<Integer> evaluatePhenotypicSubquery(PhenotypicSubquery phenotypicSubquery, Set<String> consents) {
+        return phenotypicSubquery.phenotypicClauses().parallelStream().map(clause -> evaluatePhenotypicClause(clause, consents))
             .reduce(getReducer(phenotypicSubquery.operator()))
             // todo: deal with empty lists
             .get();
@@ -148,8 +146,8 @@ public class PhenotypicQueryExecutor {
         return phenotypicObservationStore.getMetaStore();
     }
 
-    public Set<Integer> getPatientIds() {
-        return phenotypicObservationStore.getPatientIds();
+    public Set<Integer> getPatientIds(Set<String> consents) {
+        return phenotypicObservationStore.getPatientIds(consents);
     }
 
     public Set<String> getChildConceptPaths(String conceptPath) {
