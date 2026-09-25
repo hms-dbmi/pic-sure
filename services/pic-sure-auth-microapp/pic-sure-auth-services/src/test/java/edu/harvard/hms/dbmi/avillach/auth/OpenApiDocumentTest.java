@@ -24,7 +24,8 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
  * The live document is served unauthenticated, names this service, carries the bearer scheme, and covers every visible handler with a
  * summarised operation. An endpoint cannot vanish from the document, and the annotation pass cannot skip one, without failing here. This is
  * also PSAMA's first test to boot the full application context: an in-memory H2 schema stands in for MySQL, and {@code NON_KEYWORDS}
- * excuses the columns Hibernate would otherwise refuse because H2 reserves their names.
+ * excuses the columns Hibernate would otherwise refuse because H2 reserves their names. Required authorities appear in a description only as
+ * the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -59,5 +60,27 @@ class OpenApiDocumentTest {
         assertThat(document.path("paths").has("/swagger.json")).isFalse();
         assertThat(document.path("paths").has("/swagger.yaml")).isFalse();
         OpenApiDocumentAssertions.assertCovers(document, handlerMapping);
+    }
+
+    @Test
+    void requiredAuthoritiesComeFromTheGuards() throws Exception {
+        JsonNode paths =
+            objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString()).path("paths");
+
+        assertThat(description(paths, "/user", "get")).isEqualTo("GET a list of existing users\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
+        assertThat(description(paths, "/accessRule", "post")).isEqualTo("POST a list of AccessRules\n\nRequired authorities: SUPER_ADMIN.");
+        assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users\n\nRequired authorities: ADMIN.");
+        assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user");
+        assertThat(description(paths, "/application", "get")).isEqualTo("GET a list of existing Applications");
+        paths.forEach(
+            path -> path.forEach(
+                operation -> assertThat(operation.path("description").asText()).doesNotContainIgnoringCase("requires")
+                    .doesNotContainIgnoringCase("role restrictions")
+            )
+        );
+    }
+
+    private static String description(JsonNode paths, String path, String method) {
+        return paths.path(path).path(method).path("description").asText();
     }
 }

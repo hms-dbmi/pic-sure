@@ -16,7 +16,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
-import org.springframework.security.config.core.GrantedAuthorityDefaults;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.logout.LogoutFilter;
@@ -24,7 +23,7 @@ import org.springframework.security.web.authentication.logout.LogoutFilter;
 import static org.springframework.security.config.http.SessionCreationPolicy.STATELESS;
 
 @Configuration
-@EnableMethodSecurity(prePostEnabled = false, jsr250Enabled = true)
+@EnableMethodSecurity
 @EnableWebSecurity
 public class SecurityConfig {
 
@@ -87,14 +86,6 @@ public class SecurityConfig {
             return;
         }
         route.methods().forEach(method -> authorizeRequests.requestMatchers(HttpMethod.valueOf(method), route.pattern()).permitAll());
-    }
-
-    /**
-     * Remove the default "ROLE_" prefix so that hasRole("ADMIN") and @RolesAllowed("ADMIN") match a GrantedAuthority("ADMIN").
-     */
-    @Bean
-    public GrantedAuthorityDefaults grantedAuthorityDefaults() {
-        return new GrantedAuthorityDefaults("");
     }
 
 }

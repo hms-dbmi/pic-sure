@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.conventions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 import com.tngtech.archunit.core.domain.JavaAnnotation;
@@ -174,5 +176,63 @@ public final class SwaggerRules {
             }
         }
         return nested;
+    }
+
+    /**
+     * R10: in a module whose handlers carry {@code @PreAuthorize}, no Tag description and no Operation
+     * summary or description names one of the authorities those guards require. The shared OpenAPI
+     * customizer publishes them from the guard, so prose that repeats them can only drift from it.
+     *
+     * @param module the module path, used in the violation text
+     * @param classes that module's imported classes
+     * @return one violation per annotation property that names a guarded authority
+     */
+    public static List<String> documentationDoesNotRestateAuthorities(String module, JavaClasses classes) {
+        Set<String> authorities = guardedAuthorities(classes);
+        if (authorities.isEmpty()) {
+            return List.of();
+        }
+        List<String> violations = new ArrayList<>();
+        for (JavaClass controller : Controllers.of(classes)) {
+            Annotations.get(controller, Annotations.TAG).flatMap(tag -> Annotations.string(tag, "description"))
+                .ifPresent(text -> restated(at(module, controller) + " @Tag description", text, authorities, violations));
+            for (JavaMethod method : Controllers.handlerMethods(controller)) {
+                Optional<JavaAnnotation<?>> operation = Annotations.get(method, Annotations.OPERATION);
+                if (operation.isEmpty()) {
+                    continue;
+                }
+                for (String property : List.of("summary", "description")) {
+                    String location = at(module, controller, method.getName()) + " @Operation " + property;
+                    Annotations.string(operation.get(), property)
+                        .ifPresent(text -> restated(location, text, authorities, violations));
+                }
+            }
+        }
+        return violations;
+    }
+
+    private static Set<String> guardedAuthorities(JavaClasses classes) {
+        Set<String> authorities = new TreeSet<>();
+        for (JavaClass type : classes) {
+            for (JavaMethod method : type.getMethods()) {
+                Annotations.get(method, SecurityRules.PRE_AUTHORIZE)
+                    .flatMap(annotation -> Annotations.string(annotation, "value"))
+                    .flatMap(SecurityRules::authorities)
+                    .ifPresent(authorities::addAll);
+            }
+        }
+        return authorities;
+    }
+
+    private static void restated(String location, String text, Set<String> authorities, List<String> violations) {
+        List<String> named = authorities.stream()
+            .filter(authority -> Pattern.compile("(?<![A-Za-z0-9_])" + Pattern.quote(authority) + "(?![A-Za-z0-9_])")
+                .matcher(text)
+                .find())
+            .toList();
+        if (!named.isEmpty()) {
+            String names = String.join(", ", named);
+            violations.add(location + " names " + names + "; the document already publishes it from @PreAuthorize");
+        }
     }
 }

@@ -10,7 +10,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * <p>Endpoint for registering and administering applications. <br> Note: Only users with the super admin role can access this endpoint.</p>
@@ -38,7 +37,7 @@ public class ApplicationController {
         this.applicationService = applicationService;
     }
 
-    @Operation(summary = "Read one application", description = "GET information of one Application with the UUID, no role restrictions")
+    @Operation(summary = "Read one application", description = "GET information of one Application with the UUID")
     @ApiResponse(responseCode = "200", description = "The application")
     @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "OTHER", action = "application.read")
@@ -57,7 +56,7 @@ public class ApplicationController {
         return PICSUREResponse.success(entityById.get());
     }
 
-    @Operation(summary = "List every application", description = "GET a list of existing Applications, no role restrictions")
+    @Operation(summary = "List every application", description = "GET a list of existing Applications")
     @ApiResponse(responseCode = "200", description = "Every application")
     @AuditEvent(type = "OTHER", action = "application.list")
     @GetMapping
@@ -65,10 +64,10 @@ public class ApplicationController {
         return PICSUREResponse.success(applicationService.getAllApplications());
     }
 
-    @Operation(summary = "Create applications", description = "POST a list of Applications, requires SUPER_ADMIN role")
+    @Operation(summary = "Create applications", description = "POST a list of Applications")
     @ApiResponse(responseCode = "200", description = "The created applications")
     @AuditEvent(type = "ADMIN", action = "application.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Application>> addApplication(
         @Parameter(required = true, description = "A list of AccessRule in JSON format") @RequestBody List<Application> applications,
@@ -81,11 +80,11 @@ public class ApplicationController {
 
     @Operation(
         summary = "Update the given fields of applications",
-        description = "Update a list of Applications, will only update the fields listed, requires SUPER_ADMIN role"
+        description = "Update a list of Applications, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated applications")
     @AuditEvent(type = "ADMIN", action = "application.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Application>> updateApplication(
         @Parameter(
@@ -99,12 +98,12 @@ public class ApplicationController {
 
     @Operation(
         summary = "Issue a new token for an application",
-        description = "Refresh a token of an application by application Id, requires SUPER_ADMIN role"
+        description = "Refresh a token of an application by application Id"
     )
     @ApiResponse(responseCode = "200", description = "The application's new token")
     @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "ADMIN", action = "application.token_refresh")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping(value = "/refreshToken/{applicationId}")
     public ResponseEntity<Map<String, String>> refreshApplicationToken(
         @Parameter(required = true, description = "A valid application Id") @PathVariable("applicationId") String applicationId,
@@ -117,7 +116,7 @@ public class ApplicationController {
 
     @Operation(
         summary = "Delete an application that nothing references",
-        description = "DELETE an Application by Id only if the application is not associated by others, requires SUPER_ADMIN role"
+        description = "DELETE an Application by Id only if the application is not associated by others"
     )
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The remaining applications"),
@@ -125,7 +124,7 @@ public class ApplicationController {
             @ApiResponse(responseCode = "409", description = "Other entities still reference this application")}
     )
     @AuditEvent(type = "ADMIN", action = "application.delete")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(value = "/{applicationId}")
     public ResponseEntity<?> removeById(
         @Parameter(required = true, description = "A valid accessRule Id") @PathVariable("applicationId") final String applicationId,
