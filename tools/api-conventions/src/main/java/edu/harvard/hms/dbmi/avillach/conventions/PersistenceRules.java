@@ -49,7 +49,9 @@ public final class PersistenceRules {
      * @param classes that module's imported classes
      * @param reactorEnums the names of enum types compiled anywhere in the reactor, because a field whose
      *     enum lives in another module arrives here as an unresolved type that does not report itself as
-     *     an enum
+     *     an enum. An enum from outside the reactor counts only when the checker's test classpath has
+     *     it: JDK and {@code jakarta.persistence} enums do, but a Hibernate, Spring or other third-party
+     *     enum does not, so a bare field of that type passes unchecked.
      * @return one violation per enum field stored by ordinal
      */
     public static List<String> enumsStoredByName(String module, JavaClasses classes, Set<String> reactorEnums) {
