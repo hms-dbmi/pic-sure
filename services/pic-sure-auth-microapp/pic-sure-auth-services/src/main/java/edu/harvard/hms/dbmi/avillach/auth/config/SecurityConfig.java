@@ -57,7 +57,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(
                 (authorizeRequests) -> authorizeRequests.requestMatchers(
                     "/actuator/health", "/actuator/info", "/authentication", "/authentication/**", "/v3/api-docs/**", "/tos/latest",
-                    "/open/validate", "/logout", "/cache/**"
+                    "/open/validate", "/open/apiKey", "/logout", "/cache/**"
                 ).permitAll().anyRequest().authenticated()
             ).httpBasic(AbstractHttpConfigurer::disable).formLogin(AbstractHttpConfigurer::disable)
             // AuditLoggingFilter must wrap the entire chain (including LogoutFilter and JWTFilter)
