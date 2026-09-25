@@ -88,7 +88,8 @@ class JWTFilterTest {
         TOSService tosService = mock(TOSService.class);
         JWTUtil jwtUtil = mock(JWTUtil.class);
         CustomUserDetailService userDetailsService = mock(CustomUserDetailService.class);
-        JWTFilter filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService);
+        SessionService sessionService = mock(SessionService.class);
+        JWTFilter filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService, sessionService);
         FilterChain filterChain = mock(FilterChain.class);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", uri);
         MockHttpServletResponse response = new MockHttpServletResponse();
