@@ -40,14 +40,16 @@ import jakarta.annotation.security.RolesAllowed;
  * authority in the security context: every listed authority must get past method security, and every other one must be denied, so
  * {@code SUPER_ADMIN} never stands in for {@code ADMIN}. The table is the record of what each endpoint requires. A guarded handler missing
  * from it, or a listed handler that lost its guard, fails the build. The full application context runs on the same in-memory H2 settings as
- * {@code OpenApiDocumentTest}, so the two share one cached context.
+ * {@code OpenApiDocumentTest}, so the two share one cached context. Both switch on the cache inspection controller, which exists only when
+ * {@code app.cache.inspect.enabled} is true, so its handlers are in the table.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = {"spring.datasource.url=jdbc:h2:mem:psama-openapi;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=USER,VALUE,KEY",
         "spring.datasource.driver-class-name=org.h2.Driver", "spring.datasource.username=sa", "spring.datasource.password=",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect", "spring.jpa.hibernate.ddl-auto=create-drop",
-        "APPLICATION_CLIENT_SECRET=openapi-test-placeholder-secret", "management.endpoints.web.exposure.include=none"}
+        "APPLICATION_CLIENT_SECRET=openapi-test-placeholder-secret", "management.endpoints.web.exposure.include=none",
+        "app.cache.inspect.enabled=true"}
 )
 @AutoConfigureMockMvc
 class HandlerAuthorizationTest {
@@ -71,6 +73,7 @@ class HandlerAuthorizationTest {
             Map.entry("ApplicationController#updateApplication", Set.of(SUPER_ADMIN)),
             Map.entry("ApplicationController#refreshApplicationToken", Set.of(SUPER_ADMIN)),
             Map.entry("ApplicationController#removeById", Set.of(SUPER_ADMIN)),
+            Map.entry("CacheController#getCacheNames", Set.of(SUPER_ADMIN)), Map.entry("CacheController#getCache", Set.of(SUPER_ADMIN)),
             Map.entry("ConnectionWebController#getConnectionById", Set.of(ADMIN, SUPER_ADMIN)),
             Map.entry("ConnectionWebController#getAllConnections", Set.of(ADMIN, SUPER_ADMIN)),
             Map.entry("ConnectionWebController#addConnection", Set.of(SUPER_ADMIN)),
