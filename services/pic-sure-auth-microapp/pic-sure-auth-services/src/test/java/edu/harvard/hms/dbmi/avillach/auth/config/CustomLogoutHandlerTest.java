@@ -8,6 +8,7 @@ import io.jsonwebtoken.Claims;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -30,7 +31,8 @@ class CustomLogoutHandlerTest {
         userService = mock(UserService.class);
         cacheEvictionService = mock(CacheEvictionService.class);
         jwtUtil = mock(JWTUtil.class);
-        sessionService = mock(SessionService.class);
+        sessionService = new SessionService(28_800_000, new ConcurrentMapCacheManager("sessions"), null);
+        sessionService.startSession("admin-subject", "current-session");
         handler = new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil, sessionService);
     }
 
@@ -38,6 +40,7 @@ class CustomLogoutHandlerTest {
     void endsTheSessionForTheTokenSubject() {
         Claims claims = mock(Claims.class);
         when(claims.getSubject()).thenReturn("admin-subject");
+        when(claims.get("sid")).thenReturn("current-session");
         when(jwtUtil.parseTokenAllowingExpiration("admin-token")).thenReturn(Optional.of(claims));
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/logout");
         request.addHeader("Authorization", "Bearer admin-token");
@@ -57,6 +60,7 @@ class CustomLogoutHandlerTest {
     void endsTheSessionEvenWhenTheTokenHasAlreadyExpired() {
         Claims claims = mock(Claims.class);
         when(claims.getSubject()).thenReturn("admin-subject");
+        when(claims.get("sid")).thenReturn("current-session");
         when(jwtUtil.parseTokenAllowingExpiration("expired-token")).thenReturn(Optional.of(claims));
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/logout");
         request.addHeader("Authorization", "Bearer expired-token");

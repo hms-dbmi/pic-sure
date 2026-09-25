@@ -7,12 +7,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
 import org.springframework.stereotype.Service;
 
-import java.util.Date;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -23,22 +22,43 @@ public class SessionService {
     private final long sessionMaxDuration;
     private final CacheManager cacheManager;
     private final LoggingClient loggingClient;
+    private final Object[] sessionLocks = new Object[256];
+
+    public record Session(String id, long startedAt, boolean revoked) {
+        public Session(String id, long startedAt) {
+            this(id, startedAt, false);
+        }
+    }
 
     public SessionService(@Value("${application.max.session.length}") long sessionMaxDuration, CacheManager cacheManager,
                           LoggingClient loggingClient) {
         this.sessionMaxDuration = sessionMaxDuration > 0 ? sessionMaxDuration : 8 * 60 * 60 * 1000; // 8 hours in milliseconds
         this.cacheManager = cacheManager;
         this.loggingClient = loggingClient;
+        Arrays.setAll(sessionLocks, index -> new Object());
     }
 
     /**
-     * @param tokenIssuedAt the {@code iat} of the token minted for this login. The session is anchored to it rather
-     * than to the wall clock so that a token and its own session share an exact start, which lets
-     * {@link #isTokenValidForCurrentSession} compare them without a tolerance window.
-     * @param loginStartedAt fallback when the issued-at is unavailable, rounded down to JWT second precision
+     * Use the same monitor for login finalization and logout cleanup so an old logout
+     * cannot remove a new login's passport.
+     * Stripes bound lock storage without removing a lock while another request is waiting for it.
+     * Coordination is local to this process, like the session cache.
      */
-    @CachePut(value = "sessions", key = "#userSubject")
-    public long startSession(String userSubject, Optional<Date> tokenIssuedAt, long loginStartedAt) {
+    public Object sessionLock(String userSubject) {
+        if (userSubject == null || userSubject.isBlank()) {
+            throw new IllegalArgumentException("User subject must not be blank");
+        }
+        return sessionLocks[Math.floorMod(userSubject.hashCode(), sessionLocks.length)];
+    }
+
+    public void startSession(String userSubject, String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalArgumentException("Session ID must not be blank");
+        }
+        synchronized (sessionLock(userSubject)) {
+            Objects.requireNonNull(cacheManager.getCache("sessions"), "Session cache is unavailable")
+                .put(userSubject, new Session(sessionId, System.currentTimeMillis()));
+        }
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
                 loggingClient.send(LoggingEvent.builder("AUTH").action("session.start")
@@ -48,69 +68,70 @@ public class SessionService {
                 logger.warn("Failed to send SESSION_START audit log event", e);
             }
         }
-        return tokenIssuedAt.map(Date::getTime).orElse(loginStartedAt / 1000 * 1000);
     }
 
-    @CacheEvict(value = "sessions", key = "#userSubject")
     public void endSession(String userSubject) {
-        // No audit logging here — endSession is called from evictCache() which fires on
-        // logout, passport invalidation, and login flows. The callers log their own
-        // domain-specific events (LOGOUT, PASSPORT_INVALIDATED, LOGIN_SUCCESS).
+        synchronized (sessionLock(userSubject)) {
+            Cache cache = cacheManager.getCache("sessions");
+            // A failed login can leave the old passport stored, so retain ownership for logout cleanup.
+            if (cache != null) {
+                getSession(userSubject).ifPresent(session ->
+                    cache.put(userSubject, new Session(session.id(), session.startedAt(), true)));
+            }
+        }
     }
 
-    private Optional<Long> getCachedSessionStartTime(String userSubject) {
+    private Optional<Session> getSession(String userSubject) {
+        if (userSubject == null || userSubject.isBlank()) {
+            return Optional.empty();
+        }
         Cache cache = cacheManager.getCache("sessions");
         if (cache != null) {
-            Cache.ValueWrapper valueWrapper = cache.get(userSubject);
-            if (valueWrapper != null) {
-                return Optional.ofNullable((Long) valueWrapper.get());
+            Cache.ValueWrapper value = cache.get(userSubject);
+            if (value != null && value.get() instanceof Session session) {
+                return Optional.of(session);
             }
         }
         return Optional.empty();
     }
 
-    /**
-     * If the user has been logged in longer than the max session duration.
-     * @param userSubject User::getSubject()
-     * @return boolean if the session exists or the length of the current session
-    */
+    /** Missing, revoked, and timed-out sessions all reject session-bound authorization. */
     public boolean isSessionExpired(String userSubject) {
-        Optional<Long> sessionStartTime = getCachedSessionStartTime(userSubject);
-        return sessionStartTime.map(aLong -> System.currentTimeMillis() - aLong > sessionMaxDuration).orElse(true);
+        return getSession(userSubject)
+            .map(session -> session.revoked() || System.currentTimeMillis() - session.startedAt() > sessionMaxDuration)
+            .orElse(true);
     }
 
-    /**
-     * Authentication requires both a live session and an issued-at claim. Logout uses the separate issuance
-     * comparison so that an expired session can still receive cleanup.
-     */
-    public boolean isTokenValidForCurrentSession(String userSubject, Date issuedAt) {
-        if (issuedAt == null) {
+    public boolean isTokenValidForCurrentSession(String userSubject, Object sessionId) {
+        if (!(sessionId instanceof String id) || id.isBlank()) {
             return false;
         }
-
-        return getCachedSessionStartTime(userSubject)
-            .map(sessionStart -> issuedAt.getTime() >= sessionStart
-                && System.currentTimeMillis() - sessionStart <= sessionMaxDuration)
+        return getSession(userSubject)
+            .map(session -> !session.revoked() && id.equals(session.id())
+                && System.currentTimeMillis() - session.startedAt() <= sessionMaxDuration)
             .orElse(false);
     }
 
     /**
-     * Whether the token was minted before the subject's current session began, which means it belongs to a session
-     * that has already ended. Ending a session only clears the subject's entry, so logging back in would otherwise
-     * make every still-unexpired token from the previous session valid again.
-     *
-     * This comparison alone does not establish that a session exists or is live; authentication must use
-     * {@link #isTokenValidForCurrentSession} instead.
-     *
-     * @param userSubject User::getSubject()
-     * @param issuedAt the token's {@code iat} claim, or null if it carries none
+     * Expiration does not prevent cleanup, but only the matching session can authorize it.
+     * Failed cleanup requires an external logout retry; a successful new login replaces the revoked session.
      */
-    public boolean isTokenIssuedBeforeCurrentSession(String userSubject, Date issuedAt) {
-        if (issuedAt == null) {
+    public boolean endSessionIfCurrent(String userSubject, Object sessionId, Runnable cleanup) {
+        if (userSubject == null || userSubject.isBlank() || !(sessionId instanceof String id) || id.isBlank()) {
             return false;
         }
-
-        return getCachedSessionStartTime(userSubject).map(sessionStartTime -> issuedAt.getTime() < sessionStartTime).orElse(false);
+        synchronized (sessionLock(userSubject)) {
+            Optional<Session> current = getSession(userSubject).filter(session -> id.equals(session.id()));
+            if (current.isEmpty()) {
+                return false;
+            }
+            Cache cache = Objects.requireNonNull(cacheManager.getCache("sessions"), "Session cache is unavailable");
+            Session session = current.get();
+            // Retain ownership until cleanup succeeds; authentication rejects this marker throughout.
+            cache.put(userSubject, new Session(session.id(), session.startedAt(), true));
+            cleanup.run();
+            cache.evict(userSubject);
+            return true;
+        }
     }
-
 }
