@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Applies the rules to this reactor. Every rule reports its whole list, so one run names every problem
  * rather than the first. The swagger rules cover the modules the registry marks documented; the
  * authorization rules cover every compiled module, because an unenforced guard is a problem wherever it sits.
+ * The persistence rules cover every compiled module as well.
  */
 class ApiConventionsTest {
 
@@ -88,6 +89,12 @@ class ApiConventionsTest {
     @Test
     void noCodeChecksARolePrefix() {
         report("R11", overAllModules(SecurityRules::noRoleChecks));
+    }
+
+    @Test
+    void everyPersistedEnumIsStoredByName() {
+        Set<String> enums = PersistenceRules.enumTypes(modules);
+        report("R19", overAllModules((module, classes) -> PersistenceRules.enumsStoredByName(module, classes, enums)));
     }
 
     private static List<String> overAllModules(Rule rule) {
