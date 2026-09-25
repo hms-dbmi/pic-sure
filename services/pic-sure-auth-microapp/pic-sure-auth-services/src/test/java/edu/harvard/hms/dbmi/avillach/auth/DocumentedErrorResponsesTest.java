@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -332,7 +333,8 @@ class DocumentedErrorResponsesTest {
     /**
      * The cache inspection controller only exists when {@code app.cache.inspect.enabled} is true, so its case runs in a context of its own
      * with a separate in-memory database. PSAMA uses Spring Boot's simple cache manager without {@code spring.cache.cache-names}, which
-     * creates any cache it is asked for, so the controller's "cache not found" branch cannot run and the endpoint declares no 400.
+     * creates any cache it is asked for, so the controller's "cache not found" branch cannot run and the endpoint declares no 400. The
+     * endpoint needs an authenticated caller and no particular role, so the request carries a test user rather than a JWT.
      */
     @Nested
     @TestPropertySource(
@@ -346,8 +348,8 @@ class DocumentedErrorResponsesTest {
 
         @Test
         void unknownCacheNameReturnsANewEmptyCache() throws Exception {
-            cacheInspectionMockMvc.perform(anonymous(HttpMethod.GET, "/cache/{name}", "nope")).andExpect(status().isOk())
-                .andExpect(content().json("{}"));
+            cacheInspectionMockMvc.perform(anonymous(HttpMethod.GET, "/cache/{name}", "nope").with(user("cache-inspector")))
+                .andExpect(status().isOk()).andExpect(content().json("{}"));
         }
     }
 
