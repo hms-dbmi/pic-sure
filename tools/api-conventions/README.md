@@ -31,6 +31,8 @@ Authorization, over every compiled module:
 - `guards-enable-method-security`: a module that uses `@PreAuthorize` declares `@EnableMethodSecurity` with pre/post support on.
 - `no-role-checks`: no code calls `hasRole`, `hasAnyRole` or `isUserInRole` on a Spring Security, actuator, Servlet or JAX-RS type.
 
+R12 checks every module for a handler method that carries `@RequestMapping` itself with no `method`. Such a mapping answers every HTTP verb, so an endpoint meant for POST also answers GET, PUT, PATCH and DELETE, and the published document lists all five. Use a composed annotation (`@GetMapping`, `@PostMapping` and the rest), or set `method` to the verbs the endpoint serves, for example `method = {RequestMethod.GET, RequestMethod.POST}`. A class-level `@RequestMapping` only sets a path prefix and is out of scope.
+
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
 It reads compiled classes from each module's `target/classes` instead of declaring Maven dependencies on the services it checks. Every service repackages into a fat Spring Boot jar with its classes under `BOOT-INF/classes`, which is invisible to a dependent module.
