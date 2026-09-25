@@ -35,7 +35,7 @@ public class PrivilegeController {
     }
 
     @Operation(
-        summary = "Read one privilege", description = "GET information of one Privilege with the UUID, requires ADMIN or SUPER_ADMIN role"
+        summary = "Read one privilege", description = "GET information of one Privilege with the UUID"
     )
     @ApiResponse(responseCode = "200", description = "The privilege")
     @ApiResponse(responseCode = "400", description = "No privilege with that UUID")
@@ -54,7 +54,7 @@ public class PrivilegeController {
         return PICSUREResponse.success(privilegeById);
     }
 
-    @Operation(summary = "List every privilege", description = "GET a list of existing privileges, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "List every privilege", description = "GET a list of existing privileges")
     @ApiResponse(responseCode = "200", description = "Every privilege")
     @AuditEvent(type = "OTHER", action = "privilege.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -64,7 +64,7 @@ public class PrivilegeController {
         return PICSUREResponse.success(privilegesAll);
     }
 
-    @Operation(summary = "Create privileges", description = "POST a list of privileges, requires SUPER_ADMIN role")
+    @Operation(summary = "Create privileges", description = "POST a list of privileges")
     @ApiResponse(responseCode = "200", description = "The created privileges")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -80,7 +80,7 @@ public class PrivilegeController {
 
     @Operation(
         summary = "Update the given fields of privileges",
-        description = "Update a list of privileges, will only update the fields listed, requires SUPER_ADMIN role"
+        description = "Update a list of privileges, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated privileges")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
@@ -98,7 +98,7 @@ public class PrivilegeController {
 
     @Operation(
         summary = "Delete a privilege that nothing references",
-        description = "DELETE an privilege by Id only if the privilege is not associated by others, requires SUPER_ADMIN role"
+        description = "DELETE an privilege by Id only if the privilege is not associated by others"
     )
     @ApiResponse(responseCode = "200", description = "The remaining privileges")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this privilege")

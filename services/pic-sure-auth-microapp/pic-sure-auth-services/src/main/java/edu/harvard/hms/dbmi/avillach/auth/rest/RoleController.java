@@ -38,7 +38,7 @@ public class RoleController {
         this.roleService = roleService;
     }
 
-    @Operation(summary = "Read one role", description = "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "Read one role", description = "GET information of one Role with the UUID")
     @ApiResponse(responseCode = "200", description = "The role")
     @ApiResponse(responseCode = "400", description = "No role with that UUID")
     @AuditEvent(type = "OTHER", action = "role.read")
@@ -54,7 +54,7 @@ public class RoleController {
         return PICSUREResponse.success(optionalRole.get());
     }
 
-    @Operation(summary = "List every role", description = "GET a list of existing Roles, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "List every role", description = "GET a list of existing Roles")
     @ApiResponse(responseCode = "200", description = "Every role")
     @AuditEvent(type = "OTHER", action = "role.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -64,7 +64,7 @@ public class RoleController {
         return PICSUREResponse.success(allRoles);
     }
 
-    @Operation(summary = "Create roles", description = "POST a list of Roles, requires SUPER_ADMIN role")
+    @Operation(summary = "Create roles", description = "POST a list of Roles")
     @ApiResponse(responseCode = "200", description = "The created roles")
     @AuditEvent(type = "ADMIN", action = "role.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -80,7 +80,7 @@ public class RoleController {
 
     @Operation(
         summary = "Update the given fields of roles",
-        description = "Update a list of Roles, will only update the fields listed, requires SUPER_ADMIN role"
+        description = "Update a list of Roles, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated roles")
     @AuditEvent(type = "ADMIN", action = "role.modify")
@@ -101,7 +101,7 @@ public class RoleController {
 
     @Operation(
         summary = "Delete a role that nothing references",
-        description = "DELETE an Role by Id only if the Role is not associated by others, requires SUPER_ADMIN role"
+        description = "DELETE an Role by Id only if the Role is not associated by others"
     )
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The remaining roles"),

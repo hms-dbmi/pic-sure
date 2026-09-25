@@ -37,7 +37,7 @@ public class ConnectionWebController {
     }
 
     @Operation(
-        summary = "Read one connection", description = "GET information of one Connection with the UUID, requires ADMIN or SUPER_ADMIN role"
+        summary = "Read one connection", description = "GET information of one Connection with the UUID"
     )
     @ApiResponse(responseCode = "200", description = "The connection")
     @ApiResponse(responseCode = "400", description = "No connection with that UUID")
@@ -57,7 +57,7 @@ public class ConnectionWebController {
         }
     }
 
-    @Operation(summary = "List every connection", description = "GET a list of existing Connection, requires SUPER_ADMIN or ADMIN role")
+    @Operation(summary = "List every connection", description = "GET a list of existing Connection")
     @ApiResponse(responseCode = "200", description = "Every connection")
     @AuditEvent(type = "OTHER", action = "connection.list")
     @GetMapping
@@ -67,7 +67,7 @@ public class ConnectionWebController {
         return ResponseEntity.ok(allConnections);
     }
 
-    @Operation(summary = "Create connections", description = "POST a list of Connections, requires SUPER_ADMIN role")
+    @Operation(summary = "Create connections", description = "POST a list of Connections")
     @ApiResponse(responseCode = "200", description = "The created connections")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -88,7 +88,7 @@ public class ConnectionWebController {
 
     @Operation(
         summary = "Update the given fields of connections",
-        description = "Update a list of Connections, will only update the fields listed, requires SUPER_ADMIN role"
+        description = "Update a list of Connections, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated connections")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
@@ -106,7 +106,7 @@ public class ConnectionWebController {
 
     @Operation(
         summary = "Delete a connection that nothing references",
-        description = "DELETE an Connection by Id only if the Connection is not associated by others, requires SUPER_ADMIN role"
+        description = "DELETE an Connection by Id only if the Connection is not associated by others"
     )
     @ApiResponse(responseCode = "200", description = "The remaining connections")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this connection")
