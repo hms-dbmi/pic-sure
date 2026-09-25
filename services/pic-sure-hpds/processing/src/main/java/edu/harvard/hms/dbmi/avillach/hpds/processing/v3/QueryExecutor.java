@@ -33,9 +33,7 @@ public class QueryExecutor {
 
 
     @Autowired
-    public QueryExecutor(
-        GenomicProcessor genomicProcessor, PhenotypicQueryExecutor phenotypicQueryExecutor
-    ) {
+    public QueryExecutor(GenomicProcessor genomicProcessor, PhenotypicQueryExecutor phenotypicQueryExecutor) {
         this.genomicProcessor = genomicProcessor;
         this.phenotypicQueryExecutor = phenotypicQueryExecutor;
     }
@@ -65,7 +63,7 @@ public class QueryExecutor {
         }
 
         if (distributableQuery.getPatientIds() == null) {
-            return phenotypicQueryExecutor.getPatientIds();
+            return phenotypicQueryExecutor.getPatientIds(query.consentValues());
         }
         return distributableQuery.getPatientIds();
     }

@@ -7,7 +7,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.GenomicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.service.HpdsApplication;
 import edu.harvard.hms.dbmi.avillach.hpds.service.QueryV3Service;
@@ -41,9 +40,6 @@ class QueryServiceTest {
 
     @Autowired
     private QueryV3Service queryService;
-
-    @MockitoBean
-    private UserRequestContext userRequestContext;
 
     @BeforeAll
     public static void beforeAll() {
@@ -80,7 +76,8 @@ class QueryServiceTest {
     @Test
     public void runQuery_dataframeSelectInvalidConcept_doNotFail() throws IOException, InterruptedException {
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", "\\open_access-1000Genomes\\data\\NOT_A_CONCEPT_PATH\\"), List.of(), Set.of(),
+            List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", "\\open_access-1000Genomes\\data\\NOT_A_CONCEPT_PATH\\"), List.of(),
+            Set.of(),
             new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null),
             List.of(new GenomicFilter("Gene_with_variant", List.of("LOC102723996", "LOC101928576"), null, null)), ResultType.DATAFRAME,
             null, null

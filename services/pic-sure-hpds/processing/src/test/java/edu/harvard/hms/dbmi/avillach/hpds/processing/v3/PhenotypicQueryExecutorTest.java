@@ -4,7 +4,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,10 +35,21 @@ class PhenotypicQueryExecutorTest {
         Query query = new Query(List.of(), List.of(), Set.of(), null, null, ResultType.COUNT, null, null);
 
         Set<Integer> patientIds = Set.of(10, 100, 1000);
-        when(phenotypicObservationStore.getPatientIds()).thenReturn(new TreeSet<>(patientIds));
+        when(phenotypicObservationStore.getPatientIds(Set.of())).thenReturn(new TreeSet<>(patientIds));
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(patientIds, patientSet);
+    }
+
+    @Test
+    public void getPatientSet_carriesTheQuerysConsentsToTheStore() {
+        Set<UserConsent> userConsents = Set.of(new UserConsent("phs000001.c1"), new UserConsent("phs000002.c1"));
+        Query query = new Query(List.of(), List.of(), userConsents, null, null, ResultType.COUNT, null, null);
+
+        Set<Integer> patientIds = Set.of(7, 8);
+        when(phenotypicObservationStore.getPatientIds(Set.of("phs000001.c1", "phs000002.c1"))).thenReturn(new TreeSet<>(patientIds));
+
+        assertEquals(patientIds, phenotypicQueryExecutor.getPatientSet(query));
     }
 
     @Test
@@ -51,7 +61,7 @@ class PhenotypicQueryExecutorTest {
         );
 
         Set<Integer> patientIds = Set.of(2, 3, 5);
-        when(phenotypicObservationStore.getKeysForRange(conceptPath, 35.0, 45.0)).thenReturn(patientIds);
+        when(phenotypicObservationStore.getKeysForRange(conceptPath, 35.0, 45.0, Set.of())).thenReturn(patientIds);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(patientIds, patientSet);
@@ -61,12 +71,13 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_validCategoricalFilter_returnPatients() throws ExecutionException {
         String conceptPath = "\\open_access-1000Genomes\\data\\POPULATION NAME\\";
         Query query = new Query(
-            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null,
-            ResultType.COUNT, null, null
+            List.of(), List.of(), Set.of(),
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null, ResultType.COUNT,
+            null, null
         );
 
         Set<Integer> patientIds = Set.of(2, 3, 5, 8, 13);
-        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish"))).thenReturn(patientIds);
+        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish"), Set.of())).thenReturn(patientIds);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(patientIds, patientSet);
@@ -76,11 +87,12 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_nonExistentCategoricalFilter_returnNoPatients() {
         String conceptPath = "\\open_access-1000Genomes\\data\\NOT_A_CONCEPT_PATH\\";
         Query query = new Query(
-            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null,
-            ResultType.COUNT, null, null
+            List.of(), List.of(), Set.of(),
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null, ResultType.COUNT,
+            null, null
         );
 
-        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish"))).thenReturn(Set.of());
+        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish"), Set.of())).thenReturn(Set.of());
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(Set.of(), patientSet);
@@ -94,7 +106,7 @@ class PhenotypicQueryExecutorTest {
             ResultType.COUNT, null, null
         );
 
-        when(phenotypicObservationStore.getKeysForRange(conceptPath, 42.0, null)).thenReturn(Set.of());
+        when(phenotypicObservationStore.getKeysForRange(conceptPath, 42.0, null, Set.of())).thenReturn(Set.of());
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(Set.of(), patientSet);
@@ -127,10 +139,10 @@ class PhenotypicQueryExecutorTest {
         // (catFilter1Ids AND numFilter1Ids) OR (catFilter2Ids AND numFilter2Ids)
         Set<Integer> expectedPatients = Set.of(3, 5, 8, 13, 1000);
 
-        when(phenotypicObservationStore.getKeysForValues(categoricalConcept1, Set.of("Finnish"))).thenReturn(catFilter1Ids);
-        when(phenotypicObservationStore.getKeysForValues(categoricalConcept2, Set.of("female"))).thenReturn(catFilter2Ids);
-        when(phenotypicObservationStore.getKeysForRange(numericConcept1, 42.0, null)).thenReturn(numFilter1Ids);
-        when(phenotypicObservationStore.getKeysForRange(numericConcept2, null, 175.5)).thenReturn(numFilter2Ids);
+        when(phenotypicObservationStore.getKeysForValues(categoricalConcept1, Set.of("Finnish"), Set.of())).thenReturn(catFilter1Ids);
+        when(phenotypicObservationStore.getKeysForValues(categoricalConcept2, Set.of("female"), Set.of())).thenReturn(catFilter2Ids);
+        when(phenotypicObservationStore.getKeysForRange(numericConcept1, 42.0, null, Set.of())).thenReturn(numFilter1Ids);
+        when(phenotypicObservationStore.getKeysForRange(numericConcept2, null, 175.5, Set.of())).thenReturn(numFilter2Ids);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(expectedPatients, patientSet);
@@ -146,7 +158,7 @@ class PhenotypicQueryExecutorTest {
         );
 
         Set<Integer> patientIds = Set.of(8, 13, 21);
-        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish", "Zapotec"))).thenReturn(patientIds);
+        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish", "Zapotec"), Set.of())).thenReturn(patientIds);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(patientIds, patientSet);
@@ -170,8 +182,8 @@ class PhenotypicQueryExecutorTest {
         List<Integer> numericPatientIds = List.of(2, 3, 5);
         List<Integer> categoricalPatientIds = List.of(10, 100, 1000, 100000);
 
-        when(phenotypicObservationStore.getAllKeys(categoricalConceptPath)).thenReturn(categoricalPatientIds);
-        when(phenotypicObservationStore.getAllKeys(numericConceptPath)).thenReturn(numericPatientIds);
+        when(phenotypicObservationStore.getAllKeys(categoricalConceptPath, Set.of())).thenReturn(categoricalPatientIds);
+        when(phenotypicObservationStore.getAllKeys(numericConceptPath, Set.of())).thenReturn(numericPatientIds);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         Set<Integer> expectedPatients = new HashSet<>();
@@ -179,7 +191,7 @@ class PhenotypicQueryExecutorTest {
         expectedPatients.addAll(numericPatientIds);
         assertEquals(expectedPatients, patientSet);
 
-        verify(phenotypicObservationStore, times(0)).getAllKeys(nonMatchingConceptPath);
+        verify(phenotypicObservationStore, times(0)).getAllKeys(nonMatchingConceptPath, Set.of());
     }
 
     @Test
@@ -212,7 +224,7 @@ class PhenotypicQueryExecutorTest {
         );
 
         List<Integer> keyList = List.of(2, 3, 5, 8, 13, 13, 8, 5);
-        when(phenotypicObservationStore.getAllKeys(conceptPath)).thenReturn(keyList);
+        when(phenotypicObservationStore.getAllKeys(conceptPath, Set.of())).thenReturn(keyList);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(new HashSet<>(keyList), patientSet);
@@ -226,7 +238,7 @@ class PhenotypicQueryExecutorTest {
             ResultType.COUNT, null, null
         );
 
-        when(phenotypicObservationStore.getAllKeys(conceptPath)).thenReturn(List.of());
+        when(phenotypicObservationStore.getAllKeys(conceptPath, Set.of())).thenReturn(List.of());
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(Set.of(), patientSet);

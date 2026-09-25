@@ -17,7 +17,6 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.QueryExecutor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
@@ -52,7 +51,7 @@ class SyncRejectsAsyncOnlyResultTypesTest {
         v3CountProcessor = mock(CountV3Processor.class);
         v3 = new PicSureV3Service(
             v3QueryService, v3CountProcessor, mock(VariantListV3Processor.class), mock(QueryExecutor.class), mock(Paginator.class),
-            mock(SignUrlService.class), mock(FileSharingV3Service.class), mock(TestDataService.class), mock(UserRequestContext.class)
+            mock(SignUrlService.class), mock(FileSharingV3Service.class), mock(TestDataService.class)
         );
         ReflectionTestUtils.setField(v3, "httpRequest", new MockHttpServletRequest());
     }

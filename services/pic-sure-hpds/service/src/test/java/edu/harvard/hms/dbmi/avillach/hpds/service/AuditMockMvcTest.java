@@ -9,7 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.PartitionedPhenotypicObservationStore;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
