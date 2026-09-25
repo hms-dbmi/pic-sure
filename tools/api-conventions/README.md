@@ -31,6 +31,8 @@ Authorization, over every compiled module:
 - `guards-enable-method-security`: a module that uses `@PreAuthorize` declares `@EnableMethodSecurity` with pre/post support on.
 - `no-role-checks`: no code calls `hasRole`, `hasAnyRole` or `isUserInRole` on a Spring Security, actuator, Servlet or JAX-RS type.
 
+R19 covers persistence in every module. A field whose type is an enum, in a class annotated `@Entity`, `@MappedSuperclass` or `@Embeddable`, must carry `@Enumerated(EnumType.STRING)` or `@Convert(converter = ...)`. A bare field and a bare `@Enumerated` both store the constant's ordinal, so reordering or adding a constant remaps existing rows, and a stored ordinal the enum does not define fails every read of that row. Static, `transient` and `@Transient` fields are skipped. The rule reads field annotations only, and it does not recognise a converter registered with `autoApply = true`, so name the converter on the field. An enum compiled in another module still counts as an enum.
+
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
 It reads compiled classes from each module's `target/classes` instead of declaring Maven dependencies on the services it checks. Every service repackages into a fat Spring Boot jar with its classes under `BOOT-INF/classes`, which is invisible to a dependent module.
