@@ -90,6 +90,11 @@ class ApiConventionsTest {
         report("R11", overAllModules(SecurityRules::noRoleChecks));
     }
 
+    @Test
+    void everyValuePlaceholderIsClosed() {
+        report("R18", overAllModules(ConfigurationRules::valuePlaceholdersAreClosed));
+    }
+
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));

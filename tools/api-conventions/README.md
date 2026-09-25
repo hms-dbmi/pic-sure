@@ -6,6 +6,8 @@ It also holds every module to one authorization standard. A handler that needs a
 
 The OpenAPI document publishes each guard's authorities as "Required authorities: ..." at the end of the operation description, so R10 fails a documented module whose `@Tag` description or `@Operation` summary or description names one of the authorities its guards require. That prose would only repeat the guard and drift from it.
 
+R18 checks every `@Value` string in every module, on fields, constructor parameters and method parameters. The string must have as many closing braces as it has `${` and `#{` openings combined. Spring injects an unterminated placeholder as literal text instead of failing at startup, so `@Value("${mail.subject")` hands the code the string `${mail.subject`. To satisfy it, close each placeholder and expression, for example `@Value("${mail.subject}")` or `@Value("${DEST_IP:#{null}}")`.
+
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
 It reads compiled classes from each module's `target/classes` instead of declaring Maven dependencies on the services it checks. Every service repackages into a fat Spring Boot jar with its classes under `BOOT-INF/classes`, which is invisible to a dependent module.
