@@ -77,8 +77,9 @@ public class NamedDatasetController {
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The updated named dataset"),
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
-            @ApiResponse(responseCode = "404", description = "No named dataset with that id for the caller"),
-            @ApiResponse(responseCode = "409", description = "The caller already named that query")}
+            @ApiResponse(
+                responseCode = "404", description = "No named dataset with that id for the caller, or the new queryId matches no query"
+            ), @ApiResponse(responseCode = "409", description = "The caller already named that query")}
     )
     @PutMapping("/{id}")
     public NamedDatasetDto update(GatewayUser user, @PathVariable("id") UUID id, @Valid @RequestBody NamedDatasetRequestDto req) {

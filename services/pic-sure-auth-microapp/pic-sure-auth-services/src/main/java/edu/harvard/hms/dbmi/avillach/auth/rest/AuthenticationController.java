@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.AuthenticationServiceRegistry;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -39,12 +38,12 @@ public class AuthenticationController {
     private final static Logger logger = LoggerFactory.getLogger(AuthenticationController.class.getName());
 
     private final AuthenticationServiceRegistry authenticationServiceRegistry;
-    private final SessionService sessionService;
 
     @Autowired
-    public AuthenticationController(AuthenticationServiceRegistry authenticationServiceRegistry, SessionService sessionService) {
+    public AuthenticationController(
+        AuthenticationServiceRegistry authenticationServiceRegistry
+    ) {
         this.authenticationServiceRegistry = authenticationServiceRegistry;
-        this.sessionService = sessionService;
     }
 
     @Operation(
@@ -53,8 +52,8 @@ public class AuthenticationController {
     )
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "A PIC-SURE token for the authenticated user"),
-            @ApiResponse(responseCode = "400", description = "Unknown identity provider or empty request"),
-            @ApiResponse(responseCode = "401", description = "The provider rejected the code")}
+            @ApiResponse(responseCode = "400", description = "No enabled identity provider has that name"),
+            @ApiResponse(responseCode = "401", description = "The identity provider rejected the code, or the code is malformed")}
     )
     @AuditEvent(type = "AUTH", action = "auth.login")
     @PostMapping(path = "/authentication/{idpProvider}", consumes = "application/json", produces = "application/json")
@@ -87,11 +86,8 @@ public class AuthenticationController {
 
         HashMap<String, String> authenticate = authenticationService.authenticate(authRequest, request.getServerName());
         if (!CollectionUtils.isEmpty(authenticate)) {
-            if (authenticate.containsKey("userId")) {
-                sessionService.startSession(authenticate.get("userId"));
-            } else {
-                logger.error("authentication() userId authentication is null");
-                logger.error("User claims must contain a userId to start their session.");
+            if (!authenticate.containsKey("userId")) {
+                logger.error("Authentication response must contain a userId.");
                 AuditAttributes.putMetadata(request, "login_result", "failure");
                 AuditAttributes.putMetadata(request, "reason", "missing_user_id");
                 return PICSUREResponse.unauthorizedError("User not authenticated.");

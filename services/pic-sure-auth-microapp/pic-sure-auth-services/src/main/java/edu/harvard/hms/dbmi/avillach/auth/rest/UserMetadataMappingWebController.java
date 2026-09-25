@@ -21,8 +21,8 @@ import java.util.List;
 
 
 /**
- * <p>Endpoint for service handling business logic for user metadata mapping.</p>
- * <p><Note: Only users with the super admin role can access this endpoint.</p>
+ * <p>Endpoint for service handling business logic for user metadata mapping.</p> <p><Note: Only users with the super admin role can access
+ * this endpoint.</p>
  */
 @Tag(name = "User Metadata Mapping Management", description = "Mappings from identity provider claims to user metadata")
 @Controller
@@ -36,10 +36,7 @@ public class UserMetadataMappingWebController {
         this.mappingService = mappingService;
     }
 
-    @Operation(
-        summary = "Mappings for one connection",
-        description = "GET information of one UserMetadataMapping with the UUID"
-    )
+    @Operation(summary = "Mappings for one connection", description = "GET information of one UserMetadataMapping with the UUID")
     @ApiResponse(responseCode = "200", description = "Mappings for the named connection")
     @AuditEvent(type = "OTHER", action = "mapping.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -49,10 +46,7 @@ public class UserMetadataMappingWebController {
         return PICSUREResponse.success(allMappingsForConnection);
     }
 
-    @Operation(
-        summary = "List every user metadata mapping",
-        description = "GET a list of existing UserMetadataMappings"
-    )
+    @Operation(summary = "List every user metadata mapping", description = "GET a list of existing UserMetadataMappings")
     @ApiResponse(responseCode = "200", description = "Every user metadata mapping")
     @AuditEvent(type = "OTHER", action = "mapping.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -105,11 +99,10 @@ public class UserMetadataMappingWebController {
     }
 
     @Operation(
-        summary = "Delete a mapping that nothing references",
+        summary = "Delete a mapping",
         description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others"
     )
     @ApiResponse(responseCode = "200", description = "The remaining mappings")
-    @ApiResponse(responseCode = "409", description = "Other entities still reference this mapping")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{mappingId}", produces = "application/json")

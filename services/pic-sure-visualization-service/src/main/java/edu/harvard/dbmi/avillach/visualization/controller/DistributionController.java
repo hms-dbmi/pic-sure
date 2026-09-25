@@ -37,8 +37,11 @@ public class DistributionController {
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "Categorical and continuous distribution charts for the query"),
             @ApiResponse(responseCode = "400", description = "Malformed request or unknown backend"),
-            @ApiResponse(responseCode = "403", description = "Consent does not permit this query"),
-            @ApiResponse(responseCode = "502", description = "HPDS query service unavailable")}
+            @ApiResponse(responseCode = "403", description = "The query service refused the query because consent does not permit it"),
+            @ApiResponse(
+                responseCode = "502",
+                description = "The query service was unreachable, answered with an error status other than 403, or returned a body that could not be read"
+            )}
     )
     @PostMapping("/{backend}/distributions")
     public ResponseEntity<VisualizationResponse> distributions(
