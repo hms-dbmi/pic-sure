@@ -62,11 +62,11 @@ class AuditMockMvcTest {
     PartitionedPhenotypicObservationStore partitionedPhenotypicObservationStore;
 
     @Test
-    void postInfoEndpointProducesAuditEvent() throws Exception {
+    void postQueryFormatEndpointProducesAuditEvent() throws Exception {
         when(loggingClient.isEnabled()).thenReturn(true);
 
         mockMvc.perform(
-            post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
+            post("/PIC-SURE/v3/query/format").contentType(MediaType.APPLICATION_JSON).content("{\"query\":{}}")
         ).andExpect(status().isOk());
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
@@ -74,7 +74,7 @@ class AuditMockMvcTest {
 
         LoggingEvent event = captor.getValue();
         assertEquals("OTHER", event.getEventType());
-        assertEquals("info", event.getAction());
+        assertEquals("query.format", event.getAction());
         assertEquals("POST", event.getRequest().getMethod());
         assertEquals(200, event.getRequest().getStatus());
         assertNotNull(event.getSessionId());
@@ -85,7 +85,7 @@ class AuditMockMvcTest {
         when(loggingClient.isEnabled()).thenReturn(true);
 
         mockMvc.perform(
-            post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
+            post("/PIC-SURE/v3/query/format").contentType(MediaType.APPLICATION_JSON).content("{\"query\":{}}")
         ).andExpect(status().isOk());
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
@@ -100,7 +100,7 @@ class AuditMockMvcTest {
         when(loggingClient.isEnabled()).thenReturn(true);
 
         mockMvc.perform(
-            post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
+            post("/PIC-SURE/v3/query/format").contentType(MediaType.APPLICATION_JSON).content("{\"query\":{}}")
                 .header("Authorization", "Bearer mytoken")
                 .header("X-Request-Id", "req-99")
         ).andExpect(status().isOk());
