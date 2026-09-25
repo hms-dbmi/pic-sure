@@ -24,8 +24,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /**
- * Standalone MockMvc tests of which HTTP verbs {@code /search} answers. The Bruno suite and the R and Python adapters send the legacy
- * search as a POST with a JSON body.
+ * Standalone MockMvc tests of which HTTP verbs {@code /search} answers. The R and Python adapters send the legacy search as a POST with a
+ * JSON body.
  */
 class LegacySearchControllerVerbTest {
 
