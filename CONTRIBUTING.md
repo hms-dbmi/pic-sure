@@ -44,9 +44,6 @@ Several repos were archived in September 2026 and are read-only. Their code move
 `PIC-SURE-Logging` to `services/pic-sure-logging`, `pic-sure-auth-microapp` to
 `services/pic-sure-auth-microapp`, and `picsure-dictionary` to `services/picsure-dictionary`.
 
-`pic-sure-bdc-infrastructure` and `avillachlab-jenkins` deploy Avillach Lab infrastructure and
-need credentials we cannot share. You will not be able to build or test them. If you spot a
-problem in either, please open an issue rather than a pull request.
 
 The `pic-sure` build requires JDK 25 and fails early on anything older. The repository pins the
 exact version in `.sdkmanrc`, and Maven is run from the repository root.
