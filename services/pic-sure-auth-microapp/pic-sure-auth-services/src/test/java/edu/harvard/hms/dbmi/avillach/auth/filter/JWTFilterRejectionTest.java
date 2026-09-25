@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -42,6 +44,7 @@ class JWTFilterRejectionTest {
     private TOSService tosService;
     private JWTUtil jwtUtil;
     private CustomUserDetailService userDetailsService;
+    private SessionService sessionService;
     private JWTFilter filter;
     private FilterChain filterChain;
 
@@ -50,7 +53,8 @@ class JWTFilterRejectionTest {
         tosService = mock(TOSService.class);
         jwtUtil = mock(JWTUtil.class);
         userDetailsService = mock(CustomUserDetailService.class);
-        filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService);
+        sessionService = mock(SessionService.class);
+        filter = new JWTFilter(tosService, "sub", jwtUtil, userDetailsService, sessionService);
         filterChain = mock(FilterChain.class);
     }
 
@@ -110,6 +114,7 @@ class JWTFilterRejectionTest {
     @Test
     void userWhoHasNotAcceptedTermsOfServiceIsStopped() throws Exception {
         stubToken("user-token", "researcher-subject", "researcher-subject");
+        stubCurrentSession("researcher-subject");
         stubUser("researcher-subject", "QUERY");
         when(tosService.hasUserAcceptedLatest("researcher-subject")).thenReturn(false);
 
@@ -123,6 +128,7 @@ class JWTFilterRejectionTest {
     @Test
     void userWithoutRolesOrPrivilegesIsStopped() throws Exception {
         stubToken("user-token", "researcher-subject", "researcher-subject");
+        stubCurrentSession("researcher-subject");
         User user = new User();
         user.setSubject("researcher-subject");
         user.setEmail("researcher@example.org");
@@ -174,6 +180,14 @@ class JWTFilterRejectionTest {
         when(jws.getPayload()).thenReturn(claims);
         when(claims.get("sub", String.class)).thenReturn(userIdClaim);
         when(claims.getSubject()).thenReturn(subject);
+    }
+
+    /**
+     * User tokens are checked against the subject's current session before anything else, so the user-token tests
+     * need one in place to reach the check they are about.
+     */
+    private void stubCurrentSession(String subject) {
+        when(sessionService.isTokenValidForCurrentSession(eq(subject), any())).thenReturn(true);
     }
 
     private void stubUser(String subject, String privilegeName) {
