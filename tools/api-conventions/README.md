@@ -6,6 +6,8 @@ It also holds every module to one authorization standard. A handler that needs a
 
 The OpenAPI document publishes each guard's authorities as "Required authorities: ..." at the end of the operation description, so R10 fails a documented module whose `@Tag` description or `@Operation` summary or description names one of the authorities its guards require. That prose would only repeat the guard and drift from it.
 
+R14 covers every module. A handler that answers GET, through `@GetMapping` or a `@RequestMapping` whose `method` includes GET or is left empty, sets no `consumes` other than `*/*`. A GET carries no body, so clients send no `Content-Type`, and Spring never matches such a request to the handler. It answers 415, or hands the request to another mapping that fits the path: PSAMA's `GET /accessRule/allTypes` fell through to `GET /accessRule/{accessRuleId}` and answered 400 `Invalid UUID string: allTypes`. A `consumes` on the class's `@RequestMapping` counts too, since Spring applies it to every handler that does not declare its own. To satisfy the rule, drop `consumes` from the GET handler, or set `consumes = "*/*"` when a class level value would otherwise reach it.
+
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
 It reads compiled classes from each module's `target/classes` instead of declaring Maven dependencies on the services it checks. Every service repackages into a fat Spring Boot jar with its classes under `BOOT-INF/classes`, which is invisible to a dependent module.
