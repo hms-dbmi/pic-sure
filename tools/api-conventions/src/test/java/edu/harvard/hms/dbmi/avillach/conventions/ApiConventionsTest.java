@@ -66,7 +66,7 @@ class ApiConventionsTest {
 
     @Test
     void noMappingPathEndsInASlash() {
-        report("R16", overDocumentedModules(RoutingRules::noTrailingSlash));
+        report("R16", overDocumentedModules(MappingPathRules::noTrailingSlash));
     }
 
     @Test

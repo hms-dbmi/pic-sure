@@ -10,14 +10,14 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaMethod;
 
 /**
- * The request routing rules, as pure functions over imported classes. Each returns every violation it
+ * The mapping path rules, as pure functions over imported classes. Each returns every violation it
  * finds rather than throwing on the first.
  */
-public final class RoutingRules {
+public final class MappingPathRules {
 
     private static final List<String> PATH_PROPERTIES = List.of("value", "path");
 
-    private RoutingRules() {}
+    private MappingPathRules() {}
 
     /**
      * R16: no class-level or method-level mapping path on a controller ends in {@code /}. A class-level
