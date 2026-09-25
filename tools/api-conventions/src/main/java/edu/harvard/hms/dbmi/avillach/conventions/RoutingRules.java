@@ -20,9 +20,12 @@ public final class RoutingRules {
     private RoutingRules() {}
 
     /**
-     * R16: no class-level or method-level mapping path on a controller ends in {@code /}, except a path
-     * that is exactly {@code /}. Paths are read from the {@code value} and {@code path} properties of
-     * {@code @RequestMapping} and of the composed {@code @GetMapping}, {@code @PostMapping},
+     * R16: no class-level or method-level mapping path on a controller ends in {@code /}. A class-level
+     * path of exactly {@code /} is allowed. A method-level path of exactly {@code /} is allowed only when
+     * the class declares no mapping path or only {@code /} and the empty path, because under any other
+     * class path Spring joins the two into a path that ends in a slash: {@code /dataset/named} and
+     * {@code /} serve {@code /dataset/named/}. Paths are read from the {@code value} and {@code path}
+     * properties of {@code @RequestMapping} and of the composed {@code @GetMapping}, {@code @PostMapping},
      * {@code @PutMapping}, {@code @DeleteMapping} and {@code @PatchMapping}.
      *
      * <p>Spring 6 matches only the declared form of a path, so a handler declared with a trailing slash
@@ -39,27 +42,47 @@ public final class RoutingRules {
         List<String> violations = new ArrayList<>();
         for (JavaClass controller : Controllers.of(classes)) {
             String classLocation = SwaggerRules.at(module, controller);
-            slashedPaths(controller.getAnnotations(), classLocation, violations);
+            slashedPaths(controller.getAnnotations(), classLocation, List.of(), violations);
+            List<String> classPaths = nonRootPaths(controller.getAnnotations());
             for (JavaMethod method : Controllers.handlerMethods(controller)) {
-                slashedPaths(method.getAnnotations(), SwaggerRules.at(module, controller, method.getName()), violations);
+                String methodLocation = SwaggerRules.at(module, controller, method.getName());
+                slashedPaths(method.getAnnotations(), methodLocation, classPaths, violations);
             }
         }
         return violations;
     }
 
-    private static void slashedPaths(Set<? extends JavaAnnotation<?>> annotations, String location, List<String> violations) {
-        for (JavaAnnotation<?> annotation : annotations) {
-            String type = annotation.getRawType().getName();
-            if (!Controllers.MAPPING_ANNOTATIONS.contains(type)) {
-                continue;
-            }
+    private static void slashedPaths(
+        Set<? extends JavaAnnotation<?>> annotations, String location, List<String> classPaths, List<String> violations
+    ) {
+        for (JavaAnnotation<?> annotation : mappings(annotations)) {
+            String where = location + " @" + annotation.getRawType().getSimpleName() + " path '";
             for (String path : paths(annotation)) {
                 if (path.length() > 1 && path.endsWith("/")) {
-                    violations.add(location + " @" + annotation.getRawType().getSimpleName() + " path '" + path
-                        + "' ends in a trailing slash");
+                    violations.add(where + path + "' ends in a trailing slash");
+                } else if (path.equals("/") && !classPaths.isEmpty()) {
+                    String joined = String.join("', '", classPaths.stream().map(classPath -> classPath + "/").toList());
+                    violations.add(where + "/' under a class path serves '" + joined + "' with a trailing slash");
                 }
             }
         }
+    }
+
+    private static List<String> nonRootPaths(Set<? extends JavaAnnotation<?>> annotations) {
+        return mappings(annotations).stream()
+            .flatMap(annotation -> paths(annotation).stream())
+            .filter(path -> !path.isEmpty() && !path.equals("/"))
+            .toList();
+    }
+
+    private static List<JavaAnnotation<?>> mappings(Set<? extends JavaAnnotation<?>> annotations) {
+        List<JavaAnnotation<?>> mappings = new ArrayList<>();
+        for (JavaAnnotation<?> annotation : annotations) {
+            if (Controllers.MAPPING_ANNOTATIONS.contains(annotation.getRawType().getName())) {
+                mappings.add(annotation);
+            }
+        }
+        return mappings;
     }
 
     private static List<String> paths(JavaAnnotation<?> annotation) {
