@@ -90,6 +90,11 @@ class ApiConventionsTest {
         report("R11", overAllModules(SecurityRules::noRoleChecks));
     }
 
+    @Test
+    void everyHandlerInAnAuditedModuleCarriesAnAuditEvent() {
+        report("R15", overAllModules(AuditRules::auditEventOnEveryHandler));
+    }
+
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
