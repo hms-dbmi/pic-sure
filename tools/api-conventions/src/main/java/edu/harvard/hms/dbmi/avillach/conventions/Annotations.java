@@ -5,6 +5,7 @@ import java.util.Set;
 
 import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaMethod;
 
 /**
@@ -58,6 +59,24 @@ public final class Annotations {
      */
     public static Optional<JavaAnnotation<?>> get(JavaMethod method, String fullyQualifiedName) {
         return find(method.getAnnotations(), fullyQualifiedName);
+    }
+
+    /**
+     * @param field the field to inspect
+     * @param fullyQualifiedName the annotation type's name
+     * @return whether the field carries that annotation, directly or as a meta-annotation
+     */
+    public static boolean has(JavaField field, String fullyQualifiedName) {
+        return get(field, fullyQualifiedName).isPresent();
+    }
+
+    /**
+     * @param field the field to inspect
+     * @param fullyQualifiedName the annotation type's name
+     * @return that annotation, looking through meta-annotations one level deep
+     */
+    public static Optional<JavaAnnotation<?>> get(JavaField field, String fullyQualifiedName) {
+        return find(field.getAnnotations(), fullyQualifiedName);
     }
 
     /**
