@@ -7,13 +7,19 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.TypeMismatchException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.lang.Nullable;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
@@ -29,12 +35,17 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  * answered {@code {timestamp,status,error,path}} -- a shape that names neither the failure nor the request id, and is indistinguishable
  * from an error raised by any other Spring app in the chain.
  *
+ * <p>Extends {@link ResponseEntityExceptionHandler} so Spring MVC's own request errors keep their statuses: a wrong method answers 405 with
+ * {@code Allow}, an unsupported media type 415 with {@code Accept}, an unreadable body, a type mismatch or a missing parameter 400. Those
+ * handlers are closer matches than {@link #unknown}, so Spring picks them first, and {@link #handleExceptionInternal} gives their responses
+ * the unified body.
+ *
  * <p>NOTE this cannot catch everything the gateway does: the auth chain runs as servlet FILTERS, and an exception thrown in a filter never
  * reaches Spring MVC's exception resolvers. Those paths fail closed by writing {@link GatewayErrors} directly (see
  * {@code PsamaIntrospectionFilter} / {@code BufferingFilter}); this advice covers the routed/dispatched side.
  */
 @RestControllerAdvice
-public class GatewayExceptionHandler {
+public class GatewayExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GatewayExceptionHandler.class);
 
@@ -46,10 +57,18 @@ public class GatewayExceptionHandler {
     /**
      * Route absence must stay an honest 404 rather than being flattened by {@link #unknown}. The gateway front-ends every path in the
      * stack, so a request for a prefix no route owns is a routine client error, not a server fault.
+     *
+     * @param e the missing route
+     * @param headers headers the base class prepared for the response
+     * @param status the status the base class chose, always 404
+     * @param request the current request
+     * @return a 404 naming the path
      */
-    @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<Map<String, Object>> noRoute(NoResourceFoundException e) {
-        return body(HttpStatus.NOT_FOUND, "not_found", "No such resource: " + e.getResourcePath());
+    @Override
+    protected ResponseEntity<Object> handleNoResourceFoundException(
+        NoResourceFoundException e, HttpHeaders headers, HttpStatusCode status, WebRequest request
+    ) {
+        return handleExceptionInternal(e, bodyMap("not_found", "No such resource: " + e.getResourcePath()), headers, status, request);
     }
 
     /**
@@ -67,6 +86,37 @@ public class GatewayExceptionHandler {
         return body(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "An unexpected error occurred");
     }
 
+    /**
+     * Writes every response the base class produces in the unified {@code {errorType, message, requestId}} shape, keeping the status and
+     * headers it chose. A 4xx carries Spring's detail; a 5xx is logged and carries the same text as {@link #unknown}. A body an override
+     * already built passes through unchanged.
+     *
+     * @param ex the exception being handled
+     * @param body the body built so far, or {@code null}
+     * @param headers response headers, such as {@code Allow} on a 405 and {@code Accept} on a 415
+     * @param statusCode the response status
+     * @param request the current request
+     * @return the response, or {@code null} when the response is already committed
+     */
+    @Override
+    protected ResponseEntity<Object> handleExceptionInternal(
+        Exception ex, @Nullable Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request
+    ) {
+        ResponseEntity<Object> framework = super.handleExceptionInternal(ex, body, headers, statusCode, request);
+        if (framework == null || !(framework.getBody() == null || framework.getBody() instanceof ProblemDetail)) {
+            return framework;
+        }
+        Map<String, Object> unified;
+        if (statusCode.is5xxServerError()) {
+            logger.error("Unhandled exception", ex);
+            unified = bodyMap(statusCode.value() == 500 ? "internal_error" : errorTypeFor(statusCode), "An unexpected error occurred");
+        } else {
+            String detail = clientErrorDetail(ex, framework.getBody());
+            unified = bodyMap(errorTypeFor(statusCode), detail == null || detail.isBlank() ? "Request could not be completed" : detail);
+        }
+        return new ResponseEntity<>(unified, framework.getHeaders(), framework.getStatusCode());
+    }
+
     /** Lowercased status name ({@code NOT_FOUND} -> {@code not_found}); non-standard codes fall back to a generic label. */
     private static String errorTypeFor(HttpStatusCode code) {
         HttpStatus resolved = HttpStatus.resolve(code.value());
@@ -82,10 +132,25 @@ public class GatewayExceptionHandler {
     }
 
     private static ResponseEntity<Map<String, Object>> body(HttpStatusCode status, String errorType, String message) {
+        return ResponseEntity.status(status).body(bodyMap(errorType, message));
+    }
+
+    private static Map<String, Object> bodyMap(String errorType, String message) {
         Map<String, Object> b = new LinkedHashMap<>();
         b.put("errorType", errorType);
         b.put("message", message);
         b.put("requestId", MDC.get("requestId"));
-        return ResponseEntity.status(status).body(b);
+        return b;
+    }
+
+    /**
+     * Reads Spring's detail for a client error. A type mismatch names only the parameter, because Spring's own detail quotes the client's
+     * value.
+     */
+    private static String clientErrorDetail(Exception ex, @Nullable Object body) {
+        if (ex instanceof TypeMismatchException mismatch) {
+            return "Invalid value for '" + mismatch.getPropertyName() + "'";
+        }
+        return body instanceof ProblemDetail problem ? problem.getDetail() : null;
     }
 }
