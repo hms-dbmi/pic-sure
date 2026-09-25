@@ -23,7 +23,7 @@ class RoutingRulesTest {
     void r16FlagsEveryTrailingSlashAtClassAndMethodLevel() {
         List<String> violations = RoutingRules.noTrailingSlash("fixtures", FIXTURES);
 
-        assertEquals(4, violations.size(), violations.toString());
+        assertEquals(5, violations.size(), violations.toString());
         assertMentions(violations, "fixtures :: SlashedController @RequestMapping path '/slashed/'");
         assertMentions(violations, "SlashedController#list @GetMapping path '/list/'");
         assertMentions(violations, "SlashedController#create @PostMapping path '/also/'");
@@ -31,10 +31,19 @@ class RoutingRulesTest {
     }
 
     @Test
+    void r16FlagsAMethodRootPathUnderAClassPath() {
+        List<String> violations = RoutingRules.noTrailingSlash("fixtures", FIXTURES);
+
+        assertMentions(violations, "RootUnderClassPathController#list @GetMapping path '/' under a class path serves '/dataset/named/'");
+        assertTrue(violations.stream().noneMatch(v -> v.contains("RootUnderClassPathController#create")), violations.toString());
+    }
+
+    @Test
     void r16AllowsTheRootPathAndSlashLessPaths() {
         List<String> violations = RoutingRules.noTrailingSlash("fixtures", FIXTURES);
 
-        assertTrue(violations.stream().noneMatch(v -> v.contains("RootController")), violations.toString());
+        assertTrue(violations.stream().noneMatch(v -> v.contains(":: RootController")), violations.toString());
+        assertTrue(violations.stream().noneMatch(v -> v.contains("UnmappedClassController")), violations.toString());
         assertTrue(violations.stream().noneMatch(v -> v.contains("#remove")), violations.toString());
         assertTrue(violations.stream().noneMatch(v -> v.contains("'/fine'")), violations.toString());
     }
