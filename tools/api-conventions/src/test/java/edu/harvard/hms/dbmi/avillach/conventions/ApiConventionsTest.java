@@ -90,6 +90,11 @@ class ApiConventionsTest {
         report("no-role-checks", overAllModules(SecurityRules::noRoleChecks));
     }
 
+    @Test
+    void catchAllExceptionAdviceKeepsFrameworkStatuses() {
+        report("R13", overAllModules(ExceptionAdviceRules::catchAllAdviceExtendsBaseHandler));
+    }
+
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
