@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Standalone MockMvc tests of which HTTP verbs {@code /open/validate} answers, run through the {@link GlobalExceptionHandler} advice the
- * service registers. The gateway's {@code PsamaClient#validateOpenAccess} is the endpoint's only caller and always POSTs.
+ * service registers. The gateway's {@code PsamaClient#validateOpenAccess} is the only caller in the codebase and always POSTs.
  */
 class OpenAccessControllerWebTest {
 
@@ -46,14 +46,14 @@ class OpenAccessControllerWebTest {
 
     @Test
     void postRunsTheValidation() throws Exception {
-        mockMvc.perform(post("/open/validate").contentType(MediaType.APPLICATION_JSON).content(GATEWAY_BODY))
-            .andExpect(status().isOk()).andExpect(content().string("true"));
+        mockMvc.perform(post("/open/validate").contentType(MediaType.APPLICATION_JSON).content(GATEWAY_BODY)).andExpect(status().isOk())
+            .andExpect(content().string("true"));
     }
 
     /**
      * Every other verb is turned away before the handler runs, so it never evaluates the open-access rules or answers with their verdict.
-     * The status is not pinned here: the catch-all advice currently turns the method-not-supported error into a 500, and it becomes a
-     * 405 once that advice leaves Spring's MVC exceptions to their standard statuses.
+     * The status is not pinned here: the catch-all advice currently turns the method-not-supported error into a 500, and it becomes a 405
+     * once that advice leaves Spring's MVC exceptions to their standard statuses.
      */
     @Test
     void otherVerbsNeverReachTheValidation() throws Exception {
