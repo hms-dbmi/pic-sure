@@ -67,6 +67,8 @@ class HandlerAuthorizationTest {
             Map.entry("ApiKeyController#listKeys", Set.of(ADMIN, SUPER_ADMIN)),
             Map.entry("ApiKeyController#createPlatformKey", Set.of(SUPER_ADMIN)),
             Map.entry("ApiKeyController#revokeKey", Set.of(SUPER_ADMIN)),
+            Map.entry("ApplicationController#getApplicationById", Set.of(ADMIN, SUPER_ADMIN)),
+            Map.entry("ApplicationController#getApplicationAll", Set.of(ADMIN, SUPER_ADMIN)),
             Map.entry("ApplicationController#addApplication", Set.of(SUPER_ADMIN)),
             Map.entry("ApplicationController#updateApplication", Set.of(SUPER_ADMIN)),
             Map.entry("ApplicationController#refreshApplicationToken", Set.of(SUPER_ADMIN)),

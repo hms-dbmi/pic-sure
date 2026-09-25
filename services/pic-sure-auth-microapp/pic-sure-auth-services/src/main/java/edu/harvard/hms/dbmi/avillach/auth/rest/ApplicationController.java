@@ -7,6 +7,8 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,7 +25,8 @@ import java.util.Optional;
 
 
 /**
- * <p>Endpoint for registering and administering applications. <br> Note: Only users with the super admin role can access this endpoint.</p>
+ * <p>Endpoint for registering and administering applications. <br> Note: ADMIN and SUPER_ADMIN can read applications, which are returned
+ * without their tokens. Only SUPER_ADMIN can change them or issue a token.</p>
  */
 @Tag(name = "Application Management", description = "Registered client applications and their tokens")
 @Controller
@@ -38,9 +41,13 @@ public class ApplicationController {
     }
 
     @Operation(summary = "Read one application", description = "GET information of one Application with the UUID")
-    @ApiResponse(responseCode = "200", description = "The application")
+    @ApiResponse(
+        responseCode = "200", description = "The application, without its token",
+        content = @Content(schema = @Schema(implementation = Application.ApplicationForDisplay.class))
+    )
     @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "OTHER", action = "application.read")
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{applicationId}")
     public ResponseEntity<?> getApplicationById(
         @Parameter(required = true, description = "The UUID of the application to fetch information about") @PathVariable(
@@ -53,15 +60,17 @@ public class ApplicationController {
             return PICSUREResponse.protocolError("Application is not found by given Application ID: " + applicationId);
         }
 
-        return PICSUREResponse.success(entityById.get());
+        return PICSUREResponse.success(Application.ApplicationForDisplay.from(entityById.get()));
     }
 
     @Operation(summary = "List every application", description = "GET a list of existing Applications")
-    @ApiResponse(responseCode = "200", description = "Every application")
+    @ApiResponse(responseCode = "200", description = "Every application, without their tokens")
     @AuditEvent(type = "OTHER", action = "application.list")
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping
-    public ResponseEntity<List<Application>> getApplicationAll() {
-        return PICSUREResponse.success(applicationService.getAllApplications());
+    public ResponseEntity<List<Application.ApplicationForDisplay>> getApplicationAll() {
+        return PICSUREResponse
+            .success(applicationService.getAllApplications().stream().map(Application.ApplicationForDisplay::from).toList());
     }
 
     @Operation(summary = "Create applications", description = "POST a list of Applications")
