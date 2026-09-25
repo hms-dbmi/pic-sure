@@ -6,6 +6,8 @@ It also holds every module to one authorization standard. A handler that needs a
 
 The OpenAPI document publishes each guard's authorities as "Required authorities: ..." at the end of the operation description, so R10 fails a documented module whose `@Tag` description or `@Operation` summary or description names one of the authorities its guards require. That prose would only repeat the guard and drift from it.
 
+R20 reads files instead of classes. Every git-tracked file named `Dockerfile` or `Dockerfile.*` in the repository must pin each external base image by digest, as `FROM amazoncorretto:25-alpine@sha256:<digest>`, keeping the tag for readability. A floating tag builds from whatever the registry points it at on build day. A `FROM` that names a stage declared earlier in the same file, such as `FROM builder`, is exempt, and so is `FROM scratch`. `--platform=...` flags are skipped. To satisfy it, copy the digest another Dockerfile in the reactor already uses for the same image, or read it with `docker buildx imagetools inspect <image:tag>`. R20 does not check `USER` or `HEALTHCHECK`; some images declare `HEALTHCHECK NONE` on purpose. It lists files with `git ls-files`, so it needs a git checkout and fails if it finds no Dockerfile at all.
+
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
 It reads compiled classes from each module's `target/classes` instead of declaring Maven dependencies on the services it checks. Every service repackages into a fat Spring Boot jar with its classes under `BOOT-INF/classes`, which is invisible to a dependent module.
