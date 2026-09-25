@@ -59,6 +59,11 @@ class ClientErrorStatusTest {
             throw new NoResourceFoundException(HttpMethod.GET, "/probe/missing");
         }
 
+        @GetMapping(path = "/page", produces = "text/html")
+        public String page() {
+            return "<p>page</p>";
+        }
+
         @GetMapping("/boom")
         public String boom() {
             throw new IllegalStateException("internal detail");
@@ -89,7 +94,7 @@ class ClientErrorStatusTest {
     void unsupportedMediaTypeIs415WithAccept() throws Exception {
         mockMvc.perform(post("/probe/body").contentType(MediaType.TEXT_PLAIN).content("name")).andExpect(status().isUnsupportedMediaType())
             .andExpect(header().string(HttpHeaders.ACCEPT, containsString("application/json")))
-            .andExpect(jsonPath("$.error").value("Content-Type 'text/plain' is not supported."));
+            .andExpect(jsonPath("$.error").value("This endpoint does not accept the request's content type."));
     }
 
     @Test
@@ -101,7 +106,7 @@ class ClientErrorStatusTest {
     @Test
     void wrongMethodIs405WithAllow() throws Exception {
         mockMvc.perform(get("/probe/body")).andExpect(status().isMethodNotAllowed()).andExpect(header().string(HttpHeaders.ALLOW, "POST"))
-            .andExpect(jsonPath("$.error").value("Method 'GET' is not supported."));
+            .andExpect(jsonPath("$.error").value("This endpoint does not support the request method."));
     }
 
     @Test
@@ -118,6 +123,12 @@ class ClientErrorStatusTest {
     @Test
     void unmappedPathIs404() throws Exception {
         mockMvc.perform(get("/nope")).andExpect(status().isNotFound()).andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void unacceptableMediaTypeIs406() throws Exception {
+        mockMvc.perform(get("/probe/page").accept(MediaType.APPLICATION_JSON)).andExpect(status().isNotAcceptable())
+            .andExpect(jsonPath("$.error").value("Acceptable representations: [text/html]."));
     }
 
     @Test
