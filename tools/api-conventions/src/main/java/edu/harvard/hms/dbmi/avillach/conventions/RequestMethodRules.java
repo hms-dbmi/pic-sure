@@ -21,8 +21,8 @@ public final class RequestMethodRules {
     /**
      * R12: every handler method that carries {@code @RequestMapping} itself names at least one verb in its
      * {@code method} property. A method-level {@code @RequestMapping} without one maps every HTTP verb, so
-     * the endpoint answers GET, PUT, PATCH and DELETE alongside the verb its callers use, and the published
-     * document lists each of them. Composed annotations such as {@code @GetMapping} fix their verb and are
+     * the endpoint answers GET, PUT, PATCH, DELETE, HEAD and OPTIONS alongside the verb its callers use, and
+     * the published document lists all seven. Composed annotations such as {@code @GetMapping} fix their verb and are
      * out of scope, as is a class-level {@code @RequestMapping}, which only sets a path prefix.
      *
      * @param module the module path, used in the violation text
