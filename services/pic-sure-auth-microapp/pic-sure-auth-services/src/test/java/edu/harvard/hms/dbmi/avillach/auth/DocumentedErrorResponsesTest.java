@@ -10,6 +10,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -43,6 +44,7 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 
@@ -57,8 +59,8 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
  * MySQL migrations, so each 409 comes from a real integrity violation. </p>
  *
  * <p> Requests authenticate the way production callers do: a JWT signed with the configured client secret whose subject is a stored, active
- * user. {@code JWTFilter} loads that user and grants the names of the privileges on the user's roles as authorities, which is what
- * {@code @RolesAllowed} checks. </p>
+ * user, bound by its {@code sid} claim to a live session. {@code JWTFilter} rejects a token whose session is missing or ended, then loads
+ * that user and grants the names of the privileges on the user's roles as authorities, which is what {@code @RolesAllowed} checks. </p>
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -98,6 +100,9 @@ class DocumentedErrorResponsesTest {
 
     @Autowired
     ApplicationRepository applicationRepository;
+
+    @Autowired
+    SessionService sessionService;
 
     String superAdminToken;
 
@@ -141,7 +146,9 @@ class DocumentedErrorResponsesTest {
             }
             userWithRole(SUPER_ADMIN_SUBJECT, role("SUPER_ADMIN_ROLE", superAdmin));
         }
-        superAdminToken = jwtUtil.createJwtToken(null, null, new HashMap<>(), SUPER_ADMIN_SUBJECT, 60_000L);
+        String sessionId = UUID.randomUUID().toString();
+        sessionService.startSession(SUPER_ADMIN_SUBJECT, sessionId);
+        superAdminToken = jwtUtil.createJwtToken(null, null, new HashMap<>(Map.of("sid", sessionId)), SUPER_ADMIN_SUBJECT, 60_000L);
     }
 
     @Test
@@ -315,9 +322,11 @@ class DocumentedErrorResponsesTest {
     }
 
     @Test
-    void refreshingATokenWithNoLiveSessionIs400() throws Exception {
-        mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/token/refresh")).andExpect(status().isBadRequest())
-            .andExpect(content().string("Your session has expired. Please log in again."));
+    void refreshingATokenWhoseSessionEndedIs401() throws Exception {
+        sessionService.endSession(SUPER_ADMIN_SUBJECT);
+
+        mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/token/refresh")).andExpect(status().isUnauthorized())
+            .andExpect(status().reason("Your session has expired. Please log in again."));
     }
 
     /**
@@ -347,7 +356,7 @@ class DocumentedErrorResponsesTest {
         return MockMvcRequestBuilders.request(method, CONTEXT_PATH + path, uriVariables).contextPath(CONTEXT_PATH);
     }
 
-    /** A request to {@code path} bearing a JWT for the stored user whose role holds the {@code SUPER_ADMIN} privilege. */
+    /** A request to {@code path} bearing a session-bound JWT for the stored user whose role holds the {@code SUPER_ADMIN} privilege. */
     MockHttpServletRequestBuilder asSuperAdmin(HttpMethod method, String path, Object... uriVariables) {
         return anonymous(method, path, uriVariables).header(HttpHeaders.AUTHORIZATION, "Bearer " + superAdminToken);
     }

@@ -89,7 +89,8 @@ public class TokenController {
 
     @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user")
     @ApiResponse(responseCode = "200", description = "A refreshed token and its expiration date")
-    @ApiResponse(responseCode = "400", description = "The session has expired, or the user no longer exists or is deactivated")
+    @ApiResponse(responseCode = "400", description = "The user no longer exists or is deactivated")
+    @ApiResponse(responseCode = "401", description = "The token's session has ended, expired, or been replaced by a newer login")
     @AuditEvent(type = "ACCESS", action = "token.refresh")
     @GetMapping(path = "/refresh", produces = "application/json")
     public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request) {
