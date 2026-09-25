@@ -41,10 +41,6 @@ class PhenotypicQueryExecutorTest {
         assertEquals(patientIds, patientSet);
     }
 
-    /**
-     * The consents on the query, not ambient per-thread state, decide which partitions are read. Asynchronous result types execute off the
-     * request thread, so a consent source that is bound to the request is not reachable where the query runs.
-     */
     @Test
     public void getPatientSet_carriesTheQuerysConsentsToTheStore() {
         Set<UserConsent> userConsents = Set.of(new UserConsent("phs000001.c1"), new UserConsent("phs000002.c1"));

@@ -45,12 +45,7 @@ public record Query(
     public Set<UserConsent> userConsents() {
         return userConsents == null ? Set.of() : userConsents;
     }
-
-    /**
-     * The caller's consents as bare values, which is how HPDS matches them against phenotypic partition names. Authorization is decided
-     * upstream; by the time a query reaches HPDS this set is the caller's scope, so it is passed explicitly to every read that depends on
-     * it rather than being resolved from ambient per-thread state (asynchronous result types do not run on the request thread).
-     */
+    
     public Set<String> consentValues() {
         return userConsents().stream().filter(Objects::nonNull).map(UserConsent::value).filter(Objects::nonNull)
             .collect(Collectors.toUnmodifiableSet());
