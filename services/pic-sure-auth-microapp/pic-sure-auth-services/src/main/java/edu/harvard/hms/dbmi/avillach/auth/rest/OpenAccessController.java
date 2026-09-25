@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -36,7 +37,7 @@ public class OpenAccessController {
     @Operation(summary = "Validate an open-access request against the access rules")
     @ApiResponse(responseCode = "200", description = "Whether the open access request is permitted")
     @AuditEvent(type = "ACCESS", action = "open.validate")
-    @RequestMapping(value = "/validate", produces = "application/json")
+    @PostMapping(value = "/validate", produces = "application/json")
     public ResponseEntity<?> validate(
         @Parameter(
             required = true, description = "A JSON object that at least includes a user and the token for validation"
