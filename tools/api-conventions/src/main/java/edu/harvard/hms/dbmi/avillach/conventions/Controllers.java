@@ -16,7 +16,7 @@ import com.tngtech.archunit.core.domain.JavaModifier;
  */
 public final class Controllers {
 
-    private static final List<String> MAPPING_ANNOTATIONS = List.of(
+    static final List<String> MAPPING_ANNOTATIONS = List.of(
         "org.springframework.web.bind.annotation.RequestMapping",
         "org.springframework.web.bind.annotation.GetMapping",
         "org.springframework.web.bind.annotation.PostMapping",
