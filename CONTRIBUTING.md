@@ -15,7 +15,7 @@ unacceptable behavior to avillach_lab_developers@googlegroups.com.
 ## Ways to contribute
 
 Aside from pull requests, our main channel is the "Issues" tab of the repository you are working
-in. Use them to report a bug, suggest an enhancement, or ask a question. Once we have received an issue submission, we will be in contact
+in. Use them to report a bug, suggest an enhancement, or ask a question. Once we have received an issue submission, we will usually be in contact
 within 5 business days.
 
 Documentation is a contribution like any other. If something in a README or in this guide is
