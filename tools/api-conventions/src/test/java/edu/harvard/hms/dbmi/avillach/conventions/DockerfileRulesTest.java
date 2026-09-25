@@ -91,11 +91,13 @@ class DockerfileRulesTest {
     }
 
     @Test
-    void r20CoversDockerfileAndDockerfileDotAnything() {
+    void r20CoversDockerfileDockerfileDotAnythingAndAnythingDotDockerfile() {
         assertTrue(DockerfileRules.isDockerfile("Dockerfile"));
         assertTrue(DockerfileRules.isDockerfile("services/app/Dockerfile"));
         assertTrue(DockerfileRules.isDockerfile("services/app/Dockerfile.dev"));
-        assertFalse(DockerfileRules.isDockerfile("services/app/dev.Dockerfile"));
+        assertTrue(DockerfileRules.isDockerfile("services/app/dev.Dockerfile"));
+        assertTrue(DockerfileRules.isDockerfile("libs/commons/docker/build.Dockerfile"));
+        assertFalse(DockerfileRules.isDockerfile("services/app/Dockerfile-notes.txt"));
         assertFalse(DockerfileRules.isDockerfile("services/app/Dockerfiles/README.md"));
         assertFalse(DockerfileRules.isDockerfile("services/app/NotADockerfile"));
     }

@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  * whatever the registry points it at on build day, so two builds of one commit can run on different bases.
  *
  * <p>Unlike the other rules this one reads files, not compiled classes. It covers every git-tracked file
- * named {@code Dockerfile} or {@code Dockerfile.*} in the repository. A {@code FROM} that names a stage
+ * named {@code Dockerfile}, {@code Dockerfile.*} or {@code *.Dockerfile} in the
+ * repository. A {@code FROM} that names a stage
  * declared earlier in the same file ({@code FROM builder}) is exempt, as is {@code FROM scratch}. Flags such
  * as {@code --platform=...} are skipped when finding the image. An image built from an {@code ARG} is
  * checked like any other reference, so {@code FROM ${BASE}} fails unless the text carries a digest.
@@ -38,11 +39,12 @@ public final class DockerfileRules {
      * Says whether a repository path names a Dockerfile this rule covers.
      *
      * @param path a slash-separated path relative to the repository root
-     * @return true when the file name is {@code Dockerfile} or starts with {@code Dockerfile.}
+     * @return true when the file name is {@code Dockerfile}, starts with {@code Dockerfile.}, or ends with
+     *     {@code .Dockerfile}
      */
     public static boolean isDockerfile(String path) {
         String name = path.substring(path.lastIndexOf('/') + 1);
-        return name.equals("Dockerfile") || name.startsWith("Dockerfile.");
+        return name.equals("Dockerfile") || name.startsWith("Dockerfile.") || name.endsWith(".Dockerfile");
     }
 
     /**
