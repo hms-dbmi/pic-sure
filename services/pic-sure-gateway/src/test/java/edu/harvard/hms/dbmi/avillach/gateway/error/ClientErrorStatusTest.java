@@ -64,6 +64,11 @@ class ClientErrorStatusTest {
             throw new NoResourceFoundException(HttpMethod.GET, "/probe/missing");
         }
 
+        @GetMapping(path = "/page", produces = "text/html")
+        public String page() {
+            return "<p>page</p>";
+        }
+
         @GetMapping("/boom")
         public String boom() {
             throw new IllegalStateException("internal detail");
@@ -108,7 +113,7 @@ class ClientErrorStatusTest {
         mockMvc.perform(post("/probe/body").contentType(MediaType.TEXT_PLAIN).content("name")).andExpect(status().isUnsupportedMediaType())
             .andExpect(header().string(HttpHeaders.ACCEPT, containsString("application/json")))
             .andExpect(jsonPath("$.errorType").value("unsupported_media_type"))
-            .andExpect(jsonPath("$.message").value("Content-Type 'text/plain' is not supported."))
+            .andExpect(jsonPath("$.message").value("This endpoint does not accept the request's content type."))
             .andExpect(jsonPath("$.requestId").value(REQUEST_ID));
     }
 
@@ -123,7 +128,8 @@ class ClientErrorStatusTest {
     void wrongMethodIs405WithAllow() throws Exception {
         mockMvc.perform(get("/probe/body")).andExpect(status().isMethodNotAllowed()).andExpect(header().string(HttpHeaders.ALLOW, "POST"))
             .andExpect(jsonPath("$.errorType").value("method_not_allowed"))
-            .andExpect(jsonPath("$.message").value("Method 'GET' is not supported.")).andExpect(jsonPath("$.requestId").value(REQUEST_ID));
+            .andExpect(jsonPath("$.message").value("This endpoint does not support the request method."))
+            .andExpect(jsonPath("$.requestId").value(REQUEST_ID));
     }
 
     @Test
@@ -144,6 +150,12 @@ class ClientErrorStatusTest {
     void unmappedPathIs404() throws Exception {
         mockMvc.perform(get("/nope")).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"))
             .andExpect(jsonPath("$.requestId").value(REQUEST_ID));
+    }
+
+    @Test
+    void unacceptableMediaTypeIs406() throws Exception {
+        mockMvc.perform(get("/probe/page").accept(MediaType.APPLICATION_JSON)).andExpect(status().isNotAcceptable())
+            .andExpect(jsonPath("$.errorType").value("not_acceptable")).andExpect(jsonPath("$.requestId").value(REQUEST_ID));
     }
 
     @Test
