@@ -9,7 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +21,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * <p>Endpoint for service handling business logic for users.</p>
@@ -42,11 +40,11 @@ public class UserController {
         this.userService = userService;
     }
 
-    @Operation(summary = "Read one user", description = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
+    @Operation(summary = "Read one user", description = "GET information of one user with the UUID")
     @ApiResponse(responseCode = "200", description = "The user")
     @ApiResponse(responseCode = "400", description = "The id is not a UUID, or no user has it")
     @AuditEvent(type = "OTHER", action = "user.read")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "/{userId}", produces = "application/json")
     public ResponseEntity<User> getUserById(
         @Parameter(required = true, description = "The UUID of the user to fetch information about") @PathVariable("userId") String userId,
@@ -57,20 +55,20 @@ public class UserController {
         return PICSUREResponse.success(userById);
     }
 
-    @Operation(summary = "List every user", description = "GET a list of existing users, requires ADMIN or SUPER_ADMIN roles")
+    @Operation(summary = "List every user", description = "GET a list of existing users")
     @ApiResponse(responseCode = "200", description = "Every user")
     @AuditEvent(type = "OTHER", action = "user.list")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
     public ResponseEntity<List<User>> getUserAll() {
         List<User> entityAll = this.userService.getAllUsers();
         return PICSUREResponse.success(entityAll);
     }
 
-    @Operation(summary = "Create users", description = "POST a list of users, requires ADMIN role")
+    @Operation(summary = "Create users", description = "POST a list of users")
     @ApiResponse(responseCode = "200", description = "The created users")
     @AuditEvent(type = "ADMIN", action = "user.modify")
-    @RolesAllowed({ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN')")
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addUser(
         @Parameter(required = true, description = "A list of user in JSON format") @RequestBody List<User> users, HttpServletRequest request
@@ -91,11 +89,11 @@ public class UserController {
 
     @Operation(
         summary = "Update the given fields of users",
-        description = "Update a list of users, will only update the fields listed, requires ADMIN role"
+        description = "Update a list of users, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated users")
     @AuditEvent(type = "ADMIN", action = "user.modify")
-    @RolesAllowed({ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN')")
     @PutMapping(produces = "application/json")
     public ResponseEntity<?> updateUser(@RequestBody List<User> users, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));

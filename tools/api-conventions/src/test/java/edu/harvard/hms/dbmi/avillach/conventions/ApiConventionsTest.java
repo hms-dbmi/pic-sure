@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Applies the rules to this reactor. Every rule reports its whole list, so one run names every problem
- * rather than the first.
+ * rather than the first. The swagger rules cover the modules the registry marks documented; the
+ * authorization rules cover every compiled module, because an unenforced guard is a problem wherever it sits.
  */
 class ApiConventionsTest {
 
@@ -55,6 +57,43 @@ class ApiConventionsTest {
     @Test
     void everyHandlerDeclaresItsResponses() {
         report("R4", overDocumentedModules(SwaggerRules::responsesAreDeclared));
+    }
+
+    @Test
+    void documentationDoesNotRestateGuardedAuthorities() {
+        report("R10", overDocumentedModules(SwaggerRules::documentationDoesNotRestateAuthorities));
+    }
+
+    @Test
+    void noHandlerUsesAReplacedSecurityAnnotation() {
+        report("R6", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
+    }
+
+    @Test
+    void preAuthorizeSitsOnlyOnHandlers() {
+        report("R7", overAllModules(SecurityRules::preAuthorizeOnlyOnHandlers));
+    }
+
+    @Test
+    void preAuthorizeNamesKnownAuthoritiesInTheStandardForm() {
+        Set<String> known = SecurityRules.knownAuthorities(modules, SecurityRules.KNOWN_AUTHORITIES_CLASS);
+        report("R8", overAllModules((module, classes) -> SecurityRules.preAuthorizeNamesAuthorities(module, classes, known)));
+    }
+
+    @Test
+    void everyModuleWithGuardsEnablesMethodSecurity() {
+        report("R9", overAllModules(SecurityRules::methodSecurityEnabled));
+    }
+
+    @Test
+    void noCodeChecksARolePrefix() {
+        report("R11", overAllModules(SecurityRules::noRoleChecks));
+    }
+
+    private static List<String> overAllModules(Rule rule) {
+        List<String> violations = new ArrayList<>();
+        modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
+        return violations;
     }
 
     private static List<String> overDocumentedModules(Rule rule) {

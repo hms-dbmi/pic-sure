@@ -27,7 +27,7 @@ import jakarta.servlet.http.HttpServletResponse;
  * SCG MVC forwards via a {@code HandlerFunction}; request attributes don't become outbound headers automatically. This filter wraps the
  * request and adds the {@code X-User-*} headers from the attributes the introspection/open-access filters set — including
  * {@code X-User-Privileges} — plus {@code X-Request-Id} (propagate the incoming one, reuse the commons {@link RequestIdFilter}'s MDC value,
- * or generate). Downstream maps {@code X-User-Privileges} to {@code GrantedAuthority}s for {@code @RolesAllowed}-equivalent checks. <p> The
+ * or generate). Downstream maps {@code X-User-Privileges} to {@code GrantedAuthority}s for {@code @PreAuthorize} checks. <p> The
  * five {@code X-User-*} headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES},
  * {@code _PRIVILEGES}) plus {@link GatewayUserResolver#HEADER_ACCESS_TYPE} are gateway-owned: the wrapper NEVER falls through to the raw
  * client request for them. Whatever the gateway resolved (possibly nothing) is authoritative -- a client cannot spoof these by sending its

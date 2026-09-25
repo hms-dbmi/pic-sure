@@ -116,7 +116,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         req.setAttribute(GatewayUserResolver.HEADER_USER_SUBJECT, intro.sub());
         req.setAttribute(GatewayUserResolver.HEADER_USER_EMAIL, intro.email());
         req.setAttribute(GatewayUserResolver.HEADER_USER_ROLES, intro.roles() == null ? "" : intro.roles());
-        // privileges are the real @RolesAllowed signal — propagate them.
+        // privileges are the real @PreAuthorize signal — propagate them.
         req.setAttribute(
             GatewayUserResolver.HEADER_USER_PRIVILEGES, intro.privileges() == null ? "" : String.join(",", intro.privileges())
         );
