@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -56,7 +57,7 @@ public class AccessRuleController {
         Optional<AccessRule> entityById = this.accessRuleService.getAccessRuleById(accessRuleId);
 
         if (entityById.isEmpty()) {
-            return PICSUREResponse.error("AccessRule not found", 404);
+            return PICSUREResponse.error(HttpStatus.NOT_FOUND, "AccessRule not found", null);
         }
 
         return PICSUREResponse.success(entityById.get());
