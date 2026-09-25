@@ -85,6 +85,11 @@ class ApiConventionsTest {
         report("R9", overAllModules(SecurityRules::methodSecurityEnabled));
     }
 
+    @Test
+    void noCodeChecksARolePrefix() {
+        report("R11", overAllModules(SecurityRules::noRoleChecks));
+    }
+
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));

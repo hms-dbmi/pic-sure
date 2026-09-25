@@ -11,7 +11,9 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
+import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -59,6 +61,14 @@ public final class SecurityRules {
     );
     private static final Pattern ONE_AUTHORITY = Pattern.compile("hasAuthority\\(\\s*" + AUTHORITY + "\\s*\\)");
     private static final Pattern QUOTED = Pattern.compile(AUTHORITY);
+
+    private static final Set<String> ROLE_CHECKS = Set.of("hasRole", "hasAnyRole", "isUserInRole");
+    private static final List<String> ROLE_CHECK_OWNERS = List.of(
+        "org.springframework.security.", "org.springframework.boot.actuate.", "jakarta.servlet.", "javax.servlet.",
+        "jakarta.ws.rs.", "javax.ws.rs."
+    );
+    private static final Comparator<JavaAccess<?>> BY_LINE_THEN_NAME =
+        Comparator.<JavaAccess<?>>comparingInt(JavaAccess::getLineNumber).thenComparing(access -> access.getTarget().getName());
 
     private SecurityRules() {}
 
@@ -168,6 +178,34 @@ public final class SecurityRules {
     }
 
     /**
+     * R11: no code calls {@code hasRole}, {@code hasAnyRole} or {@code isUserInRole} on a Spring Security,
+     * Spring Boot actuator, Servlet or JAX-RS type. Each of those checks adds the {@code ROLE_} prefix, and
+     * the authorities granted in this reactor carry none, so the check denies everyone. R8 rejects the same
+     * mistake inside {@code @PreAuthorize}; this rule covers filter-chain URL rules, authorization managers
+     * and request checks, including calls inside lambdas and method references.
+     *
+     * @param module the module path, used in the violation text
+     * @param classes that module's imported classes
+     * @return one violation per role check, naming the calling method, line and target
+     */
+    public static List<String> noRoleChecks(String module, JavaClasses classes) {
+        List<String> violations = new ArrayList<>();
+        for (JavaClass type : sorted(classes)) {
+            List<JavaAccess<?>> roleChecks =
+                Stream.<JavaAccess<?>>concat(type.getMethodCallsFromSelf().stream(), type.getMethodReferencesFromSelf().stream())
+                    .filter(SecurityRules::isRoleCheck)
+                    .sorted(BY_LINE_THEN_NAME)
+                    .toList();
+            for (JavaAccess<?> access : roleChecks) {
+                String at = SwaggerRules.at(module, type, access.getOrigin().getName()) + " line " + access.getLineNumber();
+                String target = access.getTarget().getOwner().getSimpleName() + "." + access.getTarget().getName();
+                violations.add(at + " calls " + target + ", which requires a ROLE_ prefix no granted authority has");
+            }
+        }
+        return violations;
+    }
+
+    /**
      * Collects the known authority names: the names of the public static String fields of one class,
      * found in whichever module compiled it.
      *
@@ -230,6 +268,11 @@ public final class SecurityRules {
                 violations.add(quoted + " names " + names + ", which is not a field of the known authority constants");
             }
         }
+    }
+
+    private static boolean isRoleCheck(JavaAccess<?> access) {
+        String owner = access.getTarget().getOwner().getName();
+        return ROLE_CHECKS.contains(access.getTarget().getName()) && ROLE_CHECK_OWNERS.stream().anyMatch(owner::startsWith);
     }
 
     private static boolean isGuarded(JavaClass type) {

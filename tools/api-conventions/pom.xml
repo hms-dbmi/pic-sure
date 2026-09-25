@@ -34,7 +34,7 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
-        <!-- Test scope only: the fixture controllers need real annotations to compile.
+        <!-- Test scope only: the fixture classes need real annotations and security APIs to compile.
              Rule code matches annotation types by fully qualified name, never by class literal. -->
         <dependency>
             <groupId>org.springframework</groupId>
@@ -46,6 +46,18 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-config</artifactId>
             <version>6.5.11</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-web</artifactId>
+            <version>6.5.11</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <version>6.0.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>

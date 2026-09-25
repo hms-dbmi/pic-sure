@@ -19,6 +19,7 @@ class SecurityRulesTest {
     private static final JavaClasses CONFIGURED = fixtures("configured");
     private static final JavaClasses UNCONFIGURED = fixtures("unconfigured");
     private static final JavaClasses PRE_POST_DISABLED = fixtures("prepostdisabled");
+    private static final JavaClasses ROLE_CHECKS = fixtures("rolechecks");
     private static final String KNOWN_CLASS = FIXTURES + ".known.KnownAuthorities";
     private static final Set<String> KNOWN = Set.of("ADMIN", "SUPER_ADMIN", "PRIV_DATA_ADMIN");
     private static final JavaClasses SWAGGER_FIXTURES =
@@ -52,6 +53,27 @@ class SecurityRulesTest {
         assertEquals(2, violations.size(), violations.toString());
         assertMentions(violations, "ClassLevelController carries @PreAuthorize at class level");
         assertMentions(violations, "GuardedService#work carries @PreAuthorize but is not a request handler");
+    }
+
+    @Test
+    void r11FlagsEveryRoleCheckOnAFrameworkType() {
+        List<String> violations = SecurityRules.noRoleChecks("fixtures", ROLE_CHECKS);
+
+        assertEquals(6, violations.size(), violations.toString());
+        assertMentions(violations, "UrlRoleRules#chain line 11 calls AuthorizedUrl.hasRole");
+        assertMentions(violations, "UrlRoleRules#chain line 11 calls AuthorizedUrl.hasAnyRole");
+        assertMentions(violations, "ManagerRoleChecks#admin line 10 calls AuthorityAuthorizationManager.hasRole");
+        assertMentions(violations, "ManagerRoleChecks#anyAdmin line 14 calls AuthorityAuthorizationManager.hasAnyRole");
+        assertMentions(violations, "RequestRoleChecks#isAdmin line 11 calls HttpServletRequest.isUserInRole");
+        assertMentions(violations, "RequestRoleChecks#roleTest line 15 calls HttpServletRequest.isUserInRole");
+        assertTrue(violations.get(0).startsWith("fixtures :: "), violations.get(0));
+    }
+
+    @Test
+    void r11AcceptsAuthorityChecksAndDomainMethodsNamedLikeRoleChecks() {
+        List<String> violations = SecurityRules.noRoleChecks("fixtures", ROLE_CHECKS);
+
+        assertTrue(violations.stream().noneMatch(v -> v.contains("AuthorityChecks")), violations.toString());
     }
 
     @Test
