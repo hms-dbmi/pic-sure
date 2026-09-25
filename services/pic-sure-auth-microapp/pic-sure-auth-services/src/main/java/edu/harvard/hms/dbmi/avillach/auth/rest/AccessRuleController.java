@@ -6,10 +6,12 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.*;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -28,7 +30,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  * <p>
  * Path: /accessRule
  */
-@Tag(name = "Access Rule Management")
+@Tag(name = "Access Rule Management", description = "Access rules that gate what a privilege permits")
 @Controller
 @RequestMapping(value = "/accessRule")
 public class AccessRuleController {
@@ -40,23 +42,29 @@ public class AccessRuleController {
         this.accessRuleService = accessRuleService;
     }
 
-    @Operation(description = "GET information of one AccessRule with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @Operation(
+        summary = "Read one access rule",
+        description = "GET information of one AccessRule with the UUID, requires ADMIN or SUPER_ADMIN role"
+    )
+    @ApiResponse(responseCode = "200", description = "The access rule")
+    @ApiResponse(responseCode = "404", description = "No access rule has that id")
     @AuditEvent(type = "OTHER", action = "access_rule.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(value = "/{accessRuleId}")
     public ResponseEntity<?> getAccessRuleById(
-            @Parameter(description = "The UUID of the accessRule to fetch information about")
-            @PathVariable("accessRuleId") String accessRuleId) {
+        @Parameter(description = "The UUID of the accessRule to fetch information about") @PathVariable("accessRuleId") String accessRuleId
+    ) {
         Optional<AccessRule> entityById = this.accessRuleService.getAccessRuleById(accessRuleId);
 
         if (entityById.isEmpty()) {
-            return PICSUREResponse.error("AccessRule not found", 404);
+            return PICSUREResponse.error(HttpStatus.NOT_FOUND, "AccessRule not found", null);
         }
 
         return PICSUREResponse.success(entityById.get());
     }
 
-    @Operation(description = "GET a list of existing AccessRules, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "List every access rule", description = "GET a list of existing AccessRules, requires ADMIN or SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "Every access rule")
     @AuditEvent(type = "OTHER", action = "access_rule.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping("")
@@ -65,13 +73,16 @@ public class AccessRuleController {
         return PICSUREResponse.success(allAccessRules);
     }
 
-    @Operation(description = "POST a list of AccessRules, requires SUPER_ADMIN role")
+    @Operation(summary = "Create access rules", description = "POST a list of AccessRules, requires SUPER_ADMIN role")
+    @ApiResponse(responseCode = "200", description = "The created access rules")
+    @ApiResponse(responseCode = "400", description = "No access rules were added")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @RolesAllowed(SUPER_ADMIN)
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> addAccessRule(
-            @Parameter(required = true, description = "A list of AccessRule in JSON format")
-            @RequestBody List<AccessRule> accessRules, HttpServletRequest request) {
+        @Parameter(required = true, description = "A list of AccessRule in JSON format") @RequestBody List<AccessRule> accessRules,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "access_rule_count", String.valueOf(accessRules.size()));
         accessRules = this.accessRuleService.addAccessRule(accessRules);
 
@@ -82,30 +93,46 @@ public class AccessRuleController {
         return PICSUREResponse.success(accessRules);
     }
 
-    @Operation(description = "Update a list of AccessRules, will only update the fields listed, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Update the given fields of access rules",
+        description = "Update a list of AccessRules, will only update the fields listed, requires SUPER_ADMIN role"
+    )
+    @ApiResponse(responseCode = "200", description = "The updated access rules")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @RolesAllowed(SUPER_ADMIN)
     @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<AccessRule>> updateAccessRule(
-            @Parameter(required = true, description = "A list of AccessRule with fields to be updated in JSON format")
-            @RequestBody List<AccessRule> accessRules, HttpServletRequest request) {
+        @Parameter(
+            required = true, description = "A list of AccessRule with fields to be updated in JSON format"
+        ) @RequestBody List<AccessRule> accessRules, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "access_rule_count", String.valueOf(accessRules.size()));
         accessRules = this.accessRuleService.updateAccessRules(accessRules);
         return PICSUREResponse.success(accessRules);
     }
 
-    @Operation(description = "DELETE an AccessRule by Id only if the accessRule is not associated by others, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "Delete an access rule that nothing references",
+        description = "DELETE an AccessRule by Id only if the accessRule is not associated by others, requires SUPER_ADMIN role"
+    )
+    @ApiResponse(responseCode = "200", description = "The remaining access rules")
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this access rule")
     @AuditEvent(type = "ADMIN", action = "access_rule.delete")
     @RolesAllowed(SUPER_ADMIN)
     @DeleteMapping(path = "/{accessRuleId}")
     public ResponseEntity<List<AccessRule>> removeById(
-            @Parameter(required = true, description = "A valid accessRule Id")
-            @PathVariable("accessRuleId") final String accessRuleId, HttpServletRequest request) {
+        @Parameter(required = true, description = "A valid accessRule Id") @PathVariable("accessRuleId") final String accessRuleId,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "access_rule_id", accessRuleId);
         return PICSUREResponse.success(this.accessRuleService.removeAccessRuleById(accessRuleId));
     }
 
-    @Operation(description = "GET all types listed for the rule in accessRule that could be used, requires SUPER_ADMIN role")
+    @Operation(
+        summary = "The rule types an access rule may use",
+        description = "GET all types listed for the rule in accessRule that could be used, requires SUPER_ADMIN role"
+    )
+    @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values")
     @AuditEvent(type = "OTHER", action = "access_rule.types")
     @RolesAllowed(SUPER_ADMIN)
     @GetMapping(path = "/allTypes", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)

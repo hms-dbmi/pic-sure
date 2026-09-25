@@ -15,6 +15,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 /**
@@ -24,6 +28,7 @@ import jakarta.validation.Valid;
  * then email-scopes every operation, requiring and keying on the caller's email ({@code GatewayUser#getEmail()}), never {@code userId}.
  * This controller is a thin HTTP adapter -- identity validation lives in the service.
  */
+@Tag(name = "Named datasets", description = "Saved queries a user names and reuses, scoped to the caller")
 @RestController
 @RequestMapping("/dataset/named")
 public class NamedDatasetController {
@@ -34,27 +39,59 @@ public class NamedDatasetController {
         this.service = service;
     }
 
+    @Operation(summary = "List the caller's named datasets")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The caller's named datasets"),
+            @ApiResponse(responseCode = "401", description = "No caller email in the request")}
+    )
     @GetMapping("")
     public List<NamedDatasetDto> list(GatewayUser user) {
         return service.listForUser(user);
     }
 
+    @Operation(summary = "Name a query as a dataset for the caller")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "201", description = "The created named dataset"),
+            @ApiResponse(responseCode = "401", description = "No caller email in the request"),
+            @ApiResponse(responseCode = "404", description = "Query not found"),
+            @ApiResponse(responseCode = "409", description = "The caller already named that query")}
+    )
     @PostMapping("")
     public ResponseEntity<NamedDatasetDto> create(GatewayUser user, @Valid @RequestBody NamedDatasetRequestDto req) {
         NamedDatasetDto created = service.create(user, req);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    @Operation(summary = "Read one of the caller's named datasets")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The named dataset"),
+            @ApiResponse(responseCode = "401", description = "No caller email in the request"),
+            @ApiResponse(responseCode = "404", description = "No named dataset with that id for the caller")}
+    )
     @GetMapping("/{id}")
     public NamedDatasetDto get(GatewayUser user, @PathVariable("id") UUID id) {
         return service.getForUser(user, id);
     }
 
+    @Operation(summary = "Rename or re-point one of the caller's named datasets")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The updated named dataset"),
+            @ApiResponse(responseCode = "401", description = "No caller email in the request"),
+            @ApiResponse(
+                responseCode = "404", description = "No named dataset with that id for the caller, or the new queryId matches no query"
+            ), @ApiResponse(responseCode = "409", description = "The caller already named that query")}
+    )
     @PutMapping("/{id}")
     public NamedDatasetDto update(GatewayUser user, @PathVariable("id") UUID id, @Valid @RequestBody NamedDatasetRequestDto req) {
         return service.update(user, id, req);
     }
 
+    @Operation(summary = "Delete one of the caller's named datasets")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "204", description = "Deleted"),
+            @ApiResponse(responseCode = "401", description = "No caller email in the request"),
+            @ApiResponse(responseCode = "404", description = "No named dataset with that id for the caller")}
+    )
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(GatewayUser user, @PathVariable("id") UUID id) {
         service.delete(user, id);

@@ -2,12 +2,13 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.AuthenticationServiceRegistry;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -29,7 +30,7 @@ import java.util.Map;
 /**
  * <p>The authentication endpoint for PSAMA.</p>
  */
-@Tag(name = "Authentication")
+@Tag(name = "Authentication", description = "Exchange an identity provider login for a PIC-SURE token")
 @Controller
 @RequestMapping("/")
 public class AuthenticationController {
@@ -37,21 +38,32 @@ public class AuthenticationController {
     private final static Logger logger = LoggerFactory.getLogger(AuthenticationController.class.getName());
 
     private final AuthenticationServiceRegistry authenticationServiceRegistry;
-    private final SessionService sessionService;
 
     @Autowired
-    public AuthenticationController(AuthenticationServiceRegistry authenticationServiceRegistry, SessionService sessionService) {
+    public AuthenticationController(
+        AuthenticationServiceRegistry authenticationServiceRegistry
+    ) {
         this.authenticationServiceRegistry = authenticationServiceRegistry;
-        this.sessionService = sessionService;
     }
 
-    @Operation(description = "The authentication endpoint for retrieving a valid user token")
+    @Operation(
+        summary = "Exchange an identity provider's code for a PIC-SURE token",
+        description = "The authentication endpoint for retrieving a valid user token"
+    )
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "A PIC-SURE token for the authenticated user"),
+            @ApiResponse(responseCode = "400", description = "No enabled identity provider has that name"),
+            @ApiResponse(responseCode = "401", description = "The identity provider rejected the code, or the code is malformed")}
+    )
     @AuditEvent(type = "AUTH", action = "auth.login")
     @PostMapping(path = "/authentication/{idpProvider}", consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> authentication(
-            @PathVariable("idpProvider") String idpProvider,
-            @Parameter(required = true, description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI")
-            @RequestBody Map<String, String> authRequest, HttpServletRequest request) throws IOException {
+        @PathVariable("idpProvider") String idpProvider,
+        @Parameter(
+            required = true,
+            description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI"
+        ) @RequestBody Map<String, String> authRequest, HttpServletRequest request
+    ) throws IOException {
         logger.debug("authentication() starting...");
         logger.debug("authentication() requestHost: {}", request.getServerName());
 
@@ -74,11 +86,8 @@ public class AuthenticationController {
 
         HashMap<String, String> authenticate = authenticationService.authenticate(authRequest, request.getServerName());
         if (!CollectionUtils.isEmpty(authenticate)) {
-            if (authenticate.containsKey("userId")) {
-                sessionService.startSession(authenticate.get("userId"));
-            } else {
-                logger.error("authentication() userId authentication is null");
-                logger.error("User claims must contain a userId to start their session.");
+            if (!authenticate.containsKey("userId")) {
+                logger.error("Authentication response must contain a userId.");
                 AuditAttributes.putMetadata(request, "login_result", "failure");
                 AuditAttributes.putMetadata(request, "reason", "missing_user_id");
                 return PICSUREResponse.unauthorizedError("User not authenticated.");

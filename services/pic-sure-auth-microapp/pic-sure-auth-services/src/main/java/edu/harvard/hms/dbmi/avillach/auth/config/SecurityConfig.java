@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.config;
 import edu.harvard.hms.dbmi.avillach.auth.filter.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.auth.filter.JWTFilter;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,11 +32,12 @@ public class SecurityConfig {
     private final AuthenticationProvider authenticationProvider;
     private final UserService userService;
     private final JWTUtil jwtUtil;
+    private final SessionService sessionService;
 
     @Autowired
     public SecurityConfig(
         JWTFilter jwtFilter, AuditLoggingFilter auditLoggingFilter, AuthenticationProvider authenticationProvider, UserService userService,
-        CacheEvictionService cacheEvictionService, JWTUtil jwtUtil
+        CacheEvictionService cacheEvictionService, JWTUtil jwtUtil, SessionService sessionService
     ) {
         this.jwtFilter = jwtFilter;
         this.auditLoggingFilter = auditLoggingFilter;
@@ -43,11 +45,12 @@ public class SecurityConfig {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.cacheEvictionService = cacheEvictionService;
+        this.sessionService = sessionService;
     }
 
     @Bean
     public CustomLogoutHandler customLogoutHandler() {
-        return new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil);
+        return new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil, sessionService);
     }
 
     @Bean
@@ -56,8 +59,8 @@ public class SecurityConfig {
             .authenticationProvider(authenticationProvider)
             .authorizeHttpRequests(
                 (authorizeRequests) -> authorizeRequests.requestMatchers(
-                    "/actuator/health", "/actuator/info", "/authentication", "/authentication/**", "/swagger.yaml", "/swagger.json",
-                    "/tos/latest", "/open/validate", "/logout", "/cache/**"
+                    "/actuator/health", "/actuator/info", "/authentication", "/authentication/**", "/v3/api-docs/**", "/tos/latest",
+                    "/open/validate", "/open/apiKey", "/logout", "/cache/**"
                 ).permitAll().anyRequest().authenticated()
             ).httpBasic(AbstractHttpConfigurer::disable).formLogin(AbstractHttpConfigurer::disable)
             // AuditLoggingFilter must wrap the entire chain (including LogoutFilter and JWTFilter)

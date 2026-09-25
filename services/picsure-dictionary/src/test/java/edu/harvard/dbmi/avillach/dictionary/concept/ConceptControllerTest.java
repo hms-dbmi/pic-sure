@@ -75,7 +75,7 @@ class ConceptControllerTest {
     void shouldNotGetConceptDetails() {
         Mockito.when(conceptService.conceptDetail("my_dataset", "/foo//asdsad")).thenReturn(Optional.empty());
 
-        ResponseEntity<Concept> actual = subject.conceptDetail("my_dataset", "/foo//bar");
+        ResponseEntity<Concept> actual = subject.conceptDetail("my_dataset", "/foo//asdsad");
 
         Assertions.assertEquals(HttpStatus.NOT_FOUND, actual.getStatusCode());
     }
@@ -114,28 +114,15 @@ class ConceptControllerTest {
 
     @Test
     void shouldGetNotConceptTreeForNegativeDepth() {
-        Concept fooBar =
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", "foo!", List.of("a", "b"), true, "", List.of(), Map.of());
-        Concept fooBaz = new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", "foo!", true, 0D, 100D, "", Map.of());
-        CategoricalConcept foo =
-            new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", "foo!", List.of(), true, "", List.of(fooBar, fooBaz), Map.of());
-        Mockito.when(conceptService.conceptTree("my_dataset", "/foo", -1)).thenReturn(Optional.of(foo));
-
-        // concept.tree.max_depth=1
-        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/foo//bar", 2);
+        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/foo//bar", -1);
 
         Assertions.assertEquals(HttpStatus.BAD_REQUEST, actual.getStatusCode());
+        Mockito.verifyNoInteractions(conceptService);
     }
 
     @Test
     void shouldNotGetConceptTreeWhenConceptDNE() {
-        Concept fooBar =
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", "foo!", List.of("a", "b"), true, "", List.of(), Map.of());
-        Concept fooBaz = new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", "foo!", true, 0D, 100D, "", Map.of());
-        CategoricalConcept foo =
-            new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", "foo!", List.of(), true, "", List.of(fooBar, fooBaz), Map.of());
-
-        Mockito.when(conceptService.conceptTree("my_dataset", "/foo", 1)).thenReturn(Optional.of(foo));
+        Mockito.when(conceptService.conceptTree("my_dataset", "/asdsadasd", 1)).thenReturn(Optional.empty());
 
         ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/asdsadasd", 1);
 

@@ -15,6 +15,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 /**
@@ -27,6 +31,7 @@ import jakarta.validation.Valid;
  * <p>Admin writes return {@code 200 + entity body}, including DELETE returning the deleted configuration. This differs from surfaces that
  * return {@code 201} for creates and preserves the documented configuration API contract.
  */
+@Tag(name = "Configuration", description = "Site configuration entries the UI reads; admin writes require SUPER_ADMIN")
 @RestController
 @RequestMapping("/configuration")
 public class ConfigurationController {
@@ -37,16 +42,29 @@ public class ConfigurationController {
         this.service = service;
     }
 
+    @Operation(summary = "List configuration entries, optionally filtered by kind")
+    @ApiResponse(responseCode = "200", description = "The matching configuration entries")
     @GetMapping("")
     public List<ConfigurationDto> getConfigurations(@RequestParam(name = "kind", required = false) String kind) {
         return service.getConfigurations(kind);
     }
 
+    @Operation(summary = "Read one configuration entry by UUID or name")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The configuration entry"),
+            @ApiResponse(responseCode = "404", description = "No configuration with that identifier")}
+    )
     @GetMapping("/{identifier}")
     public ConfigurationDto getConfigurationById(@PathVariable("identifier") String identifier) {
         return service.getByIdentifier(identifier);
     }
 
+    @Operation(summary = "Create a configuration entry")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The created configuration entry"),
+            @ApiResponse(responseCode = "400", description = "Name, kind, or value missing"),
+            @ApiResponse(responseCode = "409", description = "An entry with that name and kind exists")}
+    )
     @PostMapping("/admin")
     public ConfigurationDto addConfiguration(@Valid @RequestBody ConfigurationRequestDto request) {
         if (request.name() == null || request.kind() == null || request.value() == null) {
@@ -55,6 +73,13 @@ public class ConfigurationController {
         return service.create(request);
     }
 
+    @Operation(summary = "Update the given fields of a configuration entry")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The updated configuration entry"),
+            @ApiResponse(responseCode = "400", description = "UUID in the body differs from the path"),
+            @ApiResponse(responseCode = "404", description = "No configuration with that identifier"),
+            @ApiResponse(responseCode = "409", description = "An entry with that name and kind exists")}
+    )
     @PatchMapping("/admin/{id}")
     public ConfigurationDto updateConfiguration(@PathVariable("id") UUID id, @Valid @RequestBody ConfigurationRequestDto request) {
         if (request.uuid() != null && !id.equals(request.uuid())) {
@@ -63,6 +88,11 @@ public class ConfigurationController {
         return service.update(id, request);
     }
 
+    @Operation(summary = "Delete a configuration entry and return it")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "The deleted configuration entry"),
+            @ApiResponse(responseCode = "404", description = "No configuration with that identifier")}
+    )
     @DeleteMapping("/admin/{id}")
     public ConfigurationDto deleteConfiguration(@PathVariable("id") UUID id) {
         return service.delete(id);

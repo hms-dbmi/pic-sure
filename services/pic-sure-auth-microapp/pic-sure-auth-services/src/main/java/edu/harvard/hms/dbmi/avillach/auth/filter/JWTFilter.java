@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
@@ -55,16 +56,18 @@ public class JWTFilter extends OncePerRequestFilter {
 
     private final JWTUtil jwtUtil;
     private final CustomUserDetailService customUserDetailService;
+    private final SessionService sessionService;
 
     @Autowired
     public JWTFilter(
         TOSService tosService, @Value("${application.user.id.claim}") String userClaimId, JWTUtil jwtUtil,
-        CustomUserDetailService customUserDetailService
+        CustomUserDetailService customUserDetailService, SessionService sessionService
     ) {
         this.tosService = tosService;
         this.userClaimId = userClaimId;
         this.jwtUtil = jwtUtil;
         this.customUserDetailService = customUserDetailService;
+        this.sessionService = sessionService;
     }
 
     /**
@@ -164,8 +167,30 @@ public class JWTFilter extends OncePerRequestFilter {
                 setSecurityContextForApplication(request, customApplicationDetails);
             } else {
                 logger.info("UserID: {} is not a long term token and not a PSAMA application token.", userId);
+                String realClaimsSubject = jws.getPayload().getSubject();
+
+                Object sessionId = jws.getPayload().get("sid");
+                if (!this.sessionService.isTokenValidForCurrentSession(realClaimsSubject, sessionId)) {
+                    String reason;
+                    String message;
+                    if (sessionId == null) {
+                        reason = "missing_session_id";
+                        message = "Token has no session ID claim";
+                    } else if (!(sessionId instanceof String id) || id.isBlank()) {
+                        reason = "invalid_session_id";
+                        message = "Token has an invalid session ID claim";
+                    } else {
+                        reason = "session_ended";
+                        message = "Token is not valid for the current session";
+                    }
+                    logger.warn("Rejecting a token for subject {}: {}.", realClaimsSubject, message);
+                    sendAuthFailure(request, reason, message + " for subject: " + realClaimsSubject);
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Your session has expired. Please log in again.");
+                    return;
+                }
+
                 // Authenticate as User
-                if (!setSecurityContextForUser(request, response, jws.getPayload().getSubject())) {
+                if (!setSecurityContextForUser(request, response, realClaimsSubject)) {
                     return;
                 }
             }

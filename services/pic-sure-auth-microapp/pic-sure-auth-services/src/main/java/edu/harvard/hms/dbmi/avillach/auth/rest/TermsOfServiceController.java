@@ -11,6 +11,7 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,7 +35,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 /**
  * <p>Endpoint for creating and updating terms of service entities. Records when a user accepts a term of service.</p>
  */
-@Tag(name = "Terms of Service Management")
+@Tag(name = "Terms of Service Management", description = "Terms of service text and acceptance")
 @Controller
 @RequestMapping("/tos")
 public class TermsOfServiceController {
@@ -49,7 +50,8 @@ public class TermsOfServiceController {
         this.userService = userService;
     }
 
-    @Operation(description = "GET the latest Terms of Service")
+    @Operation(summary = "The current terms of service as HTML", description = "GET the latest Terms of Service")
+    @ApiResponse(responseCode = "200", description = "The current terms of service as HTML")
     @AuditEvent(type = "ACCESS", action = "tos.view")
     @GetMapping(path = "/latest", produces = "text/html")
     public ResponseEntity<String> getLatestTermsOfService() {
@@ -57,7 +59,8 @@ public class TermsOfServiceController {
         return PICSUREResponse.success(tosService.getLatest());
     }
 
-    @Operation(description = "Update the Terms of Service html body")
+    @Operation(summary = "Replace the terms of service", description = "Update the Terms of Service html body")
+    @ApiResponse(responseCode = "200", description = "The stored terms of service")
     @AuditEvent(type = "ADMIN", action = "tos.update")
     @RolesAllowed({AuthNaming.AuthRoleNaming.ADMIN, SUPER_ADMIN})
     @PostMapping(path = "/update", consumes = "text/html", produces = "application/json")
@@ -76,7 +79,10 @@ public class TermsOfServiceController {
         return PICSUREResponse.success(termsOfService.get());
     }
 
-    @Operation(description = "GET if current user has acceptted his TOS or not")
+    @Operation(
+        summary = "Whether the caller has accepted the current terms", description = "GET if current user has acceptted his TOS or not"
+    )
+    @ApiResponse(responseCode = "200", description = "True when the caller has accepted the current terms")
     @AuditEvent(type = "ACCESS", action = "tos.view")
     @GetMapping(produces = "text/plain")
     public ResponseEntity<Boolean> hasUserAcceptedTOS() {
@@ -87,7 +93,10 @@ public class TermsOfServiceController {
         return PICSUREResponse.success(tosService.hasUserAcceptedLatest(userSubject));
     }
 
-    @Operation(description = "Endpoint for current user to accept his terms of service")
+    @Operation(
+        summary = "Accept the current terms for the caller", description = "Endpoint for current user to accept his terms of service"
+    )
+    @ApiResponse(responseCode = "200", description = "The terms were accepted")
     @AuditEvent(type = "ACCESS", action = "tos.accept")
     @PostMapping(path = "/accept", produces = "application/json")
     public ResponseEntity<?> acceptTermsOfService(HttpServletRequest request) {
