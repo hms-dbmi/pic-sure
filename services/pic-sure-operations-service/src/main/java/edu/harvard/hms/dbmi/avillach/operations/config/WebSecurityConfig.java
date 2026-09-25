@@ -31,7 +31,8 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
  * here.</li> <li>{@code /dataset/**} -- requires an authenticated caller, i.e. the gateway supplied {@code X-User-Id}. Spring Security's
  * {@code authenticated()} already excludes the default anonymous principal (see {@code AuthenticatedAuthorizationManager}), so a request
  * with no identity is correctly rejected rather than silently treated as authenticated.</li>
- * <li>{@code GET /banners/active} is public; other {@code /banners/**} requests require {@code ADMIN} or {@code SUPER_ADMIN}.</li>
+ * <li>{@code GET /banners/active} is public; other {@code /banners/**} requests require {@code ADMIN}, {@code SUPER_ADMIN},
+ * or {@code BANNER_MANAGEMENT}.</li>
  * <li>Everything else is permitted at this
  * layer; the controllers enforce any remaining per-endpoint rules themselves: {@code @PreAuthorize} on the {@code /configuration/admin}
  * writes, which require the {@code SUPER_ADMIN} authority, and the {@code NamedDataset} owner-email check.</li> </ol>
@@ -45,6 +46,7 @@ public class WebSecurityConfig {
 
     static final String SUPER_ADMIN = "SUPER_ADMIN";
     static final String ADMIN = "ADMIN";
+    static final String BANNER_MANAGEMENT = "BANNER_MANAGEMENT";
 
     @Bean
     @Order(10) // yields /actuator/** to ActuatorSecurityConfig's @Order(0) chain.
@@ -59,7 +61,7 @@ public class WebSecurityConfig {
                     .requestMatchers(HttpMethod.GET, "/configuration", "/configuration/*").permitAll().requestMatchers("/internal/**")
                     .permitAll().requestMatchers(HttpMethod.GET, "/banners/active").permitAll()
                     .requestMatchers("/dataset/**")
-                    .authenticated().requestMatchers("/banners/**").hasAnyAuthority(ADMIN, SUPER_ADMIN).anyRequest().permitAll()
+                    .authenticated().requestMatchers("/banners/**").hasAnyAuthority(ADMIN, SUPER_ADMIN, BANNER_MANAGEMENT).anyRequest().permitAll()
             ).build();
     }
 }

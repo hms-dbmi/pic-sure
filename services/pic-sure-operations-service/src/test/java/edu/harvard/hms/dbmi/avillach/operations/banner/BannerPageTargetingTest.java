@@ -150,10 +150,14 @@ class BannerPageTargetingTest {
         publish(objectMapper.readTree("[{\"kind\":\"ALL\"}]"));
         UUID malformedUuid = UUID.fromString(malformed.get("uuid").asText());
         jdbcTemplate.update(
-            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = ?",
+            "UPDATE banner_occurrence SET page_targets = ? FORMAT JSON WHERE uuid = ?",
             storedTargets, malformedUuid
         );
         entityManager.clear();
+        String storedJson = jdbcTemplate.queryForObject(
+            "SELECT page_targets FROM banner_occurrence WHERE uuid = ?", String.class, malformedUuid
+        );
+        assertThat(objectMapper.readTree(storedJson).isArray()).isTrue();
 
         mockMvc.perform(get("/banners").headers(adminHeaders())).andExpect(status().isOk())
             .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));

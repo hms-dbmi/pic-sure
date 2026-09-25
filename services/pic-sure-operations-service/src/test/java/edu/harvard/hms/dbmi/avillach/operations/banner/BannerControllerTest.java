@@ -134,7 +134,7 @@ class BannerControllerTest {
     }
 
     @Test
-    void adminAndSuperAdminCanPublishButOtherPrivilegesCannot() throws Exception {
+    void bannerManagersAndAdminsCanPublishButOtherPrivilegesCannot() throws Exception {
         String request = publishRequest("<p>Authorized</p>", null);
 
         mockMvc.perform(
@@ -145,6 +145,15 @@ class BannerControllerTest {
             post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "super-id")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON).content(request)
         ).andExpect(status().isCreated());
+        mockMvc.perform(
+            post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "banner-manager-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "BANNER_MANAGEMENT")
+                .contentType(MediaType.APPLICATION_JSON).content(request)
+        ).andExpect(status().isCreated());
+        mockMvc.perform(
+            get("/banners").header(GatewayUserResolver.HEADER_USER_ID, "banner-manager-id")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "BANNER_MANAGEMENT")
+        ).andExpect(status().isOk());
         mockMvc.perform(
             post("/banners").header(GatewayUserResolver.HEADER_USER_ID, "researcher-id")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "PIC_SURE_ANY_QUERY").contentType(MediaType.APPLICATION_JSON)

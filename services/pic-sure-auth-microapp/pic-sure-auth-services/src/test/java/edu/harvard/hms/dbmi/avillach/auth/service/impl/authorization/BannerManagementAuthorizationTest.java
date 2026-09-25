@@ -22,6 +22,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 
@@ -43,7 +44,7 @@ class BannerManagementAuthorizationTest {
         when(sessions.isSessionExpired(anyString())).thenReturn(false);
         authorizationService = new AuthorizationService(
             new AccessRuleService(mock(AccessRuleRepository.class), "false"), sessions, mock(RoleService.class),
-            "OKTA,FENCE,OPEN,RAS", mock(UserConsentsRepository.class), false, false
+            "OKTA,FENCE,OPEN,RAS", mock(UserConsentsRepository.class), false, false, mock(ApiKeyService.class), false
         );
     }
 
