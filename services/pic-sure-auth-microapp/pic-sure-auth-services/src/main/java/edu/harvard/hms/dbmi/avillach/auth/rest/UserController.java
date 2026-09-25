@@ -44,7 +44,7 @@ public class UserController {
 
     @Operation(summary = "Read one user", description = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
     @ApiResponse(responseCode = "200", description = "The user")
-    @ApiResponse(responseCode = "400", description = "No user with that UUID")
+    @ApiResponse(responseCode = "400", description = "The id is not a UUID, or no user has it")
     @AuditEvent(type = "OTHER", action = "user.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{userId}", produces = "application/json")

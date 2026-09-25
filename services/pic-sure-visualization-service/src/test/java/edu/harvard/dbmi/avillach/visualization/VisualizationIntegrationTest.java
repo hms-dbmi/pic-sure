@@ -18,6 +18,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -95,7 +96,7 @@ class VisualizationIntegrationTest {
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         mockMvc.perform(post("/superuser/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest());
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Missing or unrecognized visualization backend"));
     }
 
     @Test
@@ -151,6 +152,13 @@ class VisualizationIntegrationTest {
             .andExpect(status().isBadRequest()).andReturn();
 
         assertTrue(result.getResponse().getContentAsString().contains("error"));
+    }
+
+    /** The v3 binning route shares its handler with {@code /bin/continuous}, so a null query field fails validation there too. */
+    @Test
+    void binContinuous_v3Route_nullQueryField_returns400() throws Exception {
+        mockMvc.perform(post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": null}"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("query: Request must contain a 'query' field"));
     }
 
     @Test

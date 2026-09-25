@@ -21,7 +21,6 @@ public class DashboardDrawerController {
 
     @Operation(summary = "Drawer detail for every study")
     @ApiResponse(responseCode = "200", description = "Drawer detail for every study")
-    @ApiResponse(responseCode = "404", description = "No dashboard drawer data configured")
     @AuditEvent(type = "OTHER", action = "dashboard_drawer.list")
     @GetMapping
     public ResponseEntity<List<DashboardDrawer>> findAll() {

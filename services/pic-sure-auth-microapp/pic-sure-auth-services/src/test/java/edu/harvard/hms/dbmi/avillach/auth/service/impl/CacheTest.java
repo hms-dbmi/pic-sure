@@ -129,6 +129,7 @@ public class CacheTest {
 
     @Test
     public void testCacheEvictionService() {
+        when(sessionService.sessionLock("test_subject")).thenReturn(new Object());
         when(mockUser.getSubject()).thenReturn("test_subject");
         Set<Privilege> mockPrivileges = new HashSet<>();
 

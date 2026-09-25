@@ -38,7 +38,6 @@ public class CacheController {
 
     @Operation(summary = "Dump one cache")
     @ApiResponse(responseCode = "200", description = "The cache's native contents")
-    @ApiResponse(responseCode = "400", description = "No cache has that name")
     @AuditEvent(type = "OTHER", action = "cache.read")
     @GetMapping("/{cacheName}")
     public Object getCache(@PathVariable("cacheName") String cacheName) {

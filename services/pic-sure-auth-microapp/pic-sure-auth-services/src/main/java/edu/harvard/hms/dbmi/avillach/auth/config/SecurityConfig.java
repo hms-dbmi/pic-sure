@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.config;
 import edu.harvard.hms.dbmi.avillach.auth.filter.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.auth.filter.JWTFilter;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,12 +34,13 @@ public class SecurityConfig {
     private final AuthenticationProvider authenticationProvider;
     private final UserService userService;
     private final JWTUtil jwtUtil;
+    private final SessionService sessionService;
     private final PublicRoutes publicRoutes;
 
     @Autowired
     public SecurityConfig(
         JWTFilter jwtFilter, AuditLoggingFilter auditLoggingFilter, AuthenticationProvider authenticationProvider, UserService userService,
-        CacheEvictionService cacheEvictionService, JWTUtil jwtUtil, PublicRoutes publicRoutes
+        CacheEvictionService cacheEvictionService, JWTUtil jwtUtil, SessionService sessionService, PublicRoutes publicRoutes
     ) {
         this.jwtFilter = jwtFilter;
         this.auditLoggingFilter = auditLoggingFilter;
@@ -46,12 +48,13 @@ public class SecurityConfig {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.cacheEvictionService = cacheEvictionService;
+        this.sessionService = sessionService;
         this.publicRoutes = publicRoutes;
     }
 
     @Bean
     public CustomLogoutHandler customLogoutHandler() {
-        return new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil);
+        return new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil, sessionService);
     }
 
     @Bean

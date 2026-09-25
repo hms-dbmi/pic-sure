@@ -39,7 +39,8 @@ class PublicRoutesBindingTest {
     void shippedRoutesAreExactlyTheReviewedList() {
         assertThat(publicRoutes.shipped()).containsExactly(
             anyMethod("/actuator/health"), anyMethod("/actuator/info"), anyMethod("/authentication"), anyMethod("/authentication/**"),
-            anyMethod("/v3/api-docs/**"), anyMethod("/tos/latest"), anyMethod("/open/validate"), anyMethod("/logout")
+            anyMethod("/v3/api-docs/**"), anyMethod("/tos/latest"), anyMethod("/open/validate"), anyMethod("/open/apiKey"),
+            anyMethod("/logout")
         );
         assertThat(publicRoutes.additional()).isEmpty();
     }
@@ -54,7 +55,7 @@ class PublicRoutesBindingTest {
     @CsvSource(
         {"GET, /actuator/health", "GET, /actuator/info", "POST, /authentication", "POST, /authentication/okta", "GET, /authentication/x/y",
             "GET, /v3/api-docs", "GET, /v3/api-docs/swagger-config", "GET, /tos/latest", "POST, /open/validate", "GET, /open/validate",
-            "POST, /logout"}
+            "POST, /open/apiKey", "POST, /logout"}
     )
     void publicRouteIsReachableWithoutAToken(String method, String path) {
         assertThat(statusWithoutToken(method, path)).isNotIn(401, 403);
@@ -66,7 +67,7 @@ class PublicRoutesBindingTest {
             "DELETE, /application/abc", "GET, /accessRule", "GET, /connection", "GET, /mapping", "GET, /tos", "POST, /tos/update",
             "POST, /tos/accept", "GET, /tos/latest/x", "POST, /token/inspect", "GET, /token/refresh", "GET, /authenticationx",
             "GET, /open/validate/x", "GET, /open", "GET, /actuator/env", "GET, /actuator", "GET, /v3/api-docsx", "GET, /cache",
-            "GET, /cache/mergedRulesCache"}
+            "GET, /cache/mergedRulesCache", "GET, /apiKey", "POST, /apiKey/platform", "GET, /open/apiKey/x"}
     )
     void protectedRequestIsRefusedWithoutAToken(String method, String path) {
         assertThat(statusWithoutToken(method, path)).isEqualTo(403);
