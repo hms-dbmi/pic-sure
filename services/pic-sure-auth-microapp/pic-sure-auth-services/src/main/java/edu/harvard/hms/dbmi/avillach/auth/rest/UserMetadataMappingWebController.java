@@ -38,7 +38,7 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "Mappings for one connection",
-        description = "GET information of one UserMetadataMapping with the UUID, requires ADMIN or SUPER_ADMIN role"
+        description = "GET information of one UserMetadataMapping with the UUID"
     )
     @ApiResponse(responseCode = "200", description = "Mappings for the named connection")
     @AuditEvent(type = "OTHER", action = "mapping.read")
@@ -51,7 +51,7 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "List every user metadata mapping",
-        description = "GET a list of existing UserMetadataMappings, requires ADMIN or SUPER_ADMIN role"
+        description = "GET a list of existing UserMetadataMappings"
     )
     @ApiResponse(responseCode = "200", description = "Every user metadata mapping")
     @AuditEvent(type = "OTHER", action = "mapping.list")
@@ -62,7 +62,7 @@ public class UserMetadataMappingWebController {
         return PICSUREResponse.success(allMappings);
     }
 
-    @Operation(summary = "Create mappings", description = "POST a list of UserMetadataMappings, requires SUPER_ADMIN role")
+    @Operation(summary = "Create mappings", description = "POST a list of UserMetadataMappings")
     @ApiResponse(responseCode = "200", description = "The created mappings")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -84,7 +84,7 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "Update the given fields of mappings",
-        description = "Update a list of UserMetadataMappings, will only update the fields listed, requires SUPER_ADMIN role"
+        description = "Update a list of UserMetadataMappings, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated mappings")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
@@ -106,7 +106,7 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "Delete a mapping that nothing references",
-        description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others, requires SUPER_ADMIN role"
+        description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others"
     )
     @ApiResponse(responseCode = "200", description = "The remaining mappings")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this mapping")

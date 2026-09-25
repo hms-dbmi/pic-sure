@@ -41,7 +41,7 @@ public class AccessRuleController {
 
     @Operation(
         summary = "Read one access rule",
-        description = "GET information of one AccessRule with the UUID, requires ADMIN or SUPER_ADMIN role"
+        description = "GET information of one AccessRule with the UUID"
     )
     @ApiResponse(responseCode = "200", description = "The access rule")
     @ApiResponse(responseCode = "404", description = "No access rule has that id")
@@ -60,7 +60,7 @@ public class AccessRuleController {
         return PICSUREResponse.success(entityById.get());
     }
 
-    @Operation(summary = "List every access rule", description = "GET a list of existing AccessRules, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "List every access rule", description = "GET a list of existing AccessRules")
     @ApiResponse(responseCode = "200", description = "Every access rule")
     @AuditEvent(type = "OTHER", action = "access_rule.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -70,7 +70,7 @@ public class AccessRuleController {
         return PICSUREResponse.success(allAccessRules);
     }
 
-    @Operation(summary = "Create access rules", description = "POST a list of AccessRules, requires SUPER_ADMIN role")
+    @Operation(summary = "Create access rules", description = "POST a list of AccessRules")
     @ApiResponse(responseCode = "200", description = "The created access rules")
     @ApiResponse(responseCode = "400", description = "No access rules were added")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
@@ -92,7 +92,7 @@ public class AccessRuleController {
 
     @Operation(
         summary = "Update the given fields of access rules",
-        description = "Update a list of AccessRules, will only update the fields listed, requires SUPER_ADMIN role"
+        description = "Update a list of AccessRules, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated access rules")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
@@ -110,7 +110,7 @@ public class AccessRuleController {
 
     @Operation(
         summary = "Delete an access rule that nothing references",
-        description = "DELETE an AccessRule by Id only if the accessRule is not associated by others, requires SUPER_ADMIN role"
+        description = "DELETE an AccessRule by Id only if the accessRule is not associated by others"
     )
     @ApiResponse(responseCode = "200", description = "The remaining access rules")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this access rule")
@@ -127,7 +127,7 @@ public class AccessRuleController {
 
     @Operation(
         summary = "The rule types an access rule may use",
-        description = "GET all types listed for the rule in accessRule that could be used, requires SUPER_ADMIN role"
+        description = "GET all types listed for the rule in accessRule that could be used"
     )
     @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values")
     @AuditEvent(type = "OTHER", action = "access_rule.types")

@@ -14,6 +14,9 @@ public class AuthNaming {
 
     /**
      * <p>Names of the admin privileges that {@code @PreAuthorize} checks on PSAMA's admin endpoints.</p>
+     * <p>These are the only authority names a {@code @PreAuthorize} guard in the reactor may use: the api-conventions rules read
+     * this class's public field names, so each field's name must equal its value. Add a field here before guarding a handler with a
+     * new authority.</p>
      */
     public static class AuthRoleNaming {
         public static final String ADMIN = "ADMIN";

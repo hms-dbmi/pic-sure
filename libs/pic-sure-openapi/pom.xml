@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>PIC-SURE OpenAPI</name>
-    <description>springdoc auto-configuration shared by every service: the info block and bearer scheme of the live OpenAPI document, plus a test-jar assertion that a document covers the service's handler map</description>
+    <description>springdoc auto-configuration shared by every service: the info block and bearer scheme of the live OpenAPI document, the authorities each handler requires through @PreAuthorize, plus a test-jar assertion that a document covers the service's handler map</description>
 
     <dependencies>
         <dependency>
@@ -25,6 +25,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-core</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
