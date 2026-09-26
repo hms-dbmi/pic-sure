@@ -5,6 +5,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -71,13 +74,33 @@ class OpenApiDocumentTest {
         assertThat(description(paths, "/accessRule", "post")).isEqualTo("POST a list of AccessRules\n\nRequired authorities: SUPER_ADMIN.");
         assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users\n\nRequired authorities: ADMIN.");
         assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user");
-        assertThat(description(paths, "/application", "get")).isEqualTo("GET a list of existing Applications");
+        assertThat(description(paths, "/application", "get"))
+            .isEqualTo("GET a list of existing Applications\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         paths.forEach(
             path -> path.forEach(
                 operation -> assertThat(operation.path("description").asText()).doesNotContainIgnoringCase("requires")
                     .doesNotContainIgnoringCase("role restrictions")
             )
         );
+    }
+
+    @Test
+    void applicationReadsDescribeTheTokenFreeShape() throws Exception {
+        JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
+        JsonNode paths = document.path("paths");
+        String displayRef = "#/components/schemas/ApplicationForDisplay";
+
+        assertThat(successSchemas(paths, "/application/{applicationId}")).isNotEmpty()
+            .allSatisfy(schema -> assertThat(schema.path("$ref").asText()).isEqualTo(displayRef));
+        assertThat(successSchemas(paths, "/application")).isNotEmpty()
+            .allSatisfy(schema -> assertThat(schema.path("items").path("$ref").asText()).isEqualTo(displayRef));
+        assertThat(document.path("components").path("schemas").path("ApplicationForDisplay").path("properties").has("token")).isFalse();
+    }
+
+    private static List<JsonNode> successSchemas(JsonNode paths, String path) {
+        List<JsonNode> schemas = new ArrayList<>();
+        paths.path(path).path("get").path("responses").path("200").path("content").forEach(media -> schemas.add(media.path("schema")));
+        return schemas;
     }
 
     private static String description(JsonNode paths, String path, String method) {
