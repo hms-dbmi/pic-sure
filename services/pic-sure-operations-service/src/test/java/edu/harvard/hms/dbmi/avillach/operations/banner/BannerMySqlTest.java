@@ -1,0 +1,409 @@
+package edu.harvard.hms.dbmi.avillach.operations.banner;
+
+import static edu.harvard.hms.dbmi.avillach.operations.banner.BannerVersionTestSupport.versionsFor;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
+import jakarta.persistence.EntityManager;
+
+@SpringBootTest(
+    properties = {"spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"}
+)
+@Testcontainers(disabledWithoutDocker = true)
+class BannerMySqlTest {
+
+    private static final GatewayUser ADMIN = new GatewayUser("admin-id", "subject", "admin@example.org", "ADMIN", Set.of("ADMIN"));
+
+    @Container
+    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4").withDatabaseName("picsure")
+        .withCommand("--log-bin-trust-function-creators=1");
+
+    @Autowired
+    private BannerPriorityAllocatorRepository allocatorRepository;
+
+    @Autowired
+    private BannerService service;
+
+    @Autowired
+    private BannerRepository bannerRepository;
+
+    @Autowired
+    private BannerVersionRepository versionRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private EntityManager entityManager;
+
+    @MockitoBean
+    private LoggingClient loggingClient;
+
+    @DynamicPropertySource
+    static void mysqlProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
+        registry.add("spring.datasource.username", MYSQL::getUsername);
+        registry.add("spring.datasource.password", MYSQL::getPassword);
+        registry.add("spring.datasource.driver-class-name", MYSQL::getDriverClassName);
+    }
+
+    @BeforeEach
+    void cleanDatabase() {
+        versionRepository.deleteAll();
+        jdbcTemplate.update("DELETE FROM banner_occurrence WHERE restored_from_uuid IS NOT NULL");
+        bannerRepository.deleteAll();
+        allocatorRepository.saveAndFlush(
+            new BannerPriorityAllocator().setId(BannerPriorityAllocator.SINGLETON_ID).setNextPriority(1)
+        );
+    }
+
+    @Test
+    void publicationCreatesOneFirstVersion() {
+        PublishBannerRequest request = new PublishBannerRequest(
+            "<p>Published banner</p>", "Published banner", BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE,
+            BannerPlacement.SITE_TOP, List.of(BannerPageTarget.all())
+        );
+
+        ManagementBannerDto published = service.publish(request, ADMIN);
+
+        assertThat(versionRepository.findAll()).singleElement().satisfies(version -> {
+            assertThat(version.getBannerUuid()).isEqualTo(published.uuid());
+            assertThat(version.getVersionNumber()).isEqualTo(1);
+            assertThat(version.getHtmlContent()).isEqualTo("<p>Published banner</p>");
+            assertThat(version.getActor()).isEqualTo("admin-id");
+        });
+
+
+    }
+
+    @Test
+    void concurrentEditsSerializeVersionNumbers() throws Exception {
+        ManagementBannerDto published = service.publish(request("<p>Initial</p>", "Initial"), ADMIN);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                start.await();
+                return service.update(published.uuid(), request("<p>First</p>", "First"), ADMIN);
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return service.update(published.uuid(), request("<p>Second</p>", "Second"), ADMIN);
+            });
+            start.countDown();
+            first.get(20, TimeUnit.SECONDS);
+            second.get(20, TimeUnit.SECONDS);
+        }
+
+        List<BannerVersion> versions = versionsFor(versionRepository, published.uuid());
+        assertThat(versions).extracting(BannerVersion::getVersionNumber).containsExactly(1, 2, 3);
+        assertThat(versions.getFirst().getHtmlContent()).isEqualTo("<p>Initial</p>");
+        assertThat(versions).extracting(BannerVersion::getHtmlContent)
+            .containsExactlyInAnyOrder("<p>Initial</p>", "<p>First</p>", "<p>Second</p>");
+        BannerOccurrence current = bannerRepository.findById(published.uuid()).orElseThrow();
+        assertThat(versions.get(2).getPresentationHash()).isEqualTo(current.getPresentationHash());
+    }
+
+    @Test
+    void concurrentPublicationsAllocateDistinctBottomPriorities() throws Exception {
+        jdbcTemplate.execute("CREATE TRIGGER delay_banner_insert BEFORE INSERT ON banner_occurrence FOR EACH ROW DO SLEEP(0.5)");
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                start.await();
+                return service.publish(request("<p>First publication</p>", "First"), ADMIN);
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return service.publish(request("<p>Second publication</p>", "Second"), ADMIN);
+            });
+            start.countDown();
+            List<Integer> priorities =
+                List.of(first.get(20, TimeUnit.SECONDS).priority(), second.get(20, TimeUnit.SECONDS).priority()).stream().sorted().toList();
+            assertThat(priorities).doesNotHaveDuplicates();
+            assertThat(priorities.get(1)).isEqualTo(priorities.getFirst() + 1);
+        } finally {
+            jdbcTemplate.execute("DROP TRIGGER IF EXISTS delay_banner_insert");
+        }
+    }
+
+    @Test
+    void laterConcurrentReorderControlsTheFinalSharedMemberOrder() throws Exception {
+        ManagementBannerDto first = service.publish(request("<p>First</p>", "First"), ADMIN);
+        ManagementBannerDto second = service.publish(request("<p>Second</p>", "Second"), ADMIN);
+        ManagementBannerDto third = service.publish(request("<p>Third</p>", "Third"), ADMIN);
+        installDelayedReorderTrigger();
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var earlier = executor.submit(() -> service.reorder(List.of(third.uuid(), first.uuid(), second.uuid()), ADMIN));
+            awaitActiveMySqlTransaction();
+            var later = executor.submit(() -> service.reorder(List.of(second.uuid(), third.uuid(), first.uuid()), ADMIN));
+
+            assertThat(earlier.get(20, TimeUnit.SECONDS)).extracting(ManagementBannerDto::uuid)
+                .containsExactly(third.uuid(), first.uuid(), second.uuid());
+            assertThat(later.get(20, TimeUnit.SECONDS)).extracting(ManagementBannerDto::uuid)
+                .containsExactly(second.uuid(), third.uuid(), first.uuid());
+        } finally {
+            removeDelayedReorderTrigger();
+        }
+
+        assertThat(service.managedBanners()).filteredOn(banner -> banner.lifecycle() == BannerLifecycle.ACTIVE)
+            .extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), third.uuid(), first.uuid());
+    }
+
+    @Test
+    void publicationWaitsForAnOverlappingReorderAndAllocatesAfterItsCanonicalQueue() throws Exception {
+        ManagementBannerDto first = service.publish(request("<p>First</p>", "First"), ADMIN);
+        ManagementBannerDto second = service.publish(request("<p>Second</p>", "Second"), ADMIN);
+        installDelayedReorderTrigger();
+
+        ManagementBannerDto arrival;
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var reorder = executor.submit(() -> service.reorder(List.of(second.uuid(), first.uuid()), ADMIN));
+            awaitActiveMySqlTransaction();
+            var publish = executor.submit(() -> service.publish(request("<p>Arrival</p>", "Arrival"), ADMIN));
+
+            assertThat(reorder.get(20, TimeUnit.SECONDS)).extracting(ManagementBannerDto::uuid)
+                .containsExactly(second.uuid(), first.uuid());
+            arrival = publish.get(20, TimeUnit.SECONDS);
+        } finally {
+            removeDelayedReorderTrigger();
+        }
+
+        assertThat(service.managedBanners()).filteredOn(banner -> banner.lifecycle() == BannerLifecycle.ACTIVE)
+            .extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), first.uuid(), arrival.uuid());
+        assertThat(arrival.priority()).isEqualTo(3);
+    }
+
+    @Test
+    void concurrentRestoresOfTheSameSourceAllowExactlyOneNewOccurrence() throws Exception {
+        ManagementBannerDto published = service.publish(request("<p>Source</p>", "Source"), ADMIN);
+        service.disable(published.uuid(), ADMIN);
+        CountDownLatch start = new CountDownLatch(1);
+        int successes = 0;
+        int conflicts = 0;
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                start.await();
+                return service.restore(published.uuid(), request("<p>First restore</p>", "First restore"), ADMIN);
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return service.restore(published.uuid(), request("<p>Second restore</p>", "Second restore"), ADMIN);
+            });
+            start.countDown();
+            for (var future : List.of(first, second)) {
+                try {
+                    future.get(20, TimeUnit.SECONDS);
+                    successes++;
+                } catch (ExecutionException e) {
+                    assertThat(e.getCause()).isInstanceOf(edu.harvard.hms.dbmi.avillach.commons.error.PicsureException.class);
+                    conflicts++;
+                }
+            }
+        }
+
+        assertThat(successes).isOne();
+        assertThat(conflicts).isOne();
+        assertThat(bannerRepository.findById(published.uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
+        assertThat(bannerRepository.findAll()).filteredOn(banner -> published.uuid().equals(banner.getRestoredFromUuid())).hasSize(1);
+    }
+
+    @Test
+    void staleReorderWaitsForRestoreThenOmitsTheArchivedSourceAndAppendsTheDestination() throws Exception {
+        ManagementBannerDto first = service.publish(request("<p>First</p>", "First"), ADMIN);
+        ManagementBannerDto second = service.publish(request("<p>Second</p>", "Second"), ADMIN);
+        ManagementBannerDto source = service.publish(request("<p>Source</p>", "Source"), ADMIN);
+        service.disable(source.uuid(), ADMIN);
+        installDelayedRestoreInsertTrigger();
+
+        ManagementBannerDto destination;
+        List<ManagementBannerDto> reordered;
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var restore = executor.submit(() -> service.restore(source.uuid(), request("<p>Restored</p>", "Restored"), ADMIN));
+            awaitRestoreInsert();
+            var staleReorder = executor.submit(() -> service.reorder(List.of(second.uuid(), source.uuid(), first.uuid()), ADMIN));
+
+            destination = restore.get(20, TimeUnit.SECONDS);
+            reordered = staleReorder.get(20, TimeUnit.SECONDS);
+        } finally {
+            removeDelayedRestoreInsertTrigger();
+        }
+
+        assertThat(reordered).extracting(ManagementBannerDto::uuid)
+            .containsExactly(second.uuid(), first.uuid(), destination.uuid());
+        assertThat(bannerRepository.findById(source.uuid()).orElseThrow().getStatus()).isEqualTo(BannerStatus.ARCHIVED);
+        assertThat(service.managedBanners()).filteredOn(banner -> banner.lifecycle() == BannerLifecycle.ACTIVE)
+            .extracting(ManagementBannerDto::uuid).containsExactly(second.uuid(), first.uuid(), destination.uuid());
+        assertThat(destination.priority()).isGreaterThan(first.priority());
+    }
+
+    @Test
+    void malformedAndUnknownStoredTargetsAreOmittedWithoutTakingListsDown() {
+        ManagementBannerDto valid = service.publish(
+            request("<p>Valid targeted</p>", "Valid targeted", List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help"))), ADMIN
+        );
+        ManagementBannerDto malformed = service.publish(request("<p>Malformed</p>", "Malformed"), ADMIN);
+        ManagementBannerDto unknown = service.publish(request("<p>Unknown</p>", "Unknown"), ADMIN);
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", "[\"legacy\"]",
+            malformed.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_version SET page_targets = CAST(? AS JSON) WHERE banner_uuid = UUID_TO_BIN(?)", "[\"legacy\"]",
+            malformed.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)",
+            "[{\"kind\":\"FUTURE\",\"path\":\"/future\"}]", unknown.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_version SET page_targets = CAST(? AS JSON) WHERE banner_uuid = UUID_TO_BIN(?)",
+            "[{\"kind\":\"FUTURE\",\"path\":\"/future\"}]", unknown.uuid().toString()
+        );
+        entityManager.clear();
+
+        assertThat(service.managedBanners()).extracting(ManagementBannerDto::uuid).containsExactly(valid.uuid());
+        assertThat(service.activeBanners()).extracting(ActiveBannerDto::uuid).containsExactly(valid.uuid());
+        assertThat(versionRepository.findAll()).filteredOn(version -> !version.getBannerUuid().equals(valid.uuid()))
+            .allSatisfy(version -> assertThat(version.getPageTargets()).isNull());
+    }
+
+    @Test
+    void malformedAndUnknownStoredTargetsDoNotPreventCanonicalReorder() {
+        ManagementBannerDto first = service.publish(request("<p>First valid</p>", "First valid"), ADMIN);
+        ManagementBannerDto malformed = service.publish(request("<p>Malformed</p>", "Malformed"), ADMIN);
+        ManagementBannerDto unknown = service.publish(request("<p>Unknown</p>", "Unknown"), ADMIN);
+        ManagementBannerDto second = service.publish(request("<p>Second valid</p>", "Second valid"), ADMIN);
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)", "[\"legacy\"]",
+            malformed.uuid().toString()
+        );
+        jdbcTemplate.update(
+            "UPDATE banner_occurrence SET page_targets = CAST(? AS JSON) WHERE uuid = UUID_TO_BIN(?)",
+            "[{\"kind\":\"FUTURE\",\"path\":\"/future\"}]", unknown.uuid().toString()
+        );
+        entityManager.clear();
+
+        assertThat(service.reorder(List.of(second.uuid(), first.uuid()), ADMIN)).extracting(ManagementBannerDto::uuid)
+            .containsExactly(second.uuid(), first.uuid());
+        assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT BIN_TO_UUID(uuid) FROM banner_occurrence WHERE status = 'PUBLISHED' ORDER BY priority", String.class
+            )
+        ).containsExactly(
+            second.uuid().toString(), first.uuid().toString(), malformed.uuid().toString(), unknown.uuid().toString()
+        );
+    }
+
+    @Test
+    void currentTargetedJsonRoundTripsThroughOccurrenceVersionAndFeed() {
+        ManagementBannerDto published = service.publish(
+            request(
+                "<p>Current targeted</p>", "Current targeted",
+                List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help /"))
+            ),
+            ADMIN
+        );
+        entityManager.clear();
+        List<BannerPageTarget> expected = List.of(new BannerPageTarget(BannerPageTargetKind.EXACT, "/help"));
+
+        assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(page_targets, '$[0].path')) FROM banner_occurrence WHERE uuid = UUID_TO_BIN(?)",
+                String.class, published.uuid().toString()
+            )
+        ).isEqualTo("/help");
+        assertThat(bannerRepository.findById(published.uuid()).orElseThrow().getPageTargets()).isEqualTo(expected);
+        assertThat(versionRepository.findAll()).singleElement().extracting(BannerVersion::getPageTargets).isEqualTo(expected);
+        assertThat(service.activeBanners()).singleElement().extracting(ActiveBannerDto::pageTargets).isEqualTo(expected);
+    }
+
+    private void awaitActiveMySqlTransaction() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Integer signaled = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM banner_reorder_test_signal", Integer.class);
+            if (signaled != null && signaled > 0) return;
+            Thread.sleep(10);
+        }
+        throw new AssertionError("Timed out waiting for the overlapping MySQL transaction");
+    }
+
+    private void installDelayedReorderTrigger() {
+        jdbcTemplate.execute("CREATE TABLE banner_reorder_test_signal (id INT PRIMARY KEY) ENGINE=MyISAM");
+        jdbcTemplate.execute("""
+            CREATE TRIGGER delay_banner_reorder BEFORE UPDATE ON banner_occurrence FOR EACH ROW
+            BEGIN
+              INSERT IGNORE INTO banner_reorder_test_signal VALUES (1);
+              DO SLEEP(0.2);
+            END
+            """);
+    }
+
+    private void removeDelayedReorderTrigger() {
+        jdbcTemplate.execute("DROP TRIGGER IF EXISTS delay_banner_reorder");
+        jdbcTemplate.execute("DROP TABLE IF EXISTS banner_reorder_test_signal");
+    }
+
+    private void awaitRestoreInsert() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Integer signaled = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM banner_restore_test_signal", Integer.class);
+            if (signaled != null && signaled > 0) return;
+            Thread.sleep(10);
+        }
+        throw new AssertionError("Timed out waiting for the overlapping restore transaction");
+    }
+
+    private void installDelayedRestoreInsertTrigger() {
+        jdbcTemplate.execute("CREATE TABLE banner_restore_test_signal (id INT PRIMARY KEY) ENGINE=MyISAM");
+        jdbcTemplate.execute("""
+            CREATE TRIGGER delay_banner_restore_insert BEFORE INSERT ON banner_occurrence FOR EACH ROW
+            BEGIN
+              INSERT IGNORE INTO banner_restore_test_signal VALUES (1);
+              DO SLEEP(0.2);
+            END
+            """);
+    }
+
+    private void removeDelayedRestoreInsertTrigger() {
+        jdbcTemplate.execute("DROP TRIGGER IF EXISTS delay_banner_restore_insert");
+        jdbcTemplate.execute("DROP TABLE IF EXISTS banner_restore_test_signal");
+    }
+
+    private PublishBannerRequest request(String htmlContent, String title) {
+        return request(htmlContent, title, List.of(BannerPageTarget.all()));
+    }
+
+    private PublishBannerRequest request(String htmlContent, String title, List<BannerPageTarget> pageTargets) {
+        return new PublishBannerRequest(
+            htmlContent, title, BannerAppearance.PRIMARY, BannerIcon.INFORMATION, true, BannerAudience.EVERYONE, BannerPlacement.SITE_TOP,
+            pageTargets
+        );
+    }
+
+
+}
