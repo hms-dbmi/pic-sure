@@ -25,12 +25,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -331,10 +333,10 @@ class DocumentedErrorResponsesTest {
     }
 
     /**
-     * The cache inspection controller only exists when {@code app.cache.inspect.enabled} is true, so its case runs in a context of its own
+     * The cache inspection controller only exists when {@code app.cache.inspect.enabled} is true, so its cases run in a context of its own
      * with a separate in-memory database. PSAMA uses Spring Boot's simple cache manager without {@code spring.cache.cache-names}, which
-     * creates any cache it is asked for, so the controller's "cache not found" branch cannot run and the endpoint declares no 400. The
-     * endpoint needs an authenticated caller and no particular role, so the request carries a test user rather than a JWT.
+     * creates any cache it is asked for, so the controller's "cache not found" branch cannot run and the endpoint declares no 400. Both
+     * reads admit only {@code SUPER_ADMIN}, so requests carry a test user holding a single authority rather than a JWT.
      */
     @Nested
     @TestPropertySource(
@@ -348,8 +350,40 @@ class DocumentedErrorResponsesTest {
 
         @Test
         void unknownCacheNameReturnsANewEmptyCache() throws Exception {
-            cacheInspectionMockMvc.perform(anonymous(HttpMethod.GET, "/cache/{name}", "nope").with(user("cache-inspector")))
+            cacheInspectionMockMvc
+                .perform(anonymous(HttpMethod.GET, "/cache/{name}", "nope").with(holding(AuthNaming.AuthRoleNaming.SUPER_ADMIN)))
                 .andExpect(status().isOk()).andExpect(content().json("{}"));
+        }
+
+        @Test
+        void superAdminCanListCacheNames() throws Exception {
+            cacheInspectionMockMvc.perform(anonymous(HttpMethod.GET, "/cache").with(holding(AuthNaming.AuthRoleNaming.SUPER_ADMIN)))
+                .andExpect(status().isOk());
+        }
+
+        @Test
+        void superAdminCanDumpTheSessionsCache() throws Exception {
+            cacheInspectionMockMvc
+                .perform(anonymous(HttpMethod.GET, "/cache/{name}", "sessions").with(holding(AuthNaming.AuthRoleNaming.SUPER_ADMIN)))
+                .andExpect(status().isOk());
+        }
+
+        @Test
+        void adminCannotListCacheNames() throws Exception {
+            cacheInspectionMockMvc.perform(anonymous(HttpMethod.GET, "/cache").with(holding(AuthNaming.AuthRoleNaming.ADMIN)))
+                .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void adminCannotDumpTheSessionsCache() throws Exception {
+            cacheInspectionMockMvc
+                .perform(anonymous(HttpMethod.GET, "/cache/{name}", "sessions").with(holding(AuthNaming.AuthRoleNaming.ADMIN)))
+                .andExpect(status().isForbidden());
+        }
+
+        /** An authenticated test user whose only granted authority is {@code authority}. */
+        RequestPostProcessor holding(String authority) {
+            return user("cache-inspector").authorities(new SimpleGrantedAuthority(authority));
         }
     }
 

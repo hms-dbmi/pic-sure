@@ -25,14 +25,16 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
  * summarised operation. An endpoint cannot vanish from the document, and the annotation pass cannot skip one, without failing here. This is
  * also PSAMA's first test to boot the full application context: an in-memory H2 schema stands in for MySQL, and {@code NON_KEYWORDS}
  * excuses the columns Hibernate would otherwise refuse because H2 reserves their names. Required authorities appear in a description only as
- * the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose.
+ * the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose. The cache inspection controller is
+ * switched on so its operations are covered too.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
     properties = {"spring.datasource.url=jdbc:h2:mem:psama-openapi;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=USER,VALUE,KEY",
         "spring.datasource.driver-class-name=org.h2.Driver", "spring.datasource.username=sa", "spring.datasource.password=",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect", "spring.jpa.hibernate.ddl-auto=create-drop",
-        "APPLICATION_CLIENT_SECRET=openapi-test-placeholder-secret", "management.endpoints.web.exposure.include=none"}
+        "APPLICATION_CLIENT_SECRET=openapi-test-placeholder-secret", "management.endpoints.web.exposure.include=none",
+        "app.cache.inspect.enabled=true"}
 )
 @AutoConfigureMockMvc
 class OpenApiDocumentTest {
