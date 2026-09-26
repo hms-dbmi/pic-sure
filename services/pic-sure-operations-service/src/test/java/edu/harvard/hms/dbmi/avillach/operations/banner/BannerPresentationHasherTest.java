@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,7 +15,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class BannerPresentationHasherTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final BannerPresentationHasher hasher = new BannerPresentationHasher(objectMapper);
+    private final BannerPresentationHasher hasher = new BannerPresentationHasher();
+
+    @Test
+    void applicationSerializationSettingsDoNotChangePersistedHashes() throws Exception {
+        BannerOccurrence banner = occurrence(request("<p>Exact  bytes</p>", " Notice ",
+            "[{\"kind\":\"EXACT\",\"path\":\"/help/\"}]"));
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(ObjectMapper.class,
+                () -> new ObjectMapper().enable(SerializationFeature.WRITE_ENUMS_USING_INDEX));
+            context.registerBean(BannerPresentationHasher.class);
+            context.refresh();
+            assertThat(context.getBean(ObjectMapper.class).writeValueAsString(BannerPageTargetKind.EXACT)).doesNotContain("EXACT");
+            assertThat(context.getBean(BannerPresentationHasher.class).hash(banner))
+                .isEqualTo("a57a362055168ce255c3a2e7665af1185383f15cd2bd22ab1500fbacdd94d42e");
+        }
+    }
 
     @Test
     void hashUsesExactHtmlBytesAndNormalizedStructuredFields() throws Exception {

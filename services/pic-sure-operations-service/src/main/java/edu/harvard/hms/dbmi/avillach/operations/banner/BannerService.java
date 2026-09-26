@@ -86,7 +86,7 @@ public class BannerService {
             .setUpdatedAt(now).setUpdatedBy(actor).setStartAt(request.startAt()).setEndAt(request.endAt());
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
-        auditService.registerMutationAudit(BannerAuditService.SAVED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(BannerAuditAction.SAVED, saved.getUuid(), now, saved.getPresentationHash(), actor);
         return managementDto(saved, now);
     }
 
@@ -207,7 +207,7 @@ public class BannerService {
         BannerOccurrence saved = repository.saveAndFlush(
             banner.setStatus(BannerStatus.DISABLED).setDisabledAt(now).setDisabledBy(actor).setUpdatedAt(now).setUpdatedBy(actor)
         );
-        auditService.registerMutationAudit(BannerAuditService.DISABLED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(BannerAuditAction.DISABLED, saved.getUuid(), now, saved.getPresentationHash(), actor);
         return managementDto(saved, now);
     }
 
@@ -223,7 +223,7 @@ public class BannerService {
 
         String actor = user.getUserId();
         BannerOccurrence saved = markArchived(banner, now, actor);
-        auditService.registerMutationAudit(BannerAuditService.ARCHIVED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(BannerAuditAction.ARCHIVED, saved.getUuid(), now, saved.getPresentationHash(), actor);
         return ArchivedBannerDto.from(saved);
     }
 
@@ -241,7 +241,7 @@ public class BannerService {
         apply(request, banner).setStartAt(request.startAt()).setEndAt(request.endAt()).setUpdatedAt(now).setUpdatedBy(actor);
         banner.setPresentationHash(hasher.hash(banner));
         BannerOccurrence saved = repository.saveAndFlush(banner);
-        auditService.registerMutationAudit(BannerAuditService.UPDATED_ACTION, saved.getUuid(), now, saved.getPresentationHash(), actor);
+        auditService.registerMutationAudit(BannerAuditAction.UPDATED, saved.getUuid(), now, saved.getPresentationHash(), actor);
         return managementDto(saved, now);
     }
 
@@ -348,8 +348,8 @@ public class BannerService {
         return request.startAt() == null ? now : request.startAt();
     }
 
-    private static String publicationAction(Instant startAt, Instant now) {
-        return startAt.isAfter(now) ? BannerAuditService.SCHEDULED_ACTION : BannerAuditService.PUBLISHED_ACTION;
+    private static BannerAuditAction publicationAction(Instant startAt, Instant now) {
+        return startAt.isAfter(now) ? BannerAuditAction.SCHEDULED : BannerAuditAction.PUBLISHED;
     }
 
     private static BannerOccurrence apply(PublishBannerRequest request, BannerOccurrence banner) {

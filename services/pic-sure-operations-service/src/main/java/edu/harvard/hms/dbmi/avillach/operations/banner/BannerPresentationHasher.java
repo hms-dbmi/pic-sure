@@ -13,15 +13,12 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
 @Component
 public class BannerPresentationHasher {
 
-    private final ObjectMapper objectMapper;
-
-    public BannerPresentationHasher(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
+    private static final ObjectMapper CANONICAL_MAPPER = JsonMapper.builder().build();
 
     public String hash(BannerOccurrence banner) {
         if (banner == null) {
@@ -62,7 +59,7 @@ public class BannerPresentationHasher {
 
     private String canonicalJson(List<BannerPageTarget> value) {
         try {
-            return objectMapper.writeValueAsString(value);
+            return CANONICAL_MAPPER.writeValueAsString(value);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Page targets cannot be normalized", e);
         }
