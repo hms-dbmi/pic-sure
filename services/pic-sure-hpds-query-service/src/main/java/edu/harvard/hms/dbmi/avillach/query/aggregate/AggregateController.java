@@ -16,7 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * The aggregate/obfuscation ingress: {@code POST /hpds/open/query/sync} and {@code POST /hpds/open/query}. {@link AggregateService} injects
- * the study-consents allow-list into the query's {@code select} field and calls HPDS on its {@code /v3} routes. The gateway audits both
+ * the study-consents allow-list into the query's {@code select} field and calls HPDS under its configured API path. The gateway audits both
  * paths; this controller does not emit audit events directly. There is no
  * {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here because {@code WebSecurityConfig} already requires an
  * authenticated caller for all of {@code /hpds/**}; "open" names the HPDS backend that answers, not an unauthenticated route.

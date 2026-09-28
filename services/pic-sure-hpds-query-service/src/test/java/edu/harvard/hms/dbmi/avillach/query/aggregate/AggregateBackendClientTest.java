@@ -90,6 +90,21 @@ class AggregateBackendClientTest {
     }
 
     @Test
+    void emptyApiPathSendsSearchAndSyncToTheBaseUrl() {
+        AggregateProperties props = properties();
+        props.setHpdsApiPath("");
+        AggregateBackendClient c = new AggregateBackendClient(RestClient.builder().build(), props);
+        hpds.stubFor(post(urlEqualTo("/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
+        hpds.stubFor(post(urlEqualTo("/query/sync")).willReturn(okJson("{}")));
+
+        c.search(req("\\_studies_consents\\"));
+        c.querySync(req("{}"));
+
+        hpds.verify(postRequestedFor(urlEqualTo("/search")));
+        hpds.verify(postRequestedFor(urlEqualTo("/query/sync")));
+    }
+
+    @Test
     void nonTwoxxResponseThrowsHpdsCommunicationException() {
         hpds.stubFor(post(urlEqualTo("/v3/query/sync")).willReturn(aResponse().withStatus(500)));
         assertThatThrownBy(() -> client().querySync(req("{}"))).isInstanceOf(HpdsCommunicationException.class);

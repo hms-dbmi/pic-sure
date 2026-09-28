@@ -17,7 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * Exposes search for each {@code {backend}} at {@code /hpds/{backend}/search} and {@code /hpds/{backend}/search/values}, routing through
- * {@link SearchService} to the {@code /v3} base URL of that backend's own HPDS instance.
+ * {@link SearchService} to the API base URL ({@code HPDS_API_PATH} appended) of that backend's own HPDS instance.
  */
 @RestController
 @Tag(name = "Search", description = "Concept search and value lookup on an HPDS backend")

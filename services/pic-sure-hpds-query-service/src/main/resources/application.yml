@@ -17,6 +17,7 @@ hpds:
   # In AIO both HPDS_* URL vars point at the same HPDS instance.
   open-url: ${HPDS_OPEN_URL:}
   open-token: ${HPDS_OPEN_TOKEN:}
+  api-path: ${HPDS_API_PATH:/v3}
 
 psama:
   base-url: ${PSAMA_URL:}
@@ -49,6 +50,7 @@ aggregate:
   # reused here so the aggregate obfuscation path talks to the same open HPDS backend.
   hpds-open-url: ${HPDS_OPEN_URL:}
   hpds-open-token: ${HPDS_OPEN_TOKEN:}
+  hpds-api-path: ${HPDS_API_PATH:/v3}
   # VISUALIZATION_URL: base URL of the visualization service. Blank = no binning configured
   # (continuous cross-count obfuscation falls back to raw per-value counts).
   visualization-url: ${VISUALIZATION_URL:}

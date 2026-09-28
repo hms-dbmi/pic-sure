@@ -14,8 +14,8 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * Executes search and concept-value requests against the backend selected by the ingress {@code {backend}} path segment through
  * {@link HpdsBackendSelector}.
  *
- * <p>Each call goes to the {@code /v3} base URL of the selected backend's HPDS instance. The {@code auth} and {@code open} backends are
- * separate HPDS instances, so the two backends never share a downstream endpoint.
+ * <p>Each call goes to the API base URL ({@code HPDS_API_PATH} appended) of the selected backend's HPDS instance. The {@code auth} and
+ * {@code open} backends are separate HPDS instances, so the two backends never share a downstream endpoint.
  *
  * <p>Search and values calls carry no service token: {@link ResourceWebClient#search} and {@link ResourceWebClient#searchConceptValues}
  * take a plain base URL string (not an {@code HpdsTarget}), so the per-backend service token resolved by {@link HpdsBackendSelector} is

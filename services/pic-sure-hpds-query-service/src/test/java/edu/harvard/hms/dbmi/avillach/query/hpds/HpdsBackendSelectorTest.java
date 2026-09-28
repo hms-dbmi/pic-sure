@@ -61,4 +61,22 @@ class HpdsBackendSelectorTest {
 
         assertThat(thrown.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
     }
+
+    @Test
+    void configuredApiPathReplacesTheV3Default() {
+        HpdsProperties p = new HpdsProperties();
+        p.setAuthUrl("http://hpds-auth:8080/PIC-SURE");
+        p.setApiPath("/v4");
+
+        assertThat(new HpdsBackendSelector(p).select("auth").baseUrl()).isEqualTo("http://hpds-auth:8080/PIC-SURE/v4");
+    }
+
+    @Test
+    void emptyApiPathTargetsTheBaseUrlItself() {
+        HpdsProperties p = new HpdsProperties();
+        p.setAuthUrl("http://hpds-auth:8080/PIC-SURE");
+        p.setApiPath("");
+
+        assertThat(new HpdsBackendSelector(p).select("auth").baseUrl()).isEqualTo("http://hpds-auth:8080/PIC-SURE");
+    }
 }
