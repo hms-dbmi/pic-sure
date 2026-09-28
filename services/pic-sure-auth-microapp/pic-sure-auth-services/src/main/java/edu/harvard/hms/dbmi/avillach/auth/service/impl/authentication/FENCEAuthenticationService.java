@@ -41,6 +41,7 @@ public class FENCEAuthenticationService implements AuthenticationService {
                                                           // versioned as well.
     private final FenceMappingUtility fenceMappingUtility;
     private final CacheEvictionService cacheEvictionService;
+    private final SessionService sessionService;
 
     private Connection fenceConnection;
 
@@ -57,7 +58,7 @@ public class FENCEAuthenticationService implements AuthenticationService {
         UserService userService, ConnectionWebService connectionService, RestClientUtil restClientUtil,
         @Value("${fence.idp.provider.is.enabled}") boolean isFenceEnabled, @Value("${fence.idp.provider.uri}") String idpProviderUri,
         @Value("${fence.client.id}") String fenceClientId, @Value("${fence.client.secret}") String fenceClientSecret,
-        FenceMappingUtility fenceMappingUtility, CacheEvictionService cacheEvictionService
+        FenceMappingUtility fenceMappingUtility, CacheEvictionService cacheEvictionService, SessionService sessionService
     ) {
         this.userService = userService;
         this.connectionService = connectionService;
@@ -68,6 +69,7 @@ public class FENCEAuthenticationService implements AuthenticationService {
         this.fenceMappingUtility = fenceMappingUtility;
         this.isFenceEnabled = isFenceEnabled;
         this.cacheEvictionService = cacheEvictionService;
+        this.sessionService = sessionService;
     }
 
     @PostConstruct
@@ -129,57 +131,59 @@ public class FENCEAuthenticationService implements AuthenticationService {
             logger.info(
                 "getFENCEProfile() saved details for user with e-mail:{} and subject:{}", currentUser.getEmail(), currentUser.getSubject()
             );
-            cacheEvictionService.evictCache(currentUser);
         } catch (Exception ex) {
             logger.error("getFENCEToken() Could not persist the user information, because {}", ex.getMessage());
             throw new NotAuthorizedException("The user details could not be persisted. Please contact the administrator.");
         }
 
-        // Update the user's roles (or create them if none exists)
-        Iterator<String> project_access_names = fence_user_profile.get("authz").fieldNames();
-        Set<String> userConsentStrings = new HashSet<>();
-        project_access_names.forEachRemaining(roleName -> {
-            // We need to add/remove the users roles based on what is in the project_access_names list
-            StudyMetaData projectMetadata = this.fenceMappingUtility.getFenceMappingByAuthZ().get(roleName);
-            if (projectMetadata == null) {
-                logger.error("getFENCEProfile() -> createAndUpsertRole could not find study in FENCE mapping SKIPPING: {}", roleName);
-                return;
+        synchronized (sessionService.sessionLock(currentUser.getSubject())) {
+            cacheEvictionService.evictCache(currentUser);
+            // Update the user's roles (or create them if none exists)
+            Iterator<String> project_access_names = fence_user_profile.get("authz").fieldNames();
+            Set<String> userConsentStrings = new HashSet<>();
+            project_access_names.forEachRemaining(roleName -> {
+                // We need to add/remove the users roles based on what is in the project_access_names list
+                StudyMetaData projectMetadata = this.fenceMappingUtility.getFenceMappingByAuthZ().get(roleName);
+                if (projectMetadata == null) {
+                    logger.error("getFENCEProfile() -> createAndUpsertRole could not find study in FENCE mapping SKIPPING: {}", roleName);
+                    return;
+                }
+
+                String projectId = projectMetadata.getStudyIdentifier();
+                String consentCode = projectMetadata.getConsentGroupCode();
+                String userConsent = projectId;
+                if (consentCode != null && !consentCode.isEmpty()) {
+                    userConsent += "." + consentCode;
+                }
+                userConsentStrings.add(userConsent);
+            });
+
+            userService.updateUserConsents(currentUser, userConsentStrings);
+
+
+            currentUser = userService.ensureBaselineRoles(currentUser);
+            UserClaims userClaims = new UserClaims();
+            userClaims.setUuid(currentUser.getUuid().toString());
+            userClaims.setSub(currentUser.getSubject());
+            userClaims.setEmail(currentUser.getEmail());
+            userClaims.setName(fence_user_profile.has("name") ? fence_user_profile.get("name").asText() : currentUser.getName());
+            userClaims.setIdp(this.fenceConnection.getLabel());
+            userClaims.setRoles(userService.addRoleClaims(currentUser));
+            HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
+
+            if (responseMap != null) {
+                logger.info(
+                    "LOGIN SUCCESS ___ {}:{}:{} ___ WITH ROLES ___ {} ___ Authorization will expire at  ___ {}___", currentUser.getEmail(),
+                    currentUser.getUuid().toString(), currentUser.getSubject(),
+                    currentUser.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
+                    responseMap.get("expirationDate")
+                );
+                logger.debug("getFENCEProfile() UserProfile response object has been generated");
+                logger.debug("getFENCEToken() finished");
             }
 
-            String projectId = projectMetadata.getStudyIdentifier();
-            String consentCode = projectMetadata.getConsentGroupCode();
-            String userConsent = projectId;
-            if (consentCode != null && !consentCode.isEmpty()) {
-                userConsent += "." + consentCode;
-            }
-            userConsentStrings.add(userConsent);
-        });
-
-        userService.updateUserConsents(currentUser, userConsentStrings);
-
-
-        currentUser = userService.ensureBaselineRoles(currentUser);
-        UserClaims userClaims = new UserClaims();
-        userClaims.setUuid(currentUser.getUuid().toString());
-        userClaims.setSub(currentUser.getSubject());
-        userClaims.setEmail(currentUser.getEmail());
-        userClaims.setName(fence_user_profile.has("name") ? fence_user_profile.get("name").asText() : currentUser.getName());
-        userClaims.setIdp(this.fenceConnection.getLabel());
-        userClaims.setRoles(userService.addRoleClaims(currentUser));
-        HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
-
-        if (responseMap != null) {
-            logger.info(
-                "LOGIN SUCCESS ___ {}:{}:{} ___ WITH ROLES ___ {} ___ Authorization will expire at  ___ {}___", currentUser.getEmail(),
-                currentUser.getUuid().toString(), currentUser.getSubject(),
-                currentUser.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                responseMap.get("expirationDate")
-            );
-            logger.debug("getFENCEProfile() UserProfile response object has been generated");
-            logger.debug("getFENCEToken() finished");
+            return responseMap;
         }
-
-        return responseMap;
     }
 
 

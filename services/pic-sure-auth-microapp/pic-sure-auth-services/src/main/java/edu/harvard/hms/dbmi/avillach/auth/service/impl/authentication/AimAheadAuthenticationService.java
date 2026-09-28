@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
@@ -36,6 +37,7 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
     private final boolean isOktaEnabled;
 
     private final CacheEvictionService cacheEvictionService;
+    private final SessionService sessionService;
 
     /**
      * Constructor for the OktaOAuthAuthenticationService
@@ -54,7 +56,7 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
                                          @Value("${a4.okta.idp.provider.uri}") String idp_provider_uri,
                                          @Value("${a4.okta.connection.id}") String connectionId,
                                          @Value("${a4.okta.client.id}") String clientId,
-                                         @Value("${a4.okta.client.secret}") String spClientSecret, CacheEvictionService cacheEvictionService) {
+                                         @Value("${a4.okta.client.secret}") String spClientSecret, CacheEvictionService cacheEvictionService, SessionService sessionService) {
         super(idp_provider_uri, clientId, spClientSecret, restClientUtil);
 
         this.userService = userService;
@@ -62,6 +64,7 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
         this.connectionId = connectionId;
         this.isOktaEnabled = isOktaEnabled;
         this.cacheEvictionService = cacheEvictionService;
+        this.sessionService = sessionService;
 
         logger.info("OktaOAuthAuthenticationService is enabled: {}", isOktaEnabled);
         logger.info("OktaOAuthAuthenticationService initialized");
@@ -92,13 +95,16 @@ JsonNode introspectResponse = super.introspectToken(userToken);
                 return null;
             }
 
-            HashMap<String, String> responseMap = createUserClaims(user);
-            if (responseMap != null) {
-                logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
-                responseMap.put("oktaIdToken", userToken.get("id_token").asText());
-            }
+            synchronized (sessionService.sessionLock(user.getSubject())) {
+                cacheEvictionService.evictCache(user);
+                HashMap<String, String> responseMap = createUserClaims(user);
+                if (responseMap != null) {
+                    logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
+                    responseMap.put("oktaIdToken", userToken.get("id_token").asText());
+                }
 
-            return responseMap;
+                return responseMap;
+            }
         }
 
         logger.info("LOGIN FAILED ___ USER NOT AUTHENTICATED ___");
@@ -127,13 +133,7 @@ JsonNode introspectResponse = super.introspectToken(userToken);
             return null;
         }
 
-        User user = loadUser(introspectResponse);
-        if (user == null) {
-            return null;
-        }
-
-        cacheEvictionService.evictCache(user);
-        return user;
+        return loadUser(introspectResponse);
     }
 
     /**

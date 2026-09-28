@@ -52,4 +52,18 @@ class OpenApiDocumentTest {
         assertThat(document.path("paths").has("/internal/queries")).isFalse();
         OpenApiDocumentAssertions.assertCovers(document, handlerMapping);
     }
+
+    @Test
+    void adminWritesPublishTheirRequiredAuthority() throws Exception {
+        JsonNode paths =
+            objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString()).path("paths");
+
+        assertThat(paths.path("/configuration/admin").path("post").path("description").asText())
+            .isEqualTo("Required authorities: SUPER_ADMIN.");
+        assertThat(paths.path("/configuration/admin/{id}").path("patch").path("description").asText())
+            .isEqualTo("Required authorities: SUPER_ADMIN.");
+        assertThat(paths.path("/configuration/admin/{id}").path("delete").path("description").asText())
+            .isEqualTo("Required authorities: SUPER_ADMIN.");
+        assertThat(paths.path("/configuration").path("get").path("description").isMissingNode()).isTrue();
+    }
 }

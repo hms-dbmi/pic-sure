@@ -49,6 +49,17 @@ public class OpenApiConfiguration {
             .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME));
     }
 
+    /**
+     * Publishes the authorities each handler's {@code @PreAuthorize} requires in its operation description.
+     *
+     * @return the customizer springdoc applies to every operation
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public RequiredAuthoritiesOperationCustomizer requiredAuthoritiesOperationCustomizer() {
+        return new RequiredAuthoritiesOperationCustomizer();
+    }
+
     private static String firstNonBlank(String... candidates) {
         for (String candidate : candidates) {
             if (candidate != null && !candidate.isBlank()) {

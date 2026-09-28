@@ -10,7 +10,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -21,8 +21,6 @@ import java.text.MessageFormat;
 import java.util.List;
 import java.util.Optional;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * <p>Endpoint for service handling business logic for user roles. <br>Note: Users with admin level access can view roles, but only super
@@ -40,11 +38,11 @@ public class RoleController {
         this.roleService = roleService;
     }
 
-    @Operation(summary = "Read one role", description = "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "Read one role", description = "GET information of one Role with the UUID")
     @ApiResponse(responseCode = "200", description = "The role")
     @ApiResponse(responseCode = "400", description = "No role with that UUID")
     @AuditEvent(type = "OTHER", action = "role.read")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<?> getRoleById(
         @Parameter(description = "The UUID of the Role to fetch information about") @PathVariable("roleId") String roleId
@@ -56,20 +54,20 @@ public class RoleController {
         return PICSUREResponse.success(optionalRole.get());
     }
 
-    @Operation(summary = "List every role", description = "GET a list of existing Roles, requires ADMIN or SUPER_ADMIN role")
+    @Operation(summary = "List every role", description = "GET a list of existing Roles")
     @ApiResponse(responseCode = "200", description = "Every role")
     @AuditEvent(type = "OTHER", action = "role.list")
-    @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping
     public ResponseEntity<List<Role>> getRoleAll() {
         List<Role> allRoles = this.roleService.getAllRoles();
         return PICSUREResponse.success(allRoles);
     }
 
-    @Operation(summary = "Create roles", description = "POST a list of Roles, requires SUPER_ADMIN role")
+    @Operation(summary = "Create roles", description = "POST a list of Roles")
     @ApiResponse(responseCode = "200", description = "The created roles")
     @AuditEvent(type = "ADMIN", action = "role.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addRole(
         @Parameter(required = true, description = "A list of Roles in JSON format") @RequestBody List<Role> roles,
@@ -82,11 +80,11 @@ public class RoleController {
 
     @Operation(
         summary = "Update the given fields of roles",
-        description = "Update a list of Roles, will only update the fields listed, requires SUPER_ADMIN role"
+        description = "Update a list of Roles, will only update the fields listed"
     )
     @ApiResponse(responseCode = "200", description = "The updated roles")
     @AuditEvent(type = "ADMIN", action = "role.modify")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(produces = "application/json")
     public ResponseEntity<?> updateRole(
         @Parameter(required = true, description = "A list of Roles with fields to be updated in JSON format") @RequestBody List<Role> roles,
@@ -103,7 +101,7 @@ public class RoleController {
 
     @Operation(
         summary = "Delete a role that nothing references",
-        description = "DELETE an Role by Id only if the Role is not associated by others, requires SUPER_ADMIN role"
+        description = "DELETE an Role by Id only if the Role is not associated by others"
     )
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The remaining roles"),
@@ -111,7 +109,7 @@ public class RoleController {
             @ApiResponse(responseCode = "409", description = "Other entities still reference this role")}
     )
     @AuditEvent(type = "ADMIN", action = "role.delete")
-    @RolesAllowed({SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<?> removeById(
         @Parameter(required = true, description = "A valid Role Id") @PathVariable("roleId") final String roleId, HttpServletRequest request

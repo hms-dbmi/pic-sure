@@ -8,12 +8,11 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.security.RolesAllowed;
+import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +29,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.util.List;
 import java.util.Optional;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * <p>Endpoint for creating and updating terms of service entities. Records when a user accepts a term of service.</p>
@@ -62,7 +60,7 @@ public class TermsOfServiceController {
     @Operation(summary = "Replace the terms of service", description = "Update the Terms of Service html body")
     @ApiResponse(responseCode = "200", description = "The stored terms of service")
     @AuditEvent(type = "ADMIN", action = "tos.update")
-    @RolesAllowed({AuthNaming.AuthRoleNaming.ADMIN, SUPER_ADMIN})
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @PostMapping(path = "/update", consumes = "text/html", produces = "application/json")
     public ResponseEntity<?> updateTermsOfService(@RequestBody String html, HttpServletRequest request) {
         SecurityContext context = SecurityContextHolder.getContext();

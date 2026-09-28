@@ -43,7 +43,7 @@ public class ConceptController {
 
     @Operation(summary = "Search concepts with a filter, paginated")
     @ApiResponse(responseCode = "200", description = "A page of matching concepts")
-    @ApiResponse(responseCode = "500", description = "The concept search was interrupted")
+    @ApiResponse(responseCode = "500", description = "Invalid paging parameters, or the concept count or list query failed")
     @AuditEvent(type = "SEARCH", action = "concept.search")
     @PostMapping(path = "/concepts")
     public ResponseEntity<Page<Concept>> listConcepts(

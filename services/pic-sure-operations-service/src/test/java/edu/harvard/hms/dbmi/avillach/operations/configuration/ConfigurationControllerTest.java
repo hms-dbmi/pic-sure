@@ -86,6 +86,20 @@ class ConfigurationControllerTest {
     }
 
     @Test
+    void anonymousAdminRequestsAreForbiddenBeforeTheBodyIsRead() throws Exception {
+        mockMvc.perform(
+            post("/configuration/admin").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"bad name!\",\"kind\":\"ui\",\"value\":\"true\"}")
+        ).andExpect(status().isForbidden());
+        mockMvc.perform(post("/configuration/admin").contentType(MediaType.APPLICATION_JSON).content("{nope"))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(patch("/configuration/admin/{id}", "not-a-uuid").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/configuration/admin/{id}", "not-a-uuid")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/configuration/admin")).andExpect(status().isForbidden());
+    }
+
+    @Test
     void adminCreateAsPlainAuthenticatedUserIsForbidden() throws Exception {
         mockMvc.perform(
             post("/configuration/admin").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
@@ -109,7 +123,7 @@ class ConfigurationControllerTest {
             post("/configuration/admin").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"A\",\"kind\":\"ui\"}")
-        ).andExpect(status().isBadRequest());
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
     }
 
     @Test
@@ -151,7 +165,7 @@ class ConfigurationControllerTest {
             patch("/configuration/admin/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"uuid\":\"" + UUID.randomUUID() + "\",\"value\":\"false\"}")
-        ).andExpect(status().isBadRequest());
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
     }
 
     @Test
@@ -160,7 +174,7 @@ class ConfigurationControllerTest {
             patch("/configuration/admin/{id}", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"value\":\"false\"}")
-        ).andExpect(status().isNotFound());
+        ).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"));
     }
 
     @Test
@@ -178,5 +192,27 @@ class ConfigurationControllerTest {
             delete("/configuration/admin/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("A"));
+    }
+
+    /** PATCH that renames one entry onto another entry's name and kind is rejected by the service's uniqueness pre-check with 409. */
+    @Test
+    void adminUpdateOntoExistingNameKindReturns409() throws Exception {
+        repo.save(new Configuration().setName("A").setKind("ui").setValue("true"));
+        Configuration other = repo.save(new Configuration().setName("B").setKind("ui").setValue("true"));
+
+        mockMvc.perform(
+            patch("/configuration/admin/{id}", other.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"A\"}")
+        ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"));
+    }
+
+    /** DELETE of an id with no configuration row returns 404 from the service lookup. */
+    @Test
+    void adminDeleteMissingReturns404() throws Exception {
+        mockMvc.perform(
+            delete("/configuration/admin/{id}", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+                .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN")
+        ).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"));
     }
 }

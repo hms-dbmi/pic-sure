@@ -13,13 +13,13 @@ spring:
       # this service must never generate or alter its DDL.
       ddl-auto: none
       naming:
-        # CRITICAL / LOAD-BEARING: Spring Boot's default SpringPhysicalNamingStrategy snake_cases identifiers even when
-        # the JPA entities give an explicit camelCase @Column/@JoinColumn name (e.g. "queryId" -> "query_id",
-        # "resourceResultId" -> "resource_result_id"). The real production schema is camelCase throughout, not snake_case.
-        # Without this override, Hibernate silently generates SQL that references columns which do not exist -- every query
-        # against the real database breaks. Hibernate's own PhysicalNamingStrategyStandardImpl passes names through
-        # unchanged, matching the schema exactly.
+        # Preserve explicit JPA column names: legacy columns such as queryId and resourceResultId
+        # must not be converted to snake_case.
         physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
 
 picsure:
   operations:

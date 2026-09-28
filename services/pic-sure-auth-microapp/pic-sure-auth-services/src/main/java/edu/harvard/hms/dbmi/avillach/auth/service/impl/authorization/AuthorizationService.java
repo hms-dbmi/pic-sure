@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenController;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import io.micrometer.common.util.StringUtils;
@@ -61,12 +62,16 @@ public class AuthorizationService {
     private final boolean consentBasedAuthorizationEnabled;
     private boolean enablePublicAccess;
 
+    private final ApiKeyService apiKeyService;
+    private final boolean apiKeyEnforcementEnabled;
+
     @Autowired
     public AuthorizationService(
         AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
         @Value("${strict.authorization.applications.connections}") String strictConnections, UserConsentsRepository userConsentsRepository,
         @Value("${consent.based.authorization.enabled:true}") boolean consentBasedAuthorizationEnabled,
-        @Value("${enable.public.access:false}") boolean enablePublicAccess
+        @Value("${enable.public.access:false}") boolean enablePublicAccess, ApiKeyService apiKeyService,
+        @Value("${api.key.enforcement.enabled}") boolean apiKeyEnforcementEnabled
     ) {
         this.accessRuleService = accessRuleService;
         this.sessionService = sessionService;
@@ -78,6 +83,8 @@ public class AuthorizationService {
         this.consentBasedAuthorizationEnabled = consentBasedAuthorizationEnabled;
         this.enablePublicAccess = enablePublicAccess;
         logger.info("Consent-based authorization enabled: {}", consentBasedAuthorizationEnabled);
+        this.apiKeyService = apiKeyService;
+        this.apiKeyEnforcementEnabled = apiKeyEnforcementEnabled;
     }
 
     /**
@@ -248,6 +255,10 @@ public class AuthorizationService {
 
     public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
 
+        if (apiKeyEnforcementEnabled && !openAccessApiKeyIsValid(inputMap)) {
+            return false;
+        }
+
         if (inputMap == null || inputMap.isEmpty()) {
             logger.info(
                 "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION"
@@ -308,5 +319,14 @@ public class AuthorizationService {
         }
 
         return result;
+    }
+
+    private boolean openAccessApiKeyIsValid(Map<String, Object> inputMap) {
+        Object apiKey = inputMap == null ? null : inputMap.get("apiKey");
+        boolean valid = apiKey instanceof String plaintext && apiKeyService.verifyKey(plaintext).isPresent();
+        if (!valid) {
+            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ MISSING OR INVALID API KEY");
+        }
+        return valid;
     }
 }

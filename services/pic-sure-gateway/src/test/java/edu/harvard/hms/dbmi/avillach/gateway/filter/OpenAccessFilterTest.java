@@ -85,6 +85,46 @@ class OpenAccessFilterTest {
     }
 
     @Test
+    void enabledOpenAccessForwardsNonBlankApiKeyAtTopLevelValidationPayload() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap(null, "picsure_testKeyValue123");
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
+    }
+
+    @Test
+    void enabledOpenAccessOmitsApiKeyWhenHeaderAbsent() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        f.doFilter(wrap(null), mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).doesNotContainKey("apiKey");
+    }
+
+    @Test
+    void enabledOpenAccessOmitsApiKeyWhenHeaderBlank() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        f.doFilter(wrap(null, "   "), mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).doesNotContainKey("apiKey");
+    }
+
+    @Test
     void grantSetsOpenAccessTypeAttribute() throws Exception {
         // IdentityPropagationFilter turns this attribute into X-Picsure-Access-Type. Without it, downstream services
         // fall back to inspecting X-User-Id, whose open-access value (OPEN_ACCESS:<host>) is non-blank and so reads as
@@ -188,15 +228,24 @@ class OpenAccessFilterTest {
     }
 
     private static BufferedRequestWrapper wrap(String authHeader) {
-        return wrap(authHeader, "/v3/search/abc", "POST");
+        return wrap(authHeader, null);
+    }
+
+    private static BufferedRequestWrapper wrap(String authHeader, String apiKeyHeader) {
+        return wrap(authHeader, "/v3/search/abc", "POST", apiKeyHeader);
     }
 
     private static BufferedRequestWrapper wrap(String authHeader, String uri, String method) {
+        return wrap(authHeader, uri, method, null);
+    }
+
+    private static BufferedRequestWrapper wrap(String authHeader, String uri, String method, String apiKeyHeader) {
         HttpServletRequest base = mock(HttpServletRequest.class);
         when(base.getRequestURI()).thenReturn(uri);
         when(base.getContextPath()).thenReturn("");
         lenient().when(base.getMethod()).thenReturn(method);
         if (authHeader != null) when(base.getHeader("Authorization")).thenReturn(authHeader);
+        if (apiKeyHeader != null) when(base.getHeader(OpenAccessFilter.API_KEY_HEADER)).thenReturn(apiKeyHeader);
         lenient().when(base.getServerName()).thenReturn("aio.local");
         // Bare Mockito mocks don't retain state across calls; BufferedRequestWrapper delegates
         // setAttribute/getAttribute to the wrapped request (HttpServletRequestWrapper default), so back

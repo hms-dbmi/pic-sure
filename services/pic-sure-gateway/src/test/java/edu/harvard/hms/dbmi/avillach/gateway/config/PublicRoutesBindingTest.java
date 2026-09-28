@@ -34,7 +34,7 @@ class PublicRoutesBindingTest {
     @CsvSource(
         {"GET, /system/status", "GET, /openapi.json", "POST, /gateway/openapi.json", "GET, /logging", "POST, /logging/audit",
             "GET, /operations/configuration", "GET, /operations/configuration/", "GET, /operations/configuration/abc-123",
-            "GET, /operations/configuration/abc-123/"}
+            "GET, /operations/configuration/abc-123/", "GET, /operations/banners/active"}
     )
     void boundRoutesKeepEachPublicRoutePublic(String method, String path) {
         assertThat(policy.evaluate(method, path).publicEndpoint()).isTrue();
@@ -44,7 +44,8 @@ class PublicRoutesBindingTest {
     @CsvSource(
         {"POST, /system/status", "GET, /v3/system/status", "GET, /foo/system/status", "GET, /loggingAdmin/x",
             "GET, /operations/configuration/admin", "GET, /operations/configuration/admin/x", "POST, /operations/configuration",
-            "POST, /operations/configuration/abc-123", "GET, /operations/dataset/named/abc-123"}
+            "POST, /operations/configuration/abc-123", "GET, /operations/dataset/named/abc-123", "POST, /operations/banners/active",
+            "GET, /operations/banners", "GET, /operations/banners/active/", "GET, /operations/banners/active/extra"}
     )
     void boundRoutesKeepEachAdjacentRouteProtected(String method, String path) {
         assertThat(policy.evaluate(method, path).publicEndpoint()).isFalse();
