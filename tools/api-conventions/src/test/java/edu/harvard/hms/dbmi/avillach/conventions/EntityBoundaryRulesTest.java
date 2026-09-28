@@ -31,7 +31,7 @@ class EntityBoundaryRulesTest {
 
     @Test
     void flagsEveryShapeThatContainsAnEntity() {
-        assertEquals(8, VIOLATIONS.size(), VIOLATIONS.toString());
+        assertEquals(10, VIOLATIONS.size(), VIOLATIONS.toString());
         assertMentions(VIOLATIONS, "fixtures :: EntityBindingController#bare parameter 0 binds entity User; bind a request record instead");
         assertMentions(VIOLATIONS, "EntityBindingController#list parameter 0 binds entity Role;");
         assertMentions(VIOLATIONS, "EntityBindingController#nested parameter 0 binds entity User;");
@@ -39,6 +39,8 @@ class EntityBoundaryRulesTest {
         assertMentions(VIOLATIONS, "EntityBindingController#optional parameter 0 binds entity User;");
         assertMentions(VIOLATIONS, "EntityBindingController#wildcard parameter 0 binds entity Role;");
         assertMentions(VIOLATIONS, "EntityBindingController#both parameter 0 binds entity Role, User;");
+        assertMentions(VIOLATIONS, "EntityBindingController#bounded parameter 0 binds entity User;");
+        assertMentions(VIOLATIONS, "EntityBindingController#genericArray parameter 0 binds entity Role;");
     }
 
     @Test
@@ -48,8 +50,9 @@ class EntityBoundaryRulesTest {
     }
 
     @Test
-    void acceptsDisplayClassesRecordsWithEntityFieldsAndUnmappedMethods() {
+    void acceptsShapesThatContainNoEntity() {
         assertSilentOn(VIOLATIONS, "#display");
+        assertSilentOn(VIOLATIONS, "#recursive");
         assertSilentOn(VIOLATIONS, "#record");
         assertSilentOn(VIOLATIONS, "#unmapped");
     }

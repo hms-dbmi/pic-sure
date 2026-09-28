@@ -39,10 +39,19 @@ public class EntityBindingController {
     @PutMapping("/both")
     public void both(@RequestBody Map<User, Role> assignments) {}
 
+    @PostMapping("/bounded")
+    public <T extends User> void bounded(@RequestBody T user) {}
+
+    @PostMapping("/recursive")
+    public <T extends Comparable<T>> void recursive(@RequestBody T value) {}
+
+    @PostMapping("/generic-array")
+    public void genericArray(@RequestBody List<Role>[] roleGroups) {}
+
     @GetMapping("/model")
     public void model(String query, @ModelAttribute Role role) {}
 
-    @GetMapping("/display")
+    @PostMapping("/display")
     public List<User.UserForDisplay> display(@RequestBody List<User.UserForDisplay> users) {
         return users;
     }
