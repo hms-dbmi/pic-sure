@@ -23,12 +23,12 @@ import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
 import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 
 /**
- * Keeps the handlers marked {@code @PublicEndpoint(ANONYMOUS)} and {@code security.public-routes.shipped} in step, in both directions. Every
- * shipped route must be served by an anonymous handler, unless it is one of the routes listed here that no controller serves, and every
- * verb and path of an anonymous handler must fall under a shipped route. The annotation grants nothing, so an anonymous handler outside the
- * shipped routes would still demand a token, and a shipped route without one would be public with nobody having said so at the handler.
- * Handler mappings and shipped patterns are both relative to the {@code /auth} context path, the same way {@code PublicRoutesBindingTest}
- * sends its requests, so neither carries the prefix.
+ * Keeps the handlers marked {@code @PublicEndpoint(ANONYMOUS)} and {@code security.public-routes.shipped} in step, in both directions.
+ * Every shipped route must be served by an anonymous handler, unless it is one of the routes listed here that no controller serves, and
+ * every verb and path of an anonymous handler must fall under a shipped route. The annotation grants nothing, so an anonymous handler
+ * outside the shipped routes would still demand a token, and a shipped route without one would be public with nobody having said so at the
+ * handler. Handler mappings and shipped patterns are both relative to the {@code /auth} context path, the same way
+ * {@code PublicRoutesBindingTest} sends its requests, so neither carries the prefix.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -42,12 +42,12 @@ class PublicEndpointRoutesTest {
 
     private static final String PSAMA_PACKAGE = "edu.harvard.hms.dbmi.avillach.auth.";
 
-    private static final Map<String, String> SERVED_WITHOUT_A_CONTROLLER = Map.of(
-        "/actuator/health", "Spring Boot actuator serves the health probe.",
-        "/actuator/info", "Spring Boot actuator serves the info probe.",
-        "/v3/api-docs/**", "springdoc serves the OpenAPI document.",
-        "/logout", "Spring Security's LogoutFilter answers it before any controller.",
-        "/authentication", "The bare prefix of /authentication/{idpProvider}; no handler maps it."
+    private static final Map<String, String> SERVED_WITHOUT_A_CONTROLLER = Map.ofEntries(
+        Map.entry("/actuator/health", "Spring Boot actuator serves the health probe."),
+        Map.entry("/actuator/info", "Spring Boot actuator serves the info probe."),
+        Map.entry("/v3/api-docs/**", "springdoc serves the OpenAPI document."),
+        Map.entry("/logout", "Spring Security's LogoutFilter answers it before any controller."),
+        Map.entry("/authentication", "The bare prefix of /authentication/{idpProvider}; no handler maps it.")
     );
 
     private static final PathPatternParser PARSER = PathPatternParser.defaultInstance;
@@ -64,7 +64,8 @@ class PublicEndpointRoutesTest {
         List<String> unmatched = new ArrayList<>();
         for (PublicRoute route : publicRoutes.shipped()) {
             PathPattern pattern = PARSER.parse(route.pattern());
-            boolean served = anonymousMappings().stream().anyMatch(mapping -> pattern.matches(PathContainer.parsePath(mapping.samplePath())));
+            boolean served =
+                anonymousMappings().stream().anyMatch(mapping -> pattern.matches(PathContainer.parsePath(mapping.samplePath())));
             if (!served && !SERVED_WITHOUT_A_CONTROLLER.containsKey(route.pattern())) {
                 unmatched.add(route.pattern());
             }
@@ -83,6 +84,14 @@ class PublicEndpointRoutesTest {
         }
 
         assertThat(nowServed).as("routes listed as served without a controller that now have one").isEmpty();
+    }
+
+    @Test
+    void routesListedAsServedWithoutAControllerAreStillShipped() {
+        Set<String> shipped = publicRoutes.shipped().stream().map(PublicRoute::pattern).collect(Collectors.toSet());
+
+        assertThat(shipped).as("routes listed as served without a controller that are no longer shipped")
+            .containsAll(SERVED_WITHOUT_A_CONTROLLER.keySet());
     }
 
     @Test

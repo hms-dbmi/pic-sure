@@ -42,9 +42,9 @@ import jakarta.annotation.security.RolesAllowed;
  * authority in the security context: every listed authority must get past method security, and every other one must be denied, so
  * {@code SUPER_ADMIN} never stands in for {@code ADMIN}. The table is the record of what each endpoint requires. A guarded handler missing
  * from it, or a listed handler that lost its guard, fails the build. Every other PSAMA handler is in a second table with the
- * {@link PublicEndpoint} level it declares, so each handler's access is recorded in exactly one place here. The full application context runs on the same in-memory H2 settings as
- * {@code OpenApiDocumentTest}, so the two share one cached context. Both switch on the cache inspection controller, which exists only when
- * {@code app.cache.inspect.enabled} is true, so its handlers are in the table.
+ * {@link PublicEndpoint} level it declares, so each handler's access is recorded in exactly one place here. The full application context
+ * runs on the same in-memory H2 settings as {@code OpenApiDocumentTest}, so the two share one cached context. Both switch on the cache
+ * inspection controller, which exists only when {@code app.cache.inspect.enabled} is true, so its handlers are in the table.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
