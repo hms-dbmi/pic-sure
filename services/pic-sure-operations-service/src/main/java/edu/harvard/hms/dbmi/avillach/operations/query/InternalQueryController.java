@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Hidden;
 
 /**
@@ -41,6 +42,7 @@ public class InternalQueryController {
         this.service = service;
     }
 
+    @AuditEvent(type = "OTHER", action = "internal_query.save")
     @PostMapping("")
     public ResponseEntity<Map<String, UUID>> save(@RequestBody SaveQueryRequest req) {
         UUID picsureId = service.save(req);
@@ -49,11 +51,13 @@ public class InternalQueryController {
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
+    @AuditEvent(type = "OTHER", action = "internal_query.read")
     @GetMapping("/{picsureId}")
     public StoredQuery get(@PathVariable("picsureId") UUID picsureId) {
         return service.get(picsureId);
     }
 
+    @AuditEvent(type = "OTHER", action = "internal_query.update")
     @PatchMapping("/{picsureId}")
     public ResponseEntity<Void> update(@PathVariable("picsureId") UUID picsureId, @RequestBody UpdateQueryRequest req) {
         service.update(picsureId, req);
@@ -64,6 +68,7 @@ public class InternalQueryController {
      * MUST match the gateway's {@code QueryAuthFetcher} contract exactly: {@code {"queryJson": "<string>"}}, the stored query JSON
      * re-serialized as a string with any legacy {@code resourceCredentials} stripped (or {@code null} for a blank stored query).
      */
+    @AuditEvent(type = "OTHER", action = "internal_query.dispatch")
     @GetMapping("/{picsureId}/dispatch")
     public Map<String, String> dispatch(@PathVariable("picsureId") UUID picsureId) {
         Map<String, String> body = new LinkedHashMap<>();
