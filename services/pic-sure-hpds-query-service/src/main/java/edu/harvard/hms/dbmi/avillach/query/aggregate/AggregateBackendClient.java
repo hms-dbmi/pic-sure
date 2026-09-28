@@ -50,7 +50,7 @@ public class AggregateBackendClient {
     }
 
     public SearchResults search(QueryRequest req) {
-        return postJson(openUrl("/search"), chain(req), SearchResults.class);
+        return postJson(openUrl("/v3/search"), chain(req), SearchResults.class);
     }
 
     /** Raw body + propagated queryMetadata header. */

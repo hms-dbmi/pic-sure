@@ -14,8 +14,8 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * Executes search and concept-value requests against the backend selected by the ingress {@code {backend}} path segment through
  * {@link HpdsBackendSelector}.
  *
- * <p><b>Search is not versioned downstream:</b> although the controller accepts v1 and v3 ingress paths, this class resolves the backend
- * with {@code v3=false} because HPDS search endpoints have no version suffix.
+ * <p>Although the controller accepts both v1 and v3 ingress paths, this class always resolves the backend with {@code v3=true}: v1 and v3
+ * search share the same HPDS logic, so both ingress paths call the same v3 downstream endpoint.
  *
  * <p>Search and values calls carry no service token: {@link ResourceWebClient#search} and {@link ResourceWebClient#searchConceptValues}
  * take a plain base URL string (not an {@code HpdsTarget}), so the per-backend service token resolved by {@link HpdsBackendSelector} is
@@ -36,13 +36,12 @@ public class SearchService {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing search data");
         }
-        // Non-versioned downstream, no service token: only the resolved base URL is used.
-        return hpds.search(selector.select(backend, false).baseUrl(), req);
+        return hpds.search(selector.select(backend, true).baseUrl(), req);
     }
 
     public PaginatedSearchResult<?> searchConceptValues(
         String backend, QueryRequest req, String conceptPath, String query, Integer page, Integer size
     ) {
-        return hpds.searchConceptValues(selector.select(backend, false).baseUrl(), req, conceptPath, query, page, size);
+        return hpds.searchConceptValues(selector.select(backend, true).baseUrl(), req, conceptPath, query, page, size);
     }
 }

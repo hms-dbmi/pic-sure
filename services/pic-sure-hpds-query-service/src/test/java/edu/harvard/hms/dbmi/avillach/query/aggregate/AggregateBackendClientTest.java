@@ -94,11 +94,12 @@ class AggregateBackendClientTest {
 
     @Test
     void chainedBodyCarriesTheQueryOnly() {
-        hpds.stubFor(post(urlEqualTo("/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
+        hpds.stubFor(post(urlEqualTo("/v3/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
         client().search(req("\\_studies_consents\\"));
 
         hpds.verify(
-            postRequestedFor(urlEqualTo("/search")).withRequestBody(matchingJsonPath("$.query", WireMock.equalTo("\\_studies_consents\\")))
+            postRequestedFor(urlEqualTo("/v3/search"))
+                .withRequestBody(matchingJsonPath("$.query", WireMock.equalTo("\\_studies_consents\\")))
                 .withRequestBody(matchingJsonPath("$[?(@.resourceUUID == null)]"))
         );
     }

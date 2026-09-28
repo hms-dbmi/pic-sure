@@ -16,9 +16,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * Exposes search under both v1 and v3 ingress prefixes for each {@code {backend}} because HPDS search itself is not versioned.
- * {@link SearchService} always resolves the backend's base URL without a version suffix. Supported paths are
- * {@code /hpds/{backend}[/v3]/search} and {@code /hpds/{backend}[/v3]/search/values}.
+ * Exposes search under both v1 and v3 ingress prefixes for each {@code {backend}}; both route through {@link SearchService} to the same v3
+ * downstream endpoint, since v1 and v3 search share the same HPDS logic. Supported paths are {@code /hpds/{backend}[/v3]/search} and
+ * {@code /hpds/{backend}[/v3]/search/values}.
  */
 @RestController
 @Tag(name = "Search", description = "Concept search and value lookup on an HPDS backend")

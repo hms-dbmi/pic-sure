@@ -39,7 +39,7 @@ import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
 /**
  * Full-context coverage of async open-path consent scoping using the real {@link AggregateService},
  * {@link edu.harvard.hms.dbmi.avillach.query.query.QueryService}, HpdsBackendSelector, and ResourceWebClient. WireMock stands in for the
- * open HPDS backend (the {@code /search} study-consents lookup and the {@code /PIC-SURE/query} async submit), and a Mockito
+ * open HPDS backend (the {@code /v3/search} study-consents lookup and the {@code /PIC-SURE/query} async submit), and a Mockito
  * {@link OperationsClient} stands in for operations-service persistence (this module is DB-free).
  *
  * <p>Asserts: (a) {@code POST /hpds/open/query} for a CROSS_COUNT submission is rewritten (force CROSS_COUNT + inject the study-consents
@@ -89,7 +89,7 @@ class AggregateAsyncOpenQueryTest {
     @Test
     void openAsyncCrossCountIsRewrittenAndConsentScopedBeforePersistAndDispatch() throws Exception {
         hpds.stubFor(
-            WireMock.post(urlEqualTo("/search")).willReturn(okJson("{\"results\":{\"phenotypes\":{\"consentA\":{},\"consentB\":{}}}}"))
+            WireMock.post(urlEqualTo("/v3/search")).willReturn(okJson("{\"results\":{\"phenotypes\":{\"consentA\":{},\"consentB\":{}}}}"))
         );
         hpds.stubFor(
             WireMock.post(urlEqualTo("/PIC-SURE/query")).willReturn(okJson("{\"resourceResultId\":\"rr-async\",\"status\":\"PENDING\"}"))
@@ -106,14 +106,14 @@ class AggregateAsyncOpenQueryTest {
             argThat((SaveQueryRequest r) -> r.query() != null && r.query().contains("crossCountFields") && r.query().contains("consentA"))
         );
         // The consent lookup happened and the async submit dispatched the injected allow-list to HPDS.
-        hpds.verify(postRequestedFor(urlEqualTo("/search")));
+        hpds.verify(postRequestedFor(urlEqualTo("/v3/search")));
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query")).withRequestBody(matchingJsonPath("$.query.crossCountFields")));
     }
 
     @Test
     void openAsyncV3CrossCountUsesSelectAndHitsV3Base() throws Exception {
         hpds.stubFor(
-            WireMock.post(urlEqualTo("/search")).willReturn(okJson("{\"results\":{\"phenotypes\":{\"consentA\":{},\"consentB\":{}}}}"))
+            WireMock.post(urlEqualTo("/v3/search")).willReturn(okJson("{\"results\":{\"phenotypes\":{\"consentA\":{},\"consentB\":{}}}}"))
         );
         hpds.stubFor(
             WireMock.post(urlEqualTo("/PIC-SURE/v3/query"))
@@ -147,7 +147,7 @@ class AggregateAsyncOpenQueryTest {
         verify(operationsClient).save(
             argThat((SaveQueryRequest r) -> r.query() != null && r.query().contains("DATAFRAME") && !r.query().contains("crossCountFields"))
         );
-        hpds.verify(0, postRequestedFor(urlEqualTo("/search")));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/v3/search")));
         hpds.verify(
             postRequestedFor(urlEqualTo("/PIC-SURE/v3/query"))
                 .withRequestBody(matchingJsonPath("$.query.expectedResultType", WireMock.equalTo("DATAFRAME")))
@@ -162,6 +162,6 @@ class AggregateAsyncOpenQueryTest {
         ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
 
         verify(operationsClient, never()).save(any());
-        hpds.verify(0, postRequestedFor(urlEqualTo("/search")));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/v3/search")));
     }
 }

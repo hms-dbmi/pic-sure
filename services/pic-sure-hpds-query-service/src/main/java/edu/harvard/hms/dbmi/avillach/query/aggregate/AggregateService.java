@@ -216,7 +216,7 @@ public class AggregateService {
     private SearchResults getAllStudyConsents() {
         QueryRequest studiesConsents = new GeneralQueryRequest();
         studiesConsents.setQuery(STUDIES_CONSENTS_PATH);
-        return backend.search(studiesConsents); // /search -- NO /v3 prefix in either variant
+        return backend.search(studiesConsents);
     }
 
     // ---- guards ----
