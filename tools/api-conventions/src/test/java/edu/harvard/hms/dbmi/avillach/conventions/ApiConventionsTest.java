@@ -92,7 +92,7 @@ class ApiConventionsTest {
 
     @Test
     void catchAllExceptionAdviceKeepsFrameworkStatuses() {
-        report("R13", overAllModules(ExceptionAdviceRules::catchAllAdviceExtendsBaseHandler));
+        report("catch-all-advice-extends-base", overAllModules(ExceptionAdviceRules::catchAllAdviceExtendsBaseHandler));
     }
 
     private static List<String> overAllModules(Rule rule) {

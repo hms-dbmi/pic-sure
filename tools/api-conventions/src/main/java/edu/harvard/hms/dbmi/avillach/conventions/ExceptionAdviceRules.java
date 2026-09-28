@@ -34,11 +34,11 @@ public final class ExceptionAdviceRules {
     private ExceptionAdviceRules() {}
 
     /**
-     * R13: a {@code @ControllerAdvice} or {@code @RestControllerAdvice} class that declares an
-     * {@code @ExceptionHandler} for {@code Exception}, {@code RuntimeException} or {@code Throwable}
-     * extends {@code ResponseEntityExceptionHandler}. The handled types come from the annotation's
-     * {@code value} (or its {@code exception} alias), and from the method's throwable parameters when the
-     * annotation names none.
+     * {@code catch-all-advice-extends-base}: a {@code @ControllerAdvice} or {@code @RestControllerAdvice} class
+     * that declares an {@code @ExceptionHandler} for {@code Exception}, {@code RuntimeException} or
+     * {@code Throwable} extends {@code ResponseEntityExceptionHandler}. The handled types come from the
+     * annotation's {@code value} (or its {@code exception} alias), and from the method's throwable parameters when
+     * the annotation names none.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
