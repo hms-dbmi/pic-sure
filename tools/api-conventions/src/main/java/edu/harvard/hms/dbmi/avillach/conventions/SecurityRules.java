@@ -34,6 +34,7 @@ import com.tngtech.archunit.core.domain.JavaModifier;
 public final class SecurityRules {
 
     public static final String PRE_AUTHORIZE = "org.springframework.security.access.prepost.PreAuthorize";
+    public static final String PUBLIC_ENDPOINT = "edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint";
     public static final String ENABLE_METHOD_SECURITY =
         "org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity";
 
@@ -176,6 +177,38 @@ public final class SecurityRules {
         return prePostOn
             ? List.of()
             : List.of(module + " uses @PreAuthorize but its @EnableMethodSecurity sets prePostEnabled = false");
+    }
+
+    /**
+     * R21: every handler carries exactly one authorization decision on the method, either {@code @PreAuthorize} or
+     * {@code @PublicEndpoint}, and no class carries {@code @PublicEndpoint}. A handler with neither is open to whoever the filter chain
+     * lets through without anyone having said so, which is how a read returning every application's token reached plain users.
+     *
+     * @param module the module path, used in the violation text
+     * @param classes that module's imported classes
+     * @return one violation per handler with neither or both annotations, and one per class carrying {@code @PublicEndpoint}
+     */
+    public static List<String> handlersDeclareAuthorization(String module, JavaClasses classes) {
+        List<String> violations = new ArrayList<>();
+        for (JavaClass type : sorted(classes)) {
+            if (Annotations.has(type, PUBLIC_ENDPOINT)) {
+                String at = SwaggerRules.at(module, type);
+                violations.add(at + " carries @PublicEndpoint at class level; move it to each handler method");
+            }
+        }
+        for (JavaClass controller : Controllers.of(classes)) {
+            for (JavaMethod handler : Controllers.handlerMethods(controller)) {
+                boolean guarded = Annotations.has(handler, PRE_AUTHORIZE);
+                boolean declaredPublic = Annotations.has(handler, PUBLIC_ENDPOINT);
+                String at = SwaggerRules.at(module, controller, handler.getName());
+                if (guarded && declaredPublic) {
+                    violations.add(at + " carries both @PreAuthorize and @PublicEndpoint; keep the one that states its access");
+                } else if (!guarded && !declaredPublic) {
+                    violations.add(at + " carries neither @PreAuthorize nor @PublicEndpoint");
+                }
+            }
+        }
+        return violations;
     }
 
     /**
