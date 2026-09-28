@@ -13,7 +13,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
-import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -32,8 +31,7 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     private static final Set<String> GRANTED = Set.of("partition1");
 
-    /** Consents for studies this node does not host, which a caller can legitimately hold. */
-    private static final Set<String> OFF_NODE = Set.of("phs999999.c1");
+    private static final Set<String> PARTITION_NOT_EXISTS = Set.of("phs999999.c1");
 
     private static final String AGE = "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\";
 
@@ -113,12 +111,12 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     @Test
     public void getPatientIds_consentsMatchNoPartition_returnNoData() {
-        assertTrue(partitionedPhenotypicObservationStore.getPatientIds(OFF_NODE).isEmpty());
+        assertTrue(partitionedPhenotypicObservationStore.getPatientIds(PARTITION_NOT_EXISTS).isEmpty());
     }
 
     @Test
     public void getCube_consentsMatchNoPartition_returnNoData() {
-        assertTrue(partitionedPhenotypicObservationStore.getCube(AGE, OFF_NODE).isEmpty());
+        assertTrue(partitionedPhenotypicObservationStore.getCube(AGE, PARTITION_NOT_EXISTS).isEmpty());
     }
 
     @Test
