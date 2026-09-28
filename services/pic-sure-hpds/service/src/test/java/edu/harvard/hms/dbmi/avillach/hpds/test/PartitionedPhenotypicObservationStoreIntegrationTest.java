@@ -35,8 +35,6 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
 
     private static final String AGE = "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\";
 
-    private static final String SEX = "\\open_access-1000Genomes\\data\\SEX\\";
-
     @Autowired
     private PartitionedPhenotypicObservationStore partitionedPhenotypicObservationStore;
 
@@ -110,11 +108,6 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
     }
 
     @Test
-    public void getPatientIds_consentsMatchNoPartition_returnNoData() {
-        assertTrue(partitionedPhenotypicObservationStore.getPatientIds(PARTITION_NOT_EXISTS).isEmpty());
-    }
-
-    @Test
     public void getCube_consentsMatchNoPartition_returnNoData() {
         assertTrue(partitionedPhenotypicObservationStore.getCube(AGE, PARTITION_NOT_EXISTS).isEmpty());
     }
@@ -122,5 +115,10 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
     @Test
     public void getCube_conceptPathNotInAnyGrantedPartition_returnNoData() {
         assertTrue(partitionedPhenotypicObservationStore.getCube("\\no\\such\\concept\\", GRANTED).isEmpty());
+    }
+    
+    @Test
+    public void getPatientIds_consentsMatchNoPartition_returnNoData() {
+        assertTrue(partitionedPhenotypicObservationStore.getPatientIds(PARTITION_NOT_EXISTS).isEmpty());
     }
 }

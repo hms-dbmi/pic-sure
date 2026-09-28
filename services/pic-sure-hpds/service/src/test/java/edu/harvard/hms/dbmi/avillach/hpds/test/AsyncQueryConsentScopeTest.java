@@ -105,6 +105,6 @@ class AsyncQueryConsentScopeTest {
             }
             Thread.sleep(50);
         }
-        throw new AssertionError("async query did not finish within 30s; last status " + result.getStatus());
+        throw new AssertionError("async query did not finish within 3s; last status " + result.getStatus());
     }
 }
