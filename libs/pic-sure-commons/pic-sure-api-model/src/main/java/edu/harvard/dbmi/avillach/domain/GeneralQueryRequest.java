@@ -9,15 +9,15 @@ import java.util.UUID;
     name = "QueryRequest",
     description = "Object containing the query object under 'query'." + " The query object expectedResultType can be on of the following "
         + "\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\", \"DATAFRAME\". ",
-    example = "{\n" + "    \"resourceUUID\": \"<RESOURCE UUID>\",\n" + "    \"query\": {\n" + "        \"categoryFilters\": {\n"
-        + "            \"\\\\demographics\\\\SEX\\\\\": [\n" + "                \"female\",\n" + "                \"male\"\n"
-        + "            ]\n" + "        },\n" + "        \"numericFilters\": {\n" + "            \"\\\\demographics\\\\AGE\\\\\": {\n"
-        + "                \"min\": \"0\",\n" + "                \"max\": \"85\"\n" + "            }\n" + "        },\n"
-        + "        \"requiredFields\": [],\n" + "        \"anyRecordOf\": [\n" + "            \"\\\\demographics\\\\RACE\\\\\"\n"
-        + "        ],\n" + "        \"variantInfoFilters\": [\n" + "            {\n"
-        + "                \"categoryVariantInfoFilters\": {},\n" + "                \"numericVariantInfoFilters\": {}\n"
-        + "            }\n" + "        ],\n" + "        \"expectedResultType\": \"DATAFRAME\",\n" + "        \"fields\": []\n" + "    }\n"
-        + "}"
+    example = "{\n" + "    \"resourceUUID\": \"<RESOURCE UUID>\",\n" + "    \"query\": {\n" + "        \"select\": [],\n"
+        + "        \"phenotypicClause\": {\n" + "            \"operator\": \"AND\",\n" + "            \"phenotypicClauses\": [\n"
+        + "                {\n" + "                    \"phenotypicFilterType\": \"FILTER\",\n"
+        + "                    \"conceptPath\": \"\\\\demographics\\\\SEX\\\\\",\n"
+        + "                    \"values\": [\"female\", \"male\"]\n" + "                },\n" + "                {\n"
+        + "                    \"phenotypicFilterType\": \"FILTER\",\n"
+        + "                    \"conceptPath\": \"\\\\demographics\\\\AGE\\\\\",\n" + "                    \"min\": 0,\n"
+        + "                    \"max\": 85\n" + "                }\n" + "            ]\n" + "        },\n"
+        + "        \"genomicFilters\": [],\n" + "        \"expectedResultType\": \"COUNT\"\n" + "    }\n" + "}"
 )
 
 /*
