@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,7 @@ class OpenAccessControllerWebTest {
     @BeforeEach
     void setUp() {
         authorizationService = mock(AuthorizationService.class);
-        when(authorizationService.openAccessRequestIsValid(any())).thenReturn(true);
+        when(authorizationService.validateOpenAccessRequest(any())).thenReturn(OpenAccessValidationResponse.granted(null));
         OpenAccessController controller = new OpenAccessController(authorizationService, true);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(new GlobalExceptionHandler()).build();
     }

@@ -22,6 +22,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.AuditFilterConfig;
@@ -64,7 +65,7 @@ class AuditFilterOrderTest {
     void openAccessDenialShortCircuitStillEmitsAnAuditEvent() throws Exception {
         LoggingClient logging = enabledLoggingClient();
         PsamaClient psama = mock(PsamaClient.class);
-        when(psama.validateOpenAccess(any())).thenReturn(false); // PSAMA denies the no-bearer request
+        when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(false)); // PSAMA denies the no-bearer request
         AuditContext audit = new AuditContext();
 
         FilterRegistrationBean<?> openAccess =

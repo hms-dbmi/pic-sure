@@ -108,6 +108,19 @@ class OpenApiDocumentTest {
         return schemas;
     }
 
+    @Test
+    void openValidateDocumentsBothResponseShapes() throws Exception {
+        JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
+
+        JsonNode oneOf = document.path("paths").path("/open/validate").path("post").path("responses").path("200").path("content")
+            .path("application/json").path("schema").path("oneOf");
+        assertThat(oneOf).extracting(JsonNode::toString)
+            .containsExactlyInAnyOrder("{\"type\":\"boolean\"}", "{\"$ref\":\"#/components/schemas/OpenAccessValidationResponse\"}");
+        JsonNode denial =
+            document.path("components").path("schemas").path("OpenAccessValidationResponse").path("properties").path("denial");
+        assertThat(denial.path("enum")).extracting(JsonNode::asText).containsExactly("key_missing", "key_invalid", "rules");
+    }
+
     private static String description(JsonNode paths, String path, String method) {
         return paths.path(path).path(method).path("description").asText();
     }
