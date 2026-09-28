@@ -144,6 +144,13 @@ class ControllerAuditEventTest {
     }
 
     @Test
+    void openSessionController() throws Exception {
+        assertAuditEvent(
+            OpenSessionController.class, "createSession", new Class[] {HttpServletRequest.class}, "ACCESS", "open_session.create"
+        );
+    }
+
+    @Test
     void apiKeyController() throws Exception {
         Class<?> c = ApiKeyController.class;
         assertAuditEvent(

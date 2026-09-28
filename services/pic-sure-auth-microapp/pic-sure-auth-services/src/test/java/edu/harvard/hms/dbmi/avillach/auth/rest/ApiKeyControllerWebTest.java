@@ -15,8 +15,11 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -60,8 +63,7 @@ public class ApiKeyControllerWebTest {
 
     @Test
     public void testJsonNullBodyReturns400OnPublicUserEndpoint() throws Exception {
-        mockMvc.perform(post("/open/apiKey").contentType(MediaType.APPLICATION_JSON).content("null"))
-            .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/open/apiKey").contentType(MediaType.APPLICATION_JSON).content("null")).andExpect(status().isBadRequest());
     }
 
     @Test
@@ -77,6 +79,14 @@ public class ApiKeyControllerWebTest {
         MvcResult result = mockMvc.perform(get("/apiKey").param("keyType", "bogus-type")).andExpect(status().isBadRequest()).andReturn();
 
         assertFalse(result.getResponse().getContentAsString().contains("bogus-type"));
+    }
+
+    // sessions are never stored; without the check, SESSION would bind and return a silently empty page
+    @Test
+    public void testSessionKeyTypeParamReturns400() throws Exception {
+        mockMvc.perform(get("/apiKey").param("keyType", "SESSION")).andExpect(status().isBadRequest());
+
+        verify(apiKeyService, never()).listKeys(anyInt(), anyInt(), any());
     }
 
     @Test
