@@ -28,12 +28,12 @@ public final class EntityBoundaryRules {
     private EntityBoundaryRules() {}
 
     /**
-     * R22: no handler parameter's type is, or contains, a class annotated {@code @Entity}. The walk follows
-     * generic arguments recursively, array component types, wildcard bounds and type variable bounds, so
-     * {@code List<Role>}, {@code Map<String, List<User>>}, {@code User[]} and {@code Optional<User>} all
-     * count. Every parameter counts, not only {@code @RequestBody}. Fields are not walked: a request record
-     * with an entity-typed field passes. A class is an entity by its annotation, not its package, so a
-     * display class nested in an entity passes.
+     * {@code no-entity-parameters}: no handler parameter's type is, or contains, a class annotated
+     * {@code @Entity}. The walk follows generic arguments recursively, array component types, wildcard bounds and
+     * type variable bounds, so {@code List<Role>}, {@code Map<String, List<User>>}, {@code User[]} and
+     * {@code Optional<User>} all count. Every parameter counts, not only {@code @RequestBody}. Fields are not
+     * walked: a request record with an entity-typed field passes. A class is an entity by its annotation, not its
+     * package, so a display class nested in an entity passes.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes

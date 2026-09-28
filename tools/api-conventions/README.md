@@ -8,6 +8,8 @@ The OpenAPI document publishes each guard's authorities as "Required authorities
 
 `catch-all-advice-extends-base` covers every module, libraries included. A `@ControllerAdvice` or `@RestControllerAdvice` class that declares an `@ExceptionHandler` for `Exception`, `RuntimeException` or `Throwable` must extend Spring's `ResponseEntityExceptionHandler`. The handled types are read from the annotation, or from the method's exception parameter when the annotation names none. Spring consults every advice before its own client-error mapping, so a catch-all that does not extend the base class turns an unreadable body, an unsupported media type, a wrong method or a missing parameter into a 500. To satisfy it, extend the base class and override `handleExceptionInternal` to write the service's own error body. A handler the service already declares for an exception the base class also handles must move into the matching base-class override, or Spring refuses to start with an ambiguous mapping.
 
+`no-entity-parameters` covers every module. No controller handler parameter may be, or contain, a class annotated `@Entity`. The check follows generic arguments at any depth, array component types and `Optional`, so `List<Role>`, `Map<String, List<User>>`, `User[]` and `Optional<User>` all fail, and it applies to every parameter, not only `@RequestBody`. A class counts as an entity by its annotation, not its package, so `User.UserForDisplay` passes. Fields are not followed: a request record with an entity-typed field passes. A bound entity lets a caller set any column Jackson can reach. To satisfy it, bind a request record that lists only the fields the endpoint accepts, and map it onto the entity in the service.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -37,7 +39,9 @@ Error handling, over every compiled module:
 
 - `catch-all-advice-extends-base`: a `@ControllerAdvice` or `@RestControllerAdvice` that handles `Exception`, `RuntimeException` or `Throwable` extends `ResponseEntityExceptionHandler`.
 
-R22 covers every module. No controller handler parameter may be, or contain, a class annotated `@Entity`. The check follows generic arguments at any depth, array component types and `Optional`, so `List<Role>`, `Map<String, List<User>>`, `User[]` and `Optional<User>` all fail, and it applies to every parameter, not only `@RequestBody`. A class counts as an entity by its annotation, not its package, so `User.UserForDisplay` passes. Fields are not followed: a request record with an entity-typed field passes. A bound entity lets a caller set any column Jackson can reach. To satisfy it, bind a request record that lists only the fields the endpoint accepts, and map it onto the entity in the service.
+Persistence, over every compiled module:
+
+- `no-entity-parameters`: no controller handler parameter is, or contains, a class annotated `@Entity`.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 

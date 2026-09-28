@@ -98,7 +98,7 @@ class ApiConventionsTest {
     @Test
     void noHandlerBindsAnEntity() {
         Set<String> entities = EntityBoundaryRules.entityTypes(modules);
-        report("R22", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
+        report("no-entity-parameters", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
     }
 
     private static List<String> overAllModules(Rule rule) {
