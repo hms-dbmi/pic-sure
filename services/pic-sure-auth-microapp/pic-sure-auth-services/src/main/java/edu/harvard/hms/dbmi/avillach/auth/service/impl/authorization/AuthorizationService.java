@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse.Denial;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenController;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
@@ -253,15 +255,30 @@ public class AuthorizationService {
         return targetService != null && AUTH_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
     }
 
-    public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
+    /**
+     * Decides an open-access request. A presented key is verified whatever {@code api.key.enforcement.enabled} says, so a grant reports a
+     * valid key either way. Enforcement decides only whether a missing or invalid key denies; with it off, such a request is evaluated
+     * against the open-access rules as an anonymous one.
+     */
+    public OpenAccessValidationResponse validateOpenAccessRequest(Map<String, Object> inputMap) {
+        Object presentedKey = inputMap == null ? null : inputMap.get("apiKey");
+        ApiKey verifiedKey = presentedKey == null ? null : openAccessApiKey(presentedKey);
 
-        if (apiKeyEnforcementEnabled && !openAccessApiKeyIsValid(inputMap)) {
-            return false;
+        if (apiKeyEnforcementEnabled && verifiedKey == null) {
+            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ MISSING OR INVALID API KEY");
+            return OpenAccessValidationResponse.denied(presentedKey == null ? Denial.KEY_MISSING : Denial.KEY_INVALID);
         }
 
+        if (!openAccessRulesGrant(inputMap)) {
+            return OpenAccessValidationResponse.denied(Denial.RULES);
+        }
+        return OpenAccessValidationResponse.granted(verifiedKey);
+    }
+
+    private boolean openAccessRulesGrant(Map<String, Object> inputMap) {
         if (inputMap == null || inputMap.isEmpty()) {
             logger.info(
-                "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION"
+                "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been granted access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION"
             );
             return true;
         }
@@ -321,12 +338,12 @@ public class AuthorizationService {
         return result;
     }
 
-    private boolean openAccessApiKeyIsValid(Map<String, Object> inputMap) {
-        Object apiKey = inputMap == null ? null : inputMap.get("apiKey");
-        boolean valid = apiKey instanceof String plaintext && apiKeyService.verifyKey(plaintext).isPresent();
-        if (!valid) {
-            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ MISSING OR INVALID API KEY");
+    /** Returns the verified key, or null when {@code presentedKey} is not a key PSAMA can verify. Never logs the key itself. */
+    private ApiKey openAccessApiKey(Object presentedKey) {
+        ApiKey verified = presentedKey instanceof String plaintext ? apiKeyService.verifyKey(plaintext).orElse(null) : null;
+        if (verified == null && !apiKeyEnforcementEnabled) {
+            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ presented an invalid API key ___ EVALUATING AS ANONYMOUS");
         }
-        return valid;
+        return verified;
     }
 }
