@@ -59,7 +59,7 @@ public class UserServiceTest {
     @MockitoBean
     private LoggingClient loggingClient;
     private JWTUtil jwtUtil;
-    @MockBean
+    @MockitoBean
     private SessionService sessionService;
 
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
