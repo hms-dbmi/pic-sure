@@ -6,6 +6,8 @@ It also holds every module to one authorization standard. A handler that needs a
 
 The OpenAPI document publishes each guard's authorities as "Required authorities: ..." at the end of the operation description, so `docs-do-not-restate-authorities` fails a documented module whose `@Tag` description or `@Operation` summary or description names one of the authorities its guards require. That prose would only repeat the guard and drift from it.
 
+`no-trailing-slash` fails a documented module whose controller declares a class-level or method-level mapping path ending in `/`. It reads the `value` and `path` of `@RequestMapping` and of the composed `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` and `@PatchMapping`. A class-level path of exactly `/` is allowed. A method-level `/` is allowed only when the class declares no mapping path or declares `/`, because Spring joins `@RequestMapping("/dataset/named")` and `@GetMapping("/")` into `/dataset/named/`. Spring 6 matches only the declared form, so a handler declared as `/dataset/named/{id}/` answers 404 to a client that calls `/dataset/named/{id}`, while tests that call the declared form still pass. That is how the operations controllers broke every named-dataset call from the frontend after the WildFly port. To satisfy the rule, drop the trailing slash from the mapping, and write a method-level root as `""` or leave the path out. The rule covers documented modules only, because their clients call slash-less paths. Internal modules are left alone: the hpds `/search/values/` mappings keep their slash because `ResourceWebClient`, their only caller, sends it.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -31,7 +33,9 @@ Authorization, over every compiled module:
 - `guards-enable-method-security`: a module that uses `@PreAuthorize` declares `@EnableMethodSecurity` with pre/post support on.
 - `no-role-checks`: no code calls `hasRole`, `hasAnyRole` or `isUserInRole` on a Spring Security, actuator, Servlet or JAX-RS type.
 
-R16 fails a documented module whose controller declares a class-level or method-level mapping path ending in `/`. It reads the `value` and `path` of `@RequestMapping` and of the composed `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` and `@PatchMapping`. A class-level path of exactly `/` is allowed. A method-level `/` is allowed only when the class declares no mapping path or declares `/`, because Spring joins `@RequestMapping("/dataset/named")` and `@GetMapping("/")` into `/dataset/named/`. Spring 6 matches only the declared form, so a handler declared as `/dataset/named/{id}/` answers 404 to a client that calls `/dataset/named/{id}`, while tests that call the declared form still pass. That is how the operations controllers broke every named-dataset call from the frontend after the WildFly port. To satisfy the rule, drop the trailing slash from the mapping, and write a method-level root as `""` or leave the path out. The rule covers documented modules only, because their clients call slash-less paths. Internal modules are left alone: the hpds `/search/values/` mappings keep their slash because `ResourceWebClient`, their only caller, sends it.
+Request mappings, over the modules marked `documented`:
+
+- `no-trailing-slash`: no class-level or method-level mapping path on a controller ends in `/`, except a bare `/` that serves the root.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 

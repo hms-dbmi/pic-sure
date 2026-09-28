@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Trailing slashes at class level and in each property form R16 reads. */
+/** Trailing slashes at class level and in each property form {@code no-trailing-slash} reads. */
 @RestController
 @RequestMapping("/slashed/")
 public class SlashedController {

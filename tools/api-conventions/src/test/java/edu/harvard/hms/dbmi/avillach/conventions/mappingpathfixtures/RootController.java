@@ -5,7 +5,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Satisfies R16: a root path, a handler with no path, and slash-less paths. */
+/** Satisfies {@code no-trailing-slash}: a root path, a handler with no path, and slash-less paths. */
 @RestController
 @RequestMapping("/")
 public class RootController {

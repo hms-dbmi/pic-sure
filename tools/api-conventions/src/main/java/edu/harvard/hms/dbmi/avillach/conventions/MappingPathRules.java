@@ -20,13 +20,13 @@ public final class MappingPathRules {
     private MappingPathRules() {}
 
     /**
-     * R16: no class-level or method-level mapping path on a controller ends in {@code /}. A class-level
-     * path of exactly {@code /} is allowed. A method-level path of exactly {@code /} is allowed only when
-     * the class declares no mapping path or only {@code /} and the empty path, because under any other
-     * class path Spring joins the two into a path that ends in a slash: {@code /dataset/named} and
-     * {@code /} serve {@code /dataset/named/}. Paths are read from the {@code value} and {@code path}
-     * properties of {@code @RequestMapping} and of the composed {@code @GetMapping}, {@code @PostMapping},
-     * {@code @PutMapping}, {@code @DeleteMapping} and {@code @PatchMapping}.
+     * {@code no-trailing-slash}: no class-level or method-level mapping path on a controller ends in {@code /}. A
+     * class-level path of exactly {@code /} is allowed. A method-level path of exactly {@code /} is allowed only
+     * when the class declares no mapping path or only {@code /} and the empty path, because under any other class
+     * path Spring joins the two into a path that ends in a slash: {@code /dataset/named} and {@code /} serve
+     * {@code /dataset/named/}. Paths are read from the {@code value} and {@code path} properties of
+     * {@code @RequestMapping} and of the composed {@code @GetMapping}, {@code @PostMapping}, {@code @PutMapping},
+     * {@code @DeleteMapping} and {@code @PatchMapping}.
      *
      * <p>Spring 6 matches only the declared form of a path, so a handler declared with a trailing slash
      * answers 404 to a client that calls it without one, while tests that call the declared form pass.
