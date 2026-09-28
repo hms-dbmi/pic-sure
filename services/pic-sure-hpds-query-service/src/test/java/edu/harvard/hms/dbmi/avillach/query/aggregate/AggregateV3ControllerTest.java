@@ -5,7 +5,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -36,9 +35,8 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * MockMvc coverage of {@link AggregateV3Controller} (the v3 obfuscation ingress at {@code /hpds/open/v3/query/sync}), mirroring
- * {@link AggregateControllerTest}: {@link AggregateService} is mocked (obfuscation logic itself lives in {@link AggregateServiceTest}), and
- * the point of this class is the routing/coexistence behavior with
+ * MockMvc coverage of {@link AggregateV3Controller} (the obfuscation ingress at {@code /hpds/open/v3/query/sync}). {@link AggregateService}
+ * is mocked (obfuscation logic itself lives in {@link AggregateServiceTest}), and the point of this class is the routing/coexistence behavior with
  * {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller}'s generic {@code /hpds/{backend}/v3/query/sync} mapping.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
@@ -83,7 +81,7 @@ class AggregateV3ControllerTest {
 
     @Test
     void openV3QuerySyncRoutesToAggregateServiceV3AndReturnsResult() throws Exception {
-        when(aggregateService.querySync(any(QueryRequest.class), eq(AggregateVariant.V3)))
+        when(aggregateService.querySync(any(QueryRequest.class)))
             .thenReturn(ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body("{}"));
 
         mockMvc
@@ -92,7 +90,7 @@ class AggregateV3ControllerTest {
                     .contentType(MediaType.APPLICATION_JSON).content("{\"query\":{\"expectedResultType\":\"CROSS_COUNT\"}}")
             ).andExpect(status().isOk()).andExpect(content().string("{}"));
 
-        verify(aggregateService).querySync(any(QueryRequest.class), eq(AggregateVariant.V3));
+        verify(aggregateService).querySync(any(QueryRequest.class));
         verifyNoInteractions(operationsClient);
         hpds.verify(0, WireMock.postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/sync")));
     }
@@ -123,7 +121,7 @@ class AggregateV3ControllerTest {
 
     @Test
     void openV3QuerySyncUpstreamErrorSurfacesAs502() throws Exception {
-        when(aggregateService.querySync(any(QueryRequest.class), eq(AggregateVariant.V3)))
+        when(aggregateService.querySync(any(QueryRequest.class)))
             .thenThrow(new HpdsCommunicationException("Aggregate query/sync call failed", new RuntimeException("boom")));
 
         mockMvc

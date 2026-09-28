@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -39,6 +40,7 @@ import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
 import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
+import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
 
 /**
  * Full-context MockMvc coverage of the sole query lifecycle ingress at {@code /hpds/{backend}/v3/query/**}. It exercises
@@ -122,15 +124,53 @@ class HpdsQueryControllerTest {
         verify(consentAuthorization).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
     }
 
-    // --- read ops dispatch on the STORED version, never the ingress path's version ---
+    private static final String V1_BODY = "{\"query\":{\"expectedResultType\":\"COUNT\",\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]}}}";
+
+    private static boolean isUpgradedRow(StoredQuery row, String resourceResultId) {
+        return "3".equals(row.version()) && resourceResultId.equals(row.resourceResultId()) && row.query().contains("phenotypicClause");
+    }
+
+    private static boolean isUpgradePatch(UpdateQueryRequest patch, String resourceResultId) {
+        return "3".equals(patch.version()) && resourceResultId.equals(patch.resourceResultId()) && patch.query() != null
+            && patch.query().contains("phenotypicClause") && !patch.query().contains("categoryFilters");
+    }
+
+    private void stubV3Submit(String resourceResultId) {
+        hpds.stubFor(
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query"))
+                .willReturn(okJson("{\"resourceResultId\":\"" + resourceResultId + "\",\"status\":\"PENDING\"}"))
+        );
+    }
 
     @Test
-    void resultViaV3PathAlsoDispatchesOnStoredVersionNotIngressVersion() throws Exception {
+    void statusOfALegacyRowUpgradesItAndPollsTheNewV3Query() throws Exception {
         UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "PENDING", null, null); // v1-stored, requested via the v3 path
-        when(operationsClient.get(id)).thenReturn(stored);
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, V1_BODY, "rr-old", "AVAILABLE", null, null));
+        stubV3Submit("rr-new");
         hpds.stubFor(
-            WireMock.post(urlEqualTo("/PIC-SURE/query/rr-1/result")).willReturn(aResponse().withStatus(200).withBody(new byte[] {9}))
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-new/status"))
+                .willReturn(okJson("{\"resourceResultId\":\"rr-new\",\"status\":\"PENDING\"}"))
+        );
+
+        mockMvc
+            .perform(
+                post("/hpds/auth/v3/query/{id}/status", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                    .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.picsureResultId").value(id.toString()))
+            .andExpect(jsonPath("$.resourceResultId").value("rr-new"));
+
+        verify(consentAuthorization).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
+        verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/rr-old/status")));
+    }
+
+    @Test
+    void resultOfALegacyRowUpgradesItBeforeTheReadCheckAndServesTheNewResultId() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, V1_BODY, "rr-old", "AVAILABLE", null, null));
+        stubV3Submit("rr-new");
+        hpds.stubFor(
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-new/result")).willReturn(aResponse().withStatus(200).withBody(new byte[] {9}))
         );
 
         mockMvc.perform(
@@ -138,17 +178,53 @@ class HpdsQueryControllerTest {
                 .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
         ).andExpect(status().isOk());
 
-        verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
-        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query/rr-1/result"))); // NOT /v3
+        verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
+        verify(consentAuthorization)
+            .verifyReadAccess(eq("auth"), argThat((StoredQuery row) -> isUpgradedRow(row, "rr-new")), eq("Bearer caller-token"));
+        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/rr-new/result")));
+    }
+
+    @Test
+    void signedUrlOfALegacyRowUpgradesItBeforeTheReadCheckAndServesTheNewResultId() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, V1_BODY, "rr-old", "AVAILABLE", null, null));
+        stubV3Submit("rr-new");
+        hpds.stubFor(
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-new/signed-url"))
+                .willReturn(okJson("{\"url\":\"https://example.test/result\"}"))
+        );
+
+        mockMvc.perform(
+            post("/hpds/auth/v3/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+        ).andExpect(status().isOk());
+
+        verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
+        verify(consentAuthorization)
+            .verifyReadAccess(eq("auth"), argThat((StoredQuery row) -> isUpgradedRow(row, "rr-new")), eq("Bearer caller-token"));
+    }
+
+    @Test
+    void untranslatableLegacyRowIs422() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{\"query\":\"not an object\"}", "rr-old", "AVAILABLE", null, null));
+
+        mockMvc.perform(
+            post("/hpds/auth/v3/query/{id}/result", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+        ).andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.errorType").value("untranslatable_query"));
+
+        verify(operationsClient, never()).update(any(), any());
+        hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/v3/query")));
     }
 
     @Test
     void signedUrlForwardsCallerAuthorizationForSavedConsentVerification() throws Exception {
         UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", null, null);
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
         hpds.stubFor(
-            WireMock.post(urlEqualTo("/PIC-SURE/query/rr-1/signed-url")).willReturn(okJson("{\"url\":\"https://example.test/result\"}"))
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).willReturn(okJson("{\"url\":\"https://example.test/result\"}"))
         );
 
         mockMvc.perform(

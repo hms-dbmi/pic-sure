@@ -97,7 +97,6 @@ class UnconfiguredBackendResponsesTest {
             endpoint("signed-url", id -> authorized(post("/hpds/open/v3/query/{id}/signed-url", id)).content("{}")),
             endpoint("search", id -> authorized(post("/hpds/open/search")).content("{\"query\":\"age\"}")),
             endpoint("search values", id -> identified(get("/hpds/open/search/values")).param("genomicConceptPath", "\\gene\\")),
-            endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY)),
             endpoint("open submit v3", id -> authorized(post("/hpds/open/v3/query")).content(QUERY_BODY))
         );
     }

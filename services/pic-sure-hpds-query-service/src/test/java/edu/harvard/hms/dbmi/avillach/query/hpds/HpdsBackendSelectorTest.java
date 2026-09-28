@@ -22,41 +22,27 @@ class HpdsBackendSelectorTest {
     }
 
     @Test
-    void authV1() {
-        var t = selector().select("auth", false);
-        assertThat(t.baseUrl()).isEqualTo("http://hpds-auth:8080/PIC-SURE");
-        assertThat(t.token()).isEqualTo("auth-secret");
-    }
-
-    @Test
-    void openV1() {
-        var t = selector().select("open", false);
-        assertThat(t.baseUrl()).isEqualTo("http://hpds-open:8080/PIC-SURE");
-        assertThat(t.token()).isEqualTo("open-secret");
-    }
-
-    @Test
-    void authV3AppendsV3KeepsToken() {
-        var t = selector().select("auth", true);
+    void authAppendsV3KeepsToken() {
+        var t = selector().select("auth");
         assertThat(t.baseUrl()).isEqualTo("http://hpds-auth:8080/PIC-SURE/v3");
         assertThat(t.token()).isEqualTo("auth-secret");
     }
 
     @Test
-    void openV3AppendsV3KeepsToken() {
-        var t = selector().select("open", true);
+    void openAppendsV3KeepsToken() {
+        var t = selector().select("open");
         assertThat(t.baseUrl()).isEqualTo("http://hpds-open:8080/PIC-SURE/v3");
         assertThat(t.token()).isEqualTo("open-secret");
     }
 
     @Test
     void unknownBackendThrows() {
-        assertThatThrownBy(() -> selector().select("bogus", false)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> selector().select("bogus")).isInstanceOf(PicsureException.class);
     }
 
     @Test
     void nullBackendThrows() {
-        assertThatThrownBy(() -> selector().select(null, false)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> selector().select(null)).isInstanceOf(PicsureException.class);
     }
 
     /**
@@ -71,7 +57,7 @@ class HpdsBackendSelectorTest {
 
         HpdsBackendSelector selector = new HpdsBackendSelector(p);
 
-        PicsureException thrown = assertThrows(PicsureException.class, () -> selector.select("open", false));
+        PicsureException thrown = assertThrows(PicsureException.class, () -> selector.select("open"));
 
         assertThat(thrown.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
     }

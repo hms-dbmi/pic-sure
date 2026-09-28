@@ -150,7 +150,6 @@ class DocumentedErrorResponsesTest {
             endpoint("signed-url", id -> authorized(post("/hpds/auth/v3/query/{id}/signed-url", id)).content("{}")),
             endpoint("search", id -> authorized(post("/hpds/auth/search")).content("{\"query\":\"age\"}")),
             endpoint("search values", id -> identified(get("/hpds/auth/search/values")).param("genomicConceptPath", "\\gene\\")),
-            endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY)),
             endpoint("open submit v3", id -> authorized(post("/hpds/open/v3/query")).content(QUERY_BODY))
         );
     }
@@ -166,10 +165,7 @@ class DocumentedErrorResponsesTest {
 
     /** The obfuscated sync endpoints call the open backend through {@code AggregateBackendClient}, not {@code ResourceWebClient}. */
     static Stream<Arguments> aggregateSync() {
-        return Stream.of(
-            endpoint("open sync", id -> authorized(post("/hpds/open/query/sync")).content(QUERY_BODY)),
-            endpoint("open sync v3", id -> authorized(post("/hpds/open/v3/query/sync")).content(QUERY_BODY))
-        );
+        return Stream.of(endpoint("open sync v3", id -> authorized(post("/hpds/open/v3/query/sync")).content(QUERY_BODY)));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -224,7 +220,6 @@ class DocumentedErrorResponsesTest {
         return Stream.of(
             endpoint("submit", id -> authorized(post("/hpds/auth/v3/query")).content(QUERY_BODY)),
             endpoint("sync", id -> authorized(post("/hpds/auth/v3/query/sync")).content(QUERY_BODY)),
-            endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY)),
             endpoint("open submit v3", id -> authorized(post("/hpds/open/v3/query")).content(QUERY_BODY))
         );
     }
