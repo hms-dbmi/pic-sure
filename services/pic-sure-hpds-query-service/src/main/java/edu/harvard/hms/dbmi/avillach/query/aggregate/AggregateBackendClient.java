@@ -25,7 +25,7 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * lookup) and {@link #binContinuous} (visualization binning). The async query-lifecycle calls ({@code /query}, {@code /query/{id}/status},
  * {@code /query/{id}/result}, {@code /query/format}, {@code /info}) are NOT proxied through this client: the open async submit is routed
  * through {@code QueryService} (DB-free persistence + dispatch, see {@link AggregateService#query}), and every subsequent read op is served
- * by the v3 read ingress ({@code /hpds/{backend}/v3/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller}) off the
+ * by the v3 read ingress ({@code /hpds/{backend}[/v3]/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryController}) off the
  * stored (already consent-scoped) query.
  *
  * <p>Non-2xx responses and I/O failures surface as {@link HpdsCommunicationException} (mapped to 502 by
@@ -63,9 +63,9 @@ public class AggregateBackendClient {
         }
     }
 
-    /** Visualization {@code /v3/bin/continuous}. */
+    /** Visualization {@code /bin/continuous}. */
     public String binContinuous(QueryRequest vizRequest) {
-        String uri = props.getVisualizationUrl() + "/v3/bin/continuous";
+        String uri = props.getVisualizationUrl() + "/bin/continuous";
         try {
             return withAuth(http.post().uri(uri).contentType(MediaType.APPLICATION_JSON)).body(vizRequest).retrieve().body(String.class);
         } catch (RestClientException e) {

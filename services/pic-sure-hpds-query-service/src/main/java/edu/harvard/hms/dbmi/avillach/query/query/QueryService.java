@@ -92,11 +92,11 @@ public class QueryService {
 
     // --- create / sync ---
 
-    public QueryStatus queryV3(String backend, QueryRequest req) {
-        return queryV3(backend, req, null);
+    public QueryStatus query(String backend, QueryRequest req) {
+        return query(backend, req, null);
     }
 
-    public QueryStatus queryV3(String backend, QueryRequest req, String authorizationHeader) {
+    public QueryStatus query(String backend, QueryRequest req, String authorizationHeader) {
         return create(backend, req, authorizationHeader);
     }
 

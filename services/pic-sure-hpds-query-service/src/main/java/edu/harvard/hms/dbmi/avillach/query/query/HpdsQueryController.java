@@ -24,19 +24,19 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * The sole HPDS query lifecycle ingress: {@code /hpds/{backend}/v3/query/**}. {@code {backend}} is {@code auth} or {@code open}, validated
- * downstream by {@link QueryService} through {@code HpdsBackendSelector}. Every query runs on HPDS v3 and is stored as version {@code "3"}.
- * A status, result, or signed-url read of a row stored before v3 first upgrades that row in place (translated, re-scoped by the caller's
- * consents, and re-run), and answers 422 when the stored query cannot be translated.
+ * The sole HPDS query lifecycle ingress: {@code /hpds/{backend}[/v3]/query/**}. {@code {backend}} is {@code auth} or {@code open},
+ * validated downstream by {@link QueryService} through {@code HpdsBackendSelector}. Every query runs on HPDS v3 and is stored as version
+ * {@code "3"}. A status, result, or signed-url read of a row stored before v3 first upgrades that row in place (translated, re-scoped by
+ * the caller's consents, and re-run), and answers 422 when the stored query cannot be translated.
  */
 @RestController
-@RequestMapping("/hpds/{backend}/v3")
+@RequestMapping({"/hpds/{backend}", "/hpds/{backend}/v3"})
 @Tag(name = "Queries", description = "Run, poll, and fetch HPDS queries on the auth or open backend")
-public class HpdsQueryV3Controller {
+public class HpdsQueryController {
 
     private final QueryService service;
 
-    public HpdsQueryV3Controller(QueryService service) {
+    public HpdsQueryController(QueryService service) {
         this.service = service;
     }
 
@@ -57,7 +57,7 @@ public class HpdsQueryV3Controller {
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         rejectInstitutionalQuery(isInstitute);
-        return service.queryV3(backend, req, authorizationHeader);
+        return service.query(backend, req, authorizationHeader);
     }
 
     @PostMapping("/query/sync")

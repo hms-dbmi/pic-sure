@@ -75,7 +75,7 @@ public class AggregateService {
      * {@code select} field. Other result types pass through unchanged; the allow-list applies only to {@code querySync}.
      *
      * <p>Persistence and HPDS dispatch are delegated to {@link QueryService}, so the rewritten query is the one stored. Later status,
-     * result, signed-url, and metadata calls through {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller} therefore
+     * result, signed-url, and metadata calls through {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryController} therefore
      * operate on the consent-scoped query.
      */
     public QueryStatus query(QueryRequest req) {
@@ -86,7 +86,7 @@ public class AggregateService {
         if ("CROSS_COUNT".equalsIgnoreCase(node.get("expectedResultType").asText())) {
             changeQueryToOpenCrossCount(req);
         }
-        return queryService.queryV3(HpdsBackendSelector.OPEN, req);
+        return queryService.query(HpdsBackendSelector.OPEN, req);
     }
 
     // ---- the obfuscation core ----

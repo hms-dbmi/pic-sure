@@ -89,7 +89,7 @@ class QueryServiceTest {
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
         when(operationsClient.save(any())).thenReturn(picsureId);
 
-        QueryStatus out = service.queryV3("auth", req());
+        QueryStatus out = service.query("auth", req());
 
         assertThat(out.getPicsureResultId()).isEqualTo(picsureId);
         assertThat(out.getResourceResultId()).isEqualTo("rr-1");
@@ -103,7 +103,7 @@ class QueryServiceTest {
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus(null)); // HPDS returned no id
         when(operationsClient.save(any())).thenReturn(picsureId);
 
-        QueryStatus out = service.queryV3("auth", req());
+        QueryStatus out = service.query("auth", req());
 
         assertThat(out.getResourceResultId()).isEqualTo(out.getPicsureResultId().toString()); // fallback
         verify(operationsClient)
@@ -118,7 +118,7 @@ class QueryServiceTest {
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
-        scopedService.queryV3("auth", request, "Bearer caller-token");
+        scopedService.query("auth", request, "Bearer caller-token");
 
         InOrder order = inOrder(consent, hpds, operationsClient);
         order.verify(consent).scopeQuery("auth", request, "Bearer caller-token");
@@ -136,7 +136,7 @@ class QueryServiceTest {
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
         when(operationsClient.save(any())).thenReturn(picsureId);
 
-        service.queryV3("auth", request);
+        service.query("auth", request);
 
         verify(operationsClient)
             .save(argThat((SaveQueryRequest r) -> !r.query().contains("resourceCredentials") && !r.query().contains("secret")));
@@ -149,7 +149,7 @@ class QueryServiceTest {
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
         when(operationsClient.save(any())).thenReturn(picsureId);
 
-        QueryStatus out = service.queryV3("auth", request);
+        QueryStatus out = service.query("auth", request);
 
         assertThat(out.getResourceID()).isEqualTo(request.getResourceUUID());
     }

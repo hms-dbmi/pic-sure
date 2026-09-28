@@ -95,8 +95,7 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         // changeQueryToOpenCrossCount first searches consents, then the backend returns the cross counts
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any()))
-            .thenReturn(ResponseEntity.ok("{\"\\\\study\\\\a\\\\\":\"5\",\"\\\\study\\\\b\\\\\":\"100\"}"));
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\study\\\\a\\\\\":\"5\",\"\\\\study\\\\b\\\\\":\"100\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CROSS_COUNT"));
@@ -128,8 +127,7 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         // first querySync call returns the raw categorical payload; the CROSS_COUNT lookup (getCrossCountForQuery)
         // is a second call to querySync with the mutated (CROSS_COUNT) request
-        when(backend.querySync(any()))
-            .thenReturn(ResponseEntity.ok("{\"\\\\gender\\\\\":{\"male\":5,\"female\":100}}"))
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\gender\\\\\":{\"male\":5,\"female\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
@@ -203,7 +201,7 @@ class AggregateServiceTest {
         svc.query(sync("CROSS_COUNT"));
 
         ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(queryService).queryV3(eq("open"), cap.capture());
+        verify(queryService).query(eq("open"), cap.capture());
         @SuppressWarnings("unchecked")
         Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
         assertThat(query).containsKey("select").doesNotContainKey("crossCountFields");
@@ -219,7 +217,7 @@ class AggregateServiceTest {
         svc.query(sync("COUNT"));
 
         ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(queryService).queryV3(eq("open"), cap.capture());
+        verify(queryService).query(eq("open"), cap.capture());
         @SuppressWarnings("unchecked")
         Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
         assertThat(query.get("expectedResultType")).isEqualTo("COUNT");

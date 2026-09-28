@@ -71,10 +71,10 @@ class AggregateBackendClientTest {
     }
 
     @Test
-    void binContinuousUsesV3Prefix() {
-        hpds.stubFor(post(urlEqualTo("/v3/bin/continuous")).willReturn(okJson("{}")));
+    void binContinuousUsesTheUnversionedPath() {
+        hpds.stubFor(post(urlEqualTo("/bin/continuous")).willReturn(okJson("{}")));
         client().binContinuous(req("{}"));
-        hpds.verify(postRequestedFor(urlEqualTo("/v3/bin/continuous")));
+        hpds.verify(postRequestedFor(urlEqualTo("/bin/continuous")));
     }
 
     @Test
