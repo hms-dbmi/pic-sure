@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.test;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.test.util.BuildIntegrationTestEnvironment;
 import org.junit.jupiter.api.BeforeAll;
@@ -34,9 +33,6 @@ public class CountV3ProcessorIntegrationTest {
     @Autowired
     private CountV3Processor countProcessor;
 
-    @MockitoBean
-    private UserRequestContext userRequestContext;
-
     @BeforeAll
     public static void beforeAll() {
         BuildIntegrationTestEnvironment instance = BuildIntegrationTestEnvironment.INSTANCE;
@@ -45,8 +41,8 @@ public class CountV3ProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_multipleConceptsNoFilters() {
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"), List.of(), Set.of(), null, null,
-            ResultType.CROSS_COUNT, null, null
+            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"), List.of(), Set.of(),
+            null, null, ResultType.CROSS_COUNT, null, null
         );
 
         Map<String, Integer> crossCountsMap = countProcessor.runCrossCounts(query);
@@ -58,8 +54,8 @@ public class CountV3ProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_unknownConceptNoFilters() {
         Query query = new Query(
-            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\NOT_REAL_DOESNT_EXIST\\"), List.of(), Set.of(), null,
-            null, ResultType.CROSS_COUNT, null, null
+            List.of("\\open_access-1000Genomes\\data\\SEX\\", "\\open_access-1000Genomes\\data\\NOT_REAL_DOESNT_EXIST\\"), List.of(),
+            Set.of(), null, null, ResultType.CROSS_COUNT, null, null
         );
 
         Map<String, Integer> crossCountsMap = countProcessor.runCrossCounts(query);

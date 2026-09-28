@@ -73,15 +73,16 @@ public class QueryV3Processor implements HpdsV3Processor {
         ArrayList<Integer> columnIndex = queryExecutor.useResidentCubesFirst(paths, columnCount);
         ResultStore results = new ResultStore(result.getId(), columns, ids);
 
+        Set<String> consents = query.consentValues();
         columnIndex.parallelStream().forEach((column) -> {
-            clearColumn(paths, ids, results, column);
-            processColumn(paths, ids, results, column);
+            clearColumn(paths, ids, results, column, consents);
+            processColumn(paths, ids, results, column, consents);
         });
 
         return results;
     }
 
-    private void clearColumn(List<String> paths, TreeSet<Integer> ids, ResultStore results, Integer x) {
+    private void clearColumn(List<String> paths, TreeSet<Integer> ids, ResultStore results, Integer x, Set<String> consents) {
         String path = paths.get(x - 1);
         if (VariantUtils.pathIsVariantSpec(path)) {
             ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
@@ -91,7 +92,7 @@ public class QueryV3Processor implements HpdsV3Processor {
                 idInSubsetPointer++;
             }
         } else {
-            phenotypicObservationStore.getCube(path).ifPresent(cube -> {
+            phenotypicObservationStore.getCube(path, consents).ifPresent(cube -> {
                 ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
                 int idInSubsetPointer = 0;
                 for (int id : ids) {
@@ -102,7 +103,7 @@ public class QueryV3Processor implements HpdsV3Processor {
         }
     }
 
-    private void processColumn(List<String> paths, TreeSet<Integer> ids, ResultStore results, Integer x) {
+    private void processColumn(List<String> paths, TreeSet<Integer> ids, ResultStore results, Integer x, Set<String> consents) {
         String path = paths.get(x - 1);
         if (VariantUtils.pathIsVariantSpec(path)) {
             // todo: confirm this entire if block is even used. I don't think it is
@@ -128,7 +129,7 @@ public class QueryV3Processor implements HpdsV3Processor {
                 idInSubsetPointer++;
             }
         } else {
-            phenotypicObservationStore.getCube(path).ifPresent(cube -> {
+            phenotypicObservationStore.getCube(path, consents).ifPresent(cube -> {
                 KeyAndValue<?>[] cubeValues = cube.sortedByKey();
 
                 int idPointer = 0;

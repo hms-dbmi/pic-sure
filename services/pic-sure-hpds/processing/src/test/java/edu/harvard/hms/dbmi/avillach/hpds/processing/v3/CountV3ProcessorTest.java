@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
@@ -10,13 +9,14 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicSubquery;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.UserConsent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,6 +25,9 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,7 +46,6 @@ class CountV3ProcessorTest {
         countV3Processor = new CountV3Processor(queryExecutor, phenotypicObservationStore);
     }
 
-
     @Test
     public void runCrossCounts_validPaths_returnPatientCounts() {
         Set<Integer> allPaientIds = Set.of(2, 3, 5, 8, 13, 21);
@@ -52,15 +54,16 @@ class CountV3ProcessorTest {
         String conceptPath1 = "\\_studies_consents\\phs001194\\HMB\\";
         String conceptPath2 = "\\_studies_consents\\phs000007\\HMB-IRB-MDS\\";
 
-        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
+        Query fullQuery =
+            new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
 
         Query queryConcept1 = new Query(
-            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
-            null, null, null
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null),
+            List.of(), null, null, null
         );
         Query queryConcept2 = new Query(
-            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
-            null, null, null
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null),
+            List.of(), null, null, null
         );
 
         when(queryExecutor.getPatientSubsetForQuery(fullQuery)).thenReturn(allPaientIds);
@@ -84,15 +87,16 @@ class CountV3ProcessorTest {
         String conceptPath1 = "\\_studies_consents\\phs001194\\HMB\\";
         String conceptPath2 = "\\_studies_consents\\phs000007\\HMB-IRB-MDS\\";
 
-        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
+        Query fullQuery =
+            new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
 
         Query queryConcept1 = new Query(
-            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
-            null, null, null
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null),
+            List.of(), null, null, null
         );
         Query queryConcept2 = new Query(
-            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
-            null, null, null
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null),
+            List.of(), null, null, null
         );
 
         when(queryExecutor.getPatientSubsetForQuery(fullQuery)).thenReturn(allPaientIds);
@@ -117,15 +121,16 @@ class CountV3ProcessorTest {
         String conceptPath1 = "\\_studies_consents\\phs001194\\HMB\\";
         String conceptPath2 = "\\_studies_consents\\phs000007\\HMB-IRB-MDS\\";
 
-        Query fullQuery = new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
+        Query fullQuery =
+            new Query(List.of(conceptPath1, conceptPath2), List.of(), Set.of(), null, List.of(), ResultType.CROSS_COUNT, null, null);
 
         Query queryConcept1 = new Query(
-            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null), List.of(),
-            null, null, null
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath1, null, null, null, null),
+            List.of(), null, null, null
         );
         Query queryConcept2 = new Query(
-            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null), List.of(),
-            null, null, null
+            List.of(), List.of(), Set.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath2, null, null, null, null),
+            List.of(), null, null, null
         );
 
         when(queryExecutor.getPatientSubsetForQuery(fullQuery)).thenReturn(allPaientIds);
@@ -154,7 +159,7 @@ class CountV3ProcessorTest {
         when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 3));
         when(queryExecutor.getDictionary())
             .thenReturn(Map.of(conceptPath, new SummaryColumnMeta().setName(conceptPath).setCategorical(false)));
-        when(phenotypicObservationStore.getCube(conceptPath)).thenReturn(java.util.Optional.of(cube));
+        when(phenotypicObservationStore.getCube(conceptPath, Set.of())).thenReturn(java.util.Optional.of(cube));
 
         Map<String, Map<Double, Integer>> crossCounts = countV3Processor.runContinuousCrossCounts(query);
 
@@ -177,7 +182,7 @@ class CountV3ProcessorTest {
         cube.setCategoryMap(categoryMap);
 
         when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 2, 3, 4, 5));
-        when(phenotypicObservationStore.getCube(sexPath)).thenReturn(Optional.of(cube));
+        when(phenotypicObservationStore.getCube(sexPath, Set.of())).thenReturn(Optional.of(cube));
 
         Map<String, Map<String, Integer>> crossCounts = countV3Processor.runCategoryCrossCounts(query);
 
@@ -204,7 +209,7 @@ class CountV3ProcessorTest {
         // Only patient 1 (male) and patient 4 (female) are in the cohort, so each category count must be exactly 1.
         when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 4));
         when(queryExecutor.getDictionary()).thenReturn(Map.of(sexPath, new SummaryColumnMeta().setName(sexPath).setCategorical(true)));
-        when(phenotypicObservationStore.getCube(sexPath)).thenReturn(Optional.of(cube));
+        when(phenotypicObservationStore.getCube(sexPath, Set.of())).thenReturn(Optional.of(cube));
 
         Map<String, Map<String, Integer>> crossCounts = countV3Processor.runCategoryCrossCounts(query);
 
@@ -227,7 +232,7 @@ class CountV3ProcessorTest {
 
         when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 2));
         when(queryExecutor.getDictionary()).thenReturn(Map.of(agePath, new SummaryColumnMeta().setName(agePath).setCategorical(false)));
-        when(phenotypicObservationStore.getCube(agePath)).thenReturn(Optional.of(cube));
+        when(phenotypicObservationStore.getCube(agePath, Set.of())).thenReturn(Optional.of(cube));
 
         Map<String, Map<Double, Integer>> crossCounts = countV3Processor.runContinuousCrossCounts(query);
 
@@ -235,5 +240,24 @@ class CountV3ProcessorTest {
         assertEquals(1, crossCounts.get(agePath).get(40.0));
         // patient 3 (65) is not in the cohort, so it is absent
         assertNull(crossCounts.get(agePath).get(65.0));
+    }
+
+    @Test
+    public void runCrossCounts_perConceptCopyCarriesCallerConsents() {
+        String conceptPath = "\\open_access-1000Genomes\\data\\SEX\\";
+        Set<UserConsent> userConsents = Set.of(new UserConsent("partition1"));
+        Query fullQuery = new Query(List.of(conceptPath), List.of(), userConsents, null, List.of(), ResultType.CROSS_COUNT, null, null);
+
+        when(queryExecutor.getPatientSubsetForQuery(any())).thenReturn(Set.of(1, 2, 3));
+
+        Map<String, Integer> crossCounts = countV3Processor.runCrossCounts(fullQuery);
+        assertTrue(crossCounts.get(conceptPath) > 0);
+
+        ArgumentCaptor<Query> executed = ArgumentCaptor.forClass(Query.class);
+        verify(queryExecutor, atLeastOnce()).getPatientSubsetForQuery(executed.capture());
+        assertTrue(
+                executed.getAllValues().stream().allMatch(executedQuery -> Set.of("partition1").equals(executedQuery.consentValues())),
+                "every query reaching the executor must carry the caller's consents, including the per-concept copy"
+        );
     }
 }

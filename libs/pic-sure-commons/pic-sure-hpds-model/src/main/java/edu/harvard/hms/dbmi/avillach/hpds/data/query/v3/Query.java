@@ -4,6 +4,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public record Query(
     @Schema(
@@ -43,6 +44,11 @@ public record Query(
     @Override
     public Set<UserConsent> userConsents() {
         return userConsents == null ? Set.of() : userConsents;
+    }
+    
+    public Set<String> consentValues() {
+        return userConsents().stream().filter(Objects::nonNull).map(UserConsent::value).filter(Objects::nonNull)
+            .collect(Collectors.toUnmodifiableSet());
     }
 
     public Query setUserConsents(Set<UserConsent> userConsents) {
