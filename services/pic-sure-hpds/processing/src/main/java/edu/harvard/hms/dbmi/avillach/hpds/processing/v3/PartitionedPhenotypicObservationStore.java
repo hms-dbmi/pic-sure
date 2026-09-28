@@ -80,13 +80,12 @@ public class PartitionedPhenotypicObservationStore {
     public Optional<PhenoCube<?>> getCube(String path, Set<String> consents) {
         Set<PhenoCube<?>> phenoCubes = partitionsFor(consents)
             .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getCube(path).stream()).collect(Collectors.toSet());
-        PhenoCube<?> result = phenoCubes.stream().reduce((phenoCube, phenoCube2) -> {
+        return phenoCubes.stream().reduce((phenoCube, phenoCube2) -> {
             if (phenoCube.vType.equals(String.class)) {
                 return ((PhenoCube<String>) phenoCube).merge((PhenoCube<String>) phenoCube2);
             }
             return ((PhenoCube<Double>) phenoCube).merge((PhenoCube<Double>) phenoCube2);
-        }).get();
-        return Optional.ofNullable(result);
+        });
     }
 
     public Set<String> getCachedKeys() {
