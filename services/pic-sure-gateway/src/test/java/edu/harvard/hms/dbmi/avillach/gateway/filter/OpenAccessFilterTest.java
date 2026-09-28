@@ -14,6 +14,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
@@ -231,6 +232,54 @@ class OpenAccessFilterTest {
         verify(chain).doFilter(eq(req), any());
         assertThat(ctx.getMetadata()).containsEntry("auth_result", "success").containsEntry("auth_action", "open_access.granted")
             .doesNotContainKey("auth_failure_reason");
+    }
+
+    @Test
+    void sessionRefreshIsSetBeforeTheChainRuns() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(
+            new OpenAccessValidation(true, "SESSION", "7c5e0618-0000-0000-0000-000000000000", null, null, "picsure_s_refreshed")
+        );
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        AtomicReference<String> seenByChain = new AtomicReference<>();
+
+        f.doFilter(
+            wrap(null, "picsure_s_current"), resp,
+            (request, response) -> seenByChain.set(((HttpServletResponse) response).getHeader(OpenAccessFilter.SESSION_REFRESH_HEADER))
+        );
+
+        // a proxied response is committed by the time the chain returns, so the header must already be there when it runs
+        assertThat(seenByChain.get()).isEqualTo("picsure_s_refreshed");
+        assertThat(resp.getHeader(OpenAccessFilter.SESSION_REFRESH_HEADER)).isEqualTo("picsure_s_refreshed");
+    }
+
+    @Test
+    void noSessionRefreshHeaderWithoutARefreshedToken() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any()))
+            .thenReturn(new OpenAccessValidation(true, "SESSION", "7c5e0618-0000-0000-0000-000000000000", null, null, null));
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        f.doFilter(wrap(null, "picsure_s_current"), resp, mock(FilterChain.class));
+
+        assertThat(resp.containsHeader(OpenAccessFilter.SESSION_REFRESH_HEADER)).isFalse();
+    }
+
+    // PSAMA never refreshes on a denial; if one ever did, a denied request must still not hand out a credential
+    @Test
+    void deniedRequestNeverCarriesASessionRefresh() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any()))
+            .thenReturn(new OpenAccessValidation(false, null, null, null, OpenAccessValidation.DENIAL_RULES, "picsure_s_refreshed"));
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        f.doFilter(wrap(null, "picsure_s_current"), resp, mock(FilterChain.class));
+
+        assertThat(resp.getStatus()).isEqualTo(401);
+        assertThat(resp.containsHeader(OpenAccessFilter.SESSION_REFRESH_HEADER)).isFalse();
     }
 
     @Test

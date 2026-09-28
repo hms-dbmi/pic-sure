@@ -52,6 +52,9 @@ public class AuthorizationServiceTest {
     @MockBean
     private edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService apiKeyService;
 
+    @MockBean
+    private edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService openSessionService;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     private static AccessRule GATE_resouceUUID;
@@ -221,7 +224,8 @@ public class AuthorizationServiceTest {
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
         authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false, false, apiKeyService, false
+            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false, false, apiKeyService,
+            openSessionService, false
         );
     }
 
