@@ -278,6 +278,19 @@ class AdminFormPayloadTest {
         assertThat(saved.path("accessRules").findValuesAsText("uuid")).containsExactly(rule.getUuid().toString());
     }
 
+    @Test
+    void roleCreateCannotOverwriteAnExistingRole() throws Exception {
+        String name = "ROLE_OVERWRITE_" + suffix;
+        ObjectNode created = json.createObjectNode().put("uuid", role.getUuid().toString()).put("name", name).put("description", "new");
+        created.putArray("privileges").addObject().put("uuid", privilege.getUuid().toString());
+
+        mockMvc.perform(asAdmin(HttpMethod.POST, "/role").content(json.createArrayNode().add(created).toString()))
+            .andExpect(status().isOk());
+
+        assertThat(roleRepository.findById(role.getUuid()).orElseThrow().getName()).isEqualTo("ROLE_" + suffix);
+        assertThat(roleRepository.findByName(name).getUuid()).isNotEqualTo(role.getUuid());
+    }
+
     /**
      * The body {@code UserForm.svelte} builds: the email, the whole connection, general metadata carrying the email, the active flag, and
      * the selected roles as {@code roleAsUserFormSendsIt} describes.

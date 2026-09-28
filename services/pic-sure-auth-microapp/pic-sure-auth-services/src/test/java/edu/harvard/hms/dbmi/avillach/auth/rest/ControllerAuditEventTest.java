@@ -64,9 +64,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getRoleById", new Class[] {String.class}, "OTHER", "role.read");
         // getRoleAll()
         assertAuditEvent(c, "getRoleAll", new Class[] {}, "OTHER", "role.list");
-        // addRole(List<Role> roles, HttpServletRequest request)
+        // addRole(List<RoleCreateRequest> roles, HttpServletRequest request)
         assertAuditEvent(c, "addRole", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "role.modify");
-        // updateRole(List<Role> roles, HttpServletRequest request)
+        // updateRole(List<RoleUpdateRequest> roles, HttpServletRequest request)
         assertAuditEvent(c, "updateRole", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "role.modify");
         // removeById(String roleId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "role.delete");
