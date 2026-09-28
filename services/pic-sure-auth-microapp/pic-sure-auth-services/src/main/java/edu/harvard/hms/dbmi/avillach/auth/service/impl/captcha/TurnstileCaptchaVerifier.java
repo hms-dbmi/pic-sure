@@ -3,38 +3,27 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.captcha;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.service.CaptchaVerifier;
-import jakarta.annotation.PostConstruct;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Verifies Cloudflare Turnstile tokens against the siteverify endpoint. Fails closed: any verification error (network, non-2xx, malformed
- * response) rejects the key mint rather than silently disabling the abuse gate.
+ * Verifies Cloudflare Turnstile tokens against the siteverify endpoint for one widget. Fails closed: any verification error (network,
+ * non-2xx, malformed response, wrong action) rejects the request rather than silently disabling the abuse gate.
  */
-@Service
-@ConditionalOnProperty(name = "captcha.provider", havingValue = "turnstile")
 public class TurnstileCaptchaVerifier implements CaptchaVerifier {
 
     private static final Logger logger = LoggerFactory.getLogger(TurnstileCaptchaVerifier.class);
-
-    // must match the action set on the frontend widget; best-effort — rejects tokens minted by
-    // other widgets on the same sitekey, but only when that widget declared an action
-    static final String EXPECTED_ACTION = "generate-api-key";
 
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int READ_TIMEOUT_MS = 10000;
@@ -43,20 +32,23 @@ public class TurnstileCaptchaVerifier implements CaptchaVerifier {
     private final ObjectMapper objectMapper;
     private final String secret;
     private final String siteVerifyUrl;
+    // must equal the action the frontend widget declares; separates purposes even if two ever share one widget
+    private final String expectedAction;
 
-    @Autowired
     public TurnstileCaptchaVerifier(
-        HttpClient httpClient, ObjectMapper objectMapper, @Value("${captcha.turnstile.secret}") String secret,
-        @Value("${captcha.turnstile.url:https://challenges.cloudflare.com/turnstile/v0/siteverify}") String siteVerifyUrl
+        HttpClient httpClient, ObjectMapper objectMapper, String secret, String siteVerifyUrl, String expectedAction
     ) {
-        this(buildRestTemplate(httpClient), objectMapper, secret, siteVerifyUrl);
+        this(buildRestTemplate(httpClient), objectMapper, secret, siteVerifyUrl, expectedAction);
     }
 
-    TurnstileCaptchaVerifier(RestTemplate restTemplate, ObjectMapper objectMapper, String secret, String siteVerifyUrl) {
+    TurnstileCaptchaVerifier(
+        RestTemplate restTemplate, ObjectMapper objectMapper, String secret, String siteVerifyUrl, String expectedAction
+    ) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.secret = secret;
         this.siteVerifyUrl = siteVerifyUrl;
+        this.expectedAction = expectedAction;
     }
 
     // own template rather than RestClientUtil's shared one: the shared template has no timeouts,
@@ -74,15 +66,6 @@ public class TurnstileCaptchaVerifier implements CaptchaVerifier {
         factory.setConnectionRequestTimeout(CONNECT_TIMEOUT_MS);
         factory.setReadTimeout(READ_TIMEOUT_MS);
         return new RestTemplate(factory);
-    }
-
-    @PostConstruct
-    public void requireSecret() {
-        if (!StringUtils.hasText(secret)) {
-            throw new IllegalStateException(
-                "captcha.provider is 'turnstile' but captcha.turnstile.secret is not set. Configure TURNSTILE_SECRET_KEY."
-            );
-        }
     }
 
     @Override
@@ -111,14 +94,15 @@ public class TurnstileCaptchaVerifier implements CaptchaVerifier {
                 logger.warn("Turnstile rejected the token: error-codes={}", body.path("error-codes"));
                 return false;
             }
+            // exact match: a token whose widget declared no action is rejected too
             String action = body.path("action").asText("");
-            if (!action.isEmpty() && !EXPECTED_ACTION.equals(action)) {
-                logger.warn("Turnstile token was minted for a different action: {}", action);
+            if (!expectedAction.equals(action)) {
+                logger.warn("Turnstile token was minted for action '{}', expected '{}'", action, expectedAction);
                 return false;
             }
             return true;
         } catch (Exception e) {
-            logger.warn("Turnstile verification errored, rejecting key generation: {}", e.toString());
+            logger.warn("Turnstile verification errored, rejecting the token: {}", e.toString());
             return false;
         }
     }

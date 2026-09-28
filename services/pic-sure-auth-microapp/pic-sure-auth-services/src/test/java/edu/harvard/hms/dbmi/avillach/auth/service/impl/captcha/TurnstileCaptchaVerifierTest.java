@@ -19,10 +19,8 @@ import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -39,6 +37,7 @@ public class TurnstileCaptchaVerifierTest {
 
     private static final String URL = "https://siteverify.example/turnstile";
     private static final String TOKEN = "XXXX.DUMMY.TOKEN";
+    private static final String ACTION = "generate-api-key";
 
     private MockRestServiceServer server;
     private TurnstileCaptchaVerifier verifier;
@@ -47,7 +46,7 @@ public class TurnstileCaptchaVerifierTest {
     public void setUp() {
         RestTemplate restTemplate = new RestTemplate();
         server = MockRestServiceServer.createServer(restTemplate);
-        verifier = new TurnstileCaptchaVerifier(restTemplate, new ObjectMapper(), "test-secret", URL);
+        verifier = new TurnstileCaptchaVerifier(restTemplate, new ObjectMapper(), "test-secret", URL, ACTION);
     }
 
     private void respondWith(String body) {
@@ -63,10 +62,17 @@ public class TurnstileCaptchaVerifierTest {
     }
 
     @Test
-    public void testAcceptsSuccessWithoutAction() {
+    public void testRejectsSuccessWithoutAction() {
         respondWith("{\"success\": true}");
 
-        assertTrue(verifier.verify(TOKEN, null));
+        assertFalse(verifier.verify(TOKEN, null));
+    }
+
+    @Test
+    public void testRejectsSuccessWithEmptyAction() {
+        respondWith("{\"success\": true, \"action\": \"\"}");
+
+        assertFalse(verifier.verify(TOKEN, null));
     }
 
     @Test
@@ -77,7 +83,7 @@ public class TurnstileCaptchaVerifierTest {
         expected.add("remoteip", "203.0.113.7");
         server.expect(requestTo(URL)).andExpect(method(HttpMethod.POST))
             .andExpect(content().contentType(MediaType.APPLICATION_FORM_URLENCODED)).andExpect(content().formData(expected))
-            .andRespond(withSuccess("{\"success\": true}", MediaType.APPLICATION_JSON));
+            .andRespond(withSuccess("{\"success\": true, \"action\": \"generate-api-key\"}", MediaType.APPLICATION_JSON));
 
         assertTrue(verifier.verify(TOKEN, "203.0.113.7"));
         server.verify();
@@ -89,7 +95,7 @@ public class TurnstileCaptchaVerifierTest {
         expected.add("secret", "test-secret");
         expected.add("response", TOKEN);
         server.expect(requestTo(URL)).andExpect(content().formData(expected))
-            .andRespond(withSuccess("{\"success\": true}", MediaType.APPLICATION_JSON));
+            .andRespond(withSuccess("{\"success\": true, \"action\": \"generate-api-key\"}", MediaType.APPLICATION_JSON));
 
         assertTrue(verifier.verify(TOKEN, null));
         server.verify();
@@ -164,8 +170,9 @@ public class TurnstileCaptchaVerifierTest {
         redirectServer.start();
 
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
-            TurnstileCaptchaVerifier productionVerifier =
-                new TurnstileCaptchaVerifier(httpClient, new ObjectMapper(), "test-secret", "http://127.0.0.1:" + port + "/siteverify");
+            TurnstileCaptchaVerifier productionVerifier = new TurnstileCaptchaVerifier(
+                httpClient, new ObjectMapper(), "test-secret", "http://127.0.0.1:" + port + "/siteverify", ACTION
+            );
 
             assertFalse(productionVerifier.verify(TOKEN, null));
             assertEquals(0, redirectedRequests.get());
@@ -186,13 +193,5 @@ public class TurnstileCaptchaVerifierTest {
         respondWith("not json");
 
         assertFalse(verifier.verify(TOKEN, null));
-    }
-
-    @Test
-    public void testFailsStartupWithoutSecret() {
-        TurnstileCaptchaVerifier noSecret = new TurnstileCaptchaVerifier(new RestTemplate(), new ObjectMapper(), " ", URL);
-
-        assertThrows(IllegalStateException.class, noSecret::requireSecret);
-        assertDoesNotThrow(verifier::requireSecret);
     }
 }

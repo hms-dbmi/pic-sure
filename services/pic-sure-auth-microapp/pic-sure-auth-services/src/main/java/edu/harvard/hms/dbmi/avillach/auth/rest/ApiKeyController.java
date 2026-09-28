@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -49,7 +50,7 @@ public class ApiKeyController {
 
     @Autowired
     public ApiKeyController(
-        ApiKeyService apiKeyService, CaptchaVerifier captchaVerifier,
+        ApiKeyService apiKeyService, @Qualifier("apiKeyCaptchaVerifier") CaptchaVerifier captchaVerifier,
         @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled,
         @Value("${api.key.generation.enabled}") boolean generationEnabled
     ) {
