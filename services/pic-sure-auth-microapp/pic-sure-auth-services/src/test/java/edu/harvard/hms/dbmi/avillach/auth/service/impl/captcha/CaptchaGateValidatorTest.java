@@ -19,7 +19,7 @@ public class CaptchaGateValidatorTest {
 
     private static final String URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
-    private final CaptchaGateValidator generationDisabled = new CaptchaGateValidator(false, false);
+    private final CaptchaGateValidator generationDisabled = new CaptchaGateValidator(false, false, false, false);
 
     private static CaptchaSettings turnstile(CaptchaPurpose purpose, String secret, String expectedAction, String url) {
         return new CaptchaSettings(purpose, TURNSTILE, secret, expectedAction, url);
@@ -88,7 +88,7 @@ public class CaptchaGateValidatorTest {
     @Test
     public void testFullyConfiguredTurnstilePurposesPass() {
         assertDoesNotThrow(
-            () -> new CaptchaGateValidator(true, false)
+            () -> new CaptchaGateValidator(true, false, false, false)
                 .validate(List.of(turnstile(CaptchaPurpose.API_KEY), turnstile(CaptchaPurpose.SESSION)))
         );
     }
@@ -133,7 +133,7 @@ public class CaptchaGateValidatorTest {
 
     @Test
     public void testGenerationEnabledWithApiKeyDisabledFailsNamingThePurpose() {
-        CaptchaGateValidator validator = new CaptchaGateValidator(true, false);
+        CaptchaGateValidator validator = new CaptchaGateValidator(true, false, false, false);
 
         IllegalStateException e =
             assertThrows(IllegalStateException.class, () -> validator.validate(List.of(disabled(CaptchaPurpose.API_KEY))));
@@ -143,15 +143,56 @@ public class CaptchaGateValidatorTest {
 
     @Test
     public void testGenerationEnabledWithApiKeyDisabledPassesWithExplicitOptIn() {
-        assertDoesNotThrow(() -> new CaptchaGateValidator(true, true).validate(List.of(disabled(CaptchaPurpose.API_KEY))));
+        assertDoesNotThrow(() -> new CaptchaGateValidator(true, true, false, false).validate(List.of(disabled(CaptchaPurpose.API_KEY))));
     }
 
     // the generation flags gate API key generation only; a disabled session widget says nothing about it
     @Test
     public void testGenerationFlagsDoNotGateTheSessionPurpose() {
         assertDoesNotThrow(
-            () -> new CaptchaGateValidator(true, false)
+            () -> new CaptchaGateValidator(true, false, false, false)
                 .validate(List.of(turnstile(CaptchaPurpose.API_KEY), disabled(CaptchaPurpose.SESSION)))
+        );
+    }
+
+    @Test
+    public void testSessionEnabledWithSessionDisabledFailsNamingThePurpose() {
+        CaptchaGateValidator validator = new CaptchaGateValidator(false, false, true, false);
+
+        IllegalStateException e =
+            assertThrows(IllegalStateException.class, () -> validator.validate(List.of(disabled(CaptchaPurpose.SESSION))));
+
+        assertMessageNames(e, CaptchaPurpose.SESSION.property(Setting.PROVIDER), "api.key.allow.ungated.session");
+    }
+
+    @Test
+    public void testSessionEnabledWithSessionDisabledPassesWithExplicitOptIn() {
+        assertDoesNotThrow(() -> new CaptchaGateValidator(false, false, true, true).validate(List.of(disabled(CaptchaPurpose.SESSION))));
+    }
+
+    @Test
+    public void testSessionEnabledWithTurnstilePasses() {
+        assertDoesNotThrow(() -> new CaptchaGateValidator(false, false, true, false).validate(List.of(turnstile(CaptchaPurpose.SESSION))));
+    }
+
+    // each opt-in covers its own purpose only
+    @Test
+    public void testUngatedGenerationOptInDoesNotUngateSessions() {
+        CaptchaGateValidator validator = new CaptchaGateValidator(true, true, true, false);
+
+        assertThrows(
+            IllegalStateException.class,
+            () -> validator.validate(List.of(disabled(CaptchaPurpose.API_KEY), disabled(CaptchaPurpose.SESSION)))
+        );
+    }
+
+    @Test
+    public void testUngatedSessionOptInDoesNotUngateGeneration() {
+        CaptchaGateValidator validator = new CaptchaGateValidator(true, false, true, true);
+
+        assertThrows(
+            IllegalStateException.class,
+            () -> validator.validate(List.of(disabled(CaptchaPurpose.API_KEY), disabled(CaptchaPurpose.SESSION)))
         );
     }
 

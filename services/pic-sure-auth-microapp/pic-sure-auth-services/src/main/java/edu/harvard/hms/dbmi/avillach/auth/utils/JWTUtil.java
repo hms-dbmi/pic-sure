@@ -51,6 +51,14 @@ public class JWTUtil {
     }
 
     /**
+     * The HMAC key bytes every token here is signed and verified with, derived from {@code application.client.secret} exactly as signing
+     * does. Other signers compare against these bytes to prove they use a different key.
+     */
+    public byte[] signingKeyBytes() {
+        return getDecodedClientSecret().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
      * @param id      - id
      * @param issuer  - issuer
      * @param claims  - claims
@@ -72,8 +80,7 @@ public class JWTUtil {
         long nowMillis = System.currentTimeMillis();
         Date now = new Date(nowMillis);
 
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
         //Builds the JWT and serializes it to a compact, URL-safe string
         JwtBuilder builder = Jwts.builder()
@@ -94,8 +101,7 @@ public class JWTUtil {
     }
 
     public Jws<Claims> parseToken(String token) {
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
         Jws<Claims> jws;
         try {
@@ -121,8 +127,7 @@ public class JWTUtil {
      * @return the claims, or empty if the signature or structure could not be verified
      */
     public Optional<Claims> parseTokenAllowingExpiration(String token) {
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
         try {
             return Optional.of(Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload());

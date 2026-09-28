@@ -21,13 +21,18 @@ public class CaptchaGateValidator {
 
     private final boolean generationEnabled;
     private final boolean allowUngatedGeneration;
+    private final boolean sessionEnabled;
+    private final boolean allowUngatedSession;
 
     public CaptchaGateValidator(
         @Value("${api.key.generation.enabled}") boolean generationEnabled,
-        @Value("${api.key.allow.ungated.generation}") boolean allowUngatedGeneration
+        @Value("${api.key.allow.ungated.generation}") boolean allowUngatedGeneration,
+        @Value("${api.key.session.enabled}") boolean sessionEnabled, @Value("${api.key.allow.ungated.session}") boolean allowUngatedSession
     ) {
         this.generationEnabled = generationEnabled;
         this.allowUngatedGeneration = allowUngatedGeneration;
+        this.sessionEnabled = sessionEnabled;
+        this.allowUngatedSession = allowUngatedSession;
     }
 
     /**
@@ -66,8 +71,11 @@ public class CaptchaGateValidator {
                     + "'. Configure " + purpose.property(Setting.PROVIDER)
                     + ", or explicitly accept ungated anonymous key minting with api.key.allow.ungated.generation=true."
             ) : Optional.empty();
-            // nothing issues open-access sessions yet, so there is no feature to gate
-            case SESSION -> Optional.empty();
+            case SESSION -> sessionEnabled && !allowUngatedSession ? Optional.of(
+                "api.key.session.enabled is true but " + purpose.property(Setting.PROVIDER) + " is '" + CaptchaProvider.DISABLED.value()
+                    + "'. Configure " + purpose.property(Setting.PROVIDER)
+                    + ", or explicitly accept ungated open-access session issuance with api.key.allow.ungated.session=true."
+            ) : Optional.empty();
         };
     }
 

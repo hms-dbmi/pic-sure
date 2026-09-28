@@ -76,9 +76,12 @@ public class TokenService {
     }
 
     private TokenInspection validateToken(Map<String, Object> inputMap) throws IllegalAccessException {
+        // the token is a live credential, and a rejected one may be an open-access session sent as a bearer by mistake: never log it
         logger.debug(
             "_inspectToken, the incoming token map is: {}",
-            inputMap.entrySet().stream().map(entry -> entry.getKey() + " - " + entry.getValue()).collect(Collectors.joining(", "))
+            inputMap.entrySet().stream()
+                .map(entry -> entry.getKey() + " - " + ("token".equals(entry.getKey()) ? "REDACTED" : entry.getValue()))
+                .collect(Collectors.joining(", "))
         );
 
         TokenInspection tokenInspection = new TokenInspection();
@@ -98,8 +101,7 @@ public class TokenService {
             // Remove token from inputMap to prevent accidental logging
             inputMap.remove("token");
         } catch (NotAuthorizedException ex) {
-            // Log invalid token only when verification fails
-            logger.error("_inspectToken() the token - {} - is invalid with exception: {}", token, ex.getMessage());
+            logger.error("_inspectToken() the token is invalid with exception: {}", ex.getMessage());
             tokenInspection.setMessage(ex.getMessage());
             tokenInspection.addField("active", false);
             return tokenInspection;

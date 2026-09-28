@@ -8,6 +8,8 @@ import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationRes
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse.Denial;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures.MutableClock;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService.IssuedSession;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.junit.jupiter.api.AfterEach;
@@ -21,10 +23,13 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -57,6 +62,13 @@ public class AuthorizationServiceTest {
     @MockBean
     private ApiKeyService apiKeyService;
 
+    // satisfies the context's own AuthorizationService bean; the tests build theirs over a real service on a test clock
+    @MockBean
+    private OpenSessionService contextOpenSessionService;
+
+    private MutableClock clock;
+    private OpenSessionService openSessionService;
+
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
@@ -68,14 +80,18 @@ public class AuthorizationServiceTest {
         SecurityContextHolder.setContext(securityContext);
 
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
+        clock = new MutableClock(Instant.parse("2026-09-28T12:00:00Z"));
+        openSessionService = OpenSessionFixtures.enabledService(clock);
         authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false, false, apiKeyService, false
+            accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false, false, apiKeyService,
+            openSessionService, false
         );
     }
 
     private AuthorizationService enforcingAuthorizationService() {
         return new AuthorizationService(
-            accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false, false, apiKeyService, true
+            accessRuleService, sessionService, roleService, "fence,okta,open", userConsentsRepository, false, false, apiKeyService,
+            openSessionService, true
         );
     }
 
@@ -227,6 +243,112 @@ public class AuthorizationServiceTest {
         assertEquals(Denial.RULES, denied.denial());
         assertNoKeyIdentity(denied);
         verify(roleService).getRoleByName(any());
+    }
+
+    private static Map<String, Object> presenting(String key) {
+        Map<String, Object> inputMap = new HashMap<>();
+        inputMap.put("apiKey", key);
+        return inputMap;
+    }
+
+    private static void assertSessionIdentity(IssuedSession expected, OpenAccessValidationResponse validation) {
+        assertTrue(validation.valid());
+        assertNull(validation.denial());
+        assertEquals(ApiKeyType.SESSION, validation.keyType());
+        assertEquals(expected.sessionId(), validation.keyId());
+        assertNull(validation.displayPrefix());
+    }
+
+    @Test
+    public void testOpenAccess_enforcementOff_validSessionReportsSessionIdentity() {
+        IssuedSession issued = openSessionService.issue();
+
+        OpenAccessValidationResponse validation = authorizationService.validateOpenAccessRequest(presenting(issued.token()));
+
+        assertSessionIdentity(issued, validation);
+        assertNull(validation.refreshedToken());
+        verify(apiKeyService, never()).verifyKey(any());
+    }
+
+    @Test
+    public void testOpenAccess_enforcementOn_validSessionGranted() {
+        IssuedSession issued = openSessionService.issue();
+
+        OpenAccessValidationResponse validation = enforcingAuthorizationService().validateOpenAccessRequest(presenting(issued.token()));
+
+        assertSessionIdentity(issued, validation);
+        verify(apiKeyService, never()).verifyKey(any());
+    }
+
+    @Test
+    public void testOpenAccess_sessionPastHalfLifeGetsARefreshForTheSameSession() {
+        IssuedSession issued = openSessionService.issue();
+        clock.advance(Duration.ofMinutes(8));
+
+        OpenAccessValidationResponse validation = authorizationService.validateOpenAccessRequest(presenting(issued.token()));
+
+        assertSessionIdentity(issued, validation);
+        assertNotNull(validation.refreshedToken());
+        assertEquals(issued.sessionId(), openSessionService.verify(validation.refreshedToken()).orElseThrow().sessionId());
+    }
+
+    // enforcement off does not skip verification: the refresh still arrives, per ticket 03's enforcement table
+    @Test
+    public void testOpenAccess_enforcementOn_sessionPastHalfLifeGetsARefresh() {
+        IssuedSession issued = openSessionService.issue();
+        clock.advance(Duration.ofMinutes(8));
+
+        assertNotNull(enforcingAuthorizationService().validateOpenAccessRequest(presenting(issued.token())).refreshedToken());
+    }
+
+    @Test
+    public void testOpenAccess_enforcementOn_invalidSessionDenied() {
+        IssuedSession issued = openSessionService.issue();
+        clock.advance(Duration.ofMinutes(16));
+        AuthorizationService enforcing = enforcingAuthorizationService();
+
+        assertEquals(Denial.KEY_INVALID, enforcing.validateOpenAccessRequest(presenting(issued.token())).denial());
+        assertEquals(Denial.KEY_INVALID, enforcing.validateOpenAccessRequest(presenting("picsure_s_not-a-jwt")).denial());
+        verify(apiKeyService, never()).verifyKey(any());
+        verify(roleService, never()).getRoleByName(any());
+    }
+
+    // a user's bearer JWT pasted into the API key header carries no picsure_s_ prefix, so it never reaches session verification
+    @Test
+    public void testOpenAccess_enforcementOn_userJwtAsApiKeyDenied() {
+        String userJwt = OpenSessionFixtures.applicationJwtUtil().createJwtToken(null, "psama", Map.of(), "user-subject", 60_000);
+
+        OpenAccessValidationResponse validation = enforcingAuthorizationService().validateOpenAccessRequest(presenting(userJwt));
+
+        assertFalse(validation.valid());
+        assertEquals(Denial.KEY_INVALID, validation.denial());
+        verify(apiKeyService).verifyKey(userJwt);
+    }
+
+    @Test
+    public void testOpenAccess_enforcementOff_invalidSessionAdmittedWithoutIdentity() {
+        IssuedSession issued = openSessionService.issue();
+        clock.advance(Duration.ofMinutes(16));
+
+        OpenAccessValidationResponse validation = authorizationService.validateOpenAccessRequest(presenting(issued.token()));
+
+        assertTrue(validation.valid());
+        assertNoKeyIdentity(validation);
+    }
+
+    @Test
+    public void testOpenAccess_sessionDeniedByTheRulesGetsNoRefresh() {
+        IssuedSession issued = openSessionService.issue();
+        clock.advance(Duration.ofMinutes(8));
+        when(roleService.getRoleByName(any())).thenReturn(null);
+        Map<String, Object> inputMap = presenting(issued.token());
+        inputMap.put("request", Map.of("Target Service", "/query/sync"));
+
+        OpenAccessValidationResponse validation = enforcingAuthorizationService().validateOpenAccessRequest(inputMap);
+
+        assertFalse(validation.valid());
+        assertEquals(Denial.RULES, validation.denial());
+        assertNoKeyIdentity(validation);
     }
 
     @Test

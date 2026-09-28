@@ -76,6 +76,8 @@ public class CaptchaConfigurationTest {
         Map<String, String> properties = new LinkedHashMap<>();
         properties.put("api.key.generation.enabled", "false");
         properties.put("api.key.allow.ungated.generation", "false");
+        properties.put("api.key.session.enabled", "false");
+        properties.put("api.key.allow.ungated.session", "false");
         properties.put(CaptchaPurpose.API_KEY.property(Setting.PROVIDER), apiKeyProvider);
         properties.put(CaptchaPurpose.API_KEY.property(Setting.SECRET), API_KEY_SECRET);
         properties.put(CaptchaPurpose.API_KEY.property(Setting.EXPECTED_ACTION), API_KEY_ACTION);
@@ -193,6 +195,27 @@ public class CaptchaConfigurationTest {
             assertThat(context.getBean("apiKeyCaptchaVerifier")).isInstanceOf(TurnstileCaptchaVerifier.class);
             assertThat(context.getBean("sessionCaptchaVerifier")).isInstanceOf(DisabledCaptchaVerifier.class);
         });
+    }
+
+    @Test
+    public void testSessionsEnabledWithSessionCaptchaDisabledStopsStartup() {
+        Map<String, String> properties = properties(TURNSTILE, DISABLED);
+        properties.put("api.key.session.enabled", "true");
+
+        runner(properties).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("api.key.allow.ungated.session");
+        });
+    }
+
+    @Test
+    public void testSessionsEnabledWithSessionCaptchaDisabledStartsWithTheOptIn() {
+        Map<String, String> properties = properties(TURNSTILE, DISABLED);
+        properties.put("api.key.session.enabled", "true");
+        properties.put("api.key.allow.ungated.session", "true");
+
+        runner(properties).run(context -> assertThat(context).hasNotFailed());
     }
 
     @ParameterizedTest
