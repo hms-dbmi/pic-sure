@@ -36,9 +36,10 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * Full-context MockMvc coverage of {@code /hpds/{backend}[/v3]/search/**}. Both the v1 and v3 ingress paths for a given backend resolve to
- * the same {@code /v3} HPDS downstream URL, since v1 and v3 search share the same HPDS logic. {@code auth} and {@code open} are pointed at
- * distinct paths on one WireMock instance so backend selection is verifiable without running two servers.
+ * Full-context MockMvc coverage of {@code /hpds/{backend}/search/**}. Every call resolves to the same {@code /v3} HPDS downstream URL,
+ * since {@link edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector} always resolves the v3 base regardless of backend.
+ * {@code auth} and {@code open} are pointed at distinct paths on one WireMock instance so backend selection is verifiable without running
+ * two servers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -77,7 +78,7 @@ class HpdsSearchControllerTest {
     }
 
     @Test
-    void searchOnAuthBackendMapsToSameDownstreamUrlForV1AndV3() throws Exception {
+    void searchOnAuthBackendMapsToTheV3DownstreamUrl() throws Exception {
         hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/v3/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
 
         mockMvc.perform(
@@ -85,12 +86,7 @@ class HpdsSearchControllerTest {
                 .content("{\"query\":\"q\"}")
         ).andExpect(status().isOk());
 
-        mockMvc.perform(
-            post("/hpds/auth/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk());
-
-        hpds.verify(2, postRequestedFor(urlEqualTo("/AUTH/v3/search")));
+        hpds.verify(1, postRequestedFor(urlEqualTo("/AUTH/v3/search")));
     }
 
     @Test
@@ -118,7 +114,7 @@ class HpdsSearchControllerTest {
     }
 
     @Test
-    void valuesEndpointMapsForBothV1AndV3OnAuthBackend() throws Exception {
+    void valuesEndpointMapsToTheV3DownstreamUrl() throws Exception {
         hpds.stubFor(
             WireMock.get(urlPathEqualTo("/AUTH/v3/search/values/")).withQueryParam("genomicConceptPath", equalTo("\\gene\\"))
                 .withQueryParam("query", equalTo("BRCA")).willReturn(okJson("{\"results\":[],\"page\":1,\"total\":0}"))
@@ -129,12 +125,7 @@ class HpdsSearchControllerTest {
                 .param("query", "BRCA")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
 
-        mockMvc.perform(
-            get("/hpds/auth/v3/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER).param("genomicConceptPath", "\\gene\\")
-                .param("query", "BRCA")
-        ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
-
-        hpds.verify(2, getRequestedFor(urlPathEqualTo("/AUTH/v3/search/values/")));
+        hpds.verify(1, getRequestedFor(urlPathEqualTo("/AUTH/v3/search/values/")));
     }
 
     @Test

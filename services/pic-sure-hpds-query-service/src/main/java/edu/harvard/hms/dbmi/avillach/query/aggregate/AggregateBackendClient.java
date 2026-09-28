@@ -20,13 +20,13 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * carries {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} and builds a fresh request body that carries only the inbound query. Neither the
  * caller's resource UUID nor a configured target resource id reaches the downstream body, because no downstream endpoint reads that field.
  *
- * <p>Only the calls the obfuscation surface actually makes are exposed here, all on the HPDS and visualization {@code /v3} routes:
- * {@link #search} (used to fetch the study-consents allow-list), {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT
- * lookup) and {@link #binContinuous} (visualization binning). The async query-lifecycle calls ({@code /query}, {@code /query/{id}/status},
+ * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list)
+ * and {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup), both on HPDS's {@code /v3} routes, and
+ * {@link #binContinuous} (visualization binning). The async query-lifecycle calls ({@code /query}, {@code /query/{id}/status},
  * {@code /query/{id}/result}, {@code /query/format}, {@code /info}) are NOT proxied through this client: the open async submit is routed
  * through {@code QueryService} (DB-free persistence + dispatch, see {@link AggregateService#query}), and every subsequent read op is served
- * by the v3 read ingress ({@code /hpds/{backend}[/v3]/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryController}) off the
- * stored (already consent-scoped) query.
+ * by the read ingress ({@code /hpds/{backend}/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryController}) off the stored
+ * (already consent-scoped) query.
  *
  * <p>Non-2xx responses and I/O failures surface as {@link HpdsCommunicationException} (mapped to 502 by
  * {@code edu.harvard.hms.dbmi.avillach.query.error.GlobalExceptionHandler}), mirroring {@code ResourceWebClient}'s error-handling

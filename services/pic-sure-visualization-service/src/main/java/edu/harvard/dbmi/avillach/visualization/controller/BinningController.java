@@ -31,7 +31,7 @@ public class BinningController {
         {@ApiResponse(responseCode = "200", description = "Binned counts for each concept"),
             @ApiResponse(responseCode = "400", description = "Malformed request")}
     )
-    @PostMapping({"/bin/continuous", "/v3/bin/continuous"})
+    @PostMapping("/bin/continuous")
     public ResponseEntity<Map<String, Map<String, Integer>>> binContinuous(
         @Valid @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
     ) {

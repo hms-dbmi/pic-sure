@@ -90,14 +90,14 @@ class UnconfiguredBackendResponsesTest {
 
     static Stream<Arguments> backendSelecting() {
         return Stream.of(
-            endpoint("submit", id -> authorized(post("/hpds/auth/v3/query")).content(QUERY_BODY)),
-            endpoint("sync", id -> authorized(post("/hpds/auth/v3/query/sync")).content(QUERY_BODY)),
-            endpoint("status", id -> authorized(post("/hpds/open/v3/query/{id}/status", id)).content("{}")),
-            endpoint("result", id -> authorized(post("/hpds/open/v3/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/open/v3/query/{id}/signed-url", id)).content("{}")),
+            endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
+            endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
+            endpoint("status", id -> authorized(post("/hpds/open/query/{id}/status", id)).content("{}")),
+            endpoint("result", id -> authorized(post("/hpds/open/query/{id}/result", id)).content("{}")),
+            endpoint("signed-url", id -> authorized(post("/hpds/open/query/{id}/signed-url", id)).content("{}")),
             endpoint("search", id -> authorized(post("/hpds/open/search")).content("{\"query\":\"age\"}")),
             endpoint("search values", id -> identified(get("/hpds/open/search/values")).param("genomicConceptPath", "\\gene\\")),
-            endpoint("open submit v3", id -> authorized(post("/hpds/open/v3/query")).content(QUERY_BODY))
+            endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY))
         );
     }
 

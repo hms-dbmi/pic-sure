@@ -42,9 +42,9 @@ import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
  * open HPDS backend (the {@code /v3/search} study-consents lookup and the {@code /PIC-SURE/v3/query} async submit), and a Mockito
  * {@link OperationsClient} stands in for operations-service persistence (this module is DB-free).
  *
- * <p>Asserts: (a) {@code POST /hpds/open/v3/query} for a CROSS_COUNT submission is rewritten (force CROSS_COUNT + inject the study-consents
+ * <p>Asserts: (a) {@code POST /hpds/open/query} for a CROSS_COUNT submission is rewritten (force CROSS_COUNT + inject the study-consents
  * allow-list) and the REWRITTEN query is what gets persisted AND dispatched -- so any later status/result read served off the stored query
- * is already consent-scoped; (b) the generic authorized path {@code /hpds/auth/v3/query} is untouched; and (c) a request missing
+ * is already consent-scoped; (b) the generic authorized path {@code /hpds/auth/query} is untouched; and (c) a request missing
  * {@code expectedResultType} returns 400 before any backend or persistence call.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
@@ -98,7 +98,7 @@ class AggregateAsyncOpenQueryTest {
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
         mockMvc.perform(
-            post("/hpds/open/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+            post("/hpds/open/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":{\"expectedResultType\":\"CROSS_COUNT\"}}")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.resourceResultId").value("rr-async3"));
 
@@ -120,7 +120,7 @@ class AggregateAsyncOpenQueryTest {
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
         mockMvc.perform(
-            post("/hpds/auth/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+            post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":{\"expectedResultType\":\"DATAFRAME\"}}")
         ).andExpect(status().isOk());
 
@@ -137,7 +137,7 @@ class AggregateAsyncOpenQueryTest {
     @Test
     void openAsyncQueryMissingExpectedResultTypeIsRejectedAs400() throws Exception {
         mockMvc.perform(
-            post("/hpds/open/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+            post("/hpds/open/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":{\"foo\":\"bar\"}}")
         ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
 
