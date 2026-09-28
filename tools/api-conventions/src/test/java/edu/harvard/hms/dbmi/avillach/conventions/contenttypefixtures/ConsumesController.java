@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Every GET handler shape R14 must flag, beside the shapes it must accept. */
+/** Every GET handler shape {@code get-has-no-consumes} must flag, beside the shapes it must accept. */
 @RestController
 @RequestMapping("/consumes")
 public class ConsumesController {

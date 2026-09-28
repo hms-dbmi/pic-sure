@@ -13,8 +13,8 @@ import com.tngtech.archunit.core.domain.JavaEnumConstant;
 import com.tngtech.archunit.core.domain.JavaMethod;
 
 /**
- * R14: the request content type rules, as pure functions over imported classes. Each returns every
- * violation it finds rather than throwing on the first.
+ * The request content type rules, as pure functions over imported classes. Each returns every violation
+ * it finds rather than throwing on the first.
  */
 public final class ContentTypeRules {
 
@@ -25,13 +25,12 @@ public final class ContentTypeRules {
     private ContentTypeRules() {}
 
     /**
-     * R14: a handler that answers GET sets no {@code consumes} other than the wildcard media type.
-     * A GET carries no body, so clients send no {@code Content-Type}, and Spring never matches such a
-     * request to the handler: it answers 415, or hands the request to another mapping that fits the path.
-     * A handler answers GET when it carries {@code @GetMapping}, or a {@code @RequestMapping} whose
-     * {@code method} includes GET or is left empty. Its effective {@code consumes} is its own when set,
-     * and otherwise the one on its class's {@code @RequestMapping}, which Spring applies to every handler
-     * that does not declare its own.
+     * {@code get-has-no-consumes}: a handler that answers GET sets no {@code consumes} other than the wildcard
+     * media type. A GET carries no body, so clients send no {@code Content-Type}, and Spring never matches such a
+     * request to the handler: it answers 415, or hands the request to another mapping that fits the path. A
+     * handler answers GET when it carries {@code @GetMapping}, or a {@code @RequestMapping} whose {@code method}
+     * includes GET or is left empty. Its effective {@code consumes} is its own when set, and otherwise the one on
+     * its class's {@code @RequestMapping}, which Spring applies to every handler that does not declare its own.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes

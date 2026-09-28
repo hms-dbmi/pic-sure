@@ -92,7 +92,7 @@ class ApiConventionsTest {
 
     @Test
     void noGetHandlerNarrowsConsumes() {
-        report("R14", overAllModules(ContentTypeRules::getDoesNotNarrowConsumes));
+        report("get-has-no-consumes", overAllModules(ContentTypeRules::getDoesNotNarrowConsumes));
     }
 
     private static List<String> overAllModules(Rule rule) {
