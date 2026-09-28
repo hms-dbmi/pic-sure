@@ -155,7 +155,9 @@ class ClientErrorStatusTest {
     @Test
     void unacceptableMediaTypeIs406() throws Exception {
         mockMvc.perform(get("/probe/page").accept(MediaType.APPLICATION_JSON)).andExpect(status().isNotAcceptable())
-            .andExpect(jsonPath("$.errorType").value("not_acceptable")).andExpect(jsonPath("$.requestId").value(REQUEST_ID));
+            .andExpect(jsonPath("$.errorType").value("not_acceptable"))
+            .andExpect(jsonPath("$.message").value("Acceptable representations: [text/html]."))
+            .andExpect(jsonPath("$.requestId").value(REQUEST_ID));
     }
 
     @Test

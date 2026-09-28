@@ -148,8 +148,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * Writes every response the base class produces in this service's {@code {error}} shape, keeping the status and headers it chose. A 4xx
-     * carries Spring's detail; a 5xx is logged and carries the same text as {@link #handleGenericException}. A body an override already
-     * built passes through unchanged.
+     * carries the text {@link #clientErrorDetail} chooses, which never quotes the request; a 5xx is logged and carries the same text as
+     * {@link #handleGenericException}. A body an override already built passes through unchanged.
      *
      * @param ex the exception being handled
      * @param body the body built so far, or {@code null}
