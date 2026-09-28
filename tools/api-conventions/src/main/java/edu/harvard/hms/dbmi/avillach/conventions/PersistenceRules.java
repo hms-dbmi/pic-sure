@@ -33,11 +33,11 @@ public final class PersistenceRules {
     private PersistenceRules() {}
 
     /**
-     * R19: every persisted enum field is stored by name or through a converter. A field of enum type in
-     * an {@code @Entity}, {@code @MappedSuperclass} or {@code @Embeddable} class carries
-     * {@code @Enumerated(EnumType.STRING)} or {@code @Convert}. A bare field and a bare {@code @Enumerated}
-     * both default to the ordinal, so reordering or inserting a constant silently remaps stored rows, and a
-     * stored ordinal past the end of the constant list fails every read of that row.
+     * {@code entity-enums-stored-by-name}: every persisted enum field is stored by name or through a converter. A
+     * field of enum type in an {@code @Entity}, {@code @MappedSuperclass} or {@code @Embeddable} class carries
+     * {@code @Enumerated(EnumType.STRING)} or {@code @Convert}. A bare field and a bare {@code @Enumerated} both
+     * default to the ordinal, so reordering or inserting a constant silently remaps stored rows, and a stored
+     * ordinal past the end of the constant list fails every read of that row.
      *
      * <p>Mapped superclasses and embeddables are included because their fields are persisted in the
      * owning entity's table under the same default. Static fields, Java {@code transient} fields and

@@ -94,7 +94,7 @@ class ApiConventionsTest {
     @Test
     void everyPersistedEnumIsStoredByName() {
         Set<String> enums = PersistenceRules.enumTypes(modules);
-        report("R19", overAllModules((module, classes) -> PersistenceRules.enumsStoredByName(module, classes, enums)));
+        report("entity-enums-stored-by-name", overAllModules((module, classes) -> PersistenceRules.enumsStoredByName(module, classes, enums)));
     }
 
     private static List<String> overAllModules(Rule rule) {

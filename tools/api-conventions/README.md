@@ -6,6 +6,8 @@ It also holds every module to one authorization standard. A handler that needs a
 
 The OpenAPI document publishes each guard's authorities as "Required authorities: ..." at the end of the operation description, so `docs-do-not-restate-authorities` fails a documented module whose `@Tag` description or `@Operation` summary or description names one of the authorities its guards require. That prose would only repeat the guard and drift from it.
 
+`entity-enums-stored-by-name` covers persistence in every module. A field whose type is an enum, in a class annotated `@Entity`, `@MappedSuperclass` or `@Embeddable`, must carry `@Enumerated(EnumType.STRING)` or `@Convert(converter = ...)`. A bare field and a bare `@Enumerated` both store the constant's ordinal, so reordering or adding a constant remaps existing rows, and a stored ordinal the enum does not define fails every read of that row. Static, `transient` and `@Transient` fields are skipped. The rule reads field annotations only, and it does not recognise a converter registered with `autoApply = true`, so name the converter on the field. An enum compiled in another module still counts as an enum. An enum from outside the reactor counts only when the checker's test classpath has it: JDK and `jakarta.persistence` enums do, but a Hibernate, Spring or other third-party enum does not, so a bare field of that type passes unchecked.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -31,7 +33,9 @@ Authorization, over every compiled module:
 - `guards-enable-method-security`: a module that uses `@PreAuthorize` declares `@EnableMethodSecurity` with pre/post support on.
 - `no-role-checks`: no code calls `hasRole`, `hasAnyRole` or `isUserInRole` on a Spring Security, actuator, Servlet or JAX-RS type.
 
-R19 covers persistence in every module. A field whose type is an enum, in a class annotated `@Entity`, `@MappedSuperclass` or `@Embeddable`, must carry `@Enumerated(EnumType.STRING)` or `@Convert(converter = ...)`. A bare field and a bare `@Enumerated` both store the constant's ordinal, so reordering or adding a constant remaps existing rows, and a stored ordinal the enum does not define fails every read of that row. Static, `transient` and `@Transient` fields are skipped. The rule reads field annotations only, and it does not recognise a converter registered with `autoApply = true`, so name the converter on the field. An enum compiled in another module still counts as an enum. An enum from outside the reactor counts only when the checker's test classpath has it: JDK and `jakarta.persistence` enums do, but a Hibernate, Spring or other third-party enum does not, so a bare field of that type passes unchecked.
+Persistence, over every compiled module:
+
+- `entity-enums-stored-by-name`: every enum field in an `@Entity`, `@MappedSuperclass` or `@Embeddable` carries `@Enumerated(EnumType.STRING)` or `@Convert`.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
