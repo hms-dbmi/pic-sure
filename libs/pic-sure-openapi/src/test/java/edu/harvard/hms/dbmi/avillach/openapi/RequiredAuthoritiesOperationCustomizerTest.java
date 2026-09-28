@@ -55,6 +55,12 @@ class RequiredAuthoritiesOperationCustomizerTest {
         public String authenticated() {
             return "";
         }
+
+        @PreAuthorize("hasAuthority('SUPER_ADMIN')")
+        @PublicEndpoint(PublicEndpoint.Access.ANONYMOUS)
+        public String guardedAndMarked() {
+            return "";
+        }
     }
 
     private Operation customize(Operation operation, String handler) throws NoSuchMethodException {
@@ -130,5 +136,12 @@ class RequiredAuthoritiesOperationCustomizerTest {
         Operation operation = customize(new Operation(), "authenticated");
 
         assertThat(operation.getDescription()).isEqualTo("Any authenticated user.");
+    }
+
+    @Test
+    void guardSentenceWinsWhenAHandlerCarriesBoth() throws Exception {
+        Operation operation = customize(new Operation(), "guardedAndMarked");
+
+        assertThat(operation.getDescription()).isEqualTo("Required authorities: SUPER_ADMIN.");
     }
 }
