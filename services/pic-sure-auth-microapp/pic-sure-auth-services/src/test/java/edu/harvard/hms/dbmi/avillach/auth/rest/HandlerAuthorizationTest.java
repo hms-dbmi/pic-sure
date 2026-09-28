@@ -109,6 +109,7 @@ class HandlerAuthorizationTest {
             Map.entry("ApiKeyController#createUserKey", Access.ANONYMOUS),
             Map.entry("AuthenticationController#authentication", Access.ANONYMOUS),
             Map.entry("OpenAccessController#validate", Access.ANONYMOUS),
+            Map.entry("OpenSessionController#createSession", Access.ANONYMOUS),
             Map.entry("TermsOfServiceController#getLatestTermsOfService", Access.ANONYMOUS),
             Map.entry("TermsOfServiceController#hasUserAcceptedTOS", Access.AUTHENTICATED),
             Map.entry("TermsOfServiceController#acceptTermsOfService", Access.AUTHENTICATED),

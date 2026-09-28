@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.util.Map;
 
-@Tag(name = "Open access", description = "Validation of open-access requests, called by the gateway")
+@Tag(name = "Open access", description = "Open-access sessions for anonymous browsers, and request validation called by the gateway")
 @Controller
 @RequestMapping(value = "/open")
 public class OpenAccessController {

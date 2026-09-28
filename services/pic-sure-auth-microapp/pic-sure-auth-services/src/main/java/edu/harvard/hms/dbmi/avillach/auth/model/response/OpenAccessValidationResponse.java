@@ -75,12 +75,20 @@ public record OpenAccessValidationResponse(
         );
     }
 
+    /**
+     * A grant to an open-access session. {@code keyId} is the open-access session id; there is no display prefix. {@code refreshedToken} is
+     * the replacement token when this one is due for a refresh, otherwise null.
+     */
+    public static OpenAccessValidationResponse grantedSession(String sessionId, String refreshedToken) {
+        return new OpenAccessValidationResponse(true, ApiKeyType.SESSION, sessionId, null, null, refreshedToken);
+    }
+
     public static OpenAccessValidationResponse denied(Denial denial) {
         return new OpenAccessValidationResponse(false, null, null, null, denial, null);
     }
 
-    // refreshedToken will carry a live session credential; the default record toString would embed it, one accidental log statement away
-    // from a leak
+    // refreshedToken is a live session credential; the default record toString would embed it, one accidental log statement away from a
+    // leak
     @Override
     public String toString() {
         return "OpenAccessValidationResponse[valid=%s, keyType=%s, keyId=%s, displayPrefix=%s, denial=%s, refreshedToken=%s]"

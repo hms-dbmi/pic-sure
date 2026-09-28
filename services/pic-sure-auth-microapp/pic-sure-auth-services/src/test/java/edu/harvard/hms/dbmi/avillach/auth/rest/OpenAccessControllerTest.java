@@ -16,6 +16,10 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.ApiKeyRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures.MutableClock;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService.IssuedSession;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
@@ -29,8 +33,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +56,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -68,6 +75,8 @@ public class OpenAccessControllerTest {
     private ApiKeyService apiKeyService;
     private AccessRuleService accessRuleService;
     private RoleService roleService;
+    private MutableClock clock;
+    private OpenSessionService openSessionService;
 
     private record MintedKey(String plaintext, ApiKey stored) {
     }
@@ -78,6 +87,8 @@ public class OpenAccessControllerTest {
         when(apiKeyRepository.save(any(ApiKey.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(apiKeyRepository.findByKeyHash(anyString())).thenReturn(Optional.empty());
         apiKeyService = new ApiKeyService(apiKeyRepository, "", "", 90, 365);
+        clock = new MutableClock(Instant.now());
+        openSessionService = OpenSessionFixtures.enabledService(clock);
 
         accessRuleService = mock(AccessRuleService.class);
         roleService = mock(RoleService.class);
@@ -87,7 +98,7 @@ public class OpenAccessControllerTest {
     private MockMvc mockMvc(boolean apiKeyEnforcementEnabled, boolean openIdpProviderIsEnabled) {
         AuthorizationService authorizationService = new AuthorizationService(
             accessRuleService, mock(SessionService.class), roleService, "fence,okta", mock(UserConsentsRepository.class), false, false,
-            apiKeyService, apiKeyEnforcementEnabled
+            apiKeyService, openSessionService, apiKeyEnforcementEnabled
         );
         return MockMvcBuilders.standaloneSetup(new OpenAccessController(authorizationService, openIdpProviderIsEnabled)).build();
     }
@@ -319,6 +330,97 @@ public class OpenAccessControllerTest {
             assertFalse(responses.toString().contains(plaintext));
             for (ILoggingEvent event : appender.list) {
                 assertFalse(event.getFormattedMessage().contains(plaintext), event.getFormattedMessage());
+            }
+        }
+    }
+
+    @Test
+    public void testSessionReportsItsSessionId() throws Exception {
+        IssuedSession issued = openSessionService.issue();
+
+        JsonNode response = validateV2(mockMvc(true, true), issued.token());
+
+        assertTrue(response.get("valid").asBoolean());
+        assertTrue(response.get("denial").isNull());
+        assertEquals("SESSION", response.get("keyType").asText());
+        assertEquals(issued.sessionId(), response.get("keyId").asText());
+        assertTrue(response.get("displayPrefix").isNull());
+        assertTrue(response.get("refreshedToken").isNull());
+        assertEquals("true", validate(mockMvc(true, true), issued.token(), null).getResponse().getContentAsString());
+    }
+
+    @Test
+    public void testSessionPastHalfLifeCarriesARefreshedToken() throws Exception {
+        IssuedSession issued = openSessionService.issue();
+        clock.advance(Duration.ofMinutes(8));
+
+        for (boolean enforcement : List.of(true, false)) {
+            JsonNode response = validateV2(mockMvc(enforcement, true), issued.token());
+
+            String refreshed = response.get("refreshedToken").asText();
+            assertTrue(refreshed.startsWith("picsure_s_"), refreshed);
+            assertEquals(issued.sessionId(), openSessionService.verify(refreshed).orElseThrow().sessionId());
+        }
+    }
+
+    @Test
+    public void testEnforcementOn_expiredSessionDeniedAsKeyInvalid() throws Exception {
+        IssuedSession issued = openSessionService.issue();
+        clock.advance(Duration.ofMinutes(16));
+
+        JsonNode response = validateV2(mockMvc(true, true), issued.token());
+
+        assertFalse(response.get("valid").asBoolean());
+        assertEquals("key_invalid", response.get("denial").asText());
+        assertNoKeyIdentity(response);
+    }
+
+    // sessions are stateless: issuing, validating, and refreshing never touch api_key
+    @Test
+    public void testSessionsNeverTouchTheApiKeyTable() throws Exception {
+        clearInvocations(apiKeyRepository);
+        IssuedSession issued = openSessionService.issue();
+        MockMvc mockMvc = mockMvc(false, true);
+        validateV2(mockMvc, issued.token());
+        clock.advance(Duration.ofMinutes(8));
+        String refreshed = validateV2(mockMvc, issued.token()).get("refreshedToken").asText();
+        validateV2(mockMvc, refreshed);
+        validateV2(mockMvc, "picsure_s_not-a-jwt");
+
+        verifyNoInteractions(apiKeyRepository);
+    }
+
+    @Test
+    public void testSessionTokensNeverInLogs() throws Exception {
+        IssuedSession issued = openSessionService.issue();
+        List<String> tokens = new ArrayList<>(List.of(issued.token()));
+
+        Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+        Level previousLevel = root.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        root.addAppender(appender);
+        root.setLevel(Level.ALL);
+        try {
+            for (boolean enforcement : List.of(true, false)) {
+                validate(mockMvc(enforcement, true), issued.token(), 2);
+            }
+            clock.advance(Duration.ofMinutes(8));
+            tokens.add(validateV2(mockMvc(true, true), issued.token()).get("refreshedToken").asText());
+            clock.advance(Duration.ofMinutes(16));
+            validate(mockMvc(true, true), issued.token(), 2);
+            validate(mockMvc(false, true), issued.token(), 2);
+        } finally {
+            root.detachAppender(appender);
+            root.setLevel(previousLevel);
+        }
+
+        assertFalse(appender.list.isEmpty());
+        for (String token : tokens) {
+            String jwt = token.substring("picsure_s_".length());
+            String signature = jwt.substring(jwt.lastIndexOf('.') + 1);
+            for (ILoggingEvent event : appender.list) {
+                assertFalse(event.getFormattedMessage().contains(signature), event.getFormattedMessage());
             }
         }
     }
