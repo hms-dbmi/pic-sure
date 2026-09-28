@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
@@ -10,13 +9,14 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicSubquery;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.UserConsent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,6 +25,9 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,7 +45,6 @@ class CountV3ProcessorTest {
     public void setup() {
         countV3Processor = new CountV3Processor(queryExecutor, phenotypicObservationStore);
     }
-
 
     @Test
     public void runCrossCounts_validPaths_returnPatientCounts() {
@@ -238,5 +240,24 @@ class CountV3ProcessorTest {
         assertEquals(1, crossCounts.get(agePath).get(40.0));
         // patient 3 (65) is not in the cohort, so it is absent
         assertNull(crossCounts.get(agePath).get(65.0));
+    }
+
+    @Test
+    public void runCrossCounts_perConceptCopyCarriesCallerConsents() {
+        String conceptPath = "\\open_access-1000Genomes\\data\\SEX\\";
+        Set<UserConsent> userConsents = Set.of(new UserConsent("partition1"));
+        Query fullQuery = new Query(List.of(conceptPath), List.of(), userConsents, null, List.of(), ResultType.CROSS_COUNT, null, null);
+
+        when(queryExecutor.getPatientSubsetForQuery(any())).thenReturn(Set.of(1, 2, 3));
+
+        Map<String, Integer> crossCounts = countV3Processor.runCrossCounts(fullQuery);
+        assertTrue(crossCounts.get(conceptPath) > 0);
+
+        ArgumentCaptor<Query> executed = ArgumentCaptor.forClass(Query.class);
+        verify(queryExecutor, atLeastOnce()).getPatientSubsetForQuery(executed.capture());
+        assertTrue(
+                executed.getAllValues().stream().allMatch(executedQuery -> Set.of("partition1").equals(executedQuery.consentValues())),
+                "every query reaching the executor must carry the caller's consents, including the per-concept copy"
+        );
     }
 }
