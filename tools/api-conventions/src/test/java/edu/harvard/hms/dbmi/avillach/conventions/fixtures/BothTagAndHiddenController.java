@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Carries both Tag and Hidden, which R1 rejects because Hidden wins at runtime and the Tag is dead metadata. */
+/** Carries both Tag and Hidden, which {@code controller-tagged-or-hidden} rejects because Hidden wins at runtime and the Tag is dead metadata. */
 @Tag(name = "Both", description = "A controller that contradicts itself")
 @Hidden
 @RestController

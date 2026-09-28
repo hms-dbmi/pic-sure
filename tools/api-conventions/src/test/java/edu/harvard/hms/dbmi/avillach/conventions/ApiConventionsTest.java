@@ -31,63 +31,63 @@ class ApiConventionsTest {
 
     @Test
     void everyDocumentedModuleYieldsControllers() {
-        report("R0a", RegistryRules.documentedModulesYieldControllers(registry, modules));
+        report("documented-module-has-controllers", RegistryRules.documentedModulesYieldControllers(registry, modules));
     }
 
     @Test
     void everyModuleWithAControllerIsRegistered() {
-        report("R0b", RegistryRules.controllerModulesAreRegistered(registry, modules));
+        report("controller-module-is-registered", RegistryRules.controllerModulesAreRegistered(registry, modules));
     }
 
     @Test
     void everyControllerIsTaggedOrHidden() {
-        report("R1", overDocumentedModules(SwaggerRules::tagOrHidden));
+        report("controller-tagged-or-hidden", overDocumentedModules(SwaggerRules::tagOrHidden));
     }
 
     @Test
     void everyTagIsComplete() {
-        report("R2", overDocumentedModules(SwaggerRules::tagIsComplete));
+        report("tag-is-complete", overDocumentedModules(SwaggerRules::tagIsComplete));
     }
 
     @Test
     void everyHandlerHasAnOperationSummary() {
-        report("R3", overDocumentedModules(SwaggerRules::operationHasSummary));
+        report("operation-has-summary", overDocumentedModules(SwaggerRules::operationHasSummary));
     }
 
     @Test
     void everyHandlerDeclaresItsResponses() {
-        report("R4", overDocumentedModules(SwaggerRules::responsesAreDeclared));
+        report("responses-are-declared", overDocumentedModules(SwaggerRules::responsesAreDeclared));
     }
 
     @Test
     void documentationDoesNotRestateGuardedAuthorities() {
-        report("R10", overDocumentedModules(SwaggerRules::documentationDoesNotRestateAuthorities));
+        report("docs-do-not-restate-authorities", overDocumentedModules(SwaggerRules::documentationDoesNotRestateAuthorities));
     }
 
     @Test
     void noHandlerUsesAReplacedSecurityAnnotation() {
-        report("R6", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
+        report("no-replaced-security-annotations", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
     }
 
     @Test
     void preAuthorizeSitsOnlyOnHandlers() {
-        report("R7", overAllModules(SecurityRules::preAuthorizeOnlyOnHandlers));
+        report("preauthorize-only-on-handlers", overAllModules(SecurityRules::preAuthorizeOnlyOnHandlers));
     }
 
     @Test
     void preAuthorizeNamesKnownAuthoritiesInTheStandardForm() {
         Set<String> known = SecurityRules.knownAuthorities(modules, SecurityRules.KNOWN_AUTHORITIES_CLASS);
-        report("R8", overAllModules((module, classes) -> SecurityRules.preAuthorizeNamesAuthorities(module, classes, known)));
+        report("preauthorize-uses-standard-form", overAllModules((module, classes) -> SecurityRules.preAuthorizeNamesAuthorities(module, classes, known)));
     }
 
     @Test
     void everyModuleWithGuardsEnablesMethodSecurity() {
-        report("R9", overAllModules(SecurityRules::methodSecurityEnabled));
+        report("guards-enable-method-security", overAllModules(SecurityRules::methodSecurityEnabled));
     }
 
     @Test
     void noCodeChecksARolePrefix() {
-        report("R11", overAllModules(SecurityRules::noRoleChecks));
+        report("no-role-checks", overAllModules(SecurityRules::noRoleChecks));
     }
 
     private static List<String> overAllModules(Rule rule) {
