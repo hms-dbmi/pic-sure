@@ -185,9 +185,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getMappingsForConnection", new Class[] {String.class}, "OTHER", "mapping.read");
         // getAllMappings()
         assertAuditEvent(c, "getAllMappings", new Class[] {}, "OTHER", "mapping.list");
-        // addMapping(List<UserMetadataMapping> mappings, HttpServletRequest request)
+        // addMapping(List<UserMetadataMappingCreateRequest> mappings, HttpServletRequest request)
         assertAuditEvent(c, "addMapping", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "mapping.modify");
-        // updateMapping(List<UserMetadataMapping> mappings, HttpServletRequest request)
+        // updateMapping(List<UserMetadataMappingUpdateRequest> mappings, HttpServletRequest request)
         assertAuditEvent(c, "updateMapping", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "mapping.modify");
         // removeById(String mappingId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "mapping.delete");

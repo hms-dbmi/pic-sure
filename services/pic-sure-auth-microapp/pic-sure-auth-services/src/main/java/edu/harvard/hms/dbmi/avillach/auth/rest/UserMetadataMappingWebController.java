@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserMetadataMapping;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserMetadataMappingCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserMetadataMappingUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserMetadataMappingService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -63,13 +66,13 @@ public class UserMetadataMappingWebController {
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> addMapping(
         @Parameter(
-            required = true, description = "A list of UserMetadataMapping in JSON format"
-        ) @RequestBody List<UserMetadataMapping> mappings, HttpServletRequest request
+            required = true, description = "The mappings to create, each naming an existing connection by its id"
+        ) @Valid @RequestBody List<UserMetadataMappingCreateRequest> mappings, HttpServletRequest request
     ) {
 
         AuditAttributes.putMetadata(request, "mapping_count", String.valueOf(mappings.size()));
         try {
-            List<UserMetadataMapping> userMetadataMappings = mappingService.addMappings(mappings);
+            List<UserMetadataMapping> userMetadataMappings = mappingService.createFrom(mappings);
             return PICSUREResponse.success(userMetadataMappings);
         } catch (IllegalArgumentException e) {
             return PICSUREResponse.error(e.getMessage());
@@ -86,11 +89,11 @@ public class UserMetadataMappingWebController {
     @PutMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> updateMapping(
         @Parameter(
-            required = true, description = "A list of UserMetadataMapping with fields to be updated in JSON format"
-        ) @RequestBody List<UserMetadataMapping> mappings, HttpServletRequest request
+            required = true, description = "The mappings to update, each named by UUID; a field left out keeps its stored value"
+        ) @Valid @RequestBody List<UserMetadataMappingUpdateRequest> mappings, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "mapping_count", String.valueOf(mappings.size()));
-        List<UserMetadataMapping> userMetadataMappings = this.mappingService.updateUserMetadataMappings(mappings);
+        List<UserMetadataMapping> userMetadataMappings = this.mappingService.updateFrom(mappings);
 
         if (userMetadataMappings == null || userMetadataMappings.isEmpty()) {
             return PICSUREResponse.error("No UserMetadataMapping found with the given Ids");
