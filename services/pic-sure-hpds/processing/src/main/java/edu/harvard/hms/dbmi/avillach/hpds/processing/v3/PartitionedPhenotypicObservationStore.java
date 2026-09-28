@@ -77,16 +77,20 @@ public class PartitionedPhenotypicObservationStore {
             .collect(Collectors.toList());
     }
 
+    /**
+     * The cube for {@code path}, merged across the partitions {@code consents} grants, or empty when none of them holds one. That is an
+     * ordinary outcome rather than an error: {@link #getMetaStore()} unions the column metadata of every partition, so a caller can
+     * legitimately name a concept that lives only outside their own, and consents for studies this node does not host read nothing here.
+     */
     public Optional<PhenoCube<?>> getCube(String path, Set<String> consents) {
         Set<PhenoCube<?>> phenoCubes = partitionsFor(consents)
             .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getCube(path).stream()).collect(Collectors.toSet());
-        PhenoCube<?> result = phenoCubes.stream().reduce((phenoCube, phenoCube2) -> {
+        return phenoCubes.stream().reduce((phenoCube, phenoCube2) -> {
             if (phenoCube.vType.equals(String.class)) {
                 return ((PhenoCube<String>) phenoCube).merge((PhenoCube<String>) phenoCube2);
             }
             return ((PhenoCube<Double>) phenoCube).merge((PhenoCube<Double>) phenoCube2);
-        }).get();
-        return Optional.ofNullable(result);
+        });
     }
 
     public Set<String> getCachedKeys() {

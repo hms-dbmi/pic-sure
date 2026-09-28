@@ -45,7 +45,7 @@ public record Query(
     public Set<UserConsent> userConsents() {
         return userConsents == null ? Set.of() : userConsents;
     }
-    
+
     public Set<String> consentValues() {
         return userConsents().stream().filter(Objects::nonNull).map(UserConsent::value).filter(Objects::nonNull)
             .collect(Collectors.toUnmodifiableSet());

@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.hpds.test;
 
 import edu.harvard.hms.dbmi.avillach.hpds.processing.MissingConsentsException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.PartitionedPhenotypicObservationStore;
+import edu.harvard.hms.dbmi.avillach.hpds.test.util.BuildIntegrationTestEnvironment;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,8 +35,17 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
     /** Consents for studies this node does not host, which a caller can legitimately hold. */
     private static final Set<String> OFF_NODE = Set.of("phs999999.c1");
 
+    private static final String AGE = "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\";
+
+    private static final String SEX = "\\open_access-1000Genomes\\data\\SEX\\";
+
     @Autowired
     private PartitionedPhenotypicObservationStore partitionedPhenotypicObservationStore;
+
+    @BeforeAll
+    public static void beforeAll() {
+        BuildIntegrationTestEnvironment instance = BuildIntegrationTestEnvironment.INSTANCE;
+    }
 
     @Test
     public void getKeysForRange_noConsents_throwException() {
@@ -97,15 +108,21 @@ class PartitionedPhenotypicObservationStoreIntegrationTest {
     public void getPatientIds_hasConsents_doNotThrow() {
 
         Set<Integer> patientIds = partitionedPhenotypicObservationStore.getPatientIds(GRANTED);
-        assertTrue(patientIds.size() > 0);
+        assertFalse(patientIds.isEmpty());
     }
 
-    /**
-     * A caller's consents cover the whole platform while this node holds a subset of the studies, so consents for studies hosted elsewhere
-     * are expected. They read nothing here rather than failing the query.
-     */
     @Test
     public void getPatientIds_consentsMatchNoPartition_returnNoData() {
         assertTrue(partitionedPhenotypicObservationStore.getPatientIds(OFF_NODE).isEmpty());
+    }
+
+    @Test
+    public void getCube_consentsMatchNoPartition_returnNoData() {
+        assertTrue(partitionedPhenotypicObservationStore.getCube(AGE, OFF_NODE).isEmpty());
+    }
+
+    @Test
+    public void getCube_conceptPathNotInAnyGrantedPartition_returnNoData() {
+        assertTrue(partitionedPhenotypicObservationStore.getCube("\\no\\such\\concept\\", GRANTED).isEmpty());
     }
 }
