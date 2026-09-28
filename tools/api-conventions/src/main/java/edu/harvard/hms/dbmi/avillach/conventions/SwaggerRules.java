@@ -24,7 +24,7 @@ public final class SwaggerRules {
     private SwaggerRules() {}
 
     /**
-     * R1: every controller carries exactly one of Tag or Hidden.
+     * {@code controller-tagged-or-hidden}: every controller carries exactly one of Tag or Hidden.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
@@ -45,7 +45,7 @@ public final class SwaggerRules {
     }
 
     /**
-     * R2: a Tag declares a non-blank name and a non-blank description.
+     * {@code tag-is-complete}: a Tag declares a non-blank name and a non-blank description.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
@@ -68,8 +68,8 @@ public final class SwaggerRules {
     }
 
     /**
-     * R3: in a Tag class, every handler method not itself Hidden carries an Operation with a non-blank
-     * summary. A Hidden class exempts all of its methods, which is R5.
+     * {@code operation-has-summary}: in a Tag class, every handler method not itself Hidden carries an
+     * Operation with a non-blank summary. A Hidden class exempts all of its methods.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
@@ -111,10 +111,10 @@ public final class SwaggerRules {
     }
 
     /**
-     * R4: every documented handler declares at least one response and at least one 2xx among them, and
-     * each declared response carries a three digit code or {@code default} together with a non-blank
-     * description. Responses may be declared directly, inside an ApiResponses container, or through the
-     * Operation's responses property.
+     * {@code responses-are-declared}: every documented handler declares at least one response and at least
+     * one 2xx among them, and each declared response carries a three digit code or {@code default} together
+     * with a non-blank description. Responses may be declared directly, inside an ApiResponses container, or
+     * through the Operation's responses property.
      *
      * <p>The 2xx clause is what stops an endpoint being published as though it can only fail. Several
      * handlers documented a 404 or a 409 and nothing else.
@@ -179,9 +179,10 @@ public final class SwaggerRules {
     }
 
     /**
-     * R10: in a module whose handlers carry {@code @PreAuthorize}, no Tag description and no Operation
-     * summary or description names one of the authorities those guards require. The shared OpenAPI
-     * customizer publishes them from the guard, so prose that repeats them can only drift from it.
+     * {@code docs-do-not-restate-authorities}: in a module whose handlers carry {@code @PreAuthorize}, no Tag
+     * description and no Operation summary or description names one of the authorities those guards require.
+     * The shared OpenAPI customizer publishes them from the guard, so prose that repeats them can only drift
+     * from it.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
