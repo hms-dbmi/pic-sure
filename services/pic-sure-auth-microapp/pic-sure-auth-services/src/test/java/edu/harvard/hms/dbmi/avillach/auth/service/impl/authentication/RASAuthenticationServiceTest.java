@@ -209,9 +209,9 @@ public class RASAuthenticationServiceTest {
     }
 
     /**
-     * The OAuth authorization code is a single-use bearer secret and the RAS passport carries dbGaP permissions. Production runs at INFO,
-     * where neither may appear. Development runs at DEBUG, where both are wanted for tracing a login, appended to the same line rather than
-     * written as a second one.
+     * The OAuth authorization code is a single-use bearer secret and the logged passport carries its subject, token ID and transaction ID.
+     * Production runs at INFO, where neither may appear. Development runs at DEBUG, where both are wanted for tracing a login, appended to
+     * the same line rather than written as a second one.
      */
     @Test
     public void passportAcceptanceAtInfoLogsNeitherTheAuthorizationCodeNorThePassport() throws JsonProcessingException {
@@ -230,10 +230,13 @@ public class RASAuthenticationServiceTest {
         rasAuthenticationLogger.setLevel(Level.DEBUG);
         Passport passport = acceptPassport();
 
-        assertEquals(1, countLogMessages("RAS PASSPORT FOUND ___ USER: " + TEST_SUBJECT), "one line, not an INFO and a DEBUG copy");
-        assertTrue(hasLogMessage("RAS PASSPORT FOUND ___ USER: " + TEST_SUBJECT + " ___ PASSPORT: Passport{"));
-        assertTrue(hasLogMessage("___ CODE " + code));
-        assertTrue(hasLogMessage(passport.getJti()));
+        List<ILoggingEvent> passportFound = logAppender.list.stream()
+            .filter(event -> event.getFormattedMessage().contains("RAS PASSPORT FOUND ___ USER: " + TEST_SUBJECT)).toList();
+        assertEquals(1, passportFound.size(), "one line, not an INFO and a DEBUG copy");
+        String message = passportFound.get(0).getFormattedMessage();
+        assertTrue(message.startsWith("RAS PASSPORT FOUND ___ USER: " + TEST_SUBJECT + " ___ PASSPORT: Passport{"), message);
+        assertTrue(message.contains(passport.getJti()), message);
+        assertTrue(message.endsWith("___ CODE " + code), message);
     }
 
     @Test
