@@ -34,11 +34,11 @@ public final class RoutingRules {
     private RoutingRules() {}
 
     /**
-     * R17: every {@code @PathVariable} that names its variable, through {@code value} or {@code name},
-     * appears as {@code {name}} or {@code {name:regex}} in at least one path the handler maps. Those paths
-     * are every combination of the class-level {@code @RequestMapping} paths with the method-level mapping
-     * paths, each read from both {@code value} and {@code path}. A variable no path declares is never
-     * bound, so Spring answers every request to that handler with a 500.
+     * {@code path-variables-in-template}: every {@code @PathVariable} that names its variable, through
+     * {@code value} or {@code name}, appears as {@code {name}} or {@code {name:regex}} in at least one path the
+     * handler maps. Those paths are every combination of the class-level {@code @RequestMapping} paths with the
+     * method-level mapping paths, each read from both {@code value} and {@code path}. A variable no path declares
+     * is never bound, so Spring answers every request to that handler with a 500.
      *
      * <p>A {@code @PathVariable} with no explicit name is skipped. Its name comes from the compiled
      * parameter name, which ArchUnit cannot read. The reactor compiles with {@code -parameters}, and

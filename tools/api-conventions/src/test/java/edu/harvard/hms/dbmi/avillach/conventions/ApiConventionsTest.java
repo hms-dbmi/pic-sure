@@ -92,7 +92,7 @@ class ApiConventionsTest {
 
     @Test
     void everyNamedPathVariableAppearsInAMappedPath() {
-        report("R17", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
+        report("path-variables-in-template", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
     }
 
     private static List<String> overAllModules(Rule rule) {
