@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.HashSet;
@@ -41,13 +42,13 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 
 /**
  * Posts the request bodies PIC-SURE-Frontend's admin screens send to the PSAMA create and update endpoints and checks they are accepted and
- * saved. Each body is built the way the frontend builds it: the user form sends the whole connection object from {@code GET /connection}
- * and each role as {@code GET /role/{id}} returns it, with every privilege replaced by an empty object (the form maps privileges to
- * unresolved promises, which serialize as {@code {}}); the user table's activate toggle spreads the whole user from {@code GET /user/{id}}
- * back with that connection and those roles; the privilege form sends the application as {@code {"uuid": ...}}; the role form sends
- * privileges as {@code {"uuid": ...}}; the connection form sends its four fields. The context is the one {@code HandlerAuthorizationTest}
- * and {@code OpenApiDocumentTest} boot, so it is shared from the cache; every row a test seeds carries a unique suffix because that
- * in-memory database outlives each test.
+ * saved, then posts bodies carrying fields outside the request records and checks those fields have no effect. Each frontend body is built
+ * the way the frontend builds it: the user form sends the whole connection object from {@code GET /connection} and each role as {@code GET
+ * /role/{id}} returns it, with every privilege replaced by an empty object (the form maps privileges to unresolved promises, which
+ * serialize as {@code {}}); the user table's activate toggle spreads the whole user from {@code GET /user/{id}} back with that connection
+ * and those roles; the privilege form sends the application as {@code {"uuid": ...}}; the role form sends privileges as {@code {"uuid":
+ * ...}}; the connection form sends its four fields. The context is the one {@code HandlerAuthorizationTest} and {@code OpenApiDocumentTest}
+ * boot, so it is shared from the cache; every row a test seeds carries a unique suffix because that in-memory database outlives each test.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -230,6 +231,26 @@ class AdminFormPayloadTest {
         Connection saved = connectionRepository.findById(id).orElseThrow();
         assertThat(saved.getLabel()).isEqualTo("Edited " + suffix);
         assertThat(saved.getRequiredFields()).isEqualTo("[{\"label\":\"Email\",\"id\":\"email\"}]");
+    }
+
+    @Test
+    void applicationUpdateCannotReplaceTheToken() throws Exception {
+        ObjectNode edited = json.createObjectNode().put("uuid", application.getUuid().toString()).put("name", application.getName())
+            .put("description", "edited").put("token", "forged-application-token");
+
+        mockMvc.perform(asAdmin(HttpMethod.PUT, "/application").content(json.createArrayNode().add(edited).toString()))
+            .andExpect(status().isOk());
+
+        Application saved = applicationRepository.findById(application.getUuid()).orElseThrow();
+        assertThat(saved.getDescription()).isEqualTo("edited");
+        assertThat(saved.getToken()).isEqualTo("stored-application-token");
+    }
+
+    @Test
+    void applicationCreateWithoutANameIsRejectedAs400() throws Exception {
+        mockMvc.perform(asAdmin(HttpMethod.POST, "/application").content("[{\"description\":\"no name\"}]"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Invalid request body"))
+            .andExpect(jsonPath("$.content").value("[0].name must not be blank"));
     }
 
     /**

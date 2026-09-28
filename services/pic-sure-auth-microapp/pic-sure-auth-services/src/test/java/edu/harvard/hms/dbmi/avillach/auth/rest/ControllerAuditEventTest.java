@@ -111,9 +111,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getApplicationById", new Class[] {String.class}, "OTHER", "application.read");
         // getApplicationAll()
         assertAuditEvent(c, "getApplicationAll", new Class[] {}, "OTHER", "application.list");
-        // addApplication(List<Application> applications, HttpServletRequest request)
+        // addApplication(List<ApplicationCreateRequest> applications, HttpServletRequest request)
         assertAuditEvent(c, "addApplication", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "application.modify");
-        // updateApplication(List<Application> applications, HttpServletRequest request)
+        // updateApplication(List<ApplicationUpdateRequest> applications, HttpServletRequest request)
         assertAuditEvent(c, "updateApplication", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "application.modify");
         // refreshApplicationToken(String applicationId, HttpServletRequest request)
         assertAuditEvent(
