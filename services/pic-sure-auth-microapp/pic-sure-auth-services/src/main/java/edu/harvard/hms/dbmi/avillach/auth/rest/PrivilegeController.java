@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -75,7 +76,7 @@ public class PrivilegeController {
     public ResponseEntity<List<Privilege>> addPrivilege(
         @Parameter(
             required = true, description = "The privileges to create, each naming its application by UUID"
-        ) @Valid @RequestBody List<PrivilegeCreateRequest> privileges, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid PrivilegeCreateRequest> privileges, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
         return PICSUREResponse.success(this.privilegeService.createFrom(privileges));
@@ -92,7 +93,7 @@ public class PrivilegeController {
     public ResponseEntity<List<Privilege>> updatePrivilege(
         @Parameter(
             required = true, description = "The privileges to update, each named by UUID; a field left out keeps its stored value"
-        ) @Valid @RequestBody List<PrivilegeUpdateRequest> privileges, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid PrivilegeUpdateRequest> privileges, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
         return ResponseEntity.ok(this.privilegeService.updateFrom(privileges));

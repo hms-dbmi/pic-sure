@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -67,7 +68,7 @@ public class UserMetadataMappingWebController {
     public ResponseEntity<?> addMapping(
         @Parameter(
             required = true, description = "The mappings to create, each naming an existing connection by its id"
-        ) @Valid @RequestBody List<UserMetadataMappingCreateRequest> mappings, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid UserMetadataMappingCreateRequest> mappings, HttpServletRequest request
     ) {
 
         AuditAttributes.putMetadata(request, "mapping_count", String.valueOf(mappings.size()));
@@ -90,7 +91,7 @@ public class UserMetadataMappingWebController {
     public ResponseEntity<?> updateMapping(
         @Parameter(
             required = true, description = "The mappings to update, each named by UUID; a field left out keeps its stored value"
-        ) @Valid @RequestBody List<UserMetadataMappingUpdateRequest> mappings, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid UserMetadataMappingUpdateRequest> mappings, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "mapping_count", String.valueOf(mappings.size()));
         List<UserMetadataMapping> userMetadataMappings = this.mappingService.updateFrom(mappings);

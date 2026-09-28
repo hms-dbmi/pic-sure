@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -75,7 +76,7 @@ public class RoleController {
     public ResponseEntity<?> addRole(
         @Parameter(
             required = true, description = "The roles to create, each naming its privileges by UUID"
-        ) @Valid @RequestBody List<RoleCreateRequest> roles, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid RoleCreateRequest> roles, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
         List<Role> savedRoles = this.roleService.createFrom(roles);
@@ -93,7 +94,7 @@ public class RoleController {
     public ResponseEntity<?> updateRole(
         @Parameter(
             required = true, description = "The roles to update, each named by UUID; a field left out keeps its stored value"
-        ) @Valid @RequestBody List<RoleUpdateRequest> roles, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid RoleUpdateRequest> roles, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
         List<Role> updatedRoles = this.roleService.updateFrom(roles);

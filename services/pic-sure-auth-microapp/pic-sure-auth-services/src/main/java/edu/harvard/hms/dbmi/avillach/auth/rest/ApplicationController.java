@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -75,7 +76,7 @@ public class ApplicationController {
     public ResponseEntity<List<Application>> addApplication(
         @Parameter(
             required = true, description = "The applications to create; the server generates each identifier and token"
-        ) @Valid @RequestBody List<ApplicationCreateRequest> applications, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid ApplicationCreateRequest> applications, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "app_count", String.valueOf(applications.size()));
         return PICSUREResponse.success(applicationService.createFrom(applications));
@@ -92,7 +93,7 @@ public class ApplicationController {
     public ResponseEntity<List<Application>> updateApplication(
         @Parameter(
             required = true, description = "The applications to update, each named by UUID; a field left out keeps its stored value"
-        ) @Valid @RequestBody List<ApplicationUpdateRequest> applications, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid ApplicationUpdateRequest> applications, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "app_count", String.valueOf(applications.size()));
         return PICSUREResponse.success(applicationService.updateFrom(applications));

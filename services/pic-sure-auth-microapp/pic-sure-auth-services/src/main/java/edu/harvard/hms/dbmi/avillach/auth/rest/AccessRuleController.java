@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -83,7 +84,7 @@ public class AccessRuleController {
     public ResponseEntity<?> addAccessRule(
         @Parameter(
             required = true, description = "The access rules to create; the server generates each identifier"
-        ) @Valid @RequestBody List<AccessRuleCreateRequest> accessRuleRequests, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid AccessRuleCreateRequest> accessRuleRequests, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "access_rule_count", String.valueOf(accessRuleRequests.size()));
         List<AccessRule> accessRules = this.accessRuleService.createFrom(accessRuleRequests);
@@ -106,7 +107,7 @@ public class AccessRuleController {
     public ResponseEntity<List<AccessRule>> updateAccessRule(
         @Parameter(
             required = true, description = "The access rules to update, each named by UUID; a field left out keeps its stored value"
-        ) @Valid @RequestBody List<AccessRuleUpdateRequest> accessRules, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid AccessRuleUpdateRequest> accessRules, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "access_rule_count", String.valueOf(accessRules.size()));
         return PICSUREResponse.success(this.accessRuleService.updateFrom(accessRules));

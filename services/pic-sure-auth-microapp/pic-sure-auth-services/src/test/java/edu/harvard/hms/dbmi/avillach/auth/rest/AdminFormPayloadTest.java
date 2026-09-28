@@ -331,6 +331,12 @@ class AdminFormPayloadTest {
         assertThat(newUser.getSubject()).isNull();
     }
 
+    @Test
+    void nullListElementIsRejectedAs400() throws Exception {
+        mockMvc.perform(asAdmin(HttpMethod.PUT, "/role").content("[null]")).andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("Invalid request body")).andExpect(jsonPath("$.content").value("[0] must not be null"));
+    }
+
     /**
      * The body {@code UserForm.svelte} builds: the email, the whole connection, general metadata carrying the email, the active flag, and
      * the selected roles as {@code roleAsUserFormSendsIt} describes.

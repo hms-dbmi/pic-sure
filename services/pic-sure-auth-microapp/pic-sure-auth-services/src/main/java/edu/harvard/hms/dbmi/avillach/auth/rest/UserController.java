@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -76,7 +77,7 @@ public class UserController {
     public ResponseEntity<?> addUser(
         @Parameter(
             required = true, description = "The users to create, each naming its connection by id and its roles by UUID"
-        ) @Valid @RequestBody List<UserCreateRequest> users, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid UserCreateRequest> users, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
         List<User> addedUsers = this.userService.createFrom(users);
@@ -103,7 +104,7 @@ public class UserController {
     public ResponseEntity<?> updateUser(
         @Parameter(
             required = true, description = "The users to update, each named by UUID; a field left out keeps its stored value"
-        ) @Valid @RequestBody List<UserUpdateRequest> users, HttpServletRequest request
+        ) @RequestBody List<@NotNull @Valid UserUpdateRequest> users, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
         List<User> updatedUsers = this.userService.updateFrom(users);
