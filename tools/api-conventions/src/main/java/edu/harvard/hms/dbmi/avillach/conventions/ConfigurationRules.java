@@ -28,10 +28,10 @@ public final class ConfigurationRules {
     private ConfigurationRules() {}
 
     /**
-     * R18: every {@code @Value} string on a field, constructor parameter or method parameter closes each
-     * placeholder and expression it opens, meaning it has as many closing braces as <code>${</code> and
-     * <code>#{</code> openings together. Expressions count because they close with the same brace, as in
-     * <code>${DEST_IP:#{null}}</code>. Spring treats an unterminated placeholder as literal text, so
+     * {@code value-placeholders-closed}: every {@code @Value} string on a field, constructor parameter or method
+     * parameter closes each placeholder and expression it opens, meaning it has as many closing braces as
+     * <code>${</code> and <code>#{</code> openings together. Expressions count because they close with the same
+     * brace, as in <code>${DEST_IP:#{null}}</code>. Spring treats an unterminated placeholder as literal text, so
      * <code>@Value("${key")</code> starts cleanly and injects the string <code>${key</code> instead of the
      * configured value.
      *

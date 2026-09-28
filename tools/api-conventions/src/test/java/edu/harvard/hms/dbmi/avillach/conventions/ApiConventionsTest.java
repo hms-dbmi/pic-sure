@@ -92,7 +92,7 @@ class ApiConventionsTest {
 
     @Test
     void everyValuePlaceholderIsClosed() {
-        report("R18", overAllModules(ConfigurationRules::valuePlaceholdersAreClosed));
+        report("value-placeholders-closed", overAllModules(ConfigurationRules::valuePlaceholdersAreClosed));
     }
 
     private static List<String> overAllModules(Rule rule) {
