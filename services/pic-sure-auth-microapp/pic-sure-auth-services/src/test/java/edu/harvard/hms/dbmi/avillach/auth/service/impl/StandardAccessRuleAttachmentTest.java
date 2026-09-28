@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -77,7 +78,7 @@ class StandardAccessRuleAttachmentTest {
         when(privilegeRepository.save(any(Privilege.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AccessRuleService accessRuleService = new AccessRuleService(accessRuleRepository, STANDARD_RULES);
-        privilegeService = new PrivilegeService(privilegeRepository, accessRuleService);
+        privilegeService = new PrivilegeService(privilegeRepository, accessRuleService, mock(ApplicationRepository.class));
     }
 
     @Test

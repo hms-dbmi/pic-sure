@@ -27,12 +27,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
@@ -84,6 +86,9 @@ class AdminFormPayloadTest {
 
     @Autowired
     private ConnectionRepository connectionRepository;
+
+    @Autowired
+    private AccessRuleRepository accessRuleRepository;
 
     private String suffix;
     private User caller;
@@ -251,6 +256,26 @@ class AdminFormPayloadTest {
         mockMvc.perform(asAdmin(HttpMethod.POST, "/application").content("[{\"description\":\"no name\"}]"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Invalid request body"))
             .andExpect(jsonPath("$.content").value("[0].name must not be blank"));
+    }
+
+    @Test
+    void privilegeFormEditKeepsTheAccessRulesThePrivilegeHolds() throws Exception {
+        AccessRule rule = new AccessRule();
+        rule.setName("AR_" + suffix);
+        rule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        rule = accessRuleRepository.save(rule);
+        privilege.setAccessRules(new HashSet<>(Set.of(rule)));
+        privilege = privilegeRepository.save(privilege);
+        ObjectNode edited = json.createObjectNode().put("name", privilege.getName()).put("description", "edited in the privilege form");
+        edited.putObject("application").put("uuid", application.getUuid().toString());
+        edited.put("uuid", privilege.getUuid().toString());
+
+        mockMvc.perform(asAdmin(HttpMethod.PUT, "/privilege").content(json.createArrayNode().add(edited).toString()))
+            .andExpect(status().isOk());
+
+        JsonNode saved = getJson("/privilege/{id}", privilege.getUuid());
+        assertThat(saved.path("description").asText()).isEqualTo("edited in the privilege form");
+        assertThat(saved.path("accessRules").findValuesAsText("uuid")).containsExactly(rule.getUuid().toString());
     }
 
     /**

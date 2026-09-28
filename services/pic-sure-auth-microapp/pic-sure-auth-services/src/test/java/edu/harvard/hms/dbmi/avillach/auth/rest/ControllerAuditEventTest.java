@@ -79,9 +79,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getPrivilegeById", new Class[] {String.class}, "OTHER", "privilege.read");
         // getPrivilegeAll()
         assertAuditEvent(c, "getPrivilegeAll", new Class[] {}, "OTHER", "privilege.list");
-        // addPrivilege(List<Privilege> privileges, HttpServletRequest request)
+        // addPrivilege(List<PrivilegeCreateRequest> privileges, HttpServletRequest request)
         assertAuditEvent(c, "addPrivilege", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "privilege.modify");
-        // updatePrivilege(List<Privilege> privileges, HttpServletRequest request)
+        // updatePrivilege(List<PrivilegeUpdateRequest> privileges, HttpServletRequest request)
         assertAuditEvent(c, "updatePrivilege", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "privilege.modify");
         // removeById(String privilegeId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "privilege.delete");
