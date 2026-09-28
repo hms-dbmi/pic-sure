@@ -170,9 +170,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getConnectionById", new Class[] {String.class}, "OTHER", "connection.read");
         // getAllConnections()
         assertAuditEvent(c, "getAllConnections", new Class[] {}, "OTHER", "connection.list");
-        // addConnection(List<Connection> connections, HttpServletRequest request)
+        // addConnection(List<ConnectionCreateRequest> connectionRequests, HttpServletRequest request)
         assertAuditEvent(c, "addConnection", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "connection.modify");
-        // updateConnection(List<Connection> connections, HttpServletRequest request)
+        // updateConnection(List<ConnectionUpdateRequest> connections, HttpServletRequest request)
         assertAuditEvent(c, "updateConnection", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "connection.modify");
         // removeById(String connectionId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "connection.delete");
