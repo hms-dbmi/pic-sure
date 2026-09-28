@@ -21,7 +21,7 @@ class DockerfileConventionsTest {
     void everyExternalBaseImageIsPinnedByDigest() throws IOException {
         Path root = Path.of(System.getProperty("reactor.root"));
         List<String> dockerfiles = DockerfileRules.trackedDockerfiles(root);
-        assertFalse(dockerfiles.isEmpty(), () -> "R20 found no tracked Dockerfile under " + root.toAbsolutePath().normalize());
+        assertFalse(dockerfiles.isEmpty(), () -> "base-images-pinned found no tracked Dockerfile under " + root.toAbsolutePath().normalize());
 
         List<String> violations = new ArrayList<>();
         for (String dockerfile : dockerfiles) {
@@ -33,7 +33,7 @@ class DockerfileConventionsTest {
 
         assertTrue(
             violations.isEmpty(),
-            () -> "R20 failed with " + violations.size() + " violation(s):\n  " + String.join("\n  ", violations)
+            () -> "base-images-pinned failed with " + violations.size() + " violation(s):\n  " + String.join("\n  ", violations)
         );
     }
 }

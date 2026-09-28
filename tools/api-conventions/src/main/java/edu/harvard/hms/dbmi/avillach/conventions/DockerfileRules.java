@@ -13,8 +13,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * R20: every {@code FROM} in a Dockerfile that names an external image pins it by digest, as
- * {@code image:tag@sha256:<digest>}. A floating tag such as {@code amazoncorretto:25-alpine} resolves to
+ * {@code base-images-pinned}: every {@code FROM} in a Dockerfile that names an external image pins it by digest,
+ * as {@code image:tag@sha256:<digest>}. A floating tag such as {@code amazoncorretto:25-alpine} resolves to
  * whatever the registry points it at on build day, so two builds of one commit can run on different bases.
  *
  * <p>Unlike the other rules this one reads files, not compiled classes. It covers every git-tracked file
@@ -84,7 +84,8 @@ public final class DockerfileRules {
     }
 
     /**
-     * R20: every {@code FROM} that names an external image carries an {@code @sha256:} digest.
+     * {@code base-images-pinned}: every {@code FROM} that names an external image carries an {@code @sha256:}
+     * digest.
      *
      * @param path the file's path, used in the violation text
      * @param contents the file's full text

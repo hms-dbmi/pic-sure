@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Fixtures are inline text, not files on disk: a tracked fixture named {@code Dockerfile} would be picked
- * up by the reactor run of R20 itself.
+ * up by the reactor run of {@code base-images-pinned} itself.
  */
 class DockerfileRulesTest {
 

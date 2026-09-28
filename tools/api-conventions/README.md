@@ -6,6 +6,8 @@ It also holds every module to one authorization standard. A handler that needs a
 
 The OpenAPI document publishes each guard's authorities as "Required authorities: ..." at the end of the operation description, so `docs-do-not-restate-authorities` fails a documented module whose `@Tag` description or `@Operation` summary or description names one of the authorities its guards require. That prose would only repeat the guard and drift from it.
 
+`base-images-pinned` reads files instead of classes. Every git-tracked file named `Dockerfile`, `Dockerfile.*` or `*.Dockerfile` (such as `bdc.Dockerfile` or `dev.Dockerfile`) in the repository must pin each external base image by digest, as `FROM amazoncorretto:25-alpine@sha256:<digest>`, keeping the tag for readability. A floating tag builds from whatever the registry points it at on build day. A `FROM` that names a stage declared earlier in the same file, such as `FROM builder`, is exempt, and so is `FROM scratch`. `--platform=...` flags are skipped. To satisfy it, copy the digest another Dockerfile in the reactor already uses for the same image, or read it with `docker buildx imagetools inspect <image:tag>`. `base-images-pinned` does not check `USER` or `HEALTHCHECK`; some images declare `HEALTHCHECK NONE` on purpose. It lists files with `git ls-files`, so it needs a git checkout and fails if it finds no Dockerfile at all.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -31,7 +33,9 @@ Authorization, over every compiled module:
 - `guards-enable-method-security`: a module that uses `@PreAuthorize` declares `@EnableMethodSecurity` with pre/post support on.
 - `no-role-checks`: no code calls `hasRole`, `hasAnyRole` or `isUserInRole` on a Spring Security, actuator, Servlet or JAX-RS type.
 
-R20 reads files instead of classes. Every git-tracked file named `Dockerfile`, `Dockerfile.*` or `*.Dockerfile` (such as `bdc.Dockerfile` or `dev.Dockerfile`) in the repository must pin each external base image by digest, as `FROM amazoncorretto:25-alpine@sha256:<digest>`, keeping the tag for readability. A floating tag builds from whatever the registry points it at on build day. A `FROM` that names a stage declared earlier in the same file, such as `FROM builder`, is exempt, and so is `FROM scratch`. `--platform=...` flags are skipped. To satisfy it, copy the digest another Dockerfile in the reactor already uses for the same image, or read it with `docker buildx imagetools inspect <image:tag>`. R20 does not check `USER` or `HEALTHCHECK`; some images declare `HEALTHCHECK NONE` on purpose. It lists files with `git ls-files`, so it needs a git checkout and fails if it finds no Dockerfile at all.
+Docker images, over every git-tracked Dockerfile:
+
+- `base-images-pinned`: every `FROM` that names an external image pins it by an `@sha256:` digest.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
