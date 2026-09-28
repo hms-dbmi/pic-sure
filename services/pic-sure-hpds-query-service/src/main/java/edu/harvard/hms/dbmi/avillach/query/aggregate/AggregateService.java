@@ -24,6 +24,7 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.query.logging.LogValues;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
@@ -99,7 +100,7 @@ public class AggregateService {
 
         String expectedResultType = node.get("expectedResultType").asText();
         if (!ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
-            logger.warn("Incorrect Result Type: {}", expectedResultType);
+            logger.warn("Incorrect Result Type: {}", LogValues.of(expectedResultType));
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrect result type: " + expectedResultType);
         }
 

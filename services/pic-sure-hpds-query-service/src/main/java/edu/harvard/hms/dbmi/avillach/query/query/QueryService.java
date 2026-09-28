@@ -28,6 +28,7 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
+import edu.harvard.hms.dbmi.avillach.query.logging.LogValues;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
@@ -250,7 +251,9 @@ public class QueryService {
         String metadataBase64 = buildMetadataBase64(results);
         operationsClient
             .update(stored.picsureId(), new UpdateQueryRequest(status, resourceResultId, metadataBase64, queryJson, CURRENT_VERSION));
-        logger.info("Upgraded stored query {} (version {}) to version {}", stored.picsureId(), stored.version(), CURRENT_VERSION);
+        logger.info(
+            "Upgraded stored query {} (version {}) to version {}", stored.picsureId(), LogValues.of(stored.version()), CURRENT_VERSION
+        );
         return new StoredQuery(
             stored.picsureId(), queryJson, resourceResultId, status, CURRENT_VERSION,
             metadataBase64 != null ? metadataBase64 : stored.metadata(), stored.startTime(), stored.readyTime()
@@ -268,7 +271,7 @@ public class QueryService {
             try {
                 return MAPPER.treeToValue(translated, QueryRequest.class);
             } catch (JsonProcessingException | IllegalArgumentException e) {
-                logger.warn("Unable to rebuild translated query {} as a QueryRequest", stored.picsureId(), e);
+                logger.warn("Unable to rebuild translated query {} as a QueryRequest: {}", stored.picsureId(), LogValues.of(e));
             }
         }
         throw new PicsureException(
@@ -347,7 +350,7 @@ public class QueryService {
             metadata.put("queryJson", buildQueryJson(stored));
             metadata.put("queryResultMetadata", decodeMetadata(stored.metadata()));
         } catch (JsonProcessingException e) {
-            logger.warn("Unable to read stored query/metadata for {}", id, e);
+            logger.warn("Unable to read stored query/metadata for {}: {}", id, LogValues.of(e));
         }
         response.setResultMetadata(metadata);
         return response;
@@ -403,7 +406,7 @@ public class QueryService {
             wrapper.set("query", MAPPER.valueToTree(v3));
             return wrapper;
         } catch (Exception e) {
-            logger.warn("Unable to translate stored v1 query to v3", e);
+            logger.warn("Unable to translate stored v1 query to v3: {}", LogValues.of(e));
             return null;
         }
     }
