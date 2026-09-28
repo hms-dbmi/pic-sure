@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.gateway.auth;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.ok;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -13,6 +15,8 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.RestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -78,8 +82,96 @@ class PsamaClientTest {
     }
 
     @Test
-    void openValidateReturnsBareBoolean() {
+    void openValidateAcceptsBareBooleanTrueFromOlderPsamaAsAnonymousGrant() {
         psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("true")));
-        assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"))).isTrue();
+
+        OpenAccessValidation validation = client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"));
+
+        assertThat(validation).isEqualTo(new OpenAccessValidation(true, null, null, null, null, null));
+    }
+
+    @Test
+    void openValidateAcceptsBareBooleanFalseWithNoDenialReason() {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("false")));
+
+        OpenAccessValidation validation = client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"));
+
+        assertThat(validation).isEqualTo(new OpenAccessValidation(false, null, null, null, null, null));
+    }
+
+    @Test
+    void openValidateParsesKeyIdentity() {
+        psama.stubFor(
+            post(urlEqualTo("/open/validate")).willReturn(
+                okJson(
+                    "{\"valid\":true,\"keyType\":\"USER\",\"keyId\":\"7c5e0618-0000-0000-0000-000000000000\",\"displayPrefix\":\"AbCd1234\","
+                        + "\"denial\":null,\"refreshedToken\":null}"
+                )
+            )
+        );
+
+        OpenAccessValidation validation = client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"));
+
+        assertThat(validation)
+            .isEqualTo(new OpenAccessValidation(true, "USER", "7c5e0618-0000-0000-0000-000000000000", "AbCd1234", null, null));
+    }
+
+    @Test
+    void openValidateParsesDenialReason() {
+        psama.stubFor(
+            post(urlEqualTo("/open/validate")).willReturn(
+                okJson(
+                    "{\"valid\":false,\"keyType\":null,\"keyId\":null,\"displayPrefix\":null,\"denial\":\"key_invalid\","
+                        + "\"refreshedToken\":null}"
+                )
+            )
+        );
+
+        OpenAccessValidation validation = client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"));
+
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.denial()).isEqualTo(OpenAccessValidation.DENIAL_KEY_INVALID);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "\"true\"", "[true]", "{}"})
+    void openValidateDeniesAnyOtherResponseShape(String body) {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson(body)));
+
+        OpenAccessValidation validation = client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"));
+
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.keyId()).isNull();
+    }
+
+    @Test
+    void openValidateDeniesAnEmptyBody() {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(ok().withHeader("Content-Type", "application/json")));
+
+        assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host")).valid()).isFalse();
+    }
+
+    @Test
+    void openValidateTreatsNonBooleanValidAsDenied() {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("{\"valid\":\"true\",\"keyType\":\"USER\"}")));
+
+        assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host")).valid()).isFalse();
+    }
+
+    @Test
+    void openValidateSendsResponseVersionTwoAlongsideTheCallersPayload() {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("true")));
+        psama.resetRequests();
+
+        // an immutable map: the client must add the field to a copy, not the caller's payload
+        client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host", "apiKey", "picsure_testKeyValue123"));
+
+        psama.verify(
+            1,
+            postRequestedFor(urlEqualTo("/open/validate")).withHeader("Authorization", equalTo("Bearer service-token"))
+                .withRequestBody(matchingJsonPath("$." + PsamaClient.RESPONSE_VERSION, equalTo("2")))
+                .withRequestBody(matchingJsonPath("$.ipAddress", equalTo("OPEN_ACCESS:host")))
+                .withRequestBody(matchingJsonPath("$.apiKey", equalTo("picsure_testKeyValue123")))
+        );
     }
 }

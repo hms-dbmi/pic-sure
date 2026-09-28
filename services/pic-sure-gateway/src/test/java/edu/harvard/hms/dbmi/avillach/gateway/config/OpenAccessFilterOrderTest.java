@@ -21,6 +21,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
@@ -53,7 +54,7 @@ class OpenAccessFilterOrderTest {
     @SuppressWarnings("unchecked")
     void assembledFiltersConsumeApiKeyBeforeCaseInsensitiveSanitizingRemovesItDownstream() throws Exception {
         PsamaClient psama = mock(PsamaClient.class);
-        when(psama.validateOpenAccess(any())).thenReturn(true);
+        when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         List<FilterRegistrationBean<? extends Filter>> registrations = assembledRegistrations(psama);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
         request.addHeader("x-PiCsUrE-aPi-kEy", "picsure_testKeyValue123");
