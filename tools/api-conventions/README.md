@@ -6,6 +6,8 @@ It also holds every module to one authorization standard. A handler that needs a
 
 The OpenAPI document publishes each guard's authorities as "Required authorities: ..." at the end of the operation description, so `docs-do-not-restate-authorities` fails a documented module whose `@Tag` description or `@Operation` summary or description names one of the authorities its guards require. That prose would only repeat the guard and drift from it.
 
+`handler-declares-authorization` covers PSAMA only (`services/pic-sure-auth-microapp/pic-sure-auth-services`), the one module whose authorization lives in its own handlers. Every PSAMA handler must carry exactly one authorization decision on the method: `@PreAuthorize` in the form `preauthorize-uses-standard-form` requires, or `@PublicEndpoint(ANONYMOUS)` or `@PublicEndpoint(AUTHENTICATED)` from `libs/pic-sure-openapi`. A handler with neither fails, a handler with both fails, and `@PublicEndpoint` on a class fails. `@PublicEndpoint` grants nothing: PSAMA's filter chain enforces access, and the annotation records the decision where a reviewer reads the handler. Use `ANONYMOUS` only for a route listed in `security.public-routes.shipped`, which PSAMA's `PublicEndpointRoutesTest` holds in step with the annotations, and `AUTHENTICATED` for a handler any logged-in caller may reach. The OpenAPI document prints "Public, no token needed." or "Any authenticated user." for them, the way it prints required authorities for a guard.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -31,7 +33,9 @@ Authorization, over every compiled module:
 - `guards-enable-method-security`: a module that uses `@PreAuthorize` declares `@EnableMethodSecurity` with pre/post support on.
 - `no-role-checks`: no code calls `hasRole`, `hasAnyRole` or `isUserInRole` on a Spring Security, actuator, Servlet or JAX-RS type.
 
-R21 covers PSAMA only (`services/pic-sure-auth-microapp/pic-sure-auth-services`), the one module whose authorization lives in its own handlers. Every PSAMA handler must carry exactly one authorization decision on the method: `@PreAuthorize` in the R8 form, or `@PublicEndpoint(ANONYMOUS)` or `@PublicEndpoint(AUTHENTICATED)` from `libs/pic-sure-openapi`. A handler with neither fails, a handler with both fails, and `@PublicEndpoint` on a class fails. `@PublicEndpoint` grants nothing: PSAMA's filter chain enforces access, and the annotation records the decision where a reviewer reads the handler. Use `ANONYMOUS` only for a route listed in `security.public-routes.shipped`, which PSAMA's `PublicEndpointRoutesTest` holds in step with the annotations, and `AUTHENTICATED` for a handler any logged-in caller may reach. The OpenAPI document prints "Public, no token needed." or "Any authenticated user." for them, the way it prints required authorities for a guard.
+Authorization, over PSAMA only:
+
+- `handler-declares-authorization`: every handler carries exactly one of `@PreAuthorize` or `@PublicEndpoint` on the method, and no class carries `@PublicEndpoint`.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 

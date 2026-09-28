@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Applies the rules to this reactor. Every rule reports its whole list, so one run names every problem
  * rather than the first. The swagger rules cover the modules the registry marks documented; the
  * authorization rules cover every compiled module, because an unenforced guard is a problem wherever it sits.
- * R21 covers PSAMA alone, the one module whose authorization lives in its own handlers.
+ * {@code handler-declares-authorization} covers PSAMA alone, the one module whose authorization lives in its own handlers.
  */
 class ApiConventionsTest {
 
@@ -95,7 +95,7 @@ class ApiConventionsTest {
 
     @Test
     void everyPsamaHandlerDeclaresItsAuthorization() {
-        report("R21", overModules(PSAMA_ONLY, SecurityRules::handlersDeclareAuthorization));
+        report("handler-declares-authorization", overModules(PSAMA_ONLY, SecurityRules::handlersDeclareAuthorization));
     }
 
     private static List<String> overModules(List<String> scope, Rule rule) {

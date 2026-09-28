@@ -180,9 +180,10 @@ public final class SecurityRules {
     }
 
     /**
-     * R21: every handler carries exactly one authorization decision on the method, either {@code @PreAuthorize} or
-     * {@code @PublicEndpoint}, and no class carries {@code @PublicEndpoint}. A handler with neither is open to whoever the filter chain
-     * lets through without anyone having said so, which is how a read returning every application's token reached plain users.
+     * {@code handler-declares-authorization}: every handler carries exactly one authorization decision on the
+     * method, either {@code @PreAuthorize} or {@code @PublicEndpoint}, and no class carries
+     * {@code @PublicEndpoint}. A handler with neither is open to whoever the filter chain lets through without
+     * anyone having said so, which is how a read returning every application's token reached plain users.
      *
      * @param module the module path, used in the violation text
      * @param classes that module's imported classes
