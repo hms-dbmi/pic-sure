@@ -92,7 +92,7 @@ class ApiConventionsTest {
 
     @Test
     void everyRequestMappingHandlerNamesItsVerbs() {
-        report("R12", overAllModules(RequestMethodRules::requestMappingNamesMethod));
+        report("request-mapping-names-method", overAllModules(RequestMethodRules::requestMappingNamesMethod));
     }
 
     private static List<String> overAllModules(Rule rule) {
