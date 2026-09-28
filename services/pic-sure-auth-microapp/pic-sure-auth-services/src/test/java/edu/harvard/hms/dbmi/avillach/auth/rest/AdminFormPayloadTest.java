@@ -291,6 +291,46 @@ class AdminFormPayloadTest {
         assertThat(roleRepository.findByName(name).getUuid()).isNotEqualTo(role.getUuid());
     }
 
+    @Test
+    void userUpdateIgnoresFieldsTheLoginFlowsOwn() throws Exception {
+        ObjectNode edited = userFormBody(target.getEmail(), true);
+        edited.put("uuid", target.getUuid().toString());
+        edited.put("subject", "attacker|forged-" + suffix);
+        edited.put("token", "forged-long-term-token");
+        edited.put("passport", "forged-passport");
+        edited.put("auth0metadata", "{\"forged\":true}");
+        edited.put("matched", true);
+        edited.put("acceptedTOS", 1_700_000_000_000L);
+
+        mockMvc.perform(asAdmin(HttpMethod.PUT, "/user").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk());
+
+        User saved = userRepository.findById(target.getUuid()).orElseThrow();
+        assertThat(saved.getSubject()).isEqualTo(STORED_SUBJECT_PREFIX + suffix);
+        assertThat(saved.getToken()).isEqualTo(STORED_TOKEN);
+        assertThat(saved.getPassport()).isEqualTo(STORED_PASSPORT);
+        assertThat(saved.getAuth0metadata()).isNull();
+        assertThat(saved.isMatched()).isFalse();
+        assertThat(saved.getAcceptedTOS()).isNull();
+    }
+
+    @Test
+    void userCreateCannotOverwriteAnExistingUser() throws Exception {
+        String email = "overwrite-" + suffix + "@example.org";
+        ObjectNode created = userFormBody(email, true);
+        created.put("uuid", target.getUuid().toString());
+        created.put("subject", "attacker|forged-" + suffix);
+
+        mockMvc.perform(asAdmin(HttpMethod.POST, "/user").content(json.createArrayNode().add(created).toString()))
+            .andExpect(status().isOk());
+
+        User untouched = userRepository.findById(target.getUuid()).orElseThrow();
+        assertThat(untouched.getEmail()).isEqualTo(target.getEmail());
+        assertThat(untouched.getSubject()).isEqualTo(STORED_SUBJECT_PREFIX + suffix);
+        User newUser = userRepository.findAll().stream().filter(u -> email.equals(u.getEmail())).findFirst().orElseThrow();
+        assertThat(newUser.getUuid()).isNotEqualTo(target.getUuid());
+        assertThat(newUser.getSubject()).isNull();
+    }
+
     /**
      * The body {@code UserForm.svelte} builds: the email, the whole connection, general metadata carrying the email, the active flag, and
      * the selected roles as {@code roleAsUserFormSendsIt} describes.

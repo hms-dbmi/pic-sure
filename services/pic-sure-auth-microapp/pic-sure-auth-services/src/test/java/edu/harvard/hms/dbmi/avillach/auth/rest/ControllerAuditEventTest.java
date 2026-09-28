@@ -45,9 +45,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getUserById", new Class[] {String.class, HttpServletRequest.class}, "OTHER", "user.read");
         // getUserAll()
         assertAuditEvent(c, "getUserAll", new Class[] {}, "OTHER", "user.list");
-        // addUser(List<User> users, HttpServletRequest request)
+        // addUser(List<UserCreateRequest> users, HttpServletRequest request)
         assertAuditEvent(c, "addUser", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "user.modify");
-        // updateUser(List<User> users, HttpServletRequest request)
+        // updateUser(List<UserUpdateRequest> users, HttpServletRequest request)
         assertAuditEvent(c, "updateUser", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "user.modify");
         // getCurrentUser(String authorizationHeader, Boolean hasToken)
         assertAuditEvent(c, "getCurrentUser", new Class[] {String.class, Boolean.class}, "ACCESS", "user.profile");
