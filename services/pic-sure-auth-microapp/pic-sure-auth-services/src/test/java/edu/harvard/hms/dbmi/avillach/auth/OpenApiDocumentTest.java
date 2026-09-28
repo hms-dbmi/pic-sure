@@ -28,7 +28,8 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
  * summarised operation. An endpoint cannot vanish from the document, and the annotation pass cannot skip one, without failing here. This is
  * also PSAMA's first test to boot the full application context: an in-memory H2 schema stands in for MySQL, and {@code NON_KEYWORDS}
  * excuses the columns Hibernate would otherwise refuse because H2 reserves their names. Required authorities appear in a description only as
- * the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose. The cache inspection controller is
+ * the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose, and a handler marked
+ * {@code @PublicEndpoint} gets the sentence for its level. The cache inspection controller is
  * switched on so its operations are covered too.
  */
 @SpringBootTest(
@@ -75,7 +76,8 @@ class OpenApiDocumentTest {
         assertThat(description(paths, "/user", "get")).isEqualTo("GET a list of existing users\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         assertThat(description(paths, "/accessRule", "post")).isEqualTo("POST a list of AccessRules\n\nRequired authorities: SUPER_ADMIN.");
         assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users\n\nRequired authorities: ADMIN.");
-        assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user");
+        assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user\n\nAny authenticated user.");
+        assertThat(description(paths, "/tos/latest", "get")).endsWith("\n\nPublic, no token needed.");
         assertThat(description(paths, "/application", "get"))
             .isEqualTo("GET a list of existing Applications\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         paths.forEach(

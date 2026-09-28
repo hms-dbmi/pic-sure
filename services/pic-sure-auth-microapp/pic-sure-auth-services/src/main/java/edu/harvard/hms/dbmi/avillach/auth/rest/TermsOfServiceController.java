@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.hms.dbmi.avillach.auth.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
@@ -52,6 +54,7 @@ public class TermsOfServiceController {
     @ApiResponse(responseCode = "200", description = "The current terms of service as HTML")
     @AuditEvent(type = "ACCESS", action = "tos.view")
     @GetMapping(path = "/latest", produces = "text/html")
+    @PublicEndpoint(Access.ANONYMOUS)
     public ResponseEntity<String> getLatestTermsOfService() {
         logger.info("Getting latest Terms of Service");
         return PICSUREResponse.success(tosService.getLatest());
@@ -83,6 +86,7 @@ public class TermsOfServiceController {
     @ApiResponse(responseCode = "200", description = "True when the caller has accepted the current terms")
     @AuditEvent(type = "ACCESS", action = "tos.view")
     @GetMapping(produces = "text/plain")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<Boolean> hasUserAcceptedTOS() {
         SecurityContext context = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) context.getAuthentication().getPrincipal();
@@ -97,6 +101,7 @@ public class TermsOfServiceController {
     @ApiResponse(responseCode = "200", description = "The terms were accepted")
     @AuditEvent(type = "ACCESS", action = "tos.accept")
     @PostMapping(path = "/accept", produces = "application/json")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<?> acceptTermsOfService(HttpServletRequest request) {
         SecurityContext context = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) context.getAuthentication().getPrincipal();

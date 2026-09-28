@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
@@ -119,6 +121,7 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "The caller's profile")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<?> getCurrentUser(
         @RequestHeader("Authorization") String authorizationHeader,
         @Parameter(description = "Attribute that represents if a long term token will attach to the response") @RequestParam(
@@ -146,6 +149,7 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "A new long term token for the caller")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<?> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "token_type", "long_term");
         Map<String, String> stringStringMap = this.userService.refreshUserToken(httpHeaders);
@@ -160,6 +164,7 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "The caller's consents")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<?> getUserConsents() {
         UserConsents userConsents = this.userService.getUserConsents();
 
