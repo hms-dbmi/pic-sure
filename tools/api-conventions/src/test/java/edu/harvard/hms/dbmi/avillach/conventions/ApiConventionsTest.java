@@ -95,6 +95,12 @@ class ApiConventionsTest {
         report("catch-all-advice-extends-base", overAllModules(ExceptionAdviceRules::catchAllAdviceExtendsBaseHandler));
     }
 
+    @Test
+    void noHandlerBindsAnEntity() {
+        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
+        report("R22", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
+    }
+
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
