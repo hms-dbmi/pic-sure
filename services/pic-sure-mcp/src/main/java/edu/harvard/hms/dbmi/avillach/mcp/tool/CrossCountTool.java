@@ -43,13 +43,15 @@ public class CrossCountTool {
         CROSS_COUNT gives one cell per study consent concept: the open channel replaces select with every concept path under \
         \\_studies_consents\\, so the cells are keyed by those paths, and the \\_studies_consents\\ cell itself, the participants \
         matching the query across all studies, is kept rather than dropped. select is passed on unchanged, but the open channel uses it \
-        for none of the three. At most 100 cells are returned, and cellsOmitted says how many were dropped. The query takes the same \
+        for none of the three. At most 100 cells are returned, and cellsOmitted says how many were dropped. These cells are never the \
+        authorized answer: for exact counts filtered by the user's consents, use get_adapter_code with resultType cross_count, where \
+        select does choose the concept paths counted. The query takes the same \
         shape as in count_participants, with no result type and no not field. Example arguments: \
         {"resultType":"CATEGORICAL_CROSS_COUNT","query":{"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
-        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\sex\\\\","values":["Female","Male"]},\
+        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female","Male"]},\
         {"operator":"OR","phenotypicClauses":[\
-        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\age\\\\","min":40,"max":65},\
-        {"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\phs000001\\\\bmi\\\\"}]}]}}}""";
+        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65},\
+        {"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\phs999999\\\\bmi\\\\"}]}]}}}""";
 
     private static final Logger log = LoggerFactory.getLogger(CrossCountTool.class);
 
