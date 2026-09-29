@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: pic-sure-mcp
+  ai:
+    mcp:
+      server:
+        name: pic-sure
+        type: SYNC
+        protocol: STATELESS
+        streamable-http:
+          mcp-endpoint: /mcp
+        capabilities:
+          tool: true
+          prompt: false
+          resource: false
+          completion: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+picsure:
+  mcp:
+    gateway-url: ${PICSURE_GATEWAY_URL}
+    service-token: ${MCP_SERVICE_TOKEN}
+    adapter:
+      base-url: ${MCP_ADAPTER_BASE_URL}
+      include-consents: ${MCP_ADAPTER_INCLUDE_CONSENTS:false}
+      supports-genomic: ${MCP_ADAPTER_SUPPORTS_GENOMIC:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
