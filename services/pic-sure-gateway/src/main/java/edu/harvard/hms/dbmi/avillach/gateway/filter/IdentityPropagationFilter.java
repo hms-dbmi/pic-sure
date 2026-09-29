@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
 import jakarta.servlet.FilterChain;
@@ -27,17 +28,20 @@ import jakarta.servlet.http.HttpServletResponse;
  * SCG MVC forwards via a {@code HandlerFunction}; request attributes don't become outbound headers automatically. This filter wraps the
  * request and adds the {@code X-User-*} headers from the attributes the introspection/open-access filters set — including
  * {@code X-User-Privileges} — plus {@code X-Request-Id} (propagate the incoming one, reuse the commons {@link RequestIdFilter}'s MDC value,
- * or generate). Downstream maps {@code X-User-Privileges} to {@code GrantedAuthority}s for {@code @PreAuthorize} checks. <p> The
- * five {@code X-User-*} headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES},
+ * or generate). Downstream maps {@code X-User-Privileges} to {@code GrantedAuthority}s for {@code @PreAuthorize} checks. <p> The five
+ * {@code X-User-*} headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES},
  * {@code _PRIVILEGES}) plus {@link GatewayUserResolver#HEADER_ACCESS_TYPE} are gateway-owned: the wrapper NEVER falls through to the raw
  * client request for them. Whatever the gateway resolved (possibly nothing) is authoritative -- a client cannot spoof these by sending its
  * own values, even where the gateway resolved an empty/null value (e.g. open-access requests, users with no privileges).
  * {@code X-Picsure-Access-Type} records which gateway authentication flow admitted the request. Downstream backend routing uses explicit
- * path segments instead.
+ * path segments instead. <p> When the request's {@link VerifiedCaller} is {@value McpCallerFilter#CALLER}, {@value #HEADER_CLIENT_TYPE} is
+ * also gateway-owned and carries {@value McpCallerFilter#CALLER}, so a backend service sees that value only on a call the gateway verified.
+ * Otherwise the client's {@value #HEADER_CLIENT_TYPE} passes through as sanitized upstream.
  */
 public class IdentityPropagationFilter extends OncePerRequestFilter {
 
     static final String HEADER_REQUEST_ID = "X-Request-Id"; // commons RequestIdFilter owns generation
+    static final String HEADER_CLIENT_TYPE = "X-Client-Type";
 
     private static final Logger log = LoggerFactory.getLogger(IdentityPropagationFilter.class);
 
@@ -75,9 +79,12 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
         );
 
         private final Map<String, String> overrides = new LinkedHashMap<>();
+        private final Set<String> ownedHeaders;
 
         IdentityHeadersRequest(HttpServletRequest req) {
             super(req);
+            boolean verifiedMcp = VerifiedCaller.get(req).filter(McpCallerFilter.CALLER::equals).isPresent();
+            ownedHeaders = verifiedMcp ? withClientType(GATEWAY_OWNED_HEADERS) : GATEWAY_OWNED_HEADERS;
             put(GatewayUserResolver.HEADER_USER_ID, attr(req, GatewayUserResolver.HEADER_USER_ID));
             put(GatewayUserResolver.HEADER_USER_SUBJECT, attr(req, GatewayUserResolver.HEADER_USER_SUBJECT));
             put(GatewayUserResolver.HEADER_USER_EMAIL, attr(req, GatewayUserResolver.HEADER_USER_EMAIL));
@@ -85,6 +92,15 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
             put(GatewayUserResolver.HEADER_USER_PRIVILEGES, attr(req, GatewayUserResolver.HEADER_USER_PRIVILEGES));
             put(GatewayUserResolver.HEADER_ACCESS_TYPE, attr(req, GatewayUserResolver.HEADER_ACCESS_TYPE));
             put(HEADER_REQUEST_ID, resolveRequestId(req));
+            if (verifiedMcp) {
+                put(HEADER_CLIENT_TYPE, McpCallerFilter.CALLER);
+            }
+        }
+
+        private static Set<String> withClientType(Set<String> owned) {
+            Set<String> names = new LinkedHashSet<>(owned);
+            names.add(HEADER_CLIENT_TYPE);
+            return Set.copyOf(names);
         }
 
         private static String resolveRequestId(HttpServletRequest req) {
@@ -111,8 +127,8 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
         }
 
         /** Returns the canonical gateway-owned header name matching {@code name} case-insensitively, or {@code null} if not owned. */
-        private static String ownedCanonicalName(String name) {
-            for (String owned : GATEWAY_OWNED_HEADERS) {
+        private String ownedCanonicalName(String name) {
+            for (String owned : ownedHeaders) {
                 if (owned.equalsIgnoreCase(name)) return owned;
             }
             return null;
