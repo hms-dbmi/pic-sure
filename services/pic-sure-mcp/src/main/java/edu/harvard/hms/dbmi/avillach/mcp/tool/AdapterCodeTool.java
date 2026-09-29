@@ -51,22 +51,27 @@ public class AdapterCodeTool {
         runtime), check (a command that prints the installed connector version), install (the command that installs the connector), \
         and code. The code connects to this site with the user's own token, read from the PICSURE_TOKEN environment variable; it never \
         contains a token. Show the code to the user and do not run it unless the user asks. Before the code runs, run check. If the \
-        connector is missing or older than requires.minVersion, show install to the user and run it only after the user confirms. \
-        For r, minVersion is a release tag; compare it with the tag check prints. For bash there is no minVersion, and check only \
-        confirms curl and jq are installed. \
+        connector is missing or older than requires.minVersion, show install to the user and run it only after the user confirms; \
+        never install silently. An older connector may not work against this site. If you cannot run commands, show check, install, \
+        and the code together. For r, minVersion is a release tag; compare it with the tag check prints. For bash there is no \
+        minVersion: the script needs curl 7.55 or later and jq, and check prints both versions. \
         Results from this code are exact and filtered by the user's consents, unlike count_participants and cross_count, which return \
         obfuscated open-access counts that ignore consents, so always say which kind of number you report. resultType: count prints one \
         number; cross_count prints one number per concept path; participant and timestamp write a CSV file under picsure_results/ and \
-        print only its size and path. language: python, r, or bash. python and r use the picsure adapters; bash calls the REST API \
-        with curl and jq. Pick it from what the user works in (their request, project files, a notebook kernel, code they already \
+        print only its size and path. Report only what the code prints. Do not open the result files unless \
+        the user asks you to. language: python, r, or bash. python and r use the picsure adapters; bash calls the REST API with \
+        curl and jq. Pick it from what the user works in (their request, project files, a notebook kernel, code they already \
         have) and ask when that does not settle it. The query takes the same shape as in count_participants, with no \
-        result type and no not field. select adds output columns for participant and timestamp. Genomic filters take values only. Set \
+        result type and no not field. select chooses the concept paths a cross_count counts and adds output columns for participant \
+        and timestamp; count ignores it. The tool refuses, naming the field: a genomic filter with min or max (genomic filters take \
+        values only), a REQUIRED or ANY_RECORD_OF filter with values, min, or max, a FILTER with both values and min or max or with \
+        neither, a blank entry in values, and a query with no filter, genomic filter, or select path. Set \
         checkConcepts to true to check every concept path against the dictionary first; unknown paths come back in warnings and never \
         block the code. Example arguments: \
-        {"language":"python","resultType":"participant","query":{"select":["\\\\phs000001\\\\bmi\\\\"],"phenotypicClause":\
+        {"language":"python","resultType":"participant","query":{"select":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":\
         {"operator":"AND","phenotypicClauses":[\
-        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\sex\\\\","values":["Female"]},\
-        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\age\\\\","min":40,"max":65}]}}}""";
+        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female"]},\
+        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65}]}}}""";
 
     private static final Logger log = LoggerFactory.getLogger(AdapterCodeTool.class);
 

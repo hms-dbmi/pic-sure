@@ -47,8 +47,8 @@ public class FacetTool {
             List the PIC-SURE data dictionary's facet categories, such as study or data type, with the number of \
             concepts each facet matches for an optional free-text search. Returns open-access dictionary metadata only, \
             never participant data. Use it to see how a search spreads across studies before calling search_concepts. \
-            At most 25 categories and 25 facets per category come back, and the omitted counts say how many were dropped.""",
-        generateOutputSchema = true,
+            At most 25 categories and 25 facets per category come back, and categoriesOmitted and facetsOmitted say how many \
+            were dropped.""", generateOutputSchema = true,
         annotations = @McpTool.McpAnnotations(
             title = "List facets", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false
         )
