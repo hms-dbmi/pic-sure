@@ -54,6 +54,14 @@ class InstructionsTest {
         "The query has no not field and no authorization fields, and the tools reject both."
     );
 
+    private static final List<String> SELECT_SENTENCES = List.of(
+        "select has no effect on the open count tools, count_participants and cross_count.",
+        "For get_adapter_code, select adds output columns for participant and timestamp results, and names the concept paths cross_count "
+            + "counts on the authorized channel."
+    );
+
+    private static final String WITHHELD_SENTENCE = "no result was returned (the open channel withholds small results)";
+
     @LocalServerPort
     private int port;
 
@@ -117,6 +125,24 @@ class InstructionsTest {
     }
 
     @Test
+    void theSelectFieldSaysItDoesNothingForOpenCountsAndWhatItDoesInAdapterCode() throws Exception {
+        for (String name : List.of("count_participants", "cross_count", "get_adapter_code")) {
+            String inputSchema = objectMapper.writeValueAsString(tools().get(name).path("inputSchema"));
+
+            assertThat(inputSchema).as(name).contains(SELECT_SENTENCES).doesNotContain("Passed on for cross counts");
+        }
+    }
+
+    @Test
+    void withheldSaysNoResultWasReturnedAndNamesNoParticipantThreshold() throws Exception {
+        JsonNode crossCount = tools().get("cross_count");
+        String outputSchema = objectMapper.writeValueAsString(crossCount.path("outputSchema"));
+
+        assertThat(crossCount.path("description").asText()).contains(WITHHELD_SENTENCE).doesNotContain("too few participants");
+        assertThat(outputSchema).contains(WITHHELD_SENTENCE).doesNotContain("too few participants");
+    }
+
+    @Test
     void noDescriptionUsesARealAccessionOrADash() throws Exception {
         for (Map.Entry<String, String> entry : descriptions().entrySet()) {
             assertThat(entry.getValue()).as(entry.getKey()).doesNotContain("phs000001", String.valueOf((char) 0x2014), "-".repeat(2));
@@ -133,14 +159,20 @@ class InstructionsTest {
     }
 
     private Map<String, String> descriptions() throws Exception {
+        Map<String, String> descriptions = new HashMap<>();
+        tools().forEach((name, tool) -> descriptions.put(name, tool.path("description").asText()));
+        return descriptions;
+    }
+
+    private Map<String, JsonNode> tools() throws Exception {
         JsonNode result = call("""
             {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""");
-        Map<String, String> descriptions = new HashMap<>();
+        Map<String, JsonNode> tools = new HashMap<>();
         for (JsonNode tool : result.path("tools")) {
-            descriptions.put(tool.path("name").asText(), tool.path("description").asText());
+            tools.put(tool.path("name").asText(), tool);
         }
-        assertThat(descriptions).hasSize(6);
-        return descriptions;
+        assertThat(tools).hasSize(6);
+        return tools;
     }
 
     private JsonNode call(String body) throws Exception {

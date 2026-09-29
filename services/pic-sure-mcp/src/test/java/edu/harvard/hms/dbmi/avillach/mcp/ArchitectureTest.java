@@ -68,7 +68,6 @@ class ArchitectureTest {
 
     private static final String AUTHORIZED_PATH = "/hpds/auth";
     private static final String BACKEND_TEMPLATE = "{backend}";
-    private static final String OPEN_PREFIX = "/hpds/open/";
     private static final String OPEN_QUERY_SYNC_PATH = "/hpds/open/query/sync";
     private static final List<String> TRAVERSAL_MARKERS = List.of("/..", "../", "%2e");
     /** The one class file the constant-pool scan skips, because it writes the authorized path as text; see the channel rule. */
@@ -90,13 +89,14 @@ class ArchitectureTest {
     }
 
     /**
-     * No compiled class carries a string constant that names the authorized query channel or a backend template, and every path constant
-     * that names HPDS or a query sits under {@code /hpds/open/}. A path here means a UTF8 constant starting with {@code /}: internal class
-     * names start with a letter and descriptors with {@code (}, {@code L}, or {@code [}, so they never match. This keeps the service from
-     * building a relative gateway URL that reaches authorized, unobfuscated data. Because the prefix check reads unnormalized text, any
-     * constant containing a dot segment ({@code /..}, {@code ../}, or a percent-encoded dot {@code %2e}, in any case) also fails, so
-     * {@code /hpds/open/../auth} cannot pass as an open path. An absolute URL to another host is outside this check and is refused at
-     * runtime by the gateway client's interceptor.
+     * No compiled class carries a string constant that names the authorized query channel or a backend template, and the only path constant
+     * that names HPDS or a query is exactly {@code /hpds/open/query/sync}. A path here means a UTF8 constant starting with {@code /}:
+     * internal class names start with a letter and descriptors with {@code (}, {@code L}, or {@code [}, so they never match. This keeps the
+     * service from building a relative gateway URL that reaches authorized, unobfuscated data, and from reaching the open channel's async
+     * submission, status, or result endpoints, such as {@code /hpds/open/query} or {@code /hpds/open/query/{id}/result}. Any constant
+     * containing a dot segment ({@code /..}, {@code ../}, or a percent-encoded dot {@code %2e}, in any case) also fails, so a path cannot
+     * climb out of the open channel. An absolute URL to another host is outside this check and is refused at runtime by the gateway
+     * client's interceptor.
      *
      * <p>The class files are read byte by byte because a literal inlined into a method body, or held in an annotation value, is visible
      * only in the constant pool. Every UTF8 entry is checked, not only those a string constant points at. As a control, the scan must have
@@ -123,7 +123,7 @@ class ArchitectureTest {
                     continue;
                 }
                 for (String constant : utf8Constants(Files.readAllBytes(file))) {
-                    if (namesAuthorizedChannel(constant) || isNonOpenQueryPath(constant) || containsTraversal(constant)) {
+                    if (namesAuthorizedChannel(constant) || isQueryPathOtherThanSync(constant) || containsTraversal(constant)) {
                         violations.add(relative + ": \"" + constant + "\"");
                     }
                     if (relative.equals(openQueryClientFile) && constant.equals(OPEN_QUERY_SYNC_PATH)) {
@@ -134,9 +134,9 @@ class ArchitectureTest {
         }
         assertTrue(
             violations.isEmpty(),
-            "The service may call only the open channel under " + OPEN_PREFIX + ". These class constants name " + AUTHORIZED_PATH + ", a "
-                + BACKEND_TEMPLATE + " template, an HPDS or query path outside " + OPEN_PREFIX + ", or a dot segment (/.., ../, %2e): "
-                + violations
+            "The service may call only " + OPEN_QUERY_SYNC_PATH + ". These class constants name " + AUTHORIZED_PATH + ", a "
+                + BACKEND_TEMPLATE + " template, an HPDS or query path other than " + OPEN_QUERY_SYNC_PATH
+                + ", or a dot segment (/.., ../, %2e): " + violations
         );
         assertTrue(
             sawTextOnlyClass,
@@ -150,11 +150,11 @@ class ArchitectureTest {
     }
 
     /**
-     * No main resource file names the authorized query channel or a backend template, and every path in a resource that names HPDS or a
-     * query sits under {@code /hpds/open/}, so configuration cannot point a client at authorized data either. A path is a token starting
-     * with {@code /} after the start of a line, whitespace, or a separator. A resource containing a dot segment ({@code /..}, {@code ../},
-     * or {@code %2e}, in any case) also fails, so a path cannot climb out of {@code /hpds/open/}. As a control, the scan must have read
-     * {@code application.yml}.
+     * No main resource file names the authorized query channel or a backend template, and the only path in a resource that may name HPDS or
+     * a query is exactly {@code /hpds/open/query/sync}, so configuration cannot point a client at authorized data or at an async endpoint
+     * either. A path is a token starting with {@code /} after the start of a line, whitespace, or a separator. A resource containing a dot
+     * segment ({@code /..}, {@code ../}, or {@code %2e}, in any case) also fails, so a path cannot climb out of the open channel. As a
+     * control, the scan must have read {@code application.yml}.
      */
     @Test
     void noResourceNamesTheAuthorizedChannel() throws IOException {
@@ -171,7 +171,7 @@ class ArchitectureTest {
                 }
                 Matcher paths = RESOURCE_PATH.matcher(text);
                 while (paths.find()) {
-                    if (isNonOpenQueryPath(paths.group(1))) {
+                    if (isQueryPathOtherThanSync(paths.group(1))) {
                         violations.add(name + ": " + paths.group(1));
                     }
                 }
@@ -179,8 +179,8 @@ class ArchitectureTest {
         }
         assertTrue(
             violations.isEmpty(),
-            "Configuration may not name " + AUTHORIZED_PATH + ", a " + BACKEND_TEMPLATE + " template, an HPDS or query path outside "
-                + OPEN_PREFIX + ", or a dot segment (/.., ../, %2e), because the service reaches only the open channel. Found in: "
+            "Configuration may not name " + AUTHORIZED_PATH + ", a " + BACKEND_TEMPLATE + " template, an HPDS or query path other than "
+                + OPEN_QUERY_SYNC_PATH + ", or a dot segment (/.., ../, %2e), because the service reaches only the open channel. Found in: "
                 + violations
         );
         assertTrue(
@@ -404,12 +404,12 @@ class ArchitectureTest {
         return TRAVERSAL_MARKERS.stream().anyMatch(lower::contains);
     }
 
-    private static boolean isNonOpenQueryPath(String constant) {
+    private static boolean isQueryPathOtherThanSync(String constant) {
         if (!constant.startsWith("/")) {
             return false;
         }
         String lower = constant.toLowerCase(Locale.ROOT);
-        return (lower.contains("hpds") || lower.contains("query")) && !constant.startsWith(OPEN_PREFIX);
+        return (lower.contains("hpds") || lower.contains("query")) && !constant.equals(OPEN_QUERY_SYNC_PATH);
     }
 
     private static boolean namesAuthorizedChannel(String constant) {
