@@ -130,6 +130,23 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void doFilter_usesTheHandlerLabelOverTheRouteDefault() throws ServletException, IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/bin/continuous");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, resp) -> {
+            req.setAttribute(AuditLoggingContext.EVENT_TYPE_ATTR, "DATA_ACCESS");
+            req.setAttribute(AuditLoggingContext.ACTION_ATTR, "handler.label");
+        };
+
+        filter.doFilter(request, response, chain);
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, times(1)).send(eventCaptor.capture(), isNull(), anyString());
+        assertEquals("DATA_ACCESS", eventCaptor.getValue().getEventType());
+        assertEquals("handler.label", eventCaptor.getValue().getAction());
+    }
+
+    @Test
     void doFilter_skipsHealthAndCompatibilityRoutes() throws ServletException, IOException {
         filter.doFilter(new MockHttpServletRequest("POST", "/query/format"), new MockHttpServletResponse(), new MockFilterChain());
         filter.doFilter(new MockHttpServletRequest("GET", "/actuator/health"), new MockHttpServletResponse(), new MockFilterChain());

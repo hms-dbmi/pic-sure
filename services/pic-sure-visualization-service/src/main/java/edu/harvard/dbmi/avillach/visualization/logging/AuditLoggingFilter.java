@@ -74,13 +74,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         HttpServletRequest request, HttpServletResponse response, String requestId, String sessionId, long duration, Exception failure
     ) {
         try {
-            String action = switch (request.getRequestURI()) {
-                case "/auth/distributions", "/open/distributions" -> "visualization.distributions";
-                case "/bin/continuous" -> "visualization.bin_continuous";
-                default -> "visualization.request";
-            };
-
-            LoggingEvent.Builder builder = LoggingEvent.builder("QUERY").action(action).sessionId(sessionId)
+            LoggingEvent.Builder builder = LoggingEvent.builder(eventType(request)).action(action(request)).sessionId(sessionId)
                 .request(requestInfo(request, response, requestId, duration)).metadata(AuditLoggingContext.metadata(request));
 
             String caller = request.getHeader(CLIENT_TYPE_HEADER);
@@ -97,6 +91,33 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         } catch (Exception e) {
             logger.debug("Failed to send audit log event: {}", e.getMessage());
         }
+    }
+
+    /**
+     * The event type from the handler's {@code @AuditEvent}, or {@code QUERY} when the handler carries none.
+     *
+     * @param request the completed request
+     * @return the audit event type
+     */
+    private static String eventType(HttpServletRequest request) {
+        return request.getAttribute(AuditLoggingContext.EVENT_TYPE_ATTR) instanceof String type ? type : "QUERY";
+    }
+
+    /**
+     * The action from the handler's {@code @AuditEvent}, or one derived from the request path when the handler carries none.
+     *
+     * @param request the completed request
+     * @return the audit action
+     */
+    private static String action(HttpServletRequest request) {
+        if (request.getAttribute(AuditLoggingContext.ACTION_ATTR) instanceof String action) {
+            return action;
+        }
+        return switch (request.getRequestURI()) {
+            case "/auth/distributions", "/open/distributions" -> "visualization.distributions";
+            case "/bin/continuous" -> "visualization.bin_continuous";
+            default -> "visualization.request";
+        };
     }
 
     private static RequestInfo requestInfo(HttpServletRequest request, HttpServletResponse response, String requestId, long duration) {
