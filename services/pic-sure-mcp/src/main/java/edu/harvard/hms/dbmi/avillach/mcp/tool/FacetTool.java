@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.mcp.tool;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.FacetCategory;
@@ -40,6 +41,7 @@ public class FacetTool {
      * @return the capped facet categories
      * @throws ToolFailure with a model-facing message for a bad argument or a failed dictionary call
      */
+    @AuditEvent(type = "SEARCH", action = "facet.search")
     @McpTool(
         name = "list_facets", description = """
             List the PIC-SURE data dictionary's facet categories, such as study or data type, with the number of \

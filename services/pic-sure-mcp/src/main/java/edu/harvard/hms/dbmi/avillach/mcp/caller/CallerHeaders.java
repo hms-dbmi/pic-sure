@@ -23,8 +23,9 @@ import java.util.Map;
  * @param apiKey the inbound {@code X-PICSURE-API-Key} header, or null
  * @param requestId the inbound {@code X-Request-Id} header, or null
  * @param forwardedFor every inbound {@code X-Forwarded-For} value joined with {@code ", "}, or null
+ * @param userId the {@code X-User-Id} the gateway set after verifying the caller, or null. Read only for audit, never replayed
  */
-public record CallerHeaders(String authorization, String apiKey, String requestId, String forwardedFor) {
+public record CallerHeaders(String authorization, String apiKey, String requestId, String forwardedFor, String userId) {
 
     /**
      * Strips CR and LF from the request ID and the forwarded-for chain.
@@ -33,10 +34,24 @@ public record CallerHeaders(String authorization, String apiKey, String requestI
      * @param apiKey the inbound {@code X-PICSURE-API-Key} header, or null
      * @param requestId the inbound {@code X-Request-Id} header, or null
      * @param forwardedFor the inbound {@code X-Forwarded-For} chain, or null
+     * @param userId the inbound {@code X-User-Id} header, or null
      */
     public CallerHeaders {
         requestId = stripLineBreaks(requestId);
         forwardedFor = stripLineBreaks(forwardedFor);
+        userId = stripLineBreaks(userId);
+    }
+
+    /**
+     * Creates headers with no user ID.
+     *
+     * @param authorization the inbound {@code Authorization} header, or null
+     * @param apiKey the inbound {@code X-PICSURE-API-Key} header, or null
+     * @param requestId the inbound {@code X-Request-Id} header, or null
+     * @param forwardedFor the inbound {@code X-Forwarded-For} chain, or null
+     */
+    public CallerHeaders(String authorization, String apiKey, String requestId, String forwardedFor) {
+        this(authorization, apiKey, requestId, forwardedFor, null);
     }
 
     /** Transport context key the extractor stores this record under. */
@@ -51,6 +66,9 @@ public record CallerHeaders(String authorization, String apiKey, String requestI
     /** Header carrying the client address chain. */
     public static final String FORWARDED_FOR_HEADER = "X-Forwarded-For";
 
+    /** Header carrying the verified user ID the gateway sets. */
+    public static final String USER_ID_HEADER = "X-User-Id";
+
     /** MDC key the request ID is bound to, shared with the rest of the reactor. */
     public static final String MDC_KEY = RequestIdFilter.MDC_KEY;
 
@@ -59,7 +77,7 @@ public record CallerHeaders(String authorization, String apiKey, String requestI
     private static final Logger log = LoggerFactory.getLogger(CallerHeaders.class);
 
     /**
-     * Reads the four caller headers off an inbound MCP request.
+     * Reads the caller headers off an inbound MCP request.
      *
      * @param request the inbound servlet functional request
      * @return a transport context holding one {@link CallerHeaders} under {@link #KEY}
@@ -68,7 +86,7 @@ public record CallerHeaders(String authorization, String apiKey, String requestI
         ServerRequest.Headers inbound = request.headers();
         CallerHeaders headers = new CallerHeaders(
             inbound.firstHeader(HttpHeaders.AUTHORIZATION), inbound.firstHeader(API_KEY_HEADER), inbound.firstHeader(REQUEST_ID_HEADER),
-            joined(inbound.header(FORWARDED_FOR_HEADER))
+            joined(inbound.header(FORWARDED_FOR_HEADER)), inbound.firstHeader(USER_ID_HEADER)
         );
         log.debug("Extracted caller headers {}", headers);
         return McpTransportContext.create(Map.of(KEY, headers));
@@ -128,7 +146,7 @@ public record CallerHeaders(String authorization, String apiKey, String requestI
     @Override
     public String toString() {
         return "CallerHeaders[authorization=" + presence(authorization) + ", apiKey=" + presence(apiKey) + ", requestId=" + requestId
-            + ", forwardedFor=" + forwardedFor + "]";
+            + ", forwardedFor=" + forwardedFor + ", userId=" + userId + "]";
     }
 
     private static void setIfPresent(HttpHeaders headers, String name, String value) {

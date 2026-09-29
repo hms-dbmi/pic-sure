@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.mcp.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Covers the query tool specifications' call handlers: binding happens before the tool bean is called, a result becomes
+ * Covers the query tool specifications' call handlers: the raw arguments go to the tool bean, which binds them, a result becomes
  * {@code structuredContent} plus one text block, a {@link ToolFailure} becomes an {@code isError} result with its message, and any other
  * exception becomes an {@code isError} result with a fixed message rather than the JSON-RPC error the stateless server would otherwise
  * send.
@@ -99,13 +98,24 @@ class QueryToolConfigTest {
     }
 
     @Test
-    void aBindingFailureNeverReachesTheTool() {
-        CallToolResult result = call(countSpec, Map.of("query", Map.of("phenotypicClause", Map.of("operator", "AND", "not", true))));
+    void theRawArgumentsAndContextAreHandedToTheToolUnbound() {
+        when(countTool.handle(any(), any())).thenReturn(new CountResult("< 10", null, null, 10, true));
+        Map<String, Object> arguments = Map.of("query", Map.of("phenotypicClause", Map.of("operator", "AND", "not", true)));
+
+        call(countSpec, arguments);
+
+        verify(countTool).handle(McpTransportContext.EMPTY, arguments);
+    }
+
+    @Test
+    void aBindingFailureInsideTheToolBecomesAnIsErrorResult() {
+        when(countTool.handle(any(), any())).thenThrow(new ToolFailure("Field 'not' is not part of this tool's input."));
+
+        CallToolResult result = call(countSpec, Map.of("query", Map.of()));
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).singleElement().isInstanceOfSatisfying(
             McpSchema.TextContent.class, t -> assertThat(t.text()).isEqualTo("Field 'not' is not part of this tool's input.")
         );
-        verify(countTool, never()).handle(any(), any());
     }
 }
