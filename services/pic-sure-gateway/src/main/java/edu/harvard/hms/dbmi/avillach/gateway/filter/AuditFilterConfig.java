@@ -17,6 +17,8 @@ import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 /**
  * Wires the audit-emission filter: {@link LoggingClient} (env-driven, no-op when unconfigured), the verified route table, and the
  * {@link AuditLoggingFilter} registration itself at {@link #AUDIT_FILTER_ORDER}, ahead of every filter that can short-circuit the chain.
+ * The filter records an event's {@code caller} only from the {@code VerifiedCaller} attribute a credential-checking filter sets, such as
+ * {@code McpCallerFilter}; a client-sent {@code X-Client-Type} is kept as metadata {@code client_type_claimed}.
  */
 @Configuration
 public class AuditFilterConfig {
@@ -60,7 +62,7 @@ public class AuditFilterConfig {
         // The base filter skips paths ending in /system/status or /openapi.json and paths containing /info/,
         // /bin/continuous, or /logging. Gateway-local actuator and API-documentation paths are also skipped.
         AuditLoggingFilter filter = new AuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui")
+            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), true
         );
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(AUDIT_FILTER_ORDER);
