@@ -20,8 +20,10 @@ import org.springaicommunity.mcp.method.tool.utils.JsonSchemaGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -65,7 +67,18 @@ public class QueryToolConfig {
         return List.of(count, crossCount);
     }
 
-    private static McpSchema.Tool tool(String name, String title, String description, Class<?> input, Class<?> output) {
+    /**
+     * Describes a query tool: its name, title, description, input schema generated from its root input record, output schema generated from
+     * its result record, and read-only annotations.
+     *
+     * @param name the tool name
+     * @param title the tool title
+     * @param description the model-facing description
+     * @param input the root input record
+     * @param output the result record
+     * @return the tool definition
+     */
+    static McpSchema.Tool tool(String name, String title, String description, Class<?> input, Class<?> output) {
         return McpSchema.Tool.builder().name(name).title(title).description(description)
             .inputSchema(SCHEMA_MAPPER, JsonSchemaGenerator.generateFromClass(input))
             .outputSchema(SCHEMA_MAPPER, JsonSchemaGenerator.generateFromType(output))
@@ -82,16 +95,37 @@ public class QueryToolConfig {
      * @return the tool result
      */
     static CallToolResult respond(String name, Supplier<?> call) {
+        return respond(name, call, QueryToolConfig::jsonContent);
+    }
+
+    /**
+     * Runs a tool call and shapes its outcome like {@link #respond(String, Supplier)}, with the content blocks of a success chosen by the
+     * caller. The record is still the {@code structuredContent}.
+     *
+     * @param name the tool name, used for logging
+     * @param call binds the arguments and calls the tool
+     * @param content turns the result into the content blocks
+     * @param <T> the result type
+     * @return the tool result
+     */
+    static <T> CallToolResult respond(String name, Supplier<T> call, Function<? super T, List<McpSchema.Content>> content) {
         try {
-            Object result = call.get();
+            T result = call.get();
             Map<String, Object> structured = MAPPER.convertValue(result, new TypeReference<>() {});
-            return CallToolResult.builder().addTextContent(MAPPER.writeValueAsString(result)).structuredContent(structured).isError(false)
-                .build();
+            return CallToolResult.builder().content(content.apply(result)).structuredContent(structured).isError(false).build();
         } catch (ToolFailure e) {
             return error(e.getMessage());
-        } catch (JsonProcessingException | RuntimeException e) {
+        } catch (RuntimeException e) {
             log.error("Tool {} failed unexpectedly: {}", name, e.getClass().getName(), e);
             return error(UNEXPECTED_FAILURE);
+        }
+    }
+
+    private static List<McpSchema.Content> jsonContent(Object result) {
+        try {
+            return List.of(new McpSchema.TextContent(MAPPER.writeValueAsString(result)));
+        } catch (JsonProcessingException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
