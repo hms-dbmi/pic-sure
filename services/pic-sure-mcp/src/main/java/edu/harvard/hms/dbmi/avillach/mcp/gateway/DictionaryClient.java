@@ -24,7 +24,7 @@ public class DictionaryClient {
     /** Gateway path of the facet listing. */
     public static final String FACETS_PATH = "/dictionary/facets";
 
-    /** Gateway path of the single-concept lookup, without the dataset. */
+    /** Gateway path of the single-concept lookup, without the dataset, and of the lookup of several concept paths at once. */
     public static final String DETAIL_PATH = "/dictionary/concepts/detail";
 
     private final RestClient restClient;
@@ -76,5 +76,19 @@ public class DictionaryClient {
     public DictionaryConcept conceptDetail(String dataset, String conceptPath, CallerHeaders caller) {
         return restClient.post().uri(DETAIL_PATH + "/{dataset}", dataset).headers(caller::applyTo).contentType(MediaType.TEXT_PLAIN)
             .body(conceptPath).retrieve().body(DictionaryConcept.class);
+    }
+
+    /**
+     * Looks up several concepts by path at once. The dictionary returns the concepts it found and leaves out the paths it does not know.
+     *
+     * @param conceptPaths the raw concept paths, sent as a JSON array
+     * @param caller the caller's headers to replay
+     * @return the concepts found, empty when the dictionary returned none
+     */
+    public List<DictionaryConcept> conceptsDetail(List<String> conceptPaths, CallerHeaders caller) {
+        List<DictionaryConcept> concepts =
+            restClient.post().uri(DETAIL_PATH).headers(caller::applyTo).contentType(MediaType.APPLICATION_JSON).body(conceptPaths)
+                .retrieve().body(new ParameterizedTypeReference<List<DictionaryConcept>>() {});
+        return concepts == null ? List.of() : concepts;
     }
 }
