@@ -32,12 +32,38 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     private final AuditRouteTable routes;
     private final AuditContext audit;
     private final List<String> skipContains;
+    private final boolean verifiedCallerOnly;
 
+    /**
+     * Creates a filter that records the client-supplied {@code X-Client-Type} header as the audit event's {@code caller}.
+     *
+     * @param client the client audit events are sent through
+     * @param routes the table mapping request paths to event types and actions
+     * @param audit the per-request metadata merged into each event
+     * @param skipContains path fragments whose requests are not audited
+     */
     public AuditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains) {
+        this(client, routes, audit, skipContains, false);
+    }
+
+    /**
+     * Creates a filter that can take the audit event's {@code caller} only from a verified source.
+     *
+     * @param client the client audit events are sent through
+     * @param routes the table mapping request paths to event types and actions
+     * @param audit the per-request metadata merged into each event
+     * @param skipContains path fragments whose requests are not audited
+     * @param verifiedCallerOnly when true, {@code caller} comes only from the {@link VerifiedCaller} request attribute and a raw
+     *        {@code X-Client-Type} header is recorded as metadata {@code client_type_claimed}; when false, the header is the {@code caller}
+     */
+    public AuditLoggingFilter(
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, List<String> skipContains, boolean verifiedCallerOnly
+    ) {
         this.client = client;
         this.routes = routes;
         this.audit = audit;
         this.skipContains = skipContains != null ? List.copyOf(skipContains) : List.of();
+        this.verifiedCallerOnly = verifiedCallerOnly;
     }
 
     @Override
@@ -105,11 +131,22 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             audit.getMetadata().forEach(metadata::putIfAbsent);
         }
 
+        String claimedClientType = request.getHeader("X-Client-Type");
+        boolean hasClaimedClientType = claimedClientType != null && !claimedClientType.isEmpty();
+        String caller;
+        if (verifiedCallerOnly) {
+            caller = VerifiedCaller.get(request).orElse(null);
+            if (hasClaimedClientType) {
+                metadata.put("client_type_claimed", claimedClientType);
+            }
+        } else {
+            caller = hasClaimedClientType ? claimedClientType : null;
+        }
+
         LoggingEvent.Builder eventBuilder = LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo)
             .metadata(metadata.isEmpty() ? null : metadata);
 
-        String caller = request.getHeader("X-Client-Type");
-        if (caller != null && !caller.isEmpty()) {
+        if (caller != null) {
             eventBuilder.caller(caller);
         }
 
