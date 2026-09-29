@@ -115,6 +115,25 @@ class McpCallerFilterTest {
     }
 
     @Test
+    void anEncodedSpellingOfTheMcpPathIsMarked() throws Exception {
+        MockHttpServletRequest request = request("/%6Dcp", null);
+
+        run(new McpCallerFilter(audit, CURRENT, PREVIOUS), request);
+
+        assertThat(chainCalled).isTrue();
+        assertThat(VerifiedCaller.get(request)).contains("mcp");
+    }
+
+    @Test
+    void aDoublyEncodedSpellingIsNotMarked() throws Exception {
+        MockHttpServletRequest request = request("/%256Dcp", null);
+
+        run(new McpCallerFilter(audit, CURRENT, PREVIOUS), request);
+
+        assertThat(VerifiedCaller.get(request)).isEmpty();
+    }
+
+    @Test
     void onlyTheExactMcpPathIsMarked() throws Exception {
         MockHttpServletRequest subPath = request("/mcp/other", null);
         MockHttpServletRequest lookalike = request("/mcpx", null);

@@ -8,6 +8,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.net.URI;
 
@@ -16,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -27,8 +32,12 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 
 import edu.harvard.hms.dbmi.avillach.gateway.config.RouteSurfaceProperties;
 
@@ -64,6 +73,8 @@ class McpRouteTest {
 
     @BeforeEach
     void resetStubs() {
+        when(loggingClient.isEnabled()).thenReturn(true);
+
         mcpStub.resetAll();
         mcpStub.stubFor(post(urlEqualTo("/mcp")).willReturn(aResponse().withStatus(200).withBody("mcp-ok")));
 
@@ -76,6 +87,9 @@ class McpRouteTest {
 
     @Autowired
     private TestRestTemplate rest;
+
+    @MockitoBean
+    private LoggingClient loggingClient;
 
     @LocalServerPort
     int port;
@@ -126,7 +140,9 @@ class McpRouteTest {
 
     /**
      * The router decodes the path before matching, so an encoded first letter still routes to the service, and it is forwarded still
-     * encoded. The filters that mark and audit {@code /mcp} compare the raw request URI, so this spelling is routed but not marked.
+     * encoded. The filters that mark and audit {@code /mcp} match the same decoded path, so this spelling is also marked verified caller
+     * {@code mcp}, carries {@code X-Client-Type: mcp} downstream, and is audited as {@code mcp.request}. Marking it does not skip the
+     * bearer token check: introspection still runs.
      */
     @Test
     void anEncodedSpellingReachesTheMcpServiceWithTheRawPathKept() {
@@ -134,6 +150,14 @@ class McpRouteTest {
 
         assertThat(mcpStub.getAllServeEvents()).hasSize(1);
         assertThat(mcpStub.getAllServeEvents().get(0).getRequest().getUrl()).isEqualTo("/%6Dcp");
+        mcpStub.verify(postRequestedFor(urlEqualTo("/%6Dcp")).withHeader("X-Client-Type", equalTo("mcp")));
+        psamaStub.verify(1, postRequestedFor(urlEqualTo("/auth/token/inspect")));
+
+        ArgumentCaptor<LoggingEvent> emitted = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, timeout(5000)).send(emitted.capture(), any(), any());
+        assertThat(emitted.getValue().getAction()).isEqualTo("mcp.request");
+        assertThat(emitted.getValue().getCaller()).isEqualTo("mcp");
+        assertThat(emitted.getValue().getRequest().getUrl()).isEqualTo("/%6Dcp");
     }
 
     @Test
