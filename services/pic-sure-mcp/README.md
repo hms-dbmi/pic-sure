@@ -12,9 +12,11 @@ The service only ever reads the open, obfuscated view of the data. Query calls g
 |---|---|---|
 | `PICSURE_GATEWAY_URL` | yes | The gateway's internal base URL, not httpd. Every outbound call goes here. |
 | `MCP_SERVICE_TOKEN` | yes | Shared secret sent as `X-PIC-SURE-MCP-TOKEN` on loop-back calls so the gateway can mark them as MCP. Must match the gateway's value. |
-| `MCP_ADAPTER_BASE_URL` | yes | The site's public URL, written into generated adapter code. |
+| `MCP_ADAPTER_BASE_URL` | yes | The site's public URL, written into generated adapter code. The adapters add `/picsure/...` themselves, so this is the host alone, such as `https://picsure.example.org`. |
 | `MCP_ADAPTER_INCLUDE_CONSENTS` | no, default `false` | Whether generated adapter code passes `include_consents=True`. True on BDC. |
 | `MCP_ADAPTER_SUPPORTS_GENOMIC` | no, default `false` | Whether generated adapter code declares genomic support. True where HPDS has genomic data. |
+| `MCP_ADAPTER_PYTHON_MIN_VERSION` | no, default `3.0.0` | The oldest `picsure` Python adapter release generated code supports, used in the `install` command `get_adapter_code` returns. |
+| `MCP_ADAPTER_R_TAG` | no, default blank | The R adapter release tag generated R code installs. |
 | `LOGGING_SERVICE_URL` | no | Base URL of the PIC-SURE logging service. Audit events are dropped when unset. |
 | `LOGGING_API_KEY` | no | API key for the logging service. |
 | `SERVER_PORT` | no, default `8080` | HTTP port. |
@@ -29,7 +31,7 @@ Build the module and the libraries it depends on, then start the jar:
 mvn -pl services/pic-sure-mcp -am install
 PICSURE_GATEWAY_URL=http://localhost:8080 \
 MCP_SERVICE_TOKEN=local-mcp-token \
-MCP_ADAPTER_BASE_URL=https://localhost/picsure \
+MCP_ADAPTER_BASE_URL=https://localhost \
 SERVER_PORT=8090 \
 java -jar services/pic-sure-mcp/target/pic-sure-mcp-*.jar
 ```
