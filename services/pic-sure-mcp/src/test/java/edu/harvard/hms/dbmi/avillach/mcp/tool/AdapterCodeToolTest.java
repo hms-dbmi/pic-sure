@@ -2,6 +2,9 @@ package edu.harvard.hms.dbmi.avillach.mcp.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -12,7 +15,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
-import edu.harvard.hms.dbmi.avillach.mcp.codegen.AdapterCodeGenerator;
+import edu.harvard.hms.dbmi.avillach.mcp.codegen.CodegenCases;
 import edu.harvard.hms.dbmi.avillach.mcp.codegen.AdapterSetup;
 import edu.harvard.hms.dbmi.avillach.mcp.codegen.Language;
 import edu.harvard.hms.dbmi.avillach.mcp.codegen.ResultKind;
@@ -31,6 +34,7 @@ import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -59,8 +63,8 @@ class AdapterCodeToolTest {
         RestClient.Builder builder =
             RestClient.builder().baseUrl(GATEWAY).requestInterceptor(new GatewayRequestInterceptor(GATEWAY, "mcp-token"));
         server = MockRestServiceServer.bindTo(builder).build();
-        AdapterSetup setup = new AdapterSetup("https://picsure.example.org", true, false, "3.0.0", "");
-        tool = new AdapterCodeTool(new AdapterCodeGenerator(setup), new DictionaryClient(builder.build()));
+        AdapterSetup setup = new AdapterSetup("https://picsure.example.org", true, false, "3.0.0", "v3.0.0");
+        tool = new AdapterCodeTool(CodegenCases.generator(setup), new DictionaryClient(builder.build()));
         context = McpTransportContext.create(Map.of(CallerHeaders.KEY, new CallerHeaders(AUTHORIZATION, null, "req-1", null)));
     }
 
@@ -101,13 +105,41 @@ class AdapterCodeToolTest {
 
     @ParameterizedTest
     @EnumSource(Language.class)
-    void everyLanguageBinds(Language language) throws Exception {
-        if (language == Language.python) {
-            assertThat(tool.handle(context, arguments("count", language.name(), null)).language()).isEqualTo("python");
-        } else {
-            assertThatThrownBy(() -> tool.handle(context, arguments("count", language.name(), null))).isInstanceOf(ToolFailure.class)
-                .hasMessage("Code in " + language.name() + " is not available yet. Use python.");
+    void everyLanguageBindsForEveryResultTypeAndHoldsNoCredential(Language language) throws Exception {
+        for (ResultKind kind : ResultKind.values()) {
+            AdapterCodeResult result = tool.handle(context, arguments(kind.name(), language.name(), null));
+
+            assertThat(result.language()).isEqualTo(language.name());
+            assertThat(result.code()).isNotBlank().contains("PICSURE_TOKEN");
+            String json = MAPPER.writeValueAsString(result) + result.setupText();
+            assertThat(json).doesNotContain(CALLER_TOKEN, AUTHORIZATION, "mcp-token");
         }
+    }
+
+    @Test
+    void genomicFiltersOnASiteWithoutGenomicSupportComeBackWithAWarning() throws Exception {
+        Map<String, Object> arguments = new HashMap<>(Map.of("resultType", "count", "language", "bash"));
+        arguments.put("query", Map.of("genomicFilters", List.of(Map.of("key", "Gene_with_variant", "values", List.of("APOE")))));
+
+        AdapterCodeResult result = tool.handle(context, arguments);
+
+        assertThat(result.warnings()).containsExactly(
+            "This site's configuration does not declare genomic support, so the genomic filters in this code may be refused when it runs."
+        );
+        assertThat(result.code()).contains("Gene_with_variant");
+    }
+
+    @Test
+    void anUnexpectedConceptCheckFailureIsAWarningThatHidesItsMessage() throws Exception {
+        DictionaryClient failing = mock(DictionaryClient.class);
+        when(failing.conceptsDetail(any(), any())).thenThrow(new IllegalStateException("SECRET-INTERNAL-DETAIL"));
+        AdapterCodeTool withFailingDictionary = new AdapterCodeTool(CodegenCases.generator(CodegenCases.SETUP), failing);
+
+        AdapterCodeResult result = withFailingDictionary.handle(context, arguments("participant", "r", true));
+
+        assertThat(result.warnings()).containsExactly("The concept paths could not be checked against the dictionary.");
+        assertThat(result.code()).contains("picsure::buildQuery(");
+        assertThat(MAPPER.writeValueAsString(result) + result.setupText()).doesNotContain("SECRET-INTERNAL-DETAIL", "IllegalState");
     }
 
     @Test

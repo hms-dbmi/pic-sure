@@ -27,7 +27,7 @@ picsure:
       include-consents: ${MCP_ADAPTER_INCLUDE_CONSENTS:false}
       supports-genomic: ${MCP_ADAPTER_SUPPORTS_GENOMIC:false}
       python-min-version: ${MCP_ADAPTER_PYTHON_MIN_VERSION:3.0.0}
-      r-tag: ${MCP_ADAPTER_R_TAG:}
+      r-tag: ${MCP_ADAPTER_R_TAG:v3.0.0}
 
 management:
   endpoints:
