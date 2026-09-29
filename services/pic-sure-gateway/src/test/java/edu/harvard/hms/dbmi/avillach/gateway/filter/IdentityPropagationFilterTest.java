@@ -8,20 +8,28 @@ import static org.mockito.Mockito.when;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.MDC;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.request.InboundIdentityHeaderSanitizingFilter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 class IdentityPropagationFilterTest {
+
+    private static final String MCP_SECRET = "mcp-secret";
 
     @AfterEach
     void clearMdc() {
@@ -234,5 +242,100 @@ class IdentityPropagationFilterTest {
         ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(cap.capture(), eq(resp));
         assertThat(((HttpServletRequest) cap.getValue()).getHeader("X-Request-Id")).isEqualTo("rid-1");
+    }
+
+    @Test
+    void verifiedMcpCallerCarriesMcpClientTypeDownstream() throws Exception {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getAttribute(VerifiedCaller.ATTRIBUTE)).thenReturn(McpCallerFilter.CALLER);
+        when(req.getHeader("x-client-type")).thenReturn("PYTHON_ADAPTER");
+        when(req.getHeaders("x-client-type")).thenReturn(Collections.enumeration(List.of("PYTHON_ADAPTER")));
+        when(req.getHeaderNames()).thenReturn(Collections.enumeration(List.of("x-client-type")));
+
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
+
+        ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
+        verify(chain).doFilter(cap.capture(), eq(resp));
+        HttpServletRequest wrapped = (HttpServletRequest) cap.getValue();
+        assertThat(wrapped.getHeader("X-Client-Type")).isEqualTo("mcp");
+        assertThat(wrapped.getHeader("x-client-type")).isEqualTo("mcp");
+        assertThat(Collections.list(wrapped.getHeaders("x-client-type"))).containsExactly("mcp");
+        assertThat(Collections.list(wrapped.getHeaderNames())).containsExactlyInAnyOrder("X-Client-Type", "X-Request-Id");
+    }
+
+    @Test
+    void clientTypePassesThroughWhenNoCallerIsVerified() throws Exception {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getHeader("X-Client-Type")).thenReturn("PYTHON_ADAPTER");
+        when(req.getHeaderNames()).thenReturn(Collections.enumeration(List.of("X-Client-Type")));
+
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
+
+        ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
+        verify(chain).doFilter(cap.capture(), eq(resp));
+        HttpServletRequest wrapped = (HttpServletRequest) cap.getValue();
+        assertThat(wrapped.getHeader("X-Client-Type")).isEqualTo("PYTHON_ADAPTER");
+    }
+
+    /** Runs the gateway's MCP caller check, the inbound sanitizer, and this filter in their registered order. */
+    private static HttpServletRequest downstreamOf(MockHttpServletRequest request) throws Exception {
+        McpCallerFilter mcpCaller = new McpCallerFilter(new AuditContext(), MCP_SECRET, null);
+        InboundIdentityHeaderSanitizingFilter sanitizer = new InboundIdentityHeaderSanitizingFilter();
+        IdentityPropagationFilter propagation = new IdentityPropagationFilter();
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        mcpCaller.doFilter(
+            request, response,
+            (r1, s1) -> sanitizer
+                .doFilter(r1, s1, (r2, s2) -> propagation.doFilter(r2, s2, (r3, s3) -> captured.set((HttpServletRequest) r3)))
+        );
+        return captured.get();
+    }
+
+    @Test
+    void verifiedLoopBackCallCarriesMcpClientTypeAndNoToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader(McpCallerFilter.HEADER, MCP_SECRET);
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        request.addHeader("X-PICSURE-API-Key", "site-api-key");
+
+        HttpServletRequest downstream = downstreamOf(request);
+
+        assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("mcp");
+        assertThat(Collections.list(downstream.getHeaders("X-Client-Type"))).containsExactly("mcp");
+        assertThat(downstream.getHeader(McpCallerFilter.HEADER)).isNull();
+        assertThat(downstream.getHeader("X-PICSURE-API-Key")).isNull();
+        assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain(McpCallerFilter.HEADER, "X-PICSURE-API-Key");
+    }
+
+    @Test
+    void mcpRouteKeepsApiKeyAndCarriesGatewaySetClientType() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", McpCallerFilter.MCP_PATH);
+        request.addHeader("X-Client-Type", "mcp");
+        request.addHeader("X-PICSURE-API-Key", "site-api-key");
+
+        HttpServletRequest downstream = downstreamOf(request);
+
+        assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("mcp");
+        assertThat(Collections.list(downstream.getHeaders("X-Client-Type"))).containsExactly("mcp");
+        assertThat(downstream.getHeader("X-PICSURE-API-Key")).isEqualTo("site-api-key");
+    }
+
+    @Test
+    void clientSentMcpClientTypeNeverReachesDownstreamAndIsNeverTheCaller() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", "mcp");
+
+        HttpServletRequest downstream = downstreamOf(request);
+
+        assertThat(VerifiedCaller.get(request)).isEmpty();
+        assertThat(VerifiedCaller.get(downstream)).isEmpty();
+        assertThat(downstream.getHeader("X-Client-Type")).isNull();
+        assertThat(downstream.getHeaders("X-Client-Type").hasMoreElements()).isFalse();
+        assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("X-Client-Type");
     }
 }
