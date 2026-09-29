@@ -47,7 +47,8 @@ public class ConceptDetailTool {
             Get one variable (concept) from the PIC-SURE data dictionary by dataset and conceptPath, both exactly as \
             search_concepts returned them. Returns open-access dictionary metadata only, never participant data: display name, \
             description, type, up to 20 categorical values with valuesOmitted for the rest, min and max for continuous \
-            concepts, and up to 10 metadata entries. Call search_concepts first to find valid paths.""", generateOutputSchema = true,
+            concepts, and up to 10 metadata entries with each value cut at 300 characters. Call search_concepts first to find \
+            valid paths.""", generateOutputSchema = true,
         annotations = @McpTool.McpAnnotations(
             title = "Get concept", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false
         )
