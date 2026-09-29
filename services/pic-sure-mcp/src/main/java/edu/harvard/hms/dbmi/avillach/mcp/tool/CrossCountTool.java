@@ -8,6 +8,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.OpenQueryClient;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.mcp.query.QueryBinder;
 import edu.harvard.hms.dbmi.avillach.mcp.query.QueryInput;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -15,10 +17,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 /**
  * The {@code cross_count} tool: an obfuscated open-access count broken down into cells. The caller picks one of three cross-count result
- * types; {@code select} is passed on unchanged. Registered as a tool specification bean by {@code QueryToolConfig}, which binds the
- * arguments and calls {@link #handle} through this bean.
+ * types; {@code select} is passed on unchanged. Registered as a tool specification bean by {@code QueryToolConfig}, which calls
+ * {@link #handle} through this bean so the audit aspect sees every call.
  */
 @Component
 public class CrossCountTool {
@@ -63,15 +67,17 @@ public class CrossCountTool {
     }
 
     /**
-     * Runs the cross count.
+     * Binds the raw arguments and runs the cross count. Binding happens here so a rejected argument is a failure of the audited call.
      *
      * @param context the MCP transport context carrying the caller's headers
-     * @param input the bound arguments
+     * @param arguments the raw arguments of the {@code tools/call} request, possibly null
      * @return the capped, parsed cells
-     * @throws ToolFailure with a model-facing message for a missing or malformed argument, a failed open query call, or a response the tool
-     *         cannot read
+     * @throws ToolFailure with a model-facing message for an unbindable, missing or malformed argument, a failed open query call, or a
+     *         response the tool cannot read
      */
-    public CrossCountResult handle(McpTransportContext context, Input input) {
+    @AuditEvent(type = "QUERY", action = "query.sync")
+    public CrossCountResult handle(McpTransportContext context, Map<String, Object> arguments) {
+        Input input = QueryBinder.bind(arguments, Input.class);
         if (input == null || input.query() == null) {
             throw new ToolFailure("Argument 'query' is required.");
         }
