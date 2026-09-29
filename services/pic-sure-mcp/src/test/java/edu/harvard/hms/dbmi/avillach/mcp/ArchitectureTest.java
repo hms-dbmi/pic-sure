@@ -63,6 +63,7 @@ class ArchitectureTest {
     private static final String CALLER = ROOT + ".caller..";
     private static final String CONFIG = ROOT + ".config..";
     private static final String AUDIT = ROOT + ".audit..";
+    private static final String CODEGEN = ROOT + ".codegen..";
 
     private static final String AUTHORIZED_PATH = "/hpds/auth";
     private static final String BACKEND_TEMPLATE = "{backend}";
@@ -321,15 +322,25 @@ class ArchitectureTest {
     }
 
     /**
-     * Tool classes depend only on the gateway clients, the query model, and the caller headers among the service's own packages, so a tool
-     * cannot reach configuration or the audit aspect directly.
+     * Tool classes depend only on the gateway clients, the query model, the caller headers, and the code generators among the service's own
+     * packages, so a tool cannot reach configuration or the audit aspect directly.
      */
     @Test
     void toolsDependOnlyOnClientsQueryAndCaller() {
         noClasses().that().resideInAPackage(TOOL).should()
             .dependOnClassesThat(
-                resideInAPackage(ROOT + "..").and(DescribedPredicate.not(resideInAnyPackage(TOOL, GATEWAY, QUERY, CALLER)))
+                resideInAPackage(ROOT + "..").and(DescribedPredicate.not(resideInAnyPackage(TOOL, GATEWAY, QUERY, CALLER, CODEGEN)))
             ).because("tools go through the gateway clients and never through configuration or the audit aspect").check(mainClasses);
+    }
+
+    /**
+     * The code generators never depend on the gateway clients or on configuration. Generated code is written from the query and the adapter
+     * setup alone, so writing it can make no request.
+     */
+    @Test
+    void codegenMakesNoRequest() {
+        noClasses().that().resideInAPackage(CODEGEN).should().dependOnClassesThat().resideInAnyPackage(GATEWAY, CONFIG)
+            .because("adapter code is written from the query and the adapter setup, never from a gateway response").check(mainClasses);
     }
 
     /**

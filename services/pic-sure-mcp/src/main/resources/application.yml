@@ -26,6 +26,8 @@ picsure:
       base-url: ${MCP_ADAPTER_BASE_URL:}
       include-consents: ${MCP_ADAPTER_INCLUDE_CONSENTS:false}
       supports-genomic: ${MCP_ADAPTER_SUPPORTS_GENOMIC:false}
+      python-min-version: ${MCP_ADAPTER_PYTHON_MIN_VERSION:3.0.0}
+      r-tag: ${MCP_ADAPTER_R_TAG:}
 
 management:
   endpoints:

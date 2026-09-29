@@ -219,6 +219,8 @@ class GatewayClientConfigTest {
             assertThat(adapter.baseUrl()).isEqualTo("https://picsure.test");
             assertThat(adapter.includeConsents()).isFalse();
             assertThat(adapter.supportsGenomic()).isFalse();
+            assertThat(adapter.pythonMinVersion()).isEqualTo("3.0.0");
+            assertThat(adapter.rTag()).isEmpty();
         });
     }
 

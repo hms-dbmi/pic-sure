@@ -154,6 +154,39 @@ class QueryToolEndToEndTest {
     }
 
     @Test
+    void getAdapterCodeReturnsStructuredContentASetupBlockAndACodeBlockForTheUser() throws Exception {
+        String response = post("""
+            {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_adapter_code","arguments":{
+              "resultType":"count","language":"python","query":{
+              "phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs1\\\\sex\\\\","values":["Female"]}}}}}""");
+        JsonNode result = objectMapper.readTree(response).path("result");
+
+        assertThat(result.path("isError").asBoolean()).isFalse();
+        JsonNode structured = result.path("structuredContent");
+        assertThat(structured.path("language").asText()).isEqualTo("python");
+        assertThat(structured.path("requires"))
+            .isEqualTo(objectMapper.readTree("{\"package\":\"picsure\",\"minVersion\":\"3.0.0\",\"runtime\":\"Python >= 3.10\"}"));
+        assertThat(structured.path("install").asText()).isEqualTo("pip install 'picsure>=3.0.0'");
+        assertThat(structured.path("code").asText())
+            .contains("picsure.connect(\"https://picsure.test\", token=os.environ[\"PICSURE_TOKEN\"]").contains("categories=[\"Female\"]")
+            .endsWith("print(count.raw)\n");
+        JsonNode content = result.path("content");
+        assertThat(content).hasSize(2);
+        assertThat(content.path(0).path("text").asText()).startsWith("Requires picsure >= 3.0.0 (Python >= 3.10).");
+        assertThat(content.path(0).has("annotations")).isFalse();
+        assertThat(content.path(1).path("text").asText()).isEqualTo(structured.path("code").asText());
+        assertThat(content.path(1).path("annotations").path("audience")).isEqualTo(objectMapper.readTree("[\"user\"]"));
+        assertThat(response).doesNotContain("caller-token", "test-mcp-token");
+        assertThat(REQUESTS).isEmpty();
+
+        ArgumentCaptor<LoggingEvent> audit = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, times(1)).send(audit.capture(), isNull(), org.mockito.ArgumentMatchers.eq("req-audit"));
+        assertThat(audit.getValue().getEventType()).isEqualTo("OTHER");
+        assertThat(audit.getValue().getAction()).isEqualTo("adapter.code");
+        assertThat(audit.getValue().getMetadata()).containsEntry("outcome", "success");
+    }
+
+    @Test
     void anAnnotatedDictionaryToolCallIsAuditedThroughItsProxy() throws Exception {
         call("""
             {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"search_concepts","arguments":{"query":"sex","page":1}}}""");
@@ -182,11 +215,15 @@ class QueryToolEndToEndTest {
     }
 
     private JsonNode call(String body) throws Exception {
+        return objectMapper.readTree(post(body)).path("result");
+    }
+
+    private String post(String body) throws Exception {
         String response = RestClient.create("http://localhost:" + port).post().uri("/mcp").contentType(MediaType.APPLICATION_JSON)
             .header("Accept", "application/json, text/event-stream").header("Authorization", "Bearer caller-token")
             .header("X-Request-Id", "req-audit").header("X-User-Id", "user-e2e").body(body).retrieve().body(String.class);
         JsonNode json = objectMapper.readTree(response);
         assertThat(json.has("error")).as(response).isFalse();
-        return json.path("result");
+        return response;
     }
 }
