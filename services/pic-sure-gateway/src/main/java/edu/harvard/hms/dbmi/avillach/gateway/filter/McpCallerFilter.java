@@ -9,6 +9,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
+import edu.harvard.hms.dbmi.avillach.commons.request.RoutedRequestPath;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -23,8 +24,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * <ul> <li>A {@value #HEADER} value equal to the current or the previous configured secret, compared in constant time, marks the request
  * verified caller {@value #CALLER}.</li> <li>A present value that matches neither gets 401 {@code invalid_service_credential}, and the
  * audit metadata records the failure. When no secret is configured, every presented value is invalid.</li> <li>An absent header changes
- * nothing.</li> <li>A request whose path is exactly {@value #MCP_PATH} is marked verified caller {@value #CALLER}, since only the MCP route
- * serves it.</li> </ul>
+ * nothing.</li> <li>A request whose {@link RoutedRequestPath} is exactly {@value #MCP_PATH} is marked verified caller {@value #CALLER},
+ * since only the MCP route serves it. That is the decoded path the router matches, so an encoded spelling such as {@code /%6Dcp} is marked
+ * too.</li> </ul>
  *
  * <p>The presented value is never logged, echoed in the response, or written to audit metadata.
  */
@@ -69,7 +71,7 @@ public class McpCallerFilter extends OncePerRequestFilter {
             }
             VerifiedCaller.set(req, CALLER);
         }
-        if (MCP_PATH.equals(req.getRequestURI())) {
+        if (MCP_PATH.equals(RoutedRequestPath.of(req))) {
             VerifiedCaller.set(req, CALLER);
         }
         chain.doFilter(req, resp);

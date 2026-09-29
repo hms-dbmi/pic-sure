@@ -14,6 +14,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
+import edu.harvard.hms.dbmi.avillach.commons.request.RoutedRequestPath;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,8 +22,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Base {@link OncePerRequestFilter} that maps each non-skipped request to an {@link AuditRoute} and emits an audit event through the
- * {@link LoggingClient}. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway subclasses can widen the skip
- * set for pass-through paths.
+ * {@link LoggingClient}. Routes are matched on {@link RoutedRequestPath}, the decoded path a path-pattern router matches, so an encoded
+ * spelling of a routed path gets the same event type and action; the event's {@code url} stays the raw request URI. {@code shouldNotFilter}
+ * is deliberately {@code protected} and non-final so gateway subclasses can widen the skip set for pass-through paths.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 
@@ -109,7 +111,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
-        AuditRoute route = routes != null ? routes.match(path, method).orElse(null) : null;
+        AuditRoute route = routes != null ? routes.match(RoutedRequestPath.of(request), method).orElse(null) : null;
         String eventType = route != null ? route.getEventType() : "OTHER";
         String action = route != null ? route.getAction() : method;
 

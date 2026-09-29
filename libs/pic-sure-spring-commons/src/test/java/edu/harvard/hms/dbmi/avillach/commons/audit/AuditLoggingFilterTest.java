@@ -272,4 +272,50 @@ class AuditLoggingFilterTest {
         verify(client, never()).send(any(LoggingEvent.class));
         verify(client, never()).send(any(LoggingEvent.class), any(), any());
     }
+
+    private final AuditRouteTable routedPaths = new AuditRouteTable(
+        List.of(
+            new AuditRoute(Pattern.compile("^(?:/[a-z0-9-]+)+?/query/?$"), "POST", "QUERY", "query.submitted"),
+            new AuditRoute(Pattern.compile("^/mcp$"), "POST", "OTHER", "mcp.request")
+        )
+    );
+
+    private LoggingEvent emittedFor(String rawPath) throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routedPaths, new AuditContext(), List.of(), true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(new MockHttpServletRequest("POST", rawPath), response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        return eventCaptor.getValue();
+    }
+
+    @Test
+    void anEncodedMcpSpellingMatchesTheRouteItsDecodedPathMatches() throws Exception {
+        LoggingEvent event = emittedFor("/%6Dcp");
+
+        assertThat(event.getAction()).isEqualTo("mcp.request");
+        assertThat(event.getRequest().getUrl()).isEqualTo("/%6Dcp");
+    }
+
+    @Test
+    void anEncodedHpdsSpellingMatchesTheQueryRouteItsDecodedPathMatches() throws Exception {
+        LoggingEvent event = emittedFor("/%68pds/auth/%71uery");
+
+        assertThat(event.getEventType()).isEqualTo("QUERY");
+        assertThat(event.getAction()).isEqualTo("query.submitted");
+        assertThat(event.getRequest().getUrl()).isEqualTo("/%68pds/auth/%71uery");
+    }
+
+    @Test
+    void anEncodedPercentIsDecodedOnceAndNeverAgain() throws Exception {
+        LoggingEvent event = emittedFor("/%256Dcp");
+
+        assertThat(event.getEventType()).isEqualTo("OTHER");
+        assertThat(event.getAction()).isEqualTo("POST");
+    }
 }

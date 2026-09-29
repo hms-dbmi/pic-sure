@@ -200,8 +200,22 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void apiKeyReachesAnEncodedSpellingOfTheMcpRoute() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/%6Dcp");
+        request.addHeader("X-PICSURE-API-Key", "site-api-key");
+
+        HttpServletRequest downstream = sanitize(request);
+
+        assertThat(downstream.getHeader("X-PICSURE-API-Key")).isEqualTo("site-api-key");
+        assertThat(Collections.list(downstream.getHeaderNames())).contains("X-PICSURE-API-Key");
+    }
+
+    @Test
     void apiKeyIsStrippedFromEveryRouteOtherThanExactlyMcp() throws Exception {
-        for (String path : List.of("/mcp/", "/mcp/tools", "/mcpx", "/hpds/auth/query/sync", "/auth/user/me")) {
+        for (
+            String path : List
+                .of("/mcp/", "/mcp/tools", "/mcpx", "/%6Dcp/x", "/%256Dcp", "/%6Dcpx", "/hpds/auth/query/sync", "/auth/user/me")
+        ) {
             MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
             request.addHeader("X-PICSURE-API-Key", "site-api-key");
 
