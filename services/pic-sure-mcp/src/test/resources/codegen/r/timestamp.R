@@ -1,6 +1,6 @@
 library(picsure)
 
-session <- picsure::connect("https://aio.example.org/", token = Sys.getenv("PICSURE_TOKEN"), include_consents = FALSE)
+session <- picsure::connect("https://aio.example.org", token = Sys.getenv("PICSURE_TOKEN"), include_consents = FALSE)
 
 visits <- picsure::buildClause("\\phs000001\\visits\\", type = picsure::PhenotypicFilterType$ANYRECORD)
 

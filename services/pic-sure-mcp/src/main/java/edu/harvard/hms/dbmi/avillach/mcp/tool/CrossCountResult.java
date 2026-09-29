@@ -20,17 +20,19 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
  * @param totalCells how many cells the open channel returned
  * @param cells the cells kept, in the order the open channel returned them
  * @param cellsOmitted how many cells the cap dropped, when it dropped any
- * @param withheld true when the open channel withheld the whole result because too few participants match
+ * @param withheld true when no result was returned, which is how the open channel withholds small results
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CrossCountResult(
     @Schema(description = "The result type that ran") String resultType,
     @Schema(description = "How many cells were returned") int totalCells, @Schema(description = "The cells kept") List<Cell> cells,
     @Schema(requiredMode = NOT_REQUIRED, description = "How many cells the cap dropped") Integer cellsOmitted,
-    @Schema(
-        requiredMode = NOT_REQUIRED, description = "True when the whole result was withheld because too few participants match"
-    ) Boolean withheld
+    @Schema(requiredMode = NOT_REQUIRED, description = WITHHELD_DESCRIPTION) Boolean withheld
 ) {
+
+    /** The schema description of {@code withheld}. An empty body is not a threshold signal, so it names no participant count. */
+    public static final String WITHHELD_DESCRIPTION =
+        "True when no result was returned (the open channel withholds small results), so there are no cells";
 
     /** The most cells a result carries. */
     public static final int MAX_CELLS = 100;

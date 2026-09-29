@@ -15,6 +15,9 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.http.HttpMessageConvertersAutoConfiguration;
@@ -149,6 +152,48 @@ class GatewayClientConfigTest {
         runner.withPropertyValues("picsure.mcp.adapter.base-url=").run(context -> {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure()).rootCause().isInstanceOf(BindValidationException.class).hasMessageContaining("baseUrl");
+        });
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        delimiter = '|',
+        value = {"aio.example.org | it must be an absolute URL", "/picsure | it must be an absolute URL",
+            "mailto:ops@example.org | it must be an absolute URL", "https:// | it is not a valid URL",
+            "https://aio example.org | it is not a valid URL", "https:///path | it must name a host",
+            "http://aio.example.org | it must use https", "http://localhost.example.org | it must use https",
+            "ftp://aio.example.org | it must use https", "https://user:secret@aio.example.org | it must not carry user info",
+            "https://aio.example.org?next=1 | it must not carry a query", "https://aio.example.org#top | it must not carry a fragment",
+            "https://aio.example.org/api | with no path", "https://aio.example.org// | with no path",
+            "https://aio.example.org/picsure/hpds | with no path"}
+    )
+    void startupFailsWhenTheAdapterBaseUrlIsNotABareSiteUrl(String baseUrl, String reason) {
+        runner.withPropertyValues("picsure.mcp.adapter.base-url=" + baseUrl).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("picsure.mcp.adapter.base-url").hasMessageContaining(reason);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"https://aio.example.org/picsure", "https://aio.example.org/picsure/", "http://localhost/picsure"})
+    void startupFailsOnATrailingPicsureAndSaysTheAdaptersAddIt(String baseUrl) {
+        runner.withPropertyValues("picsure.mcp.adapter.base-url=" + baseUrl).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("leave off /picsure, because the adapters add it themselves");
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {"https://aio.example.org", "https://aio.example.org/", "https://aio.example.org:8443", "http://localhost",
+            "http://localhost:8080", "http://127.0.0.1:8080"}
+    )
+    void startupAcceptsABareSiteUrl(String baseUrl) {
+        runner.withPropertyValues("picsure.mcp.adapter.base-url=" + baseUrl).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(McpProperties.class).adapter().baseUrl()).isEqualTo(baseUrl);
         });
     }
 
