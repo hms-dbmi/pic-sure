@@ -28,19 +28,23 @@ public class CountTool {
     public static final String TITLE = "Count participants";
 
     /** The tool description, with one complete worked query. */
-    public static final String DESCRIPTION = """
-        Count the participants who match a query, through PIC-SURE's open-access channel. The number is an obfuscated open-access \
-        count that ignores the caller's consents and study access: it carries a small random offset (count, with variance giving the \
-        band the true count lies in), and a count below the threshold is hidden (suppressed true, with threshold). \
-        Build the query from conceptPath values that search_concepts returns. A clause is either a filter (phenotypicFilterType and \
-        conceptPath, plus values for a categorical FILTER or min and max for a numeric FILTER) or a subquery (operator AND or OR, and \
-        phenotypicClauses, each a filter or another subquery). genomicFilters are allowed. The query has no result type and no not \
-        field: this tool always runs a COUNT and ignores select. Omit phenotypicClause to count every participant. Example arguments: \
-        {"query":{"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
-        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\sex\\\\","values":["Female"]},\
-        {"operator":"OR","phenotypicClauses":[\
-        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\age\\\\","min":40,"max":65},\
-        {"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\phs000001\\\\bmi\\\\"}]}]}}}""";
+    public static final String DESCRIPTION =
+        """
+            Count the participants who match a query, through PIC-SURE's open-access channel. The number is an obfuscated open-access \
+            count that ignores the caller's consents and study access: it carries a small random offset (count, with variance giving the \
+            band the true count lies in), and a count below the threshold is hidden (suppressed true, with threshold, as in "< 10"). \
+            Use it for a rough cohort size or a feasibility check. It is never the authorized answer: for an exact count filtered by the \
+            user's consents, pass the same query to get_adapter_code with resultType count. \
+            Build the query from conceptPath values that search_concepts returns. A clause is either a filter (phenotypicFilterType and \
+            conceptPath, plus values for a categorical FILTER or min and max for a numeric FILTER; REQUIRED and ANY_RECORD_OF take \
+            neither) or a subquery (operator AND or OR, and phenotypicClauses, each a filter or another subquery). genomicFilters are \
+            allowed; to pass the same query to get_adapter_code later, give genomic filters values only, with no min or max. The query \
+            has no result type and no not field: this tool always runs a COUNT and ignores select. Omit phenotypicClause to count every participant. Example arguments: \
+            {"query":{"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
+            {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female"]},\
+            {"operator":"OR","phenotypicClauses":[\
+            {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65},\
+            {"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\phs999999\\\\bmi\\\\"}]}]}}}""";
 
     private final OpenQueryClient client;
 
