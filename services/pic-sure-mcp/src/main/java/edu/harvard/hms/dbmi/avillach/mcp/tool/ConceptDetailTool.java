@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.mcp.tool;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryConcept;
@@ -40,6 +41,7 @@ public class ConceptDetailTool {
      * @return the concept
      * @throws ToolFailure with a model-facing message for a bad argument, an unknown concept path, or a failed dictionary call
      */
+    @AuditEvent(type = "SEARCH", action = "concept.detail")
     @McpTool(
         name = "get_concept", description = """
             Get one variable (concept) from the PIC-SURE data dictionary by dataset and conceptPath, both exactly as \

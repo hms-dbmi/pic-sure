@@ -126,4 +126,16 @@ class CallerHeadersTest {
             assertThat(MDC.get(CallerHeaders.MDC_KEY)).isNull();
         }
     }
+
+    @Test
+    void theUserIdIsReadFromTheRequestButNeverReplayed() {
+        MockHttpServletRequest servlet = new MockHttpServletRequest();
+        servlet.addHeader("X-User-Id", "user-9\r\n");
+        CallerHeaders headers = CallerHeaders.from(CallerHeaders.extract(ServerRequest.create(servlet, List.of())));
+
+        assertThat(headers.userId()).isEqualTo("user-9");
+        HttpHeaders outbound = new HttpHeaders();
+        headers.applyTo(outbound);
+        assertThat(outbound.containsKey("X-User-Id")).isFalse();
+    }
 }

@@ -1,17 +1,24 @@
 package edu.harvard.hms.dbmi.avillach.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.RestClient;
@@ -43,6 +50,9 @@ class QueryToolEndToEndTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockitoBean
+    private LoggingClient loggingClient;
 
     private record Recorded(String method, String path, String authorization, String mcpToken, String body) {
     }
@@ -103,6 +113,13 @@ class QueryToolEndToEndTest {
             .isEqualTo(objectMapper.readTree("{\"display\":\"1234 ±3\",\"count\":1234,\"variance\":3,\"suppressed\":false}"));
         assertThat(objectMapper.readTree(result.path("content").path(0).path("text").asText())).isEqualTo(result.path("structuredContent"));
 
+        ArgumentCaptor<LoggingEvent> audit = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, times(1)).send(audit.capture(), isNull(), org.mockito.ArgumentMatchers.eq("req-audit"));
+        assertThat(audit.getValue().getEventType()).isEqualTo("QUERY");
+        assertThat(audit.getValue().getAction()).isEqualTo("query.sync");
+        assertThat(audit.getValue().getMetadata()).containsEntry("outcome", "success").containsEntry("result_type", "COUNT")
+            .containsEntry("user_id", "user-e2e");
+
         assertThat(REQUESTS).hasSize(1);
         Recorded sent = REQUESTS.get(0);
         assertThat(sent.method()).isEqualTo("POST");
@@ -130,6 +147,22 @@ class QueryToolEndToEndTest {
         assertThat(result.path("content").path(0).path("text").asText()).isEqualTo("Field 'not' is not part of this tool's input.");
         assertThat(result.has("structuredContent")).isFalse();
         assertThat(REQUESTS).isEmpty();
+        ArgumentCaptor<LoggingEvent> audit = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, times(1)).send(audit.capture(), isNull(), org.mockito.ArgumentMatchers.eq("req-audit"));
+        assertThat(audit.getValue().getAction()).isEqualTo("query.sync");
+        assertThat(audit.getValue().getMetadata()).containsEntry("outcome", "failure");
+    }
+
+    @Test
+    void anAnnotatedDictionaryToolCallIsAuditedThroughItsProxy() throws Exception {
+        call("""
+            {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"search_concepts","arguments":{"query":"sex","page":1}}}""");
+
+        ArgumentCaptor<LoggingEvent> audit = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, times(1)).send(audit.capture(), isNull(), org.mockito.ArgumentMatchers.eq("req-audit"));
+        assertThat(audit.getValue().getEventType()).isEqualTo("SEARCH");
+        assertThat(audit.getValue().getAction()).isEqualTo("concept.search");
+        assertThat(audit.getValue().getMetadata()).containsEntry("query", "sex").containsEntry("page", 1);
     }
 
     @Test
@@ -150,8 +183,8 @@ class QueryToolEndToEndTest {
 
     private JsonNode call(String body) throws Exception {
         String response = RestClient.create("http://localhost:" + port).post().uri("/mcp").contentType(MediaType.APPLICATION_JSON)
-            .header("Accept", "application/json, text/event-stream").header("Authorization", "Bearer caller-token").body(body).retrieve()
-            .body(String.class);
+            .header("Accept", "application/json, text/event-stream").header("Authorization", "Bearer caller-token")
+            .header("X-Request-Id", "req-audit").header("X-User-Id", "user-e2e").body(body).retrieve().body(String.class);
         JsonNode json = objectMapper.readTree(response);
         assertThat(json.has("error")).as(response).isFalse();
         return json.path("result");

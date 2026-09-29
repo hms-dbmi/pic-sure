@@ -67,6 +67,10 @@ class QueryToolsTest {
         context = McpTransportContext.create(Map.of(CallerHeaders.KEY, new CallerHeaders(BEARER, null, "req-1", null)));
     }
 
+    private static Map<String, Object> args(String json) throws Exception {
+        return JSON.readValue(json, new TypeReference<>() {});
+    }
+
     private static <T> T bind(String json, Class<T> type) throws Exception {
         Map<String, Object> args = JSON.readValue(json, new TypeReference<>() {});
         return QueryBinder.bind(args, type);
@@ -79,7 +83,7 @@ class QueryToolsTest {
             .andExpect(jsonPath("$.query.authorizationFilters").isEmpty()).andExpect(jsonPath("$.resourceUUID").doesNotExist())
             .andRespond(withSuccess("1234 ±3", MediaType.APPLICATION_JSON));
 
-        CountResult result = count.handle(context, bind("{\"query\":" + QUERY + "}", CountTool.Input.class));
+        CountResult result = count.handle(context, args("{\"query\":" + QUERY + "}"));
 
         server.verify();
         assertThat(result).isEqualTo(new CountResult("1234 ±3", 1234, 3, null, false));
@@ -89,14 +93,27 @@ class QueryToolsTest {
     void countReturnsASuppressedCount() throws Exception {
         server.expect(requestTo(SYNC)).andRespond(withSuccess("< 10", MediaType.APPLICATION_JSON));
 
-        assertThat(count.handle(context, bind("{\"query\":{}}", CountTool.Input.class)))
-            .isEqualTo(new CountResult("< 10", null, null, 10, true));
+        assertThat(count.handle(context, args("{\"query\":{}}"))).isEqualTo(new CountResult("< 10", null, null, 10, true));
     }
 
     @Test
     void countRequiresAQueryAndSendsNothingWithoutOne() {
-        assertThatThrownBy(() -> count.handle(context, new CountTool.Input(null))).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> count.handle(context, args("{}"))).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'query' is required.");
+        server.verify();
+    }
+
+    @Test
+    void aNotInTheArgumentsFailsBindingInsideHandleAndSendsNothing() throws Exception {
+        String notInFilter =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\phs1\\\\sex\\\\\","
+                + "\"values\":[\"Female\"],\"not\":true}}}";
+
+        assertThatThrownBy(() -> count.handle(context, args(notInFilter))).isInstanceOf(ToolFailure.class)
+            .hasMessage("Field 'not' is not part of this tool's input.");
+        assertThatThrownBy(
+            () -> crossCount.handle(context, args(notInFilter.replace("{\"query\"", "{\"resultType\":\"CROSS_COUNT\",\"query\"")))
+        ).isInstanceOf(ToolFailure.class).hasMessage("Field 'not' is not part of this tool's input.");
         server.verify();
     }
 
@@ -104,8 +121,7 @@ class QueryToolsTest {
     void countFailsOnAnEmptyBody() throws Exception {
         server.expect(requestTo(SYNC)).andRespond(withSuccess("", MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> count.handle(context, bind("{\"query\":{}}", CountTool.Input.class)))
-            .hasMessage("The query service returned no count.");
+        assertThatThrownBy(() -> count.handle(context, args("{\"query\":{}}"))).hasMessage("The query service returned no count.");
     }
 
     @ParameterizedTest
@@ -115,8 +131,7 @@ class QueryToolsTest {
             .andExpect(jsonPath("$.query.select", Matchers.contains("\\phs1\\sex\\", "\\phs1\\age\\")))
             .andExpect(jsonPath("$.query.authorizationFilters").isEmpty()).andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-        CrossCountResult result = crossCount
-            .handle(context, bind("{\"resultType\":\"" + type.name() + "\",\"query\":" + QUERY + "}", CrossCountTool.Input.class));
+        CrossCountResult result = crossCount.handle(context, args("{\"resultType\":\"" + type.name() + "\",\"query\":" + QUERY + "}"));
 
         server.verify();
         assertThat(result.resultType()).isEqualTo(type.name());
@@ -128,10 +143,7 @@ class QueryToolsTest {
         server.expect(requestTo(SYNC)).andRespond(withSuccess("""
             {"\\\\_studies_consents\\\\":"1234 ±3","\\\\_studies_consents\\\\phs1\\\\":"< 10"}""", MediaType.APPLICATION_JSON));
 
-        CrossCountResult result = crossCount.handle(
-            context,
-            new CrossCountTool.Input(bind("{\"query\":{}}", CountTool.Input.class).query(), CrossCountTool.CrossCountType.CROSS_COUNT)
-        );
+        CrossCountResult result = crossCount.handle(context, args("{\"resultType\":\"CROSS_COUNT\",\"query\":{}}"));
 
         assertThat(result.totalCells()).isEqualTo(2);
         assertThat(result.cellsOmitted()).isNull();
@@ -148,8 +160,7 @@ class QueryToolsTest {
             {"\\\\phs1\\\\sex\\\\":{"Female":{"count":1234,"display":"1234 ±3","variance":3},
                                   "Male":{"count":0,"display":"< 10","variance":9}}}""", MediaType.APPLICATION_JSON));
 
-        CrossCountResult result = crossCount
-            .handle(context, bind("{\"resultType\":\"CATEGORICAL_CROSS_COUNT\",\"query\":" + QUERY + "}", CrossCountTool.Input.class));
+        CrossCountResult result = crossCount.handle(context, args("{\"resultType\":\"CATEGORICAL_CROSS_COUNT\",\"query\":" + QUERY + "}"));
 
         assertThat(result.cells()).containsExactly(
             new CrossCountResult.Cell("\\phs1\\sex\\", "Female", new CountResult("1234 ±3", 1234, 3, null, false)),
@@ -165,8 +176,7 @@ class QueryToolsTest {
             .collect(Collectors.joining(","));
         server.expect(requestTo(SYNC)).andRespond(withSuccess("{\"\\\\phs1\\\\age\\\\\":{" + bins + "}}", MediaType.APPLICATION_JSON));
 
-        CrossCountResult result = crossCount
-            .handle(context, bind("{\"resultType\":\"CONTINUOUS_CROSS_COUNT\",\"query\":" + QUERY + "}", CrossCountTool.Input.class));
+        CrossCountResult result = crossCount.handle(context, args("{\"resultType\":\"CONTINUOUS_CROSS_COUNT\",\"query\":" + QUERY + "}"));
 
         assertThat(result.totalCells()).isEqualTo(130);
         assertThat(result.cells()).hasSize(CrossCountResult.MAX_CELLS);
@@ -178,8 +188,7 @@ class QueryToolsTest {
     void anEmptyContinuousBodyIsReportedAsWithheld() throws Exception {
         server.expect(requestTo(SYNC)).andRespond(withSuccess("", MediaType.APPLICATION_JSON));
 
-        CrossCountResult result = crossCount
-            .handle(context, bind("{\"resultType\":\"CONTINUOUS_CROSS_COUNT\",\"query\":" + QUERY + "}", CrossCountTool.Input.class));
+        CrossCountResult result = crossCount.handle(context, args("{\"resultType\":\"CONTINUOUS_CROSS_COUNT\",\"query\":" + QUERY + "}"));
 
         assertThat(result).isEqualTo(new CrossCountResult("CONTINUOUS_CROSS_COUNT", 0, java.util.List.of(), null, true));
         assertThat(JSON.writeValueAsString(result))
@@ -190,15 +199,13 @@ class QueryToolsTest {
     void anUnreadableCrossCountBodyFailsWithoutEchoingIt() throws Exception {
         server.expect(requestTo(SYNC)).andRespond(withSuccess("[\"" + LEAK + "\"]", MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(
-            () -> crossCount.handle(context, bind("{\"resultType\":\"CROSS_COUNT\",\"query\":{}}", CrossCountTool.Input.class))
-        ).hasMessage("The query service returned a result the tool could not read.").hasNoCause();
+        assertThatThrownBy(() -> crossCount.handle(context, args("{\"resultType\":\"CROSS_COUNT\",\"query\":{}}")))
+            .hasMessage("The query service returned a result the tool could not read.").hasNoCause();
     }
 
     @Test
     void crossCountRequiresAResultType() throws Exception {
-        assertThatThrownBy(() -> crossCount.handle(context, bind("{\"query\":{}}", CrossCountTool.Input.class)))
-            .hasMessage("Argument 'resultType' is required.");
+        assertThatThrownBy(() -> crossCount.handle(context, args("{\"query\":{}}"))).hasMessage("Argument 'resultType' is required.");
         server.verify();
     }
 
@@ -212,17 +219,16 @@ class QueryToolsTest {
     void downstreamFailuresMapToShortMessagesWithoutTheBody(int status, String message) throws Exception {
         server.expect(requestTo(SYNC)).andRespond(withStatus(HttpStatus.valueOf(status)).body(LEAK).contentType(MediaType.TEXT_PLAIN));
 
-        assertThatThrownBy(() -> count.handle(context, bind("{\"query\":{}}", CountTool.Input.class))).isInstanceOf(ToolFailure.class)
-            .hasMessage(message).hasNoCause();
+        assertThatThrownBy(() -> count.handle(context, args("{\"query\":{}}"))).isInstanceOf(ToolFailure.class).hasMessage(message)
+            .hasNoCause();
     }
 
     @Test
     void anIoFailureMapsToUnavailable() throws Exception {
         server.expect(requestTo(SYNC)).andRespond(withException(new IOException(LEAK)));
 
-        assertThatThrownBy(
-            () -> crossCount.handle(context, bind("{\"resultType\":\"CROSS_COUNT\",\"query\":{}}", CrossCountTool.Input.class))
-        ).hasMessage("The query service is unavailable. Try again shortly.").hasNoCause();
+        assertThatThrownBy(() -> crossCount.handle(context, args("{\"resultType\":\"CROSS_COUNT\",\"query\":{}}")))
+            .hasMessage("The query service is unavailable. Try again shortly.").hasNoCause();
     }
 
     @Test
