@@ -16,7 +16,7 @@ The service only ever reads the open, obfuscated view of the data. Query calls g
 | `MCP_ADAPTER_INCLUDE_CONSENTS` | no, default `false` | Whether generated adapter code passes `include_consents=True`. True on BDC. |
 | `MCP_ADAPTER_SUPPORTS_GENOMIC` | no, default `false` | Whether generated adapter code declares genomic support. True where HPDS has genomic data. |
 | `MCP_ADAPTER_PYTHON_MIN_VERSION` | no, default `3.0.0` | The oldest `picsure` Python adapter release generated code supports, used in the `install` command `get_adapter_code` returns. |
-| `MCP_ADAPTER_R_TAG` | no, default blank | The R adapter release tag generated R code installs. |
+| `MCP_ADAPTER_R_TAG` | no, default `v3.0.0` | The `pic-sure-r-adapter-hpds` release tag generated R code installs, used in the `install` command `get_adapter_code` returns. |
 | `LOGGING_SERVICE_URL` | no | Base URL of the PIC-SURE logging service. Audit events are dropped when unset. |
 | `LOGGING_API_KEY` | no | API key for the logging service. |
 | `SERVER_PORT` | no, default `8080` | HTTP port. |

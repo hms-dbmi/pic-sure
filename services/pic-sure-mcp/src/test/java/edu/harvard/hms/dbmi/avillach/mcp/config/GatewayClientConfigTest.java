@@ -220,7 +220,7 @@ class GatewayClientConfigTest {
             assertThat(adapter.includeConsents()).isFalse();
             assertThat(adapter.supportsGenomic()).isFalse();
             assertThat(adapter.pythonMinVersion()).isEqualTo("3.0.0");
-            assertThat(adapter.rTag()).isEmpty();
+            assertThat(adapter.rTag()).isEqualTo("v3.0.0");
         });
     }
 
