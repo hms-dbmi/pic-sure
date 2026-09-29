@@ -13,6 +13,8 @@ import edu.harvard.hms.dbmi.avillach.mcp.query.QueryBinder;
 import edu.harvard.hms.dbmi.avillach.mcp.query.QueryInput;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -50,12 +52,14 @@ public class AdapterCodeTool {
         and code. The code connects to this site with the user's own token, read from the PICSURE_TOKEN environment variable; it never \
         contains a token. Show the code to the user and do not run it unless the user asks. Before the code runs, run check. If the \
         connector is missing or older than requires.minVersion, show install to the user and run it only after the user confirms. \
+        For r, minVersion is a release tag; compare it with the tag check prints. For bash there is no minVersion, and check only \
+        confirms curl and jq are installed. \
         Results from this code are exact and filtered by the user's consents, unlike count_participants and cross_count, which return \
         obfuscated open-access counts that ignore consents, so always say which kind of number you report. resultType: count prints one \
         number; cross_count prints one number per concept path; participant and timestamp write a CSV file under picsure_results/ and \
-        print only its row count, column count, and path. language: python, r, or bash. Pick it from what the user works in (their \
-        request, project files, a notebook kernel, code they already have) and ask when that does not settle it. Only python is \
-        available now; r and bash return an error until they ship. The query takes the same shape as in count_participants, with no \
+        print only its size and path. language: python, r, or bash. python and r use the picsure adapters; bash calls the REST API \
+        with curl and jq. Pick it from what the user works in (their request, project files, a notebook kernel, code they already \
+        have) and ask when that does not settle it. The query takes the same shape as in count_participants, with no \
         result type and no not field. select adds output columns for participant and timestamp. Genomic filters take values only. Set \
         checkConcepts to true to check every concept path against the dictionary first; unknown paths come back in warnings and never \
         block the code. Example arguments: \
@@ -63,6 +67,8 @@ public class AdapterCodeTool {
         {"operator":"AND","phenotypicClauses":[\
         {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\sex\\\\","values":["Female"]},\
         {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\age\\\\","min":40,"max":65}]}}}""";
+
+    private static final Logger log = LoggerFactory.getLogger(AdapterCodeTool.class);
 
     private final AdapterCodeGenerator generator;
 
@@ -85,8 +91,8 @@ public class AdapterCodeTool {
      * @param context the MCP transport context, used only to replay the caller's headers on the optional concept check
      * @param arguments the raw arguments of the {@code tools/call} request, possibly null
      * @return the code and its setup
-     * @throws ToolFailure with a model-facing message for an unbindable or missing argument, an incomplete query, a genomic filter the
-     *         adapters cannot express, or a language not available yet
+     * @throws ToolFailure with a model-facing message for an unbindable or missing argument, an incomplete query, or a filter or genomic
+     *         filter the adapters cannot express
      */
     @AuditEvent(type = "OTHER", action = "adapter.code")
     public AdapterCodeResult handle(McpTransportContext context, Map<String, Object> arguments) {
@@ -102,7 +108,10 @@ public class AdapterCodeTool {
         }
         AdapterQuery query = generator.walk(input.query(), input.resultType());
         GeneratedCode code = generator.generate(query, input.language());
-        List<String> warnings = Boolean.TRUE.equals(input.checkConcepts()) ? checkConcepts(query.conceptPaths(), context) : List.of();
+        List<String> warnings = new ArrayList<>(generator.warnings(query));
+        if (Boolean.TRUE.equals(input.checkConcepts())) {
+            warnings.addAll(checkConcepts(query.conceptPaths(), context));
+        }
         return new AdapterCodeResult(
             code.language().name(), new AdapterCodeResult.Requires(code.packageName(), code.minVersion(), code.runtime()), code.check(),
             code.install(), code.code(), warnings.isEmpty() ? null : warnings
@@ -124,6 +133,10 @@ public class AdapterCodeTool {
                 DictionaryCalls.run(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptsDetail(checked, CallerHeaders.from(context)));
         } catch (ToolFailure e) {
             warnings.add("The concept paths could not be checked against the dictionary: " + e.getMessage());
+            return warnings;
+        } catch (RuntimeException e) {
+            log.warn("The concept check failed with {}", e.getClass().getName());
+            warnings.add("The concept paths could not be checked against the dictionary.");
             return warnings;
         }
         Set<String> known = found.stream().filter(Objects::nonNull).map(DictionaryConcept::conceptPath).filter(Objects::nonNull)

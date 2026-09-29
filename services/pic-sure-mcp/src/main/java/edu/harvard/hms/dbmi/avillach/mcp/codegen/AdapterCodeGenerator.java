@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.mcp.codegen;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.GenomicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicClause;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicSubquery;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.mcp.query.QueryInput;
@@ -28,14 +29,35 @@ public class AdapterCodeGenerator {
     private final Map<Language, LanguageGenerator> generators = new EnumMap<>(Language.class);
 
     /**
-     * Creates the generator with every language implemented so far.
+     * Creates the generator from every {@link LanguageGenerator} bean.
      *
      * @param setup the deployment's connection details and adapter versions
+     * @param languageGenerators one generator per language
+     * @throws IllegalStateException if two generators write the same language
      */
-    public AdapterCodeGenerator(AdapterSetup setup) {
+    public AdapterCodeGenerator(AdapterSetup setup, List<LanguageGenerator> languageGenerators) {
         this.setup = setup;
-        LanguageGenerator python = new PythonGenerator();
-        generators.put(python.language(), python);
+        for (LanguageGenerator generator : languageGenerators) {
+            if (generators.put(generator.language(), generator) != null) {
+                throw new IllegalStateException("Two code generators write " + generator.language().name() + ".");
+            }
+        }
+    }
+
+    /**
+     * Notes about a query that the code cannot settle by itself: today, genomic filters on a site whose configuration does not declare
+     * genomic support.
+     *
+     * @param query the intermediate form from {@link #walk}
+     * @return the warnings, possibly empty
+     */
+    public List<String> warnings(AdapterQuery query) {
+        if (!query.genomicFilters().isEmpty() && !setup.supportsGenomic()) {
+            return List.of(
+                "This site's configuration does not declare genomic support, so the genomic filters in this code may be refused when it runs."
+            );
+        }
+        return List.of();
     }
 
     /**
@@ -45,7 +67,7 @@ public class AdapterCodeGenerator {
      * @param input the query as the tool received it
      * @param resultKind the result the code asks for
      * @return the intermediate form
-     * @throws ToolFailure if the query is incomplete, has a genomic filter the adapters cannot express, or is empty
+     * @throws ToolFailure if the query is incomplete, has a filter or genomic filter the adapters cannot express, or is empty
      */
     public AdapterQuery walk(QueryInput input, ResultKind resultKind) {
         Query query = input.toQuery(resultKind.resultType());
@@ -67,22 +89,24 @@ public class AdapterCodeGenerator {
      * @param query the intermediate form from {@link #walk}
      * @param language the language to write
      * @return the code and its setup
-     * @throws ToolFailure if no generator for the language exists yet
+     * @throws ToolFailure if no generator for the language is registered
      */
     public GeneratedCode generate(AdapterQuery query, Language language) {
         LanguageGenerator generator = generators.get(language);
         if (generator == null) {
-            throw new ToolFailure("Code in " + language.name() + " is not available yet. Use python.");
+            throw new ToolFailure("Code in " + language.name() + " is not available on this server.");
         }
         return generator.generate(query, setup);
     }
 
     private static AdapterQuery.Clause clause(PhenotypicClause clause) {
         if (clause instanceof PhenotypicFilter filter) {
-            List<String> categories = filter.values() == null ? List.of() : noNulls(filter.values()).stream().sorted().toList();
-            return new AdapterQuery.Filter(
+            List<String> categories =
+                filter.values() == null ? List.of() : noNulls(filter.values()).stream().map(AdapterCodeGenerator::text).sorted().toList();
+            AdapterQuery.Filter checked = new AdapterQuery.Filter(
                 filter.conceptPath(), filter.phenotypicFilterType(), categories, finite(filter.min()), finite(filter.max())
             );
+            return expressible(checked);
         }
         PhenotypicSubquery subquery = (PhenotypicSubquery) clause;
         return new AdapterQuery.Group(
@@ -97,7 +121,46 @@ public class AdapterCodeGenerator {
         if (filter.values() == null || filter.values().isEmpty()) {
             throw new ToolFailure("Genomic filter '" + filter.key() + "' needs at least one value.");
         }
-        return new AdapterQuery.Genomic(filter.key(), List.copyOf(noNulls(filter.values())));
+        return new AdapterQuery.Genomic(filter.key(), noNulls(filter.values()).stream().map(AdapterCodeGenerator::text).toList());
+    }
+
+    private static AdapterQuery.Filter expressible(AdapterQuery.Filter filter) {
+        String path = filter.conceptPath();
+        boolean categorical = !filter.categories().isEmpty();
+        boolean numeric = filter.min() != null || filter.max() != null;
+        if (filter.type() != PhenotypicFilterType.FILTER && (categorical || numeric)) {
+            throw new ToolFailure(
+                "Filter '" + path + "' has phenotypicFilterType " + filter.type().name()
+                    + ", which takes no 'values', 'min', or 'max'. Use FILTER to match values or a range."
+            );
+        }
+        if (filter.type() == PhenotypicFilterType.FILTER && categorical && numeric) {
+            throw new ToolFailure("Filter '" + path + "' has both 'values' and 'min' or 'max'. A FILTER takes one or the other.");
+        }
+        if (filter.type() == PhenotypicFilterType.FILTER && !categorical && !numeric) {
+            throw new ToolFailure(
+                "Filter '" + path + "' is a FILTER with no 'values', 'min', or 'max'. Add them, or use REQUIRED to match any value."
+            );
+        }
+        if (filter.categories().stream().anyMatch(String::isBlank)) {
+            throw new ToolFailure("Filter '" + path + "' has a blank entry in 'values'.");
+        }
+        return filter;
+    }
+
+    private static String text(String value) {
+        if (value.indexOf('\0') >= 0) {
+            throw new ToolFailure("Field 'values' must not contain a NUL character.");
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isHighSurrogate(c) && i + 1 < value.length() && Character.isLowSurrogate(value.charAt(i + 1))) {
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                throw new ToolFailure("Field 'values' must not contain an unpaired UTF-16 surrogate.");
+            }
+        }
+        return value;
     }
 
     private static Double finite(Double bound) {

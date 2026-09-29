@@ -6,13 +6,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.hms.dbmi.avillach.mcp.query.QueryBinder;
 import edu.harvard.hms.dbmi.avillach.mcp.query.QueryInput;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ToolFailure;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
@@ -21,7 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
 
 /**
  * Pins the Python generator's output byte for byte against golden files under {@code src/test/resources/codegen/python/}. Run with
@@ -32,102 +30,48 @@ class PythonGeneratorTest {
 
     private static final Path GOLDEN = Path.of("src", "test", "resources", "codegen", "python");
 
-    private static final boolean REGENERATE = Boolean.getBoolean("codegen.regenerate");
+    private static final AdapterSetup SETUP = CodegenCases.SETUP;
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    private static final AdapterSetup SETUP = new AdapterSetup("https://picsure.example.org", true, false, "3.0.0", "");
-
-    private static final AdapterSetup GENOMIC_SETUP = new AdapterSetup("https://picsure.example.org", true, true, "3.0.0", "");
+    private static final AdapterSetup GENOMIC_SETUP = CodegenCases.GENOMIC_SETUP;
 
     private static final String EM_DASH = String.valueOf((char) 0x2014);
 
-    /**
-     * One golden case.
-     *
-     * @param name the golden file name without {@code .py}
-     * @param query the query as the model would send it
-     * @param kind the result type
-     * @param setup the deployment setup
-     */
-    record Case(String name, String query, ResultKind kind, AdapterSetup setup) {
+    private static final Set<String> ALLOWED_CALLS = Set.of(
+        "picsure.connect", "picsure.buildClause", "picsure.buildClauseGroup", "picsure.buildGenomicFilter", "picsure.buildQuery",
+        "session.runQuery", "session.exportCSV", "os.makedirs", "print", "len", "counts.items"
+    );
 
-        @Override
-        public String toString() {
-            return name;
-        }
+    private static final String AST_CHECK = """
+        import ast, json, sys
+        tree = ast.parse(open(sys.argv[1], encoding="ascii").read())
+        statements = sorted({type(node).__name__ for node in tree.body})
+        calls = sorted({ast.unparse(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)})
+        names = sorted({node.id for node in ast.walk(tree) if isinstance(node, ast.Name)})
+        strings = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+        print(json.dumps({"statements": statements, "calls": calls, "names": names, "strings": strings}))
+        """;
+
+    static List<CodegenCases.Case> cases() {
+        return CodegenCases.cases();
     }
 
-    static List<Case> cases() {
-        return List.of(
-            new Case("flat_filter", """
-                {"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000007\\\\pht000009\\\\phv00000011\\\\SEX\\\\",
-                "values":["Female"]}}""", ResultKind.count, SETUP), new Case("nested_subqueries", """
-                {"phenotypicClause":{"operator":"AND","phenotypicClauses":[
-                  {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\demographics\\\\sex\\\\","values":["Male","Female"]},
-                  {"operator":"OR","phenotypicClauses":[
-                    {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\demographics\\\\age\\\\","min":40,"max":65.5},
-                    {"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\phs000001\\\\exam\\\\BMI (kg/m2)\\\\"},
-                    {"phenotypicFilterType":"ANY_RECORD_OF","conceptPath":"\\\\phs000002\\\\labs\\\\"}]},
-                  {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000002\\\\visit\\\\sex\\\\","values":["F"]},
-                  {"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\phs000003\\\\count\\\\"}]}}""", ResultKind.count, SETUP),
-            new Case(
-                "genomic_filters",
-                """
-                    {"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\demographics\\\\sex\\\\",
-                    "values":["Female"]},
-                    "genomicFilters":[{"key":"Gene_with_variant","values":["APOE","BRCA1"]},{"key":"Variant_severity","values":["HIGH"]}]}""",
-                ResultKind.count, GENOMIC_SETUP
-            ),
-            new Case(
-                "cross_count",
-                """
-                    {"select":["\\\\phs000001\\\\demographics\\\\race\\\\"],
-                    "phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\demographics\\\\age\\\\","min":18}}""",
-                ResultKind.cross_count, SETUP
-            ),
-            new Case(
-                "participant",
-                """
-                    {"select":["\\\\phs000001\\\\exam\\\\height\\\\","\\\\phs000001\\\\exam\\\\weight\\\\","\\\\phs000001\\\\exam\\\\height\\\\"],
-                    "phenotypicClause":{"operator":"AND","phenotypicClauses":[
-                      {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\site\\\\","values":["Caf\\u00e9 \\"North\\""]},
-                      {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs000001\\\\demographics\\\\age\\\\","max":0.5}]}}""",
-                ResultKind.participant, SETUP
-            ),
-            new Case(
-                "timestamp", """
-                    {"select":["\\\\phs000001\\\\visits\\\\date\\\\"],
-                    "phenotypicClause":{"phenotypicFilterType":"ANY_RECORD_OF","conceptPath":"\\\\phs000001\\\\visits\\\\"}}""",
-                ResultKind.timestamp, new AdapterSetup("https://aio.example.org/", false, false, "3.1.0", "")
-            )
-        );
-    }
-
-    private static String generate(Case c) throws IOException {
-        AdapterCodeGenerator generator = new AdapterCodeGenerator(c.setup());
-        return generator.generate(generator.walk(input(c.query()), c.kind()), Language.python).code();
+    private static String generate(CodegenCases.Case c) throws IOException {
+        return CodegenCases.generate(c, Language.python).code();
     }
 
     private static QueryInput input(String json) throws IOException {
-        return QueryBinder.bind(MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {}), QueryInput.class);
+        return CodegenCases.input(json);
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("cases")
-    void matchesTheGoldenFile(Case c) throws IOException {
-        String code = generate(c);
-        Path golden = GOLDEN.resolve(c.name() + ".py");
-        if (REGENERATE) {
-            Files.createDirectories(GOLDEN);
-            Files.writeString(golden, code, StandardCharsets.UTF_8);
-        }
-        assertThat(code).isEqualTo(Files.readString(golden, StandardCharsets.UTF_8));
+    void matchesTheGoldenFile(CodegenCases.Case c) throws IOException {
+        CodegenCases.assertGolden(GOLDEN.resolve(c.name() + ".py"), generate(c));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("cases")
-    void holdsNoTokenNoDataFramePrintNoCommentAndNoPlatform(Case c) throws IOException {
+    void holdsNoTokenNoDataFramePrintNoCommentAndNoPlatform(CodegenCases.Case c) throws IOException {
         String code = generate(c);
 
         assertThat(code).endsWith("\n").contains("token=os.environ[\"PICSURE_TOKEN\"]").doesNotContain("Bearer", "Authorization")
@@ -139,35 +83,42 @@ class PythonGeneratorTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("cases")
-    void pythonCompilesTheGoldenFile(Case c, @TempDir Path dir) throws Exception {
-        assumeTrue(pythonAvailable(), "python3 is not installed");
+    void pythonCompilesTheGoldenFile(CodegenCases.Case c, @TempDir Path dir) throws Exception {
+        assumeTrue(CodegenCases.available("python3", "--version"), "python3 is not installed");
         Path source = dir.resolve(c.name() + ".py");
         Files.copy(GOLDEN.resolve(c.name() + ".py"), source);
 
-        Process process = new ProcessBuilder("python3", "-m", "py_compile", source.toString()).redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        CodegenCases.Outcome outcome = CodegenCases.run(null, Map.of(), "python3", "-m", "py_compile", source.toString());
 
-        assertThat(process.waitFor(60, TimeUnit.SECONDS)).isTrue();
-        assertThat(process.exitValue()).as(output).isZero();
+        assertThat(outcome.exitCode()).as(outcome.stderr()).isZero();
     }
 
-    private static boolean pythonAvailable() {
-        try {
-            Process process = new ProcessBuilder("python3", "--version").redirectErrorStream(true).start();
-            process.getInputStream().readAllBytes();
-            return process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0;
-        } catch (IOException e) {
-            return false;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("cases")
+    void theSyntaxTreeHoldsOnlyTheExpectedStatementsAndCalls(CodegenCases.Case c, @TempDir Path dir) throws Exception {
+        assumeTrue(CodegenCases.available("python3", "--version"), "python3 is not installed");
+        Path script = dir.resolve("check_ast.py");
+        Files.writeString(script, AST_CHECK, StandardCharsets.UTF_8);
+
+        CodegenCases.Outcome outcome =
+            CodegenCases.run(null, Map.of(), "python3", script.toString(), GOLDEN.resolve(c.name() + ".py").toAbsolutePath().toString());
+
+        assertThat(outcome.exitCode()).as(outcome.stderr()).isZero();
+        Map<String, List<String>> tree = new ObjectMapper().readValue(outcome.stdout(), new TypeReference<>() {});
+        assertThat(tree.get("statements")).isSubsetOf("Import", "Assign", "Expr", "For");
+        assertThat(tree.get("calls")).isSubsetOf(ALLOWED_CALLS);
+        assertThat(tree.get("names")).noneMatch(name -> name.startsWith("__"));
+        if (c.name().equals("hostile")) {
+            assertThat(tree.get("strings")).contains(
+                CodegenCases.HOSTILE_CATEGORY, CodegenCases.HOSTILE_SHELL_CATEGORY, CodegenCases.HOSTILE_SELECT,
+                CodegenCases.HOSTILE_FILTER_PATH
+            );
         }
     }
 
     @Test
     void theSetupNamesThePackageTheConfiguredVersionAndTheRuntime() throws IOException {
-        AdapterCodeGenerator generator =
-            new AdapterCodeGenerator(new AdapterSetup("https://picsure.example.org", true, false, "3.2.1", ""));
+        AdapterCodeGenerator generator = CodegenCases.generator(new AdapterSetup("https://picsure.example.org", true, false, "3.2.1", ""));
         GeneratedCode code = generator.generate(generator.walk(input(cases().get(0).query()), ResultKind.count), Language.python);
 
         assertThat(code.language()).isEqualTo(Language.python);
@@ -181,8 +132,8 @@ class PythonGeneratorTest {
     @Test
     void supportsGenomicIsWrittenOnlyWhenTheSiteHasIt() throws IOException {
         QueryInput query = input(cases().get(0).query());
-        AdapterCodeGenerator off = new AdapterCodeGenerator(SETUP);
-        AdapterCodeGenerator on = new AdapterCodeGenerator(GENOMIC_SETUP);
+        AdapterCodeGenerator off = CodegenCases.generator(SETUP);
+        AdapterCodeGenerator on = CodegenCases.generator(GENOMIC_SETUP);
 
         assertThat(off.generate(off.walk(query, ResultKind.count), Language.python).code()).doesNotContain("supports_genomic");
         assertThat(on.generate(on.walk(query, ResultKind.count), Language.python).code()).contains(", supports_genomic=True)");
@@ -190,7 +141,7 @@ class PythonGeneratorTest {
 
     @Test
     void categoricalValuesAreSortedSoInputOrderDoesNotMatter() throws IOException {
-        AdapterCodeGenerator generator = new AdapterCodeGenerator(SETUP);
+        AdapterCodeGenerator generator = CodegenCases.generator(SETUP);
         String first = generator.generate(
             generator.walk(
                 input("""
@@ -209,19 +160,9 @@ class PythonGeneratorTest {
         assertThat(first).isEqualTo(second).contains("categories=[\"a\", \"b\", \"c\"]");
     }
 
-    @ParameterizedTest
-    @EnumSource(value = Language.class, names = {"r", "bash"})
-    void languagesNotYetWrittenAreAToolFailure(Language language) throws IOException {
-        AdapterCodeGenerator generator = new AdapterCodeGenerator(SETUP);
-        AdapterQuery query = generator.walk(input(cases().get(0).query()), ResultKind.count);
-
-        assertThatThrownBy(() -> generator.generate(query, language)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Code in " + language.name() + " is not available yet. Use python.");
-    }
-
     @Test
     void aGenomicMinOrMaxIsAToolFailureBecauseTheAdaptersCannotExpressIt() throws IOException {
-        AdapterCodeGenerator generator = new AdapterCodeGenerator(SETUP);
+        AdapterCodeGenerator generator = CodegenCases.generator(SETUP);
         QueryInput query = input("""
             {"genomicFilters":[{"key":"Variant_frequency","min":0.1}]}""");
 
@@ -231,7 +172,7 @@ class PythonGeneratorTest {
 
     @Test
     void anEmptyQueryIsAToolFailure() throws IOException {
-        AdapterCodeGenerator generator = new AdapterCodeGenerator(SETUP);
+        AdapterCodeGenerator generator = CodegenCases.generator(SETUP);
 
         assertThatThrownBy(() -> generator.walk(input("{\"select\":[\"\\\\p\\\\x\\\\\"]}"), ResultKind.count))
             .isInstanceOf(ToolFailure.class).hasMessageStartingWith("Adapter code needs a query with at least one filter");
@@ -241,7 +182,7 @@ class PythonGeneratorTest {
 
     @Test
     void anIncompleteFilterFailsTheSameWayAsInTheCountTools() throws IOException {
-        AdapterCodeGenerator generator = new AdapterCodeGenerator(SETUP);
+        AdapterCodeGenerator generator = CodegenCases.generator(SETUP);
 
         assertThatThrownBy(() -> generator.walk(input("{\"phenotypicClause\":{\"conceptPath\":\"\\\\p\\\\\"}}"), ResultKind.count))
             .isInstanceOf(ToolFailure.class);

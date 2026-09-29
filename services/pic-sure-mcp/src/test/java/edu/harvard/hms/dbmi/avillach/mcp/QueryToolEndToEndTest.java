@@ -183,7 +183,33 @@ class QueryToolEndToEndTest {
         verify(loggingClient, times(1)).send(audit.capture(), isNull(), org.mockito.ArgumentMatchers.eq("req-audit"));
         assertThat(audit.getValue().getEventType()).isEqualTo("OTHER");
         assertThat(audit.getValue().getAction()).isEqualTo("adapter.code");
-        assertThat(audit.getValue().getMetadata()).containsEntry("outcome", "success");
+        assertThat(audit.getValue().getMetadata()).containsEntry("outcome", "success").containsEntry("result_type", "count");
+    }
+
+    @Test
+    void getAdapterCodeWritesRAndBashThroughTheWiredGenerators() throws Exception {
+        String template = """
+            {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"get_adapter_code","arguments":{
+              "resultType":"participant","language":"%s","query":{"select":["\\\\phs1\\\\bmi\\\\"],
+              "phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs1\\\\sex\\\\","values":["Female"]}}}}}""";
+
+        String r = post(template.formatted("r"));
+        String bash = post(template.formatted("bash"));
+        JsonNode rResult = objectMapper.readTree(r).path("result");
+        JsonNode bashResult = objectMapper.readTree(bash).path("result");
+
+        assertThat(rResult.path("isError").asBoolean()).isFalse();
+        assertThat(rResult.path("structuredContent").path("requires").path("minVersion").asText()).isEqualTo("v3.0.0");
+        assertThat(rResult.path("structuredContent").path("code").asText())
+            .contains("session <- picsure::connect(\"https://picsure.test\", token = Sys.getenv(\"PICSURE_TOKEN\")")
+            .contains("picsure::exportCSV(session, df, output_path)");
+        assertThat(bashResult.path("isError").asBoolean()).isFalse();
+        assertThat(bashResult.path("structuredContent").path("requires").has("minVersion")).isFalse();
+        assertThat(bashResult.path("structuredContent").path("code").asText()).startsWith("#!/usr/bin/env bash\n")
+            .contains("query_url='https://picsure.test/picsure/hpds/auth/query'", "\"expectedResultType\" : \"DATAFRAME\"");
+        assertThat(bashResult.path("content").path(1).path("annotations").path("audience")).isEqualTo(objectMapper.readTree("[\"user\"]"));
+        assertThat(r + bash).doesNotContain("caller-token", "test-mcp-token");
+        assertThat(REQUESTS).isEmpty();
     }
 
     @Test

@@ -14,9 +14,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
+import edu.harvard.hms.dbmi.avillach.mcp.codegen.CodegenCases;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryPage;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.OpenQueryClient;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AdapterCodeTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptDetailTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptSearchTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
@@ -197,6 +199,24 @@ class ToolAuditAspectTest {
         assertThat(event.getAction()).isEqualTo("query.sync");
         assertThat(event.getMetadata()).containsEntry("outcome", "failure").containsEntry("result_type", "COUNT");
         assertThat(event.getError()).containsExactly(Map.entry("error_type", "tool_failure"));
+    }
+
+    @Test
+    void adapterCodeSendsItsLowercaseResultTypeAndNothingFromTheBody() throws Exception {
+        AdapterCodeTool adapterCode =
+            proxy(new AdapterCodeTool(CodegenCases.generator(CodegenCases.SETUP), dictionary), new ToolAuditAspect(client));
+        Map<String, Object> arguments = Map.of(
+            "resultType", "participant", "language", "bash", "query",
+            Map.of("select", List.of(BODY_PATH), "phenotypicClause", Map.of("phenotypicFilterType", "REQUIRED", "conceptPath", BODY_PATH))
+        );
+
+        adapterCode.handle(context, arguments);
+
+        LoggingEvent event = onlyEvent();
+        assertThat(event.getEventType()).isEqualTo("OTHER");
+        assertThat(event.getAction()).isEqualTo("adapter.code");
+        assertThat(event.getMetadata()).containsEntry("result_type", "participant").containsEntry("outcome", "success");
+        assertThat(serialized(event)).doesNotContain(BODY_PATH);
     }
 
     @Test
