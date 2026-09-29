@@ -45,7 +45,8 @@ class PublicRoutesBindingTest {
         {"POST, /system/status", "GET, /v3/system/status", "GET, /foo/system/status", "GET, /loggingAdmin/x",
             "GET, /operations/configuration/admin", "GET, /operations/configuration/admin/x", "POST, /operations/configuration",
             "POST, /operations/configuration/abc-123", "GET, /operations/dataset/named/abc-123", "POST, /operations/banners/active",
-            "GET, /operations/banners", "GET, /operations/banners/active/", "GET, /operations/banners/active/extra"}
+            "GET, /operations/banners", "GET, /operations/banners/active/", "GET, /operations/banners/active/extra", "POST, /mcp",
+            "GET, /mcp", "DELETE, /mcp"}
     )
     void boundRoutesKeepEachAdjacentRouteProtected(String method, String path) {
         assertThat(policy.evaluate(method, path).publicEndpoint()).isFalse();

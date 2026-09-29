@@ -38,7 +38,7 @@ class NoRegistryRouteTest {
     @Test
     void exposesOnlyTheExpectedRouteIdsAndNoRegistryRoute() {
         Set<String> ids = configuredRouteIds();
-        assertThat(ids).containsExactlyInAnyOrder("logging", "dictionary", "visualization", "hpds", "operations");
+        assertThat(ids).containsExactlyInAnyOrder("logging", "dictionary", "visualization", "hpds", "operations", "mcp");
         assertThat(ids).doesNotContain("uploader");
         assertThat(ids).noneMatch(id -> {
             String lower = id.toLowerCase();
