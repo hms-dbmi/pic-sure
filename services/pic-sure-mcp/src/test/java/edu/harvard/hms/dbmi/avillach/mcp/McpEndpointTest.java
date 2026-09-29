@@ -46,12 +46,32 @@ class McpEndpointTest {
     }
 
     @Test
-    void toolsListAnswersWithJsonAndNoToolsYet() throws Exception {
+    void toolsListNamesTheThreeDictionaryToolsWithReadOnlyAnnotationsAndOutputSchemas() throws Exception {
         JsonNode result = call("""
             {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""");
 
-        assertThat(result.path("tools").isArray()).isTrue();
-        assertThat(result.path("tools")).isEmpty();
+        JsonNode tools = result.path("tools");
+        assertThat(tools.isArray()).isTrue();
+        assertThat(tools).extracting(t -> t.path("name").asText())
+            .containsExactlyInAnyOrder("search_concepts", "list_facets", "get_concept");
+        for (JsonNode tool : tools) {
+            JsonNode annotations = tool.path("annotations");
+            assertThat(annotations.path("readOnlyHint").asBoolean()).as(tool.path("name").asText()).isTrue();
+            assertThat(annotations.path("destructiveHint").asBoolean(true)).isFalse();
+            assertThat(annotations.path("idempotentHint").asBoolean()).isTrue();
+            assertThat(annotations.path("openWorldHint").asBoolean(true)).isFalse();
+            assertThat(tool.path("outputSchema").isObject()).isTrue();
+            assertThat(tool.path("outputSchema").path("properties").isEmpty()).isFalse();
+        }
+        JsonNode getConcept = null;
+        for (JsonNode tool : tools) {
+            if ("get_concept".equals(tool.path("name").asText())) {
+                getConcept = tool;
+            }
+        }
+        assertThat(getConcept).isNotNull();
+        assertThat(getConcept.path("outputSchema").path("required")).extracting(JsonNode::asText).contains("conceptPath")
+            .doesNotContain("min", "max", "values", "valuesOmitted", "meta", "name");
     }
 
     /**
