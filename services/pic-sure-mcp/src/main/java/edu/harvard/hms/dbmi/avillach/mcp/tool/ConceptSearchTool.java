@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.mcp.tool;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryPage;
@@ -40,6 +41,7 @@ public class ConceptSearchTool {
      * @return the page of concepts
      * @throws ToolFailure with a model-facing message for a bad argument or a failed dictionary call
      */
+    @AuditEvent(type = "SEARCH", action = "concept.search")
     @McpTool(
         name = "search_concepts", description = """
             Search the PIC-SURE data dictionary for variables (concepts) by free text, for example \
