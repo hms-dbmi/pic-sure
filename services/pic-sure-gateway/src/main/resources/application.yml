@@ -138,6 +138,9 @@ picsure:
           url: ${PSAMA_URL:http://psama:8090}
           docs-path: /auth/v3/api-docs
           public-prefix: /psama
+    mcp:
+      service-token: ${MCP_SERVICE_TOKEN:}
+      previous-service-token: ${MCP_SERVICE_TOKEN_PREVIOUS:}
     security:
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}
