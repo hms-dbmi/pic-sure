@@ -20,6 +20,10 @@
         obfuscated open counts by calling back through the gateway. Open channel only, no database, no Spring
         Security.</description>
 
+    <properties>
+        <archunit.version>1.4.1</archunit.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.ai</groupId>
@@ -53,6 +57,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit</artifactId>
+            <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
