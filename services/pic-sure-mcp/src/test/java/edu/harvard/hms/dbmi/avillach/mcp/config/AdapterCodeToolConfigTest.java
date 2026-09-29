@@ -113,4 +113,13 @@ class AdapterCodeToolConfigTest {
         assertThat(new AdapterCodeToolConfig().adapterSetup(properties))
             .isEqualTo(new AdapterSetup("https://picsure.test", true, true, "3.1.0", "v3.0.0"));
     }
+
+    @Test
+    void theSetupBeanDropsTheBaseUrlTrailingSlashOnce() {
+        McpProperties properties =
+            new McpProperties("http://gateway", "token", new McpProperties.Adapter("https://aio.example.org/", false, false, null, null));
+
+        assertThat(new AdapterCodeToolConfig().adapterSetup(properties).baseUrl()).isEqualTo("https://aio.example.org");
+        assertThat(new AdapterSetup("http://localhost//", false, false, "3.0.0", "v3.0.0").baseUrl()).isEqualTo("http://localhost");
+    }
 }

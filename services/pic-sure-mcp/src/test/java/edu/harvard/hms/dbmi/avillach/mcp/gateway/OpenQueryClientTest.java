@@ -24,13 +24,16 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Covers the single open query call: the path, the exact request body, the replayed caller headers, and the result-type allow-list that
- * stops anything else from being sent.
+ * Covers the single open query call: that it is the client's only public request method, the path, the exact request body, the replayed
+ * caller headers, and the result-type allow-list that stops anything else from being sent.
  */
 class OpenQueryClientTest {
 
@@ -57,6 +60,15 @@ class OpenQueryClientTest {
         );
         assertThatThrownBy(() -> OpenQueryClient.ALLOWED_RESULT_TYPES.add(ResultType.DATAFRAME))
             .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void theOnlyPublicRequestMethodIsQuerySync() {
+        List<String> publicMethods = Arrays.stream(OpenQueryClient.class.getDeclaredMethods())
+            .filter(m -> Modifier.isPublic(m.getModifiers()) && !m.isSynthetic()).map(Method::getName).toList();
+
+        assertThat(publicMethods).containsExactly("querySync");
+        assertThat(OpenQueryClient.QUERY_SYNC_PATH).isEqualTo("/hpds/open/query/sync");
     }
 
     @Test

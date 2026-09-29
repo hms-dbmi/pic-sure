@@ -1,7 +1,7 @@
 import os
 import picsure
 
-session = picsure.connect("https://aio.example.org/", token=os.environ["PICSURE_TOKEN"], include_consents=False)
+session = picsure.connect("https://aio.example.org", token=os.environ["PICSURE_TOKEN"], include_consents=False)
 
 visits = picsure.buildClause("\\phs000001\\visits\\", type=picsure.PhenotypicFilterType.ANYRECORD)
 

@@ -81,7 +81,7 @@ public final class BashGenerator implements LanguageGenerator {
         lines.add(INDENT + "exit 1");
         lines.add("fi");
         lines.add("");
-        lines.add("query_url=" + quote(stripTrailingSlashes(setup.baseUrl()) + QUERY_PATH));
+        lines.add("query_url=" + quote(setup.baseUrl() + QUERY_PATH));
         lines.add("query_file=\"$(mktemp)\"");
         lines.add("trap 'rm -f \"$query_file\"' EXIT");
         lines.add("");
@@ -191,13 +191,6 @@ public final class BashGenerator implements LanguageGenerator {
         return new PhenotypicSubquery(null, group.clauses().stream().map(BashGenerator::clause).toList(), group.operator());
     }
 
-    private static String stripTrailingSlashes(String url) {
-        String stripped = url;
-        while (stripped.endsWith("/")) {
-            stripped = stripped.substring(0, stripped.length() - 1);
-        }
-        return stripped;
-    }
 
     /**
      * Quotes a string for bash. Printable ASCII goes in single quotes, with a single quote written as {@code '\''}; any other character is

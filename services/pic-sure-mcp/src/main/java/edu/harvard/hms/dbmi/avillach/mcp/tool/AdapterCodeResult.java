@@ -18,7 +18,8 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
  * @param check a command that prints the installed connector version
  * @param install a command that installs the connector, to show the user before running it
  * @param code the code for the user to run in their own environment
- * @param warnings notes about the query for this site, concept paths the dictionary did not know, or a note that the check could not run
+ * @param warnings notes about the query for this site: genomic filters on a site without declared genomic support, a concept path check cut
+ *        off at {@link AdapterCodeTool#MAX_CHECKED_PATHS} paths, concept paths the dictionary did not know, or why the check could not run
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AdapterCodeResult(
@@ -27,7 +28,10 @@ public record AdapterCodeResult(
     @Schema(description = "A command that installs the connector; show it to the user and run it only after they confirm") String install,
     @Schema(description = "The code for the user to run in their own environment") String code,
     @Schema(
-        requiredMode = NOT_REQUIRED, description = "Concept paths the dictionary did not know, or why they could not be checked"
+        requiredMode = NOT_REQUIRED,
+        description = "Notes to pass on to the user: genomic filters this site may refuse because it does not declare genomic support, "
+            + "a concept path check that stopped at the first " + AdapterCodeTool.MAX_CHECKED_PATHS
+            + " paths, concept paths the dictionary did not know, or why the paths " + "could not be checked"
     ) List<String> warnings
 ) {
 
