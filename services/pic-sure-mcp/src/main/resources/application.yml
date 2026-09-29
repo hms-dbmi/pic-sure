@@ -20,10 +20,10 @@ server:
 
 picsure:
   mcp:
-    gateway-url: ${PICSURE_GATEWAY_URL}
-    service-token: ${MCP_SERVICE_TOKEN}
+    gateway-url: ${PICSURE_GATEWAY_URL:}
+    service-token: ${MCP_SERVICE_TOKEN:}
     adapter:
-      base-url: ${MCP_ADAPTER_BASE_URL}
+      base-url: ${MCP_ADAPTER_BASE_URL:}
       include-consents: ${MCP_ADAPTER_INCLUDE_CONSENTS:false}
       supports-genomic: ${MCP_ADAPTER_SUPPORTS_GENOMIC:false}
 
