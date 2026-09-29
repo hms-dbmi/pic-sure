@@ -36,7 +36,7 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
      * @param supportsGenomic whether generated code passes {@code supports_genomic=True}
      * @param pythonMinVersion the oldest {@code picsure} Python adapter release generated code supports, from
      *        {@code MCP_ADAPTER_PYTHON_MIN_VERSION}, default {@code 3.0.0}
-     * @param rTag the R adapter release tag generated R code installs, from {@code MCP_ADAPTER_R_TAG}, blank until R code is generated
+     * @param rTag the R adapter release tag generated R code installs, from {@code MCP_ADAPTER_R_TAG}, default {@code v3.0.0}
      */
     public record Adapter(
         @NotBlank String baseUrl, boolean includeConsents, boolean supportsGenomic,
@@ -46,12 +46,16 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
         /** The Python adapter release generated code supports when none is configured: the current {@code picsure} release. */
         public static final String DEFAULT_PYTHON_MIN_VERSION = "3.0.0";
 
+        /** The R adapter release tag generated R code installs when none is configured: the current {@code picsure} R release. */
+        public static final String DEFAULT_R_TAG = "v3.0.0";
+
         /**
-         * Fills in the defaults: {@link #DEFAULT_PYTHON_MIN_VERSION} for a missing or blank Python version, and an empty R tag.
+         * Fills in the defaults: {@link #DEFAULT_PYTHON_MIN_VERSION} for a missing or blank Python version, and {@link #DEFAULT_R_TAG} for
+         * a missing or blank R tag.
          */
         public Adapter {
             pythonMinVersion = pythonMinVersion == null || pythonMinVersion.isBlank() ? DEFAULT_PYTHON_MIN_VERSION : pythonMinVersion;
-            rTag = rTag == null ? "" : rTag;
+            rTag = rTag == null || rTag.isBlank() ? DEFAULT_R_TAG : rTag;
         }
     }
 }

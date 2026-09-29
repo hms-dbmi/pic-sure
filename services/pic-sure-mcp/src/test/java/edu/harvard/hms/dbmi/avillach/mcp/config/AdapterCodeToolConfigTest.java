@@ -80,14 +80,28 @@ class AdapterCodeToolConfigTest {
     }
 
     @Test
+    void aResultWithNoConnectorVersionLeavesMinVersionOut() {
+        AdapterCodeResult bash = new AdapterCodeResult(
+            "bash", new AdapterCodeResult.Requires("curl and jq", null, "bash"), "jq --version", "Install curl and jq",
+            "#!/usr/bin/env bash\n", null
+        );
+        when(adapterCodeTool.handle(any(), any())).thenReturn(bash);
+
+        CallToolResult result = call();
+
+        assertThat(((Map<?, ?>) result.structuredContent()).get("requires")).isEqualTo(Map.of("package", "curl and jq", "runtime", "bash"));
+        assertThat(bash.setupText()).startsWith("Requires curl and jq (bash).\n");
+    }
+
+    @Test
     void aToolFailureIsAnIsErrorResult() {
-        when(adapterCodeTool.handle(any(), any())).thenThrow(new ToolFailure("Code in r is not available yet. Use python."));
+        when(adapterCodeTool.handle(any(), any())).thenThrow(new ToolFailure("Code in bash is not available on this server."));
 
         CallToolResult result = call();
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).singleElement().isInstanceOfSatisfying(
-            McpSchema.TextContent.class, t -> assertThat(t.text()).isEqualTo("Code in r is not available yet. Use python.")
+            McpSchema.TextContent.class, t -> assertThat(t.text()).isEqualTo("Code in bash is not available on this server.")
         );
     }
 
@@ -97,6 +111,6 @@ class AdapterCodeToolConfigTest {
             new McpProperties("http://gateway", "token", new McpProperties.Adapter("https://picsure.test", true, true, "3.1.0", null));
 
         assertThat(new AdapterCodeToolConfig().adapterSetup(properties))
-            .isEqualTo(new AdapterSetup("https://picsure.test", true, true, "3.1.0", ""));
+            .isEqualTo(new AdapterSetup("https://picsure.test", true, true, "3.1.0", "v3.0.0"));
     }
 }

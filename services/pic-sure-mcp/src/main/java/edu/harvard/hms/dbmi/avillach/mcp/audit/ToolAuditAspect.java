@@ -27,9 +27,9 @@ import java.util.regex.Pattern;
  *
  * <p>The event carries the annotation's type and action, an {@code outcome} of {@code success} or {@code failure}, the request ID, the
  * gateway's {@code X-User-Id} as {@code user_id}, and only these argument fields: {@code query} (search text), {@code page},
- * {@code page_size}, {@code dataset}, {@code concept_path}, and {@code result_type} for the count tools. Nothing from a query body, and
- * never a credential, is read. A failure event also carries {@code error.error_type} of {@code tool_failure} or {@code internal}, and no
- * message.
+ * {@code page_size}, {@code dataset}, {@code concept_path}, and {@code result_type} for the count tools and {@code get_adapter_code}.
+ * Nothing from a query body, and never a credential, is read. A failure event also carries {@code error.error_type} of {@code tool_failure}
+ * or {@code internal}, and no message.
  *
  * <p>Sending is fire-and-forget. A failure to build or send an event is logged once at WARN with its exception class and never reaches the
  * tool call.
@@ -43,7 +43,7 @@ public class ToolAuditAspect {
 
     private static final Set<String> TEXT_PARAMETERS = Set.of("query", "dataset", "conceptPath");
     private static final Set<String> NUMBER_PARAMETERS = Set.of("page", "pageSize");
-    private static final Pattern RESULT_TYPE = Pattern.compile("[A-Z_]{1,40}");
+    private static final Pattern RESULT_TYPE = Pattern.compile("[A-Za-z_]{1,40}");
     private static final Logger log = LoggerFactory.getLogger(ToolAuditAspect.class);
 
     private final LoggingClient client;

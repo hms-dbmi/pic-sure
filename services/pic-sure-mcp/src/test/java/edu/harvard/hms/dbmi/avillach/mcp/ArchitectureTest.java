@@ -12,6 +12,7 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.mcp.codegen.BashGenerator;
 import edu.harvard.hms.dbmi.avillach.mcp.config.GatewayClientConfig;
 import edu.harvard.hms.dbmi.avillach.mcp.config.GatewayRequestInterceptor;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
@@ -70,6 +71,8 @@ class ArchitectureTest {
     private static final String OPEN_PREFIX = "/hpds/open/";
     private static final String OPEN_QUERY_SYNC_PATH = "/hpds/open/query/sync";
     private static final List<String> TRAVERSAL_MARKERS = List.of("/..", "../", "%2e");
+    /** The one class file the constant-pool scan skips, because it writes the authorized path as text; see the channel rule. */
+    private static final String TEXT_ONLY_CLASS_FILE = BashGenerator.class.getName().replace('.', '/') + ".class";
     private static final Pattern RESOURCE_PATH = Pattern.compile("(?:^|[\\s:=\"'(,\\[])(/[^\\s\"',)\\]]*)");
 
     private static final String REST_CLIENT = "org.springframework.web.client.RestClient";
@@ -98,16 +101,27 @@ class ArchitectureTest {
      * <p>The class files are read byte by byte because a literal inlined into a method body, or held in an annotation value, is visible
      * only in the constant pool. Every UTF8 entry is checked, not only those a string constant points at. As a control, the scan must have
      * read {@link OpenQueryClient} and found {@code /hpds/open/query/sync} in it, so it cannot pass having scanned nothing.
+     *
+     * <p>One class file is exempt: {@link BashGenerator}'s own, {@link #TEXT_ONLY_CLASS_FILE}. That class writes a bash script for the user
+     * to run, and the script has to name the authorized channel ({@code /picsure/hpds/auth/query}) as text. It is exempt by class, not by
+     * package, and its nested classes are still scanned. What keeps it from making a request is {@link #codegenMakesNoRequest} (nothing in
+     * {@code codegen} depends on the gateway clients or configuration) and {@link #onlyTheTwoGatewayClientsStartRequests} (only the open
+     * query and dictionary clients start a request). The exempt file must exist, so the exemption cannot outlive the class it names.
      */
     @Test
     void noClassNamesTheAuthorizedChannel() throws IOException {
         Path classes = mainClassesDirectory();
         List<String> violations = new ArrayList<>();
         boolean sawOpenQueryPath = false;
+        boolean sawTextOnlyClass = false;
         String openQueryClientFile = OpenQueryClient.class.getName().replace('.', '/') + ".class";
         try (Stream<Path> files = Files.walk(classes)) {
             for (Path file : files.filter(f -> f.toString().endsWith(".class")).toList()) {
                 String relative = classes.relativize(file).toString().replace('\\', '/');
+                if (relative.equals(TEXT_ONLY_CLASS_FILE)) {
+                    sawTextOnlyClass = true;
+                    continue;
+                }
                 for (String constant : utf8Constants(Files.readAllBytes(file))) {
                     if (namesAuthorizedChannel(constant) || isNonOpenQueryPath(constant) || containsTraversal(constant)) {
                         violations.add(relative + ": \"" + constant + "\"");
@@ -123,6 +137,10 @@ class ArchitectureTest {
             "The service may call only the open channel under " + OPEN_PREFIX + ". These class constants name " + AUTHORIZED_PATH + ", a "
                 + BACKEND_TEMPLATE + " template, an HPDS or query path outside " + OPEN_PREFIX + ", or a dot segment (/.., ../, %2e): "
                 + violations
+        );
+        assertTrue(
+            sawTextOnlyClass,
+            "The class scan exempts " + TEXT_ONLY_CLASS_FILE + ", which is not under " + classes + "; remove or correct the exemption"
         );
         assertTrue(
             sawOpenQueryPath,

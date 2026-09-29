@@ -11,14 +11,14 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
 
 /**
  * What {@code get_adapter_code} returns: the code and, as separate fields, what it needs, how to check for it, and how to install it, so an
- * agent can act on each. {@code warnings} appears only when a concept check found something to report.
+ * agent can act on each. {@code warnings} appears only when there is something to report.
  *
  * @param language the language of the code
  * @param requires the connector the code needs
  * @param check a command that prints the installed connector version
  * @param install a command that installs the connector, to show the user before running it
  * @param code the code for the user to run in their own environment
- * @param warnings concept paths the dictionary did not know, or a note that the check could not run
+ * @param warnings notes about the query for this site, concept paths the dictionary did not know, or a note that the check could not run
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AdapterCodeResult(
@@ -35,13 +35,15 @@ public record AdapterCodeResult(
      * The connector a piece of generated code needs.
      *
      * @param packageName the connector package
-     * @param minVersion the oldest connector release the code supports
+     * @param minVersion the oldest connector release the code supports, or null when the code needs no versioned connector
      * @param runtime the runtime the connector needs
      */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Requires(
         @JsonProperty("package") @Schema(description = "The connector package") String packageName,
-        @Schema(description = "The oldest connector release the code supports") String minVersion,
-        @Schema(description = "The runtime the connector needs") String runtime
+        @Schema(
+            requiredMode = NOT_REQUIRED, description = "The oldest connector release the code supports; absent when there is no connector"
+        ) String minVersion, @Schema(description = "The runtime the connector needs") String runtime
     ) {
     }
 
@@ -53,7 +55,8 @@ public record AdapterCodeResult(
      */
     public String setupText() {
         List<String> lines = new ArrayList<>();
-        lines.add("Requires " + requires.packageName() + " >= " + requires.minVersion() + " (" + requires.runtime() + ").");
+        String version = requires.minVersion() == null ? "" : " >= " + requires.minVersion();
+        lines.add("Requires " + requires.packageName() + version + " (" + requires.runtime() + ").");
         lines.add("Check: " + check);
         lines.add("Install, only after the user confirms, if the check fails or shows an older version: " + install);
         lines.add(
