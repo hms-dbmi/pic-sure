@@ -55,6 +55,11 @@ spring:
               order: 100
               predicates:
                 - Path=/operations/**
+            - id: mcp
+              uri: ${MCP_SERVICE_URL:http://pic-sure-mcp:8080}
+              order: 100
+              predicates:
+                - Path=/mcp
 
 management:
   endpoints:
