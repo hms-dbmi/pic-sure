@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import edu.harvard.hms.dbmi.avillach.mcp.query.QueryBinder;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountResult;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountResult;
@@ -28,8 +27,8 @@ import java.util.function.Supplier;
 /**
  * Registers the query tools as tool specification beans rather than {@code @McpTool} methods, because Spring AI's generated schema for a
  * recursive parameter leaves its {@code $defs} where the references cannot resolve. Each input schema is generated from the tool's root
- * input record instead, arguments are bound by {@link QueryBinder}, and the handler calls the tool bean's {@code handle} method so a proxy
- * around the bean sees every call.
+ * input record instead, and the handler passes the raw arguments to the tool bean's {@code handle} method, which binds them, so the audit
+ * proxy around the bean sees every call, including one whose arguments do not bind.
  *
  * <p>An exception thrown from a specification's handler does not become an {@code isError} result: the stateless server turns it into a
  * JSON-RPC internal error carrying the exception's message. So the handler catches a {@link ToolFailure} and returns its message as an
@@ -58,18 +57,11 @@ public class QueryToolConfig {
     public List<SyncToolSpecification> queryToolSpecifications(CountTool countTool, CrossCountTool crossCountTool) {
         SyncToolSpecification count = SyncToolSpecification.builder()
             .tool(tool(CountTool.NAME, CountTool.TITLE, CountTool.DESCRIPTION, CountTool.Input.class, CountResult.class))
-            .callHandler(
-                (
-                    context, request
-                ) -> respond(CountTool.NAME, () -> countTool.handle(context, QueryBinder.bind(request.arguments(), CountTool.Input.class)))
-            ).build();
+            .callHandler((context, request) -> respond(CountTool.NAME, () -> countTool.handle(context, request.arguments()))).build();
         SyncToolSpecification crossCount = SyncToolSpecification.builder().tool(
             tool(CrossCountTool.NAME, CrossCountTool.TITLE, CrossCountTool.DESCRIPTION, CrossCountTool.Input.class, CrossCountResult.class)
-        ).callHandler(
-            (context, request) -> respond(
-                CrossCountTool.NAME, () -> crossCountTool.handle(context, QueryBinder.bind(request.arguments(), CrossCountTool.Input.class))
-            )
-        ).build();
+        ).callHandler((context, request) -> respond(CrossCountTool.NAME, () -> crossCountTool.handle(context, request.arguments())))
+            .build();
         return List.of(count, crossCount);
     }
 
