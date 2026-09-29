@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.mcp.codegen;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,7 @@ import java.util.Set;
  * result is written to {@code picsure_results/} with only its size and path printed. Strings are written as ASCII Python literals, so the
  * code holds no raw non-ASCII or control character.
  */
+@Component
 public final class PythonGenerator implements LanguageGenerator {
 
     /** The adapter's package name on PyPI. */
