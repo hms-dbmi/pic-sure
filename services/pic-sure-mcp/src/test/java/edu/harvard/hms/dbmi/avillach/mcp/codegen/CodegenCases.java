@@ -29,7 +29,7 @@ public final class CodegenCases {
     /** A site with consents and genomic support on. */
     public static final AdapterSetup GENOMIC_SETUP = new AdapterSetup("https://picsure.example.org", true, true, "3.0.0", "v3.0.0");
 
-    /** An all-in-one style site: a trailing slash on the URL, consents off, other adapter versions. */
+    /** An all-in-one style site: a trailing slash on the URL, which {@link AdapterSetup} strips, consents off, other adapter versions. */
     public static final AdapterSetup AIO_SETUP = new AdapterSetup("https://aio.example.org/", false, false, "3.1.0", "v3.1.0");
 
     /** A category value that tries to end a Python, R, or bash string, or the bash heredoc, and run a command. */
