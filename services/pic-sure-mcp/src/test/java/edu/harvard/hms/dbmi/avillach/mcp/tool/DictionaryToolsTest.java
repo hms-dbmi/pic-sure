@@ -44,6 +44,7 @@ class DictionaryToolsTest {
     private ConceptSearchTool search;
     private FacetTool facets;
     private ConceptDetailTool detail;
+    private DictionaryClient client;
     private McpTransportContext context;
 
     @BeforeEach
@@ -51,7 +52,7 @@ class DictionaryToolsTest {
         RestClient.Builder builder =
             RestClient.builder().baseUrl(GATEWAY).requestInterceptor(new GatewayRequestInterceptor(GATEWAY, "mcp-token"));
         server = MockRestServiceServer.bindTo(builder).build();
-        DictionaryClient client = new DictionaryClient(builder.build());
+        client = new DictionaryClient(builder.build());
         search = new ConceptSearchTool(client);
         facets = new FacetTool(client);
         detail = new ConceptDetailTool(client);
@@ -239,6 +240,18 @@ class DictionaryToolsTest {
             .andRespond(withSuccess("{\"type\":\"Categorical\",\"conceptPath\":\"p\"}", MediaType.APPLICATION_JSON));
 
         detail.getConcept(context, "a/b", "\\p\\");
+
+        server.verify();
+    }
+
+    @Test
+    void detailClientEncodesATraversalDatasetInsideTheDetailPath() {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail/..%2F..%2Fhpds%2Fauth")).andExpect(request -> {
+            assertThat(request.getURI().getRawPath()).startsWith("/dictionary/concepts/detail/").doesNotContain("/hpds/");
+            assertThat(request.getURI().normalize().getRawPath()).startsWith("/dictionary/concepts/detail/");
+        }).andRespond(withSuccess("{\"type\":\"Categorical\",\"conceptPath\":\"p\"}", MediaType.APPLICATION_JSON));
+
+        client.conceptDetail("../../hpds/auth", "\\p\\", new CallerHeaders(BEARER, null, "req-1", null));
 
         server.verify();
     }
