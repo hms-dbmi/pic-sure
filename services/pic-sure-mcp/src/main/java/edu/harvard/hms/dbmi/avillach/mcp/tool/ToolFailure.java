@@ -58,4 +58,37 @@ public class ToolFailure extends RuntimeException {
     public static ToolFailure unavailable() {
         return new ToolFailure("The dictionary is unavailable. Try again shortly.");
     }
+
+    /**
+     * Maps a failed open query response to a short message. The message depends only on the status code; the body and headers are never
+     * read.
+     *
+     * @param e the downstream failure
+     * @return a failure whose message names what went wrong
+     */
+    public static ToolFailure fromQueryDownstream(RestClientResponseException e) {
+        HttpStatusCode status = e.getStatusCode();
+        if (status.value() == 400) {
+            return new ToolFailure("The query service rejected the query. Check the concept paths and values with search_concepts.");
+        }
+        if (status.value() == 404) {
+            return new ToolFailure("The open query endpoint was not found.");
+        }
+        if (status.value() == 401 || status.value() == 403) {
+            return new ToolFailure("The caller is not authorized for open-access counts.");
+        }
+        if (status.is5xxServerError()) {
+            return queryUnavailable();
+        }
+        return new ToolFailure("The query service rejected the request.");
+    }
+
+    /**
+     * The failure for an open query call that never produced a response, such as a refused connection or a timeout.
+     *
+     * @return a failure saying the query service is unavailable
+     */
+    public static ToolFailure queryUnavailable() {
+        return new ToolFailure("The query service is unavailable. Try again shortly.");
+    }
 }
