@@ -26,11 +26,25 @@ public class PartitionedPhenotypicObservationStore {
 
     private static final Logger log = LoggerFactory.getLogger(PartitionedPhenotypicObservationStore.class);
 
+    private static final String OBSERVATION_STORE_FILE = "allObservationsStore.javabin";
+
+    /**
+     * Partition name used for a legacy, unpartitioned data directory. Consents are never matched against it, so it cannot collide with a
+     * real consent.
+     */
+    private static final String UNPARTITIONED_NAME = "__unpartitioned__";
+
     private final Map<String, PhenotypicObservationStore> phenotypicPartitions;
 
     private final Map<String, SummaryColumnMeta> allPartitionMetaStore;
 
     private final boolean requireAuthorizationFilter;
+
+    /**
+     * True when the data directory holds a single store rather than one subdirectory per consent. Such a directory cannot be scoped by
+     * consent, so it is only allowed when authorization filtering is disabled.
+     */
+    private final boolean unpartitioned;
 
     @Autowired
     public PartitionedPhenotypicObservationStore(
@@ -39,25 +53,39 @@ public class PartitionedPhenotypicObservationStore {
     ) {
         this.requireAuthorizationFilter = requireAuthorizationFilter;
 
-        try (Stream<Path> stream = Files.list(Path.of(hpdsDataDirectory))) {
-            List<Path> subdirectories = stream.filter(Files::isDirectory)
-                .filter(subdirectory -> !subdirectory.equals(Path.of(hpdsDataDirectory))).collect(Collectors.toList());
+        Path dataDirectory = Path.of(hpdsDataDirectory);
+        Map<String, PhenotypicObservationStore> partitions = new HashMap<>();
 
-            Map<String, PhenotypicObservationStore> phenotypicPartitions = new HashMap<>();
-
-            for (Path subdirectory : subdirectories) {
-                String partitionName = subdirectory.getFileName().toString();
-                PhenotypeMetaStore phenotypeMetaStore = new PhenotypeMetaStore(subdirectory.toString());
-                PhenotypicObservationStore phenotypicObservationStore =
-                    new PhenotypicObservationStore(phenotypeMetaStore, subdirectory.toString(), 1000);
-                phenotypicPartitions.put(partitionName, phenotypicObservationStore);
+        if (Files.exists(dataDirectory.resolve(OBSERVATION_STORE_FILE))) {
+            if (requireAuthorizationFilter) {
+                throw new IllegalStateException(
+                    "Found unpartitioned " + OBSERVATION_STORE_FILE + " in " + hpdsDataDirectory
+                        + ", which cannot be scoped by consent. Re-run the ETL to partition the data by consent, or set"
+                        + " hpds.requireAuthorizationFilter=false"
+                );
             }
-
-            this.phenotypicPartitions = Map.copyOf(phenotypicPartitions);
-            this.allPartitionMetaStore = createAllPartitionMetaStore();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            log.info("Found {} in {}, loading it as a single unpartitioned partition", OBSERVATION_STORE_FILE, hpdsDataDirectory);
+            this.unpartitioned = true;
+            partitions.put(UNPARTITIONED_NAME, storeFor(dataDirectory));
+        } else {
+            this.unpartitioned = false;
+            try (Stream<Path> stream = Files.list(dataDirectory)) {
+                List<Path> subdirectories = stream.filter(Files::isDirectory).collect(Collectors.toList());
+                for (Path subdirectory : subdirectories) {
+                    partitions.put(subdirectory.getFileName().toString(), storeFor(subdirectory));
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            log.info("Loaded phenotypic partitions: {}", partitions.keySet());
         }
+
+        this.phenotypicPartitions = Map.copyOf(partitions);
+        this.allPartitionMetaStore = createAllPartitionMetaStore();
+    }
+
+    private static PhenotypicObservationStore storeFor(Path directory) {
+        return new PhenotypicObservationStore(new PhenotypeMetaStore(directory.toString()), directory.toString(), 1000);
     }
 
     public Set<Integer> getKeysForRange(String conceptPath, Double min, Double max, Set<String> consents) {
@@ -133,6 +161,11 @@ public class PartitionedPhenotypicObservationStore {
                     "User consents must be specified. To allow users access to all data set hpds.requireAuthorizationFilter=false"
                 );
             }
+            return phenotypicPartitions.values().stream();
+        }
+
+        if (unpartitioned) {
+            // Legacy, unpartitioned data is backwards compatible when authorization filtering is disabled
             return phenotypicPartitions.values().stream();
         }
 
