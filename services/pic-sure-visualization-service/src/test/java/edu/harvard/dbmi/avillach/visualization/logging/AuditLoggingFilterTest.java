@@ -89,7 +89,7 @@ class AuditLoggingFilterTest {
         verify(loggingClient).send(eventCaptor.capture(), eq("Bearer token"), eq(response.getHeader("X-Request-Id")));
 
         LoggingEvent event = eventCaptor.getValue();
-        assertEquals("QUERY", event.getEventType());
+        assertEquals("UNLABELED", event.getEventType());
         assertEquals("visualization.distributions", event.getAction());
         assertEquals(response.getHeader("X-Request-Id"), event.getRequest().getRequestId());
         assertEquals("POST", event.getRequest().getMethod());

@@ -94,13 +94,13 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * The event type from the handler's {@code @AuditEvent}, or {@code QUERY} when the handler carries none.
+     * The event type from the handler's {@code @AuditEvent}, or {@code UNLABELED} when no handler label reached the request.
      *
      * @param request the completed request
      * @return the audit event type
      */
     private static String eventType(HttpServletRequest request) {
-        return request.getAttribute(AuditLoggingContext.EVENT_TYPE_ATTR) instanceof String type ? type : "QUERY";
+        return request.getAttribute(AuditLoggingContext.EVENT_TYPE_ATTR) instanceof String type ? type : "UNLABELED";
     }
 
     /**
