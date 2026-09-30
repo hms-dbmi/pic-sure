@@ -64,7 +64,7 @@ class AuthorizationServiceAuthTargetServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"/hpds/auth/v3/query/sync", "/visualization/auth/distributions"})
     void anonymousCallerCannotReachAuthPathWhenOpenRoleHasNoRules(String targetService) {
-        assertFalse(authorizationService.openAccessRequestIsValid(validationRequest(targetService)));
+        assertFalse(authorizationService.validateOpenAccessRequest(validationRequest(targetService)).valid());
     }
 
     /**
@@ -73,8 +73,8 @@ class AuthorizationServiceAuthTargetServiceTest {
      */
     @Test
     void anonymousCallerIsDeniedOnEveryPathWhenOpenRoleHasNoRules() {
-        assertFalse(authorizationService.openAccessRequestIsValid(validationRequest("/hpds/open/v3/query/sync")));
-        assertFalse(authorizationService.openAccessRequestIsValid(validationRequest("/visualization/open/distributions")));
+        assertFalse(authorizationService.validateOpenAccessRequest(validationRequest("/hpds/open/v3/query/sync")).valid());
+        assertFalse(authorizationService.validateOpenAccessRequest(validationRequest("/visualization/open/distributions")).valid());
     }
 
     /**
@@ -86,7 +86,7 @@ class AuthorizationServiceAuthTargetServiceTest {
     void guardDeniesAuthPathEvenWhenARuleWouldPass(String targetService) {
         AuthorizationService service = serviceWith(false, Set.of(passingRule()));
 
-        assertFalse(service.openAccessRequestIsValid(validationRequest(targetService)));
+        assertFalse(service.validateOpenAccessRequest(validationRequest(targetService)).valid());
     }
 
     /**
@@ -98,7 +98,7 @@ class AuthorizationServiceAuthTargetServiceTest {
     void publicAccessLetsAnonymousCallerReachAuthPath(String targetService) {
         AuthorizationService service = serviceWith(true, Set.of(passingRule()));
 
-        assertTrue(service.openAccessRequestIsValid(validationRequest(targetService)));
+        assertTrue(service.validateOpenAccessRequest(validationRequest(targetService)).valid());
     }
 
     /**
@@ -110,7 +110,7 @@ class AuthorizationServiceAuthTargetServiceTest {
     void publicAccessStillRequiresAnOpenAccessRule(String targetService) {
         AuthorizationService service = serviceWith(true, Set.of());
 
-        assertFalse(service.openAccessRequestIsValid(validationRequest(targetService)));
+        assertFalse(service.validateOpenAccessRequest(validationRequest(targetService)).valid());
     }
 
     /**
@@ -121,8 +121,8 @@ class AuthorizationServiceAuthTargetServiceTest {
         AuthorizationService disabled = serviceWith(false, Set.of(passingRule()));
         AuthorizationService enabled = serviceWith(true, Set.of(passingRule()));
 
-        assertTrue(disabled.openAccessRequestIsValid(validationRequest("/hpds/open/v3/query/sync")));
-        assertTrue(enabled.openAccessRequestIsValid(validationRequest("/hpds/open/v3/query/sync")));
+        assertTrue(disabled.validateOpenAccessRequest(validationRequest("/hpds/open/v3/query/sync")).valid());
+        assertTrue(enabled.validateOpenAccessRequest(validationRequest("/hpds/open/v3/query/sync")).valid());
     }
 
     private AuthorizationService serviceWith(boolean enablePublicAccess, Set<AccessRule> openAccessRules) {
