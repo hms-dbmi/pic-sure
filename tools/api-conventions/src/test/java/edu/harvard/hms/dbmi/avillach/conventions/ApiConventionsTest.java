@@ -95,6 +95,11 @@ class ApiConventionsTest {
         report("handler-has-audit-event", overAllModules(AuditRules::auditEventOnEveryHandler));
     }
 
+    @Test
+    void everyNamedPathVariableAppearsInAMappedPath() {
+        report("path-variables-in-template", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
+    }
+
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
