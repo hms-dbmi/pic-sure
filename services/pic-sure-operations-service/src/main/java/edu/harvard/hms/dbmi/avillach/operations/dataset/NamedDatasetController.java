@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -44,6 +45,7 @@ public class NamedDatasetController {
         {@ApiResponse(responseCode = "200", description = "The caller's named datasets"),
             @ApiResponse(responseCode = "401", description = "No caller email in the request")}
     )
+    @AuditEvent(type = "ACCESS", action = "named_dataset.list")
     @GetMapping("")
     public List<NamedDatasetDto> list(GatewayUser user) {
         return service.listForUser(user);
@@ -56,6 +58,7 @@ public class NamedDatasetController {
             @ApiResponse(responseCode = "404", description = "Query not found"),
             @ApiResponse(responseCode = "409", description = "The caller already named that query")}
     )
+    @AuditEvent(type = "ACCESS", action = "named_dataset.modify")
     @PostMapping("")
     public ResponseEntity<NamedDatasetDto> create(GatewayUser user, @Valid @RequestBody NamedDatasetRequestDto req) {
         NamedDatasetDto created = service.create(user, req);
@@ -68,6 +71,7 @@ public class NamedDatasetController {
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
             @ApiResponse(responseCode = "404", description = "No named dataset with that id for the caller")}
     )
+    @AuditEvent(type = "ACCESS", action = "named_dataset.read")
     @GetMapping("/{id}")
     public NamedDatasetDto get(GatewayUser user, @PathVariable("id") UUID id) {
         return service.getForUser(user, id);
@@ -81,6 +85,7 @@ public class NamedDatasetController {
                 responseCode = "404", description = "No named dataset with that id for the caller, or the new queryId matches no query"
             ), @ApiResponse(responseCode = "409", description = "The caller already named that query")}
     )
+    @AuditEvent(type = "ACCESS", action = "named_dataset.modify")
     @PutMapping("/{id}")
     public NamedDatasetDto update(GatewayUser user, @PathVariable("id") UUID id, @Valid @RequestBody NamedDatasetRequestDto req) {
         return service.update(user, id, req);
@@ -92,6 +97,7 @@ public class NamedDatasetController {
             @ApiResponse(responseCode = "401", description = "No caller email in the request"),
             @ApiResponse(responseCode = "404", description = "No named dataset with that id for the caller")}
     )
+    @AuditEvent(type = "ACCESS", action = "named_dataset.delete")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(GatewayUser user, @PathVariable("id") UUID id) {
         service.delete(user, id);
