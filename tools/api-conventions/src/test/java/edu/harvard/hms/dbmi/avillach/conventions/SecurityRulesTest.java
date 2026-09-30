@@ -34,7 +34,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r6FlagsEveryReplacedAnnotationOnClassesAndMethods() {
+    void flagsEveryReplacedAnnotationOnClassesAndMethods() {
         List<String> violations = SecurityRules.noReplacedSecurityAnnotations("fixtures", CONFIGURED);
 
         assertEquals(5, violations.size(), violations.toString());
@@ -47,7 +47,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r7FlagsGuardsOutsideHandlerMethods() {
+    void flagsGuardsOutsideHandlerMethods() {
         List<String> violations = SecurityRules.preAuthorizeOnlyOnHandlers("fixtures", CONFIGURED);
 
         assertEquals(2, violations.size(), violations.toString());
@@ -56,7 +56,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r11FlagsEveryRoleCheckOnAFrameworkType() {
+    void flagsEveryRoleCheckOnAFrameworkType() {
         List<String> violations = SecurityRules.noRoleChecks("fixtures", ROLE_CHECKS);
 
         assertEquals(6, violations.size(), violations.toString());
@@ -70,14 +70,14 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r11AcceptsAuthorityChecksAndDomainMethodsNamedLikeRoleChecks() {
+    void acceptsAuthorityChecksAndDomainMethodsNamedLikeRoleChecks() {
         List<String> violations = SecurityRules.noRoleChecks("fixtures", ROLE_CHECKS);
 
         assertTrue(violations.stream().noneMatch(v -> v.contains("AuthorityChecks")), violations.toString());
     }
 
     @Test
-    void r8AcceptsOnlyLiteralAuthorityChecks() {
+    void preauthorizeStandardFormAcceptsOnlyLiteralAuthorityChecks() {
         List<String> violations = SecurityRules.preAuthorizeNamesAuthorities("fixtures", CONFIGURED, KNOWN);
 
         assertEquals(6, violations.size(), violations.toString());
@@ -90,7 +90,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r8NamesTheUnknownAuthority() {
+    void preauthorizeStandardFormNamesTheUnknownAuthority() {
         List<String> violations = SecurityRules.preAuthorizeNamesAuthorities("fixtures", CONFIGURED, KNOWN);
 
         assertMentions(violations, "GuardedController#misspelled @PreAuthorize(\"hasAnyAuthority('ADMIN', 'SUPER_ADMINN')\") "
@@ -98,14 +98,14 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r8ReadsKnownAuthoritiesFromPublicStaticStringFields() {
+    void readsKnownAuthoritiesFromPublicStaticStringFields() {
         JavaClasses known = fixtures("known");
 
         assertEquals(KNOWN, SecurityRules.knownAuthorities(Map.of("fixtures", known), KNOWN_CLASS));
     }
 
     @Test
-    void r8RefusesToRunWithoutTheKnownAuthorityConstants() {
+    void refusesToRunWithoutTheKnownAuthorityConstants() {
         IllegalStateException missing = assertThrows(
             IllegalStateException.class, () -> SecurityRules.knownAuthorities(Map.of("fixtures", CONFIGURED), KNOWN_CLASS)
         );
@@ -114,7 +114,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r8ReadsTheAuthoritiesInDeclaredOrder() {
+    void readsTheAuthoritiesInDeclaredOrder() {
         assertEquals(List.of("ADMIN", "SUPER_ADMIN"), authorities("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')"));
         assertEquals(List.of("SUPER_ADMIN", "ADMIN"), authorities("hasAnyAuthority('SUPER_ADMIN','ADMIN')"));
         assertEquals(List.of("SUPER_ADMIN"), authorities("hasAuthority('SUPER_ADMIN')"));
@@ -123,12 +123,12 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r9PassesAModuleThatEnablesPrePostMethodSecurity() {
+    void passesAModuleThatEnablesPrePostMethodSecurity() {
         assertEquals(List.of(), SecurityRules.methodSecurityEnabled("fixtures", CONFIGURED));
     }
 
     @Test
-    void r9FlagsAModuleWithGuardsButNoMethodSecurity() {
+    void flagsAModuleWithGuardsButNoMethodSecurity() {
         List<String> violations = SecurityRules.methodSecurityEnabled("unconfigured", UNCONFIGURED);
 
         assertEquals(1, violations.size(), violations.toString());
@@ -136,7 +136,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r9FlagsMethodSecurityWithPrePostSwitchedOff() {
+    void flagsMethodSecurityWithPrePostSwitchedOff() {
         List<String> violations = SecurityRules.methodSecurityEnabled("prepostdisabled", PRE_POST_DISABLED);
 
         assertEquals(1, violations.size(), violations.toString());
@@ -144,7 +144,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r9IgnoresAModuleWithNoGuards() {
+    void guardsEnableMethodSecurityIgnoresAModuleWithNoGuards() {
         assertEquals(List.of(), SecurityRules.methodSecurityEnabled("fixtures", SWAGGER_FIXTURES));
     }
 
@@ -153,7 +153,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r10FlagsDocumentationThatRestatesAGuardedAuthority() {
+    void flagsDocumentationThatRestatesAGuardedAuthority() {
         JavaClasses restated = fixtures("restated");
 
         List<String> violations = SwaggerRules.documentationDoesNotRestateAuthorities("fixtures", restated);
@@ -166,7 +166,7 @@ class SecurityRulesTest {
     }
 
     @Test
-    void r10IgnoresAModuleWithNoGuards() {
+    void docsDoNotRestateAuthoritiesIgnoresAModuleWithNoGuards() {
         assertEquals(List.of(), SwaggerRules.documentationDoesNotRestateAuthorities("fixtures", SWAGGER_FIXTURES));
     }
 }

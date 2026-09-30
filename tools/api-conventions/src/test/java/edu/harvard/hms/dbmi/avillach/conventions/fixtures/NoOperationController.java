@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** One handler with no Operation and one with a blank summary, so both violate R3. */
+/** One handler with no Operation and one with a blank summary, so both violate {@code operation-has-summary}. */
 @Tag(name = "No operation", description = "Handlers missing their operation metadata")
 @RestController
 public class NoOperationController {
