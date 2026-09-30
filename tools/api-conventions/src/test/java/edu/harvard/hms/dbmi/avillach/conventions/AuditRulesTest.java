@@ -23,8 +23,8 @@ class AuditRulesTest {
 
         assertEquals(
             List.of(
-                "partial :: AuditedController#create has no @AuditEvent, so it is audited under a fallback label",
-                "partial :: ForgottenController#consents has no @AuditEvent, so it is audited under a fallback label"
+                "partial :: AuditedController#create has no @AuditEvent, so it is audited as UNLABELED",
+                "partial :: ForgottenController#consents has no @AuditEvent, so it is audited as UNLABELED"
             ),
             violations
         );
@@ -38,7 +38,7 @@ class AuditRulesTest {
     @Test
     void flagsEveryHandlerInAModuleThatLabelsNone() {
         assertEquals(
-            List.of("unaudited :: UnauditedController#read has no @AuditEvent, so it is audited under a fallback label"),
+            List.of("unaudited :: UnauditedController#read has no @AuditEvent, so it is audited as UNLABELED"),
             AuditRules.auditEventOnEveryHandler("unaudited", fixtures("unaudited"))
         );
     }

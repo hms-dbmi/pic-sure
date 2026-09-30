@@ -10,7 +10,7 @@ import com.tngtech.archunit.core.domain.JavaMethod;
 /**
  * The audit logging rules, as pure functions over imported classes. A service that audits its requests
  * reads the event type and action from {@code @AuditEvent} on the handler that served the request. A
- * handler without the annotation still gets logged, but under a generic fallback label, so its entries
+ * handler without the annotation still gets logged, but with event type {@code UNLABELED}, so its entries
  * cannot be told apart from any other unlabeled request.
  */
 public final class AuditRules {
@@ -36,7 +36,7 @@ public final class AuditRules {
                 if (!Annotations.has(handler, AUDIT_EVENT)) {
                     violations.add(
                         SwaggerRules.at(module, controller, handler.getName())
-                            + " has no @AuditEvent, so it is audited under a fallback label"
+                            + " has no @AuditEvent, so it is audited as UNLABELED"
                     );
                 }
             }
