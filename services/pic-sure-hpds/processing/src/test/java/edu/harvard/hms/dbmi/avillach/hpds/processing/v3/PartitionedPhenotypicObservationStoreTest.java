@@ -76,9 +76,8 @@ public class PartitionedPhenotypicObservationStoreTest {
         assertTrue(store.getMetaStore().containsKey(CONCEPT), "legacy top level store should be loaded");
         // A legacy directory has no per-consent partitions, so any consent sees the whole store.
         assertEquals(Set.of(1, 2, 3), store.getPatientIds(Set.of("phs000001.c1")));
-        assertEquals(List.of(1, 2, 3), store.getAllKeys(CONCEPT, Set.of("some.consent.matching.no.partition")));
-        // The single partition backs every consent, and must not be read once per consent.
-        assertEquals(List.of(1, 2, 3), store.getAllKeys(CONCEPT, Set.of("phs000001.c1", "phs000002.c2", "phs000003.c3")));
+        assertEquals(Set.of(1, 2, 3), store.getAllKeys(CONCEPT, Set.of("some.consent.matching.no.partition")));
+        assertEquals(Set.of(1, 2, 3), store.getAllKeys(CONCEPT, Set.of("phs000001.c1", "phs000002.c2", "phs000003.c3")));
         assertDoesNotThrow(store::getCachedKeys);
     }
 
@@ -101,8 +100,17 @@ public class PartitionedPhenotypicObservationStoreTest {
         assertEquals(Set.of(3, 4), store.getPatientIds(Set.of("phs000002.c2")));
         assertEquals(Set.of(1, 2, 3, 4), store.getPatientIds(Set.of("phs000001.c1", "phs000002.c2")));
         assertEquals(Set.of(), store.getPatientIds(Set.of("phs000003.c3")));
-        // Partitions are read in consent iteration order, which is unspecified for Set.of, so compare sorted.
-        assertEquals(List.of(1, 2, 3, 4), store.getAllKeys(CONCEPT, Set.of("phs000001.c1", "phs000002.c2")).stream().sorted().toList());
+        assertEquals(Set.of(1, 2, 3, 4), store.getAllKeys(CONCEPT, Set.of("phs000001.c1", "phs000002.c2")));
+    }
+
+    @Test
+    public void getAllKeysReturnsPatientsInMultiplePartitionsOnce(@TempDir Path dataDirectory) throws IOException {
+        writeStore(dataDirectory.resolve("phs000001.c1"), Set.of(1, 2, 3));
+        writeStore(dataDirectory.resolve("phs000002.c2"), Set.of(2, 3, 4));
+
+        PartitionedPhenotypicObservationStore store = new PartitionedPhenotypicObservationStore(dataDirectory.toString(), true);
+
+        assertEquals(Set.of(1, 2, 3, 4), store.getAllKeys(CONCEPT, Set.of("phs000001.c1", "phs000002.c2")));
     }
 
     @Test

@@ -100,9 +100,9 @@ public class PartitionedPhenotypicObservationStore {
         ).collect(Collectors.toSet());
     }
 
-    public List<Integer> getAllKeys(String conceptPath, Set<String> consents) {
+    public Set<Integer> getAllKeys(String conceptPath, Set<String> consents) {
         return aggregateForPartition(consents, phenotypicObservationStore -> phenotypicObservationStore.getAllKeys(conceptPath))
-            .collect(Collectors.toList());
+            .collect(Collectors.toSet());
     }
 
     public Optional<PhenoCube<?>> getCube(String path, Set<String> consents) {

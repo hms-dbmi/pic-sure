@@ -95,7 +95,7 @@ public class PhenotypicQueryExecutor {
     }
 
     private Set<Integer> evaluateRequiredFilter(PhenotypicFilter phenotypicFilter, Set<String> consents) {
-        return new HashSet<>(phenotypicObservationStore.getAllKeys(phenotypicFilter.conceptPath(), consents));
+        return phenotypicObservationStore.getAllKeys(phenotypicFilter.conceptPath(), consents);
     }
 
     private Set<Integer> evaluatePhenotypicSubquery(PhenotypicSubquery phenotypicSubquery, Set<String> consents) {
