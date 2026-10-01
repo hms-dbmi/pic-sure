@@ -119,7 +119,7 @@ public class LoadingStore {
             store.cleanUp();
             System.out.println("Writing metadata");
             ObjectOutputStream metaOut =
-                new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(hpdsDirectory + "/columnMeta.javabin")));
+                new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(Paths.get(hpdsDirectory, "columnMeta.javabin").toFile())));
             metaOut.writeObject(metadataMap);
             metaOut.writeObject(allIds);
             metaOut.flush();
@@ -176,12 +176,12 @@ public class LoadingStore {
     public void dumpStatsAndColumnMeta(String hpdsDirectory) {
         try (
             ObjectInputStream objectInputStream =
-                new ObjectInputStream(new GZIPInputStream(new FileInputStream(hpdsDirectory + "/columnMeta.javabin")))
+                new ObjectInputStream(new GZIPInputStream(new FileInputStream(Paths.get(hpdsDirectory, "columnMeta.javabin").toFile())))
         ) {
             TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
             try (
                 BufferedWriter writer = Files.newBufferedWriter(
-                    Paths.get(hpdsDirectory + "columnMeta.csv"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING
+                    Paths.get(hpdsDirectory, "columnMeta.csv"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING
                 )
             ) {
                 CSVPrinter printer = new CSVPrinter(writer, CSVFormat.DEFAULT);
