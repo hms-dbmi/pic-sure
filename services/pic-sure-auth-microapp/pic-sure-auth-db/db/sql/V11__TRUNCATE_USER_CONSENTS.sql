@@ -5,6 +5,6 @@
 -- row before overwriting it, so a stale row would fail login rather than being
 -- replaced.
 --
--- The table is a derived cache: every login rebuilds a user's consents from
--- their passport via updateUserConsents, so emptying it loses nothing.
+-- The table is a derived cache: every login rebuilds a user's consents via 
+-- updateUserConsents, so emptying it loses nothing.
 TRUNCATE TABLE user_consents;
