@@ -122,11 +122,10 @@ public class UserController {
     }
 
     /**
-     * For the long term token, current logic is, every time a user hit this endpoint <code>/me</code> with the query parameter ?hasToken
-     * presented, it will refresh the long term token.
-     *
+     * Returns the caller's profile. The profile always carries the caller's long-term token, which is issued and saved on the first read.
+     * The {@code hasToken} query parameter is accepted and has no effect.
      */
-    @Operation(summary = "The caller's profile, optionally with a long-term token", description = "Retrieve information of current user")
+    @Operation(summary = "The caller's profile, with the long-term token", description = "Retrieve information of current user")
     @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
