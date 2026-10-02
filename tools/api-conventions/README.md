@@ -6,7 +6,7 @@ It also holds every module to one authorization standard. A handler that needs a
 
 The OpenAPI document publishes each guard's authorities as "Required authorities: ..." at the end of the operation description, so `docs-do-not-restate-authorities` fails a documented module whose `@Tag` description or `@Operation` summary or description names one of the authorities its guards require. That prose would only repeat the guard and drift from it.
 
-`value-placeholders-closed` checks every `@Value` string in every module, on fields, constructor parameters and method parameters. The string must have as many closing braces as it has `${` and `#{` openings combined. Spring injects an unterminated placeholder as literal text instead of failing at startup, so `@Value("${mail.subject")` hands the code the string `${mail.subject`. To satisfy it, close each placeholder and expression, for example `@Value("${mail.subject}")` or `@Value("${DEST_IP:#{null}}")`.
+The configuration rules read every `@Value` in every module, on fields, methods, constructor parameters and method parameters. Spring injects a malformed placeholder as literal text instead of failing at startup, so `@Value("${mail.subject")` hands the code the string `${mail.subject`. `value-strings-well-formed` parses each string the way Spring does: placeholders first, even inside an expression, each ending at the brace that balances its opening, with the key ending at the first top-level colon. It fails a placeholder or expression that is never closed, a closing brace left over, an empty `#{}`, and a key that is blank, built from another placeholder, or uses characters other than letters, digits, `.`, `-`, `_` and `[]`. `value-keys-declared` fails any key a module reads, defaults and nested keys included, that the module's `src/main/resources/META-INF/additional-spring-configuration-metadata.json` does not declare. Spring would resolve the key either way. The rule exists so each module keeps one list of every setting it reads, with its type and what it does, and so IDEs can complete and document those keys in properties files. Keys a `spring-boot-configuration-processor` run generates into `META-INF/spring-configuration-metadata.json` count as declared too. `property-metadata-complete` fails an entry in the hand-written file with no name, type or description, and a name declared twice. To add a setting, add the `@Value` and an entry such as `{"name": "mail.subject", "type": "java.lang.String", "description": "Subject line of the access-grant email."}`, with a `defaultValue` when the `@Value` carries one.
 
 ## Rules
 
@@ -35,7 +35,9 @@ Authorization, over every compiled module:
 
 Configuration, over every compiled module:
 
-- `value-placeholders-closed`: every `@Value` string has as many closing braces as it has `${` and `#{` openings.
+- `value-strings-well-formed`: every `@Value` string closes each placeholder and expression, leaves no brace over, and names a plain key in each placeholder.
+- `value-keys-declared`: every key a module's `@Value` strings read is declared in that module's configuration metadata.
+- `property-metadata-complete`: every entry in `additional-spring-configuration-metadata.json` has a name, a type and a description, and no name repeats.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
