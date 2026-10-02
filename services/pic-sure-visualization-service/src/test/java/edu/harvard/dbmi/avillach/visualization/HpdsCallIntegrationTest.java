@@ -14,6 +14,7 @@ import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import java.net.ConnectException;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +64,12 @@ class HpdsCallIntegrationTest {
 
     private static final String AUTH_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync";
     private static final String OPEN_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/open/v3/query/sync";
+    /** The frontend's body: one categorical and one continuous filter under an AND, every top-level query key present. */
+    private static final String FROZEN_REQUEST = "{\"query\":{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":{"
+        + "\"operator\":\"AND\",\"phenotypicClauses\":["
+        + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"not\":false,\"values\":[\"Male\",\"Female\"]},"
+        + "{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\",\"not\":false,\"min\":20,\"max\":80}],"
+        + "\"not\":false},\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}}";
 
     private MockRestServiceServer mockServer;
 
@@ -394,5 +401,78 @@ class HpdsCallIntegrationTest {
         assertEquals(new ObfuscatedCount(600, "600 ±3", 3), bmi.get("18.0 - 24.0"));
         assertEquals(new ObfuscatedCount(0, "< 10", 9), bmi.get("24.0 - 30.0"));
         assertEquals(new ObfuscatedCount(150, "150 ±3", 3), bmi.get("30.0 +"));
+    }
+
+    /**
+     * The exact body the authorized backend answers with. Every component is on the wire in record order, the two chart sizes are null, and
+     * each map value is a count object with a null variance.
+     */
+    @Test
+    void distributions_authorized_bodyIsFrozen() throws Exception {
+        mockServer.expect(requestTo(AUTH_SYNC_URL))
+            .andRespond(withSuccess("{\"\\\\demographics\\\\SEX\\\\\":{\"Male\":620,\"Female\":614}}", MediaType.APPLICATION_JSON));
+        mockServer.expect(requestTo(AUTH_SYNC_URL)).andRespond(
+            withSuccess(
+                "{\"\\\\demographics\\\\AGE\\\\\":{\"20\":5,\"30\":12,\"40\":25,\"50\":40,\"60\":31,\"70\":18,\"80\":6}}",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        String body = mockMvc.perform(
+            post("/auth/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(FROZEN_REQUEST)
+        ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        mockServer.verify();
+        assertEquals(
+            "{\"categoricalData\":[{\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"title\":\"demographics: SEX\",\"continuous\":false,"
+                + "\"categoricalMap\":{\"Male\":{\"count\":620,\"display\":\"620\",\"variance\":null},"
+                + "\"Female\":{\"count\":614,\"display\":\"614\",\"variance\":null}},\"obfuscated\":false,\"xaxisName\":\"SEX\","
+                + "\"yaxisName\":\"Number of Participants\",\"chartWidth\":null,\"chartHeight\":null}],"
+                + "\"continuousData\":[{\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\",\"title\":\"demographics: AGE\",\"continuous\":true,"
+                + "\"continuousMap\":{\"20.0 - 50.0\":{\"count\":42,\"display\":\"42\",\"variance\":null},"
+                + "\"50.0 +\":{\"count\":95,\"display\":\"95\",\"variance\":null}},\"obfuscated\":false,\"xaxisName\":\"AGE\","
+                + "\"yaxisName\":\"Number of Participants\",\"chartWidth\":null,\"chartHeight\":null}]}",
+            body
+        );
+    }
+
+    /**
+     * The exact body the open backend answers with. The count objects are the ones the query service sent, passed through unchanged, and
+     * {@code obfuscated} is true.
+     */
+    @Test
+    void distributions_open_bodyIsFrozen() throws Exception {
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andRespond(
+            withSuccess(
+                "{\"\\\\demographics\\\\SEX\\\\\":{\"Male\":{\"count\":622,\"display\":\"622 ±3\",\"variance\":3},"
+                    + "\"Female\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}",
+                MediaType.APPLICATION_JSON
+            )
+        );
+        mockServer.expect(requestTo(OPEN_SYNC_URL)).andRespond(
+            withSuccess(
+                "{\"\\\\demographics\\\\AGE\\\\\":{\"20.0 - 50.0\":{\"count\":40,\"display\":\"40 ±3\",\"variance\":3},"
+                    + "\"50.0 +\":{\"count\":97,\"display\":\"97 ±3\",\"variance\":3}}}",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        String body = mockMvc.perform(
+            post("/open/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
+                .content(FROZEN_REQUEST)
+        ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        mockServer.verify();
+        assertEquals(
+            "{\"categoricalData\":[{\"conceptPath\":\"\\\\demographics\\\\SEX\\\\\",\"title\":\"demographics: SEX\",\"continuous\":false,"
+                + "\"categoricalMap\":{\"Male\":{\"count\":622,\"display\":\"622 ±3\",\"variance\":3},"
+                + "\"Female\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}},\"obfuscated\":true,\"xaxisName\":\"SEX\","
+                + "\"yaxisName\":\"Number of Participants\",\"chartWidth\":null,\"chartHeight\":null}],"
+                + "\"continuousData\":[{\"conceptPath\":\"\\\\demographics\\\\AGE\\\\\",\"title\":\"demographics: AGE\",\"continuous\":true,"
+                + "\"continuousMap\":{\"20.0 - 50.0\":{\"count\":40,\"display\":\"40 ±3\",\"variance\":3},"
+                + "\"50.0 +\":{\"count\":97,\"display\":\"97 ±3\",\"variance\":3}},\"obfuscated\":true,\"xaxisName\":\"AGE\","
+                + "\"yaxisName\":\"Number of Participants\",\"chartWidth\":null,\"chartHeight\":null}]}",
+            body
+        );
     }
 }

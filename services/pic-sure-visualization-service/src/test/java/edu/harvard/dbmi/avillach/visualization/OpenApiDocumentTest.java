@@ -89,6 +89,49 @@ class OpenApiDocumentTest {
             .isEqualTo(SCHEMA_REF_PREFIX + "Query");
     }
 
+    @Test
+    void distributionResponseIsDocumented() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/{backend}/distributions", "200", "VisualizationResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "VisualizationResponse", "categoricalData", "continuousData");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "CategoricalDistributionData", "conceptPath", "title", "continuous", "categoricalMap", "obfuscated", "xaxisName",
+            "yaxisName", "chartWidth", "chartHeight"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "ContinuousDistributionData", "conceptPath", "title", "continuous", "continuousMap", "obfuscated", "xaxisName",
+            "yaxisName", "chartWidth", "chartHeight"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ObfuscatedCount", "count", "display", "variance");
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document, "VisualizationResponse", "CategoricalDistributionData", "ContinuousDistributionData", "ObfuscatedCount"
+        );
+
+        JsonNode response = schema(document, "VisualizationResponse").path("properties");
+        assertThat(response.path("categoricalData").path("items").path("$ref").asText())
+            .isEqualTo(SCHEMA_REF_PREFIX + "CategoricalDistributionData");
+        assertThat(response.path("continuousData").path("items").path("$ref").asText())
+            .isEqualTo(SCHEMA_REF_PREFIX + "ContinuousDistributionData");
+        assertThat(
+            schema(document, "CategoricalDistributionData").path("properties").path("categoricalMap").path("additionalProperties")
+                .path("$ref").asText()
+        ).isEqualTo(SCHEMA_REF_PREFIX + "ObfuscatedCount");
+        assertThat(
+            schema(document, "ContinuousDistributionData").path("properties").path("continuousMap").path("additionalProperties")
+                .path("$ref").asText()
+        ).isEqualTo(SCHEMA_REF_PREFIX + "ObfuscatedCount");
+    }
+
+    @Test
+    void queryFormatHandlerIsPinned() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/query/format", "200", "QueryFormat");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "QueryFormat", "name", "description", "specification", "examples");
+        assertThat(document.path("paths").path("/query/format").path("post").has("requestBody")).isFalse();
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
