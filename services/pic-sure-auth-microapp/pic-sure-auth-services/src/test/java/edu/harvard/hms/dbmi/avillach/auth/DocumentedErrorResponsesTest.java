@@ -236,7 +236,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/role/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Role is not found by given role ID: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Role is not found by given role ID: " + unknown));
     }
 
     @Test
@@ -244,7 +245,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.DELETE, "/role/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Role not found - uuid: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Role not found - uuid: " + unknown));
     }
 
     @Test

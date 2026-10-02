@@ -227,7 +227,9 @@ class AdminFormPayloadTest {
         created.putArray("privileges").addObject().put("uuid", privilege.getUuid().toString());
 
         mockMvc.perform(asAdmin(HttpMethod.POST, "/role").content(json.createArrayNode().add(created).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$.message").value("All roles are added."))
+            .andExpect(jsonPath("$.content[0].uuid").isString()).andExpect(jsonPath("$.content[0].name").value(name))
+            .andExpect(jsonPath("$.content[0].privileges[0].uuid").value(privilege.getUuid().toString()));
 
         Role stored = roleRepository.findByName(name);
         assertThat(stored.getPrivileges()).extracting(Privilege::getUuid).containsExactly(privilege.getUuid());
@@ -236,7 +238,10 @@ class AdminFormPayloadTest {
         edited.putArray("privileges").addObject().put("uuid", privilege.getUuid().toString());
         edited.put("uuid", stored.getUuid().toString());
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/role").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk());
+        mockMvc.perform(asAdmin(HttpMethod.PUT, "/role").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk())
+            .andExpect(jsonPath("$.message").value("All Roles are updated."))
+            .andExpect(jsonPath("$.content[0].uuid").value(stored.getUuid().toString()))
+            .andExpect(jsonPath("$.content[0].description").value("edited in the role form"));
 
         assertThat(roleRepository.findById(stored.getUuid()).orElseThrow().getDescription()).isEqualTo("edited in the role form");
     }
@@ -330,7 +335,9 @@ class AdminFormPayloadTest {
         created.putArray("privileges").addObject().put("uuid", privilege.getUuid().toString());
 
         mockMvc.perform(asAdmin(HttpMethod.POST, "/role").content(json.createArrayNode().add(created).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$.message").value("All roles are added."))
+            .andExpect(jsonPath("$.content[0].uuid").isString()).andExpect(jsonPath("$.content[0].name").value(name))
+            .andExpect(jsonPath("$.content[0].privileges[0].uuid").value(privilege.getUuid().toString()));
 
         assertThat(roleRepository.findById(role.getUuid()).orElseThrow().getName()).isEqualTo("ROLE_" + suffix);
         assertThat(roleRepository.findByName(name).getUuid()).isNotEqualTo(role.getUuid());

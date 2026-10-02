@@ -201,6 +201,22 @@ class OpenApiDocumentTest {
         assertThat(document.path("components").path("schemas").path("ApplicationResponse").path("properties").has("token")).isFalse();
     }
 
+    @Test
+    void roleEndpointsDocumentTheirFrozenShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/role/{roleId}", "200", "RoleResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/role", "200", "RoleResponse");
+        OpenApiDocumentAssertions.assertEnvelope(document, "post", "/role", "200", "RoleResponse");
+        OpenApiDocumentAssertions.assertEnvelope(document, "put", "/role", "200", "RoleResponse");
+        OpenApiDocumentAssertions.assertEnvelope(document, "delete", "/role/{roleId}", "200", "RoleResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "RoleResponse", "uuid", "name", "description", "privileges");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "PrivilegeResponse", "uuid");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "RoleResponse", "PicSureResponseBodyListRoleResponse");
+        JsonNode privileges = document.path("components").path("schemas").path("RoleResponse").path("properties").path("privileges");
+        assertThat(privileges.path("items").path("$ref").asText()).isEqualTo("#/components/schemas/PrivilegeResponse");
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }
