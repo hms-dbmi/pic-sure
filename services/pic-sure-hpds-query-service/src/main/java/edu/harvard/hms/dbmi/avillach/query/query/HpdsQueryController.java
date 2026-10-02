@@ -164,8 +164,9 @@ public class HpdsQueryController {
     @Operation(summary = "A signed URL for a completed query's result")
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "400", description = "Unknown backend," + UNREADABLE_BODY),
-            @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
+            @ApiResponse(
+                responseCode = "400", description = "Unknown backend, a body that cannot be read, or a result that is not ready yet"
+            ), @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
             @ApiResponse(responseCode = "404", description = "Unknown query id"),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3"),
             @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed"),

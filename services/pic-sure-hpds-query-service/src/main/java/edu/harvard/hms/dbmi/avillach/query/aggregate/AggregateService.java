@@ -33,7 +33,8 @@ import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 /**
  * Orchestrates querySync obfuscation, {@code CROSS_COUNT} query scoping through {@link #openCrossCount}, and continuous-result suppression.
  * This DB-free module stores no {@code Query} rows; async open submissions ({@link #query}) delegate persistence and HPDS dispatch to
- * {@link QueryService}, which persists through operations-service. Audit logging is handled by the gateway.
+ * {@link QueryService}, which persists through operations-service. Audit logging is handled by the gateway; the controllers'
+ * {@code @AuditEvent} labels are declarative.
  *
  * <p>The inbound query is a typed v3 {@link Query} and is never mutated. Each downstream request is a new value: the query itself, the
  * cross count derived from it by {@link #openCrossCount}, the study-consents search term, and the continuous counts sent for binning, each
