@@ -4,12 +4,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
+@Schema(description = "A filter on a variant annotation, matched by value or by numeric range")
 public record GenomicFilter(
     @Schema(
         description = "The genomic filter to query", example = "Gene_with_variant", requiredMode = Schema.RequiredMode.REQUIRED
     ) String key,
     @Schema(
-        description = "Values that must match for a given key. Cannot be combined with `min` or `max`", example = "APOE",
+        description = "Values that must match for a given key. Cannot be combined with `min` or `max`", example = "[\"APOE\"]",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED
     ) List<String> values,
     @Schema(

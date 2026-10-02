@@ -77,4 +77,11 @@ class SharedModelSchemaConventionTest {
             document, "QueryStatus", "SearchResults", "PaginatedSearchResultString", "SignedUrlResponse", "ResourceInfo", "QueryFormat"
         );
     }
+
+    @Test
+    void hpdsModelMeetsTheConvention() {
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document, "Query", "AuthorizationFilter", "GenomicFilter", "PhenotypicClause", "PhenotypicFilter", "PhenotypicSubquery"
+        );
+    }
 }
