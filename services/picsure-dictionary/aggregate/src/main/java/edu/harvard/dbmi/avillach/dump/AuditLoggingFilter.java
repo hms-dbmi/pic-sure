@@ -53,7 +53,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
 
                 String eventType = (String) request.getAttribute(AuditAttributes.EVENT_TYPE);
                 String action = (String) request.getAttribute(AuditAttributes.ACTION);
-                if (eventType == null) eventType = "OTHER";
+                if (eventType == null) eventType = "UNLABELED";
                 if (action == null) action = method.toLowerCase();
 
                 String srcIp = extractSourceIp(request);

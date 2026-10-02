@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -29,6 +30,7 @@ public class HpdsSearchController {
         this.service = service;
     }
 
+    @AuditEvent(type = "SEARCH", action = "search.execute")
     @PostMapping("/hpds/{backend}/search")
     @Operation(summary = "Search concepts on a backend")
     @ApiResponses(
@@ -41,6 +43,7 @@ public class HpdsSearchController {
         return service.search(backend, req);
     }
 
+    @AuditEvent(type = "SEARCH", action = "search.values")
     @GetMapping(value = "/hpds/{backend}/search/values", consumes = "*/*")
     @Operation(summary = "Page through the values of a concept")
     @ApiResponses(

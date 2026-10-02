@@ -16,7 +16,7 @@ class SwaggerRulesTest {
         new ClassFileImporter().importPackages("edu.harvard.hms.dbmi.avillach.conventions.fixtures");
 
     @Test
-    void r1FlagsControllersWithNeitherOrBothAnnotations() {
+    void flagsControllersWithNeitherOrBothAnnotations() {
         List<String> violations = SwaggerRules.tagOrHidden("fixtures", FIXTURES);
 
         assertEquals(2, violations.size(), violations.toString());
@@ -26,7 +26,7 @@ class SwaggerRulesTest {
     }
 
     @Test
-    void r2FlagsOnlyTheBlankDescription() {
+    void tagIsCompleteFlagsOnlyTheBlankDescription() {
         List<String> violations = SwaggerRules.tagIsComplete("fixtures", FIXTURES);
 
         assertEquals(1, violations.size(), violations.toString());
@@ -35,7 +35,7 @@ class SwaggerRulesTest {
     }
 
     @Test
-    void r3FlagsAMissingOperationAndABlankSummaryAndNothingElse() {
+    void flagsAMissingOperationAndABlankSummaryAndNothingElse() {
         List<String> violations = SwaggerRules.operationHasSummary("fixtures", FIXTURES);
 
         assertEquals(3, violations.size(), violations.toString());
@@ -45,7 +45,7 @@ class SwaggerRulesTest {
     }
 
     @Test
-    void r3ExemptsAHiddenClassAndIgnoresNonHandlers() {
+    void operationHasSummaryExemptsAHiddenClassAndIgnoresNonHandlers() {
         List<String> violations = SwaggerRules.operationHasSummary("fixtures", FIXTURES);
 
         assertTrue(violations.stream().noneMatch(v -> v.contains("HiddenController")), violations.toString());
@@ -54,7 +54,7 @@ class SwaggerRulesTest {
     }
 
     @Test
-    void r4FlagsMissingCodesBlankDescriptionsAndMissingSuccess() {
+    void flagsMissingResponseCodesBlankDescriptionsAndMissingSuccess() {
         List<String> violations = SwaggerRules.responsesAreDeclared("fixtures", FIXTURES);
 
         assertEquals(5, violations.size(), violations.toString());
@@ -66,7 +66,7 @@ class SwaggerRulesTest {
     }
 
     @Test
-    void r4AcceptsBothASingleResponseAndAContainer() {
+    void acceptsBothASingleResponseAndAContainer() {
         List<String> violations = SwaggerRules.responsesAreDeclared("fixtures", FIXTURES);
 
         assertTrue(violations.stream().noneMatch(v -> v.contains("GoodController")), violations.toString());
