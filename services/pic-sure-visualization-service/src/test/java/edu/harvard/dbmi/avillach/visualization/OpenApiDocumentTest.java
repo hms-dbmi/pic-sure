@@ -77,6 +77,18 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/v3/bin/continuous", "200", "ContinuousBinningResponse");
     }
 
+    @Test
+    void requestRecordsAreDocumented() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/{backend}/distributions", "DistributionRequest");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "DistributionRequest", "query");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ContinuousBinningRequest", "query");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "DistributionRequest", "ContinuousBinningRequest");
+        assertThat(schema(document, "DistributionRequest").path("properties").path("query").path("$ref").asText())
+            .isEqualTo(SCHEMA_REF_PREFIX + "Query");
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
