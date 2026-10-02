@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.query;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,9 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
  * Pins the {@link AuditEvent} label on every request handler in this service. Controllers are found by classpath scan and handlers by their
  * {@link RequestMapping} meta-annotation, so no Spring context starts. A new handler without a label, a new handler missing from
  * {@link #EXPECTED}, or a changed label fails the build. The labels mirror the gateway's audit route table for the same paths.
+ *
+ * <p>Only controllers compiled into the main output, the same code source as {@link QueryServiceApplication}, are counted. Test fixtures
+ * such as the probe controllers other tests declare under this package are compiled into the test output and are excluded.
  */
 class ControllerAuditEventTest {
 
@@ -67,7 +71,7 @@ class ControllerAuditEventTest {
     }
 
     /**
-     * Finds every handler method declared on a controller in this service.
+     * Finds every handler method declared on a production controller in this service.
      *
      * @return the methods carrying {@link RequestMapping} directly or through a composed annotation such as {@code @PostMapping}
      * @throws ClassNotFoundException if a scanned controller class cannot be loaded
@@ -75,9 +79,13 @@ class ControllerAuditEventTest {
     private static List<Method> mappedHandlers() throws ClassNotFoundException {
         ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AnnotationTypeFilter(Controller.class));
+        URL mainOutput = codeSource(QueryServiceApplication.class);
         List<Method> handlers = new ArrayList<>();
         for (BeanDefinition candidate : scanner.findCandidateComponents(BASE_PACKAGE)) {
             Class<?> controller = ClassUtils.forName(candidate.getBeanClassName(), ControllerAuditEventTest.class.getClassLoader());
+            if (!mainOutput.equals(codeSource(controller))) {
+                continue;
+            }
             for (Method method : controller.getDeclaredMethods()) {
                 if (AnnotatedElementUtils.hasAnnotation(method, RequestMapping.class)) {
                     handlers.add(method);
@@ -86,6 +94,16 @@ class ControllerAuditEventTest {
         }
         assertThat(handlers).as("scan found no handlers under %s", BASE_PACKAGE).isNotEmpty();
         return handlers;
+    }
+
+    /**
+     * Reads where a class was loaded from.
+     *
+     * @param type the class
+     * @return the directory or jar holding its compiled bytecode
+     */
+    private static URL codeSource(Class<?> type) {
+        return type.getProtectionDomain().getCodeSource().getLocation();
     }
 
     private static String key(Method handler) {
