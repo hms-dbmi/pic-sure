@@ -158,6 +158,18 @@ class OpenApiDocumentTest {
         assertThat(rows.path("items").path("additionalProperties").path("type").asText()).isEqualTo("string");
     }
 
+    @Test
+    void legacySearchBindsATypedRequest() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/search", "LegacySearchQuery");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/search", "200", "LegacyResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "LegacySearchQuery", "query");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "LegacySearchCriteria", "searchTerm", "limit");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "LegacySearchQuery", "LegacySearchCriteria");
+        assertThat(document.path("paths").path("/search").path("post").path("responses").has("400")).isTrue();
+    }
+
     private JsonNode document() throws Exception {
         String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(body);

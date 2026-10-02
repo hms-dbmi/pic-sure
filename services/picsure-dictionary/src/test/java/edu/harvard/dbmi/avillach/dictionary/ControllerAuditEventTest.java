@@ -8,6 +8,7 @@ import edu.harvard.dbmi.avillach.dictionary.dashboarddrawer.DashboardDrawerContr
 import edu.harvard.dbmi.avillach.dictionary.facet.FacetController;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.LegacySearchController;
+import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchQuery;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import org.junit.jupiter.api.Test;
 
@@ -60,6 +61,6 @@ class ControllerAuditEventTest {
     @Test
     void legacySearchController() throws Exception {
         Class<?> c = LegacySearchController.class;
-        assertAuditEvent(c, "legacySearch", new Class[] {String.class}, "SEARCH", "search.legacy");
+        assertAuditEvent(c, "legacySearch", new Class[] {LegacySearchQuery.class}, "SEARCH", "search.legacy");
     }
 }

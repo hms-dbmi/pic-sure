@@ -1,7 +1,17 @@
 package edu.harvard.dbmi.avillach.dictionary.legacysearch.model;
 
-import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
-import org.springframework.data.domain.Pageable;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.swagger.v3.oas.annotations.media.Schema;
 
-public record LegacySearchQuery(Filter filter, Pageable pageable) {
+/**
+ * The request body of the legacy search, in the shape the search that came before the dictionary took: one {@code query} object holding the
+ * search text and the result limit.
+ *
+ * @param query the search text and result limit
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+@Schema(description = "A search request in the shape used before the dictionary existed.")
+public record LegacySearchQuery(
+    @Schema(description = "The search text and result limit.", requiredMode = Schema.RequiredMode.REQUIRED) LegacySearchCriteria query
+) {
 }

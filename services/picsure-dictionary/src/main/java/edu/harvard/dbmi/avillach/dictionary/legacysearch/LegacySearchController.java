@@ -1,7 +1,9 @@
 package edu.harvard.dbmi.avillach.dictionary.legacysearch;
 
 import edu.harvard.dbmi.avillach.dictionary.AuditAttributes;
+import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacyResponse;
+import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchCriteria;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchQuery;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,8 +15,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-
-import java.io.IOException;
 
 @Controller
 @Tag(name = "Legacy search", description = "The pre-dictionary search contract kept for older clients")
@@ -32,17 +32,27 @@ public class LegacySearchController {
         this.legacySearchQueryMapper = legacySearchQueryMapper;
     }
 
+    /**
+     * Searches concepts for a client that still speaks the search contract that came before the dictionary.
+     *
+     * @param legacySearchQuery the bound request body
+     * @return the matches in the legacy response shape, or an empty 400 when the body has no {@code query} object or its {@code limit} is
+     *         missing or below 1
+     */
     @Operation(summary = "Search in the legacy request and response shape")
     @ApiResponse(responseCode = "200", description = "Search results in the legacy response shape")
+    @ApiResponse(responseCode = "400", description = "The body is not JSON, has no query object, or its limit is missing or below 1")
     @AuditEvent(type = "SEARCH", action = "search.legacy")
     @RequestMapping(path = "/search")
-    public ResponseEntity<LegacyResponse> legacySearch(@RequestBody String jsonString) throws IOException {
-        LegacySearchQuery legacySearchQuery = legacySearchQueryMapper.mapFromJson(jsonString);
-        AuditAttributes.putMetadata(
-            httpRequest, "search_term", legacySearchQuery.filter().search() != null ? legacySearchQuery.filter().search() : ""
-        );
+    public ResponseEntity<LegacyResponse> legacySearch(@RequestBody LegacySearchQuery legacySearchQuery) {
+        LegacySearchCriteria criteria = legacySearchQuery.query();
+        if (criteria == null || criteria.limit() == null || criteria.limit() < 1) {
+            return ResponseEntity.badRequest().build();
+        }
+        Filter filter = legacySearchQueryMapper.toFilter(criteria);
+        AuditAttributes.putMetadata(httpRequest, "search_term", filter.search());
         return ResponseEntity
-            .ok(new LegacyResponse(legacySearchService.getSearchResults(legacySearchQuery.filter(), legacySearchQuery.pageable())));
+            .ok(new LegacyResponse(legacySearchService.getSearchResults(filter, legacySearchQueryMapper.toPageable(criteria))));
     }
 
 }
