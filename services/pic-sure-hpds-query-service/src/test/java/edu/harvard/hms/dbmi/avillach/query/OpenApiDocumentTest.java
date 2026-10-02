@@ -24,7 +24,8 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
 
 /**
  * The live document is served unauthenticated, names this service, carries the bearer scheme, and covers every visible handler with a
- * summarised operation. An endpoint cannot vanish from the document, and the annotation pass cannot skip one, without failing here.
+ * summarised operation. An endpoint cannot vanish from the document, and the annotation pass cannot skip one, without failing here. The
+ * remaining tests pin each handler's request and response schema or media type, and the fields the frontend and the Python adapter read.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -114,6 +115,44 @@ class OpenApiDocumentTest {
         assertThat(document.path("components").path("schemas").path("HpdsQueryRequest").path("properties").size()).isEqualTo(1);
         assertThat(operation(document, "get", METADATA).has("requestBody")).isFalse();
         assertThat(operation(document, "post", METADATA).has("requestBody")).isFalse();
+    }
+
+    @Test
+    void queryStatusIsTheResponseOfSubmitStatusAndMetadata() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", QUERY, "200", "QueryStatus");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", STATUS, "200", "QueryStatus");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", METADATA, "200", "QueryStatus");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", METADATA, "200", "QueryStatus");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "QueryStatus", "picsureResultId", "resourceResultId", "status", "resourceStatus", "resultMetadata"
+        );
+    }
+
+    @Test
+    void syncAndResultBodiesAreDocumentedByMediaTypeAndResultType() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertMediaType(document, "post", SYNC, "200", "application/json", "string");
+        OpenApiDocumentAssertions.assertMediaType(document, "post", OPEN_SYNC, "200", "application/json", "string");
+        OpenApiDocumentAssertions.assertMediaType(document, "post", RESULT, "200", "application/octet-stream", "string");
+        OpenApiDocumentAssertions.assertMediaType(document, "post", RESULT, "200", "text/plain", "string");
+
+        JsonNode sync = operation(document, "post", SYNC).path("responses").path("200").path("content").path("application/json");
+        assertThat(sync.path("schema").path("description").asText()).contains(
+            "COUNT", "CROSS_COUNT", "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "INFO_COLUMN_LISTING",
+            "VARIANT_COUNT_FOR_QUERY", "VARIANT_LIST_FOR_QUERY", "VCF_EXCERPT", "AGGREGATE_VCF_EXCERPT"
+        );
+        JsonNode examples = sync.path("examples");
+        assertThat(examples.path("VARIANT_COUNT_FOR_QUERY with genomic filters").path("value").path("count").isInt()).isTrue();
+        assertThat(examples.path("VARIANT_COUNT_FOR_QUERY without genomic filters").path("value").path("count").isTextual()).isTrue();
+        assertThat(examples.path("VARIANT_COUNT_FOR_QUERY without genomic filters").path("value").path("count").asText()).isEqualTo("0");
+
+        JsonNode openSync = operation(document, "post", OPEN_SYNC).path("responses").path("200").path("content").path("application/json");
+        assertThat(openSync.path("schema").path("description").asText())
+            .contains("COUNT", "CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY");
+        assertThat(openSync.path("examples").path("COUNT below the threshold").path("value").asText()).isEqualTo("< 10");
     }
 
     private JsonNode document() throws Exception {

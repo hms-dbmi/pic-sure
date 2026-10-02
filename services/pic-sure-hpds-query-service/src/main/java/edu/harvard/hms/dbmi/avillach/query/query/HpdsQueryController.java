@@ -20,6 +20,9 @@ import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,12 +74,27 @@ public class HpdsQueryController {
     @PostMapping("/query/sync")
     @Operation(summary = "Run a query and return its result inline")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data," + UNREADABLE_BODY),
-            @ApiResponse(responseCode = "403", description = "Consent does not permit this query"),
-            @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed"),
-            @ApiResponse(responseCode = "503", description = "Backend not configured"),
-            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+        {@ApiResponse(
+            responseCode = "200",
+            description = "The result. Its shape follows the query's expectedResultType, and the body is labelled application/json for "
+                + "every result type, the plain-text ones included. DATAFRAME, DATAFRAME_TIMESERIES, DATAFRAME_PFB and PATIENTS are not "
+                + "served here and answer 400: submit them with POST /query and collect them from /query/{id}/result.",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(
+                    type = "string",
+                    description = "COUNT: a bare patient count as text. CROSS_COUNT and OBSERVATION_CROSS_COUNT: a JSON object of concept "
+                        + "path to integer count. CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT: a JSON object of concept path to an "
+                        + "object of value to integer count. INFO_COLUMN_LISTING: a JSON array of variant annotation columns. "
+                        + "VARIANT_COUNT_FOR_QUERY: a JSON object with count and message, where count is an integer when the query has "
+                        + "genomic filters and the string \"0\" when it has none. VARIANT_LIST_FOR_QUERY: a bracketed, comma-separated "
+                        + "list of variants as text. VCF_EXCERPT and AGGREGATE_VCF_EXCERPT: tab-separated text with a header row."
+                ),
+                examples = {@ExampleObject(name = "COUNT", value = "1234"), @ExampleObject(
+                    name = "CROSS_COUNT", value = "{\"\\\\demographics\\\\SEX\\\\\":1234}"
+                ), @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":634,\"Male\":600}}"), @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = "{\"\\\\demographics\\\\AGE\\\\\":{\"42.0\":17,\"43.0\":12}}"), @ExampleObject(name = "OBSERVATION_CROSS_COUNT", value = "{\"\\\\demographics\\\\SEX\\\\\":4321}"), @ExampleObject(name = "INFO_COLUMN_LISTING", value = "[{\"key\":\"Gene_with_variant\",\"description\":\"The official symbol for a gene affected by a variant.\"," + "\"continuous\":false,\"min\":null,\"max\":null}]"), @ExampleObject(name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = "{\"count\":17,\"message\":\"Query ran successfully\"}"), @ExampleObject(name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = "{\"count\":\"0\",\"message\":\"No variant filters were supplied, so no query was run.\"}"), @ExampleObject(name = "VARIANT_LIST_FOR_QUERY", value = "[19,44908684,T,C,APOE,missense_variant, 19,44908822,C,T,APOE,missense_variant]"), @ExampleObject(name = "VCF_EXCERPT", value = "CHROM\tPOSITION\tREF\tALT\tPatients with this variant in subset\tPatients with this variant NOT in subset\n" + "19\t44908684\tT\tC\t12/1234\t3/4000\n")}
+            )
+        ), @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data, a result type served asynchronously," + UNREADABLE_BODY), @ApiResponse(responseCode = "403", description = "Consent does not permit this query"), @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed"), @ApiResponse(responseCode = "503", description = "Backend not configured"), @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
     public ResponseEntity<byte[]> querySync(
         @PathVariable("backend") String backend, @RequestBody HpdsQueryRequest req,
@@ -110,8 +128,23 @@ public class HpdsQueryController {
     @PostMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     @Operation(summary = "Result bytes of a completed query")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "400", description = "Unknown backend," + UNREADABLE_BODY),
+        {@ApiResponse(
+            responseCode = "200",
+            description = "The result file, labelled with the content type HPDS gave it: text/plain for the CSV of DATAFRAME and "
+                + "DATAFRAME_TIMESERIES, application/octet-stream for the Avro PFB of DATAFRAME_PFB.",
+            content = {
+                @Content(
+                    mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                    schema = @Schema(type = "string", format = "binary", description = "The Avro PFB file of a DATAFRAME_PFB query.")
+                ),
+                @Content(
+                    mediaType = MediaType.TEXT_PLAIN_VALUE,
+                    schema = @Schema(
+                        type = "string",
+                        description = "The CSV of a DATAFRAME or DATAFRAME_TIMESERIES query: a header row, then one row per patient."
+                    )
+                )}
+        ), @ApiResponse(responseCode = "400", description = "Unknown backend, a result that is not ready yet," + UNREADABLE_BODY),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
             @ApiResponse(responseCode = "404", description = "Unknown query id"),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3"),
