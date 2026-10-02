@@ -1,0 +1,10 @@
+{
+  "properties": [
+    {
+      "name": "consent.based.authorization.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether ConsentAuthorizationService scopes auth-backend queries to the caller's current dbGaP consents and re-checks saved results against them before returning them. Maps from the CONSENT_BASED_AUTHORIZATION_ENABLED environment variable. When false, both checks are skipped for every backend.",
+      "defaultValue": true
+    }
+  ]
+}
