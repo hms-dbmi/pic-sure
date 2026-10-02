@@ -2,13 +2,16 @@ package edu.harvard.dbmi.avillach.domain;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "A search results object")
+@Schema(description = "The matches for a search term")
 public class SearchResults {
 
-    @Schema(description = "The results of the search.")
+    @Schema(
+        description = "The matches, shaped by the resource. HPDS returns an object with `phenotypes` and `info`, each a map keyed by "
+            + "concept path or info column name."
+    )
     Object results;
 
-    @Schema(description = "The query that was used to generate the results.")
+    @Schema(description = "The search term the results answer", example = "age")
     String searchQuery;
 
     public Object getResults() {
