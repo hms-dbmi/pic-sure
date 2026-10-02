@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import static org.junit.jupiter.api.Assertions.*;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -25,8 +26,10 @@ class ControllerAuditEventTest {
     @Test
     void authenticationController() throws Exception {
         Class<?> c = AuthenticationController.class;
-        // authentication(String idpProvider, Map<String, String> authRequest, HttpServletRequest request)
-        assertAuditEvent(c, "authentication", new Class[] {String.class, Map.class, HttpServletRequest.class}, "AUTH", "auth.login");
+        // authentication(String idpProvider, AuthenticationRequest authRequest, HttpServletRequest request)
+        assertAuditEvent(
+            c, "authentication", new Class[] {String.class, AuthenticationRequest.class, HttpServletRequest.class}, "AUTH", "auth.login"
+        );
     }
 
     @Test

@@ -268,6 +268,22 @@ class OpenApiDocumentTest {
         );
     }
 
+    @Test
+    void authenticationDocumentsTheLoginShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/authentication/{idpProvider}", "AuthenticationRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/authentication/{idpProvider}", "200", "AuthenticationResponse");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "AuthenticationRequest", "code", "access_token", "redirectURI", "persona");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "AuthenticationResponse", "oktaIdToken", "token", "acceptedTOS", "userId", "email");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "AuthenticationRequest", "AuthenticationResponse");
+        JsonNode acceptedTOS =
+            document.path("components").path("schemas").path("AuthenticationResponse").path("properties").path("acceptedTOS");
+        assertThat(acceptedTOS.path("type").asText()).as("acceptedTOS stays a string on this endpoint").isEqualTo("string");
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }

@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.AuthenticationServiceRegistry;
@@ -14,6 +17,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.CollectionUtils;
@@ -24,7 +28,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.Map;
 
 
 /**
@@ -40,9 +43,7 @@ public class AuthenticationController {
     private final AuthenticationServiceRegistry authenticationServiceRegistry;
 
     @Autowired
-    public AuthenticationController(
-        AuthenticationServiceRegistry authenticationServiceRegistry
-    ) {
+    public AuthenticationController(AuthenticationServiceRegistry authenticationServiceRegistry) {
         this.authenticationServiceRegistry = authenticationServiceRegistry;
     }
 
@@ -57,12 +58,12 @@ public class AuthenticationController {
     )
     @AuditEvent(type = "AUTH", action = "auth.login")
     @PostMapping(path = "/authentication/{idpProvider}", consumes = "application/json", produces = "application/json")
-    public ResponseEntity<?> authentication(
+    public ResponseEntity<AuthenticationResponse> authentication(
         @PathVariable("idpProvider") String idpProvider,
         @Parameter(
             required = true,
             description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI"
-        ) @RequestBody Map<String, String> authRequest, HttpServletRequest request
+        ) @RequestBody AuthenticationRequest authRequest, HttpServletRequest request
     ) throws IOException {
         logger.debug("authentication() starting...");
         logger.debug("authentication() requestHost: {}", request.getServerName());
@@ -73,7 +74,7 @@ public class AuthenticationController {
             logger.error("authentication() authRequest is null");
             AuditAttributes.putMetadata(request, "login_result", "failure");
             AuditAttributes.putMetadata(request, "reason", "null_request");
-            return ResponseEntity.badRequest().body("authRequest is null");
+            throw new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "authRequest is null");
         }
 
         AuthenticationService authenticationService = authenticationServiceRegistry.getAuthenticationService(idpProvider);
@@ -81,26 +82,26 @@ public class AuthenticationController {
             logger.error("authentication() authenticationService is null");
             AuditAttributes.putMetadata(request, "login_result", "failure");
             AuditAttributes.putMetadata(request, "reason", "unknown_idp");
-            return ResponseEntity.badRequest().body("authenticationService is null");
+            throw new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "authenticationService is null");
         }
 
-        HashMap<String, String> authenticate = authenticationService.authenticate(authRequest, request.getServerName());
-        if (!CollectionUtils.isEmpty(authenticate)) {
-            if (!authenticate.containsKey("userId")) {
-                logger.error("Authentication response must contain a userId.");
-                AuditAttributes.putMetadata(request, "login_result", "failure");
-                AuditAttributes.putMetadata(request, "reason", "missing_user_id");
-                return PICSUREResponse.unauthorizedError("User not authenticated.");
-            }
-            logger.info("authentication() User authenticated successfully.");
-            AuditAttributes.putMetadata(request, "login_result", "success");
-            AuditAttributes.putMetadata(request, "user_id", authenticate.get("userId"));
-            return PICSUREResponse.success(authenticate);
+        HashMap<String, String> authenticate = authenticationService.authenticate(authRequest.toMap(), request.getServerName());
+        if (CollectionUtils.isEmpty(authenticate)) {
+            logger.error("authentication() User not authenticated.");
+            AuditAttributes.putMetadata(request, "login_result", "failure");
+            AuditAttributes.putMetadata(request, "reason", "authentication_failed");
+            throw new PicSureResponseException(HttpStatus.UNAUTHORIZED, "Unauthorized", "User not authenticated.");
+        }
+        if (!authenticate.containsKey("userId")) {
+            logger.error("Authentication response must contain a userId.");
+            AuditAttributes.putMetadata(request, "login_result", "failure");
+            AuditAttributes.putMetadata(request, "reason", "missing_user_id");
+            throw new PicSureResponseException(HttpStatus.UNAUTHORIZED, "Unauthorized", "User not authenticated.");
         }
 
-        logger.error("authentication() User not authenticated.");
-        AuditAttributes.putMetadata(request, "login_result", "failure");
-        AuditAttributes.putMetadata(request, "reason", "authentication_failed");
-        return PICSUREResponse.unauthorizedError("User not authenticated.");
+        logger.info("authentication() User authenticated successfully.");
+        AuditAttributes.putMetadata(request, "login_result", "success");
+        AuditAttributes.putMetadata(request, "user_id", authenticate.get("userId"));
+        return PICSUREResponse.success(AuthenticationResponse.from(authenticate));
     }
 }
