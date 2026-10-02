@@ -15,7 +15,10 @@ public record CategoricalDistributionData(
     ) String title,
     @Schema(description = "Always false for a categorical chart.", requiredMode = Schema.RequiredMode.REQUIRED) boolean continuous,
     @Schema(
-        description = "The bars, in display order. Each key is a value of the concept, such as `Male`, shortened when it is 45 characters or longer, or `Other` for the values folded together once the concept has more values than the chart shows. Each value is always a count object, on both backends, never a bare number.",
+        description = "The bars, keyed by concept value. Each key is a value of the concept, such as `Male`, shortened when it is 45 characters "
+            + "or longer, or `Other` for the values folded together once the concept has more values than the chart shows. The authorized "
+            + "backend orders them by descending count with `Other` last; the open backend does not order them. Each value is always a "
+            + "count object, on both backends, never a bare number.",
         requiredMode = Schema.RequiredMode.REQUIRED
     ) Map<String, ObfuscatedCount> categoricalMap,
     @Schema(

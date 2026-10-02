@@ -15,7 +15,8 @@ public record ContinuousDistributionData(
     ) String title,
     @Schema(description = "Always true for a continuous chart.", requiredMode = Schema.RequiredMode.REQUIRED) boolean continuous,
     @Schema(
-        description = "The bins, in ascending order. Each key is a bin label: a range such as `20.0 - 40.0`, a single value such as `45.0`, or the open last bin such as `80.0 +`. Each value is always a count object, on both backends, never a bare number.",
+        description = "The bins, in ascending order. Each key is a bin label: a range such as `20.0 - 40.0`, a single value such as `45.0`, or "
+            + "the open last bin such as `80.0 +`. Each value is always a count object, on both backends, never a bare number.",
         requiredMode = Schema.RequiredMode.REQUIRED
     ) Map<String, ObfuscatedCount> continuousMap,
     @Schema(
