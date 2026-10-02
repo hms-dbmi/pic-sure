@@ -6,6 +6,8 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,6 +28,11 @@ import java.util.concurrent.Future;
 @Controller
 @Tag(name = "Concepts", description = "Search, detail, and tree views of dictionary concepts")
 public class ConceptController {
+
+    static final String RAW_CONCEPT_PATH_BODY =
+        "A concept path as a raw string body. The bytes of the body are the path, read as they are whatever the "
+            + "Content-Type. The frontend sends the path unquoted under application/json, so a JSON-quoted string is not unquoted and would not "
+            + "match any concept.";
 
     private final ConceptService conceptService;
 
@@ -97,7 +104,10 @@ public class ConceptController {
     @ApiResponse(responseCode = "404", description = "No concept at that path")
     @AuditEvent(type = "SEARCH", action = "concept.detail")
     @PostMapping(path = "/concepts/detail/{dataset}")
-    public ResponseEntity<Concept> conceptDetail(@PathVariable(name = "dataset") String dataset, @RequestBody() String conceptPath) {
+    public ResponseEntity<Concept> conceptDetail(
+        @PathVariable(name = "dataset") String dataset,
+        @Schema(description = RAW_CONCEPT_PATH_BODY, example = "\\demographics\\AGE\\") @RequestBody() String conceptPath
+    ) {
         return conceptService.conceptDetail(dataset, conceptPath).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
@@ -105,7 +115,14 @@ public class ConceptController {
     @ApiResponse(responseCode = "200", description = "Detail for each requested concept path")
     @AuditEvent(type = "SEARCH", action = "concept.detail")
     @PostMapping(path = "/concepts/detail")
-    public ResponseEntity<List<Concept>> conceptsDetail(@RequestBody() List<String> conceptPaths) {
+    public ResponseEntity<List<Concept>> conceptsDetail(
+        @ArraySchema(
+            arraySchema = @Schema(
+                description = "The concept paths to look up, as a JSON array of strings. A path that matches no concept is left out of the response.",
+                example = "[\"\\\\demographics\\\\AGE\\\\\", \"\\\\demographics\\\\SEX\\\\\"]"
+            ), schema = @Schema(description = "One concept path, backslash delimited.", example = "\\demographics\\AGE\\")
+        ) @RequestBody() List<String> conceptPaths
+    ) {
         return ResponseEntity.ok(conceptService.conceptsWithDetail(conceptPaths));
     }
 
@@ -118,7 +135,8 @@ public class ConceptController {
     @AuditEvent(type = "SEARCH", action = "concept.tree")
     @PostMapping(path = "/concepts/tree/{dataset}")
     public ResponseEntity<Concept> conceptTree(
-        @PathVariable(name = "dataset") String dataset, @RequestBody() String conceptPath,
+        @PathVariable(name = "dataset") String dataset,
+        @Schema(description = RAW_CONCEPT_PATH_BODY, example = "\\demographics\\AGE\\") @RequestBody() String conceptPath,
         @RequestParam(name = "depth", required = false, defaultValue = "2") Integer depth
     ) {
         if (depth < 0 || depth > MAX_DEPTH) {
@@ -133,7 +151,8 @@ public class ConceptController {
     @AuditEvent(type = "SEARCH", action = "concept.hierarchy")
     @PostMapping(path = "/concepts/hierarchy/{dataset}")
     public ResponseEntity<List<Concept>> conceptHierarchy(
-        @PathVariable(name = "dataset") String dataset, @RequestBody() String conceptPath
+        @PathVariable(name = "dataset") String dataset,
+        @Schema(description = RAW_CONCEPT_PATH_BODY, example = "\\demographics\\AGE\\") @RequestBody() String conceptPath
     ) {
         List<Concept> body = conceptService.conceptHierarchy(dataset, conceptPath);
         if (body.isEmpty()) {

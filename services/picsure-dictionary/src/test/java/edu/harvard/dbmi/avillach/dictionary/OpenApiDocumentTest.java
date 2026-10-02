@@ -113,6 +113,23 @@ class OpenApiDocumentTest {
         assertIsEitherConcept(properties(document, "ContinuousConcept").path("table"));
     }
 
+    @Test
+    void conceptPathBodiesAreRawStrings() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of("/concepts/detail/{dataset}", "/concepts/tree/{dataset}", "/concepts/hierarchy/{dataset}")) {
+            JsonNode body = requestSchema(document, "post", path);
+            assertThat(body.path("type").asText()).as(path).isEqualTo("string");
+            assertThat(body.path("description").asText()).as(path).contains("raw string body");
+            assertThat(body.path("example").asText()).as(path).isEqualTo("\\demographics\\AGE\\");
+        }
+        JsonNode bulk = requestSchema(document, "post", "/concepts/detail");
+        assertThat(bulk.path("type").asText()).isEqualTo("array");
+        assertThat(bulk.path("items").path("type").asText()).isEqualTo("string");
+        assertThat(bulk.path("description").asText()).isNotBlank();
+        assertThat(bulk.path("example")).hasSize(2);
+    }
+
     private JsonNode document() throws Exception {
         String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(body);
