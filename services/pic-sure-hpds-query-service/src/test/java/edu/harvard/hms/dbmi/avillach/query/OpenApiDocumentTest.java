@@ -90,6 +90,15 @@ class OpenApiDocumentTest {
     }
 
     @Test
+    void openAggregateEndpointsBindTheDocumentedQueryRequest() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", OPEN_QUERY, "HpdsQueryRequest");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", OPEN_SYNC, "HpdsQueryRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", OPEN_QUERY, "200", "QueryStatus");
+    }
+
+    @Test
     void queryLifecycleEndpointsBindTheDocumentedQueryRequest() throws Exception {
         JsonNode document = document();
 

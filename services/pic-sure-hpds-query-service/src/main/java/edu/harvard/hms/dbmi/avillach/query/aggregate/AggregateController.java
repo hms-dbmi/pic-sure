@@ -7,9 +7,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -28,6 +28,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * intercepted. The open-path read endpoints ({@code /query/{id}/status}, {@code /result}, {@code /signed-url}, {@code /metadata}) are left
  * to the generic controller: the async submit stores the rewritten, consent-scoped query through {@code QueryService}, so those reads
  * already operate on the safe stored query and re-implementing them here would only shadow the generic mappings.
+ *
+ * <p>Both bodies bind {@link HpdsQueryRequest}, the same v3 request the generic controller binds, and hand its typed query to
+ * {@link AggregateService}.
  */
 @RestController
 @RequestMapping("/hpds/open")
@@ -44,24 +47,26 @@ public class AggregateController {
     @PostMapping(value = "/query/sync", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Run an open aggregate query inline")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "400", description = "Missing query data or an unsupported result type"),
-            @ApiResponse(responseCode = "502", description = "Aggregate backend call failed")}
+        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(
+            responseCode = "400",
+            description = "Missing query data, a result type the open path does not serve, or a body that cannot be read as a query request"
+        ), @ApiResponse(responseCode = "502", description = "Aggregate backend call failed")}
     )
-    public ResponseEntity<String> querySync(@RequestBody QueryRequest req) {
-        return service.querySync(req);
+    public ResponseEntity<String> querySync(@RequestBody HpdsQueryRequest req) {
+        return service.querySync(req.query());
     }
 
     @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
     @Operation(summary = "Submit an open aggregate query")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Missing query data"),
+        {@ApiResponse(responseCode = "200", description = "OK"),
+            @ApiResponse(responseCode = "400", description = "Missing query data, or a body that cannot be read as a query request"),
             @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
-    public QueryStatus query(@RequestBody QueryRequest req) {
-        return service.query(req);
+    public QueryStatus query(@RequestBody HpdsQueryRequest req) {
+        return service.query(req.query());
     }
 }

@@ -29,7 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
@@ -81,7 +81,7 @@ class AggregateControllerTest {
 
     @Test
     void openQuerySyncOnTheUnversionedPathRoutesToAggregateServiceAndReturnsResult() throws Exception {
-        when(aggregateService.querySync(any(QueryRequest.class)))
+        when(aggregateService.querySync(any(Query.class)))
             .thenReturn(ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body("{}"));
 
         mockMvc
@@ -90,7 +90,7 @@ class AggregateControllerTest {
                     .content("{\"query\":{\"expectedResultType\":\"CROSS_COUNT\"}}")
             ).andExpect(status().isOk()).andExpect(content().string("{}"));
 
-        verify(aggregateService).querySync(any(QueryRequest.class));
+        verify(aggregateService).querySync(any(Query.class));
         verifyNoInteractions(operationsClient);
         hpds.verify(0, WireMock.postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/sync")));
     }
@@ -126,7 +126,7 @@ class AggregateControllerTest {
 
     @Test
     void openQuerySyncOnTheUnversionedPathUpstreamErrorSurfacesAs502() throws Exception {
-        when(aggregateService.querySync(any(QueryRequest.class)))
+        when(aggregateService.querySync(any(Query.class)))
             .thenThrow(new HpdsCommunicationException("Aggregate query/sync call failed", new RuntimeException("boom")));
 
         mockMvc
