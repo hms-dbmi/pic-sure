@@ -21,28 +21,32 @@ import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.BufferingFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.PsamaIntrospectionFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.TokenRefreshResponseFilter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code OpenAccessFilter}(20) -&gt;
- * {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt; {@code IdentityPropagationFilter}(50). The audit
- * filter (60) is wired in {@code AuditFilterConfig}. No datasource or JPA is used. {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring
- * Security itself stays permit-all because the introspection filter above enforces the authentication boundary.
+ * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code McpCallerFilter}(17) -&gt; {@code OpenAccessFilter}(20)
+ * -&gt; {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt; {@code IdentityPropagationFilter}(50). The
+ * audit filter (60) is wired in {@code AuditFilterConfig}. No datasource or JPA is used. {@link PsamaClient} talks to PSAMA over HTTP. <p>
+ * Spring Security itself stays permit-all because the introspection filter above enforces the authentication boundary.
  *
- * <p><b>Always registered:</b> all five filters are installed unconditionally. The shared {@link PublicEndpointPolicy} defines the
+ * <p><b>Always registered:</b> all six filters are installed unconditionally. The shared {@link PublicEndpointPolicy} defines the
  * intentional public-route bypasses used by both authentication filters; all other routes traverse the normal auth chain.
  */
 @Configuration
-@EnableConfigurationProperties(GatewaySecurityProperties.class)
+@EnableConfigurationProperties({GatewaySecurityProperties.class, McpProperties.class})
 public class SecurityConfig {
 
     // PSAMA introspection runs synchronously inside the request path, so bounded connect and read timeouts prevent a hung upstream from
     // tying up a Tomcat worker indefinitely.
     static final Duration AUTH_CONNECT_TIMEOUT = Duration.ofSeconds(2);
     static final Duration AUTH_READ_TIMEOUT = Duration.ofSeconds(10);
+
+    /** Order of {@link McpCallerFilter}: after the internal-endpoint guard (15), before open access (20). */
+    static final int MCP_CALLER_FILTER_ORDER = 17;
 
     static final ClientHttpRequestFactorySettings AUTH_REQUEST_FACTORY_SETTINGS =
         ClientHttpRequestFactorySettings.defaults().withConnectTimeout(AUTH_CONNECT_TIMEOUT).withReadTimeout(AUTH_READ_TIMEOUT);
@@ -89,6 +93,23 @@ public class SecurityConfig {
     FilterRegistrationBean<BufferingFilter> bufferingFilter(GatewaySecurityProperties props, MeterRegistry meterRegistry) {
         var r = new FilterRegistrationBean<>(new BufferingFilter(props.maxBodyBytes(), meterRegistry));
         r.setOrder(10);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    /**
+     * Registers {@link McpCallerFilter} after {@code InternalEndpointGuardFilter} (15) and before {@code OpenAccessFilter} (20), so an
+     * invalid MCP credential is rejected before PSAMA is called and the header is read before {@code InboundIdentityHeaderSanitizingFilter}
+     * (25) runs.
+     *
+     * @param audit the request-scoped audit metadata holder
+     * @param props the configured MCP service secrets
+     * @return the registration at {@link #MCP_CALLER_FILTER_ORDER}
+     */
+    @Bean
+    FilterRegistrationBean<McpCallerFilter> mcpCallerFilter(AuditContext audit, McpProperties props) {
+        var r = new FilterRegistrationBean<>(new McpCallerFilter(audit, props.serviceToken(), props.previousServiceToken()));
+        r.setOrder(MCP_CALLER_FILTER_ORDER);
         r.addUrlPatterns("/*");
         return r;
     }

@@ -19,6 +19,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import jakarta.servlet.FilterChain;
 
 class AuditLoggingFilterTest {
 
@@ -162,6 +163,64 @@ class AuditLoggingFilterTest {
         assertThat(eventCaptor.getValue().getCaller()).isNull();
     }
 
+    @Test
+    void withVerifiedCallerOnlyOffTheRawXClientTypeHeaderIsStillTheCaller() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), false);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "MCP_SERVER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("MCP_SERVER");
+        assertThat(eventCaptor.getValue().getMetadata()).isNull();
+    }
+
+    @Test
+    void withVerifiedCallerOnlyOnAndNoVerifiedCallerTheHeaderIsOnlyRecordedAsAClaim() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), true);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "MCP_SERVER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isNull();
+        assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "MCP_SERVER");
+    }
+
+    @Test
+    void withVerifiedCallerOnlyOnACallerSetByALaterFilterIsRecorded() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), true);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+        FilterChain chainThatVerifiesTheCaller = (req, res) -> VerifiedCaller.set(req, "MCP_SERVER");
+
+        filter.doFilter(request, response, chainThatVerifiesTheCaller);
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("MCP_SERVER");
+        assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "PYTHON_ADAPTER");
+    }
+
     void srcIpIsTheRightmostXffEntrySoAClientSuppliedLeadingEntryIsNeverUsed() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
@@ -212,5 +271,51 @@ class AuditLoggingFilterTest {
 
         verify(client, never()).send(any(LoggingEvent.class));
         verify(client, never()).send(any(LoggingEvent.class), any(), any());
+    }
+
+    private final AuditRouteTable routedPaths = new AuditRouteTable(
+        List.of(
+            new AuditRoute(Pattern.compile("^(?:/[a-z0-9-]+)+?/query/?$"), "POST", "QUERY", "query.submitted"),
+            new AuditRoute(Pattern.compile("^/mcp$"), "POST", "OTHER", "mcp.request")
+        )
+    );
+
+    private LoggingEvent emittedFor(String rawPath) throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routedPaths, new AuditContext(), List.of(), true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(new MockHttpServletRequest("POST", rawPath), response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        return eventCaptor.getValue();
+    }
+
+    @Test
+    void anEncodedMcpSpellingMatchesTheRouteItsDecodedPathMatches() throws Exception {
+        LoggingEvent event = emittedFor("/%6Dcp");
+
+        assertThat(event.getAction()).isEqualTo("mcp.request");
+        assertThat(event.getRequest().getUrl()).isEqualTo("/%6Dcp");
+    }
+
+    @Test
+    void anEncodedHpdsSpellingMatchesTheQueryRouteItsDecodedPathMatches() throws Exception {
+        LoggingEvent event = emittedFor("/%68pds/auth/%71uery");
+
+        assertThat(event.getEventType()).isEqualTo("QUERY");
+        assertThat(event.getAction()).isEqualTo("query.submitted");
+        assertThat(event.getRequest().getUrl()).isEqualTo("/%68pds/auth/%71uery");
+    }
+
+    @Test
+    void anEncodedPercentIsDecodedOnceAndNeverAgain() throws Exception {
+        LoggingEvent event = emittedFor("/%256Dcp");
+
+        assertThat(event.getEventType()).isEqualTo("OTHER");
+        assertThat(event.getAction()).isEqualTo("POST");
     }
 }

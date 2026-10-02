@@ -25,4 +25,19 @@ class AggregateAuditRouteTest {
         assertThat(r.get().getEventType()).isEqualTo("QUERY");
         assertThat(r.get().getAction()).isEqualTo("query.sync");
     }
+
+    @Test
+    void mcpPostMapsToMcpRequest() {
+        Optional<AuditRoute> r = config.auditRouteTable().match("/mcp", "POST");
+
+        assertThat(r).isPresent();
+        assertThat(r.get().getEventType()).isEqualTo("OTHER");
+        assertThat(r.get().getAction()).isEqualTo("mcp.request");
+    }
+
+    @Test
+    void mcpIsAuditedOnlyForPostOnTheExactPath() {
+        assertThat(config.auditRouteTable().match("/mcp", "GET")).isEmpty();
+        assertThat(config.auditRouteTable().match("/mcp/", "POST")).isEmpty();
+    }
 }
