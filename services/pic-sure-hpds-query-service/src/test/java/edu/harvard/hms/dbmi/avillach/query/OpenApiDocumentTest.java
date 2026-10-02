@@ -72,6 +72,23 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "SignedUrlResponse", "signedUrl");
     }
 
+    @Test
+    void searchBindsTheDocumentedSearchRequestAndValuesTakesNoBody() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", SEARCH, "SearchRequest");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "SearchRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", SEARCH, "200", "SearchResults");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "SearchResults", "results", "searchQuery");
+        assertThat(operation(document, "get", VALUES).has("requestBody")).isFalse();
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", VALUES, "200", "PaginatedSearchResultString");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "PaginatedSearchResultString", "results", "page", "total");
+        assertThat(
+            document.path("components").path("schemas").path("PaginatedSearchResultString").path("properties").path("results").path("items")
+                .path("type").asText()
+        ).isEqualTo("string");
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());

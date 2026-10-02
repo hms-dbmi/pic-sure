@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
@@ -38,6 +39,7 @@ public class ResourceWebClient {
 
     /** HPDS response header containing query metadata. */
     public static final String QUERY_METADATA_FIELD = "queryMetadata";
+    private static final ParameterizedTypeReference<PaginatedSearchResult<String>> VALUES_PAGE = new ParameterizedTypeReference<>() {};
 
     private final RestClient http;
 
@@ -124,14 +126,23 @@ public class ResourceWebClient {
         }
     }
 
-    public PaginatedSearchResult<?> searchConceptValues(
-        String base, QueryRequest req, String conceptPath, String query, Integer page, Integer size
-    ) {
+    /**
+     * Pages through the values of a genomic concept on HPDS.
+     *
+     * @param base the backend's API base URL
+     * @param conceptPath the genomic concept whose values are listed
+     * @param query text the values must contain
+     * @param page the one-based page number, or null to leave it off the downstream call
+     * @param size the page size, or null to leave it off the downstream call
+     * @return one page of matching values, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
+    public PaginatedSearchResult<String> searchConceptValues(String base, String conceptPath, String query, Integer page, Integer size) {
         try {
             URI uri = UriComponentsBuilder.fromUriString(base + "/search/values/").queryParam("genomicConceptPath", conceptPath)
                 .queryParam("query", query).queryParamIfPresent("page", Optional.ofNullable(page))
                 .queryParamIfPresent("size", Optional.ofNullable(size)).encode().build().toUri();
-            return http.get().uri(uri).retrieve().body(PaginatedSearchResult.class);
+            return http.get().uri(uri).retrieve().body(VALUES_PAGE);
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS search/values call failed: " + base, e);
         }

@@ -11,6 +11,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -126,6 +127,47 @@ class HpdsSearchControllerTest {
         ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
 
         hpds.verify(1, getRequestedFor(urlPathEqualTo("/AUTH/v3/search/values/")));
+    }
+
+    @Test
+    void searchSendsHpdsTheTermInTheSameEnvelopeAndIgnoresOtherMembers() throws Exception {
+        hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/v3/search")).willReturn(okJson("{\"results\":{},\"searchQuery\":\"age\"}")));
+
+        mockMvc.perform(
+            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"resourceUUID\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"query\":\"age\"}")
+        ).andExpect(status().isOk()).andExpect(content().string("{\"results\":{},\"searchQuery\":\"age\"}"));
+
+        hpds.verify(
+            postRequestedFor(urlEqualTo("/AUTH/v3/search"))
+                .withRequestBody(equalTo("{\"@type\":\"GeneralQueryRequest\",\"query\":\"age\",\"resourceUUID\":null}"))
+        );
+    }
+
+    @Test
+    void searchWithATermThatIsNotTextIs400() throws Exception {
+        mockMvc.perform(
+            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":{\"expectedResultType\":\"COUNT\"}}")
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
+
+        hpds.verify(0, postRequestedFor(urlEqualTo("/AUTH/v3/search")));
+    }
+
+    @Test
+    void valuesBodyIsByteIdenticalToWhatHpdsSentAndARequestBodyIsStillAccepted() throws Exception {
+        String fromHpds = "{\"results\":[\"APOB\",\"APOE\"],\"page\":1,\"total\":2}";
+        hpds.stubFor(WireMock.get(urlPathEqualTo("/AUTH/v3/search/values/")).willReturn(okJson(fromHpds)));
+
+        mockMvc.perform(
+            get("/hpds/auth/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .param("genomicConceptPath", "Gene_with_variant").param("query", "APO").param("page", "1").param("size", "20")
+        ).andExpect(status().isOk()).andExpect(content().string(fromHpds));
+        mockMvc.perform(
+            get("/hpds/auth/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .param("genomicConceptPath", "Gene_with_variant").param("query", "APO").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"ignored\"}")
+        ).andExpect(status().isOk()).andExpect(content().string(fromHpds));
     }
 
     @Test

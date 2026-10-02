@@ -4,7 +4,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
@@ -32,16 +31,33 @@ public class SearchService {
         this.selector = selector;
     }
 
-    public SearchResults search(String backend, QueryRequest req) {
+    /**
+     * Searches concepts on a backend. HPDS receives the term inside the outbound envelope built by {@link SearchRequest#toOutbound()}.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param req the search request
+     * @return the concepts and variant annotations HPDS matched
+     * @throws PicsureException 400 when {@code req} is null or the backend is unknown, 503 when the backend is not configured
+     */
+    public SearchResults search(String backend, SearchRequest req) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing search data");
         }
-        return hpds.search(selector.select(backend).baseUrl(), req);
+        return hpds.search(selector.select(backend).baseUrl(), req.toOutbound());
     }
 
-    public PaginatedSearchResult<?> searchConceptValues(
-        String backend, QueryRequest req, String conceptPath, String query, Integer page, Integer size
-    ) {
-        return hpds.searchConceptValues(selector.select(backend).baseUrl(), req, conceptPath, query, page, size);
+    /**
+     * Pages through the values of a genomic concept on a backend.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param conceptPath the genomic concept whose values are listed
+     * @param query text the values must contain
+     * @param page the one-based page number, or null
+     * @param size the page size, or null
+     * @return one page of matching values
+     * @throws PicsureException 400 when the backend is unknown, 503 when it is not configured
+     */
+    public PaginatedSearchResult<String> searchConceptValues(String backend, String conceptPath, String query, Integer page, Integer size) {
+        return hpds.searchConceptValues(selector.select(backend).baseUrl(), conceptPath, query, page, size);
     }
 }
