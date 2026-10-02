@@ -93,6 +93,8 @@ class OpenApiDocumentTest {
         JsonNode document = document();
 
         OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/configuration", "200", "ConfigurationDto");
+        assertThat(document.at("/paths/~1configuration/get/parameters/0/name").asText()).isEqualTo("kind");
+        assertThat(document.at("/paths/~1configuration/get/parameters/0/in").asText()).isEqualTo("query");
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/configuration/{identifier}", "200", "ConfigurationDto");
         OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/configuration/admin", "ConfigurationRequestDto");
         OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/configuration/admin", "200", "ConfigurationDto");
