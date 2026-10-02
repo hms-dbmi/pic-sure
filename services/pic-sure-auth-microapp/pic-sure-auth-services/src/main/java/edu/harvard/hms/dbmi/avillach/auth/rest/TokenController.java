@@ -1,11 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.InvalidRefreshToken;
-import edu.harvard.hms.dbmi.avillach.auth.model.RefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.ValidRefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.TokenInspectionRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.RefreshedTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.TokenInspectionResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TokenService;
@@ -19,6 +20,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -99,22 +101,20 @@ public class TokenController {
     @ApiResponse(responseCode = "401", description = "The token's session has ended, expired, or been replaced by a newer login")
     @AuditEvent(type = "ACCESS", action = "token.refresh")
     @GetMapping(path = "/refresh", produces = "application/json")
-    public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request) {
-        RefreshToken refreshTokenResp = this.tokenService.refreshToken(authorizationHeader);
-
-        if (refreshTokenResp instanceof InvalidRefreshToken invalidRefreshToken) {
-            AuditAttributes.putMetadata(request, "token_refresh_result", "failure");
-            AuditAttributes.putMetadata(request, "token_refresh_error", invalidRefreshToken.error());
-            return PICSUREResponse.protocolError(invalidRefreshToken.error());
-        }
-
-        if (refreshTokenResp instanceof ValidRefreshToken validRefreshToken) {
-            AuditAttributes.putMetadata(request, "token_refresh_result", "success");
-            return PICSUREResponse
-                .success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
-        }
-
-        return PICSUREResponse.success();
+    public ResponseEntity<RefreshedTokenResponse> refreshToken(
+        @RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request
+    ) {
+        return switch (this.tokenService.refreshToken(authorizationHeader)) {
+            case InvalidRefreshToken invalidRefreshToken -> {
+                AuditAttributes.putMetadata(request, "token_refresh_result", "failure");
+                AuditAttributes.putMetadata(request, "token_refresh_error", invalidRefreshToken.error());
+                throw new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", invalidRefreshToken.error());
+            }
+            case ValidRefreshToken validRefreshToken -> {
+                AuditAttributes.putMetadata(request, "token_refresh_result", "success");
+                yield PICSUREResponse.success(RefreshedTokenResponse.from(validRefreshToken));
+            }
+        };
     }
 
 }

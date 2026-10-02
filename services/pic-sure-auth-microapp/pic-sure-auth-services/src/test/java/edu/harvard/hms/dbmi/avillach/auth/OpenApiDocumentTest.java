@@ -290,12 +290,15 @@ class OpenApiDocumentTest {
 
         OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/token/inspect", "TokenInspectionRequest");
         OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/token/inspect", "200", "TokenInspectionResponse");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/token/refresh", "200", "RefreshedTokenResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "RefreshedTokenResponse", "token", "expirationDate");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "TokenInspectionRequest", "token", "request");
         OpenApiDocumentAssertions.assertSchemaHasFields(
             document, "TokenInspectionResponse", "active", "uuid", "sub", "email", "roles", "privileges", "tokenRefreshed", "token",
             "message"
         );
-        OpenApiDocumentAssertions.assertSchemaDocumented(document, "TokenInspectionRequest", "TokenInspectionResponse");
+        OpenApiDocumentAssertions
+            .assertSchemaDocumented(document, "TokenInspectionRequest", "TokenInspectionResponse", "RefreshedTokenResponse");
         JsonNode inspection = document.path("components").path("schemas").path("TokenInspectionResponse").path("properties");
         assertThat(inspection.has("claims")).as("the other claims are written beside the members, not under a claims key").isFalse();
         JsonNode request = document.path("components").path("schemas").path("TokenInspectionRequest").path("properties").path("request");

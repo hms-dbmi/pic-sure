@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -22,6 +23,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import edu.harvard.hms.dbmi.avillach.auth.model.InvalidRefreshToken;
+import edu.harvard.hms.dbmi.avillach.auth.model.ValidRefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TokenService;
 
 /**
@@ -31,6 +34,9 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.TokenService;
  *
  * <p>The success bodies are compared as JSON trees rather than as text, each tree parsed from the text the service's mapper writes so that
  * a number compares by value. The service builds a {@code HashMap}, whose iteration order is not part of any contract.</p>
+ *
+ * <p>{@code GET /token/refresh} writes the two members of a valid refresh and answers 400 in the {@code {message, content}} body for an
+ * invalid one; its body was a {@code Map.of}, whose order changes between JVM runs, so it too compares as a tree.</p>
  */
 class TokenControllerTest {
 
@@ -137,5 +143,25 @@ class TokenControllerTest {
         assertThat(List.of("iat", "exp")).allSatisfy(claim -> assertThat(tree.path(claim).isIntegralNumber()).isTrue());
         assertThat(tree.path("roles").asText()).isEqualTo("PIC-SURE Top Admin,MANAGED_phs000007_c1");
         assertThat(tree.has("claims")).isFalse();
+    }
+
+    @Test
+    void aValidRefreshWritesTheTokenAndItsExpiry() throws Exception {
+        when(tokenService.refreshToken("Bearer signed-session-token"))
+            .thenReturn(new ValidRefreshToken("refreshed-token", "2026-09-30T15:05:00Z"));
+
+        String body = mockMvc.perform(get("/token/refresh").header("Authorization", "Bearer signed-session-token")).andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+        assertThat(tree(body)).isEqualTo(wire(Map.of("token", "refreshed-token", "expirationDate", "2026-09-30T15:05:00Z")));
+        assertThat(body).isEqualTo("{\"token\":\"refreshed-token\",\"expirationDate\":\"2026-09-30T15:05:00Z\"}");
+    }
+
+    @Test
+    void anInvalidRefreshIs400InTheErrorEnvelope() throws Exception {
+        when(tokenService.refreshToken("Bearer signed-session-token")).thenReturn(new InvalidRefreshToken("User has been deactivated."));
+
+        mockMvc.perform(get("/token/refresh").header("Authorization", "Bearer signed-session-token")).andExpect(status().isBadRequest())
+            .andExpect(content().string("{\"message\":\"Invalid request\",\"content\":\"User has been deactivated.\"}"));
     }
 }
