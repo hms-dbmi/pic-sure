@@ -1,0 +1,10 @@
+{
+  "properties": [
+    {
+      "name": "picsure.operations.internal-token",
+      "type": "java.lang.String",
+      "description": "Shared secret that InternalTokenFilter requires on the X-PIC-SURE-INTERNAL-TOKEN header for every /internal/** request. Maps from the QUERY_SERVICE_INTERNAL_TOKEN environment variable. Fail-closed: when blank, every /internal/** request is rejected with 403, even one carrying a header value.",
+      "defaultValue": ""
+    }
+  ]
+}
