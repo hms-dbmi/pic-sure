@@ -12,6 +12,8 @@ The OpenAPI document publishes each guard's authorities as "Required authorities
 
 `path-variables-in-template` checks request routing in every module with a controller. Each `@PathVariable` that names its variable, as `@PathVariable("userId")` or `@PathVariable(name = "userId")`, must appear as `{userId}` or `{userId:regex}` in at least one path the handler maps, counting every combination of the class-level `@RequestMapping` paths with the method's mapping paths. A variable no path declares is never bound, and Spring answers every request to that handler with a 500. Fix it by adding the segment to the mapping or by binding the value some other way. A `@PathVariable` with no explicit name is skipped, because its name comes from the compiled parameter name, which the checker cannot read; the reactor's `-parameters` flag and `DashboardDrawerControllerParameterNameTest` cover those.
 
+`no-entity-parameters` covers every module. No controller handler parameter may be, or contain, a class annotated `@Entity`. The check follows generic arguments at any depth, array component types and `Optional`, so `List<Role>`, `Map<String, List<User>>`, `User[]` and `Optional<User>` all fail, and it applies to every parameter, not only `@RequestBody`. A class counts as an entity by its annotation, not its package, so `User.UserForDisplay` passes. Fields are not followed: a request record with an entity-typed field passes. A bound entity lets a caller set any column Jackson can reach. To satisfy it, bind a request record that lists only the fields the endpoint accepts, and map it onto the entity in the service.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -48,6 +50,10 @@ Audit labels, over every compiled module:
 Request mappings, over every compiled module:
 
 - `path-variables-in-template`: every `@PathVariable` that names its variable appears as `{name}` in at least one path its handler maps.
+
+Persistence, over every compiled module:
+
+- `no-entity-parameters`: no controller handler parameter is, or contains, a class annotated `@Entity`.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
