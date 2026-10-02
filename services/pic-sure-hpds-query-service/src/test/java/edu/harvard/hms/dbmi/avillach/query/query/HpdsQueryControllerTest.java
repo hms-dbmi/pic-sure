@@ -330,10 +330,9 @@ class HpdsQueryControllerTest {
 
     // --- ?isInstitute=true is gone: federated/GIC queries are no longer supported ---
     //
-    // The guard must stay until at least one release after removal. Jackson's defaultImpl silently
-    // reinterprets a {"@type":"FederatedQueryRequest"} body as a GeneralQueryRequest, so isInstitute
-    // is the ONLY remaining signal that a caller intended a federated submission. Without this guard
-    // such a caller gets a 200 for a query stripped of its federation. Do not delete as dead code.
+    // The guard must stay until at least one release after removal. HpdsQueryRequest ignores @type and any other
+    // unknown member, so a {"@type":"FederatedQueryRequest"} body binds as an ordinary query and isInstitute is the
+    // ONLY remaining signal of federated intent. Do not delete as dead code.
 
     @Test
     void isInstituteIsGoneOnTheUnversionedPath() throws Exception {
