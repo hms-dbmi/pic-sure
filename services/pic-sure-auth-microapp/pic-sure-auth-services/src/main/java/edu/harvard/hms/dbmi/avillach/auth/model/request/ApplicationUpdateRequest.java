@@ -30,7 +30,9 @@ public record ApplicationUpdateRequest(
     ) @NotNull UUID uuid, @Schema(description = "New unique name of the application.", example = "PICSURE") String name,
     @Schema(description = "New free-text description of the application.", example = "The PIC-SURE API application") String description,
     @Schema(description = "New URL the application is served from.", example = "/picsureui") String url,
-    @Schema(description = "Whether the application may authenticate.") Boolean enable,
+    @Schema(
+        description = "Whether the application is enabled. Stored and returned; nothing in the auth service enforces it."
+    ) Boolean enable,
     @Schema(
         description = "Existing privileges the application should own, each named by UUID. When present, it replaces the stored set."
     ) @Valid Set<EntityIdRef> privileges

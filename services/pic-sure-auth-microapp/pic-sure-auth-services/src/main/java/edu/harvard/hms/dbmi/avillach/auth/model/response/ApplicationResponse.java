@@ -35,7 +35,10 @@ public record ApplicationResponse(
     @Schema(
         description = "URL the application is served from. Absent on the application nested in a privilege.", example = "/picsureui"
     ) String url,
-    @Schema(description = "Whether the application may authenticate.", requiredMode = Schema.RequiredMode.REQUIRED) boolean enable,
+    @Schema(
+        description = "Whether the application is enabled. Stored and returned; nothing in the auth service enforces it.",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    ) boolean enable,
     @Schema(
         description = "Privileges the application owns. Present only in the create, update and delete responses, and only when the "
             + "application owns at least one."
