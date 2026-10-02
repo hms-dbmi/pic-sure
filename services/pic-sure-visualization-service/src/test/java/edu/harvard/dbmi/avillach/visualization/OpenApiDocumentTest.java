@@ -30,6 +30,8 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
 @ActiveProfiles("test")
 class OpenApiDocumentTest {
 
+    private static final String SCHEMA_REF_PREFIX = "#/components/schemas/";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -51,5 +53,36 @@ class OpenApiDocumentTest {
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         OpenApiDocumentAssertions.assertCovers(document, handlerMapping);
+    }
+
+    @Test
+    void binningHandlerExchangesTypedRecords() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/bin/continuous", "ContinuousBinningRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/bin/continuous", "200", "ContinuousBinningResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ContinuousBinningResponse", "bins");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "ContinuousBinningResponse");
+        assertThat(
+            schema(document, "ContinuousBinningResponse").path("properties").path("bins").path("additionalProperties")
+                .path("additionalProperties").path("type").asText()
+        ).isEqualTo("integer");
+    }
+
+    @Test
+    void binningV3RouteExchangesTheSameRecords() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/v3/bin/continuous", "ContinuousBinningRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/v3/bin/continuous", "200", "ContinuousBinningResponse");
+    }
+
+    private JsonNode document() throws Exception {
+        return objectMapper
+            .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    private static JsonNode schema(JsonNode document, String name) {
+        return document.path("components").path("schemas").path(name);
     }
 }
