@@ -256,6 +256,18 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertSchemaDocumented(document, "CacheContents");
     }
 
+    @Test
+    void adminRequestRecordsAreDocumented() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document, "EntityIdRef", "ConnectionRef", "AccessRuleCreateRequest", "AccessRuleUpdateRequest", "ApplicationCreateRequest",
+            "ApplicationUpdateRequest", "ConnectionCreateRequest", "ConnectionUpdateRequest", "PrivilegeCreateRequest",
+            "PrivilegeUpdateRequest", "RoleCreateRequest", "RoleUpdateRequest", "UserCreateRequest", "UserUpdateRequest",
+            "UserMetadataMappingCreateRequest", "UserMetadataMappingUpdateRequest"
+        );
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }
