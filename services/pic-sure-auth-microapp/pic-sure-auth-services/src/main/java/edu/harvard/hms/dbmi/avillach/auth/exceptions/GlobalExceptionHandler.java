@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.exceptions;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.PicSureResponseBody;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -83,6 +84,24 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<?> handleNotAuthorized(NotAuthorizedException ex) {
         logger.warn("Not authorized: {}", ex.getMessage());
         return PICSUREResponse.error(HttpStatus.UNAUTHORIZED, "Authorization failed", ex.getMessage());
+    }
+
+    /**
+     * Writes the response a controller chose by throwing {@link PicSureResponseException}: its status, with its message and content as this
+     * service's error body. A 5xx is logged as an error and anything else as a warning. Only the message is logged, because the content can
+     * name a value the client sent.
+     *
+     * @param ex the exception a handler threw in place of an error response
+     * @return the response with the exception's status and body
+     */
+    @ExceptionHandler(PicSureResponseException.class)
+    public ResponseEntity<PicSureResponseBody<String>> handlePicSureResponse(PicSureResponseException ex) {
+        if (ex.getStatus().is5xxServerError()) {
+            logger.error("Request failed with {}: {}", ex.getStatus().value(), ex.getMessage());
+        } else {
+            logger.warn("Request rejected with {}: {}", ex.getStatus().value(), ex.getMessage());
+        }
+        return PICSUREResponse.error(ex.getStatus(), ex.getMessage(), ex.getContent());
     }
 
     /**
