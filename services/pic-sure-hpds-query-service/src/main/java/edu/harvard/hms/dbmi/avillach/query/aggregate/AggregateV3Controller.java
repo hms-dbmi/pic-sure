@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -37,6 +38,7 @@ public class AggregateV3Controller {
         this.service = service;
     }
 
+    @AuditEvent(type = "QUERY", action = "query.sync")
     @PostMapping(value = "/query/sync", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Run an open aggregate query inline, v3 shape")
     @ApiResponses(
@@ -48,6 +50,7 @@ public class AggregateV3Controller {
         return service.querySync(req, AggregateVariant.V3);
     }
 
+    @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
     @Operation(summary = "Submit an open aggregate query, v3 shape")
     @ApiResponses(
