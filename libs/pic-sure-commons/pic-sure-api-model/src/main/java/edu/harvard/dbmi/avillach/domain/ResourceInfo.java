@@ -15,10 +15,13 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ResourceInfo {
 
-    @Schema(description = "The UUID of the resource.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6")
+    @Schema(
+        description = "The UUID of the resource.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    )
     private UUID id;
 
-    @Schema(description = "The name of the resource.", example = "hpds")
+    @Schema(description = "The name of the resource.", example = "hpds", requiredMode = Schema.RequiredMode.REQUIRED)
     private String name;
 
     @Schema(description = "The query formats supported by the resource.")

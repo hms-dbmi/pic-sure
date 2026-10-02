@@ -8,7 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "Where a query stands and how to fetch its result")
 public class QueryStatus {
 
-    @Schema(description = "Where the query stands")
+    @Schema(description = "Where the query stands", requiredMode = Schema.RequiredMode.REQUIRED)
     private PicSureStatus status;
 
     /**
@@ -22,7 +22,7 @@ public class QueryStatus {
 
     @Schema(
         description = "The id PIC-SURE assigned to the query. The status, result, signed-url and metadata endpoints take it",
-        example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"
+        example = "8694e3d4-5cb4-410f-8431-993445e6d3f6", requiredMode = Schema.RequiredMode.REQUIRED
     )
     private UUID picsureResultId;
 

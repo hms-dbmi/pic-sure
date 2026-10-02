@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.openapi;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -13,6 +14,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -83,5 +87,20 @@ class SharedModelSchemaConventionTest {
         OpenApiDocumentAssertions.assertSchemaDocumented(
             document, "Query", "AuthorizationFilter", "GenomicFilter", "PhenotypicClause", "PhenotypicFilter", "PhenotypicSubquery"
         );
+    }
+
+    @Test
+    void requiredMembersAreListed() {
+        assertRequired("QueryStatus", "status", "picsureResultId");
+        assertRequired("PaginatedSearchResultString", "results", "page", "total");
+        assertRequired("SignedUrlResponse", "signedUrl");
+        assertRequired("ResourceInfo", "id", "name");
+        assertRequired("Query", "expectedResultType");
+    }
+
+    private void assertRequired(String schemaName, String... members) {
+        List<String> required = new ArrayList<>();
+        document.path("components").path("schemas").path(schemaName).path("required").forEach(node -> required.add(node.asText()));
+        assertThat(required).as(schemaName + ".required").containsExactlyInAnyOrder(members);
     }
 }

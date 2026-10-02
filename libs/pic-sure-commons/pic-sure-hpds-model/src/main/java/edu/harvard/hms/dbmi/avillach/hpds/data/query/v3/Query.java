@@ -18,7 +18,9 @@ public record Query(
     ) List<AuthorizationFilter> authorizationFilters,
     @Schema(description = "An object specifying phenotypic filters") PhenotypicClause phenotypicClause,
     @Schema(description = "A list of genomic filters") List<GenomicFilter> genomicFilters,
-    @Schema(description = "An object specifying the result type") ResultType expectedResultType,
+    @Schema(
+        description = "An object specifying the result type", requiredMode = Schema.RequiredMode.REQUIRED
+    ) ResultType expectedResultType,
     @Schema(
         description = "An externally passed UUID to assign to this query", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"
     ) UUID picsureId,
