@@ -73,4 +73,18 @@ class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         assertNull(captor.getValue().getCaller());
     }
+
+    @Test
+    void unlabeledRequestFallsBackToUnlabeledEventType() throws Exception {
+        MockHttpServletRequest request = mockRequest();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertEquals("UNLABELED", captor.getValue().getEventType());
+        assertEquals("get", captor.getValue().getAction());
+    }
 }
