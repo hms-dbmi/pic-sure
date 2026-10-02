@@ -38,8 +38,6 @@ import java.util.List;
 @RequestMapping("/role")
 public class RoleController {
 
-    private static final String INVALID_REQUEST = "Invalid request";
-
     private final RoleService roleService;
 
     @Autowired
@@ -57,7 +55,7 @@ public class RoleController {
         @Parameter(description = "The UUID of the Role to fetch information about") @PathVariable("roleId") String roleId
     ) {
         Role role = this.roleService.getRoleById(roleId).orElseThrow(
-            () -> new PicSureResponseException(HttpStatus.BAD_REQUEST, INVALID_REQUEST, "Role is not found by given role ID: " + roleId)
+            () -> new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "Role is not found by given role ID: " + roleId)
         );
         return PICSUREResponse.success(RoleResponse.from(role));
     }
@@ -98,7 +96,7 @@ public class RoleController {
         AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
         List<Role> updatedRoles = this.roleService.updateFrom(roles);
         if (updatedRoles.isEmpty()) {
-            throw new PicSureResponseException(HttpStatus.BAD_REQUEST, INVALID_REQUEST, "No Role(s) has been updated.");
+            throw new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "No Role(s) has been updated.");
         }
 
         return PICSUREResponse.success("All Roles are updated.", RoleResponse.fromAll(updatedRoles));
@@ -120,7 +118,7 @@ public class RoleController {
     ) {
         AuditAttributes.putMetadata(request, "role_id", roleId);
         List<Role> remainingRoles = this.roleService.removeRoleById(roleId)
-            .orElseThrow(() -> new PicSureResponseException(HttpStatus.BAD_REQUEST, INVALID_REQUEST, "Role not found - uuid: " + roleId));
+            .orElseThrow(() -> new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "Role not found - uuid: " + roleId));
 
         return PICSUREResponse.success(
             MessageFormat.format("Successfully deleted role by id: {0}, listing rest of the role(s) as below", roleId),

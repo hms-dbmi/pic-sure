@@ -136,7 +136,7 @@ public class ApplicationController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(value = "/{applicationId}")
     public ResponseEntity<List<ApplicationResponse>> removeById(
-        @Parameter(required = true, description = "A valid accessRule Id") @PathVariable("applicationId") final String applicationId,
+        @Parameter(required = true, description = "A valid application uuid") @PathVariable("applicationId") final String applicationId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "app_id", applicationId);

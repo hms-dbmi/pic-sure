@@ -41,14 +41,16 @@ public class ConnectionWebController {
         this.connectionWebService = connectionWebSerivce;
     }
 
-    @Operation(summary = "Read one connection", description = "GET information of one Connection with the UUID")
+    @Operation(
+        summary = "Read one connection", description = "Read one connection by its business id, the same value GET /connection lists as id"
+    )
     @ApiResponse(responseCode = "200", description = "The connection")
-    @ApiResponse(responseCode = "400", description = "No connection with that UUID")
+    @ApiResponse(responseCode = "400", description = "No connection with that id")
     @AuditEvent(type = "OTHER", action = "connection.read")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'ADMIN')")
     public ResponseEntity<ConnectionResponse> getConnectionById(
-        @Parameter(required = true, description = "The UUID of the Connection to fetch information about") @PathVariable(
+        @Parameter(required = true, description = "The business id of the connection, not its uuid") @PathVariable(
             "connectionId"
         ) String connectionId
     ) {

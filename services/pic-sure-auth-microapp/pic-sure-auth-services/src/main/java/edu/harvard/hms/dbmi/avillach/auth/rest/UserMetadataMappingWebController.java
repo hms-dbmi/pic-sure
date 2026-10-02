@@ -36,8 +36,6 @@ import java.util.List;
 @RequestMapping("/mapping")
 public class UserMetadataMappingWebController {
 
-    private static final String APPLICATION_ERROR = "Application error";
-
     private final UserMetadataMappingService mappingService;
 
     @Autowired
@@ -82,7 +80,7 @@ public class UserMetadataMappingWebController {
         try {
             userMetadataMappings = mappingService.createFrom(mappings);
         } catch (IllegalArgumentException e) {
-            throw new PicSureResponseException(HttpStatus.INTERNAL_SERVER_ERROR, APPLICATION_ERROR, e.getMessage());
+            throw new PicSureResponseException(HttpStatus.INTERNAL_SERVER_ERROR, "Application error", e.getMessage());
         }
         return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(userMetadataMappings));
     }
@@ -105,7 +103,7 @@ public class UserMetadataMappingWebController {
 
         if (userMetadataMappings == null || userMetadataMappings.isEmpty()) {
             throw new PicSureResponseException(
-                HttpStatus.INTERNAL_SERVER_ERROR, APPLICATION_ERROR, "No UserMetadataMapping found with the given Ids"
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "No UserMetadataMapping found with the given Ids"
             );
         }
         return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(userMetadataMappings));

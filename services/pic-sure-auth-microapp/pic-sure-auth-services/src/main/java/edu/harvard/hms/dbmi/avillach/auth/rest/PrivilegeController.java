@@ -1,9 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.PrivilegeCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.PrivilegeUpdateRequest;
-import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PrivilegeResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.PrivilegeService;
