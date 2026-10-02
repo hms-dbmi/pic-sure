@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
@@ -88,5 +89,41 @@ public class UserControllerTest {
         mockMvc.perform(get("/user/me/consents")).andExpect(status().isInternalServerError())
             .andExpect(jsonPath("$.message").value("Application error"))
             .andExpect(jsonPath("$.content").value("Inner application error, please contact admin."));
+    }
+
+    @Test
+    public void longTermTokenRefreshIsTheOneEntryMapJson() throws Exception {
+        when(userService.refreshUserToken(any(HttpHeaders.class))).thenReturn(Map.of("userLongTermToken", "new-long-term-token"));
+
+        mockMvc.perform(get("/user/me/refresh_long_term_token").header("Authorization", "Bearer session-token")).andExpect(status().isOk())
+            .andExpect(content().string(FrozenWire.MAPPER.writeValueAsString(Map.of("userLongTermToken", "new-long-term-token"))))
+            .andExpect(content().string("{\"userLongTermToken\":\"new-long-term-token\"}"));
+    }
+
+    @Test
+    public void longTermTokenRefreshWithoutACallerIs500InTheErrorEnvelope() throws Exception {
+        when(userService.refreshUserToken(any(HttpHeaders.class))).thenReturn(null);
+
+        mockMvc.perform(get("/user/me/refresh_long_term_token").header("Authorization", "Bearer session-token"))
+            .andExpect(status().isInternalServerError()).andExpect(content().string(ERROR_BODY));
+    }
+
+    @Test
+    public void consentsAreTheEntityJson() throws Exception {
+        UserConsents stored = new UserConsents().setUserId(UUID.randomUUID())
+            .setConsents(Map.of("\\_consents\\", new LinkedHashSet<>(List.of("phs000007.c1", "phs000007.c2"))));
+        stored.setUuid(UUID.randomUUID());
+        when(userService.getUserConsents()).thenReturn(stored);
+
+        mockMvc.perform(get("/user/me/consents")).andExpect(status().isOk()).andExpect(content().string(FrozenWire.json(stored)));
+    }
+
+    @Test
+    public void aUserWithoutStoredConsentsGetsANullUuidAndAnEmptyMap() throws Exception {
+        UserConsents none = new UserConsents().setUserId(UUID.fromString("8694e3d4-5cb4-410f-8431-993445e6d3f6")).setConsents(Map.of());
+        when(userService.getUserConsents()).thenReturn(none);
+
+        mockMvc.perform(get("/user/me/consents")).andExpect(status().isOk()).andExpect(content().string(FrozenWire.json(none)))
+            .andExpect(content().string("{\"uuid\":null,\"userId\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"consents\":{}}"));
     }
 }

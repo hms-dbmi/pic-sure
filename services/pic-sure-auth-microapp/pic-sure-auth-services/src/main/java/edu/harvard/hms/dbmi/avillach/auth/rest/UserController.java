@@ -4,7 +4,9 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserConsentsResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.UserForDisplay;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.UserResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
@@ -148,8 +150,7 @@ public class UserController {
     }
 
     /**
-     * For the long term token, current logic is, every time a user hit this endpoint /me with the query parameter ?hasToken presented, it
-     * will refresh the long term token.
+     * Issues the caller a new long-term token and returns it. The previous long-term token stops working.
      *
      * @param httpHeaders the http headers
      * @return the refreshed long term token
@@ -158,28 +159,32 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "A new long term token for the caller")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
-    public ResponseEntity<?> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
+    public ResponseEntity<LongTermTokenResponse> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "token_type", "long_term");
-        Map<String, String> stringStringMap = this.userService.refreshUserToken(httpHeaders);
-        if (stringStringMap != null) {
-            return PICSUREResponse.success(stringStringMap);
+        Map<String, String> refreshed = this.userService.refreshUserToken(httpHeaders);
+        if (refreshed == null) {
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "Inner application error, please contact admin."
+            );
         }
 
-        return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        return PICSUREResponse.success(new LongTermTokenResponse(refreshed.get("userLongTermToken")));
     }
 
     @Operation(summary = "The caller's consents", description = "Retrieve consents of current user")
     @ApiResponse(responseCode = "200", description = "The caller's consents")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
-    public ResponseEntity<?> getUserConsents() {
+    public ResponseEntity<UserConsentsResponse> getUserConsents() {
         UserConsents userConsents = this.userService.getUserConsents();
 
         if (userConsents == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "Inner application error, please contact admin."
+            );
         }
 
-        return PICSUREResponse.success(userConsents);
+        return PICSUREResponse.success(UserConsentsResponse.from(userConsents));
     }
 
 }
