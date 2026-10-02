@@ -66,4 +66,52 @@ class OpenApiDocumentTest {
             .isEqualTo("Required authorities: SUPER_ADMIN.");
         assertThat(paths.path("/configuration").path("get").path("description").isMissingNode()).isTrue();
     }
+
+    @Test
+    void namedDatasetOperationsPublishTheirSchemas() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/dataset/named", "200", "NamedDatasetDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/dataset/named", "NamedDatasetRequestDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/dataset/named", "201", "NamedDatasetDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/dataset/named/{id}", "200", "NamedDatasetDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "put", "/dataset/named/{id}", "NamedDatasetRequestDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "put", "/dataset/named/{id}", "200", "NamedDatasetDto");
+        OpenApiDocumentAssertions.assertNoResponseBody(document, "delete", "/dataset/named/{id}", "204");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "NamedDatasetDto", "uuid", "user", "name", "query", "archived", "metadata");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "NamedDatasetQueryDto", "uuid", "query", "startTime", "status");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "NamedDatasetRequestDto", "queryId", "name", "archived", "metadata");
+        assertThat(document.at("/components/schemas/NamedDatasetDto/properties/query/$ref").asText())
+            .isEqualTo("#/components/schemas/NamedDatasetQueryDto");
+        assertThat(document.at("/components/schemas/NamedDatasetQueryDto/properties/query/type").asText()).isEqualTo("string");
+        assertThat(document.at("/components/schemas/NamedDatasetQueryDto/properties/startTime/type").asText()).isEqualTo("integer");
+    }
+
+    @Test
+    void configurationOperationsPublishTheirSchemas() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/configuration", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/configuration/{identifier}", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/configuration/admin", "ConfigurationRequestDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/configuration/admin", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "patch", "/configuration/admin/{id}", "ConfigurationRequestDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "patch", "/configuration/admin/{id}", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "delete", "/configuration/admin/{id}", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ConfigurationDto", "uuid", "name", "kind", "value", "description");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ConfigurationRequestDto", "name", "kind", "value", "description");
+    }
+
+    @Test
+    void namedDatasetAndConfigurationModelsAreDocumented() throws Exception {
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document(), "NamedDatasetDto", "NamedDatasetQueryDto", "NamedDatasetRequestDto", "ConfigurationDto", "ConfigurationRequestDto"
+        );
+    }
+
+    private JsonNode document() throws Exception {
+        return objectMapper
+            .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
 }
