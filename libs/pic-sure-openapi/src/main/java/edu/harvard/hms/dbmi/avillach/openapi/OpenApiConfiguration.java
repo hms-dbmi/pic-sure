@@ -5,6 +5,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.info.ProjectInfoAutoConfiguration;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.context.annotation.Bean;
@@ -70,6 +71,7 @@ public class OpenApiConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "springdoc.api-docs.enabled", matchIfMissing = true)
     public EnumConstantDescriptionConverter enumConstantDescriptionConverter(ObjectMapperProvider objectMapperProvider) {
         return new EnumConstantDescriptionConverter(objectMapperProvider);
     }
@@ -81,6 +83,7 @@ public class OpenApiConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "springdoc.api-docs.enabled", matchIfMissing = true)
     public EnumDescriptionCustomizer enumDescriptionCustomizer() {
         return new EnumDescriptionCustomizer();
     }
