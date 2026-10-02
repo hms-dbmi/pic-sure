@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,6 +85,31 @@ class OpenApiDocumentTest {
                     .doesNotContainIgnoringCase("role restrictions")
             )
         );
+    }
+
+    @Test
+    void adminWritesDocumentTheirRequestRecords() throws Exception {
+        JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
+        Map<String, String> records = Map.ofEntries(
+            Map.entry("/user post", "UserCreateRequest"), Map.entry("/user put", "UserUpdateRequest"),
+            Map.entry("/role post", "RoleCreateRequest"), Map.entry("/role put", "RoleUpdateRequest"),
+            Map.entry("/privilege post", "PrivilegeCreateRequest"), Map.entry("/privilege put", "PrivilegeUpdateRequest"),
+            Map.entry("/connection post", "ConnectionCreateRequest"), Map.entry("/connection put", "ConnectionUpdateRequest"),
+            Map.entry("/mapping post", "UserMetadataMappingCreateRequest"), Map.entry("/mapping put", "UserMetadataMappingUpdateRequest"),
+            Map.entry("/accessRule post", "AccessRuleCreateRequest"), Map.entry("/accessRule put", "AccessRuleUpdateRequest"),
+            Map.entry("/application post", "ApplicationCreateRequest"), Map.entry("/application put", "ApplicationUpdateRequest")
+        );
+
+        records.forEach((operation, record) -> {
+            String[] pathAndMethod = operation.split(" ");
+            JsonNode body = document.path("paths").path(pathAndMethod[0]).path(pathAndMethod[1]).path("requestBody").path("content")
+                .path(MediaType.APPLICATION_JSON_VALUE).path("schema");
+            assertThat(body.path("items").path("$ref").asText()).as(operation).isEqualTo("#/components/schemas/" + record);
+        });
+        JsonNode userUpdate = document.path("components").path("schemas").path("UserUpdateRequest").path("properties");
+        assertThat(userUpdate.has("email")).isTrue();
+        List<String> loginOwned = List.of("subject", "token", "passport", "acceptedTOS", "matched", "auth0metadata");
+        loginOwned.forEach(field -> assertThat(userUpdate.has(field)).as("UserUpdateRequest must not document %s", field).isFalse());
     }
 
     @Test

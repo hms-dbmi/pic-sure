@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.ConnectionCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.ConnectionUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ConnectionWebService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -11,6 +13,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -73,12 +77,14 @@ public class ConnectionWebController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<?> addConnection(
-        @Parameter(required = true, description = "A list of Connections in JSON format") @RequestBody List<Connection> connections,
-        HttpServletRequest request
+        @Parameter(
+            required = true, description = "The connections to create; the server generates each identifier"
+        ) @RequestBody List<@NotNull @Valid ConnectionCreateRequest> connectionRequests, HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connections.size()));
+        AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connectionRequests.size()));
+        List<Connection> connections;
         try {
-            connections = connectionWebService.addConnection(connections);
+            connections = connectionWebService.createFrom(connectionRequests);
         } catch (IllegalArgumentException e) {
             return PICSUREResponse.protocolError(e.getMessage());
         }
@@ -96,11 +102,11 @@ public class ConnectionWebController {
     @PutMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<List<Connection>> updateConnection(
         @Parameter(
-            required = true, description = "A list of Connection with fields to be updated in JSON format"
-        ) @RequestBody List<Connection> connections, HttpServletRequest request
+            required = true, description = "The connections to update, each named by UUID; a field left out keeps its stored value"
+        ) @RequestBody List<@NotNull @Valid ConnectionUpdateRequest> connections, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connections.size()));
-        List<Connection> responseEntity = connectionWebService.updateConnections(connections);
+        List<Connection> responseEntity = connectionWebService.updateFrom(connections);
         return ResponseEntity.ok(responseEntity);
     }
 

@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -12,6 +14,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -70,11 +74,12 @@ public class RoleController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addRole(
-        @Parameter(required = true, description = "A list of Roles in JSON format") @RequestBody List<Role> roles,
-        HttpServletRequest request
+        @Parameter(
+            required = true, description = "The roles to create, each naming its privileges by UUID"
+        ) @RequestBody List<@NotNull @Valid RoleCreateRequest> roles, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
-        List<Role> savedRoles = this.roleService.addRoles(roles);
+        List<Role> savedRoles = this.roleService.createFrom(roles);
         return PICSUREResponse.success("All roles are added.", savedRoles);
     }
 
@@ -87,11 +92,12 @@ public class RoleController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(produces = "application/json")
     public ResponseEntity<?> updateRole(
-        @Parameter(required = true, description = "A list of Roles with fields to be updated in JSON format") @RequestBody List<Role> roles,
-        HttpServletRequest request
+        @Parameter(
+            required = true, description = "The roles to update, each named by UUID; a field left out keeps its stored value"
+        ) @RequestBody List<@NotNull @Valid RoleUpdateRequest> roles, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
-        List<Role> updatedRoles = this.roleService.updateRoles(roles);
+        List<Role> updatedRoles = this.roleService.updateFrom(roles);
         if (updatedRoles.isEmpty()) {
             return PICSUREResponse.protocolError("No Role(s) has been updated.");
         }
