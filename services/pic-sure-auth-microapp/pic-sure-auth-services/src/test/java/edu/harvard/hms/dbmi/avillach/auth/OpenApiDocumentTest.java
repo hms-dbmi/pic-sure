@@ -246,6 +246,16 @@ class OpenApiDocumentTest {
             .forEach(entity -> assertThat(schemas.has(entity)).as("the document must not describe the %s entity", entity).isFalse());
     }
 
+    @Test
+    void cacheEndpointsDocumentTheirShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertBareArrayOfScalar(document, "get", "/cache", "200", "string");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/cache/{cacheName}", "200", "CacheContents");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "CacheContents", "name", "entries");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "CacheContents");
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }

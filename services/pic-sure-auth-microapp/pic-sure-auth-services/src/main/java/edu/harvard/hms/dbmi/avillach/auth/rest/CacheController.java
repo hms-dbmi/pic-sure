@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.CacheContents;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,7 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Collection;
+import java.util.List;
 
 @Tag(name = "Cache", description = "Cache inspection, enabled only when app.cache.inspect.enabled is true")
 @RestController
@@ -34,22 +35,22 @@ public class CacheController {
     @AuditEvent(type = "OTHER", action = "cache.list")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping
-    public Collection<String> getCacheNames() {
-        return cacheManager.getCacheNames();
+    public List<String> getCacheNames() {
+        return List.copyOf(cacheManager.getCacheNames());
     }
 
     @Operation(summary = "Dump one cache")
-    @ApiResponse(responseCode = "200", description = "The cache's native contents")
+    @ApiResponse(responseCode = "200", description = "The cache's name and its entries")
     @AuditEvent(type = "OTHER", action = "cache.read")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping("/{cacheName}")
-    public Object getCache(@PathVariable("cacheName") String cacheName) {
+    public CacheContents getCache(@PathVariable("cacheName") String cacheName) {
         Cache cache = cacheManager.getCache(cacheName);
         if (cache == null) {
             throw new IllegalArgumentException("Cache not found: " + cacheName);
         }
 
-        return cache.getNativeCache();
+        return CacheContents.of(cacheName, cache.getNativeCache());
     }
 
 

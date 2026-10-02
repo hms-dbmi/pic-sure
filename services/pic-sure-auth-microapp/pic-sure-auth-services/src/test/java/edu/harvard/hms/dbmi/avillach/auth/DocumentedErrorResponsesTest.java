@@ -29,6 +29,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -357,7 +358,7 @@ class DocumentedErrorResponsesTest {
         void unknownCacheNameReturnsANewEmptyCache() throws Exception {
             cacheInspectionMockMvc
                 .perform(anonymous(HttpMethod.GET, "/cache/{name}", "nope").with(holding(AuthNaming.AuthRoleNaming.SUPER_ADMIN)))
-                .andExpect(status().isOk()).andExpect(content().json("{}"));
+                .andExpect(status().isOk()).andExpect(content().json("{\"name\":\"nope\",\"entries\":{}}", JsonCompareMode.STRICT));
         }
 
         @Test
