@@ -329,4 +329,18 @@ class OpenApiDocumentTest {
         JsonNode consents = document.path("components").path("schemas").path("UserConsentsResponse").path("properties").path("consents");
         assertThat(consents.path("additionalProperties").path("type").asText()).isEqualTo("array");
     }
+
+    @Test
+    void openAccessValidationDocumentsTheGatewayShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/open/validate", "OpenAccessValidationRequest");
+        OpenApiDocumentAssertions.assertMediaType(document, "post", "/open/validate", "200", "application/json", "boolean");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "OpenAccessValidationRequest", "apiKey", "ipAddress", "request");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "OpenAccessValidationRequest");
+        JsonNode request =
+            document.path("components").path("schemas").path("OpenAccessValidationRequest").path("properties").path("request");
+        assertThat(request.path("type").asText()).as("the request description documents as a free-form object").isEqualTo("object");
+        assertThat(document.path("paths").path("/open/validate").properties()).extracting(Map.Entry::getKey).containsExactly("post");
+    }
 }

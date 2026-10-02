@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.TokenInspectionRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
@@ -11,7 +12,6 @@ import org.springframework.http.HttpHeaders;
 
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Map;
 
 class ControllerAuditEventTest {
 
@@ -145,8 +145,10 @@ class ControllerAuditEventTest {
     @Test
     void openAccessController() throws Exception {
         Class<?> c = OpenAccessController.class;
-        // validate(Map<String, Object> inputMap, HttpServletRequest request)
-        assertAuditEvent(c, "validate", new Class[] {Map.class, HttpServletRequest.class}, "ACCESS", "open.validate");
+        // validate(OpenAccessValidationRequest validation, HttpServletRequest request)
+        assertAuditEvent(
+            c, "validate", new Class[] {OpenAccessValidationRequest.class, HttpServletRequest.class}, "ACCESS", "open.validate"
+        );
     }
 
     @Test
