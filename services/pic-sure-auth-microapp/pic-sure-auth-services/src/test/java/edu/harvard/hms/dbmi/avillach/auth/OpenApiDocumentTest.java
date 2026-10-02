@@ -28,8 +28,8 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
  * The live document is served unauthenticated, names this service, carries the bearer scheme, and covers every visible handler with a
  * summarised operation. An endpoint cannot vanish from the document, and the annotation pass cannot skip one, without failing here. This is
  * also PSAMA's first test to boot the full application context: an in-memory H2 schema stands in for MySQL, and {@code NON_KEYWORDS}
- * excuses the columns Hibernate would otherwise refuse because H2 reserves their names. Required authorities appear in a description only as
- * the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose. The cache inspection controller is
+ * excuses the columns Hibernate would otherwise refuse because H2 reserves their names. Required authorities appear in a description only
+ * as the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose. The cache inspection controller is
  * switched on so its operations are covered too.
  */
 @SpringBootTest(
@@ -73,7 +73,8 @@ class OpenApiDocumentTest {
         JsonNode paths =
             objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString()).path("paths");
 
-        assertThat(description(paths, "/user", "get")).isEqualTo("GET a list of existing users\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
+        assertThat(description(paths, "/user", "get"))
+            .isEqualTo("GET a list of existing users\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         assertThat(description(paths, "/accessRule", "post")).isEqualTo("POST a list of AccessRules\n\nRequired authorities: SUPER_ADMIN.");
         assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users\n\nRequired authorities: ADMIN.");
         assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user");
@@ -129,6 +130,27 @@ class OpenApiDocumentTest {
         List<JsonNode> schemas = new ArrayList<>();
         paths.path(path).path("get").path("responses").path("200").path("content").forEach(media -> schemas.add(media.path("schema")));
         return schemas;
+    }
+
+    @Test
+    void connectionEndpointsDocumentTheirFrozenShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/connection/{connectionId}", "200", "ConnectionResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/connection", "200", "ConnectionResponse");
+        OpenApiDocumentAssertions.assertEnvelope(document, "post", "/connection", "200", "ConnectionResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/connection", "200", "ConnectionResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/connection/{connectionId}", "200", "ConnectionResponse");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "ConnectionResponse", "uuid", "id", "label", "subPrefix", "requiredFields");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "ConnectionResponse", "PicSureResponseBodyListConnectionResponse");
+        JsonNode requiredFields =
+            document.path("components").path("schemas").path("ConnectionResponse").path("properties").path("requiredFields");
+        assertThat(requiredFields.path("type").asText()).isEqualTo("string");
+    }
+
+    private JsonNode document() throws Exception {
+        return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }
 
     private static String description(JsonNode paths, String path, String method) {

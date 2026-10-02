@@ -286,7 +286,8 @@ class DocumentedErrorResponsesTest {
     @Test
     void unknownConnectionIs400() throws Exception {
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/connection/{id}", "no-such-connection")).andExpect(status().isBadRequest())
-            .andExpect(content().string("Connection with id no-such-connection not found"));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Connection with id no-such-connection not found"));
     }
 
     @Test

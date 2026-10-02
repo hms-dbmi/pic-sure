@@ -222,7 +222,8 @@ class AdminFormPayloadTest {
             json.createObjectNode().put("id", id).put("label", "Form " + suffix).put("requiredFields", "[]").put("subPrefix", id + "|");
 
         mockMvc.perform(asAdmin(HttpMethod.POST, "/connection").content(json.createArrayNode().add(created).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$.message").value("All connections are added."))
+            .andExpect(jsonPath("$.content[0].id").value(id)).andExpect(jsonPath("$.content[0].uuid").isString());
 
         Connection stored = connectionRepository.findById(id).orElseThrow();
 
@@ -231,7 +232,9 @@ class AdminFormPayloadTest {
         edited.put("uuid", stored.getUuid().toString());
 
         mockMvc.perform(asAdmin(HttpMethod.PUT, "/connection").content(json.createArrayNode().add(edited).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].uuid").value(stored.getUuid().toString()))
+            .andExpect(jsonPath("$[0].label").value("Edited " + suffix))
+            .andExpect(jsonPath("$[0].requiredFields").value("[{\"label\":\"Email\",\"id\":\"email\"}]"));
 
         Connection saved = connectionRepository.findById(id).orElseThrow();
         assertThat(saved.getLabel()).isEqualTo("Edited " + suffix);
