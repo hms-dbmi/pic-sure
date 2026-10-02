@@ -271,6 +271,16 @@ class HpdsQueryControllerTest {
         verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
     }
 
+    @Test
+    void malformedJsonIs400() throws Exception {
+        mockMvc
+            .perform(
+                post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"query\":")
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
+            .andExpect(jsonPath("$.message").value("Malformed request body"));
+    }
+
     // --- upstream failures surface as 502, not 200/500 ---
 
     @Test
