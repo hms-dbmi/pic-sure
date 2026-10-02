@@ -22,7 +22,8 @@ public record PhenotypicFilter(
     @Schema(
         description = "Maximum value to filter for a given `conceptPath`. Cannot be combined with `values`", example = "85",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED
-    ) Double max, @Schema(description = "When true, the filter matches patients who do not satisfy it") Boolean not
+    ) Double max,
+    @Schema(description = "Accepted but not applied today. A filter is never negated, which matches the subquery's `not`.") Boolean not
 ) implements PhenotypicClause {
 
     @JsonIgnore

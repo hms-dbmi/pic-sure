@@ -4,7 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Set;
 
-@Schema(description = "A filter the server adds to keep a query inside the data the caller may see")
+@Schema(
+    description = "A consent filter. On the authorized backend the server builds these from the caller's consents and replaces whatever the client sent; on the open backend they are not used."
+)
 public record AuthorizationFilter(
     @Schema(description = "A concept path this filter must match", example = "\\_consents\\") String conceptPath,
     @Schema(
