@@ -10,6 +10,8 @@ The OpenAPI document publishes each guard's authorities as "Required authorities
 
 `path-variables-in-template` checks request routing in every module with a controller. Each `@PathVariable` that names its variable, as `@PathVariable("userId")` or `@PathVariable(name = "userId")`, must appear as `{userId}` or `{userId:regex}` in at least one path the handler maps, counting every combination of the class-level `@RequestMapping` paths with the method's mapping paths. A variable no path declares is never bound, and Spring answers every request to that handler with a 500. Fix it by adding the segment to the mapping or by binding the value some other way. A `@PathVariable` with no explicit name is skipped, because its name comes from the compiled parameter name, which the checker cannot read; the reactor's `-parameters` flag and `DashboardDrawerControllerParameterNameTest` cover those.
 
+The configuration rules read every `@Value` in every module, on fields, methods, constructor parameters and method parameters. Spring injects a malformed placeholder as literal text instead of failing at startup, so `@Value("${mail.subject")` hands the code the string `${mail.subject`. `value-strings-well-formed` parses each string the way Spring does: placeholders first, even inside an expression, each ending at the brace that balances its opening, with the key ending at the first top-level colon. It fails a placeholder or expression that is never closed, a closing brace left over, an empty `#{}`, and a key that is blank, built from another placeholder, or uses characters other than letters, digits, `.`, `-`, `_` and `[]`. `value-keys-declared` fails any key a module reads, defaults and nested keys included, that the module's `src/main/resources/META-INF/additional-spring-configuration-metadata.json` does not declare. Spring would resolve the key either way. The rule exists so each module keeps one list of every setting it reads, with its type and what it does, and so IDEs can complete and document those keys in properties files. Keys a `spring-boot-configuration-processor` run generates into `META-INF/spring-configuration-metadata.json` count as declared too. `property-metadata-complete` fails an entry in the hand-written file with no name, type or description, and a name declared twice. To add a setting, add the `@Value` and an entry such as `{"name": "mail.subject", "type": "java.lang.String", "description": "Subject line of the access-grant email."}`, with a `defaultValue` when the `@Value` carries one.
+
 `entity-enums-stored-by-name` covers persistence in every module. A field whose type is an enum, in a class annotated `@Entity`, `@MappedSuperclass` or `@Embeddable`, must carry `@Enumerated(EnumType.STRING)` or `@Convert(converter = ...)`. A bare field and a bare `@Enumerated` both store the constant's ordinal, so reordering or adding a constant remaps existing rows, and a stored ordinal the enum does not define fails every read of that row. Static, `transient` and `@Transient` fields are skipped. The rule reads field annotations only, and it does not recognise a converter registered with `autoApply = true`, so name the converter on the field. An enum compiled in another module still counts as an enum. An enum from outside the reactor counts only when the checker's test classpath has it: JDK and `jakarta.persistence` enums do, but a Hibernate, Spring or other third-party enum does not, so a bare field of that type passes unchecked.
 
 ## Rules
@@ -44,6 +46,12 @@ Audit labels, over every compiled module:
 Request mappings, over every compiled module:
 
 - `path-variables-in-template`: every `@PathVariable` that names its variable appears as `{name}` in at least one path its handler maps.
+
+Configuration, over every compiled module:
+
+- `value-strings-well-formed`: every `@Value` string closes each placeholder and expression, leaves no brace over, and names a plain key in each placeholder.
+- `value-keys-declared`: every key a module's `@Value` strings read is declared in that module's configuration metadata.
+- `property-metadata-complete`: every entry in `additional-spring-configuration-metadata.json` has a name, a type and a description, and no name repeats.
 
 Persistence, over every compiled module:
 
