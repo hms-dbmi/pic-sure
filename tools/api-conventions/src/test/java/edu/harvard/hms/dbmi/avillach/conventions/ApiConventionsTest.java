@@ -22,11 +22,13 @@ class ApiConventionsTest {
 
     private static ModuleRegistry registry;
     private static Map<String, JavaClasses> modules;
+    private static Path reactorRoot;
 
     @BeforeAll
     static void importReactor() {
         registry = ModuleRegistry.load();
-        modules = ReactorModules.discover(Path.of(System.getProperty("reactor.root")));
+        reactorRoot = Path.of(System.getProperty("reactor.root"));
+        modules = ReactorModules.discover(reactorRoot);
     }
 
     @Test
@@ -103,6 +105,28 @@ class ApiConventionsTest {
     @Test
     void everyNamedPathVariableAppearsInAMappedPath() {
         report("path-variables-in-template", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
+    }
+
+    @Test
+    void everyValueStringIsWellFormed() {
+        report("value-strings-well-formed", overAllModules(ConfigurationRules::valueStringsAreWellFormed));
+    }
+
+    @Test
+    void everyValueKeyIsDeclared() {
+        report(
+            "value-keys-declared",
+            overAllModules((module, classes) -> ConfigurationRules.valueKeysAreDeclared(module, classes, metadata(module).declared()))
+        );
+    }
+
+    @Test
+    void everyPropertyMetadataFileIsComplete() {
+        report("property-metadata-complete", overAllModules((module, classes) -> ConfigurationRules.metadataIsComplete(module, metadata(module))));
+    }
+
+    private static PropertyMetadata metadata(String module) {
+        return PropertyMetadata.load(reactorRoot.resolve(module).resolve("target/classes"));
     }
 
     private static List<String> overAllModules(Rule rule) {
