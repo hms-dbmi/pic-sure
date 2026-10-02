@@ -20,13 +20,13 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * carries {@code Authorization: Bearer <HPDS_OPEN_TOKEN>} and builds a fresh request body that carries only the inbound query. Neither the
  * caller's resource UUID nor a configured target resource id reaches the downstream body, because no downstream endpoint reads that field.
  *
- * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list),
- * {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup) and {@link #binContinuous} (visualization binning). The
- * async query-lifecycle calls ({@code /query}, {@code /query/{id}/status}, {@code /query/{id}/result}, {@code /query/format},
- * {@code /info}) are NOT proxied through this client: the open async submit is routed through {@code QueryService} (DB-free persistence +
- * dispatch, see {@link AggregateService#query}), and every subsequent read op is served by the v3 read ingress
- * ({@code /hpds/{backend}/v3/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller}) off the stored (already
- * consent-scoped) query.
+ * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list)
+ * and {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup), both under HPDS's configured API path
+ * ({@code HPDS_API_PATH}, {@code /v3} by default), and {@link #binContinuous} (visualization binning). The async query-lifecycle calls
+ * ({@code /query}, {@code /query/{id}/status}, {@code /query/{id}/result}, {@code /query/format}, {@code /info}) are NOT proxied through
+ * this client: the open async submit is routed through {@code QueryService} (DB-free persistence + dispatch, see
+ * {@link AggregateService#query}), and every subsequent read op is served by the read ingress ({@code /hpds/{backend}/...},
+ * {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryController}) off the stored (already consent-scoped) query.
  *
  * <p>Non-2xx responses and I/O failures surface as {@link HpdsCommunicationException} (mapped to 502 by
  * {@code edu.harvard.hms.dbmi.avillach.query.error.GlobalExceptionHandler}), mirroring {@code ResourceWebClient}'s error-handling
@@ -53,9 +53,9 @@ public class AggregateBackendClient {
         return postJson(openUrl("/search"), chain(req), SearchResults.class);
     }
 
-    /** Raw body + propagated queryMetadata header. */
-    public ResponseEntity<String> querySync(QueryRequest req, AggregateVariant variant) {
-        String uri = openUrl(variant.downstreamVersionPrefix + "/query/sync");
+    /** HPDS {@code {api path}/query/sync}: raw body + propagated queryMetadata header. */
+    public ResponseEntity<String> querySync(QueryRequest req) {
+        String uri = openUrl("/query/sync");
         try {
             return post(uri, chain(req)).retrieve().toEntity(String.class);
         } catch (RestClientException e) {
@@ -63,9 +63,9 @@ public class AggregateBackendClient {
         }
     }
 
-    /** Visualization /bin/continuous (v3 prepends /v3). */
-    public String binContinuous(QueryRequest vizRequest, AggregateVariant variant) {
-        String uri = props.getVisualizationUrl() + variant.downstreamVersionPrefix + "/bin/continuous";
+    /** Visualization {@code /bin/continuous}. */
+    public String binContinuous(QueryRequest vizRequest) {
+        String uri = props.getVisualizationUrl() + "/bin/continuous";
         try {
             return withAuth(http.post().uri(uri).contentType(MediaType.APPLICATION_JSON)).body(vizRequest).retrieve().body(String.class);
         } catch (RestClientException e) {
@@ -85,7 +85,8 @@ public class AggregateBackendClient {
     }
 
     private String openUrl(String path) {
-        return props.getHpdsOpenUrl() + path;
+        String apiPath = props.getHpdsApiPath() == null ? "" : props.getHpdsApiPath();
+        return props.getHpdsOpenUrl() + apiPath + path;
     }
 
     private RestClient.RequestBodySpec post(String absoluteUrl, QueryRequest body) {

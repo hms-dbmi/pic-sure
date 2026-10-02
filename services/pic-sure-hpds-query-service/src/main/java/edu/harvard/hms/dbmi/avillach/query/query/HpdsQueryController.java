@@ -25,18 +25,19 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * The sole HPDS query lifecycle ingress: {@code /hpds/{backend}/v3/query/**}. {@code {backend}} is {@code auth} or {@code open}, validated
- * downstream by {@link QueryService} through {@code HpdsBackendSelector}. New queries are stored as version {@code "3"}; read operations
- * dispatch to HPDS using the stored query version so v1 rows remain retrievable.
+ * The sole HPDS query lifecycle ingress: {@code /hpds/{backend}/query/**}. {@code {backend}} is {@code auth} or {@code open}, validated
+ * downstream by {@link QueryService} through {@code HpdsBackendSelector}. Every query runs on HPDS v3 and is stored as version {@code "3"}.
+ * A status, result, or signed-url read of a row stored before v3 first upgrades that row in place (translated, re-scoped by the caller's
+ * consents, and re-run), and answers 422 when the stored query cannot be translated.
  */
 @RestController
-@RequestMapping("/hpds/{backend}/v3")
+@RequestMapping("/hpds/{backend}")
 @Tag(name = "Queries", description = "Run, poll, and fetch HPDS queries on the auth or open backend")
-public class HpdsQueryV3Controller {
+public class HpdsQueryController {
 
     private final QueryService service;
 
-    public HpdsQueryV3Controller(QueryService service) {
+    public HpdsQueryController(QueryService service) {
         this.service = service;
     }
 
@@ -58,7 +59,7 @@ public class HpdsQueryV3Controller {
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
         rejectInstitutionalQuery(isInstitute);
-        return service.queryV3(backend, req, authorizationHeader);
+        return service.query(backend, req, authorizationHeader);
     }
 
     @AuditEvent(type = "QUERY", action = "query.sync")
@@ -85,13 +86,18 @@ public class HpdsQueryV3Controller {
     @Operation(summary = "Status of a submitted query")
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
+            @ApiResponse(responseCode = "403", description = "Consent does not permit re-running a query stored before v3"),
             @ApiResponse(responseCode = "404", description = "Unknown query id"),
-            @ApiResponse(responseCode = "502", description = "Query lookup, HPDS call, or status update failed"),
+            @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3"),
+            @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, HPDS call, or status update failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
-    public QueryStatus status(@PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req) {
-        return service.queryStatus(backend, id, req);
+    public QueryStatus status(
+        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req,
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) {
+        return service.queryStatus(backend, id, req, authorizationHeader);
     }
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
@@ -101,6 +107,7 @@ public class HpdsQueryV3Controller {
         {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
             @ApiResponse(responseCode = "404", description = "Unknown query id"),
+            @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3"),
             @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
@@ -119,6 +126,7 @@ public class HpdsQueryV3Controller {
         {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result"),
             @ApiResponse(responseCode = "404", description = "Unknown query id"),
+            @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3"),
             @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed"),
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}

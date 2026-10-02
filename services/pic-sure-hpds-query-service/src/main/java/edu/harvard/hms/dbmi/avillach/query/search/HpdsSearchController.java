@@ -17,9 +17,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * Exposes search under both v1 and v3 ingress prefixes for each {@code {backend}} because HPDS search itself is not versioned.
- * {@link SearchService} always resolves the backend's base URL without a version suffix. Supported paths are
- * {@code /hpds/{backend}[/v3]/search} and {@code /hpds/{backend}[/v3]/search/values}.
+ * Exposes search for each {@code {backend}} at {@code /hpds/{backend}/search} and {@code /hpds/{backend}/search/values}, routing through
+ * {@link SearchService} to the API base URL ({@code HPDS_API_PATH} appended) of that backend's own HPDS instance.
  */
 @RestController
 @Tag(name = "Search", description = "Concept search and value lookup on an HPDS backend")
@@ -32,7 +31,7 @@ public class HpdsSearchController {
     }
 
     @AuditEvent(type = "SEARCH", action = "search.execute")
-    @PostMapping({"/hpds/{backend}/search", "/hpds/{backend}/v3/search"})
+    @PostMapping("/hpds/{backend}/search")
     @Operation(summary = "Search concepts on a backend")
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "OK"),
@@ -45,7 +44,7 @@ public class HpdsSearchController {
     }
 
     @AuditEvent(type = "SEARCH", action = "search.values")
-    @GetMapping(value = {"/hpds/{backend}/search/values", "/hpds/{backend}/v3/search/values"}, consumes = "*/*")
+    @GetMapping(value = "/hpds/{backend}/search/values", consumes = "*/*")
     @Operation(summary = "Page through the values of a concept")
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
