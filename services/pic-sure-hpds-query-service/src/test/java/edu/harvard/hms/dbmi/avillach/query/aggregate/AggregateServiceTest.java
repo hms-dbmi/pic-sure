@@ -24,6 +24,7 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
+import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 
 class AggregateServiceTest {
@@ -197,7 +198,7 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
-        when(backend.binContinuous(any(), eq(AggregateVariant.V1))).thenReturn("{\"\\\\age\\\\\":{\"0-10\":100}}");
+        when(backend.binContinuous(any(), eq(AggregateVariant.V1))).thenReturn("{\"bins\":{\"\\\\age\\\\\":{\"0-10\":100}}}");
         AggregateProperties props = new AggregateProperties();
         props.setVisualizationUrl("http://viz.example");
         AggregateService svc = service(backend, props);
@@ -205,6 +206,54 @@ class AggregateServiceTest {
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V1);
         assertThat(out.getBody()).contains("\"0-10\"");
         verify(backend).binContinuous(any(), eq(AggregateVariant.V1));
+    }
+
+    /**
+     * The open continuous path answers with exactly the body it produced when the visualization service sent the bins as a bare map. The
+     * expected text was captured from that code for the same binning input: four bins in ascending order, the last below the threshold.
+     */
+    @Test
+    void continuousCrossCountOutputIsUnchangedByTheBinningResponseRecord() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(
+            ResponseEntity.ok("{\"\\\\demographics\\\\AGE\\\\\":{\"20\":5,\"30\":12,\"40\":25,\"50\":40,\"60\":31,\"70\":18,\"80\":6}}")
+        ).thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+        when(backend.binContinuous(any(), eq(AggregateVariant.V3))).thenReturn(
+            "{\"bins\":{\"\\\\demographics\\\\AGE\\\\\":{\"20.0 - 40.0\":17,\"40.0 - 60.0\":65,\"60.0 - 80.0\":49,\"80.0 +\":6}}}"
+        );
+        AggregateProperties props = new AggregateProperties();
+        props.setVisualizationUrl("http://viz.example");
+        AggregateService svc = service(backend, props);
+
+        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3);
+
+        assertThat(out.getBody()).isEqualTo(
+            "{\"\\\\demographics\\\\AGE\\\\\":{\"20.0 - 40.0\":{\"count\":15,\"display\":\"15 ±3\",\"variance\":3},"
+                + "\"40.0 - 60.0\":{\"count\":63,\"display\":\"63 ±3\",\"variance\":3},"
+                + "\"60.0 - 80.0\":{\"count\":47,\"display\":\"47 ±3\",\"variance\":3},"
+                + "\"80.0 +\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}"
+        );
+    }
+
+    /**
+     * A visualization service older than the response record answers with the bare map, which parses to a record with no bins. That is
+     * rejected as a failed upstream call and never answered as an empty chart.
+     */
+    @Test
+    void continuousCrossCountRejectsABinningResponseWithoutBins() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any(), eq(AggregateVariant.V3)))
+            .thenReturn(ResponseEntity.ok("{\"\\\\demographics\\\\AGE\\\\\":{\"20\":100}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+        when(backend.binContinuous(any(), eq(AggregateVariant.V3))).thenReturn("{\"\\\\demographics\\\\AGE\\\\\":{\"20.0\":100}}");
+        AggregateProperties props = new AggregateProperties();
+        props.setVisualizationUrl("http://viz.example");
+        AggregateService svc = service(backend, props);
+
+        assertThatThrownBy(() -> svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3))
+            .isInstanceOf(HpdsCommunicationException.class).hasMessage("Visualization bin/continuous response carried no bins");
     }
 
     // ---- async open submit: scope CROSS_COUNT before persistence and dispatch ----
