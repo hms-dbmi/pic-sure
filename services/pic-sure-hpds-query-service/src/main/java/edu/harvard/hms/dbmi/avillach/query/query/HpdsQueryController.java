@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -131,7 +132,7 @@ public class HpdsQueryController {
             @ApiResponse(responseCode = "503", description = "Backend not configured"),
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
-    public ResponseEntity<String> signedUrl(
+    public SignedUrlResponse signedUrl(
         @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {

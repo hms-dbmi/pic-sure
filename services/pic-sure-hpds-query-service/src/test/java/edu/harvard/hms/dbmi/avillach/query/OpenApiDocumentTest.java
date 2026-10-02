@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -28,6 +30,17 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
 @AutoConfigureMockMvc
 class OpenApiDocumentTest {
 
+    private static final String QUERY = "/hpds/{backend}/query";
+    private static final String SYNC = "/hpds/{backend}/query/sync";
+    private static final String STATUS = "/hpds/{backend}/query/{id}/status";
+    private static final String RESULT = "/hpds/{backend}/query/{id}/result";
+    private static final String SIGNED_URL = "/hpds/{backend}/query/{id}/signed-url";
+    private static final String METADATA = "/hpds/{backend}/query/{id}/metadata";
+    private static final String OPEN_QUERY = "/hpds/open/query";
+    private static final String OPEN_SYNC = "/hpds/open/query/sync";
+    private static final String SEARCH = "/hpds/{backend}/search";
+    private static final String VALUES = "/hpds/{backend}/search/values";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -49,5 +62,22 @@ class OpenApiDocumentTest {
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         OpenApiDocumentAssertions.assertCovers(document, handlerMapping);
+    }
+
+    @Test
+    void signedUrlAnswersTheSignedUrlObject() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", SIGNED_URL, "200", "SignedUrlResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "SignedUrlResponse", "signedUrl");
+    }
+
+    private JsonNode document() throws Exception {
+        return objectMapper
+            .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    private static JsonNode operation(JsonNode document, String method, String path) {
+        return document.path("paths").path(path).path(method);
     }
 }

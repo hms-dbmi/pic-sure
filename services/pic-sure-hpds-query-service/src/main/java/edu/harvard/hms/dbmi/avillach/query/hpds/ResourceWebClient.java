@@ -23,6 +23,7 @@ import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
@@ -79,11 +80,19 @@ public class ResourceWebClient {
         }
     }
 
-    /** Returns a fully buffered JSON string response. */
-    public ResponseEntity<String> queryResultSignedUrl(HpdsTarget target, String resourceResultId, QueryRequest req) {
+    /**
+     * Asks HPDS for a signed URL to a completed result.
+     *
+     * @param target the backend's API base URL and service token
+     * @param resourceResultId the id HPDS assigned to the result
+     * @param req the envelope HPDS requires as a body and does not read
+     * @return the signed URL HPDS answered with, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx, answers a body that is not a signed URL object, or cannot be reached
+     */
+    public SignedUrlResponse queryResultSignedUrl(HpdsTarget target, String resourceResultId, QueryRequest req) {
         try {
             return http.post().uri(target.baseUrl() + "/query/" + resourceResultId + "/signed-url").headers(h -> authorize(h, target))
-                .contentType(MediaType.APPLICATION_JSON).body(req).retrieve().toEntity(String.class);
+                .contentType(MediaType.APPLICATION_JSON).body(req).retrieve().body(SignedUrlResponse.class);
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS signed-url call failed: " + target.baseUrl(), e);
         }

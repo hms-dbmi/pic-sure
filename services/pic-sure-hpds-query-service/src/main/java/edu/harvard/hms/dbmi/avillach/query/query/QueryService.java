@@ -27,6 +27,7 @@ import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
@@ -214,11 +215,11 @@ public class QueryService {
         return hpds.queryResult(selector.select(backend), stored.resourceResultId(), req);
     }
 
-    public ResponseEntity<String> queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req) {
+    public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req) {
         return queryResultSignedUrl(backend, picsureId, req, null);
     }
 
-    public ResponseEntity<String> queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
+    public SignedUrlResponse queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req, String authorizationHeader) {
         StoredQuery stored = upgradeToV3(backend, load(picsureId), authorizationHeader);
         consentAuthorization.verifyReadAccess(backend, stored, authorizationHeader);
         return hpds.queryResultSignedUrl(selector.select(backend), stored.resourceResultId(), req);

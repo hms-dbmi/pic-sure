@@ -14,6 +14,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -199,7 +201,7 @@ class HpdsQueryControllerTest {
         stubV3Submit("rr-new");
         hpds.stubFor(
             WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-new/signed-url"))
-                .willReturn(okJson("{\"url\":\"https://example.test/result\"}"))
+                .willReturn(okJson("{\"signedUrl\":\"https://example.test/result\"}"))
         );
 
         mockMvc.perform(
@@ -232,7 +234,8 @@ class HpdsQueryControllerTest {
         StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
         hpds.stubFor(
-            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).willReturn(okJson("{\"url\":\"https://example.test/result\"}"))
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url"))
+                .willReturn(okJson("{\"signedUrl\":\"https://example.test/result\"}"))
         );
 
         mockMvc.perform(
@@ -279,6 +282,37 @@ class HpdsQueryControllerTest {
                     .content("{\"query\":")
             ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
             .andExpect(jsonPath("$.message").value("Malformed request body"));
+    }
+
+    @Test
+    void signedUrlBodyIsByteIdenticalToWhatHpdsSent() throws Exception {
+        UUID id = UUID.randomUUID();
+        String fromHpds = "{\"signedUrl\":\"https://pic-sure-exports.s3.amazonaws.com/rr-1.avro"
+            + "?X-Amz-Expires=3600&X-Amz-Signature=5d41402abc4b2a76b9719d911017c592\"}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null));
+        hpds.stubFor(WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).willReturn(okJson(fromHpds)));
+
+        mockMvc
+            .perform(
+                post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                    .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+            ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON)).andExpect(content().string(fromHpds))
+            .andExpect(header().doesNotExist("Matched-Stub-Id"));
+    }
+
+    @Test
+    void signedUrlOfAResultThatIsNotReadyKeepsHpdsStatusAndBody() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null));
+        hpds.stubFor(
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url"))
+                .willReturn(aResponse().withStatus(400).withBody("Status : RUNNING"))
+        );
+
+        mockMvc.perform(
+            post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Status : RUNNING"));
     }
 
     // --- upstream failures surface as 502, not 200/500 ---

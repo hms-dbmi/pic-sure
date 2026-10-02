@@ -23,6 +23,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
@@ -87,15 +88,15 @@ class ResourceWebClientTest {
     }
 
     @Test
-    void signedUrlBuffersJsonStringWithToken() {
+    void signedUrlReadsTheSignedUrlObjectWithToken() {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
-                .willReturn(okJson("{\"url\":\"https://s3/x\"}"))
+                .willReturn(okJson("{\"signedUrl\":\"https://s3/x\"}"))
         );
 
-        ResponseEntity<String> resp = client().queryResultSignedUrl(target(), "rr-1", req());
+        SignedUrlResponse resp = client().queryResultSignedUrl(target(), "rr-1", req());
 
-        assertThat(resp.getBody()).contains("https://s3/x");
+        assertThat(resp.getSignedUrl()).isEqualTo("https://s3/x");
     }
 
     @Test
