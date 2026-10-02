@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -168,6 +169,35 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "LegacySearchCriteria", "searchTerm", "limit");
         OpenApiDocumentAssertions.assertSchemaDocumented(document, "LegacySearchQuery", "LegacySearchCriteria");
         assertThat(document.path("paths").path("/search").path("post").path("responses").has("400")).isTrue();
+    }
+
+    @Test
+    void everySchemaInTheDocumentIsDocumented() throws Exception {
+        JsonNode document = document();
+        List<String> names = new ArrayList<>();
+        document.path("components").path("schemas").fieldNames().forEachRemaining(names::add);
+
+        assertThat(names).containsExactlyInAnyOrder(
+            "CategoricalConcept", "CategoricalMetadata", "Concept", "ConceptPage", "ConceptPageable", "ConceptSort", "ContinuousConcept",
+            "ContinuousMetadata", "Dashboard", "DashboardColumn", "DashboardDrawer", "Dataset", "Facet", "FacetCategory", "Filter",
+            "LegacyResponse", "LegacySearchCriteria", "LegacySearchQuery", "Metadata", "Result", "Results", "SearchResult"
+        );
+        assertThat(schema(document, "Metadata").path("description").asText()).isNotBlank();
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "LegacyResponse", "results");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "Results", "searchResults");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "SearchResult", "result");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "Result", "metadata", "values", "studyId", "dtId", "varId", "is_categorical", "is_continuous");
+        assertThat(properties(document, "CategoricalMetadata")).hasSize(27);
+        assertThat(properties(document, "ContinuousMetadata")).hasSize(29);
+        names.removeAll(List.of("Concept", "Metadata", "CategoricalMetadata", "ContinuousMetadata"));
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, names.toArray(String[]::new));
+        assertThatThrownBy(() -> OpenApiDocumentAssertions.assertSchemaDocumented(document, "CategoricalMetadata", "ContinuousMetadata"))
+            .isInstanceOf(AssertionError.class).hasMessage(
+                "schemas do not meet the @Schema convention:\n  CategoricalMetadata.columnmeta_min has no example\n"
+                    + "  CategoricalMetadata.data_hierarchy has no example\n  CategoricalMetadata.columnmeta_max has no example\n"
+                    + "  ContinuousMetadata.data_hierarchy has no example"
+            );
     }
 
     private JsonNode document() throws Exception {
