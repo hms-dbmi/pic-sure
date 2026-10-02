@@ -1,153 +1,266 @@
 {
   "properties": [
     {
-      "name": "application.client.id",
+      "name": "DEST_IP",
       "type": "java.lang.String",
-      "description": "Description for application.client.id."
+      "description": "Overrides the destination IP address recorded in audit log entries. Set directly from the DEST_IP environment variable; when unset, the filter falls back to the request's local address."
     },
     {
-      "name": "application.client.secret",
-      "type": "java.lang.String",
-      "description": "Description for application.client.secret."
-    },
-    {
-      "name": "application.client.secret.base64",
-      "type": "java.lang.String",
-      "description": "Description for application.client.secret.base64."
-    },
-    {
-      "name": "application.user.id.claim",
-      "type": "java.lang.String",
-      "description": "Description for application.user.id.claim."
-    },
-    {
-      "name": "application.tos.enabled",
-      "type": "java.lang.String",
-      "description": "Description for application.tos.enabled."
-    },
-    {
-      "name": "application.system.name",
-      "type": "java.lang.String",
-      "description": "Description for application.system.name."
-    },
-    {
-      "name": "application.template.path",
-      "type": "java.lang.String",
-      "description": "Description for application.template.path."
-    },
-    {
-      "name": "application.access.grant.email.subject",
-      "type": "java.lang.String",
-      "description": "Description for application.access.grant.email.subject."
-    },
-    {
-      "name": "application.user.activation.reply.to",
-      "type": "java.lang.String",
-      "description": "Description for application.user.activation.reply.to."
-    },
-    {
-      "name": "application.admin.users",
-      "type": "java.lang.String",
-      "description": "Description for application.admin.users."
-    },
-    {
-      "name": "application.idp.provider",
-      "type": "java.lang.String",
-      "description": "Description for application.idp.provider."
-    },
-    {
-      "name": "application.idp.provider.uri",
-      "type": "java.lang.String",
-      "description": "Description for application.idp.provider.uri."
-    },
-    {
-      "name": "fence.client.id",
-      "type": "java.lang.String",
-      "description": "Description for fence.client.id."
-    },
-    {
-      "name": "fence.client.secret",
-      "type": "java.lang.String",
-      "description": "Description for fence.client.secret."
-    },
-    {
-      "name": "fence.redirect.url",
-      "type": "java.lang.String",
-      "description": "Description for fence.redirect.url."
-    },
-    {
-      "name": "fence.standard.access.rules",
-      "type": "java.lang.String",
-      "description": "Description for fence.standard.access.rules."
-    },
-    {
-      "name": "application.token.expiration.time",
-      "type": "java.lang.String",
-      "description": "Description for application.token.expiration.time."
-    },
-    {
-      "name": "application.long.term.token.expiration.time",
-      "type": "java.lang.String",
-      "description": "Description for application.long.term.token.expiration.time."
-    },
-    {
-      "name": "application.default.uuid",
-      "type": "java.lang.String",
-      "description": "Description for application.default.uuid."
+      "name": "DEST_PORT",
+      "type": "java.lang.Integer",
+      "description": "Overrides the destination port recorded in audit log entries. Set directly from the DEST_PORT environment variable; when unset, the filter falls back to the request's local port."
     },
     {
       "name": "a4.okta.client.id",
       "type": "java.lang.String",
-      "description": "Description for okta.client.id."
+      "description": "OAuth client ID for the AimAhead Okta tenant, sent as HTTP Basic auth when exchanging authorization codes and introspecting tokens. Set from A4_OKTA_CLIENT_ID."
     },
     {
       "name": "a4.okta.client.secret",
       "type": "java.lang.String",
-      "description": "Description for okta.client.secret."
+      "description": "OAuth client secret for the AimAhead Okta tenant, paired with a4.okta.client.id for HTTP Basic auth against the token and introspect endpoints. Set from A4_OKTA_CLIENT_SECRET."
     },
     {
       "name": "a4.okta.connection.id",
       "type": "java.lang.String",
-      "description": "Description for okta.connection.id."
-    },
-    {
-      "name": "fence.idp.provider.is.enabled",
-      "type": "java.lang.String",
-      "description": "If set to true, the Fence IDP provider is enabled."
-    },
-    {
-      "name": "open.idp.provider.is.enabled",
-      "type": "java.lang.String",
-      "description": "If set to true, the Open IDP provider is enabled."
-    },
-    {
-      "name": "auth0.host",
-      "type": "java.lang.String",
-      "description": "Description for auth0.host."
-    },
-    {
-      "name": "auth0.denied.email.enabled",
-      "type": "java.lang.String",
-      "description": "Description for auth0.denied.email.enabled."
-    },
-    {
-      "name": "fence.idp.provider.uri",
-      "type": "java.lang.String",
-      "description": "Description for fence.idp.provider.uri."
+      "description": "Connection identifier used to look up and tag users signing in through the AimAhead Okta provider. Set from A4_OKTA_CONNECTION_ID."
     },
     {
       "name": "a4.okta.idp.provider.is.enabled",
-      "type": "java.lang.String",
-      "description": "Description for a4.okta.idp.provider.is.enabled."
+      "type": "java.lang.Boolean",
+      "description": "Enables the AimAhead Okta identity provider as a login method. Set from A4_OKTA_IDP_PROVIDER_IS_ENABLED."
     },
     {
       "name": "a4.okta.idp.provider.uri",
       "type": "java.lang.String",
-      "description": "Description for a4.okta.idp.provider.uri."
+      "description": "Hostname of the AimAhead Okta tenant, used to build the OAuth token and introspect endpoint URLs; the caller prefixes it with https://. Set from A4_OKTA_IDP_PROVIDER_URI."
+    },
+    {
+      "name": "api.key.allow.ungated.generation",
+      "type": "java.lang.Boolean",
+      "description": "Explicit opt-in to allow open-access API key generation while no CAPTCHA provider is configured. Without it, enabling api.key.generation.enabled with captcha.provider=disabled fails startup. Set from API_KEY_ALLOW_UNGATED_GENERATION."
+    },
+    {
+      "name": "api.key.enforcement.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Requires open-access requests to carry a valid API key before they are evaluated further; requests without one are rejected. Set from API_KEY_ENFORCEMENT_ENABLED."
+    },
+    {
+      "name": "api.key.generation.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables the public self-service endpoint for minting open-access API keys. Set from API_KEY_GENERATION_ENABLED."
+    },
+    {
+      "name": "api.key.pepper",
+      "type": "java.lang.String",
+      "description": "Secret mixed into API key hashes using HMAC-SHA256; when blank, keys are hashed with plain SHA-256 instead. Set from API_KEY_PEPPER."
+    },
+    {
+      "name": "api.key.pepper.previous",
+      "type": "java.lang.String",
+      "description": "Comma-separated list of earlier pepper values tried, in order, when verifying existing HMAC-backed API keys during pepper rotation; blank entries are skipped. Set from API_KEY_PEPPER_PREVIOUS."
+    },
+    {
+      "name": "api.key.platform.ttl.days",
+      "type": "java.lang.Long",
+      "description": "Number of days a platform API key is valid when minted without an explicit expiry and without the neverExpires flag. Must be positive or the service fails to start. Set from API_KEY_PLATFORM_TTL_DAYS."
+    },
+    {
+      "name": "api.key.user.ttl.days",
+      "type": "java.lang.Long",
+      "description": "Number of days a self-service user API key remains valid. Must be positive or the service fails to start. Set from API_KEY_USER_TTL_DAYS."
+    },
+    {
+      "name": "application.access.grant.email.subject",
+      "type": "java.lang.String",
+      "description": "Subject line for the access-granted notification email. When blank or equal to the literal value \"none\" the default subject \"Your Access To <system name>\" is used instead. Set from GRANT_EMAIL_SUBJECT."
+    },
+    {
+      "name": "application.admin.users",
+      "type": "java.lang.String",
+      "description": "Address the denied-access notification email is sent to when a user fails to match an account during login. Set from ADMIN_USERS."
+    },
+    {
+      "name": "application.client.secret",
+      "type": "java.lang.String",
+      "description": "Secret key used to sign and verify JWT tokens issued by this service. Set from APPLICATION_CLIENT_SECRET; there is no default, startup fails if it is unset."
+    },
+    {
+      "name": "application.client.secret.base64",
+      "type": "java.lang.Boolean",
+      "description": "Whether application.client.secret is base64-encoded. When true, the secret is base64-decoded before it is used as the JWT signing key. Set from APPLICATION_CLIENT_SECRET_IS_BASE_64."
+    },
+    {
+      "name": "application.long.term.token.expiration.time",
+      "type": "java.lang.Long",
+      "description": "Lifetime in milliseconds for long-term tokens. Non-positive values fall back to 30 days. Set from LONG_TERM_TOKEN_EXPIRATION_TIME."
     },
     {
       "name": "application.max.session.length",
+      "type": "java.lang.Long",
+      "description": "Length of time in milliseconds a user session is allowed to stay open before it is treated as expired. Non-positive values fall back to 8 hours. Set from MAX_SESSION_TIME."
+    },
+    {
+      "name": "application.system.name",
       "type": "java.lang.String",
-      "description": "If a user has been signed in for this length of time they will be logged out."
+      "description": "Display name of the deployment, used in email subjects and bodies sent to users. Set from SYSTEM_NAME."
+    },
+    {
+      "name": "application.template.path",
+      "type": "java.lang.String",
+      "description": "Directory that holds the FENCE study mapping file and the mail template files. Must end with a path separator or the FENCE mapping fails to load. Set from TEMPLATE_PATH."
+    },
+    {
+      "name": "application.token.expiration.time",
+      "type": "java.lang.Long",
+      "description": "Lifetime in milliseconds for short-term access tokens. Non-positive values fall back to 1 hour. Set from TOKEN_EXPIRATION_TIME."
+    },
+    {
+      "name": "application.token.inclusionRoles",
+      "type": "java.lang.String",
+      "description": "Comma-separated list of role names embedded in JWT token claims. Set from TOKEN_INCLUSION_ROLES."
+    },
+    {
+      "name": "application.tos.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether the terms-of-service gate is enforced. When false, every user is treated as having already accepted the latest terms. Set from TOS_ENABLED."
+    },
+    {
+      "name": "application.user.id.claim",
+      "type": "java.lang.String",
+      "description": "Name of the JWT claim read as the user's identifier when validating a bearer token. Set from USER_ID_CLAIM."
+    },
+    {
+      "name": "auth0.denied.email.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether a denied-access notification email is sent when an Auth0 login succeeds but no matching user account exists. Set from AUTH0_DENIED_EMAIL_ENABLED."
+    },
+    {
+      "name": "auth0.host",
+      "type": "java.lang.String",
+      "description": "Base host of the Auth0 tenant. The userinfo endpoint is built by appending /userinfo. Set from AUTH0_HOST."
+    },
+    {
+      "name": "auth0.idp.provider.is.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables the Auth0 identity provider as a login method. Set from AUTH0_IDP_PROVIDER_IS_ENABLED."
+    },
+    {
+      "name": "captcha.turnstile.secret",
+      "type": "java.lang.String",
+      "description": "Cloudflare Turnstile secret key sent to the siteverify endpoint when checking a CAPTCHA token. Required when captcha.provider is turnstile; startup fails if it is blank. Set from TURNSTILE_SECRET_KEY."
+    },
+    {
+      "name": "captcha.turnstile.url",
+      "type": "java.lang.String",
+      "description": "URL of the Cloudflare Turnstile siteverify endpoint called to validate a CAPTCHA token. Set from TURNSTILE_SITEVERIFY_URL.",
+      "defaultValue": "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+    },
+    {
+      "name": "consent.based.authorization.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether a request is denied when the user has no consents on file, after it otherwise passes access rule evaluation. Set from CONSENT_BASED_AUTHORIZATION_ENABLED.",
+      "defaultValue": true
+    },
+    {
+      "name": "enable.public.access",
+      "type": "java.lang.Boolean",
+      "description": "Whether open-access requests targeting an auth-backed HPDS v3 path are let through the open-access flow instead of being denied. Set from ENABLE_PUBLIC_ACCESS.",
+      "defaultValue": false
+    },
+    {
+      "name": "fence.client.id",
+      "type": "java.lang.String",
+      "description": "OAuth client ID for the FENCE (Gen3) identity provider, sent as HTTP Basic auth when exchanging codes and fetching the user profile. Set from FENCE_CLIENT_ID."
+    },
+    {
+      "name": "fence.client.secret",
+      "type": "java.lang.String",
+      "description": "OAuth client secret for the FENCE identity provider, paired with fence.client.id for HTTP Basic auth. Set from FENCE_CLIENT_SECRET."
+    },
+    {
+      "name": "fence.idp.provider.is.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables the FENCE identity provider as a login method. Set from FENCE_IDP_PROVIDER_IS_ENABLED."
+    },
+    {
+      "name": "fence.idp.provider.uri",
+      "type": "java.lang.String",
+      "description": "Base URL of the FENCE identity provider, used to build its user-profile and OAuth token endpoint URLs. Set from FENCE_IDP_PROVIDER_URI."
+    },
+    {
+      "name": "fence.standard.access.rules",
+      "type": "java.lang.String",
+      "description": "Comma-separated names of the standard access rules attached to every privilege at startup. These rules are created by database migration without a privilege attachment, and this list is what binds them. Hardcoded in application.properties; no environment variable override."
+    },
+    {
+      "name": "http.proxyHost",
+      "type": "java.lang.String",
+      "description": "Hostname of the outbound HTTP proxy used for REST calls. Blank, the default, disables proxying and a direct client is used. Not mapped in application.properties; set it directly as the http.proxyHost property.",
+      "defaultValue": ""
+    },
+    {
+      "name": "http.proxyPassword",
+      "type": "java.lang.String",
+      "description": "Password for the outbound HTTP proxy, used only when http.proxyUser is also set. Not mapped in application.properties; set it directly as the http.proxyPassword property.",
+      "defaultValue": ""
+    },
+    {
+      "name": "http.proxyPort",
+      "type": "java.lang.Integer",
+      "description": "Port of the outbound HTTP proxy used for REST calls. Not mapped in application.properties; set it directly as the http.proxyPort property.",
+      "defaultValue": 8080
+    },
+    {
+      "name": "http.proxyUser",
+      "type": "java.lang.String",
+      "description": "Username for the outbound HTTP proxy. Blank, the default, selects an unauthenticated proxy; a non-blank value selects an authenticated proxy using http.proxyPassword. Not mapped in application.properties; set it directly as the http.proxyUser property.",
+      "defaultValue": ""
+    },
+    {
+      "name": "open.idp.provider.is.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables the open (anonymous) identity provider. When false, open-access request validation always returns false and open-access API key generation is refused regardless of other settings. Set from OPEN_IDP_PROVIDER_IS_ENABLED."
+    },
+    {
+      "name": "ras.idp.uri",
+      "type": "java.lang.String",
+      "description": "Base URI of the RAS passport-validation service. A trailing slash is stripped before it is used to build the /passport/validate request URL. Set from RAS_IDP_URI."
+    },
+    {
+      "name": "ras.okta.client.id",
+      "type": "java.lang.String",
+      "description": "OAuth client ID for the RAS Okta tenant, sent as HTTP Basic auth when exchanging codes and introspecting tokens. Set from RAS_OKTA_CLIENT_ID."
+    },
+    {
+      "name": "ras.okta.client.secret",
+      "type": "java.lang.String",
+      "description": "OAuth client secret for the RAS Okta tenant, paired with ras.okta.client.id for HTTP Basic auth. Set from RAS_OKTA_CLIENT_SECRET."
+    },
+    {
+      "name": "ras.okta.connection.id",
+      "type": "java.lang.String",
+      "description": "Connection identifier logged at startup for the RAS Okta provider. The RAS connection record itself is looked up by label rather than by this value. Set from RAS_OKTA_CONNECTION_ID."
+    },
+    {
+      "name": "ras.okta.idp.provider.is.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables the RAS Okta identity provider as a login method. Set from RAS_OKTA_IDP_PROVIDER_IS_ENABLED."
+    },
+    {
+      "name": "ras.okta.idp.provider.uri",
+      "type": "java.lang.String",
+      "description": "Hostname of the RAS Okta tenant, used to build the OAuth token and introspect endpoint URLs. Set from RAS_OKTA_IDP_PROVIDER_URI."
+    },
+    {
+      "name": "ras.passport.issuer",
+      "type": "java.lang.String",
+      "description": "Expected iss claim on a GA4GH passport returned by RAS. A passport whose issuer does not match this value exactly is rejected. Set from RAS_PASSPORT_ISSUER."
+    },
+    {
+      "name": "strict.authorization.applications.connections",
+      "type": "java.lang.String",
+      "description": "Comma-separated connection labels that require both access rules and privileges to authorize a request. Connections not listed only need privileges. Set from STRICT_AUTHORIZATION_APPLICATIONS."
     }
-  ] }
+  ]
+}

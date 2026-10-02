@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Four R4 shapes: none declared, a non-numeric code, a blank description, and errors with no success code. */
+/** Four {@code responses-are-declared} shapes: none declared, a non-numeric code, a blank description, and errors with no success code. */
 @Tag(name = "Bad responses", description = "Handlers whose responses fail the response rule")
 @RestController
 public class BadResponsesController {
