@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -35,6 +36,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
@@ -111,6 +113,9 @@ class HpdsQueryRequestBindingTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private ObjectMapper springMapper;
+
     @MockitoBean
     private OperationsClient operationsClient;
 
@@ -175,6 +180,20 @@ class HpdsQueryRequestBindingTest {
 
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query")).withRequestBody(WireMock.notContaining("not-a-real-token")));
         assertThat(queryReceivedAt("/PIC-SURE/v3/query")).isEqualTo(canonical(body));
+    }
+
+    /**
+     * Pins the premise behind the consent-on path: the strict read of a client body yields the same {@link Query} the earlier path got by
+     * reading the body as a map and converting its {@code query} member with a default mapper.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clientBodies")
+    void strictReadEqualsTheLenientConvertedQuery(String name, String body) throws Exception {
+        Query strict = springMapper.readValue(body, HpdsQueryRequest.class).query();
+        Map<String, Object> asMap = springMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+        Query lenient = new ObjectMapper().convertValue(asMap.get("query"), Query.class);
+
+        assertThat(strict).isEqualTo(lenient);
     }
 
     static Stream<Arguments> endpointsThatBindAQuery() {
