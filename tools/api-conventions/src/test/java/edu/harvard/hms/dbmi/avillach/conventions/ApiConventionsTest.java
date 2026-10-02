@@ -93,6 +93,11 @@ class ApiConventionsTest {
     }
 
     @Test
+    void catchAllExceptionAdviceKeepsFrameworkStatuses() {
+        report("catch-all-advice-extends-base", overAllModules(ExceptionAdviceRules::catchAllAdviceExtendsBaseHandler));
+    }
+
+    @Test
     void everyHandlerCarriesAnAuditEvent() {
         report("handler-has-audit-event", overAllModules(AuditRules::auditEventOnEveryHandler));
     }
