@@ -17,7 +17,7 @@ It applies to every type a documented handler binds or returns, and to every typ
 |---|---|
 | Record, class or enum | `@Schema(description = ...)` on the type |
 | Field or record component | `description` |
-| Scalar field: a primitive or its box, `String`, `UUID`, `Instant`, `Date`, `LocalDate` | `example` as well |
+| Scalar field: a numeric primitive or its box, `String`, `UUID`, `Instant`, `Date`, `LocalDate` | `example` as well |
 | Collection or array of scalars | `example` as well, written as a JSON array |
 | Boolean, enum, nested model, `Map` | no `example` |
 | `Map` | the description names the keys |
@@ -86,7 +86,7 @@ its key under `components.schemas`.
 | `assertMediaType` | a text or binary body declares its media type |
 | `assertNoResponseBody` | a 204 declares no content |
 | `assertSchemaHasFields` | the schema has the properties a client reads |
-| `assertSchemaDocumented` | the schema meets the convention above, as far as the document shows it |
+| `assertSchemaDocumented` | the schema meets the convention above, as far as the document shows it; under OpenAPI 3.1 a property that is a `$ref` needs its own description beside it |
 
 A client that indexes a response (`res[0]`, `res.content[0]`, `resp.count`) depends on its shape. Pin that shape with one of these
 whenever a handler's return type changes.
@@ -97,3 +97,5 @@ Rules in `tools/api-conventions` check the convention on compiled bytecode and r
 
 | Rule | Checks |
 |---|---|
+
+No rule has landed yet; the two that will are the last PRs of this stack.
