@@ -45,4 +45,29 @@ class SchemaDocumentedEdgeCasesTest {
                 }
             });
     }
+
+    @Test
+    void refPropertyNeedsADescriptionUnderOpenApi31() throws Exception {
+        JsonNode document = new ObjectMapper().readTree(REF_DOCUMENT.formatted("3.1.0"));
+        assertThatThrownBy(() -> OpenApiDocumentAssertions.assertSchemaDocumented(document, "Thing")).isInstanceOf(AssertionError.class)
+            .hasMessageContaining("Thing.owner has no description").satisfies(error -> {
+                if (error.getMessage().contains("Thing.home")) {
+                    throw new AssertionError("home was flagged: " + error.getMessage());
+                }
+            });
+    }
+
+    @Test
+    void refPropertyIsExemptUnderOpenApi30() throws Exception {
+        JsonNode document = new ObjectMapper().readTree(REF_DOCUMENT.formatted("3.0.1"));
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "Thing");
+    }
+
+    private static final String REF_DOCUMENT = """
+        {"openapi":"%s","components":{"schemas":{
+          "Owner":{"type":"object","description":"An owner"},
+          "Thing":{"type":"object","description":"A thing","properties":{
+            "owner":{"$ref":"#/components/schemas/Owner"},
+            "home":{"$ref":"#/components/schemas/Owner","description":"Where it lives"}}}}}}
+        """;
 }

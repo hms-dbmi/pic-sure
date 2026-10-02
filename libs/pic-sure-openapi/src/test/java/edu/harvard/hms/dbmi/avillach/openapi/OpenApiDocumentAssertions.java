@@ -265,10 +265,11 @@ public final class OpenApiDocumentAssertions {
 
     /**
      * Asserts that each named component schema meets the {@code @Schema} convention as the document shows it. The schema has a description.
-     * Every property has a description, except a property that is only a {@code $ref}, which swagger-core writes with nothing beside it in
-     * OpenAPI 3.0 mode. Every string, integer or number property without an {@code enum}, and every array of those, has an example; a
-     * nullable property in an OpenAPI 3.1 document lists its type in an array and counts the same way. Every enum, whether the schema, a
-     * property or an array's items, lists a description for each of its values.
+     * Every property has a description. In an OpenAPI 3.1 document that includes a property that is a {@code $ref}, which swagger-core
+     * writes with its description beside it, and nothing else is checked on it. In an earlier document a property that is only a
+     * {@code $ref} is exempt, because swagger-core writes it with nothing beside it. Every string, integer or number property without an
+     * {@code enum}, and every array of those, has an example; a nullable property in an OpenAPI 3.1 document lists its type in an array and
+     * counts the same way. Every enum, whether the schema, a property or an array's items, lists a description for each of its values.
      *
      * @param document the parsed {@code /v3/api-docs} body
      * @param schemaNames the keys under {@code components.schemas}
@@ -276,6 +277,7 @@ public final class OpenApiDocumentAssertions {
      */
     public static void assertSchemaDocumented(JsonNode document, String... schemaNames) {
         List<String> problems = new ArrayList<>();
+        boolean describedRefs = document.path("openapi").asText().startsWith("3.1");
         for (String schemaName : schemaNames) {
             JsonNode schema = document.path("components").path("schemas").path(schemaName);
             if (schema.isMissingNode()) {
@@ -287,7 +289,7 @@ public final class OpenApiDocumentAssertions {
             }
             checkEnum(schema, schemaName, problems);
             for (Map.Entry<String, JsonNode> property : properties(schema).entrySet()) {
-                checkProperty(schemaName + "." + property.getKey(), property.getValue(), problems);
+                checkProperty(schemaName + "." + property.getKey(), property.getValue(), describedRefs, problems);
             }
         }
         if (!problems.isEmpty()) {
@@ -295,8 +297,11 @@ public final class OpenApiDocumentAssertions {
         }
     }
 
-    private static void checkProperty(String label, JsonNode property, List<String> problems) {
+    private static void checkProperty(String label, JsonNode property, boolean describedRefs, List<String> problems) {
         if (property.has("$ref")) {
+            if (describedRefs && property.path("description").asText().isBlank()) {
+                problems.add(label + " has no description");
+            }
             return;
         }
         if (property.path("description").asText().isBlank()) {

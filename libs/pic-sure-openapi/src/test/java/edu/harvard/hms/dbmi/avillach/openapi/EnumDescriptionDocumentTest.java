@@ -6,6 +6,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.List;
 
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.media.StringSchema;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -146,5 +149,19 @@ class EnumDescriptionDocumentTest {
         JsonNode format = document().path("components").path("schemas").path("ExportRequest").path("properties").path("format");
 
         assertThat(format.path("description").asText()).isEqualTo("The format wanted\n\n" + FORMAT_BULLETS);
+    }
+
+    @Test
+    void customiserAppliedTwiceAppendsOnce() {
+        StringSchema schema = new StringSchema();
+        schema.setEnum(List.of("A", "B"));
+        schema.addExtension(EnumConstantDescriptionConverter.EXTENSION, List.of("Alpha", ""));
+        OpenAPI openApi = new OpenAPI().components(new Components().addSchemas("Letter", schema));
+        EnumDescriptionCustomizer customizer = new EnumDescriptionCustomizer();
+
+        customizer.customise(openApi);
+        customizer.customise(openApi);
+
+        assertThat(schema.getDescription()).isEqualTo("- `A`: Alpha\n- `B`");
     }
 }

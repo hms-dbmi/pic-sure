@@ -113,10 +113,11 @@ public class EnumDescriptionCustomizer implements GlobalOpenApiCustomizer {
                 bullets.append(": ").append(text);
             }
         }
+        String list = bullets.substring(1);
         String own = schema.getDescription();
-        if (own != null && own.endsWith(bullets.toString())) {
+        if (own != null && own.endsWith(list)) {
             return;
         }
-        schema.setDescription(own == null || own.isBlank() ? bullets.substring(1) : own + "\n" + bullets);
+        schema.setDescription(own == null || own.isBlank() ? list : own + "\n" + bullets);
     }
 }
