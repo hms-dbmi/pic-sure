@@ -242,8 +242,10 @@ class OpenApiDocumentTest {
     void noAdminEndpointDocumentsAnEntity() throws Exception {
         JsonNode schemas = document().path("components").path("schemas");
 
-        List.of("User", "Role", "Privilege", "AccessRule", "Application", "ApplicationForDisplay", "Connection", "UserMetadataMapping")
-            .forEach(entity -> assertThat(schemas.has(entity)).as("the document must not describe the %s entity", entity).isFalse());
+        List.of(
+            "User", "Role", "Privilege", "AccessRule", "Application", "ApplicationForDisplay", "Connection", "UserMetadataMapping",
+            "UserConsents", "TermsOfService"
+        ).forEach(entity -> assertThat(schemas.has(entity)).as("the document must not describe the %s entity", entity).isFalse());
     }
 
     @Test
@@ -366,5 +368,19 @@ class OpenApiDocumentTest {
         );
         JsonNode keyType = document.path("components").path("schemas").path("ApiKeyMetadata").path("properties").path("keyType");
         assertThat(keyType.path("enum")).extracting(JsonNode::asText).containsExactly("USER", "PLATFORM");
+    }
+
+    @Test
+    void termsOfServiceEndpointsDocumentTheirMediaTypes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertMediaType(document, "get", "/tos/latest", "200", "text/html", "string");
+        OpenApiDocumentAssertions.assertMediaType(document, "get", "/tos", "200", "text/plain", "boolean");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/tos/update", "200", "TermsOfServiceResponse");
+        OpenApiDocumentAssertions.assertNoResponseBody(document, "post", "/tos/accept", "200");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "TermsOfServiceResponse", "uuid", "content", "dateUpdated");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "TermsOfServiceResponse");
+        JsonNode update = document.path("paths").path("/tos/update").path("post").path("requestBody").path("content");
+        assertThat(update.path("text/html").path("schema").path("type").asText()).isEqualTo("string");
     }
 }
