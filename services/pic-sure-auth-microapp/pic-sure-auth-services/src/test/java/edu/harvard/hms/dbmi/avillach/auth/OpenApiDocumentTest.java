@@ -217,6 +217,35 @@ class OpenApiDocumentTest {
         assertThat(privileges.path("items").path("$ref").asText()).isEqualTo("#/components/schemas/PrivilegeResponse");
     }
 
+    @Test
+    void adminUserEndpointsDocumentTheirFrozenShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/{userId}", "200", "UserResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/user", "200", "UserResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/user", "200", "UserResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/user", "200", "UserResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "UserResponse", "uuid", "email", "connection", "roles");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ConnectionResponse", "uuid");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "RoleResponse", "uuid");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "UserResponse");
+        JsonNode user = document.path("components").path("schemas").path("UserResponse").path("properties");
+        List.of("token", "passport", "auth0metadata")
+            .forEach(secret -> assertThat(user.has(secret)).as("UserResponse must not document %s", secret).isFalse());
+        assertThat(user.path("connection").path("$ref").asText()).isEqualTo("#/components/schemas/ConnectionResponse");
+        assertThat(user.path("roles").path("items").path("$ref").asText()).isEqualTo("#/components/schemas/RoleResponse");
+        assertThat(user.path("acceptedTOS").path("type").asText()).isEqualTo("integer");
+        assertThat(user.path("generalMetadata").path("type").asText()).isEqualTo("string");
+    }
+
+    @Test
+    void noAdminEndpointDocumentsAnEntity() throws Exception {
+        JsonNode schemas = document().path("components").path("schemas");
+
+        List.of("User", "Role", "Privilege", "AccessRule", "Application", "ApplicationForDisplay", "Connection", "UserMetadataMapping")
+            .forEach(entity -> assertThat(schemas.has(entity)).as("the document must not describe the %s entity", entity).isFalse());
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }

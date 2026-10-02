@@ -1,9 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -19,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -45,79 +48,76 @@ public class UserController {
     }
 
     @Operation(summary = "Read one user", description = "GET information of one user with the UUID")
-    @ApiResponse(responseCode = "200", description = "The user")
+    @ApiResponse(responseCode = "200", description = "The user, without the long-term token, passport and identity provider metadata")
     @ApiResponse(responseCode = "400", description = "The id is not a UUID, or no user has it")
     @AuditEvent(type = "OTHER", action = "user.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "/{userId}", produces = "application/json")
-    public ResponseEntity<User> getUserById(
+    public ResponseEntity<UserResponse> getUserById(
         @Parameter(required = true, description = "The UUID of the user to fetch information about") @PathVariable("userId") String userId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_id", userId);
-        User userById = this.userService.getUserById(userId);
-        return PICSUREResponse.success(userById);
+        return PICSUREResponse.success(UserResponse.from(this.userService.getUserById(userId)));
     }
 
     @Operation(summary = "List every user", description = "GET a list of existing users")
-    @ApiResponse(responseCode = "200", description = "Every user")
+    @ApiResponse(responseCode = "200", description = "Every user, as a bare array")
     @AuditEvent(type = "OTHER", action = "user.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
-    public ResponseEntity<List<User>> getUserAll() {
-        List<User> entityAll = this.userService.getAllUsers();
-        return PICSUREResponse.success(entityAll);
+    public ResponseEntity<List<UserResponse>> getUserAll() {
+        return PICSUREResponse.success(this.userService.getAllUsers().stream().map(UserResponse::from).toList());
     }
 
     @Operation(summary = "Create users", description = "POST a list of users")
-    @ApiResponse(responseCode = "200", description = "The created users")
+    @ApiResponse(responseCode = "200", description = "The created users, as a bare array")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
     @PostMapping(produces = "application/json")
-    public ResponseEntity<?> addUser(
+    public ResponseEntity<List<UserResponse>> addUser(
         @Parameter(
             required = true, description = "The users to create, each naming its connection by id and its roles by UUID"
         ) @RequestBody List<@NotNull @Valid UserCreateRequest> users, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
-        List<User> addedUsers = this.userService.createFrom(users);
-        if (addedUsers == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
-        }
-
-        String message = this.userService.sendUserUpdateEmailsFromResponse(addedUsers);
-        if (message != null) {
-            return PICSUREResponse.success(message, addedUsers);
-        }
-
-        return PICSUREResponse.success(addedUsers);
+        return respondWithSavedUsers(this.userService.createFrom(users));
     }
 
-    @Operation(
-        summary = "Update the given fields of users",
-        description = "Update a list of users, will only update the fields listed"
-    )
-    @ApiResponse(responseCode = "200", description = "The updated users")
+    @Operation(summary = "Update the given fields of users", description = "Update a list of users, will only update the fields listed")
+    @ApiResponse(responseCode = "200", description = "The updated users, as a bare array")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
     @PutMapping(produces = "application/json")
-    public ResponseEntity<?> updateUser(
+    public ResponseEntity<List<UserResponse>> updateUser(
         @Parameter(
             required = true, description = "The users to update, each named by UUID; a field left out keeps its stored value"
         ) @RequestBody List<@NotNull @Valid UserUpdateRequest> users, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
-        List<User> updatedUsers = this.userService.updateFrom(users);
-        if (updatedUsers == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        return respondWithSavedUsers(this.userService.updateFrom(users));
+    }
+
+    /**
+     * Sends each saved user the access email and returns the users as a bare array. A failed email is logged and does not change the
+     * response, so a client that reads the first element finds it whether or not the mail server answered.
+     *
+     * @param savedUsers the users the service persisted, or {@code null} when the security context held no caller
+     * @return the saved users in their response shape
+     * @throws PicSureResponseException with a 500 when {@code savedUsers} is {@code null}
+     */
+    private ResponseEntity<List<UserResponse>> respondWithSavedUsers(List<User> savedUsers) {
+        if (savedUsers == null) {
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "Inner application error, please contact admin."
+            );
         }
 
-        String message = this.userService.sendUserUpdateEmailsFromResponse(updatedUsers);
-        if (message != null) {
-            return PICSUREResponse.success(message, updatedUsers);
+        if (this.userService.sendUserUpdateEmailsFromResponse(savedUsers) != null) {
+            logger.warn("Saved {} user(s) but could not send every access email", savedUsers.size());
         }
 
-        return PICSUREResponse.success(updatedUsers);
+        return PICSUREResponse.success(savedUsers.stream().map(UserResponse::from).toList());
     }
 
     /**

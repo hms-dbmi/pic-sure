@@ -140,7 +140,10 @@ class AdminFormPayloadTest {
         String email = "new-" + suffix + "@example.org";
         ArrayNode body = json.createArrayNode().add(userFormBody(email, true));
 
-        mockMvc.perform(asAdmin(HttpMethod.POST, "/user").content(body.toString())).andExpect(status().isOk());
+        mockMvc.perform(asAdmin(HttpMethod.POST, "/user").content(body.toString())).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].uuid").isString()).andExpect(jsonPath("$[0].email").value(email))
+            .andExpect(jsonPath("$[0].connection.uuid").value(connection.getUuid().toString()))
+            .andExpect(jsonPath("$[0].roles[0].uuid").value(role.getUuid().toString()));
 
         User created = userRepository.findAll().stream().filter(u -> email.equals(u.getEmail())).findFirst().orElseThrow();
         assertThat(created.getConnection().getUuid()).isEqualTo(connection.getUuid());
@@ -168,13 +171,36 @@ class AdminFormPayloadTest {
         spread.set("connection", connectionAsListed());
         spread.putArray("roles").add(roleAsUserFormSendsIt());
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/user").content(json.createArrayNode().add(spread).toString())).andExpect(status().isOk());
+        mockMvc.perform(asAdmin(HttpMethod.PUT, "/user").content(json.createArrayNode().add(spread).toString())).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].uuid").value(target.getUuid().toString())).andExpect(jsonPath("$[0].active").value(false))
+            .andExpect(jsonPath("$[0].connection.uuid").value(connection.getUuid().toString()))
+            .andExpect(jsonPath("$[0].roles[0].uuid").value(role.getUuid().toString())).andExpect(jsonPath("$[0].token").doesNotExist())
+            .andExpect(jsonPath("$[0].passport").doesNotExist());
 
         User saved = userRepository.findById(target.getUuid()).orElseThrow();
         assertThat(saved.isActive()).isFalse();
         assertThat(saved.getSubject()).isEqualTo(STORED_SUBJECT_PREFIX + suffix);
         assertThat(saved.getToken()).isEqualTo(STORED_TOKEN);
         assertThat(saved.getPassport()).isEqualTo(STORED_PASSPORT);
+    }
+
+    @Test
+    void userReadIsTheStoredEntityJsonWithoutTheDroppedMembers() throws Exception {
+        AccessRule rule = new AccessRule();
+        rule.setName("AR_READ_" + suffix);
+        rule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        rule = accessRuleRepository.save(rule);
+        privilege.setAccessRules(new HashSet<>(Set.of(rule)));
+        privilege = privilegeRepository.save(privilege);
+        String expected = new TransactionTemplate(transactionManager).execute(
+            status -> FrozenWire.json(userRepository.findById(target.getUuid()).orElseThrow(), "token", "passport", "auth0metadata")
+        );
+
+        String body = mockMvc.perform(asAdmin(HttpMethod.GET, "/user/{id}", target.getUuid())).andExpect(status().isOk()).andReturn()
+            .getResponse().getContentAsString();
+
+        assertThat(body).isEqualTo(expected);
+        assertThat(body).contains(rule.getUuid().toString()).doesNotContain(STORED_TOKEN, STORED_PASSPORT, "mergedValues", "mergedName");
     }
 
     @Test
