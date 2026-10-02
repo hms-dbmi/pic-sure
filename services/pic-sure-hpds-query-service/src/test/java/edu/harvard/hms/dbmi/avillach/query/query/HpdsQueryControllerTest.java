@@ -57,6 +57,7 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 class HpdsQueryControllerTest {
 
     private static final String USER = "auth0|alice";
+    private static final String COUNT_BODY = "{\"query\":{\"expectedResultType\":\"COUNT\"}}";
 
     static WireMockServer hpds;
 
@@ -97,7 +98,7 @@ class HpdsQueryControllerTest {
     void queryPathNoLongerServesTheV3IngressPrefix() throws Exception {
         mockMvc.perform(
             post("/hpds/auth/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer caller-token").content("{\"query\":\"q\"}")
+                .header("Authorization", "Bearer caller-token").content(COUNT_BODY)
         ).andExpect(status().isNotFound());
     }
 
@@ -111,7 +112,7 @@ class HpdsQueryControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer caller-token").content("{\"query\":\"q\"}")
+                .header("Authorization", "Bearer caller-token").content(COUNT_BODY)
         ).andExpect(status().isOk()).andExpect(jsonPath("$.resourceResultId").value("rr-3"));
 
         verify(consentAuthorization).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
@@ -128,7 +129,7 @@ class HpdsQueryControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer caller-token").content("{\"query\":\"q\"}")
+                .header("Authorization", "Bearer caller-token").content(COUNT_BODY)
         ).andExpect(status().isOk());
 
         verify(consentAuthorization).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
@@ -323,7 +324,7 @@ class HpdsQueryControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
+                .content(COUNT_BODY)
         ).andExpect(status().isBadGateway()).andExpect(jsonPath("$.errorType").value("upstream_unavailable"));
     }
 
@@ -339,7 +340,7 @@ class HpdsQueryControllerTest {
         mockMvc.perform(
             post("/hpds/auth/query").param("isInstitute", "true").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, "alice@harvard.edu").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
+                .content(COUNT_BODY)
         ).andExpect(status().isGone()).andExpect(jsonPath("$.errorType").value("gone"));
     }
 
@@ -347,7 +348,7 @@ class HpdsQueryControllerTest {
 
     @Test
     void queryWithoutGatewayIdentityIsRejected() throws Exception {
-        mockMvc.perform(post("/hpds/auth/query").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}"))
+        mockMvc.perform(post("/hpds/auth/query").contentType(MediaType.APPLICATION_JSON).content(COUNT_BODY))
             .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 

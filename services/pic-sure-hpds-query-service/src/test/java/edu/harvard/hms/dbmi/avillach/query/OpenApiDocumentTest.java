@@ -89,6 +89,24 @@ class OpenApiDocumentTest {
         ).isEqualTo("string");
     }
 
+    @Test
+    void queryLifecycleEndpointsBindTheDocumentedQueryRequest() throws Exception {
+        JsonNode document = document();
+
+        for (String path : List.of(QUERY, SYNC, STATUS, RESULT, SIGNED_URL)) {
+            OpenApiDocumentAssertions.assertRequestSchema(document, "post", path, "HpdsQueryRequest");
+        }
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "HpdsQueryRequest");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "HpdsQueryRequest", "query");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "Query", "select", "authorizationFilters", "phenotypicClause", "genomicFilters", "expectedResultType", "picsureId",
+            "id"
+        );
+        assertThat(document.path("components").path("schemas").path("HpdsQueryRequest").path("properties").size()).isEqualTo(1);
+        assertThat(operation(document, "get", METADATA).has("requestBody")).isFalse();
+        assertThat(operation(document, "post", METADATA).has("requestBody")).isFalse();
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());

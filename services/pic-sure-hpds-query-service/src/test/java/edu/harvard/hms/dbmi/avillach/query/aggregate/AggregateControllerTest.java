@@ -109,7 +109,7 @@ class AggregateControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
+                .content("{\"query\":{\"expectedResultType\":\"COUNT\"}}")
         ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON));
 
         verifyNoInteractions(aggregateService);
