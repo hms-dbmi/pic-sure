@@ -91,6 +91,16 @@ class ApiConventionsTest {
     }
 
     @Test
+    void everyHandlerCarriesAnAuditEvent() {
+        report("handler-has-audit-event", overAllModules(AuditRules::auditEventOnEveryHandler));
+    }
+
+    @Test
+    void everyNamedPathVariableAppearsInAMappedPath() {
+        report("path-variables-in-template", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
+    }
+
+    @Test
     void everyRequestMappingHandlerNamesItsVerbs() {
         report("request-mapping-names-method", overAllModules(RequestMethodRules::requestMappingNamesMethod));
     }
