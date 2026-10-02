@@ -33,15 +33,18 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import jakarta.annotation.security.RolesAllowed;
 
 /**
  * Pins the authorities every guarded PSAMA handler requires. Each handler is called through its method-security proxy with a single
  * authority in the security context: every listed authority must get past method security, and every other one must be denied, so
  * {@code SUPER_ADMIN} never stands in for {@code ADMIN}. The table is the record of what each endpoint requires. A guarded handler missing
- * from it, or a listed handler that lost its guard, fails the build. The full application context runs on the same in-memory H2 settings as
- * {@code OpenApiDocumentTest}, so the two share one cached context. Both switch on the cache inspection controller, which exists only when
- * {@code app.cache.inspect.enabled} is true, so its handlers are in the table.
+ * from it, or a listed handler that lost its guard, fails the build. Every other PSAMA handler is in a second table with the
+ * {@link PublicEndpoint} level it declares, so each handler's access is recorded in exactly one place here. The full application context
+ * runs on the same in-memory H2 settings as {@code OpenApiDocumentTest}, so the two share one cached context. Both switch on the cache
+ * inspection controller, which exists only when {@code app.cache.inspect.enabled} is true, so its handlers are in the table.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -101,6 +104,24 @@ class HandlerAuthorizationTest {
         )
     );
 
+    private static final Map<String, Access> DECLARED_PUBLIC = new TreeMap<>(
+        Map.ofEntries(
+            Map.entry("ApiKeyController#createUserKey", Access.ANONYMOUS),
+            Map.entry("AuthenticationController#authentication", Access.ANONYMOUS),
+            Map.entry("OpenAccessController#validate", Access.ANONYMOUS),
+            Map.entry("TermsOfServiceController#getLatestTermsOfService", Access.ANONYMOUS),
+            Map.entry("TermsOfServiceController#hasUserAcceptedTOS", Access.AUTHENTICATED),
+            Map.entry("TermsOfServiceController#acceptTermsOfService", Access.AUTHENTICATED),
+            Map.entry("TokenController#inspectToken", Access.AUTHENTICATED),
+            Map.entry("TokenController#refreshToken", Access.AUTHENTICATED),
+            Map.entry("UserController#getCurrentUser", Access.AUTHENTICATED),
+            Map.entry("UserController#getUserConsents", Access.AUTHENTICATED),
+            Map.entry("UserController#refreshUserToken", Access.AUTHENTICATED)
+        )
+    );
+
+    private static final String PSAMA_PACKAGE = "edu.harvard.hms.dbmi.avillach.auth.";
+
     @Autowired
     private ApplicationContext context;
 
@@ -140,16 +161,31 @@ class HandlerAuthorizationTest {
     }
 
     @Test
-    void everyGuardedHandlerIsInTheTable() {
+    void everyHandlerIsInExactlyOneTable() {
         Set<String> guarded = new TreeSet<>();
+        Map<String, Access> declaredPublic = new TreeMap<>();
+        Set<String> psamaHandlers = new TreeSet<>();
         for (Map.Entry<String, HandlerMethod> entry : handlersByName().entrySet()) {
+            if (!entry.getValue().getBeanType().getName().startsWith(PSAMA_PACKAGE)) {
+                continue;
+            }
+            psamaHandlers.add(entry.getKey());
             MergedAnnotations annotations = MergedAnnotations.from(entry.getValue().getMethod());
             if (annotations.isPresent(PreAuthorize.class) || annotations.isPresent(RolesAllowed.class)) {
                 guarded.add(entry.getKey());
             }
+            PublicEndpoint publicEndpoint = entry.getValue().getMethodAnnotation(PublicEndpoint.class);
+            if (publicEndpoint != null) {
+                declaredPublic.put(entry.getKey(), publicEndpoint.value());
+            }
         }
 
         assertThat(guarded).containsExactlyInAnyOrderElementsOf(REQUIRED.keySet());
+        assertThat(declaredPublic).containsExactlyInAnyOrderEntriesOf(DECLARED_PUBLIC);
+        assertThat(REQUIRED.keySet()).doesNotContainAnyElementsOf(DECLARED_PUBLIC.keySet());
+        Set<String> tabled = new TreeSet<>(REQUIRED.keySet());
+        tabled.addAll(DECLARED_PUBLIC.keySet());
+        assertThat(psamaHandlers).containsExactlyInAnyOrderElementsOf(tabled);
     }
 
     private Map<String, HandlerMethod> handlersByName() {
