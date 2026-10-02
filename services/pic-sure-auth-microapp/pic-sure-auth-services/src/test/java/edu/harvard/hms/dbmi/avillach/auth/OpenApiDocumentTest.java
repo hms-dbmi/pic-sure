@@ -343,4 +343,28 @@ class OpenApiDocumentTest {
         assertThat(request.path("type").asText()).as("the request description documents as a free-form object").isEqualTo("object");
         assertThat(document.path("paths").path("/open/validate").properties()).extracting(Map.Entry::getKey).containsExactly("post");
     }
+
+    @Test
+    void apiKeyEndpointsDocumentTheirRecords() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/open/apiKey", "UserApiKeyRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/open/apiKey", "200", "ApiKeyCreationResponse");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/apiKey/platform", "PlatformApiKeyRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/apiKey/platform", "200", "ApiKeyCreationResponse");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/apiKey", "200", "ApiKeyPage");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "put", "/apiKey/{keyId}/revoke", "200", "ApiKeyMetadata");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "ApiKeyCreationResponse", "apiKey", "uuid", "displayPrefix", "keyType", "expiresAt");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "ApiKeyMetadata", "uuid", "displayPrefix", "keyType", "name", "email", "createdAt", "expiresAt", "revokedAt",
+            "lastUsedAt"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ApiKeyPage", "keys", "totalCount", "page", "size");
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document, "UserApiKeyRequest", "PlatformApiKeyRequest", "ApiKeyCreationResponse", "ApiKeyMetadata", "ApiKeyPage"
+        );
+        JsonNode keyType = document.path("components").path("schemas").path("ApiKeyMetadata").path("properties").path("keyType");
+        assertThat(keyType.path("enum")).extracting(JsonNode::asText).containsExactly("USER", "PLATFORM");
+    }
 }

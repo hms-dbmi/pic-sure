@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.PlatformApiKeyRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserApiKeyRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.ApiKeyCreationResponse;
@@ -18,6 +19,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
@@ -67,22 +69,22 @@ public class ApiKeyController {
     @ApiResponse(responseCode = "400", description = "Generation is disabled, a metadata field is too long, or CAPTCHA verification failed")
     @AuditEvent(type = "ACCESS", action = "api_key.create")
     @PostMapping(produces = "application/json", path = "/open/apiKey")
-    public ResponseEntity<?> createUserKey(
+    public ResponseEntity<ApiKeyCreationResponse> createUserKey(
         @Parameter(
             required = true, description = "captchaToken (required when CAPTCHA is enabled) and optional contact name/email"
         ) @RequestBody UserApiKeyRequest keyRequest, HttpServletRequest request
     ) {
         if (!generationEnabled || !openIdpProviderIsEnabled) {
-            return PICSUREResponse.protocolError("API key generation is not enabled on this deployment.");
+            throw rejected("API key generation is not enabled on this deployment.");
         }
         String name = normalize(keyRequest.name());
         String email = normalize(keyRequest.email());
         if (tooLong(name) || tooLong(email)) {
-            return PICSUREResponse.protocolError("Name and email must be at most " + MAX_METADATA_FIELD_LENGTH + " characters.");
+            throw rejected("Name and email must be at most " + MAX_METADATA_FIELD_LENGTH + " characters.");
         }
         if (!captchaVerifier.verify(keyRequest.captchaToken(), AuditAttributes.extractClientIp(request))) {
             AuditAttributes.putMetadata(request, "captcha_result", "failure");
-            return PICSUREResponse.protocolError("CAPTCHA verification failed.");
+            throw rejected("CAPTCHA verification failed.");
         }
 
         ApiKeyCreationResponse created = apiKeyService.generateUserKey(name, email);
@@ -117,7 +119,7 @@ public class ApiKeyController {
     @AuditEvent(type = "ADMIN", action = "api_key.platform.create")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json", path = "/apiKey/platform")
-    public ResponseEntity<?> createPlatformKey(
+    public ResponseEntity<ApiKeyCreationResponse> createPlatformKey(
         @Parameter(
             required = true, description = "name and contact email (both required), optional ISO-8601 expiresAt"
         ) @RequestBody PlatformApiKeyRequest keyRequest, HttpServletRequest request
@@ -125,17 +127,17 @@ public class ApiKeyController {
         String name = normalize(keyRequest.name());
         String email = normalize(keyRequest.email());
         if (name == null || email == null) {
-            return PICSUREResponse.protocolError("Platform keys require a name and a contact email.");
+            throw rejected("Platform keys require a name and a contact email.");
         }
         if (tooLong(name) || tooLong(email)) {
-            return PICSUREResponse.protocolError("Name and email must be at most " + MAX_METADATA_FIELD_LENGTH + " characters.");
+            throw rejected("Name and email must be at most " + MAX_METADATA_FIELD_LENGTH + " characters.");
         }
 
         ApiKeyCreationResponse created;
         try {
             created = apiKeyService.generatePlatformKey(name, email, keyRequest.expiresAt(), keyRequest.neverExpires());
         } catch (IllegalArgumentException e) {
-            return PICSUREResponse.protocolError(e.getMessage());
+            throw rejected(e.getMessage());
         }
         AuditAttributes.putMetadata(request, "api_key_id", created.uuid().toString());
         AuditAttributes.putMetadata(request, "api_key_prefix", created.displayPrefix());
@@ -148,7 +150,7 @@ public class ApiKeyController {
     @AuditEvent(type = "ADMIN", action = "api_key.revoke")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(produces = "application/json", path = "/apiKey/{keyId}/revoke")
-    public ResponseEntity<?> revokeKey(
+    public ResponseEntity<ApiKeyMetadata> revokeKey(
         @Parameter(required = true, description = "UUID of the API key to revoke") @PathVariable("keyId") String keyId,
         HttpServletRequest request
     ) {
@@ -157,15 +159,26 @@ public class ApiKeyController {
         try {
             uuid = UUID.fromString(keyId);
         } catch (IllegalArgumentException e) {
-            return PICSUREResponse.protocolError("Invalid API key ID.");
+            throw rejected("Invalid API key ID.");
         }
 
         AuditAttributes.putMetadata(request, "api_key_id", uuid.toString());
         Optional<ApiKeyMetadata> revoked = apiKeyService.revokeKey(uuid);
         if (revoked.isEmpty()) {
-            return PICSUREResponse.protocolError("API key not found by given ID.");
+            throw rejected("API key not found by given ID.");
         }
         return PICSUREResponse.success(revoked.get());
+    }
+
+    /**
+     * Builds the 400 a key request is refused with. The reason is the message of the error body, where the admin and public key screens
+     * read it.
+     *
+     * @param reason why the request was refused
+     * @return the exception to throw
+     */
+    private static PicSureResponseException rejected(String reason) {
+        return new PicSureResponseException(HttpStatus.BAD_REQUEST, reason, null);
     }
 
     // strips control characters at the boundary: these free-text fields flow into audit metadata and logs
