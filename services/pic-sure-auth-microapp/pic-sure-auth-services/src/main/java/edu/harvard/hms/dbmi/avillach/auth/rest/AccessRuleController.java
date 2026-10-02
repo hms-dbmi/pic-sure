@@ -1,8 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.AccessRuleCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.AccessRuleUpdateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AccessRuleResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AccessRuleTypes;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -22,15 +25,11 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 
 /**
- * <p>Endpoint for service handling business logic for access rules.</p>
- * <p>Note: Only users with the super admin role can access this endpoint.</p>
- * <p>
- * Path: /accessRule
+ * <p>Endpoint for service handling business logic for access rules.</p> <p>Note: Only users with the super admin role can access this
+ * endpoint.</p> <p> Path: /accessRule
  */
 @Tag(name = "Access Rule Management", description = "Access rules that gate what a privilege permits")
 @Controller
@@ -44,25 +43,19 @@ public class AccessRuleController {
         this.accessRuleService = accessRuleService;
     }
 
-    @Operation(
-        summary = "Read one access rule",
-        description = "GET information of one AccessRule with the UUID"
-    )
+    @Operation(summary = "Read one access rule", description = "GET information of one AccessRule with the UUID")
     @ApiResponse(responseCode = "200", description = "The access rule")
     @ApiResponse(responseCode = "404", description = "No access rule has that id")
     @AuditEvent(type = "OTHER", action = "access_rule.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{accessRuleId}")
-    public ResponseEntity<?> getAccessRuleById(
+    public ResponseEntity<AccessRuleResponse> getAccessRuleById(
         @Parameter(description = "The UUID of the accessRule to fetch information about") @PathVariable("accessRuleId") String accessRuleId
     ) {
-        Optional<AccessRule> entityById = this.accessRuleService.getAccessRuleById(accessRuleId);
+        AccessRule accessRule = this.accessRuleService.getAccessRuleById(accessRuleId)
+            .orElseThrow(() -> new PicSureResponseException(HttpStatus.NOT_FOUND, "AccessRule not found", null));
 
-        if (entityById.isEmpty()) {
-            return PICSUREResponse.error(HttpStatus.NOT_FOUND, "AccessRule not found", null);
-        }
-
-        return PICSUREResponse.success(entityById.get());
+        return PICSUREResponse.success(AccessRuleResponse.from(accessRule));
     }
 
     @Operation(summary = "List every access rule", description = "GET a list of existing AccessRules")
@@ -70,9 +63,8 @@ public class AccessRuleController {
     @AuditEvent(type = "OTHER", action = "access_rule.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping("")
-    public ResponseEntity<List<AccessRule>> getAccessRuleAll() {
-        List<AccessRule> allAccessRules = this.accessRuleService.getAllAccessRules();
-        return PICSUREResponse.success(allAccessRules);
+    public ResponseEntity<List<AccessRuleResponse>> getAccessRuleAll() {
+        return PICSUREResponse.success(AccessRuleResponse.fromAll(this.accessRuleService.getAllAccessRules()));
     }
 
     @Operation(summary = "Create access rules", description = "POST a list of AccessRules")
@@ -81,7 +73,7 @@ public class AccessRuleController {
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> addAccessRule(
+    public ResponseEntity<List<AccessRuleResponse>> addAccessRule(
         @Parameter(
             required = true, description = "The access rules to create; the server generates each identifier"
         ) @RequestBody List<@NotNull @Valid AccessRuleCreateRequest> accessRuleRequests, HttpServletRequest request
@@ -90,10 +82,10 @@ public class AccessRuleController {
         List<AccessRule> accessRules = this.accessRuleService.createFrom(accessRuleRequests);
 
         if (accessRules.isEmpty()) {
-            return PICSUREResponse.protocolError("No access rules added", 400);
+            throw new PicSureResponseException(HttpStatus.BAD_REQUEST, "No access rules added", null);
         }
 
-        return PICSUREResponse.success(accessRules);
+        return PICSUREResponse.success(AccessRuleResponse.fromAll(accessRules));
     }
 
     @Operation(
@@ -104,13 +96,13 @@ public class AccessRuleController {
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<AccessRule>> updateAccessRule(
+    public ResponseEntity<List<AccessRuleResponse>> updateAccessRule(
         @Parameter(
             required = true, description = "The access rules to update, each named by UUID; a field left out keeps its stored value"
         ) @RequestBody List<@NotNull @Valid AccessRuleUpdateRequest> accessRules, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "access_rule_count", String.valueOf(accessRules.size()));
-        return PICSUREResponse.success(this.accessRuleService.updateFrom(accessRules));
+        return PICSUREResponse.success(AccessRuleResponse.fromAll(this.accessRuleService.updateFrom(accessRules)));
     }
 
     @Operation(
@@ -122,24 +114,24 @@ public class AccessRuleController {
     @AuditEvent(type = "ADMIN", action = "access_rule.delete")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{accessRuleId}")
-    public ResponseEntity<List<AccessRule>> removeById(
+    public ResponseEntity<List<AccessRuleResponse>> removeById(
         @Parameter(required = true, description = "A valid accessRule Id") @PathVariable("accessRuleId") final String accessRuleId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "access_rule_id", accessRuleId);
-        return PICSUREResponse.success(this.accessRuleService.removeAccessRuleById(accessRuleId));
+        return PICSUREResponse.success(AccessRuleResponse.fromAll(this.accessRuleService.removeAccessRuleById(accessRuleId)));
     }
 
     @Operation(
         summary = "The rule types an access rule may use",
         description = "GET all types listed for the rule in accessRule that could be used"
     )
-    @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values")
+    @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values, under the types member")
     @AuditEvent(type = "OTHER", action = "access_rule.types")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping(path = "/allTypes", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Integer>> getAllTypes() {
-        return PICSUREResponse.success(AccessRule.TypeNaming.getTypeNameMap());
+    public ResponseEntity<AccessRuleTypes> getAllTypes() {
+        return PICSUREResponse.success(new AccessRuleTypes(AccessRule.TypeNaming.getTypeNameMap()));
     }
 
 }

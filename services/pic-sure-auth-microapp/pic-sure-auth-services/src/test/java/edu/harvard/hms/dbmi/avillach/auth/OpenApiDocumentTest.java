@@ -164,6 +164,27 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertSchemaDocumented(document, "UserMetadataMappingResponse");
     }
 
+    @Test
+    void accessRuleEndpointsDocumentTheirFrozenShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/accessRule/{accessRuleId}", "200", "AccessRuleResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/accessRule", "200", "AccessRuleResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/accessRule", "200", "AccessRuleResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/accessRule", "200", "AccessRuleResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/accessRule/{accessRuleId}", "200", "AccessRuleResponse");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/accessRule/allTypes", "200", "AccessRuleTypes");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "AccessRuleResponse", "uuid", "name", "description", "type", "rule", "value", "gates", "gateAnyRelation",
+            "evaluateOnlyByGates", "subAccessRule", "checkMapNode", "checkMapKeyOnly"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "AccessRuleTypes", "types");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "AccessRuleResponse", "AccessRuleTypes");
+        JsonNode accessRule = document.path("components").path("schemas").path("AccessRuleResponse").path("properties");
+        assertThat(accessRule.has("mergedValues")).isFalse();
+        assertThat(accessRule.has("mergedName")).isFalse();
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }
