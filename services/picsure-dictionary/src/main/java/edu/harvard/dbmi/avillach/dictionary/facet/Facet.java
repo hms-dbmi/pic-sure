@@ -16,7 +16,7 @@ public record Facet(
         description = "Identifier of the facet within its category.", example = "phs000007", requiredMode = Schema.RequiredMode.REQUIRED
     ) String name, @Schema(description = "Name of the facet shown to users.", example = "FHS") String display,
     @Schema(
-        description = "Longer text about the facet. Null when the dictionary holds none.",
+        description = "Longer text about the facet. Empty when the dictionary holds none.",
         example = "Concepts collected by the Framingham Heart Study"
     ) String description,
     @Schema(

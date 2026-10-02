@@ -20,7 +20,7 @@ public record Filter(
         example = "age"
     ) @Nullable String search,
     @Schema(
-        description = "Consents the caller holds, each a study accession with its consent group. When non-empty, only concepts of datasets under those consents are returned. Null or empty applies no consent restriction and returns every concept.",
+        description = "Consents the caller holds, each a study accession with its consent group, or a bare accession for a dataset with no consent group. When non-empty, only concepts of datasets under those consents are returned. Null or empty applies no consent restriction and returns every concept.",
         example = "[\"phs000007.c1\", \"phs000007.c2\"]"
     ) @Nullable List<String> consents
 ) {
