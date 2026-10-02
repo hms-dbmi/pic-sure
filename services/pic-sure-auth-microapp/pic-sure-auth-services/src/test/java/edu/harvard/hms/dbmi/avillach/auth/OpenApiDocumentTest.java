@@ -312,4 +312,15 @@ class OpenApiDocumentTest {
     private static String description(JsonNode paths, String path, String method) {
         return paths.path(path).path(method).path("description").asText();
     }
+
+    @Test
+    void currentUserEndpointsDocumentTheProfileShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/me", "200", "UserForDisplay");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "UserForDisplay", "privileges", "token", "email", "uuid", "acceptedTOS");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "UserForDisplay");
+        JsonNode profile = document.path("components").path("schemas").path("UserForDisplay").path("properties");
+        assertThat(profile.path("acceptedTOS").path("type").asText()).as("acceptedTOS is a boolean on the profile").isEqualTo("boolean");
+    }
 }

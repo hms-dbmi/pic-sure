@@ -278,65 +278,6 @@ public class User extends BaseEntity implements Serializable, Principal {
         this.passport = passport;
     }
 
-    /**
-     * <p>Inner class defining limited user attributes returned from the User endpoint.</p>
-     */
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    public static class UserForDisplay {
-        String uuid;
-        String email;
-        Set<String> privileges;
-        String token;
-        private boolean acceptedTOS;
-
-        public UserForDisplay() {}
-
-        public String getEmail() {
-            return email;
-        }
-
-        public UserForDisplay setEmail(String email) {
-            this.email = email;
-            return this;
-        }
-
-        public Set<String> getPrivileges() {
-            return privileges;
-        }
-
-        public UserForDisplay setPrivileges(Set<String> privileges) {
-            this.privileges = privileges;
-            return this;
-        }
-
-        public String getUuid() {
-            return uuid;
-        }
-
-        public UserForDisplay setUuid(String uuid) {
-            this.uuid = uuid;
-            return this;
-        }
-
-        public String getToken() {
-            return token;
-        }
-
-        public UserForDisplay setToken(String token) {
-            this.token = token;
-            return this;
-        }
-
-        public boolean getAcceptedTOS() {
-            return acceptedTOS;
-        }
-
-        public UserForDisplay setAcceptedTOS(boolean acceptedTOS) {
-            this.acceptedTOS = acceptedTOS;
-            return this;
-        }
-    }
-
     public String toString() {
         if (uuid == null) {
             return "No UUID assigned___ " + subject + " ___ " + email + " ___ " + generalMetadata + " ___ " + auth0metadata + " ___ {"

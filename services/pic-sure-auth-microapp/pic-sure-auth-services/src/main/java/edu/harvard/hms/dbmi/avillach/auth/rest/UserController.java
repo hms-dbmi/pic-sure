@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserForDisplay;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.UserResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -126,20 +127,22 @@ public class UserController {
      *
      */
     @Operation(summary = "The caller's profile, optionally with a long-term token", description = "Retrieve information of current user")
-    @ApiResponse(responseCode = "200", description = "The caller's profile")
+    @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
-    public ResponseEntity<?> getCurrentUser(
+    public ResponseEntity<UserForDisplay> getCurrentUser(
         @RequestHeader("Authorization") String authorizationHeader,
-        @Parameter(description = "Attribute that represents if a long term token will attach to the response") @RequestParam(
+        @Parameter(description = "Accepted for compatibility; the long-term token is included whether or not it is sent") @RequestParam(
             name = "hasToken", required = false
         ) Boolean hasToken
     ) {
         logger.info("getCurrentUser() authorizationHeader: {}, hasToken {}", authorizationHeader, hasToken);
-        User.UserForDisplay currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
+        UserForDisplay currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
 
         if (currentUser == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "Inner application error, please contact admin."
+            );
         }
 
         return PICSUREResponse.success(currentUser);
