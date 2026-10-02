@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.dictionary.concept.ConceptService;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.facet.FacetService;
@@ -72,5 +73,19 @@ class FrontendFilterBindingTest {
         ArgumentCaptor<Filter> filter = ArgumentCaptor.forClass(Filter.class);
         verify(facetService).getFacets(filter.capture());
         assertThat(filter.getValue()).isEqualTo(BOUND);
+    }
+
+    @Test
+    void strictMapperBindsTheFrontendFacetAndFilter() throws Exception {
+        ObjectMapper strict = new ObjectMapper();
+
+        Facet facet = strict.readValue(strict.readTree(FRONTEND_FILTER).path("facets").get(0).toString(), Facet.class);
+        Filter filter = strict.readValue(FRONTEND_FILTER, Filter.class);
+
+        assertThat(facet.name()).isEqualTo("phs000007");
+        assertThat(facet.category()).isEqualTo("study_ids_dataset_ids");
+        assertThat(filter).isEqualTo(BOUND);
+        assertThat(filter.facets().getFirst().name()).isEqualTo("phs000007");
+        assertThat(filter.facets().getFirst().category()).isEqualTo("study_ids_dataset_ids");
     }
 }
