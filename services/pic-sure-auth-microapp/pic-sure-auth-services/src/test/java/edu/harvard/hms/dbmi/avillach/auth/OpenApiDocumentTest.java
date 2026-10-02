@@ -149,6 +149,21 @@ class OpenApiDocumentTest {
         assertThat(requiredFields.path("type").asText()).isEqualTo("string");
     }
 
+    @Test
+    void mappingEndpointsDocumentTheirFrozenShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/mapping/{connectionId}", "200", "ConnectionResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/mapping", "200", "UserMetadataMappingResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/mapping", "200", "UserMetadataMappingResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/mapping", "200", "UserMetadataMappingResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/mapping/{mappingId}", "200", "UserMetadataMappingResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "UserMetadataMappingResponse", "uuid", "connection", "generalMetadataJsonPath", "auth0MetadataJsonPath"
+        );
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "UserMetadataMappingResponse");
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }

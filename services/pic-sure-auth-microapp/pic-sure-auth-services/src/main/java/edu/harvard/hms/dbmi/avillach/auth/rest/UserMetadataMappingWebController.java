@@ -1,10 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserMetadataMapping;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserMetadataMappingCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserMetadataMappingUpdateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.ConnectionResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserMetadataMappingResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserMetadataMappingService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -17,6 +19,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +36,8 @@ import java.util.List;
 @RequestMapping("/mapping")
 public class UserMetadataMappingWebController {
 
+    private static final String APPLICATION_ERROR = "Application error";
+
     private final UserMetadataMappingService mappingService;
 
     @Autowired
@@ -40,14 +45,16 @@ public class UserMetadataMappingWebController {
         this.mappingService = mappingService;
     }
 
-    @Operation(summary = "Mappings for one connection", description = "GET information of one UserMetadataMapping with the UUID")
-    @ApiResponse(responseCode = "200", description = "Mappings for the named connection")
+    @Operation(
+        summary = "The connection a mapping lookup names",
+        description = "GET the Connection with the given business id. The response is the connection itself, not its mappings."
+    )
+    @ApiResponse(responseCode = "200", description = "The named connection")
     @AuditEvent(type = "OTHER", action = "mapping.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "{connectionId}", produces = "application/json")
-    public ResponseEntity<Connection> getMappingsForConnection(@PathVariable("connectionId") String connection) {
-        Connection allMappingsForConnection = this.mappingService.getAllMappingsForConnection(connection);
-        return PICSUREResponse.success(allMappingsForConnection);
+    public ResponseEntity<ConnectionResponse> getMappingsForConnection(@PathVariable("connectionId") String connection) {
+        return PICSUREResponse.success(ConnectionResponse.from(this.mappingService.getAllMappingsForConnection(connection)));
     }
 
     @Operation(summary = "List every user metadata mapping", description = "GET a list of existing UserMetadataMappings")
@@ -55,9 +62,8 @@ public class UserMetadataMappingWebController {
     @AuditEvent(type = "OTHER", action = "mapping.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
-    public ResponseEntity<List<UserMetadataMapping>> getAllMappings() {
-        List<UserMetadataMapping> allMappings = mappingService.getAllMappings();
-        return PICSUREResponse.success(allMappings);
+    public ResponseEntity<List<UserMetadataMappingResponse>> getAllMappings() {
+        return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(mappingService.getAllMappings()));
     }
 
     @Operation(summary = "Create mappings", description = "POST a list of UserMetadataMappings")
@@ -65,19 +71,20 @@ public class UserMetadataMappingWebController {
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = "application/json", produces = "application/json")
-    public ResponseEntity<?> addMapping(
+    public ResponseEntity<List<UserMetadataMappingResponse>> addMapping(
         @Parameter(
             required = true, description = "The mappings to create, each naming an existing connection by its id"
         ) @RequestBody List<@NotNull @Valid UserMetadataMappingCreateRequest> mappings, HttpServletRequest request
     ) {
 
         AuditAttributes.putMetadata(request, "mapping_count", String.valueOf(mappings.size()));
+        List<UserMetadataMapping> userMetadataMappings;
         try {
-            List<UserMetadataMapping> userMetadataMappings = mappingService.createFrom(mappings);
-            return PICSUREResponse.success(userMetadataMappings);
+            userMetadataMappings = mappingService.createFrom(mappings);
         } catch (IllegalArgumentException e) {
-            return PICSUREResponse.error(e.getMessage());
+            throw new PicSureResponseException(HttpStatus.INTERNAL_SERVER_ERROR, APPLICATION_ERROR, e.getMessage());
         }
+        return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(userMetadataMappings));
     }
 
     @Operation(
@@ -88,7 +95,7 @@ public class UserMetadataMappingWebController {
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(consumes = "application/json", produces = "application/json")
-    public ResponseEntity<?> updateMapping(
+    public ResponseEntity<List<UserMetadataMappingResponse>> updateMapping(
         @Parameter(
             required = true, description = "The mappings to update, each named by UUID; a field left out keeps its stored value"
         ) @RequestBody List<@NotNull @Valid UserMetadataMappingUpdateRequest> mappings, HttpServletRequest request
@@ -97,9 +104,11 @@ public class UserMetadataMappingWebController {
         List<UserMetadataMapping> userMetadataMappings = this.mappingService.updateFrom(mappings);
 
         if (userMetadataMappings == null || userMetadataMappings.isEmpty()) {
-            return PICSUREResponse.error("No UserMetadataMapping found with the given Ids");
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, APPLICATION_ERROR, "No UserMetadataMapping found with the given Ids"
+            );
         }
-        return PICSUREResponse.success(userMetadataMappings);
+        return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(userMetadataMappings));
     }
 
     @Operation(
@@ -110,12 +119,12 @@ public class UserMetadataMappingWebController {
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{mappingId}", produces = "application/json")
-    public ResponseEntity<List<UserMetadataMapping>> removeById(
+    public ResponseEntity<List<UserMetadataMappingResponse>> removeById(
         @Parameter(required = true, description = "A valid UserMetadataMapping Id") @PathVariable("mappingId") final String mappingId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "mapping_id", mappingId);
-        List<UserMetadataMapping> userMetadataMappings = this.mappingService.removeMetadataMappingByIdAndRetrieveAll(mappingId);
-        return PICSUREResponse.success(userMetadataMappings);
+        return PICSUREResponse
+            .success(UserMetadataMappingResponse.fromAll(this.mappingService.removeMetadataMappingByIdAndRetrieveAll(mappingId)));
     }
 }
