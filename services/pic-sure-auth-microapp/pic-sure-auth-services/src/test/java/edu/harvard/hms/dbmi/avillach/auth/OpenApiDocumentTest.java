@@ -284,6 +284,24 @@ class OpenApiDocumentTest {
         assertThat(acceptedTOS.path("type").asText()).as("acceptedTOS stays a string on this endpoint").isEqualTo("string");
     }
 
+    @Test
+    void tokenEndpointsDocumentTheGatewayShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/token/inspect", "TokenInspectionRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/token/inspect", "200", "TokenInspectionResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "TokenInspectionRequest", "token", "request");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "TokenInspectionResponse", "active", "uuid", "sub", "email", "roles", "privileges", "tokenRefreshed", "token",
+            "message"
+        );
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "TokenInspectionRequest", "TokenInspectionResponse");
+        JsonNode inspection = document.path("components").path("schemas").path("TokenInspectionResponse").path("properties");
+        assertThat(inspection.has("claims")).as("the other claims are written beside the members, not under a claims key").isFalse();
+        JsonNode request = document.path("components").path("schemas").path("TokenInspectionRequest").path("properties").path("request");
+        assertThat(request.path("type").asText()).as("the request description documents as a free-form object").isEqualTo("object");
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }

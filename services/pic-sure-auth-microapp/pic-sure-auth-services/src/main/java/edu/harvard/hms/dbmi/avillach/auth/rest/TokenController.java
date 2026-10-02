@@ -1,9 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.model.InvalidRefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.RefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.ValidRefreshToken;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.TokenInspectionRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.TokenInspectionResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TokenService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -39,10 +42,12 @@ public class TokenController {
     private final static Logger logger = LoggerFactory.getLogger(TokenController.class);
 
     private final TokenService tokenService;
+    private final ObjectMapper objectMapper;
 
     @Autowired
-    public TokenController(TokenService tokenService) {
+    public TokenController(TokenService tokenService, ObjectMapper objectMapper) {
         this.tokenService = tokenService;
+        this.objectMapper = objectMapper;
     }
 
     @Operation(
@@ -52,11 +57,12 @@ public class TokenController {
     @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active")
     @AuditEvent(type = "ACCESS", action = "token.introspect")
     @PostMapping(path = "/inspect", produces = "application/json")
-    public ResponseEntity<Map<String, Object>> inspectToken(
+    public ResponseEntity<TokenInspectionResponse> inspectToken(
         @Parameter(
-            required = true, description = "A JSON object that at least" + " include a user the token for validation"
-        ) @RequestBody Map<String, Object> inputMap, HttpServletRequest request
+            required = true, description = "The token to introspect and a description of the request it is used for"
+        ) @RequestBody TokenInspectionRequest inspection, HttpServletRequest request
     ) {
+        Map<String, Object> inputMap = inspection.toMap(objectMapper);
         Map<String, Object> resultMap = this.tokenService.inspectToken(inputMap);
 
         boolean active = Boolean.TRUE.equals(resultMap.getOrDefault("active", false));
@@ -84,7 +90,7 @@ public class TokenController {
             }
         }
 
-        return PICSUREResponse.success(resultMap);
+        return PICSUREResponse.success(TokenInspectionResponse.from(resultMap));
     }
 
     @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user")

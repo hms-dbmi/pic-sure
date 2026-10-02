@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.TokenInspectionRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -35,8 +36,10 @@ class ControllerAuditEventTest {
     @Test
     void tokenController() throws Exception {
         Class<?> c = TokenController.class;
-        // inspectToken(Map<String, Object> inputMap, HttpServletRequest request)
-        assertAuditEvent(c, "inspectToken", new Class[] {Map.class, HttpServletRequest.class}, "ACCESS", "token.introspect");
+        // inspectToken(TokenInspectionRequest inspection, HttpServletRequest request)
+        assertAuditEvent(
+            c, "inspectToken", new Class[] {TokenInspectionRequest.class, HttpServletRequest.class}, "ACCESS", "token.introspect"
+        );
         // refreshToken(String authorizationHeader, HttpServletRequest request)
         assertAuditEvent(c, "refreshToken", new Class[] {String.class, HttpServletRequest.class}, "ACCESS", "token.refresh");
     }
