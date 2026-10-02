@@ -101,7 +101,7 @@ class AuditLoggingFilterTest {
     }
 
     @Test
-    void testFallsBackToOtherAndMethodWhenNoAttributes() throws Exception {
+    void testFallsBackToUnlabeledAndMethodWhenNoAttributes() throws Exception {
         MockHttpServletRequest request = mockRequest("/unknown/path", "GET");
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(200);
@@ -111,7 +111,7 @@ class AuditLoggingFilterTest {
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
-        assertEquals("OTHER", event.getEventType());
+        assertEquals("UNLABELED", event.getEventType());
         assertEquals("GET", event.getAction());
     }
 
