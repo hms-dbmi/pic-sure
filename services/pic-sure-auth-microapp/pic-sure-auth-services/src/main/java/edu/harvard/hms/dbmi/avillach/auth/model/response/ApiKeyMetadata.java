@@ -32,22 +32,29 @@ public record ApiKeyMetadata(
         requiredMode = Schema.RequiredMode.REQUIRED
     ) String displayPrefix,
     @Schema(description = "Whether the key is a USER or a PLATFORM key.", requiredMode = Schema.RequiredMode.REQUIRED) ApiKeyType keyType,
-    @Schema(description = "Name given when the key was created. Null when none was given.", example = "Jane Doe") String name,
     @Schema(
-        description = "Contact email given when the key was created. Null when none was given.", example = "researcher@example.org"
+        description = "Name given when the key was created. Null when none was given.", example = "Jane Doe",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    ) String name,
+    @Schema(
+        description = "Contact email given when the key was created. Null when none was given.", example = "researcher@example.org",
+        requiredMode = Schema.RequiredMode.REQUIRED
     ) String email,
     @Schema(
         description = "When the key was created, as an ISO instant.", example = "2026-09-30T14:05:00Z",
         requiredMode = Schema.RequiredMode.REQUIRED
     ) Instant createdAt,
     @Schema(
-        description = "When the key expires, as an ISO instant. Null when it never expires.", example = "2026-10-30T14:05:00Z"
+        description = "When the key expires, as an ISO instant. Null when it never expires.", example = "2026-10-30T14:05:00Z",
+        requiredMode = Schema.RequiredMode.REQUIRED
     ) Instant expiresAt,
     @Schema(
-        description = "When the key was revoked, as an ISO instant. Null while the key is live.", example = "2026-09-30T14:05:00Z"
+        description = "When the key was revoked, as an ISO instant. Null while the key is live.", example = "2026-09-30T14:05:00Z",
+        requiredMode = Schema.RequiredMode.REQUIRED
     ) Instant revokedAt,
     @Schema(
-        description = "When the key was last presented, as an ISO instant. Null when it never was.", example = "2026-09-30T14:05:00Z"
+        description = "When the key was last presented, as an ISO instant. Null when it never was.", example = "2026-09-30T14:05:00Z",
+        requiredMode = Schema.RequiredMode.REQUIRED
     ) Instant lastUsedAt
 ) {
 

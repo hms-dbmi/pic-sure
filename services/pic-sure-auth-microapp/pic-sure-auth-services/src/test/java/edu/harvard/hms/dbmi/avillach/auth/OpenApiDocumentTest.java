@@ -244,7 +244,7 @@ class OpenApiDocumentTest {
 
         List.of(
             "User", "Role", "Privilege", "AccessRule", "Application", "ApplicationForDisplay", "Connection", "UserMetadataMapping",
-            "UserConsents", "TermsOfService"
+            "UserConsents", "TermsOfService", "ApiKey"
         ).forEach(entity -> assertThat(schemas.has(entity)).as("the document must not describe the %s entity", entity).isFalse());
     }
 

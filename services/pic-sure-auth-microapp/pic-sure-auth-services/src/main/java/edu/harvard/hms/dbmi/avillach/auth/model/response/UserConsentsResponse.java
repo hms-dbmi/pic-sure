@@ -22,7 +22,7 @@ import java.util.UUID;
 public record UserConsentsResponse(
     @Schema(
         description = "Row identifier of the consents record. Null when the user has no stored consents.",
-        example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"
+        example = "8694e3d4-5cb4-410f-8431-993445e6d3f6", requiredMode = Schema.RequiredMode.REQUIRED
     ) UUID uuid,
     @Schema(
         description = "Row identifier of the user.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
