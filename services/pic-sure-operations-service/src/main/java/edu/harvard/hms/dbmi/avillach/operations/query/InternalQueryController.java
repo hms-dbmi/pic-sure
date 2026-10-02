@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -14,6 +12,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import edu.harvard.dbmi.avillach.domain.DispatchResponse;
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.SavedQueryReference;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Hidden;
 
@@ -42,13 +45,16 @@ public class InternalQueryController {
         this.service = service;
     }
 
+    /**
+     * Persists a query and answers 201 with the id it was stored under, as {@code {"picsureId": "<uuid>"}}.
+     *
+     * @param req the query to persist
+     * @return the id of the persisted query
+     */
     @AuditEvent(type = "OTHER", action = "internal_query.save")
     @PostMapping("")
-    public ResponseEntity<Map<String, UUID>> save(@RequestBody SaveQueryRequest req) {
-        UUID picsureId = service.save(req);
-        Map<String, UUID> body = new LinkedHashMap<>();
-        body.put("picsureId", picsureId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+    public ResponseEntity<SavedQueryReference> save(@RequestBody SaveQueryRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(new SavedQueryReference(service.save(req)));
     }
 
     @AuditEvent(type = "OTHER", action = "internal_query.read")
@@ -70,9 +76,7 @@ public class InternalQueryController {
      */
     @AuditEvent(type = "OTHER", action = "internal_query.dispatch")
     @GetMapping("/{picsureId}/dispatch")
-    public Map<String, String> dispatch(@PathVariable("picsureId") UUID picsureId) {
-        Map<String, String> body = new LinkedHashMap<>();
-        body.put("queryJson", service.dispatchQueryJson(picsureId));
-        return body;
+    public DispatchResponse dispatch(@PathVariable("picsureId") UUID picsureId) {
+        return new DispatchResponse(service.dispatchQueryJson(picsureId));
     }
 }
