@@ -110,6 +110,52 @@ class OpenApiDocumentTest {
         );
     }
 
+    @Test
+    void bannerOperationsPublishTheirSchemas() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/banners/active", "200", "ActiveBannerDto");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/banners", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "put", "/banners/order", "ReorderBannersRequest");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/banners/order", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/banners", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners", "201", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/banners/saved", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/saved", "201", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "put", "/banners/{uuid}", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "put", "/banners/{uuid}", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/banners/{uuid}/publish", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/{uuid}/publish", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/{uuid}/disable", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/{uuid}/archive", "200", "ArchivedBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/banners/{uuid}/restore", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/{uuid}/restore", "201", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "ActiveBannerDto", "uuid", "htmlContent", "title", "appearance", "icon", "dismissible", "audience", "placement",
+            "pageTargets", "priority", "presentationHash"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "ManagementBannerDto", "uuid", "status", "lifecycle", "htmlContent", "title", "appearance", "icon", "dismissible",
+            "audience", "placement", "pageTargets", "startAt", "endAt", "priority", "presentationHash", "createdAt", "createdBy",
+            "updatedAt", "updatedBy", "publishedAt", "publishedBy", "disabledAt", "disabledBy", "restoredFromUuid"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ArchivedBannerDto", "uuid", "status", "archivedAt", "archivedBy");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "BannerPageTarget", "kind", "path");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "PublishBannerRequest", "htmlContent", "title", "appearance", "icon", "dismissible", "audience", "placement",
+            "pageTargets", "startAt", "endAt"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ReorderBannersRequest", "bannerUuids");
+    }
+
+    @Test
+    void bannerModelsAreDocumented() throws Exception {
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document(), "ActiveBannerDto", "ManagementBannerDto", "ArchivedBannerDto", "BannerPageTarget", "PublishBannerRequest",
+            "ReorderBannersRequest"
+        );
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper
             .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
