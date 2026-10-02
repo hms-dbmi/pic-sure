@@ -8,6 +8,10 @@ The OpenAPI document publishes each guard's authorities as "Required authorities
 
 `handler-declares-authorization` covers PSAMA only (`services/pic-sure-auth-microapp/pic-sure-auth-services`), the one module whose authorization lives in its own handlers. Every PSAMA handler must carry exactly one authorization decision on the method: `@PreAuthorize` in the form `preauthorize-uses-standard-form` requires, or `@PublicEndpoint(ANONYMOUS)` or `@PublicEndpoint(AUTHENTICATED)` from `libs/pic-sure-openapi`. A handler with neither fails, a handler with both fails, and `@PublicEndpoint` on a class fails. `@PublicEndpoint` grants nothing: PSAMA's filter chain enforces access, and the annotation records the decision where a reviewer reads the handler. Use `ANONYMOUS` only for a route listed in `security.public-routes.shipped`, which PSAMA's `PublicEndpointRoutesTest` holds in step with the annotations, and `AUTHENTICATED` for a handler any logged-in caller may reach. The OpenAPI document prints "Public, no token needed." or "Any authenticated user." for them, the way it prints required authorities for a guard.
 
+`handler-has-audit-event` covers audit labels. The audit log reads each request's event type and action from `@AuditEvent` on the handler that served it, and a request that reaches the audit filter without a handler label is logged with event type `UNLABELED`. That covers a handler missing the annotation and a request turned away before any handler ran, such as a 401 or a 404, so an alert on `UNLABELED` with a status below 400 finds the missing annotations. The gateway is the exception: it logs `OTHER` when no entry in its route table matches. In every compiled module, `handler-has-audit-event` fails each handler that does not carry `@AuditEvent`. There is no exemption: a module where no handler carries it fails once per handler. The rule keys on the annotation rather than on an interceptor in the same module, because hpds declares its handlers in `services/pic-sure-hpds/service` and reads the annotation from an interceptor in `services/pic-sure-hpds/processing`. To satisfy it, give the new handler an `@AuditEvent(type = ..., action = ...)` that names what it does. `handler-has-audit-event` checks presence only. Tests such as PSAMA's `ControllerAuditEventTest` still pin the values.
+
+`path-variables-in-template` checks request routing in every module with a controller. Each `@PathVariable` that names its variable, as `@PathVariable("userId")` or `@PathVariable(name = "userId")`, must appear as `{userId}` or `{userId:regex}` in at least one path the handler maps, counting every combination of the class-level `@RequestMapping` paths with the method's mapping paths. A variable no path declares is never bound, and Spring answers every request to that handler with a 500. Fix it by adding the segment to the mapping or by binding the value some other way. A `@PathVariable` with no explicit name is skipped, because its name comes from the compiled parameter name, which the checker cannot read; the reactor's `-parameters` flag and `DashboardDrawerControllerParameterNameTest` cover those.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -36,6 +40,14 @@ Authorization, over every compiled module:
 Authorization, over PSAMA only:
 
 - `handler-declares-authorization`: every handler carries exactly one of `@PreAuthorize` or `@PublicEndpoint` on the method, and no class carries `@PublicEndpoint`.
+
+Audit labels, over every compiled module:
+
+- `handler-has-audit-event`: every handler carries `@AuditEvent`.
+
+Request mappings, over every compiled module:
+
+- `path-variables-in-template`: every `@PathVariable` that names its variable appears as `{name}` in at least one path its handler maps.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
