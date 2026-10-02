@@ -6,25 +6,34 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
@@ -41,6 +50,8 @@ import edu.harvard.dbmi.avillach.domain.PicSureStatus;
  * load through {@link OperationsClient#get}.
  */
 class QueryServiceTest {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     OperationsClient operationsClient = mock(OperationsClient.class);
     ResourceWebClient hpds = mock(ResourceWebClient.class);
@@ -73,7 +84,7 @@ class QueryServiceTest {
     // --- create ---
 
     @Test
-    void createPersistsViaOperationsClientAndTranslatesIds() {
+    void createPersistsVersion3ViaOperationsClientAndCallsTheV3Base() {
         UUID picsureId = UUID.randomUUID();
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
         when(operationsClient.save(any())).thenReturn(picsureId);
@@ -82,8 +93,8 @@ class QueryServiceTest {
 
         assertThat(out.getPicsureResultId()).isEqualTo(picsureId);
         assertThat(out.getResourceResultId()).isEqualTo("rr-1");
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "rr-1".equals(r.resourceResultId()) && r.version() == null));
-        verify(hpds).query(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), any()); // v1 base
+        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "rr-1".equals(r.resourceResultId()) && "3".equals(r.version())));
+        verify(hpds).query(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), any());
     }
 
     @Test
@@ -100,18 +111,6 @@ class QueryServiceTest {
     }
 
     @Test
-    void createV3StampsVersion3() {
-        UUID picsureId = UUID.randomUUID();
-        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
-        when(operationsClient.save(any())).thenReturn(picsureId);
-
-        service.queryV3("auth", req());
-
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "3".equals(r.version())));
-        verify(hpds).query(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), any()); // v3 base
-    }
-
-    @Test
     void createScopesBeforeCallingHpdsOrPersistence() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
         QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent);
@@ -119,7 +118,7 @@ class QueryServiceTest {
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
-        scopedService.queryV3("auth", request, "Bearer caller-token");
+        scopedService.query("auth", request, "Bearer caller-token");
 
         InOrder order = inOrder(consent, hpds, operationsClient);
         order.verify(consent).scopeQuery("auth", request, "Bearer caller-token");
@@ -225,32 +224,18 @@ class QueryServiceTest {
     }
 
     @Test
-    void signedUrlDispatchesV3WhenStoredVersionIs3() { // THE BUG FIX
+    void signedUrlOfAV3RowDispatchesToTheV3BaseWithoutUpgrading() {
         UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null); // v1-path request, v3-stored query
+        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
         when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-1"), any()))
             .thenReturn(org.springframework.http.ResponseEntity.ok("{\"url\":\"x\"}"));
 
         service.queryResultSignedUrl("auth", id, req());
 
-        verify(hpds).queryResultSignedUrl(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-1"), any()); // /v3
-                                                                                                                                        // base,
-                                                                                                                                        // not
-                                                                                                                                        // v1
-    }
-
-    @Test
-    void resultDispatchesV1WhenStoredVersionIsNull() {
-        UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "PENDING", null, null);
-        when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"), any()))
-            .thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
-
-        service.queryResult("auth", id, req());
-
-        verify(hpds).queryResult(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), eq("rr-2"), any());
+        verify(hpds).queryResultSignedUrl(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-1"), any());
+        verify(hpds, never()).query(any(), any());
+        verify(operationsClient, never()).update(any(), any());
     }
 
     @Test
@@ -286,9 +271,9 @@ class QueryServiceTest {
     }
 
     @Test
-    void statusUsesStoredResourceResultIdAndV1ForNullVersionAndPersistsNewStatus() {
+    void statusOfAV3RowUsesStoredResourceResultIdAndPersistsNewStatus() {
         UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{\"resourceUUID\":\"" + UUID.randomUUID() + "\"}", "rr-7", "PENDING", null, null);
+        StoredQuery stored = new StoredQuery(id, "{\"resourceUUID\":\"" + UUID.randomUUID() + "\"}", "rr-7", "PENDING", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
         QueryStatus s = hpdsStatus("rr-7");
         s.setStatus(PicSureStatus.AVAILABLE);
@@ -297,15 +282,16 @@ class QueryServiceTest {
         QueryStatus out = service.queryStatus("auth", id, req());
 
         assertThat(out.getPicsureResultId()).isEqualTo(id);
-        verify(hpds).queryStatus(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), eq("rr-7"), any()); // v1 base
-        verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> "AVAILABLE".equals(u.status())));
+        verify(hpds).queryStatus(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-7"), any());
+        verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> "AVAILABLE".equals(u.status()) && u.version() == null));
+        verify(hpds, never()).query(any(), any());
     }
 
     @Test
     void statusEchoesResourceUuidParsedFromStoredQueryJson() {
         UUID id = UUID.randomUUID();
         UUID resourceUuid = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{\"resourceUUID\":\"" + resourceUuid + "\"}", "rr-7", "PENDING", null, null);
+        StoredQuery stored = new StoredQuery(id, "{\"resourceUUID\":\"" + resourceUuid + "\"}", "rr-7", "PENDING", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
         when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-7"), any())).thenReturn(hpdsStatus("rr-7"));
 
@@ -313,6 +299,213 @@ class QueryServiceTest {
 
         assertThat(out.getResourceID()).isEqualTo(resourceUuid);
         verify(consent, never()).verifyReadAccess(any(), any(), any());
+    }
+
+    private static final String V1_BODY_TEMPLATE =
+        "{\"resourceUUID\":\"%s\",\"query\":{\"expectedResultType\":\"COUNT\",\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]}}}";
+
+    private static final String UNTRANSLATABLE_V1_BODY = "{\"query\":{\"expectedResultType\":\"COUNT\",\"variantInfoFilters\":["
+        + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"A\"]},\"numericVariantInfoFilters\":{}},"
+        + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"B\"]},\"numericVariantInfoFilters\":{}}]}}";
+
+    private StoredQuery legacyRow(UUID id, UUID resourceUuid, String version) {
+        return new StoredQuery(id, String.format(V1_BODY_TEMPLATE, resourceUuid), "rr-old", "AVAILABLE", version, null);
+    }
+
+    private static boolean isUpgradePatch(UpdateQueryRequest u, String resourceResultId) {
+        return "3".equals(u.version()) && resourceResultId.equals(u.resourceResultId()) && "PENDING".equals(u.status()) && u.query() != null
+            && u.query().contains("phenotypicClause") && !u.query().contains("categoryFilters");
+    }
+
+    private static boolean isV3Target(HpdsTarget t) {
+        return "http://hpds/PIC-SURE/v3".equals(t.baseUrl());
+    }
+
+    @Test
+    void statusOfANullVersionRowTranslatesScopesRerunsAndPatchesBeforePolling() {
+        UUID id = UUID.randomUUID();
+        UUID resourceUuid = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(legacyRow(id, resourceUuid, null));
+        QueryStatus submitted = hpdsStatus("rr-new");
+        submitted.setResultMetadata(Map.of("queryResultMetadata", "m"));
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(submitted);
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"), any())).thenReturn(hpdsStatus("rr-new"));
+
+        QueryStatus out = service.queryStatus("auth", id, req(), "Bearer caller-token");
+
+        assertThat(out.getPicsureResultId()).isEqualTo(id);
+        assertThat(out.getResourceID()).isEqualTo(resourceUuid);
+        InOrder order = inOrder(consent, hpds, operationsClient);
+        order.verify(consent)
+            .scopeQuery(eq("auth"), argThat((QueryRequest r) -> resourceUuid.equals(r.getResourceUUID())), eq("Bearer caller-token"));
+        order.verify(hpds).query(argThat(QueryServiceTest::isV3Target), any());
+        order.verify(operationsClient)
+            .update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new") && u.metadata() != null));
+        order.verify(hpds).queryStatus(argThat(QueryServiceTest::isV3Target), eq("rr-new"), any());
+        verify(hpds, never()).queryStatus(any(), eq("rr-old"), any());
+    }
+
+    @Test
+    void resultOfAVersion2RowIsUpgradedBeforeReadAccessIsVerified() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), "2"));
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
+        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-new"), any()))
+            .thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
+
+        service.queryResult("auth", id, req(), "Bearer caller-token");
+
+        InOrder order = inOrder(consent, hpds, operationsClient);
+        order.verify(consent).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
+        order.verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
+        order.verify(consent).verifyReadAccess(
+            eq("auth"),
+            argThat(
+                (StoredQuery row) -> "3".equals(row.version()) && "rr-new".equals(row.resourceResultId())
+                    && row.query().contains("phenotypicClause")
+            ), eq("Bearer caller-token")
+        );
+        order.verify(hpds).queryResult(argThat(QueryServiceTest::isV3Target), eq("rr-new"), any());
+    }
+
+    @Test
+    void signedUrlOfANullVersionRowIsUpgradedBeforeReadAccessIsVerified() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), null));
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-new"), any()))
+            .thenReturn(org.springframework.http.ResponseEntity.ok("{}"));
+
+        service.queryResultSignedUrl("auth", id, req(), "Bearer caller-token");
+
+        InOrder order = inOrder(consent, hpds, operationsClient);
+        order.verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
+        order.verify(consent)
+            .verifyReadAccess(eq("auth"), argThat((StoredQuery row) -> "3".equals(row.version())), eq("Bearer caller-token"));
+        order.verify(hpds).queryResultSignedUrl(argThat(QueryServiceTest::isV3Target), eq("rr-new"), any());
+    }
+
+    @Test
+    void upgradeFallsBackToThePicsureIdWhenHpdsOmitsTheResultId() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), null));
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus(null));
+        when(hpds.queryStatus(any(HpdsTarget.class), eq(id.toString()), any())).thenReturn(hpdsStatus(id.toString()));
+
+        service.queryStatus("auth", id, req(), "Bearer caller-token");
+
+        verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, id.toString())));
+    }
+
+    @Test
+    void untranslatableLegacyRowIs422AndIsLeftUntouched() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, UNTRANSLATABLE_V1_BODY, "rr-old", "AVAILABLE", null, null));
+
+        assertThatThrownBy(() -> service.queryResult("auth", id, req(), "Bearer caller-token"))
+            .isInstanceOfSatisfying(PicsureException.class, e -> {
+                assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
+            });
+
+        verifyNoInteractions(hpds);
+        verify(operationsClient, never()).update(any(), any());
+        verify(consent, never()).verifyReadAccess(any(), any(), any());
+    }
+
+    @Test
+    void legacyRowWithoutAQueryObjectIs422() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{\"query\":\"q\"}", "rr-old", "AVAILABLE", null, null));
+
+        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token"))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verifyNoInteractions(hpds);
+    }
+
+    @Test
+    void v3ShapedLegacyRowIs422WithoutRerunningOrPatching() {
+        UUID id = UUID.randomUUID();
+        String v3Body = "{\"query\":{\"expectedResultType\":\"COUNT\",\"select\":[],\"phenotypicClause\":null}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v3Body, "rr-old", "AVAILABLE", null, null));
+
+        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token"))
+            .isInstanceOfSatisfying(PicsureException.class, e -> {
+                assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
+            });
+
+        verifyNoInteractions(hpds);
+        verify(operationsClient, never()).update(any(), any());
+    }
+
+    @Test
+    void legacyRowWithAnUnrecognizableQueryObjectIs422() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{\"query\":{\"foo\":1}}", "rr-old", "AVAILABLE", null, null));
+
+        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token"))
+            .isInstanceOfSatisfying(PicsureException.class, e -> {
+                assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
+            });
+
+        verifyNoInteractions(hpds);
+        verify(operationsClient, never()).update(any(), any());
+    }
+
+    @Test
+    void minimalV1RowWithOnlyAResultTypeIsUpgraded() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id))
+            .thenReturn(new StoredQuery(id, "{\"query\":{\"expectedResultType\":\"COUNT\"}}", "rr-old", "AVAILABLE", null, null));
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"), any())).thenReturn(hpdsStatus("rr-new"));
+
+        service.queryStatus("auth", id, req(), "Bearer caller-token");
+
+        verify(hpds).query(argThat(QueryServiceTest::isV3Target), any());
+        verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
+    }
+
+    @Test
+    void upgradeStopsBeforeHpdsAndPatchWhenConsentScopingRejectsTheCaller() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), null));
+        PicsureException forbidden = new PicsureException(HttpStatus.FORBIDDEN, "forbidden", "No consents");
+        doThrow(forbidden).when(consent).scopeQuery(any(), any(), any());
+
+        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token")).isSameAs(forbidden);
+
+        verifyNoInteractions(hpds);
+        verify(operationsClient, never()).update(any(), any());
+    }
+
+    @Test
+    void upgradePatchCarriesTheAuthorizationFiltersConsentScopingAdded() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), null));
+        doAnswer(invocation -> {
+            QueryRequest scoped = invocation.getArgument(1);
+            Query v3 = MAPPER.convertValue(scoped.getQuery(), Query.class);
+            scoped.setQuery(v3.setAuthorizationFilters(List.of(new AuthorizationFilter("\\_consents\\", Set.of("phs000001.c1")))));
+            return null;
+        }).when(consent).scopeQuery(any(), any(), any());
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"), any())).thenReturn(hpdsStatus("rr-new"));
+
+        service.queryStatus("auth", id, req(), "Bearer caller-token");
+
+        ArgumentCaptor<UpdateQueryRequest> patch = ArgumentCaptor.forClass(UpdateQueryRequest.class);
+        verify(operationsClient, times(2)).update(eq(id), patch.capture());
+        UpdateQueryRequest upgrade = patch.getAllValues().get(0);
+        assertThat(upgrade.version()).isEqualTo("3");
+        JsonNode filters = MAPPER.readTree(upgrade.query()).path("query").path("authorizationFilters");
+        assertThat(filters.isArray()).isTrue();
+        assertThat(filters).hasSize(1);
+        assertThat(filters.get(0).path("conceptPath").asText()).isEqualTo("\\_consents\\");
+        assertThat(filters.get(0).path("values").get(0).asText()).isEqualTo("phs000001.c1");
     }
 
     // --- metadata ---

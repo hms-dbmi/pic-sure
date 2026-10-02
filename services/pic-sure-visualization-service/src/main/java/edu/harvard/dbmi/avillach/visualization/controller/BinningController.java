@@ -33,7 +33,7 @@ public class BinningController {
             @ApiResponse(responseCode = "400", description = "Malformed request")}
     )
     @AuditEvent(type = "QUERY", action = "visualization.bin_continuous")
-    @PostMapping({"/bin/continuous", "/v3/bin/continuous"})
+    @PostMapping("/bin/continuous")
     public ResponseEntity<Map<String, Map<String, Integer>>> binContinuous(
         @Valid @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
     ) {

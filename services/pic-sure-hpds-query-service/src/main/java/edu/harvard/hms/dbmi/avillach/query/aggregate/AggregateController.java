@@ -16,26 +16,22 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * The v1 aggregate and obfuscation ingress: {@code POST /hpds/open/query/sync} and {@code POST /hpds/open/query}. The gateway audits these
- * paths through {@code AuditRouteTable}. There is no {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here because
- * {@code WebSecurityConfig} already requires an authenticated caller for all of {@code /hpds/**} (the "open"/"auth" distinction is about
- * which HPDS backend answers the query and whether its data is public, not about API-level authentication).
+ * The aggregate/obfuscation ingress: {@code POST /hpds/open/query/sync} and {@code POST /hpds/open/query}. {@link AggregateService} injects
+ * the study-consents allow-list into the query's {@code select} field and calls HPDS under its configured API path. The gateway audits both
+ * paths; this controller does not emit audit events directly. There is no
+ * {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here because {@code WebSecurityConfig} already requires an
+ * authenticated caller for all of {@code /hpds/**}; "open" names the HPDS backend that answers, not an unauthenticated route.
  *
- * <p><b>{@code /hpds/open/query[/sync]} routing:</b> only this controller serves the literal {@code /hpds/open/query} and
- * {@code /hpds/open/query/sync} mappings, applying consent scoping and obfuscation. Open-path read endpoints
- * ({@code /hpds/open/v3/query/{id}/status}, {@code /result}, {@code /signed-url}, {@code /metadata}) flow through
- * {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller} (the generic v3 ingress) instead.
- *
- * <p>Two open submissions are intercepted: {@code query/sync}, which applies obfuscation, and {@code query}, which applies consent scoping
- * to CROSS_COUNT requests before dispatch. The async submit delegates persistence and dispatch to {@code QueryService}, so the stored query
- * is the rewritten, consent-scoped one; subsequent read endpoints operate on that safe stored query. This controller deliberately does NOT
- * re-implement {@code /info}, {@code /search}, {@code /query/{id}/status}, {@code /query/{id}/result}, or {@code /query/format} under the
- * literal {@code /hpds/open} prefix -- doing so would shadow them away from the generic controller for no benefit because the read
- * operations already use the consent-scoped stored query.
+ * <p><b>Coexistence with {@code HpdsQueryController}:</b> that controller maps the generic, path-variable {@code /hpds/{backend}/query} and
+ * {@code /hpds/{backend}/query/sync}. This controller maps the LITERAL {@code /hpds/open/query} and {@code /hpds/open/query/sync}, which
+ * Spring MVC prefers, so {@code /hpds/auth/query[/sync]} still flows through the generic controller. Only the two open submissions are
+ * intercepted. The open-path read endpoints ({@code /query/{id}/status}, {@code /result}, {@code /signed-url}, {@code /metadata}) are left
+ * to the generic controller: the async submit stores the rewritten, consent-scoped query through {@code QueryService}, so those reads
+ * already operate on the safe stored query and re-implementing them here would only shadow the generic mappings.
  */
 @RestController
 @RequestMapping("/hpds/open")
-@Tag(name = "aggregate-data-sharing (open)", description = "Legacy open-access aggregate queries")
+@Tag(name = "aggregate-data-sharing (open)", description = "Open-access aggregate queries")
 public class AggregateController {
 
     private final AggregateService service;
@@ -53,7 +49,7 @@ public class AggregateController {
             @ApiResponse(responseCode = "502", description = "Aggregate backend call failed")}
     )
     public ResponseEntity<String> querySync(@RequestBody QueryRequest req) {
-        return service.querySync(req, AggregateVariant.V1);
+        return service.querySync(req);
     }
 
     @AuditEvent(type = "QUERY", action = "query.submitted")
@@ -66,6 +62,6 @@ public class AggregateController {
             @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
     public QueryStatus query(@RequestBody QueryRequest req) {
-        return service.query(req, AggregateVariant.V1);
+        return service.query(req);
     }
 }

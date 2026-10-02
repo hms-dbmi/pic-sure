@@ -8,8 +8,9 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 
 /**
  * Maps the ingress {@code {backend}} path segment ("auth" or "open") to the HPDS call target: the backend's absolute base URL and its
- * service token. v3 endpoints append {@code /v3} to the base URL. Query-lifecycle calls use {@code target.token()} for Bearer
- * authentication; search and values calls use only {@code target.baseUrl()} and send no token.
+ * service token. Every target appends the configured API path ({@code HPDS_API_PATH}, {@code /v3} by default) to the configured base URL,
+ * which is where HPDS serves its query API. Query-lifecycle calls use {@code target.token()} for Bearer authentication; search and values
+ * calls use only {@code target.baseUrl()} and send no token.
  */
 @Component
 public class HpdsBackendSelector {
@@ -23,18 +24,17 @@ public class HpdsBackendSelector {
         this.props = props;
     }
 
-    /** The HPDS call target: the base URL (with {@code /v3} appended for v3) and the per-backend service token. */
+    /** The HPDS call target: the base URL (with the API path appended) and the per-backend service token. */
     public record HpdsTarget(String baseUrl, String token) {
     }
 
     /**
      * @param backend the ingress segment: "auth" or "open"
-     * @param v3 whether the target endpoint is v3 (append "/v3" to the base)
-     * @return the HPDS target (URL + service token) for that backend
+     * @return the HPDS target for that backend: its configured URL with the API path appended, and its service token
      * @throws PicsureException 400 if the segment is neither "auth" nor "open"; 503 if that backend has no URL configured, which is how a
      *         stack built without an open HPDS instance presents (an unset {@code HPDS_OPEN_URL} binds to the empty string)
      */
-    public HpdsTarget select(String backend, boolean v3) {
+    public HpdsTarget select(String backend) {
         String base;
         String token;
         switch (backend == null ? "" : backend) {
@@ -56,6 +56,7 @@ public class HpdsBackendSelector {
                 "HPDS backend '" + backend + "' is not configured in this deployment"
             );
         }
-        return new HpdsTarget(v3 ? base + "/v3" : base, token);
+        String apiPath = props.getApiPath() == null ? "" : props.getApiPath();
+        return new HpdsTarget(base + apiPath, token);
     }
 }

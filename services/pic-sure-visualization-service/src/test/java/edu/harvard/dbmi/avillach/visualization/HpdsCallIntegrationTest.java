@@ -61,8 +61,8 @@ class HpdsCallIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private static final String AUTH_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync";
-    private static final String OPEN_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/open/v3/query/sync";
+    private static final String AUTH_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/auth/query/sync";
+    private static final String OPEN_SYNC_URL = "http://localhost:9999/mock-query-service/hpds/open/query/sync";
 
     private MockRestServiceServer mockServer;
 
@@ -78,7 +78,7 @@ class HpdsCallIntegrationTest {
         Map<String, Map<String, Integer>> hpdsResponse = new LinkedHashMap<>();
         hpdsResponse.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000, "Black", 12000, "Asian", 8000)));
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/query/sync")).andExpect(method(HttpMethod.POST))
             .andExpect(header("Authorization", "Bearer test-token")).andExpect(header("X-User-Id", "test-user"))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
@@ -122,7 +122,7 @@ class HpdsCallIntegrationTest {
         bmiValues.put("35.0", 50);
         hpdsResponse.put("\\measurements\\bmi\\", bmiValues);
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/query/sync")).andExpect(method(HttpMethod.POST))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
@@ -164,7 +164,7 @@ class HpdsCallIntegrationTest {
             )
         );
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/open/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/open/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(
@@ -192,7 +192,7 @@ class HpdsCallIntegrationTest {
 
     @Test
     void distributions_hpdsReturns500_returns502BadGateway() throws Exception {
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withServerError().body("{\"error\":\"internal error\"}"));
 
         Map<String, Object> query = Map.of(
@@ -218,7 +218,7 @@ class HpdsCallIntegrationTest {
 
     @Test
     void distributions_queryServiceConsentDenialReturns403() throws Exception {
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync"))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/query/sync"))
             .andRespond(withStatus(org.springframework.http.HttpStatus.FORBIDDEN).body("{\"errorType\":\"consent_denied\"}"));
 
         Map<String, Object> query = Map.of(
@@ -371,7 +371,7 @@ class HpdsCallIntegrationTest {
             )
         );
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/open/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/open/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(

@@ -5,5 +5,5 @@ package edu.harvard.hms.dbmi.avillach.query.operations;
  * {@code edu.harvard.hms.dbmi.avillach.operations.query.UpdateQueryRequest} byte-for-byte: every field is nullable and means "leave
  * unchanged" when absent.
  */
-public record UpdateQueryRequest(String status, String resourceResultId, String metadata) {
+public record UpdateQueryRequest(String status, String resourceResultId, String metadata, String query, String version) {
 }

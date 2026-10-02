@@ -35,10 +35,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * The explicit {@code /hpds/**} route forwards requests verbatim to the DB-free query service. The query service selects the backend and
- * API version from the path, so the gateway must not rewrite it. Proves the higher-priority route (order 100) matches (no catch-all
- * fallback exists), and that the backend sees the exact inbound path. {@code /hpds} is not allow-listed, so under the always-on auth/audit
- * chain the request needs a valid bearer plus an active PSAMA introspection stub.
+ * The explicit {@code /hpds/**} route forwards requests verbatim to the DB-free query service. The query service selects the backend from
+ * the path, so the gateway must not rewrite it. Proves the higher-priority route (order 100) matches (no catch-all fallback exists), and
+ * that the backend sees the exact inbound path. {@code /hpds} is not allow-listed, so under the always-on auth/audit chain the request
+ * needs a valid bearer plus an active PSAMA introspection stub.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class HpdsRouteTest {
@@ -66,7 +66,7 @@ class HpdsRouteTest {
     @BeforeEach
     void resetStubs() {
         hpdsStub.resetAll();
-        hpdsStub.stubFor(get(urlEqualTo("/hpds/auth/v3/query/abc-123/status")).willReturn(aResponse().withStatus(200).withBody("hpds-ok")));
+        hpdsStub.stubFor(get(urlEqualTo("/hpds/auth/query/abc-123/status")).willReturn(aResponse().withStatus(200).withBody("hpds-ok")));
 
         psamaStub.resetAll();
         psamaStub.stubFor(
@@ -97,19 +97,19 @@ class HpdsRouteTest {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer user-token");
         ResponseEntity<String> response =
-            rest.exchange(url("/hpds/auth/v3/query/abc-123/status"), HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            rest.exchange(url("/hpds/auth/query/abc-123/status"), HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo("hpds-ok");
-        // No prefix strip: the query-service saw the exact inbound path, /hpds/auth/v3/query/abc-123/status.
-        hpdsStub.verify(getRequestedFor(urlEqualTo("/hpds/auth/v3/query/abc-123/status")));
+        // No prefix strip: the query-service saw the exact inbound path, /hpds/auth/query/abc-123/status.
+        hpdsStub.verify(getRequestedFor(urlEqualTo("/hpds/auth/query/abc-123/status")));
     }
 
     @ParameterizedTest
     @CsvSource(
-        {"/hpds/%61uth/v3/query/abc-123/status, /hpds/auth/v3/query/abc-123/status",
-            "/hpds/a%75th/v3/query/abc-123/status, /hpds/auth/v3/query/abc-123/status",
-            "/hpds/%61%75%74%68/v3/query/abc-123/status, /hpds/auth/v3/query/abc-123/status"}
+        {"/hpds/%61uth/query/abc-123/status, /hpds/auth/query/abc-123/status",
+            "/hpds/a%75th/query/abc-123/status, /hpds/auth/query/abc-123/status",
+            "/hpds/%61%75%74%68/query/abc-123/status, /hpds/auth/query/abc-123/status"}
     )
     void introspectionUsesTheDecodedNormalizedRoutePath(String requestPath, String resolvedPath) {
         hpdsStub.stubFor(get(urlMatching("/hpds/.*")).willReturn(aResponse().withStatus(200).withBody("hpds-ok")));
@@ -127,7 +127,7 @@ class HpdsRouteTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/hpds//auth///v3/query/abc-123/status", "/hpds%2Fauth/v3/query/abc-123/status"})
+    @ValueSource(strings = {"/hpds//auth///query/abc-123/status", "/hpds%2Fauth/query/abc-123/status"})
     void rejectedSlashVariantDoesNotReachIntrospection(String requestPath) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer user-token");

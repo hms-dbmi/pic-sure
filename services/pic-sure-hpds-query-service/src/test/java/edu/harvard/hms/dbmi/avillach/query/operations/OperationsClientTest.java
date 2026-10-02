@@ -133,12 +133,16 @@ class OperationsClientTest {
         UUID id = UUID.randomUUID();
         ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(204)));
 
-        client().update(id, new UpdateQueryRequest("COMPLETE", "r-1", null));
+        client().update(id, new UpdateQueryRequest("COMPLETE", "r-1", null, "{\"query\":{}}", "3"));
 
         ops.verify(
-            patchRequestedFor(urlEqualTo("/operations/internal/queries/" + id))
-                .withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
-                .withRequestBody(equalToJson("{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null}"))
+            patchRequestedFor(urlEqualTo("/operations/internal/queries/" + id)).withHeader(
+                "X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")
+            ).withRequestBody(
+                equalToJson(
+                    "{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null,\"query\":\"{\\\"query\\\":{}}\",\"version\":\"3\"}"
+                )
+            )
         );
     }
 
@@ -147,7 +151,7 @@ class OperationsClientTest {
         UUID id = UUID.randomUUID();
         ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(500)));
 
-        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("COMPLETE", null, null)))
+        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("COMPLETE", null, null, null, null)))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 }
