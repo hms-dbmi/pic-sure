@@ -26,6 +26,19 @@ log/
 #Mac
 .DS_Store
 
+# Terraform
+bedrock-infra/.terraform.lock.hcl
+bedrock-infra/.terraform/*
+bedrock-infra/*.tfstate
+bedrock-infra/*.tfstate.*
+bedrock-infra/poc.tfvars
+bedrock-infra/.terraform.lock.hcl
+bedrock-infra/*.tfplan
+bedrock-infra/*.tfvars
+bedrock-infra/!terraform.tfvars.example
+bedrock-infra/crash.log
+bedrock-infra/docs/*
+node_modules/*
 
 # Avoid ignoring Maven wrapper jar file (.jar files are usually ignored)
 !/.mvn/wrapper/maven-wrapper.jar
