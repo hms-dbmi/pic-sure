@@ -195,7 +195,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/application/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Application is not found by given Application ID: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Application is not found by given Application ID: " + unknown));
     }
 
     @Test
@@ -211,7 +212,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.DELETE, "/application/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Cannot find application by the given applicationId: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Cannot find application by the given applicationId: " + unknown));
     }
 
     @Test

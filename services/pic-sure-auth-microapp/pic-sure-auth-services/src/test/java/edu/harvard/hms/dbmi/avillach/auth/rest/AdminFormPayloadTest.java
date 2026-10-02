@@ -273,11 +273,27 @@ class AdminFormPayloadTest {
             .put("description", "edited").put("token", "forged-application-token");
 
         mockMvc.perform(asAdmin(HttpMethod.PUT, "/application").content(json.createArrayNode().add(edited).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].uuid").value(application.getUuid().toString()))
+            .andExpect(jsonPath("$[0].description").value("edited"))
+            .andExpect(jsonPath("$[0].privileges[0].uuid").value(privilege.getUuid().toString()))
+            .andExpect(jsonPath("$[0].token").doesNotExist());
 
         Application saved = applicationRepository.findById(application.getUuid()).orElseThrow();
         assertThat(saved.getDescription()).isEqualTo("edited");
         assertThat(saved.getToken()).isEqualTo("stored-application-token");
+    }
+
+    @Test
+    void applicationUpdateIsTheStoredEntityJsonWithoutTheToken() throws Exception {
+        ObjectNode edited = json.createObjectNode().put("uuid", application.getUuid().toString()).put("description", "read back");
+
+        String body = mockMvc.perform(asAdmin(HttpMethod.PUT, "/application").content(json.createArrayNode().add(edited).toString()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        String expected = new TransactionTemplate(transactionManager)
+            .execute(status -> FrozenWire.json(List.of(applicationRepository.findById(application.getUuid()).orElseThrow()), "token"));
+        assertThat(body).isEqualTo(expected);
+        assertThat(body).contains("\"privileges\":[", privilege.getUuid().toString()).doesNotContain("stored-application-token");
     }
 
     @Test

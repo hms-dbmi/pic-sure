@@ -5,7 +5,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -114,22 +113,20 @@ class OpenApiDocumentTest {
     }
 
     @Test
-    void applicationReadsDescribeTheTokenFreeShape() throws Exception {
-        JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
-        JsonNode paths = document.path("paths");
-        String displayRef = "#/components/schemas/ApplicationForDisplay";
+    void applicationEndpointsDocumentTheirFrozenShapes() throws Exception {
+        JsonNode document = document();
 
-        assertThat(successSchemas(paths, "/application/{applicationId}")).isNotEmpty()
-            .allSatisfy(schema -> assertThat(schema.path("$ref").asText()).isEqualTo(displayRef));
-        assertThat(successSchemas(paths, "/application")).isNotEmpty()
-            .allSatisfy(schema -> assertThat(schema.path("items").path("$ref").asText()).isEqualTo(displayRef));
-        assertThat(document.path("components").path("schemas").path("ApplicationForDisplay").path("properties").has("token")).isFalse();
-    }
-
-    private static List<JsonNode> successSchemas(JsonNode paths, String path) {
-        List<JsonNode> schemas = new ArrayList<>();
-        paths.path(path).path("get").path("responses").path("200").path("content").forEach(media -> schemas.add(media.path("schema")));
-        return schemas;
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/application/{applicationId}", "200", "ApplicationResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/application", "200", "ApplicationResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/application", "200", "ApplicationResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/application", "200", "ApplicationResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/application/{applicationId}", "200", "ApplicationResponse");
+        OpenApiDocumentAssertions
+            .assertResponseSchema(document, "get", "/application/refreshToken/{applicationId}", "200", "ApplicationTokenResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ApplicationResponse", "uuid", "name");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ApplicationTokenResponse", "token");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "ApplicationResponse", "ApplicationTokenResponse");
+        assertThat(document.path("components").path("schemas").path("ApplicationResponse").path("properties").has("token")).isFalse();
     }
 
     @Test
