@@ -130,6 +130,34 @@ class OpenApiDocumentTest {
         assertThat(bulk.path("example")).hasSize(2);
     }
 
+    @Test
+    void facetsDashboardAndDrawerAreDocumented() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/facets", "Filter");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/facets", "200", "FacetCategory");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/facets/{facetCategory}/{facet}", "200", "Facet");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/dashboard", "200", "Dashboard");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/dashboard-drawer", "200", "DashboardDrawer");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/dashboard-drawer/{id}", "200", "DashboardDrawer");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "Filter", "facets", "search", "consents");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "FacetCategory", "name", "display", "description", "facets");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "Facet", "name", "display", "description", "fullName", "count", "children", "category", "meta"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "Dashboard", "columns", "rows");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "DashboardColumn", "label", "dataElement");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "DashboardDrawer", "datasetId", "studyFullname", "studyAbbreviation", "consentGroups", "studySummary", "studyFocus",
+            "studyDesign", "sponsor"
+        );
+        OpenApiDocumentAssertions
+            .assertSchemaDocumented(document, "Filter", "Facet", "FacetCategory", "Dashboard", "DashboardColumn", "DashboardDrawer");
+        JsonNode rows = schema(document, "Dashboard").path("properties").path("rows");
+        assertThat(rows.path("description").asText()).contains("dataElement");
+        assertThat(rows.path("items").path("additionalProperties").path("type").asText()).isEqualTo("string");
+    }
+
     private JsonNode document() throws Exception {
         String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(body);
