@@ -18,8 +18,9 @@ public final class RegistryRules {
     private RegistryRules() {}
 
     /**
-     * R0a: every module the registry marks documented actually yields a controller. Catches a stale entry,
-     * and catches running against a tree that was never compiled, which would otherwise pass vacuously.
+     * {@code documented-module-has-controllers}: every module the registry marks documented actually yields a
+     * controller. Catches a stale entry, and catches running against a tree that was never compiled, which
+     * would otherwise pass vacuously.
      *
      * @param registry the parsed registry
      * @param modules module path mapped to that module's imported classes
@@ -39,8 +40,8 @@ public final class RegistryRules {
     }
 
     /**
-     * R0b: every module that declares a controller appears in the registry. A new service fails the build
-     * until somebody classifies it deliberately.
+     * {@code controller-module-is-registered}: every module that declares a controller appears in the
+     * registry. A new service fails the build until somebody classifies it deliberately.
      *
      * @param registry the parsed registry
      * @param modules module path mapped to that module's imported classes

@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -40,6 +41,7 @@ public class HpdsQueryController {
         this.service = service;
     }
 
+    @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
     @Operation(summary = "Submit an asynchronous query")
     @ApiResponses(
@@ -60,6 +62,7 @@ public class HpdsQueryController {
         return service.query(backend, req, authorizationHeader);
     }
 
+    @AuditEvent(type = "QUERY", action = "query.sync")
     @PostMapping("/query/sync")
     @Operation(summary = "Run a query and return its result inline")
     @ApiResponses(
@@ -78,6 +81,7 @@ public class HpdsQueryController {
         return syncResponse(service.querySync(backend, req, requestSource, authorizationHeader));
     }
 
+    @AuditEvent(type = "QUERY", action = "query.status")
     @PostMapping("/query/{id}/status")
     @Operation(summary = "Status of a submitted query")
     @ApiResponses(
@@ -96,6 +100,7 @@ public class HpdsQueryController {
         return service.queryStatus(backend, id, req, authorizationHeader);
     }
 
+    @AuditEvent(type = "DATA_ACCESS", action = "query.result")
     @PostMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     @Operation(summary = "Result bytes of a completed query")
     @ApiResponses(
@@ -114,6 +119,7 @@ public class HpdsQueryController {
         return service.queryResult(backend, id, req, authorizationHeader);
     }
 
+    @AuditEvent(type = "DATA_ACCESS", action = "query.signed_url")
     @PostMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "A signed URL for a completed query's result")
     @ApiResponses(
@@ -132,6 +138,7 @@ public class HpdsQueryController {
         return service.queryResultSignedUrl(backend, id, req, authorizationHeader);
     }
 
+    @AuditEvent(type = "QUERY", action = "query.metadata")
     @RequestMapping(path = "/query/{id}/metadata", method = {RequestMethod.GET, RequestMethod.POST})
     @Operation(summary = "Metadata of a submitted query")
     @ApiResponses(

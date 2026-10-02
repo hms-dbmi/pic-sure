@@ -20,7 +20,7 @@ class RegistryRulesTest {
         new ClassFileImporter().importPackages("com.tngtech.archunit.core.importer");
 
     @Test
-    void r0aFlagsADocumentedModuleThatYieldsNoController() {
+    void flagsADocumentedModuleThatYieldsNoController() {
         ModuleRegistry registry = ModuleRegistry.parse(new StringReader("services/empty = documented\n"));
 
         List<String> violations =
@@ -32,7 +32,7 @@ class RegistryRulesTest {
     }
 
     @Test
-    void r0aFlagsADocumentedModuleThatWasNeverBuilt() {
+    void flagsADocumentedModuleThatWasNeverBuilt() {
         ModuleRegistry registry = ModuleRegistry.parse(new StringReader("services/gone = documented\n"));
 
         List<String> violations = RegistryRules.documentedModulesYieldControllers(registry, Map.of());
@@ -43,7 +43,7 @@ class RegistryRulesTest {
     }
 
     @Test
-    void r0aPassesWhenTheModuleHasControllers() {
+    void passesADocumentedModuleThatHasControllers() {
         ModuleRegistry registry = ModuleRegistry.parse(new StringReader("services/ok = documented\n"));
 
         assertTrue(
@@ -52,7 +52,7 @@ class RegistryRulesTest {
     }
 
     @Test
-    void r0bFlagsAnUnregisteredModuleThatDeclaresAController() {
+    void flagsAnUnregisteredModuleThatDeclaresAController() {
         ModuleRegistry registry = ModuleRegistry.parse(new StringReader("services/known = documented\n"));
 
         List<String> violations =
@@ -63,7 +63,7 @@ class RegistryRulesTest {
     }
 
     @Test
-    void r0bIgnoresAnUnregisteredModuleWithNoController() {
+    void ignoresAnUnregisteredModuleWithNoController() {
         ModuleRegistry registry = ModuleRegistry.parse(new StringReader("services/known = documented\n"));
 
         assertTrue(

@@ -1,0 +1,9 @@
+{
+  "properties": [
+    {
+      "name": "weights.filename",
+      "type": "java.lang.String",
+      "description": "Filesystem path to the CSV file of concept weighting data read on startup. When the path does not exist or is a directory, the application logs an error and exits with status 1 before computing or applying a weight update."
+    }
+  ]
+}
