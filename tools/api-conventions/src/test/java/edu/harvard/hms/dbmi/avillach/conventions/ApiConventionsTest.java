@@ -96,6 +96,16 @@ class ApiConventionsTest {
     }
 
     @Test
+    void everyHandlerCarriesAnAuditEvent() {
+        report("handler-has-audit-event", overAllModules(AuditRules::auditEventOnEveryHandler));
+    }
+
+    @Test
+    void everyNamedPathVariableAppearsInAMappedPath() {
+        report("path-variables-in-template", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
+    }
+
+    @Test
     void noHandlerBindsAnEntity() {
         Set<String> entities = EntityBoundaryRules.entityTypes(modules);
         report("no-entity-parameters", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));

@@ -8,6 +8,10 @@ The OpenAPI document publishes each guard's authorities as "Required authorities
 
 `catch-all-advice-extends-base` covers every module, libraries included. A `@ControllerAdvice` or `@RestControllerAdvice` class that declares an `@ExceptionHandler` for `Exception`, `RuntimeException` or `Throwable` must extend Spring's `ResponseEntityExceptionHandler`. The handled types are read from the annotation, or from the method's exception parameter when the annotation names none. Spring consults every advice before its own client-error mapping, so a catch-all that does not extend the base class turns an unreadable body, an unsupported media type, a wrong method or a missing parameter into a 500. To satisfy it, extend the base class and override `handleExceptionInternal` to write the service's own error body. A handler the service already declares for an exception the base class also handles must move into the matching base-class override, or Spring refuses to start with an ambiguous mapping.
 
+`handler-has-audit-event` covers audit labels. The audit log reads each request's event type and action from `@AuditEvent` on the handler that served it, and a request that reaches the audit filter without a handler label is logged with event type `UNLABELED`. That covers a handler missing the annotation and a request turned away before any handler ran, such as a 401 or a 404, so an alert on `UNLABELED` with a status below 400 finds the missing annotations. The gateway is the exception: it logs `OTHER` when no entry in its route table matches. In every compiled module, `handler-has-audit-event` fails each handler that does not carry `@AuditEvent`. There is no exemption: a module where no handler carries it fails once per handler. The rule keys on the annotation rather than on an interceptor in the same module, because hpds declares its handlers in `services/pic-sure-hpds/service` and reads the annotation from an interceptor in `services/pic-sure-hpds/processing`. To satisfy it, give the new handler an `@AuditEvent(type = ..., action = ...)` that names what it does. `handler-has-audit-event` checks presence only. Tests such as PSAMA's `ControllerAuditEventTest` still pin the values.
+
+`path-variables-in-template` checks request routing in every module with a controller. Each `@PathVariable` that names its variable, as `@PathVariable("userId")` or `@PathVariable(name = "userId")`, must appear as `{userId}` or `{userId:regex}` in at least one path the handler maps, counting every combination of the class-level `@RequestMapping` paths with the method's mapping paths. A variable no path declares is never bound, and Spring answers every request to that handler with a 500. Fix it by adding the segment to the mapping or by binding the value some other way. A `@PathVariable` with no explicit name is skipped, because its name comes from the compiled parameter name, which the checker cannot read; the reactor's `-parameters` flag and `DashboardDrawerControllerParameterNameTest` cover those.
+
 `no-entity-parameters` covers every module. No controller handler parameter may be, or contain, a class annotated `@Entity`. The check follows generic arguments at any depth, array component types and `Optional`, so `List<Role>`, `Map<String, List<User>>`, `User[]` and `Optional<User>` all fail, and it applies to every parameter, not only `@RequestBody`. A class counts as an entity by its annotation, not its package, so `User.UserForDisplay` passes. Fields are not followed: a request record with an entity-typed field passes. A bound entity lets a caller set any column Jackson can reach. To satisfy it, bind a request record that lists only the fields the endpoint accepts, and map it onto the entity in the service.
 
 ## Rules
@@ -38,6 +42,14 @@ Authorization, over every compiled module:
 Error handling, over every compiled module:
 
 - `catch-all-advice-extends-base`: a `@ControllerAdvice` or `@RestControllerAdvice` that handles `Exception`, `RuntimeException` or `Throwable` extends `ResponseEntityExceptionHandler`.
+
+Audit labels, over every compiled module:
+
+- `handler-has-audit-event`: every handler carries `@AuditEvent`.
+
+Request mappings, over every compiled module:
+
+- `path-variables-in-template`: every `@PathVariable` that names its variable appears as `{name}` in at least one path its handler maps.
 
 Persistence, over every compiled module:
 
