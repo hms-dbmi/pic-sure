@@ -76,6 +76,43 @@ class OpenApiDocumentTest {
         assertThat(document.path("components").path("schemas").has("PageConcept")).isFalse();
     }
 
+    @Test
+    void conceptIsOneOfTwoShapesDiscriminatedByType() throws Exception {
+        JsonNode document = document();
+        JsonNode concept = schema(document, "Concept");
+
+        assertThat(concept.path("description").asText()).isNotBlank();
+        assertThat(concept.has("oneOf")).isFalse();
+        assertThat(concept.path("discriminator").path("propertyName").asText()).isEqualTo("type");
+        assertThat(concept.path("discriminator").path("mapping").path("Categorical").asText())
+            .isEqualTo(SCHEMA_PREFIX + "CategoricalConcept");
+        assertThat(concept.path("discriminator").path("mapping").path("Continuous").asText())
+            .isEqualTo(SCHEMA_PREFIX + "ContinuousConcept");
+        for (String subtype : List.of("CategoricalConcept", "ContinuousConcept")) {
+            assertThat(schema(document, subtype).path("allOf").path(0).path("$ref").asText()).isEqualTo(SCHEMA_PREFIX + "Concept");
+            JsonNode type = properties(document, subtype).path("type");
+            assertThat(enumValues(type)).containsExactly("Categorical", "Continuous");
+            assertThat(type.path("x-enum-descriptions")).hasSize(2);
+            OpenApiDocumentAssertions.assertSchemaHasFields(
+                document, subtype, "conceptPath", "name", "display", "dataset", "description", "allowFiltering", "studyAcronym", "meta",
+                "children", "table", "study", "type"
+            );
+        }
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "CategoricalConcept", "values");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ContinuousConcept", "min", "max");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "Dataset", "ref", "fullName", "abbreviation", "description", "meta");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "CategoricalConcept", "ContinuousConcept", "Dataset");
+
+        assertIsEitherConcept(responseSchema(document, "post", "/concepts/detail/{dataset}"));
+        assertIsEitherConcept(responseSchema(document, "post", "/concepts/tree/{dataset}"));
+        assertIsBareArrayOfEitherConcept(responseSchema(document, "post", "/concepts/detail"));
+        assertIsBareArrayOfEitherConcept(responseSchema(document, "post", "/concepts/hierarchy/{dataset}"));
+        assertIsBareArrayOfEitherConcept(responseSchema(document, "get", "/concepts/tree"));
+        assertIsBareArrayOfEitherConcept(schema(document, "ConceptPage").path("properties").path("content"));
+        assertIsBareArrayOfEitherConcept(properties(document, "CategoricalConcept").path("children"));
+        assertIsEitherConcept(properties(document, "ContinuousConcept").path("table"));
+    }
+
     private JsonNode document() throws Exception {
         String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(body);
