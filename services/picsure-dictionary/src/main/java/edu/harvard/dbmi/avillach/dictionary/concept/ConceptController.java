@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.AuditAttributes;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptPage;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -11,7 +12,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
@@ -46,7 +46,7 @@ public class ConceptController {
     @ApiResponse(responseCode = "500", description = "Invalid paging parameters, or the concept count or list query failed")
     @AuditEvent(type = "SEARCH", action = "concept.search")
     @PostMapping(path = "/concepts")
-    public ResponseEntity<Page<Concept>> listConcepts(
+    public ResponseEntity<ConceptPage> listConcepts(
         @RequestBody Filter filter, @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
@@ -72,14 +72,14 @@ public class ConceptController {
         AuditAttributes.putMetadata(httpRequest, "search_term", filter.search() != null ? filter.search() : "");
         AuditAttributes.putMetadata(httpRequest, "result_count", String.valueOf(count));
 
-        return ResponseEntity.ok(pageResp);
+        return ResponseEntity.ok(ConceptPage.from(pageResp));
     }
 
     @Operation(summary = "Page through every concept without a filter")
     @ApiResponse(responseCode = "200", description = "A page of concepts")
     @AuditEvent(type = "DATA_ACCESS", action = "concept.dump")
     @GetMapping(path = "/concepts/dump")
-    public ResponseEntity<Page<Concept>> dumpConcepts(
+    public ResponseEntity<ConceptPage> dumpConcepts(
         @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
@@ -89,7 +89,7 @@ public class ConceptController {
             conceptService.countConcepts(new Filter(List.of(), "", List.of()))
         );
 
-        return ResponseEntity.ok(pageResp);
+        return ResponseEntity.ok(ConceptPage.from(pageResp));
     }
 
     @Operation(summary = "Detail for one concept path in a dataset")
