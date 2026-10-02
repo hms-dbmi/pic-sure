@@ -185,6 +185,25 @@ class OpenApiDocumentTest {
         assertThat(accessRule.has("mergedName")).isFalse();
     }
 
+    @Test
+    void privilegeEndpointsDocumentTheirFrozenShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/privilege/{privilegeId}", "200", "PrivilegeResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/privilege", "200", "PrivilegeResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/privilege", "200", "PrivilegeResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/privilege", "200", "PrivilegeResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/privilege/{privilegeId}", "200", "PrivilegeResponse");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "PrivilegeResponse", "uuid", "name", "description", "application", "accessRules");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ApplicationResponse", "uuid", "name");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "PrivilegeResponse", "ApplicationResponse");
+        JsonNode privilege = document.path("components").path("schemas").path("PrivilegeResponse").path("properties");
+        assertThat(privilege.path("application").path("$ref").asText()).isEqualTo("#/components/schemas/ApplicationResponse");
+        assertThat(privilege.path("accessRules").path("items").path("$ref").asText()).isEqualTo("#/components/schemas/AccessRuleResponse");
+        assertThat(document.path("components").path("schemas").path("ApplicationResponse").path("properties").has("token")).isFalse();
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }

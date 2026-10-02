@@ -18,6 +18,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -89,6 +91,9 @@ class AdminFormPayloadTest {
 
     @Autowired
     private AccessRuleRepository accessRuleRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private String suffix;
     private User caller;
@@ -179,7 +184,9 @@ class AdminFormPayloadTest {
         created.putObject("application").put("uuid", application.getUuid().toString());
 
         mockMvc.perform(asAdmin(HttpMethod.POST, "/privilege").content(json.createArrayNode().add(created).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].uuid").isString()).andExpect(jsonPath("$[0].name").value(name))
+            .andExpect(jsonPath("$[0].application.uuid").value(application.getUuid().toString()))
+            .andExpect(jsonPath("$[0].application.token").doesNotExist());
 
         Privilege stored = privilegeRepository.findByName(name);
         assertThat(stored.getApplication().getUuid()).isEqualTo(application.getUuid());
@@ -192,6 +199,25 @@ class AdminFormPayloadTest {
             .andExpect(status().isOk());
 
         assertThat(privilegeRepository.findById(stored.getUuid()).orElseThrow().getDescription()).isEqualTo("edited in the privilege form");
+    }
+
+    @Test
+    void privilegeReadIsTheStoredEntityJsonWithoutTheMergedMembers() throws Exception {
+        AccessRule rule = new AccessRule();
+        rule.setName("AR_PRIV_READ_" + suffix);
+        rule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        rule = accessRuleRepository.save(rule);
+        privilege.setAccessRules(new HashSet<>(Set.of(rule)));
+        privilege = privilegeRepository.save(privilege);
+        String expected = new TransactionTemplate(transactionManager)
+            .execute(status -> FrozenWire.json(privilegeRepository.findById(privilege.getUuid()).orElseThrow()));
+
+        String body = mockMvc.perform(asAdmin(HttpMethod.GET, "/privilege/{id}", privilege.getUuid())).andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+        assertThat(body).isEqualTo(expected);
+        assertThat(body).contains(rule.getUuid().toString(), application.getUuid().toString())
+            .doesNotContain("stored-application-token", "mergedValues", "mergedName");
     }
 
     @Test

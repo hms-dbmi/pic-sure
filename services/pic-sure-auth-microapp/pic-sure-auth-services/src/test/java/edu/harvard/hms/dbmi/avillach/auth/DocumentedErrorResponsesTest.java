@@ -257,7 +257,7 @@ class DocumentedErrorResponsesTest {
     @Test
     void unknownPrivilegeIs400() throws Exception {
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/privilege/{id}", UUID.randomUUID())).andExpect(status().isBadRequest())
-            .andExpect(content().string("Privilege not found"));
+            .andExpect(jsonPath("$.message").value("Invalid request")).andExpect(jsonPath("$.content").value("Privilege not found"));
     }
 
     @Test
