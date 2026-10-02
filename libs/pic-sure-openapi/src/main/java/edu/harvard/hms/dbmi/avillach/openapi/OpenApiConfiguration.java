@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.openapi;
 
+import org.springdoc.core.providers.ObjectMapperProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -17,10 +18,11 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 
 /**
  * Publishes the one {@link OpenAPI} bean every PIC-SURE service shares: an info block naming the service and its version, and a bearer
- * token security scheme applied to every operation so Swagger UI offers the Authorize button and sends the token on "try it out". The title
- * and version come from {@code picsure.openapi.title} and {@code picsure.openapi.version} when set, otherwise from Boot's
- * {@link BuildProperties} (artifact id and version), otherwise from {@code spring.application.name} and the literal {@code unversioned}.
- * Servers, tags, and path filtering are deliberately absent: the public ingress is the gateway's knowledge, not the service's.
+ * token security scheme applied to every operation so Swagger UI offers the Authorize button and sends the token on "try it out". It also
+ * carries each enum constant's {@code @Schema} description into the document, which swagger-core leaves out. The title and version come
+ * from {@code picsure.openapi.title} and {@code picsure.openapi.version} when set, otherwise from Boot's {@link BuildProperties} (artifact
+ * id and version), otherwise from {@code spring.application.name} and the literal {@code unversioned}. Servers, tags, and path filtering
+ * are deliberately absent: the public ingress is the gateway's knowledge, not the service's.
  */
 @AutoConfiguration(after = ProjectInfoAutoConfiguration.class)
 @ConditionalOnClass(OpenAPI.class)
@@ -58,6 +60,29 @@ public class OpenApiConfiguration {
     @ConditionalOnMissingBean
     public RequiredAuthoritiesOperationCustomizer requiredAuthoritiesOperationCustomizer() {
         return new RequiredAuthoritiesOperationCustomizer();
+    }
+
+    /**
+     * Records each enum constant's description on the enum schemas of the document.
+     *
+     * @param objectMapperProvider springdoc's mapper source
+     * @return the converter springdoc adds to its model converter chain
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public EnumConstantDescriptionConverter enumConstantDescriptionConverter(ObjectMapperProvider objectMapperProvider) {
+        return new EnumConstantDescriptionConverter(objectMapperProvider);
+    }
+
+    /**
+     * Renders the recorded enum constant descriptions as a list in each enum schema's description.
+     *
+     * @return the customizer springdoc applies to the finished document
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public EnumDescriptionCustomizer enumDescriptionCustomizer() {
+        return new EnumDescriptionCustomizer();
     }
 
     private static String firstNonBlank(String... candidates) {
