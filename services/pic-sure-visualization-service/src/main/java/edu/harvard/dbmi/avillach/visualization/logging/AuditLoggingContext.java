@@ -20,6 +20,10 @@ public final class AuditLoggingContext {
     public static final String ACCESS_TYPE_ATTR = "vizAccessType";
     public static final String AUTHORIZATION_ATTR = "vizAuthorization";
     public static final String SESSION_ID_ATTR = "vizSessionId";
+    /** Event type from the handler's {@code @AuditEvent}, set by {@link AuditInterceptor} and read by {@link AuditLoggingFilter}. */
+    public static final String EVENT_TYPE_ATTR = "vizAuditEventType";
+    /** Action from the handler's {@code @AuditEvent}, set by {@link AuditInterceptor} and read by {@link AuditLoggingFilter}. */
+    public static final String ACTION_ATTR = "vizAuditAction";
 
     private AuditLoggingContext() {}
 
