@@ -40,7 +40,7 @@ import java.util.function.Supplier;
 public class QueryToolConfig {
 
     /** The {@code isError} text for an exception that is not a {@link ToolFailure}. */
-    public static final String UNEXPECTED_FAILURE = "The tool failed unexpectedly. Try again shortly.";
+    public static final String UNEXPECTED_FAILURE = ToolFailure.UNEXPECTED_MESSAGE;
 
     private static final Logger log = LoggerFactory.getLogger(QueryToolConfig.class);
 

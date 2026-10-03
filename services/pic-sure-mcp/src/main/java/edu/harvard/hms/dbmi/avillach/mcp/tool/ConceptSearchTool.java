@@ -32,7 +32,6 @@ public class ConceptSearchTool {
     /** Most terms one call may search. */
     public static final int MAX_TERMS = 5;
 
-
     private final DictionaryClient dictionary;
 
     /**
