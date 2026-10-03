@@ -7,18 +7,18 @@ import java.util.List;
 @Schema(description = "A filter on a variant annotation, matched by value or by numeric range.")
 public record GenomicFilter(
     @Schema(
-        description = "The genomic filter to query", example = "Gene_with_variant", requiredMode = Schema.RequiredMode.REQUIRED
+        description = "The genomic filter to query.", example = "Gene_with_variant", requiredMode = Schema.RequiredMode.REQUIRED
     ) String key,
     @Schema(
         description = "Values that must match for a given key. Cannot be combined with `min` or `max`.", example = "[\"APOE\"]",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED
     ) List<String> values,
     @Schema(
-        description = "Minimum value for a given key. Cannot be combined with `values`", example = "0.5",
+        description = "Minimum value for a given key. Cannot be combined with `values`.", example = "0.5",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED
     ) Float min,
     @Schema(
-        description = "Maximum value for a given key. Cannot be combined with `values`", example = "100",
+        description = "Maximum value for a given key. Cannot be combined with `values`.", example = "100",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED
     ) Float max
 ) {
