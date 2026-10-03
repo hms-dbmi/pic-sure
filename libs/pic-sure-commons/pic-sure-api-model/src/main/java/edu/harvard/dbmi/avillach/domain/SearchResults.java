@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public class SearchResults {
 
     @Schema(
-        description = "The matches, shaped by the resource. HPDS returns an object with `phenotypes` and `info`, each a map keyed by ."
+        description = "The matches, shaped by the resource. HPDS returns an object with `phenotypes` and `info`, each a map keyed by "
             + "concept path or info column name."
     )
     Object results;

@@ -12,7 +12,7 @@ public record PhenotypicFilter(
     ) PhenotypicFilterType phenotypicFilterType,
     @Schema(description = "A concept path this filter must match.", example = "\\demographics\\SEX\\") String conceptPath,
     @Schema(
-        description = "Values to match on for a given `conceptPath`. Cannot be combined with `min` or `max`",
+        description = "Values to match on for a given `conceptPath`. Cannot be combined with `min` or `max`.",
         example = "[\"Male\", \"Female\"]", requiredMode = Schema.RequiredMode.NOT_REQUIRED
     ) Set<String> values,
     @Schema(
