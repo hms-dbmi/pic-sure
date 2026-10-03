@@ -45,7 +45,7 @@ public class ApplicationController {
     }
 
     @Operation(summary = "Read one application", description = "GET information of one Application with the UUID")
-    @ApiResponse(responseCode = "200", description = "The application, without its token")
+    @ApiResponse(responseCode = "200", description = "The application, without its token.")
     @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "OTHER", action = "application.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -76,7 +76,7 @@ public class ApplicationController {
     @Operation(summary = "Create applications", description = "POST a list of Applications")
     @ApiResponse(
         responseCode = "200",
-        description = "The created applications with their privileges and without their tokens; issue a token to obtain one"
+        description = "The created applications with their privileges and without their tokens; issue a token to obtain one."
     )
     @AuditEvent(type = "ADMIN", action = "application.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -95,7 +95,7 @@ public class ApplicationController {
         summary = "Update the given fields of applications",
         description = "Update a list of Applications, will only update the fields listed"
     )
-    @ApiResponse(responseCode = "200", description = "The updated applications with their privileges and without their tokens")
+    @ApiResponse(responseCode = "200", description = "The updated applications with their privileges and without their tokens.")
     @AuditEvent(type = "ADMIN", action = "application.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(consumes = "application/json", produces = "application/json")
@@ -109,7 +109,7 @@ public class ApplicationController {
             .success(applicationService.updateFrom(applications).stream().map(ApplicationResponse::withPrivileges).toList());
     }
 
-    @Operation(summary = "Issue a new token for an application", description = "Refresh a token of an application by application Id")
+    @Operation(summary = "Issue a new token for an application", description = "Refresh a token of an application by application Id.")
     @ApiResponse(responseCode = "200", description = "The application's new token")
     @ApiResponse(responseCode = "400", description = "No application with that UUID")
     @AuditEvent(type = "ADMIN", action = "application.token_refresh")
@@ -128,7 +128,7 @@ public class ApplicationController {
         description = "DELETE an Application by Id only if the application is not associated by others"
     )
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "The remaining applications with their privileges and without their tokens"),
+        {@ApiResponse(responseCode = "200", description = "The remaining applications with their privileges and without their tokens."),
             @ApiResponse(responseCode = "400", description = "No application with that UUID"),
             @ApiResponse(responseCode = "409", description = "Other entities still reference this application")}
     )
@@ -136,7 +136,7 @@ public class ApplicationController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(value = "/{applicationId}")
     public ResponseEntity<List<ApplicationResponse>> removeById(
-        @Parameter(required = true, description = "A valid application uuid") @PathVariable("applicationId") final String applicationId,
+        @Parameter(required = true, description = "A valid application uuid.") @PathVariable("applicationId") final String applicationId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "app_id", applicationId);

@@ -42,15 +42,15 @@ public class ConnectionWebController {
     }
 
     @Operation(
-        summary = "Read one connection", description = "Read one connection by its business id, the same value GET /connection lists as id"
+        summary = "Read one connection", description = "Read one connection by its business id, the same value GET /connection lists as id."
     )
     @ApiResponse(responseCode = "200", description = "The connection")
-    @ApiResponse(responseCode = "400", description = "No connection with that id")
+    @ApiResponse(responseCode = "400", description = "No connection with that id.")
     @AuditEvent(type = "OTHER", action = "connection.read")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'ADMIN')")
     public ResponseEntity<ConnectionResponse> getConnectionById(
-        @Parameter(required = true, description = "The business id of the connection, not its uuid") @PathVariable(
+        @Parameter(required = true, description = "The business id of the connection, not its uuid.") @PathVariable(
             "connectionId"
         ) String connectionId
     ) {
@@ -67,7 +67,7 @@ public class ConnectionWebController {
     }
 
     @Operation(summary = "Create connections", description = "POST a list of Connections")
-    @ApiResponse(responseCode = "200", description = "The created connections, in the message and content envelope")
+    @ApiResponse(responseCode = "200", description = "The created connections, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json", consumes = "application/json")
@@ -82,9 +82,10 @@ public class ConnectionWebController {
     }
 
     @Operation(
-        summary = "Update the given fields of connections", description = "Update a list of Connections, will only update the fields listed"
+        summary = "Update the given fields of connections",
+        description = "Update a list of Connections, will only update the fields listed."
     )
-    @ApiResponse(responseCode = "200", description = "The updated connections, as a bare array")
+    @ApiResponse(responseCode = "200", description = "The updated connections, as a bare array.")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(produces = "application/json", consumes = "application/json")

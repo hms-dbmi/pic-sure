@@ -40,7 +40,7 @@ public class CacheController {
     }
 
     @Operation(summary = "Dump one cache")
-    @ApiResponse(responseCode = "200", description = "The cache's name and its entries")
+    @ApiResponse(responseCode = "200", description = "The cache's name and its entries.")
     @AuditEvent(type = "OTHER", action = "cache.read")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping("/{cacheName}")

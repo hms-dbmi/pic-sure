@@ -47,7 +47,7 @@ public class UserMetadataMappingWebController {
         summary = "The connection a mapping lookup names",
         description = "GET the Connection with the given business id. The response is the connection itself, not its mappings."
     )
-    @ApiResponse(responseCode = "200", description = "The named connection")
+    @ApiResponse(responseCode = "200", description = "The named connection.")
     @AuditEvent(type = "OTHER", action = "mapping.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "{connectionId}", produces = "application/json")

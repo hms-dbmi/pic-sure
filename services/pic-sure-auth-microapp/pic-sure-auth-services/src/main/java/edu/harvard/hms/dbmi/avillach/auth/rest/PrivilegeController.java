@@ -41,7 +41,7 @@ public class PrivilegeController {
         this.privilegeService = privilegeService;
     }
 
-    @Operation(summary = "Read one privilege", description = "GET information of one Privilege with the UUID")
+    @Operation(summary = "Read one privilege", description = "GET information of one Privilege with the UUID.")
     @ApiResponse(responseCode = "200", description = "The privilege")
     @ApiResponse(responseCode = "400", description = "No privilege with that UUID")
     @AuditEvent(type = "OTHER", action = "privilege.read")
@@ -83,9 +83,9 @@ public class PrivilegeController {
     }
 
     @Operation(
-        summary = "Update the given fields of privileges", description = "Update a list of privileges, will only update the fields listed"
+        summary = "Update the given fields of privileges", description = "Update a list of privileges, will only update the fields listed."
     )
-    @ApiResponse(responseCode = "200", description = "Every privilege after the update, not only the updated ones")
+    @ApiResponse(responseCode = "200", description = "Every privilege after the update, not only the updated ones.")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(consumes = "application/json", produces = "application/json")

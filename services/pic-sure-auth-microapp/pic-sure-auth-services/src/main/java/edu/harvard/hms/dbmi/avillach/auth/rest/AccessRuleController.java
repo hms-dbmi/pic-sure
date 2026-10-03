@@ -43,7 +43,7 @@ public class AccessRuleController {
         this.accessRuleService = accessRuleService;
     }
 
-    @Operation(summary = "Read one access rule", description = "GET information of one AccessRule with the UUID")
+    @Operation(summary = "Read one access rule", description = "GET information of one AccessRule with the UUID.")
     @ApiResponse(responseCode = "200", description = "The access rule")
     @ApiResponse(responseCode = "404", description = "No access rule has that id")
     @AuditEvent(type = "OTHER", action = "access_rule.read")
@@ -126,7 +126,7 @@ public class AccessRuleController {
         summary = "The rule types an access rule may use",
         description = "GET all types listed for the rule in accessRule that could be used"
     )
-    @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values, under the types member")
+    @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values, under the types member.")
     @AuditEvent(type = "OTHER", action = "access_rule.types")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping(path = "/allTypes", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)

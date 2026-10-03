@@ -48,7 +48,7 @@ public class UserController {
     }
 
     @Operation(summary = "Read one user", description = "GET information of one user with the UUID")
-    @ApiResponse(responseCode = "200", description = "The user, without the long-term token, passport and identity provider metadata")
+    @ApiResponse(responseCode = "200", description = "The user, without the long-term token, passport and identity provider metadata.")
     @ApiResponse(responseCode = "400", description = "The id is not a UUID, or no user has it")
     @AuditEvent(type = "OTHER", action = "user.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -62,7 +62,7 @@ public class UserController {
     }
 
     @Operation(summary = "List every user", description = "GET a list of existing users")
-    @ApiResponse(responseCode = "200", description = "Every user, as a bare array")
+    @ApiResponse(responseCode = "200", description = "Every user, as a bare array.")
     @AuditEvent(type = "OTHER", action = "user.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
@@ -71,7 +71,7 @@ public class UserController {
     }
 
     @Operation(summary = "Create users", description = "POST a list of users")
-    @ApiResponse(responseCode = "200", description = "The created users, as a bare array")
+    @ApiResponse(responseCode = "200", description = "The created users, as a bare array.")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
     @PostMapping(produces = "application/json")
@@ -84,8 +84,8 @@ public class UserController {
         return respondWithSavedUsers(this.userService.createFrom(users));
     }
 
-    @Operation(summary = "Update the given fields of users", description = "Update a list of users, will only update the fields listed")
-    @ApiResponse(responseCode = "200", description = "The updated users, as a bare array")
+    @Operation(summary = "Update the given fields of users", description = "Update a list of users, will only update the fields listed.")
+    @ApiResponse(responseCode = "200", description = "The updated users, as a bare array.")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
     @PutMapping(produces = "application/json")

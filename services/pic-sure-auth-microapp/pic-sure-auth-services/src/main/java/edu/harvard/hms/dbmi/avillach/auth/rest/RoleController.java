@@ -70,7 +70,7 @@ public class RoleController {
     }
 
     @Operation(summary = "Create roles", description = "POST a list of Roles")
-    @ApiResponse(responseCode = "200", description = "The created roles, in the message and content envelope")
+    @ApiResponse(responseCode = "200", description = "The created roles, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "role.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json")
@@ -83,8 +83,8 @@ public class RoleController {
         return PICSUREResponse.success("All roles are added.", RoleResponse.fromAll(this.roleService.createFrom(roles)));
     }
 
-    @Operation(summary = "Update the given fields of roles", description = "Update a list of Roles, will only update the fields listed")
-    @ApiResponse(responseCode = "200", description = "The updated roles, in the message and content envelope")
+    @Operation(summary = "Update the given fields of roles", description = "Update a list of Roles, will only update the fields listed.")
+    @ApiResponse(responseCode = "200", description = "The updated roles, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "role.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(produces = "application/json")
@@ -103,10 +103,11 @@ public class RoleController {
     }
 
     @Operation(
-        summary = "Delete a role that nothing references", description = "DELETE an Role by Id only if the Role is not associated by others"
+        summary = "Delete a role that nothing references",
+        description = "DELETE an Role by Id only if the Role is not associated by others."
     )
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "The remaining roles, in the message and content envelope"),
+        {@ApiResponse(responseCode = "200", description = "The remaining roles, in the message and content envelope."),
             @ApiResponse(responseCode = "400", description = "No role with that UUID"),
             @ApiResponse(responseCode = "409", description = "Other entities still reference this role")}
     )
