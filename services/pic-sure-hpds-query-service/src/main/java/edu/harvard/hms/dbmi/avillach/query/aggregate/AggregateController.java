@@ -106,7 +106,7 @@ public class AggregateController {
             @ApiResponse(responseCode = "400", description = "Missing query data, or a body that cannot be read as a query request."),
             @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured."),
-            @ApiResponse(responseCode = "504", description = "operations-service timed out.")}
+            @ApiResponse(responseCode = "504", description = "The operations service did not answer before the timeout.")}
     )
     public QueryStatus query(@RequestBody HpdsQueryRequest req) {
         return service.query(req.query());
