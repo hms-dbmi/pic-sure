@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
-@Schema(description = "Clauses combined with one operator")
+@Schema(description = "Clauses combined with one operator.")
 public record PhenotypicSubquery(
     @Schema(description = "Not implemented yet") Boolean not,
     @Schema(

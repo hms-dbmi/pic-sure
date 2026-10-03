@@ -59,6 +59,7 @@ public class OpenApiConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "springdoc.api-docs.enabled", matchIfMissing = true)
     public RequiredAuthoritiesOperationCustomizer requiredAuthoritiesOperationCustomizer() {
         return new RequiredAuthoritiesOperationCustomizer();
     }
