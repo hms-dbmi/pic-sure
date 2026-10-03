@@ -186,6 +186,38 @@ class McpProtocolIT {
 
     @Test
     @Order(5)
+    void searchConceptsWithTermsMergesOneLoopBackCallPerTerm() throws Exception {
+        GATEWAY.stubFor(
+            post(urlPathEqualTo("/dictionary/concepts")).withRequestBody(matchingJsonPath("$.search", equalTo("sex"))).willReturn(okJson("""
+                {"content":[{"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\sex\\\\","display":"Sex",
+                 "dataset":"phs999999","values":["Female","Male"]}],"totalElements":1}"""))
+        );
+        GATEWAY.stubFor(
+            post(urlPathEqualTo("/dictionary/concepts")).withRequestBody(matchingJsonPath("$.search", equalTo("gender")))
+                .willReturn(okJson("""
+                    {"content":[
+                      {"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\gender\\\\","display":"Gender",
+                       "dataset":"phs999999","values":["Woman","Man"]},
+                      {"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\sex\\\\","display":"Sex",
+                       "dataset":"phs999999","values":["Female","Male"]}],"totalElements":2}"""))
+        );
+
+        JsonNode structured = successfulCall("search_concepts", """
+            {"terms":["sex","gender"]}""");
+
+        assertThat(structured.has("query")).isFalse();
+        assertThat(structured.path("terms")).extracting(JsonNode::asText).containsExactly("sex", "gender");
+        assertThat(structured.path("total").asLong()).isEqualTo(3);
+        assertThat(structured.path("truncated").asBoolean(true)).isFalse();
+        assertThat(structured.path("concepts")).hasSize(2);
+        assertThat(structured.path("concepts").path(0).path("matchedTerms")).extracting(JsonNode::asText).containsExactly("sex", "gender");
+        assertThat(structured.path("concepts").path(1).path("matchedTerms")).extracting(JsonNode::asText).containsExactly("gender");
+        assertThat(GATEWAY.findAll(anyRequestedFor(anyUrl()))).hasSize(2);
+        assertLoopBackCarriesCallerHeaders();
+    }
+
+    @Test
+    @Order(6)
     void listFacetsReturnsTheCategories() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo("/dictionary/facets")).withRequestBody(matchingJsonPath("$.search", equalTo("asthma")))
@@ -206,7 +238,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     void getConceptReturnsTheDetail() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo("/dictionary/concepts/detail/phs999999")).withRequestBody(equalTo("\\phs999999\\demographics\\age\\"))
@@ -228,7 +260,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     void countParticipantsReturnsTheParsedCount() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo(QUERY_SYNC)).withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("COUNT")))
@@ -247,7 +279,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     void crossCountReturnsTheCells() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo(QUERY_SYNC))
@@ -271,7 +303,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     void getAdapterCodeReturnsPythonAndChecksTheConceptsThroughTheGateway() throws Exception {
         GATEWAY.stubFor(post(urlPathEqualTo("/dictionary/concepts/detail")).willReturn(okJson("""
             [{"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\sex\\\\","name":"sex","display":"Sex",
@@ -290,7 +322,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(10)
+    @Order(11)
     void aDownstreamFailureIsAnIsErrorWithTheModelMessageAndNoDownstreamBody() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo(QUERY_SYNC)).willReturn(
@@ -311,7 +343,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(11)
+    @Order(12)
     void anUnknownToolIsAJsonRpcError() throws Exception {
         String body = call(toolCall("drop_tables", "{}"));
 
@@ -323,7 +355,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(12)
+    @Order(13)
     void aNotInACountQueryIsAnIsErrorNamingTheField() throws Exception {
         JsonNode result = result(call(toolCall("count_participants", """
             {"query":{"phenotypicClause":{"phenotypicFilterType":"FILTER",
@@ -335,7 +367,7 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(13)
+    @Order(14)
     void aRequestThatDoesNotAcceptBothJsonAndSseGets400() throws Exception {
         HttpResponse<String> response = send("application/json", true, """
             {"jsonrpc":"2.0","id":13,"method":"tools/list","params":{}}""");
@@ -345,10 +377,10 @@ class McpProtocolIT {
     }
 
     @Test
-    @Order(14)
+    @Order(15)
     void noResponseHeaderOrBodyInTheRunHoldsTheCallerTokenTheApiKeyOrTheMcpToken() {
-        assertThat(RESPONSES).as("responses collected; fewer than 13 means earlier steps did not all reach the server")
-            .hasSizeGreaterThanOrEqualTo(13);
+        assertThat(RESPONSES).as("responses collected; fewer than 14 means earlier steps did not all reach the server")
+            .hasSizeGreaterThanOrEqualTo(14);
         String callerToken = BEARER.substring("Bearer ".length());
         for (String response : RESPONSES) {
             assertThat(response).doesNotContain(callerToken, API_KEY, MCP_TOKEN);

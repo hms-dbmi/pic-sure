@@ -67,7 +67,7 @@ class DictionaryToolsTest {
             .andExpect(content().json("{\"facets\":[],\"search\":\"blood pressure\",\"consents\":[]}", true))
             .andRespond(withSuccess("{\"content\":[],\"totalElements\":0}", MediaType.APPLICATION_JSON));
 
-        ConceptSearchResult result = search.searchConcepts(context, "blood pressure", null, null);
+        ConceptSearchResult result = search.searchConcepts(context, "blood pressure", null, null, null);
 
         server.verify();
         assertThat(result.query()).isEqualTo("blood pressure");
@@ -83,7 +83,7 @@ class DictionaryToolsTest {
         server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=" + Math.max(page, 0) + "&page_size=" + expectedSize))
             .andRespond(withSuccess("{\"content\":[],\"totalElements\":0}", MediaType.APPLICATION_JSON));
 
-        ConceptSearchResult result = search.searchConcepts(context, "sex", page, pageSize);
+        ConceptSearchResult result = search.searchConcepts(context, "sex", null, page, pageSize);
 
         server.verify();
         assertThat(result.pageSize()).isEqualTo(expectedSize);
@@ -101,7 +101,7 @@ class DictionaryToolsTest {
                "description":"","values":[%s],"studyAcronym":"FHS","meta":{"secret":"y"}}
             ],"pageable":{"pageNumber":0},"totalElements":38,"totalPages":4}""".formatted(values25), MediaType.APPLICATION_JSON));
 
-        ConceptSearchResult result = search.searchConcepts(context, "x", 0, 10);
+        ConceptSearchResult result = search.searchConcepts(context, "x", null, 0, 10);
 
         assertThat(result.total()).isEqualTo(38);
         ConceptSummary age = result.concepts().get(0);
@@ -126,7 +126,7 @@ class DictionaryToolsTest {
         server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10"))
             .andRespond(withSuccess("{\"content\":[],\"page\":{\"size\":10,\"totalElements\":41}}", MediaType.APPLICATION_JSON));
 
-        assertThat(search.searchConcepts(context, "x", null, null).total()).isEqualTo(41);
+        assertThat(search.searchConcepts(context, "x", null, null, null).total()).isEqualTo(41);
     }
 
     @Test
@@ -139,7 +139,7 @@ class DictionaryToolsTest {
             )
         );
 
-        ConceptSummary concept = search.searchConcepts(context, "x", null, null).concepts().get(0);
+        ConceptSummary concept = search.searchConcepts(context, "x", null, null, null).concepts().get(0);
 
         assertThat(concept.values()).hasSize(20);
         assertThat(concept.valuesOmitted()).isNull();
@@ -147,11 +147,11 @@ class DictionaryToolsTest {
 
     @Test
     void searchRejectsBadQueriesWithoutCallingTheGateway() {
-        assertThatThrownBy(() -> search.searchConcepts(context, null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Argument 'query' is required.");
-        assertThatThrownBy(() -> search.searchConcepts(context, "   ", null, null)).isInstanceOf(ToolFailure.class);
-        assertThatThrownBy(() -> search.searchConcepts(context, "x".repeat(501), null, null)).isInstanceOf(ToolFailure.class);
-        assertThatThrownBy(() -> search.searchConcepts(context, "a\nb", null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, null, null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Give either 'query' or 'terms'.");
+        assertThatThrownBy(() -> search.searchConcepts(context, "   ", null, null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "x".repeat(501), null, null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "a\nb", null, null, null)).isInstanceOf(ToolFailure.class);
         server.verify();
     }
 
@@ -288,7 +288,7 @@ class DictionaryToolsTest {
         server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail/phs1"))
             .andRespond(withStatus(httpStatus).body(LEAK).contentType(MediaType.TEXT_PLAIN));
 
-        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null)).isInstanceOf(ToolFailure.class).hasMessage(expected)
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null)).isInstanceOf(ToolFailure.class).hasMessage(expected)
             .hasNoCause().satisfies(e -> assertThat(e.getMessage()).doesNotContain(LEAK));
         assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class).hasMessage(expected).hasNoCause();
         assertThatThrownBy(() -> detail.getConcept(context, "phs1", "\\p\\")).isInstanceOf(ToolFailure.class).hasMessage(expected)
@@ -301,7 +301,7 @@ class DictionaryToolsTest {
             .andRespond(withStatus(HttpStatus.NOT_FOUND).body(LEAK));
         server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(withStatus(HttpStatus.NOT_FOUND).body(LEAK));
 
-        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null)).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary endpoint was not found.").hasNoCause();
         assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary endpoint was not found.").hasNoCause();
