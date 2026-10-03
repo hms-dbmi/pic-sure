@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -57,14 +58,34 @@ public record UserResponse(
     /**
      * Copies a persisted user, its roles and its connection into their response shape.
      *
-     * @param user the persisted user
-     * @return the response record
+     * <p>A {@code null} user yields {@code null}.</p>
+     *
+     * @param user the persisted user, or {@code null}
+     * @return the response record, or {@code null} when {@code user} is {@code null}
      */
     public static UserResponse from(User user) {
+        if (user == null) {
+            return null;
+        }
         return new UserResponse(
             user.getUuid(), user.getSubject(), RoleResponse.fromAll(user.getRoles()), user.getEmail(),
             ConnectionResponse.from(user.getConnection()), user.isMatched(), user.getAcceptedTOS(), user.getGeneralMetadata(),
             user.isActive()
         );
+    }
+
+    /**
+     * Copies a collection of persisted users in its iteration order.
+     *
+     * <p>A {@code null} collection yields {@code null}.</p>
+     *
+     * @param users the persisted users, or {@code null}
+     * @return the response records in the same order, or {@code null} when {@code users} is {@code null}
+     */
+    public static List<UserResponse> fromAll(Collection<User> users) {
+        if (users == null) {
+            return null;
+        }
+        return users.stream().map(UserResponse::from).toList();
     }
 }

@@ -51,8 +51,8 @@ public class AggregateService {
     private static final String STUDIES_CONSENTS_PATH = "\\_studies_consents\\";
 
     /**
-     * Result types accepted by {@code querySync}. The list held the name {@code OBSERVATION_COUNT} while the query was read as untyped
-     * JSON; {@link ResultType} has no such constant, so a body naming it now fails to bind and answers 400 before reaching this service.
+     * Result types accepted by {@code querySync}. A body naming a result type that {@link ResultType} does not define fails to bind and
+     * answers 400 before reaching this service.
      */
     private static final Set<ResultType> ALLOWED_RESULT_TYPES = Set.of(
         ResultType.COUNT, ResultType.CROSS_COUNT, ResultType.INFO_COLUMN_LISTING, ResultType.OBSERVATION_CROSS_COUNT,

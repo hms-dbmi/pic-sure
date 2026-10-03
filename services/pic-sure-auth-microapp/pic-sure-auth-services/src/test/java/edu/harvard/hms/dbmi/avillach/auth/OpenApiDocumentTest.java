@@ -73,12 +73,13 @@ class OpenApiDocumentTest {
             objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString()).path("paths");
 
         assertThat(description(paths, "/user", "get"))
-            .isEqualTo("GET a list of existing users\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
-        assertThat(description(paths, "/accessRule", "post")).isEqualTo("POST a list of AccessRules\n\nRequired authorities: SUPER_ADMIN.");
-        assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users\n\nRequired authorities: ADMIN.");
+            .isEqualTo("GET a list of existing users.\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
+        assertThat(description(paths, "/accessRule", "post"))
+            .isEqualTo("POST a list of AccessRules.\n\nRequired authorities: SUPER_ADMIN.");
+        assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users.\n\nRequired authorities: ADMIN.");
         assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user.");
         assertThat(description(paths, "/application", "get"))
-            .isEqualTo("GET a list of existing Applications\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
+            .isEqualTo("GET a list of existing Applications.\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         paths.forEach(
             path -> path.forEach(
                 operation -> assertThat(operation.path("description").asText()).doesNotContainIgnoringCase("requires")
@@ -170,13 +171,13 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/accessRule", "200", "AccessRuleResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/accessRule", "200", "AccessRuleResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/accessRule/{accessRuleId}", "200", "AccessRuleResponse");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/accessRule/allTypes", "200", "AccessRuleTypes");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/accessRule/allTypes", "200", "AccessRuleTypesResponse");
         OpenApiDocumentAssertions.assertSchemaHasFields(
             document, "AccessRuleResponse", "uuid", "name", "description", "type", "rule", "value", "gates", "gateAnyRelation",
             "evaluateOnlyByGates", "subAccessRule", "checkMapNode", "checkMapKeyOnly"
         );
-        OpenApiDocumentAssertions.assertSchemaHasFields(document, "AccessRuleTypes", "types");
-        OpenApiDocumentAssertions.assertSchemaDocumented(document, "AccessRuleResponse", "AccessRuleTypes");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "AccessRuleTypesResponse", "types");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "AccessRuleResponse", "AccessRuleTypesResponse");
         JsonNode accessRule = document.path("components").path("schemas").path("AccessRuleResponse").path("properties");
         assertThat(accessRule.has("mergedValues")).isFalse();
         assertThat(accessRule.has("mergedName")).isFalse();
@@ -253,9 +254,9 @@ class OpenApiDocumentTest {
         JsonNode document = document();
 
         OpenApiDocumentAssertions.assertBareArrayOfScalar(document, "get", "/cache", "200", "string");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/cache/{cacheName}", "200", "CacheContents");
-        OpenApiDocumentAssertions.assertSchemaHasFields(document, "CacheContents", "name", "entries");
-        OpenApiDocumentAssertions.assertSchemaDocumented(document, "CacheContents");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/cache/{cacheName}", "200", "CacheContentsResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "CacheContentsResponse", "name", "entries");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "CacheContentsResponse");
     }
 
     @Test

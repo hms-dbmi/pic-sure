@@ -80,10 +80,15 @@ public record AccessRuleResponse(
     /**
      * Copies a persisted access rule, its gates and its sub-rules into their response shape.
      *
-     * @param accessRule the persisted access rule
-     * @return the response record
+     * <p>A {@code null} access rule yields {@code null}.</p>
+     *
+     * @param accessRule the persisted access rule, or {@code null}
+     * @return the response record, or {@code null} when {@code accessRule} is {@code null}
      */
     public static AccessRuleResponse from(AccessRule accessRule) {
+        if (accessRule == null) {
+            return null;
+        }
         return new AccessRuleResponse(
             accessRule.getUuid(), accessRule.getName(), accessRule.getDescription(), accessRule.getType(), accessRule.getRule(),
             accessRule.getValue(), fromAll(accessRule.getGates()), accessRule.getGateAnyRelation(), accessRule.getEvaluateOnlyByGates(),
@@ -93,6 +98,8 @@ public record AccessRuleResponse(
 
     /**
      * Copies a collection of persisted access rules in its iteration order.
+     *
+     * <p>A {@code null} collection yields {@code null}.</p>
      *
      * @param accessRules the persisted access rules, or {@code null}
      * @return the response records in the same order, or {@code null} when {@code accessRules} is {@code null}

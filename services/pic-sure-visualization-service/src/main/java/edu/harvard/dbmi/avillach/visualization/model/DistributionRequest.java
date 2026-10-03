@@ -6,9 +6,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * The {@code POST /{backend}/distributions} request body. The removed resource registry's {@code hpdsResourceUUID} selector is gone. The
- * visualization path selects the auth or open backend, and query-service picks its HPDS backend from the request path. Clients still
- * sending the old field are unaffected because this record ignores unknown properties, so the field is dropped rather than rejected.
+ * The {@code POST /{backend}/distributions} request body. The path selects the auth or open backend, and query-service picks its HPDS
+ * backend from the request path. Unknown properties, such as a {@code hpdsResourceUUID} selector, are ignored on read rather than rejected.
  *
  * @param query the v3 query whose cohort the charts describe
  */

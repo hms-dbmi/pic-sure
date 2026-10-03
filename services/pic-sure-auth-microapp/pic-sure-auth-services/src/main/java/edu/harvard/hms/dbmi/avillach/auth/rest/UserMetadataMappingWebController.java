@@ -31,7 +31,7 @@ import java.util.List;
  * <p>Endpoint for service handling business logic for user metadata mapping.</p> <p><Note: Only users with the super admin role can access
  * this endpoint.</p>
  */
-@Tag(name = "User Metadata Mapping Management", description = "Mappings from identity provider claims to user metadata")
+@Tag(name = "User Metadata Mapping Management", description = "Mappings from identity provider claims to user metadata.")
 @Controller
 @RequestMapping("/mapping")
 public class UserMetadataMappingWebController {
@@ -47,7 +47,7 @@ public class UserMetadataMappingWebController {
         summary = "The connection a mapping lookup names",
         description = "GET the Connection with the given business id. The response is the connection itself, not its mappings."
     )
-    @ApiResponse(responseCode = "200", description = "The named connection")
+    @ApiResponse(responseCode = "200", description = "The named connection.")
     @AuditEvent(type = "OTHER", action = "mapping.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "{connectionId}", produces = "application/json")
@@ -55,8 +55,8 @@ public class UserMetadataMappingWebController {
         return PICSUREResponse.success(ConnectionResponse.from(this.mappingService.getAllMappingsForConnection(connection)));
     }
 
-    @Operation(summary = "List every user metadata mapping", description = "GET a list of existing UserMetadataMappings")
-    @ApiResponse(responseCode = "200", description = "Every user metadata mapping")
+    @Operation(summary = "List every user metadata mapping", description = "GET a list of existing UserMetadataMappings.")
+    @ApiResponse(responseCode = "200", description = "Every user metadata mapping.")
     @AuditEvent(type = "OTHER", action = "mapping.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
@@ -64,14 +64,14 @@ public class UserMetadataMappingWebController {
         return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(mappingService.getAllMappings()));
     }
 
-    @Operation(summary = "Create mappings", description = "POST a list of UserMetadataMappings")
-    @ApiResponse(responseCode = "200", description = "The created mappings")
+    @Operation(summary = "Create mappings", description = "POST a list of UserMetadataMappings.")
+    @ApiResponse(responseCode = "200", description = "The created mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<UserMetadataMappingResponse>> addMapping(
         @Parameter(
-            required = true, description = "The mappings to create, each naming an existing connection by its id"
+            required = true, description = "The mappings to create, each naming an existing connection by its id."
         ) @RequestBody List<@NotNull @Valid UserMetadataMappingCreateRequest> mappings, HttpServletRequest request
     ) {
 
@@ -87,15 +87,15 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "Update the given fields of mappings",
-        description = "Update a list of UserMetadataMappings, will only update the fields listed"
+        description = "Update a list of UserMetadataMappings, will only update the fields listed."
     )
-    @ApiResponse(responseCode = "200", description = "The updated mappings")
+    @ApiResponse(responseCode = "200", description = "The updated mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<UserMetadataMappingResponse>> updateMapping(
         @Parameter(
-            required = true, description = "The mappings to update, each named by UUID; a field left out keeps its stored value"
+            required = true, description = "The mappings to update, each named by UUID; a field left out keeps its stored value."
         ) @RequestBody List<@NotNull @Valid UserMetadataMappingUpdateRequest> mappings, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "mapping_count", String.valueOf(mappings.size()));
@@ -111,14 +111,14 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "Delete a mapping",
-        description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others"
+        description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others."
     )
-    @ApiResponse(responseCode = "200", description = "The remaining mappings")
+    @ApiResponse(responseCode = "200", description = "The remaining mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{mappingId}", produces = "application/json")
     public ResponseEntity<List<UserMetadataMappingResponse>> removeById(
-        @Parameter(required = true, description = "A valid UserMetadataMapping Id") @PathVariable("mappingId") final String mappingId,
+        @Parameter(required = true, description = "The uuid of the mapping to delete.") @PathVariable("mappingId") final String mappingId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "mapping_id", mappingId);

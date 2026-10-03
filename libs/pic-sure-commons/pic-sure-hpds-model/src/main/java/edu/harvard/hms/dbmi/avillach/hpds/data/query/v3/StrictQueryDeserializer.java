@@ -18,14 +18,16 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
  * {@link Query} record itself stays as lenient as the mapper that reads it, because the operations service re-parses persisted
  * saved-dataset queries with unknown members on purpose. Spring Boot's request mapper has {@code FAIL_ON_UNKNOWN_PROPERTIES} off, so
  * neither {@code @JsonIgnoreProperties(ignoreUnknown = false)} on the record nor the mapper's default would refuse the body; this
- * deserializer reads the node with its own mapper, which has the feature on.
+ * deserializer reads the node with a reader derived from the mapper that is binding the request, so every other setting of that mapper
+ * applies and only the feature differs.
  */
 public final class StrictQueryDeserializer extends JsonDeserializer<Query> {
 
-    private static final ObjectMapper STRICT = JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+    private static final ObjectMapper FALLBACK = JsonMapper.builder().build();
 
     /**
-     * Reads the query at the parser's current token with a mapper that fails on unknown members.
+     * Reads the query at the parser's current token with a reader that fails on unknown members. The reader comes from the parser's codec
+     * when that is an {@link ObjectMapper}; a parser without one is read with a default mapper.
      *
      * @param parser the body parser, positioned on the query value
      * @param context the binding context of the enclosing record
@@ -34,6 +36,7 @@ public final class StrictQueryDeserializer extends JsonDeserializer<Query> {
      */
     @Override
     public Query deserialize(JsonParser parser, DeserializationContext context) throws IOException {
-        return STRICT.readerFor(Query.class).readValue(parser);
+        ObjectMapper mapper = parser.getCodec() instanceof ObjectMapper codec ? codec : FALLBACK;
+        return mapper.readerFor(Query.class).with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).readValue(parser);
     }
 }

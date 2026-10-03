@@ -17,7 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * {@code GET /cache} returns the cache names as a bare array. {@code GET /cache/{cacheName}} returns the cache's name beside its entries,
- * and the entries are exactly the JSON object the endpoint returned as its whole body before.
+ * and the entries are one JSON object of cache keys to cached values.
  */
 class CacheControllerTest {
 

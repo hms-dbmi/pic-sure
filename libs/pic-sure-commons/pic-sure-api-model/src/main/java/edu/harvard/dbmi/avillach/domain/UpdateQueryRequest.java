@@ -8,7 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * Request body for {@code PATCH /internal/queries/{picsureId}} on the operations service. Every component is optional and an absent or null
  * component leaves the stored value unchanged, so a caller sends only what moved: the status as a dispatch completes, or the result id once
  * HPDS assigns one. {@code query} and {@code version} are replaced together when the query service upgrades a row stored before v3 to the
- * v3 format.
+ * v3 format. The query service and the operations service exchange it, and no client reads it.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Schema(description = "A partial update to a persisted query. A null or absent field leaves the stored value unchanged.")

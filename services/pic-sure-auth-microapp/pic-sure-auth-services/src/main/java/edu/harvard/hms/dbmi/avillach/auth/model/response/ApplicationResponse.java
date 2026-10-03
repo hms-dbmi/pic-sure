@@ -9,7 +9,7 @@ import java.util.UUID;
 
 /**
  * A registered application as the application endpoints return it, and as it is nested in a privilege. The bearer {@code token} is never a
- * member. A member that is {@code null} or empty is left off the wire, as the entity it replaces left it off.
+ * member. A member that is {@code null} or empty is left off the wire.
  *
  * <p>The three factories differ in which optional members they fill, because the endpoints differ today: the reads carry no privileges, the
  * writes carry them, and the application nested in a privilege carries neither privileges nor {@code url}.</p>
@@ -48,10 +48,15 @@ public record ApplicationResponse(
     /**
      * Copies a persisted application into the shape the two read endpoints return, without its privileges.
      *
-     * @param application the persisted application
-     * @return the response record
+     * <p>A {@code null} application yields {@code null}.</p>
+     *
+     * @param application the persisted application, or {@code null}
+     * @return the response record, or {@code null} when {@code application} is {@code null}
      */
     public static ApplicationResponse from(Application application) {
+        if (application == null) {
+            return null;
+        }
         return new ApplicationResponse(
             application.getUuid(), application.getName(), application.getDescription(), application.getUrl(), application.isEnable(), null
         );
@@ -60,10 +65,15 @@ public record ApplicationResponse(
     /**
      * Copies a persisted application and the privileges it owns into the shape the create, update and delete endpoints return.
      *
-     * @param application the persisted application
-     * @return the response record
+     * <p>A {@code null} application yields {@code null}.</p>
+     *
+     * @param application the persisted application, or {@code null}
+     * @return the response record, or {@code null} when {@code application} is {@code null}
      */
     public static ApplicationResponse withPrivileges(Application application) {
+        if (application == null) {
+            return null;
+        }
         return new ApplicationResponse(
             application.getUuid(), application.getName(), application.getDescription(), application.getUrl(), application.isEnable(),
             PrivilegeResponse.fromAll(application.getPrivileges())
@@ -72,6 +82,8 @@ public record ApplicationResponse(
 
     /**
      * Copies the owning application of a privilege into the shape a privilege nests, which carries neither {@code url} nor privileges.
+     *
+     * <p>A {@code null} application yields {@code null}.</p>
      *
      * @param application the persisted application, or {@code null}
      * @return the response record, or {@code null} when {@code application} is {@code null}
