@@ -42,7 +42,8 @@ public class ConnectionWebController {
     }
 
     @Operation(
-        summary = "Read one connection", description = "Read one connection by its business id, the same value GET /connection lists as id."
+        summary = "Read one connection",
+        description = "Returns one connection by its business id, the same value the connection list shows as id."
     )
     @ApiResponse(responseCode = "200", description = "The connection.")
     @ApiResponse(responseCode = "400", description = "No connection with that id.")
@@ -57,7 +58,7 @@ public class ConnectionWebController {
         return ResponseEntity.ok(ConnectionResponse.from(connectionWebService.getConnectionById(connectionId)));
     }
 
-    @Operation(summary = "List every connection", description = "GET a list of existing Connection.")
+    @Operation(summary = "List every connection", description = "Lists every identity provider connection.")
     @ApiResponse(responseCode = "200", description = "Every connection.")
     @AuditEvent(type = "OTHER", action = "connection.list")
     @GetMapping
@@ -66,7 +67,7 @@ public class ConnectionWebController {
         return ResponseEntity.ok(ConnectionResponse.fromAll(connectionWebService.getAllConnections()));
     }
 
-    @Operation(summary = "Create connections", description = "POST a list of Connections.")
+    @Operation(summary = "Create connections", description = "Creates the connections in the request body.")
     @ApiResponse(responseCode = "200", description = "The created connections, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -83,7 +84,7 @@ public class ConnectionWebController {
 
     @Operation(
         summary = "Update the given fields of connections",
-        description = "Update a list of Connections, will only update the fields listed."
+        description = "Updates the connections in the request body, changing only the fields each one lists."
     )
     @ApiResponse(responseCode = "200", description = "The updated connections, as a bare array.")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
@@ -100,7 +101,7 @@ public class ConnectionWebController {
 
     @Operation(
         summary = "Delete a connection that nothing references",
-        description = "DELETE an Connection by Id only if the Connection is not associated by others."
+        description = "Deletes the connection with the given business id unless other entities still reference it, and returns the remaining connections."
     )
     @ApiResponse(responseCode = "200", description = "The remaining connections.")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this connection.")

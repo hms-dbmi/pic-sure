@@ -47,21 +47,21 @@ public class UserController {
         this.userService = userService;
     }
 
-    @Operation(summary = "Read one user", description = "GET information of one user with the UUID.")
+    @Operation(summary = "Read one user", description = "Returns one user by their UUID.")
     @ApiResponse(responseCode = "200", description = "The user, without the long-term token, passport and identity provider metadata.")
     @ApiResponse(responseCode = "400", description = "The id is not a UUID, or no user has it.")
     @AuditEvent(type = "OTHER", action = "user.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "/{userId}", produces = "application/json")
     public ResponseEntity<UserResponse> getUserById(
-        @Parameter(required = true, description = "The UUID of the user to fetch information about.") @PathVariable("userId") String userId,
+        @Parameter(required = true, description = "The UUID of the user to fetch.") @PathVariable("userId") String userId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_id", userId);
         return PICSUREResponse.success(UserResponse.from(this.userService.getUserById(userId)));
     }
 
-    @Operation(summary = "List every user", description = "GET a list of existing users.")
+    @Operation(summary = "List every user", description = "Lists every user.")
     @ApiResponse(responseCode = "200", description = "Every user, as a bare array.")
     @AuditEvent(type = "OTHER", action = "user.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -70,7 +70,7 @@ public class UserController {
         return PICSUREResponse.success(UserResponse.fromAll(this.userService.getAllUsers()));
     }
 
-    @Operation(summary = "Create users", description = "POST a list of users.")
+    @Operation(summary = "Create users", description = "Creates the users in the request body.")
     @ApiResponse(responseCode = "200", description = "The created users, as a bare array.")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
@@ -84,7 +84,10 @@ public class UserController {
         return respondWithSavedUsers(this.userService.createFrom(users));
     }
 
-    @Operation(summary = "Update the given fields of users", description = "Update a list of users, will only update the fields listed.")
+    @Operation(
+        summary = "Update the given fields of users",
+        description = "Updates the users in the request body, changing only the fields each one lists."
+    )
     @ApiResponse(responseCode = "200", description = "The updated users, as a bare array.")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
