@@ -170,13 +170,13 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/accessRule", "200", "AccessRuleResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/accessRule", "200", "AccessRuleResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/accessRule/{accessRuleId}", "200", "AccessRuleResponse");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/accessRule/allTypes", "200", "AccessRuleTypes");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/accessRule/allTypes", "200", "AccessRuleTypesResponse");
         OpenApiDocumentAssertions.assertSchemaHasFields(
             document, "AccessRuleResponse", "uuid", "name", "description", "type", "rule", "value", "gates", "gateAnyRelation",
             "evaluateOnlyByGates", "subAccessRule", "checkMapNode", "checkMapKeyOnly"
         );
-        OpenApiDocumentAssertions.assertSchemaHasFields(document, "AccessRuleTypes", "types");
-        OpenApiDocumentAssertions.assertSchemaDocumented(document, "AccessRuleResponse", "AccessRuleTypes");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "AccessRuleTypesResponse", "types");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "AccessRuleResponse", "AccessRuleTypesResponse");
         JsonNode accessRule = document.path("components").path("schemas").path("AccessRuleResponse").path("properties");
         assertThat(accessRule.has("mergedValues")).isFalse();
         assertThat(accessRule.has("mergedName")).isFalse();
@@ -251,9 +251,9 @@ class OpenApiDocumentTest {
         JsonNode document = document();
 
         OpenApiDocumentAssertions.assertBareArrayOfScalar(document, "get", "/cache", "200", "string");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/cache/{cacheName}", "200", "CacheContents");
-        OpenApiDocumentAssertions.assertSchemaHasFields(document, "CacheContents", "name", "entries");
-        OpenApiDocumentAssertions.assertSchemaDocumented(document, "CacheContents");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/cache/{cacheName}", "200", "CacheContentsResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "CacheContentsResponse", "name", "entries");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "CacheContentsResponse");
     }
 
     @Test

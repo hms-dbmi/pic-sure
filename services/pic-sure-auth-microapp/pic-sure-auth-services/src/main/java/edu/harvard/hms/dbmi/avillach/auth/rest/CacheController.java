@@ -1,7 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
-import edu.harvard.hms.dbmi.avillach.auth.model.response.CacheContents;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.CacheContentsResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -44,13 +44,13 @@ public class CacheController {
     @AuditEvent(type = "OTHER", action = "cache.read")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping("/{cacheName}")
-    public CacheContents getCache(@PathVariable("cacheName") String cacheName) {
+    public CacheContentsResponse getCache(@PathVariable("cacheName") String cacheName) {
         Cache cache = cacheManager.getCache(cacheName);
         if (cache == null) {
             throw new IllegalArgumentException("Cache not found: " + cacheName);
         }
 
-        return CacheContents.of(cacheName, cache.getNativeCache());
+        return CacheContentsResponse.of(cacheName, cache.getNativeCache());
     }
 
 

@@ -5,7 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.AccessRuleCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.AccessRuleUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.AccessRuleResponse;
-import edu.harvard.hms.dbmi.avillach.auth.model.response.AccessRuleTypes;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AccessRuleTypesResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -130,8 +130,8 @@ public class AccessRuleController {
     @AuditEvent(type = "OTHER", action = "access_rule.types")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping(path = "/allTypes", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<AccessRuleTypes> getAllTypes() {
-        return PICSUREResponse.success(new AccessRuleTypes(AccessRule.TypeNaming.getTypeNameMap()));
+    public ResponseEntity<AccessRuleTypesResponse> getAllTypes() {
+        return PICSUREResponse.success(new AccessRuleTypesResponse(AccessRule.TypeNaming.getTypeNameMap()));
     }
 
 }
