@@ -299,7 +299,7 @@ class IdentityPropagationFilterTest {
     @Test
     void verifiedLoopBackCallCarriesMcpClientTypeAndNoToken() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
-        request.addHeader(McpCallerFilter.HEADER, MCP_SECRET);
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, MCP_SECRET);
         request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
         request.addHeader("X-PICSURE-API-Key", "site-api-key");
 
@@ -307,9 +307,9 @@ class IdentityPropagationFilterTest {
 
         assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("mcp");
         assertThat(Collections.list(downstream.getHeaders("X-Client-Type"))).containsExactly("mcp");
-        assertThat(downstream.getHeader(McpCallerFilter.HEADER)).isNull();
+        assertThat(downstream.getHeader(McpCallerFilter.TOKEN_HEADER)).isNull();
         assertThat(downstream.getHeader("X-PICSURE-API-Key")).isNull();
-        assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain(McpCallerFilter.HEADER, "X-PICSURE-API-Key");
+        assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain(McpCallerFilter.TOKEN_HEADER, "X-PICSURE-API-Key");
     }
 
     @Test

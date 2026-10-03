@@ -2,11 +2,18 @@ package edu.harvard.hms.dbmi.avillach.gateway.filter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.VerifiedCaller;
@@ -30,7 +37,7 @@ class McpCallerFilterTest {
     private static MockHttpServletRequest request(String path, String token) {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
         if (token != null) {
-            request.addHeader(McpCallerFilter.HEADER, token);
+            request.addHeader(McpCallerFilter.TOKEN_HEADER, token);
         }
         return request;
     }
@@ -173,5 +180,42 @@ class McpCallerFilterTest {
 
         assertThat(chainCalled).isTrue();
         assertThat(VerifiedCaller.get(request)).contains("mcp");
+    }
+
+    @Test
+    void configuredSecretsAreTrimmedBeforeComparison() throws Exception {
+        MockHttpServletRequest current = request("/hpds/auth/query/sync", CURRENT);
+        MockHttpServletRequest previous = request("/hpds/auth/query/sync", PREVIOUS);
+        McpCallerFilter filter = new McpCallerFilter(audit, "  " + CURRENT + "\n", "\t" + PREVIOUS + " ");
+
+        run(filter, current);
+        run(filter, previous);
+
+        assertThat(VerifiedCaller.get(current)).contains("mcp");
+        assertThat(VerifiedCaller.get(previous)).contains("mcp");
+    }
+
+    @Test
+    void oneWarningIsLoggedAtConstructionWhenNoSecretIsConfigured() {
+        assertThat(warningsLoggedWhileConstructing(" ", null)).hasSize(1).first().asString().contains(McpCallerFilter.TOKEN_HEADER);
+    }
+
+    @Test
+    void noWarningIsLoggedWhenEitherSecretIsConfigured() {
+        assertThat(warningsLoggedWhileConstructing(CURRENT, null)).isEmpty();
+        assertThat(warningsLoggedWhileConstructing(null, PREVIOUS)).isEmpty();
+    }
+
+    private List<String> warningsLoggedWhileConstructing(String serviceToken, String previousServiceToken) {
+        Logger logger = (Logger) LoggerFactory.getLogger(McpCallerFilter.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            new McpCallerFilter(audit, serviceToken, previousServiceToken);
+        } finally {
+            logger.detachAppender(appender);
+        }
+        return appender.list.stream().filter(event -> event.getLevel() == Level.WARN).map(ILoggingEvent::getFormattedMessage).toList();
     }
 }

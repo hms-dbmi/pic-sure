@@ -30,9 +30,10 @@ public class ObservabilityConfig {
 
     /**
      * Registered UNCONDITIONALLY, as an independent trust boundary alongside the always-on DB-free auth chain in {@code SecurityConfig}: a
-     * client must never be able to inject the gateway-owned {@code X-User-*} identity headers or the open-access API key. It runs after
-     * {@code OpenAccessFilter} so that filter can consume the key for PSAMA before it is removed from the downstream-facing request. See
-     * {@link InboundIdentityHeaderSanitizingFilter}'s Javadoc for the trust-boundary rationale.
+     * client must never be able to inject the gateway-owned {@code X-User-*} identity headers. The open-access API key is removed from
+     * every request except one to the MCP endpoint, {@code /mcp}, where it is kept because {@code pic-sure-mcp} forwards it on its
+     * loop-back calls. It runs after {@code OpenAccessFilter} so that filter can consume the key for PSAMA before it is removed from the
+     * downstream-facing request. See {@link InboundIdentityHeaderSanitizingFilter}'s Javadoc for the trust-boundary rationale.
      */
     @Bean
     public FilterRegistrationBean<InboundIdentityHeaderSanitizingFilter> inboundIdentityHeaderSanitizingFilter() {

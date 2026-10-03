@@ -22,9 +22,10 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Base {@link OncePerRequestFilter} that maps each non-skipped request to an {@link AuditRoute} and emits an audit event through the
- * {@link LoggingClient}. Routes are matched on {@link RoutedRequestPath}, the decoded path a path-pattern router matches, so an encoded
- * spelling of a routed path gets the same event type and action; the event's {@code url} stays the raw request URI. {@code shouldNotFilter}
- * is deliberately {@code protected} and non-final so gateway subclasses can widen the skip set for pass-through paths.
+ * {@link LoggingClient}. Both the skip check and route matching use {@link RoutedRequestPath}, the decoded path a path-pattern router
+ * matches, so an encoded spelling of a path is skipped or gets the same event type and action exactly as its plain spelling does; the
+ * event's {@code url} stays the raw request URI. {@code shouldNotFilter} is deliberately {@code protected} and non-final so gateway
+ * subclasses can widen the skip set for pass-through paths.
  */
 public class AuditLoggingFilter extends OncePerRequestFilter {
 
@@ -77,7 +78,7 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             return true;
         }
 
-        String path = request.getRequestURI();
+        String path = RoutedRequestPath.of(request);
         if (path == null) {
             return false;
         }
