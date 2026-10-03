@@ -191,7 +191,6 @@ public final class BashGenerator implements LanguageGenerator {
         return new PhenotypicSubquery(null, group.clauses().stream().map(BashGenerator::clause).toList(), group.operator());
     }
 
-
     /**
      * Quotes a string for bash. Printable ASCII goes in single quotes, with a single quote written as {@code '\''}; any other character is
      * written in an ANSI-C quoted segment as {@code $'\\xNN'} per UTF-8 byte, so the script stays ASCII.

@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryConcept;
+import edu.harvard.hms.dbmi.avillach.mcp.query.QueryInput;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -20,7 +22,6 @@ public class ConceptsDetailTool {
 
     /** Most concept paths one call may look up. */
     public static final int MAX_CONCEPT_PATHS = 25;
-
 
     private final DictionaryClient dictionary;
 
@@ -61,7 +62,8 @@ public class ConceptsDetailTool {
     ) {
         List<String> paths = validPaths(conceptPaths);
         List<DictionaryConcept> found =
-            DictionaryCalls.run(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptsDetail(paths, CallerHeaders.from(context)));
+            DictionaryCalls.run(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptsDetail(paths, CallerHeaders.from(context))).stream()
+                .filter(Objects::nonNull).toList();
         Set<String> foundPaths = found.stream().map(DictionaryConcept::conceptPath).collect(Collectors.toSet());
         List<String> notFound = paths.stream().filter(path -> !foundPaths.contains(path)).toList();
         return new ConceptsDetailResult(found.stream().map(ConceptSummary::detail).toList(), notFound);
@@ -73,7 +75,7 @@ public class ConceptsDetailTool {
         }
         List<String> valid = new ArrayList<>();
         for (int i = 0; i < conceptPaths.size(); i++) {
-            valid.add(ToolArguments.requireText("conceptPaths[" + i + "]", conceptPaths.get(i), ConceptDetailTool.MAX_CONCEPT_PATH_LENGTH));
+            valid.add(ToolArguments.requireText("conceptPaths[" + i + "]", conceptPaths.get(i), QueryInput.MAX_CONCEPT_PATH_LENGTH));
         }
         return valid.stream().distinct().toList();
     }
