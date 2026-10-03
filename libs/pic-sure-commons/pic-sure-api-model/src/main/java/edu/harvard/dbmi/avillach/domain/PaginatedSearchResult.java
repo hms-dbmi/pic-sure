@@ -8,15 +8,15 @@ import java.util.List;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Objects;
 
-@Schema(description = "One page of the values that match a search")
+@Schema(description = "One page of the values that match a search.")
 public class PaginatedSearchResult<T> {
-    @Schema(description = "The matches on this page", example = "[\"APOE\", \"APOC1\"]", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "The matches on this page.", example = "[\"APOE\", \"APOC1\"]", requiredMode = Schema.RequiredMode.REQUIRED)
     private final List<T> results;
 
-    @Schema(description = "The number of this page, starting at 1", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "The number of this page, starting at 1.", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
     private final int page;
 
-    @Schema(description = "The number of matches across all pages", example = "42", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "The number of matches across all pages.", example = "42", requiredMode = Schema.RequiredMode.REQUIRED)
     private final int total;
 
     @JsonCreator

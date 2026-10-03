@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Response body of {@code GET /internal/queries/{picsureId}} on the operations service: one persisted query row as the query service reads
- * it back. The operations service writes it and the query service reads it, so both bind this one record.
+ * it back. The operations service writes it and the query service reads it, so both bind this one record. No client reads it.
  *
  * <p>It is distinct from {@link DispatchResponse}, which carries the query body alone.
  */

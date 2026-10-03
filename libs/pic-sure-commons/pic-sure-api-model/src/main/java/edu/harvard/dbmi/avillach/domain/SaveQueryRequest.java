@@ -6,7 +6,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Request body for {@code POST /internal/queries} on the operations service. The query service sends it to persist a query it has just
- * dispatched to HPDS. Every component is optional: a synchronous query is stored with no status and no metadata.
+ * dispatched to HPDS. Every component is optional: a synchronous query is stored with no status and no metadata. The query service and the
+ * operations service exchange it, and no client reads it.
  *
  * <p>{@code status} travels as the {@link PicSureStatus} constant name and {@code metadata} as base64 text, so the wire carries plain
  * strings and the operations service answers 400 for a name or an encoding it cannot read.
