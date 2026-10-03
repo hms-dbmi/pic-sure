@@ -100,7 +100,9 @@ class AdapterCodeToolTest {
 
         assertThat(r.requires().minVersion()).isEqualTo("v3.0.0");
         assertThat(r.setupText()).contains(
-            "For r, requires.minVersion is a release tag. Compare it with the release tag check prints, not with the package version."
+            "For r, requires.minVersion is a release tag. Compare it with the release tag check prints, not with the package version. "
+                + "If check prints no release tag, such as a branch name or nothing after the version, treat the connector as older than "
+                + "requires.minVersion."
         );
         assertThat(python.setupText()).doesNotContain("release tag");
     }

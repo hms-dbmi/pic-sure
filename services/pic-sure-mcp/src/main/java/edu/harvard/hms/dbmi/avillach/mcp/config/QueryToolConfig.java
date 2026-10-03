@@ -39,9 +39,6 @@ import java.util.function.Supplier;
 @Configuration(proxyBeanMethods = false)
 public class QueryToolConfig {
 
-    /** The {@code isError} text for an exception that is not a {@link ToolFailure}. */
-    public static final String UNEXPECTED_FAILURE = ToolFailure.UNEXPECTED_MESSAGE;
-
     private static final Logger log = LoggerFactory.getLogger(QueryToolConfig.class);
 
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
@@ -88,7 +85,7 @@ public class QueryToolConfig {
     /**
      * Runs a tool call and shapes its outcome as a tool result: the record as {@code structuredContent} plus the same JSON as one text
      * block, a {@link ToolFailure} as an {@code isError} result carrying its message, and anything else as an {@code isError} result with
-     * {@link #UNEXPECTED_FAILURE}.
+     * {@link ToolFailure#UNEXPECTED_MESSAGE}.
      *
      * @param name the tool name, used for logging
      * @param call binds the arguments and calls the tool
@@ -117,7 +114,7 @@ public class QueryToolConfig {
             return error(e.getMessage());
         } catch (RuntimeException e) {
             log.error("Tool {} failed unexpectedly: {}", name, e.getClass().getName(), e);
-            return error(UNEXPECTED_FAILURE);
+            return error(ToolFailure.UNEXPECTED_MESSAGE);
         }
     }
 

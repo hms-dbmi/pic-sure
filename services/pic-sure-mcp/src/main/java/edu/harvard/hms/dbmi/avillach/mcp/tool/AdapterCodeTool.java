@@ -43,6 +43,10 @@ public class AdapterCodeTool {
     /** Most concept paths sent to the dictionary in one check. */
     public static final int MAX_CHECKED_PATHS = 100;
 
+    /** The schema description of {@code checkConcepts}, which states how many concept paths the check covers. */
+    public static final String CHECK_CONCEPTS_DESCRIPTION =
+        "Check the first " + MAX_CHECKED_PATHS + " distinct concept paths against the dictionary. Defaults to false";
+
     /** The tool description, with one complete worked example. */
     public static final String DESCRIPTION = """
         Write code that runs a query on PIC-SURE's authorized channel in the user's own environment, for exact counts filtered by the \
@@ -56,9 +60,9 @@ public class AdapterCodeTool {
         concept paths cross_count counts and adds output columns for participant and timestamp, and count ignores it. The tool \
         refuses the following, with a message naming the field. A genomic filter with min or max, since genomic filters take values \
         only. A genomic filter with no values. A REQUIRED or ANY_RECORD_OF filter with values, min, or max. A FILTER with both values \
-        and min or max, or with neither. A blank entry in values. A query with no filter, genomic filter, or select path. With \
-        checkConcepts true, the first 100 distinct concept paths are checked against the dictionary, and warnings report unknown \
-        paths and any cutoff without blocking the code. Example arguments: \
+        and min or max, or with neither. A blank entry in values. A query with no filter, genomic filter, or select path. For count, \
+        select alone is not enough. With checkConcepts true, the first 100 distinct concept paths are checked against the dictionary, \
+        and warnings report unknown paths and any cutoff without blocking the code. Example arguments: \
         {"language":"python","resultType":"participant","query":{"select":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":\
         {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65}}}""";
 
@@ -153,9 +157,7 @@ public class AdapterCodeTool {
         @Schema(description = "The query to write code for") QueryInput query,
         @Schema(description = "count, cross_count, participant, or timestamp") ResultKind resultType,
         @Schema(description = "python, r, or bash") Language language,
-        @Schema(
-            requiredMode = NOT_REQUIRED, description = "Check every concept path against the dictionary first. Defaults to false"
-        ) Boolean checkConcepts
+        @Schema(requiredMode = NOT_REQUIRED, description = CHECK_CONCEPTS_DESCRIPTION) Boolean checkConcepts
     ) {
     }
 }
