@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.mcp.gateway;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A page of concepts as the dictionary serializes a Spring Data {@code PageImpl}. The total is read from the top-level
@@ -25,12 +26,12 @@ public record DictionaryPage(List<DictionaryConcept> content, Long totalElements
     }
 
     /**
-     * The concepts on this page.
+     * The concepts on this page, without any null entry the response carried.
      *
-     * @return the concepts, never null
+     * @return the concepts, never null and holding no null
      */
     public List<DictionaryConcept> concepts() {
-        return content == null ? List.of() : content;
+        return content == null ? List.of() : content.stream().filter(Objects::nonNull).toList();
     }
 
     /**

@@ -337,4 +337,36 @@ class DictionaryToolsTest {
         assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary is unavailable. Try again shortly.").hasNoCause();
     }
+
+    @Test
+    void aNullConceptInASearchPageIsDroppedAndTheRestAreKept() {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10")).andRespond(withSuccess("""
+            {"content":[null,{"type":"Categorical","conceptPath":"\\\\phs1\\\\sex\\\\","dataset":"phs1","values":["F"]}],
+             "totalElements":2}""", MediaType.APPLICATION_JSON));
+
+        ConceptSearchResult result = search.searchConcepts(context, "sex", null, null, null);
+
+        server.verify();
+        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("\\phs1\\sex\\");
+    }
+
+    @Test
+    void aNullFacetCategoryOrFacetIsDroppedAndTheRestAreKept() {
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
+            withSuccess(
+                """
+                    [null,{"name":"study_ids","display":"Study","facets":[null,{"name":"phs1","display":"FHS","count":12}]}]""",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        FacetResult result = facets.listFacets(context, "asthma");
+
+        server.verify();
+        assertThat(result.categoriesOmitted()).isNull();
+        assertThat(result.categories()).singleElement().satisfies(category -> {
+            assertThat(category.facetsOmitted()).isNull();
+            assertThat(category.facets()).extracting(FacetResult.Facet::name).containsExactly("phs1");
+        });
+    }
 }

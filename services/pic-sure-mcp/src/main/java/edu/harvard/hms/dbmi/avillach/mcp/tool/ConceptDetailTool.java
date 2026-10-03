@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryConcept;
+import edu.harvard.hms.dbmi.avillach.mcp.query.QueryInput;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
@@ -15,10 +16,6 @@ public class ConceptDetailTool {
 
     /** Longest dataset name accepted, in characters. */
     public static final int MAX_DATASET_LENGTH = 200;
-
-    /** Longest concept path accepted, in characters. */
-    public static final int MAX_CONCEPT_PATH_LENGTH = 2000;
-
 
     private final DictionaryClient dictionary;
 
@@ -60,7 +57,7 @@ public class ConceptDetailTool {
         if (datasetName.chars().allMatch(c -> c == '.')) {
             throw new ToolFailure("Argument 'dataset' is not a valid dataset name.");
         }
-        String path = ToolArguments.requireText("conceptPath", conceptPath, MAX_CONCEPT_PATH_LENGTH);
+        String path = ToolArguments.requireText("conceptPath", conceptPath, QueryInput.MAX_CONCEPT_PATH_LENGTH);
         DictionaryConcept concept = DictionaryCalls
             .lookup(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptDetail(datasetName, path, CallerHeaders.from(context)))
             .orElseThrow(ToolFailure::conceptNotFound);

@@ -232,4 +232,23 @@ class ConceptSearchTermsTest {
     private static List<String> matched(ConceptSearchResult result, String path) {
         return result.concepts().stream().filter(c -> path.equals(c.conceptPath())).findFirst().orElseThrow().matchedTerms();
     }
+
+    @Test
+    void aNullConceptInATermPageIsDroppedAndTheRestAreMerged() {
+        expectTerm(
+            "sex",
+            withSuccess(
+                """
+                    {"content":[null,{"type":"Categorical","conceptPath":"A","dataset":"phs1","values":["x"]}],"totalElements":2}""",
+                MediaType.APPLICATION_JSON
+            )
+        );
+        expectTerm("gender", page(1, concepts("B")));
+
+        ConceptSearchResult result = search.searchConcepts(context, null, List.of("sex", "gender"), null, null);
+
+        server.verify();
+        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("A", "B");
+        assertThat(result.warnings()).isNull();
+    }
 }

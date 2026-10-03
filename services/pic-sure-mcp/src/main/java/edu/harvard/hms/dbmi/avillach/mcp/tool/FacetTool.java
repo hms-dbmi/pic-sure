@@ -10,6 +10,7 @@ import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Objects;
 
 /** MCP tool that lists the dictionary's facet categories and counts for a search. */
 @Component
@@ -20,7 +21,6 @@ public class FacetTool {
 
     /** Most facets a result carries per category. */
     public static final int MAX_FACETS_PER_CATEGORY = 25;
-
 
     private final DictionaryClient dictionary;
 
@@ -65,14 +65,16 @@ public class FacetTool {
     ) {
         String text = ToolArguments.optionalText("search", search, ToolArguments.MAX_SEARCH_LENGTH);
         List<FacetCategory> categories =
-            DictionaryCalls.run(DictionaryClient.FACETS_PATH, () -> dictionary.listFacets(text, CallerHeaders.from(context)));
+            DictionaryCalls.run(DictionaryClient.FACETS_PATH, () -> dictionary.listFacets(text, CallerHeaders.from(context))).stream()
+                .filter(Objects::nonNull).toList();
         List<FacetResult.Category> kept = categories.stream().limit(MAX_CATEGORIES).map(FacetTool::category).toList();
         Integer omitted = categories.size() > MAX_CATEGORIES ? categories.size() - MAX_CATEGORIES : null;
         return new FacetResult(text, kept, omitted);
     }
 
     private static FacetResult.Category category(FacetCategory category) {
-        List<FacetCategory.Facet> facets = category.facets() == null ? List.of() : category.facets();
+        List<FacetCategory.Facet> facets =
+            category.facets() == null ? List.of() : category.facets().stream().filter(Objects::nonNull).toList();
         List<FacetResult.Facet> kept =
             facets.stream().limit(MAX_FACETS_PER_CATEGORY).map(f -> new FacetResult.Facet(f.name(), f.display(), f.count())).toList();
         Integer omitted = facets.size() > MAX_FACETS_PER_CATEGORY ? facets.size() - MAX_FACETS_PER_CATEGORY : null;

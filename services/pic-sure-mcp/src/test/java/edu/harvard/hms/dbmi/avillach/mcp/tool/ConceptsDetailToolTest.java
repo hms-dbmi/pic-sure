@@ -149,4 +149,21 @@ class ConceptsDetailToolTest {
         assertThatThrownBy(() -> tool.getConcepts(context, List.of(AGE))).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary is unavailable. Try again shortly.").hasNoCause();
     }
+
+    @Test
+    void aNullConceptInTheBatchIsDroppedAndItsPathIsNotFound() {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail")).andRespond(
+            withSuccess(
+                """
+                    [null,{"type":"Continuous","conceptPath":"\\\\phs1\\\\age\\\\","dataset":"phs1","min":1.0,"max":2.0}]""",
+                MediaType.APPLICATION_JSON
+            )
+        );
+
+        ConceptsDetailResult result = tool.getConcepts(context, List.of(AGE, SEX));
+
+        server.verify();
+        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly(AGE);
+        assertThat(result.notFound()).containsExactly(SEX);
+    }
 }

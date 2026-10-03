@@ -10,6 +10,9 @@ import org.springframework.web.client.RestClientResponseException;
  */
 public class ToolFailure extends RuntimeException {
 
+    /** The message of {@link #unexpected()}. */
+    public static final String UNEXPECTED_MESSAGE = "The tool failed unexpectedly. Try again shortly.";
+
     /**
      * Creates a failure.
      *
@@ -57,6 +60,16 @@ public class ToolFailure extends RuntimeException {
      */
     public static ToolFailure unavailable() {
         return new ToolFailure("The dictionary is unavailable. Try again shortly.");
+    }
+
+    /**
+     * The failure for a tool call that ended in an exception the tool did not map itself, such as a null pointer from a malformed
+     * downstream response. Its message is fixed and names nothing about the exception.
+     *
+     * @return a failure saying the tool failed unexpectedly
+     */
+    public static ToolFailure unexpected() {
+        return new ToolFailure(UNEXPECTED_MESSAGE);
     }
 
     /**
