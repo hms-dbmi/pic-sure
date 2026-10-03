@@ -27,11 +27,12 @@ import jakarta.servlet.http.HttpServletResponse;
  * value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxy legitimately appends to it, and consumers
  * ({@code AuditLoggingFilter}) take the RIGHTMOST entry -- the nearest trusted hop -- rather than the client-forgeable leftmost one.
  * {@code X-Session-Id}, {@code request-source}, and ordinary {@code X-Client-Type} values are deliberately left unstripped as client
- * telemetry. The reserved {@code X-Client-Type} values {@code service} and {@code mcp} are stripped because downstream services use them to
- * identify internal calls; only {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} may set {@code mcp}, and
- * only for a verified caller. <p> {@value McpCallerFilter#HEADER} is always stripped, so the MCP service secret never reaches a proxied
- * service. An {@code Authorization} header carrying a PSAMA key ({@link ApiKeyBearer}) is stripped from every request except one whose
- * decoded {@link RoutedRequestPath} is exactly {@value McpCallerFilter#MCP_PATH}, the same match {@link McpCallerFilter} uses, because
+ * telemetry. {@code X-Client-Type} is stripped whole when any of its values, or any comma-separated entry within a value, is one of the
+ * reserved values {@code service} or {@code mcp} in any case, because downstream services use them to identify internal calls; only
+ * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} may set {@code mcp}, and only for a verified caller. <p>
+ * {@value McpCallerFilter#TOKEN_HEADER} is always stripped, so the MCP service secret never reaches a proxied service. An
+ * {@code Authorization} header carrying a PSAMA key ({@link ApiKeyBearer}) is stripped from every request except one whose decoded
+ * {@link RoutedRequestPath} is exactly {@value McpCallerFilter#MCP_PATH}, the same match {@link McpCallerFilter} uses, because
  * {@code pic-sure-mcp} forwards the key on its loop-back calls to sites that enforce one. <p>
  * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides the identity headers from the client, but
  * this filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed or misconfigured, a client's own
@@ -64,7 +65,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         private static final Set<String> STRIPPED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
             GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, "X-Real-IP", "Forwarded",
-            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, McpCallerFilter.HEADER
+            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, McpCallerFilter.TOKEN_HEADER
         );
 
         private final boolean onMcpRoute;
@@ -107,8 +108,15 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
 
         private static boolean isReservedValue(String value) {
             if (value == null) return false;
+            for (String token : value.split(",")) {
+                if (isReservedToken(token.trim())) return true;
+            }
+            return false;
+        }
+
+        private static boolean isReservedToken(String token) {
             for (String reserved : RESERVED_CLIENT_TYPES) {
-                if (reserved.equalsIgnoreCase(value.trim())) return true;
+                if (reserved.equalsIgnoreCase(token)) return true;
             }
             return false;
         }

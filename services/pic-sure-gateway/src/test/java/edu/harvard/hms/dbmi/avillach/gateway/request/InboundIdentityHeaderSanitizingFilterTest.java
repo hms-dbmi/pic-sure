@@ -193,9 +193,9 @@ class InboundIdentityHeaderSanitizingFilterTest {
 
             HttpServletRequest downstream = sanitize(request);
 
-            assertThat(downstream.getHeader(McpCallerFilter.HEADER)).isNull();
-            assertThat(downstream.getHeaders(McpCallerFilter.HEADER).hasMoreElements()).isFalse();
-            assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("x-pic-sure-mcp-token", McpCallerFilter.HEADER);
+            assertThat(downstream.getHeader(McpCallerFilter.TOKEN_HEADER)).isNull();
+            assertThat(downstream.getHeaders(McpCallerFilter.TOKEN_HEADER).hasMoreElements()).isFalse();
+            assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("x-pic-sure-mcp-token", McpCallerFilter.TOKEN_HEADER);
         }
     }
 
@@ -264,5 +264,26 @@ class InboundIdentityHeaderSanitizingFilterTest {
         assertThat(downstream.getHeader("X-Client-Type")).isNull();
         assertThat(downstream.getHeaders("X-Client-Type").hasMoreElements()).isFalse();
         assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("X-Client-Type");
+
+        for (String joined : List.of("PYTHON_ADAPTER, mcp", "PYTHON_ADAPTER,service", " Service ,R_ADAPTER", "R_ADAPTER, MCP")) {
+            MockHttpServletRequest single = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+            single.addHeader("X-Client-Type", joined);
+
+            HttpServletRequest sanitized = sanitize(single);
+
+            assertThat(sanitized.getHeader("X-Client-Type")).as(joined).isNull();
+            assertThat(sanitized.getHeaders("X-Client-Type").hasMoreElements()).as(joined).isFalse();
+            assertThat(Collections.list(sanitized.getHeaderNames())).as(joined).doesNotContain("X-Client-Type");
+        }
+    }
+
+    @Test
+    void keepsACommaJoinedClientTypeWithNoReservedEntry() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER, mcp-client, services");
+
+        HttpServletRequest downstream = sanitize(request);
+
+        assertThat(downstream.getHeader("X-Client-Type")).isEqualTo("PYTHON_ADAPTER, mcp-client, services");
     }
 }

@@ -20,7 +20,7 @@ public final class VerifiedCaller {
      * Marks the request as coming from a verified caller.
      *
      * @param request the request being served
-     * @param caller the caller type the credential check proved, such as {@code MCP_SERVER}
+     * @param caller the caller type the credential check proved, such as {@code mcp}
      * @throws IllegalArgumentException if {@code caller} is null or blank
      */
     public static void set(ServletRequest request, String caller) {
