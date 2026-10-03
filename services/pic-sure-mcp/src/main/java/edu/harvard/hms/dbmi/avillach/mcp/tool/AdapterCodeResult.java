@@ -27,13 +27,14 @@ public record AdapterCodeResult(
     @Schema(description = "A command that prints the installed connector version; run it before the code") String check,
     @Schema(description = "A command that installs the connector; show it to the user and run it only after they confirm") String install,
     @Schema(description = "The code for the user to run in their own environment") String code,
-    @Schema(
-        requiredMode = NOT_REQUIRED,
-        description = "Notes to pass on to the user: genomic filters this site may refuse because it does not declare genomic support, "
-            + "a concept path check that stopped at the first " + AdapterCodeTool.MAX_CHECKED_PATHS
-            + " paths, concept paths the dictionary did not know, or why the paths " + "could not be checked"
-    ) List<String> warnings
+    @Schema(requiredMode = NOT_REQUIRED, description = WARNINGS_DESCRIPTION) List<String> warnings
 ) {
+
+    /** The schema description of {@code warnings}, which tells the model to pass every warning on to the user. */
+    public static final String WARNINGS_DESCRIPTION =
+        "Notes to pass on to the user: genomic filters this site may refuse because it does not declare genomic support, "
+            + "a concept path check that stopped at the first " + AdapterCodeTool.MAX_CHECKED_PATHS
+            + " paths, concept paths the dictionary did not know, or why the paths could not be checked";
 
     /**
      * The connector a piece of generated code needs.

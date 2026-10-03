@@ -26,7 +26,7 @@ import java.util.Map;
 class AdapterCodeToolConfigTest {
 
     private static final AdapterCodeResult RESULT = new AdapterCodeResult(
-        "python", new AdapterCodeResult.Requires("picsure", "3.0.0", "Python >= 3.10"), "python -c \"check\"",
+        "python", new AdapterCodeResult.Requires("picsure", "3.0.0", "Python >= 3.10"), "python3 -c \"check\"",
         "pip install 'picsure>=3.0.0'", "import os\nimport picsure\n", null
     );
 
@@ -66,13 +66,13 @@ class AdapterCodeToolConfigTest {
         assertThat(result.structuredContent()).isEqualTo(
             Map.of(
                 "language", "python", "requires", Map.of("package", "picsure", "minVersion", "3.0.0", "runtime", "Python >= 3.10"), "check",
-                "python -c \"check\"", "install", "pip install 'picsure>=3.0.0'", "code", "import os\nimport picsure\n"
+                "python3 -c \"check\"", "install", "pip install 'picsure>=3.0.0'", "code", "import os\nimport picsure\n"
             )
         );
         assertThat(result.content()).hasSize(2);
         McpSchema.TextContent setup = (McpSchema.TextContent) result.content().get(0);
         McpSchema.TextContent code = (McpSchema.TextContent) result.content().get(1);
-        assertThat(setup.text()).isEqualTo(RESULT.setupText()).contains("Check: python -c \"check\"")
+        assertThat(setup.text()).isEqualTo(RESULT.setupText()).contains("Check: python3 -c \"check\"")
             .contains("Do not run it unless the user asks.");
         assertThat(setup.annotations()).isNull();
         assertThat(code.text()).isEqualTo("import os\nimport picsure\n");
