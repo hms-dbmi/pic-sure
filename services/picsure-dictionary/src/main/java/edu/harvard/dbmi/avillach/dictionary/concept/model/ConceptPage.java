@@ -8,14 +8,14 @@ import org.springframework.data.domain.Page;
 import java.util.List;
 
 /**
- * One page of concepts, carrying every key and value Jackson wrote when the concept endpoints returned a Spring Data {@code PageImpl}.
- * {@link #from(Page)} copies each value from a real page, so the record cannot drift from what the page computes.
+ * One page of concepts, carrying every key and value Jackson writes for a Spring Data {@code PageImpl}. {@link #from(Page)} copies each
+ * value from a real page, so the record cannot drift from what the page computes.
  *
- * <p> {@code PageImpl} never had a stable key order, because Jackson read its getters in reflection order and that order changes between
- * JVM starts. The record fixes one of the orders it produced.
+ * <p> {@code PageImpl} has no stable key order, because Jackson reads its getters in reflection order and that order changes between JVM
+ * starts. The record fixes one of the orders it produces.
  *
  * <p> The concepts in {@code content} are written by {@link PageContentConceptSerializer}, without Jackson's leading type id.
- * {@code PageImpl} exposed its content as an untyped list, so each concept there carries {@code type} once, as its last property, while a
+ * {@code PageImpl} exposes its content as an untyped list, so each concept there carries {@code type} once, as its last property, while a
  * concept nested under {@code children} or {@code table} carries it twice.
  *
  * @param content the concepts on this page

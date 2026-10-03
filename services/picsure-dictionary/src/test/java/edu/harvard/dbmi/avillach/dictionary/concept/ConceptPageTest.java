@@ -30,8 +30,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * Proves that {@link ConceptPage} writes what the concept endpoints wrote when they returned Spring Data's {@code PageImpl}. Both are
- * serialized with the service's own {@link ObjectMapper} for a full page, a last page and an empty page.
+ * Proves that {@link ConceptPage} writes what Spring Data's {@code PageImpl} writes for the same page. Both are serialized with the
+ * service's own {@link ObjectMapper} for a full page, a last page and an empty page.
  *
  * <p> {@code PageImpl} has no stable key order: Jackson reads its getters in reflection order, which changes from one JVM start to the
  * next, so the same page serializes with {@code totalElements} before {@code totalPages} in one run and after it in another. The comparison
