@@ -6,11 +6,11 @@ import java.util.List;
 
 @Schema(description = "Clauses combined with one operator.")
 public record PhenotypicSubquery(
-    @Schema(description = "Not implemented yet") Boolean not,
+    @Schema(description = "Not implemented yet.") Boolean not,
     @Schema(
-        description = "A list of phenotypic clauses to be evaluated and combined using the `operator`"
+        description = "A list of phenotypic clauses to be evaluated and combined using the `operator`."
     ) List<PhenotypicClause> phenotypicClauses,
-    @Schema(description = "Specifies logic to combine `phenotypicClauses` in this subquery") Operator operator
+    @Schema(description = "Specifies logic to combine `phenotypicClauses` in this subquery.") Operator operator
 ) implements PhenotypicClause {
 
     /**
