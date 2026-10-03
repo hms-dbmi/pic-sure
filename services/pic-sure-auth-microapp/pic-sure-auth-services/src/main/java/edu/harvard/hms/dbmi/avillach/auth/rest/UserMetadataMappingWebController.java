@@ -111,7 +111,7 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "Delete a mapping",
-        description = "Deletes the user metadata mapping with the given UUID unless other entities still reference it, and returns the remaining mappings."
+        description = "Deletes the user metadata mapping with the given UUID and returns the remaining mappings."
     )
     @ApiResponse(responseCode = "200", description = "The remaining mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")
