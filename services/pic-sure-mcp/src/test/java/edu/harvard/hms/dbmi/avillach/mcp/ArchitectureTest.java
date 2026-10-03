@@ -5,6 +5,8 @@ import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaMethodCall;
+import com.tngtech.archunit.core.domain.JavaMethodReference;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -35,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -70,6 +73,8 @@ class ArchitectureTest {
     private static final String BACKEND_TEMPLATE = "{backend}";
     private static final String OPEN_QUERY_SYNC_PATH = "/hpds/open/query/sync";
     private static final List<String> TRAVERSAL_MARKERS = List.of("/..", "../", "%2e");
+    /** Path segments that, alone or leading a relative path, could build an HPDS URL from parts; see the channel rule. */
+    private static final Set<String> CHANNEL_SEGMENTS = Set.of("hpds", "auth");
     /** The one class file the constant-pool scan skips, because it writes the authorized path as text; see the channel rule. */
     private static final String TEXT_ONLY_CLASS_FILE = BashGenerator.class.getName().replace('.', '/') + ".class";
     private static final Pattern RESOURCE_PATH = Pattern.compile("(?:^|[\\s:=\"'(,\\[])(/[^\\s\"',)\\]]*)");
@@ -98,6 +103,11 @@ class ArchitectureTest {
      * climb out of the open channel. An absolute URL to another host is outside this check and is refused at runtime by the gateway
      * client's interceptor.
      *
+     * <p>Classes in {@code gateway}, which hold the only code that starts a request, are also held to {@link #CHANNEL_SEGMENTS}: a constant
+     * that is {@code hpds} or {@code auth} alone, with or without slashes around it, or a relative path starting with either, fails. That
+     * stops a URL being assembled from segments, as {@code pathSegment("hpds", "auth", "query")} would, which the leading-slash check alone
+     * does not see. The member names and class names those classes carry never take that form.
+     *
      * <p>The class files are read byte by byte because a literal inlined into a method body, or held in an annotation value, is visible
      * only in the constant pool. Every UTF8 entry is checked, not only those a string constant points at. As a control, the scan must have
      * read {@link OpenQueryClient} and found {@code /hpds/open/query/sync} in it, so it cannot pass having scanned nothing.
@@ -115,6 +125,7 @@ class ArchitectureTest {
         boolean sawOpenQueryPath = false;
         boolean sawTextOnlyClass = false;
         String openQueryClientFile = OpenQueryClient.class.getName().replace('.', '/') + ".class";
+        String gatewayDirectory = ROOT.replace('.', '/') + "/gateway/";
         try (Stream<Path> files = Files.walk(classes)) {
             for (Path file : files.filter(f -> f.toString().endsWith(".class")).toList()) {
                 String relative = classes.relativize(file).toString().replace('\\', '/');
@@ -122,8 +133,12 @@ class ArchitectureTest {
                     sawTextOnlyClass = true;
                     continue;
                 }
+                boolean inGateway = relative.startsWith(gatewayDirectory);
                 for (String constant : utf8Constants(Files.readAllBytes(file))) {
-                    if (namesAuthorizedChannel(constant) || isQueryPathOtherThanSync(constant) || containsTraversal(constant)) {
+                    if (
+                        namesAuthorizedChannel(constant) || isQueryPathOtherThanSync(constant) || containsTraversal(constant)
+                            || (inGateway && isChannelSegment(constant))
+                    ) {
                         violations.add(relative + ": \"" + constant + "\"");
                     }
                     if (relative.equals(openQueryClientFile) && constant.equals(OPEN_QUERY_SYNC_PATH)) {
@@ -136,7 +151,7 @@ class ArchitectureTest {
             violations.isEmpty(),
             "The service may call only " + OPEN_QUERY_SYNC_PATH + ". These class constants name " + AUTHORIZED_PATH + ", a "
                 + BACKEND_TEMPLATE + " template, an HPDS or query path other than " + OPEN_QUERY_SYNC_PATH
-                + ", or a dot segment (/.., ../, %2e): " + violations
+                + ", a dot segment (/.., ../, %2e), or, in the gateway package, a bare " + CHANNEL_SEGMENTS + " segment: " + violations
         );
         assertTrue(
             sawTextOnlyClass,
@@ -194,8 +209,8 @@ class ArchitectureTest {
      * gateway client, bound to {@code picsure.mcp.gateway-url} and guarded by its interceptor against other hosts and redirects, stays the
      * one way out of the service. Banned: the Spring and Spring Boot HTTP client packages (request factories, interceptors, and settings),
      * {@code java.net.http}, WebClient, {@code RestTemplate}, {@code RestClient.Builder}, anything assignable to {@code URLConnection} or
-     * {@code Socket}, and the static {@code RestClient} factories and {@code URL} connection methods. The {@code RestClient} exception
-     * types live in {@code org.springframework.web.client} and stay allowed.
+     * {@code Socket}, and the static {@code RestClient} factories and {@code URL} connection methods, whether called or taken as a method
+     * reference. The {@code RestClient} exception types live in {@code org.springframework.web.client} and stay allowed.
      */
     @Test
     void onlyGatewayClientConfigBuildsAnHttpClient() {
@@ -203,9 +218,9 @@ class ArchitectureTest {
             .dependOnClassesThat(
                 resideInAnyPackage(FORBIDDEN_HTTP_PACKAGES).or(assignableTo(URLConnection.class)).or(assignableTo(Socket.class))
                     .or(DescribedPredicate.describe("are HTTP client types", c -> FORBIDDEN_HTTP_CLIENTS.contains(c.getName())))
-            ).orShould().callMethodWhere(DescribedPredicate.describe("builds a RestClient or opens a URL connection", call -> {
-                String owner = call.getTargetOwner().getName();
-                String name = call.getName();
+            ).orShould().accessTargetWhere(methodAccess("builds a RestClient or opens a URL connection", access -> {
+                String owner = access.getTargetOwner().getName();
+                String name = access.getName();
                 return (owner.equals(REST_CLIENT) && (name.equals("builder") || name.equals("create")))
                     || (owner.equals("java.net.URL") && (name.equals("openConnection") || name.equals("openStream")));
             })).because("the gateway RestClient built in GatewayClientConfig is the only outbound client the service may have")
@@ -228,15 +243,16 @@ class ArchitectureTest {
 
     /**
      * Only {@link OpenQueryClient} and {@link DictionaryClient} start a {@code RestClient} request, so no other class, in {@code gateway}
-     * or {@code config}, can assemble a gateway URL. Those two clients hold every path the service calls as a fixed constant.
+     * or {@code config}, can assemble a gateway URL. Those two clients hold every path the service calls as a fixed constant. A method
+     * reference such as {@code restClient::post} counts as starting a request.
      */
     @Test
     void onlyTheTwoGatewayClientsStartRequests() {
         noClasses().that().doNotBelongToAnyOf(OpenQueryClient.class, DictionaryClient.class).should()
-            .callMethodWhere(
-                DescribedPredicate.describe(
+            .accessTargetWhere(
+                methodAccess(
                     "starts a RestClient request",
-                    (JavaAccess<?> call) -> call.getTargetOwner().getName().equals(REST_CLIENT) && REQUEST_METHODS.contains(call.getName())
+                    access -> access.getTargetOwner().getName().equals(REST_CLIENT) && REQUEST_METHODS.contains(access.getName())
                 )
             ).because("the open query and dictionary clients are the only classes that choose a gateway path").check(mainClasses);
     }
@@ -244,32 +260,29 @@ class ArchitectureTest {
     /**
      * No configuration class calls a method on a gateway client. Tools are the only callers of {@link OpenQueryClient} and
      * {@link DictionaryClient}, and every tool call passes the audit aspect, so a query or dictionary call made from configuration would
-     * reach the gateway with no audit event. Constructor calls and field reads are not method calls and are not checked, so
-     * {@link GatewayClientConfig} building the {@code RestClient} and reading the path constants still passes.
+     * reach the gateway with no audit event. A method reference to a gateway client method counts as a call. Constructor calls and field
+     * reads are not method calls and are not checked, so {@link GatewayClientConfig} building the {@code RestClient} and reading the path
+     * constants still passes.
      */
     @Test
     void configNeverCallsTheGatewayClients() {
         noClasses().that().resideInAPackage(CONFIG).should()
-            .callMethodWhere(
-                DescribedPredicate.describe(
-                    "the target is in the gateway package", (JavaAccess<?> call) -> resideInAPackage(GATEWAY).test(call.getTargetOwner())
-                )
+            .accessTargetWhere(
+                methodAccess("the target is in the gateway package", access -> resideInAPackage(GATEWAY).test(access.getTargetOwner()))
             ).because("a gateway call made from configuration would bypass the audited tool handlers").check(mainClasses);
     }
 
     /**
-     * No class calls {@code RestClient.mutate}, which would copy the gateway client into one with a different base URL or without the
-     * interceptor that refuses other hosts.
+     * No class calls {@code RestClient.mutate} or takes it as a method reference, which would copy the gateway client into one with a
+     * different base URL or without the interceptor that refuses other hosts.
      */
     @Test
     void noClassMutatesTheRestClient() {
-        noClasses().should()
-            .callMethodWhere(
-                DescribedPredicate.describe(
-                    "RestClient.mutate",
-                    (JavaAccess<?> call) -> call.getTargetOwner().getName().equals(REST_CLIENT) && call.getName().equals("mutate")
-                )
-            ).because("a mutated gateway client could drop the base URL or the host guard").check(mainClasses);
+        noClasses().should().accessTargetWhere(
+            methodAccess(
+                "RestClient.mutate", access -> access.getTargetOwner().getName().equals(REST_CLIENT) && access.getName().equals("mutate")
+            )
+        ).because("a mutated gateway client could drop the base URL or the host guard").check(mainClasses);
     }
 
     /**
@@ -312,16 +325,17 @@ class ArchitectureTest {
     /**
      * Every method that configuration calls on a tool class carries {@code @AuditEvent}. Query tools are registered by tool specification
      * beans in {@code config}, whose handlers call into the tool bean, so this pins that each registered handler goes through an audited
-     * method and not some other public method on the same bean. Constructor calls and field reads are not method calls and are not checked.
+     * method and not some other public method on the same bean. A method reference such as {@code tool::handle} counts as a call.
+     * Constructor calls and field reads are not method calls and are not checked.
      */
     @Test
     void configCallsOnlyAuditedToolMethods() {
         noClasses().that().resideInAPackage(CONFIG).should()
-            .callMethodWhere(DescribedPredicate.describe("the target is a tool class method without @AuditEvent", call -> {
-                if (!toolClasses().test(call.getTargetOwner())) {
+            .accessTargetWhere(methodAccess("the target is a tool class method without @AuditEvent", access -> {
+                if (!toolClasses().test(access.getTargetOwner())) {
                     return false;
                 }
-                return call.getTarget().resolveMember().map(m -> !m.isAnnotatedWith(AuditEvent.class)).orElse(true);
+                return access.getTarget().resolveMember().map(m -> !m.isAnnotatedWith(AuditEvent.class)).orElse(true);
             })).because("a tool specification whose handler calls an unaudited tool method would run without an audit event")
             .check(mainClasses);
     }
@@ -344,7 +358,7 @@ class ArchitectureTest {
      * packages, so a tool cannot reach configuration or the audit aspect directly.
      */
     @Test
-    void toolsDependOnlyOnClientsQueryAndCaller() {
+    void toolsDependOnlyOnClientsQueryCallerAndCodegen() {
         noClasses().that().resideInAPackage(TOOL).should()
             .dependOnClassesThat(
                 resideInAPackage(ROOT + "..").and(DescribedPredicate.not(resideInAnyPackage(TOOL, GATEWAY, QUERY, CALLER, CODEGEN)))
@@ -369,6 +383,21 @@ class ArchitectureTest {
     void auditIsOnlyWiredByConfig() {
         noClasses().that().resideOutsideOfPackages(AUDIT, CONFIG).should().dependOnClassesThat().resideInAPackage(AUDIT)
             .because("the audit aspect is applied by proxy around every tool call, not called by tools").check(mainClasses);
+    }
+
+    /**
+     * Matches a method call or a method reference that satisfies {@code test}. {@code callMethodWhere} sees only calls, so a rule written
+     * with it would miss {@code restClient::post} or {@code tool::unauditedMethod}; this predicate, used with {@code accessTargetWhere},
+     * sees both and still ignores constructor calls and field accesses.
+     *
+     * @param description what the predicate matches, used in the rule text
+     * @param test the condition on the access
+     * @return the predicate
+     */
+    private static DescribedPredicate<JavaAccess<?>> methodAccess(String description, Predicate<JavaAccess<?>> test) {
+        return DescribedPredicate.describe(
+            description, access -> (access instanceof JavaMethodCall || access instanceof JavaMethodReference) && test.test(access)
+        );
     }
 
     private static DescribedPredicate<JavaClass> toolClasses() {
@@ -410,6 +439,14 @@ class ArchitectureTest {
         }
         String lower = constant.toLowerCase(Locale.ROOT);
         return (lower.contains("hpds") || lower.contains("query")) && !constant.equals(OPEN_QUERY_SYNC_PATH);
+    }
+
+    private static boolean isChannelSegment(String constant) {
+        if (constant.equals(OPEN_QUERY_SYNC_PATH)) {
+            return false;
+        }
+        String trimmed = constant.toLowerCase(Locale.ROOT).replaceAll("^/+|/+$", "");
+        return CHANNEL_SEGMENTS.stream().anyMatch(segment -> trimmed.equals(segment) || trimmed.startsWith(segment + "/"));
     }
 
     private static boolean namesAuthorizedChannel(String constant) {

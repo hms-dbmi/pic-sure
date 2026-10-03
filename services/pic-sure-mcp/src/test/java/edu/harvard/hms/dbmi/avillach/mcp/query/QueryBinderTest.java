@@ -12,6 +12,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicSubquery;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AdapterCodeTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ToolFailure;
@@ -137,6 +138,34 @@ class QueryBinderTest {
             .hasMessage("Field 'resultType' must be one of CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT.");
         assertThatThrownBy(() -> QueryBinder.bind(args("{\"resultType\":\"DATAFRAME\",\"query\":{}}"), CrossCountTool.Input.class))
             .hasMessageContaining("must be one of CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(
+        delimiter = '|',
+        value = {"language as a number|{\"language\":2}|language|python, r, bash",
+            "language as a numeric string|{\"language\":\"2\"}|language|python, r, bash",
+            "resultType as a number|{\"resultType\":1}|resultType|count, cross_count, participant, timestamp",
+            "resultType as a numeric string|{\"resultType\":\"0\"}|resultType|count, cross_count, participant, timestamp"}
+    )
+    void anEnumGivenByItsIndexIsRejectedLikeAnyOtherBadValue(String label, String json, String field, String allowed) throws Exception {
+        assertThatThrownBy(() -> QueryBinder.bind(args(json), AdapterCodeTool.Input.class)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Field '" + field + "' must be one of " + allowed + ".").hasNoCause();
+    }
+
+    @Test
+    void anOpenCountEnumGivenByItsIndexIsRejected() throws Exception {
+        assertThatThrownBy(() -> QueryBinder.bind(args("{\"resultType\":0,\"query\":{}}"), CrossCountTool.Input.class))
+            .hasMessage("Field 'resultType' must be one of CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT.");
+        assertThatThrownBy(
+            () -> QueryBinder.bind(
+                args("{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":1,\"conceptPath\":\"\\\\a\\\\\"}}}"), CountTool.Input.class
+            )
+        ).hasMessage("Field 'phenotypicFilterType' must be one of REQUIRED, FILTER, ANY_RECORD_OF.");
+        assertThatThrownBy(
+            () -> QueryBinder
+                .bind(args("{\"query\":{\"phenotypicClause\":{\"operator\":\"1\",\"phenotypicClauses\":[]}}}"), CountTool.Input.class)
+        ).hasMessageStartingWith("Field 'operator' must be one of ");
     }
 
     @Test

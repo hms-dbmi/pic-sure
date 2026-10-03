@@ -11,6 +11,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.ThrowableProxyUtil;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -32,6 +37,7 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -46,8 +52,9 @@ import org.springframework.test.context.DynamicPropertySource;
  * structured result of every tool, and that each loop-back call to the gateway carries the caller's {@code Authorization}, the MCP
  * credential, and the caller's {@code X-Request-Id}. It also checks the failure layers: a downstream 500 becomes {@code isError} with the
  * model-facing message and none of the downstream body, an unknown tool is a JSON-RPC invalid-params error, a {@code not} in a count query
- * is an {@code isError} naming the field, and a wrong {@code Accept} gets 400. The last step asserts that no response header or body in the
- * whole run holds the caller's bearer token, the caller's API key, or the MCP token.
+ * is an {@code isError} naming the field, and a wrong {@code Accept} gets 400. The last steps assert that no response header or body in the
+ * whole run, and no log line, holds the caller's bearer token, the caller's API key, or the MCP token. Every log event from the first step
+ * on is captured at DEBUG through an appender on the root logger, attached once the application has configured logging.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -68,6 +75,8 @@ class McpProtocolIT {
     private static final WireMockServer GATEWAY = startGateway();
     private static final List<String> RESPONSES = new CopyOnWriteArrayList<>();
     private static final AtomicInteger REQUEST_IDS = new AtomicInteger();
+    private static final ListAppender<ILoggingEvent> LOGS = new ListAppender<>();
+    private static Level rootLevel;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
@@ -93,6 +102,20 @@ class McpProtocolIT {
     @AfterAll
     static void stopGateway() {
         GATEWAY.stop();
+        Logger root = rootLogger();
+        root.detachAppender(LOGS);
+        root.setLevel(rootLevel);
+    }
+
+    @BeforeEach
+    void captureEveryLogLineAtDebug() {
+        Logger root = rootLogger();
+        if (!root.isAttached(LOGS)) {
+            rootLevel = root.getLevel();
+            LOGS.start();
+            root.addAppender(LOGS);
+            root.setLevel(Level.DEBUG);
+        }
     }
 
     @BeforeEach
@@ -424,6 +447,24 @@ class McpProtocolIT {
         for (String response : RESPONSES) {
             assertThat(response).doesNotContain(callerToken, API_KEY, MCP_TOKEN);
         }
+    }
+
+    @Test
+    @Order(17)
+    void noLogLineInTheRunHoldsTheCallerTokenTheApiKeyOrTheMcpToken() {
+        List<ILoggingEvent> events = List.copyOf(LOGS.list);
+        assertThat(events).as("log events captured at DEBUG").isNotEmpty()
+            .anySatisfy(event -> assertThat(event.getFormattedMessage()).startsWith("Gateway call POST " + QUERY_SYNC));
+        String callerToken = BEARER.substring("Bearer ".length());
+        for (ILoggingEvent event : events) {
+            String text = event.getFormattedMessage() + "\n" + event.getMDCPropertyMap() + "\n"
+                + (event.getThrowableProxy() == null ? "" : ThrowableProxyUtil.asString(event.getThrowableProxy()));
+            assertThat(text).as(event.getLoggerName()).doesNotContain(callerToken, API_KEY, MCP_TOKEN);
+        }
+    }
+
+    private static Logger rootLogger() {
+        return (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
     }
 
     private JsonNode successfulCall(String tool, String arguments) throws Exception {
