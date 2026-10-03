@@ -151,7 +151,22 @@ class McpProtocolIT {
             if (QUERY_TOOLS.contains(name)) {
                 assertSelfContained(name, tool.path("inputSchema"));
             }
+            if ("search_concepts".equals(name)) {
+                assertThat(propertyNames(tool.path("inputSchema"))).containsExactlyInAnyOrder("search", "terms", "page", "pageSize");
+            }
+            if ("list_facets".equals(name)) {
+                assertThat(propertyNames(tool.path("inputSchema"))).containsExactly("search");
+            }
+            if ("count_participants".equals(name)) {
+                assertThat(propertyNames(tool.path("inputSchema"))).contains("query");
+            }
         }
+    }
+
+    private static List<String> propertyNames(JsonNode inputSchema) {
+        List<String> names = new ArrayList<>();
+        inputSchema.path("properties").fieldNames().forEachRemaining(names::add);
+        return names;
     }
 
     @Test
@@ -171,7 +186,7 @@ class McpProtocolIT {
         );
 
         JsonNode structured = successfulCall("search_concepts", """
-            {"query":"sex"}""");
+            {"search":"sex"}""");
 
         assertThat(structured.path("total").asLong()).isEqualTo(38);
         assertThat(structured.path("concepts")).hasSize(2);
@@ -205,7 +220,7 @@ class McpProtocolIT {
         JsonNode structured = successfulCall("search_concepts", """
             {"terms":["sex","gender"]}""");
 
-        assertThat(structured.has("query")).isFalse();
+        assertThat(structured.has("search")).isFalse();
         assertThat(structured.path("terms")).extracting(JsonNode::asText).containsExactly("sex", "gender");
         assertThat(structured.path("total").asLong()).isEqualTo(3);
         assertThat(structured.path("truncated").asBoolean(true)).isFalse();
@@ -227,9 +242,9 @@ class McpProtocolIT {
         );
 
         JsonNode structured = successfulCall("list_facets", """
-            {"query":"asthma"}""");
+            {"search":"asthma"}""");
 
-        assertThat(structured.path("query").asText()).isEqualTo("asthma");
+        assertThat(structured.path("search").asText()).isEqualTo("asthma");
         JsonNode category = structured.path("categories").path(0);
         assertThat(category.path("name").asText()).isEqualTo("study_ids");
         assertThat(category.path("facets").path(0).path("name").asText()).isEqualTo("phs999999");

@@ -45,11 +45,11 @@ public class ConceptSearchTool {
     }
 
     /**
-     * Searches concepts by free text and returns a trimmed page the model can read. Exactly one of {@code query} and {@code terms} must be
+     * Searches concepts by free text and returns a trimmed page the model can read. Exactly one of {@code search} and {@code terms} must be
      * given. With {@code terms}, each term is searched in parallel, and the pages are merged as {@link TermPages} describes.
      *
      * @param context the MCP transport context carrying the caller's headers
-     * @param query the free-text search terms, all of which must match
+     * @param search the free-text search, all of whose words must match
      * @param terms up to {@value #MAX_TERMS} separate searches, such as synonyms and abbreviations
      * @param page the zero-based page number, default 0
      * @param pageSize the results per page, default 10, at most 25
@@ -68,7 +68,7 @@ public class ConceptSearchTool {
             page when total exceeds what you have. \
             The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept: \
             "blood pressure hypertension" finds nothing, and "blood pressure" misses concepts named "BP". Search synonyms and \
-            abbreviations as separate terms, which the terms argument does in one call. Give either query or terms (up to 5), \
+            abbreviations as separate terms, which the terms argument does in one call. Give either search or terms (up to 5), \
             not both. With terms, each concept lists the matchedTerms that returned it, total is the sum of the per-term totals, \
             page and pageSize apply to each term, at most 25 concepts come back with truncated true when more matched, and a \
             term whose search failed is named in warnings.""", generateOutputSchema = true,
@@ -79,18 +79,18 @@ public class ConceptSearchTool {
     public ConceptSearchResult searchConcepts(
         McpTransportContext context,
         @McpToolParam(
-            description = "Free-text search; every word must match. Give query or terms, not both", required = false
-        ) String query,
+            description = "Free-text search; every word must match. Give search or terms, not both", required = false
+        ) String search,
         @McpToolParam(
-            description = "Up to 5 separate searches, such as synonyms and abbreviations, run in one call. Give query or terms, not both",
+            description = "Up to 5 separate searches, such as synonyms and abbreviations, run in one call. Give search or terms, not both",
             required = false
         ) List<String> terms, @McpToolParam(description = "Zero-based page number, default 0", required = false) Integer page,
         @McpToolParam(description = "Results per page, default 10, max 25", required = false) Integer pageSize
     ) {
-        boolean hasQuery = query != null && !query.isBlank();
+        boolean hasSearch = search != null && !search.isBlank();
         boolean hasTerms = terms != null && !terms.isEmpty();
-        if (hasQuery == hasTerms) {
-            throw new ToolFailure(hasQuery ? "Give either 'query' or 'terms', not both." : "Give either 'query' or 'terms'.");
+        if (hasSearch == hasTerms) {
+            throw new ToolFailure(hasSearch ? "Give either 'search' or 'terms', not both." : "Give either 'search' or 'terms'.");
         }
         int pageNumber = page == null ? 0 : Math.max(page, 0);
         int size = pageSize == null ? DEFAULT_PAGE_SIZE : Math.clamp(pageSize, 1, MAX_PAGE_SIZE);
@@ -99,10 +99,10 @@ public class ConceptSearchTool {
             List<String> searchTerms = validTerms(terms);
             return TermPages.merge(searchAll(searchTerms, pageNumber, size, caller), pageNumber, size, MAX_PAGE_SIZE);
         }
-        String text = ToolArguments.requireText("query", query, ToolArguments.MAX_QUERY_LENGTH);
+        String text = ToolArguments.requireText("search", search, ToolArguments.MAX_SEARCH_LENGTH);
         DictionaryPage result = search(text, pageNumber, size, caller);
         return ConceptSearchResult
-            .ofQuery(text, pageNumber, size, result.total(), result.concepts().stream().map(ConceptSummary::summary).toList());
+            .ofSearch(text, pageNumber, size, result.total(), result.concepts().stream().map(ConceptSummary::summary).toList());
     }
 
     private static List<String> validTerms(List<String> terms) {
@@ -111,7 +111,7 @@ public class ConceptSearchTool {
         }
         List<String> valid = new ArrayList<>();
         for (int i = 0; i < terms.size(); i++) {
-            valid.add(ToolArguments.requireText("terms[" + i + "]", terms.get(i), ToolArguments.MAX_QUERY_LENGTH));
+            valid.add(ToolArguments.requireText("terms[" + i + "]", terms.get(i), ToolArguments.MAX_SEARCH_LENGTH));
         }
         return valid.stream().distinct().toList();
     }

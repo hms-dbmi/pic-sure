@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
  * for the length of the call so every log line inside it carries the ID.
  *
  * <p>The event carries the annotation's type and action, an {@code outcome} of {@code success} or {@code failure}, the request ID, the
- * gateway's {@code X-User-Id} as {@code user_id}, and only these argument fields: {@code query} (search text), {@code terms} (the search
+ * gateway's {@code X-User-Id} as {@code user_id}, and only these argument fields: {@code search} (search text), {@code terms} (the search
  * terms joined with {@code |}), {@code page}, {@code page_size}, {@code dataset}, {@code concept_path}, {@code concept_paths} (the concept
  * paths joined with {@code |}), and {@code result_type} for the count tools and {@code get_adapter_code}. Each text field is cut at
  * {@value #MAX_FIELD_LENGTH} characters. Nothing from a query body, and never a credential, is read. A failure event also carries
@@ -44,7 +44,7 @@ public class ToolAuditAspect {
     /** Longest string copied from an argument into an event, in characters. */
     static final int MAX_FIELD_LENGTH = 500;
 
-    private static final Set<String> TEXT_PARAMETERS = Set.of("query", "dataset", "conceptPath");
+    private static final Set<String> TEXT_PARAMETERS = Set.of("search", "dataset", "conceptPath");
     private static final Set<String> LIST_PARAMETERS = Set.of("terms", "conceptPaths");
     private static final String LIST_SEPARATOR = "|";
     private static final Set<String> NUMBER_PARAMETERS = Set.of("page", "pageSize");

@@ -37,7 +37,7 @@ public class FacetTool {
      * Lists facet categories and counts for a search, capped so one call cannot fill the client's context.
      *
      * @param context the MCP transport context carrying the caller's headers
-     * @param query the free-text search terms, or null for all concepts
+     * @param search the free-text search, or null for all concepts
      * @return the capped facet categories
      * @throws ToolFailure with a model-facing message for a bad argument or a failed dictionary call
      */
@@ -57,9 +57,9 @@ public class FacetTool {
     )
     public FacetResult listFacets(
         McpTransportContext context,
-        @McpToolParam(description = "Free-text search terms, or empty for all concepts", required = false) String query
+        @McpToolParam(description = "Free-text search, or empty for all concepts", required = false) String search
     ) {
-        String text = ToolArguments.optionalText("query", query, ToolArguments.MAX_QUERY_LENGTH);
+        String text = ToolArguments.optionalText("search", search, ToolArguments.MAX_SEARCH_LENGTH);
         List<FacetCategory> categories =
             DictionaryCalls.run(DictionaryClient.FACETS_PATH, () -> dictionary.listFacets(text, CallerHeaders.from(context)));
         List<FacetResult.Category> kept = categories.stream().limit(MAX_CATEGORIES).map(FacetTool::category).toList();
