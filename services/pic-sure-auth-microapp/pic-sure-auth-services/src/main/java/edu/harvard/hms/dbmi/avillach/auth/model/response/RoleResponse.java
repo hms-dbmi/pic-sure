@@ -32,15 +32,22 @@ public record RoleResponse(
     /**
      * Copies a persisted role and its privileges into their response shape.
      *
-     * @param role the persisted role
-     * @return the response record
+     * <p>A {@code null} role yields {@code null}.</p>
+     *
+     * @param role the persisted role, or {@code null}
+     * @return the response record, or {@code null} when {@code role} is {@code null}
      */
     public static RoleResponse from(Role role) {
+        if (role == null) {
+            return null;
+        }
         return new RoleResponse(role.getUuid(), role.getName(), role.getDescription(), PrivilegeResponse.fromAll(role.getPrivileges()));
     }
 
     /**
      * Copies a collection of persisted roles in its iteration order.
+     *
+     * <p>A {@code null} collection yields {@code null}.</p>
      *
      * @param roles the persisted roles, or {@code null}
      * @return the response records in the same order, or {@code null} when {@code roles} is {@code null}

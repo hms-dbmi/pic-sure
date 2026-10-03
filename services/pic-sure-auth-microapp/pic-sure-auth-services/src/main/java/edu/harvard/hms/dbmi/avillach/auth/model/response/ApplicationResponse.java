@@ -48,10 +48,15 @@ public record ApplicationResponse(
     /**
      * Copies a persisted application into the shape the two read endpoints return, without its privileges.
      *
-     * @param application the persisted application
-     * @return the response record
+     * <p>A {@code null} application yields {@code null}.</p>
+     *
+     * @param application the persisted application, or {@code null}
+     * @return the response record, or {@code null} when {@code application} is {@code null}
      */
     public static ApplicationResponse from(Application application) {
+        if (application == null) {
+            return null;
+        }
         return new ApplicationResponse(
             application.getUuid(), application.getName(), application.getDescription(), application.getUrl(), application.isEnable(), null
         );
@@ -60,10 +65,15 @@ public record ApplicationResponse(
     /**
      * Copies a persisted application and the privileges it owns into the shape the create, update and delete endpoints return.
      *
-     * @param application the persisted application
-     * @return the response record
+     * <p>A {@code null} application yields {@code null}.</p>
+     *
+     * @param application the persisted application, or {@code null}
+     * @return the response record, or {@code null} when {@code application} is {@code null}
      */
     public static ApplicationResponse withPrivileges(Application application) {
+        if (application == null) {
+            return null;
+        }
         return new ApplicationResponse(
             application.getUuid(), application.getName(), application.getDescription(), application.getUrl(), application.isEnable(),
             PrivilegeResponse.fromAll(application.getPrivileges())
@@ -72,6 +82,8 @@ public record ApplicationResponse(
 
     /**
      * Copies the owning application of a privilege into the shape a privilege nests, which carries neither {@code url} nor privileges.
+     *
+     * <p>A {@code null} application yields {@code null}.</p>
      *
      * @param application the persisted application, or {@code null}
      * @return the response record, or {@code null} when {@code application} is {@code null}

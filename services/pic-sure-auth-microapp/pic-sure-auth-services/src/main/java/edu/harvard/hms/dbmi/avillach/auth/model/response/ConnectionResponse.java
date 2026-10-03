@@ -46,6 +46,8 @@ public record ConnectionResponse(
     /**
      * Copies a persisted connection into its response shape.
      *
+     * <p>A {@code null} connection yields {@code null}.</p>
+     *
      * @param connection the persisted connection, or {@code null}
      * @return the response record, or {@code null} when {@code connection} is {@code null}
      */
@@ -61,10 +63,15 @@ public record ConnectionResponse(
     /**
      * Copies a collection of persisted connections in its iteration order.
      *
-     * @param connections the persisted connections
-     * @return the response records in the same order
+     * <p>A {@code null} collection yields {@code null}.</p>
+     *
+     * @param connections the persisted connections, or {@code null}
+     * @return the response records in the same order, or {@code null} when {@code connections} is {@code null}
      */
     public static List<ConnectionResponse> fromAll(Collection<Connection> connections) {
+        if (connections == null) {
+            return null;
+        }
         return connections.stream().map(ConnectionResponse::from).toList();
     }
 }

@@ -67,7 +67,7 @@ public class UserController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
     public ResponseEntity<List<UserResponse>> getUserAll() {
-        return PICSUREResponse.success(this.userService.getAllUsers().stream().map(UserResponse::from).toList());
+        return PICSUREResponse.success(UserResponse.fromAll(this.userService.getAllUsers()));
     }
 
     @Operation(summary = "Create users", description = "POST a list of users")
@@ -117,7 +117,7 @@ public class UserController {
             logger.warn("Saved {} user(s) but could not send every access email", savedUsers.size());
         }
 
-        return PICSUREResponse.success(savedUsers.stream().map(UserResponse::from).toList());
+        return PICSUREResponse.success(UserResponse.fromAll(savedUsers));
     }
 
     /**
