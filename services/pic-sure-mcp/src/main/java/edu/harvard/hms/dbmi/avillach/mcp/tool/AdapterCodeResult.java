@@ -44,6 +44,10 @@ public record AdapterCodeResult(
     public static final String R_MIN_VERSION_NOTE =
         "For r, requires.minVersion is a release tag. Compare it with the release tag check prints, not with the package version.";
 
+    /** The setup line that keeps an agent that runs the code from reading its result files. */
+    public static final String REPORT_ONLY_PRINTED_NOTE =
+        "Report only what the code prints. Do not open picsure_results/ unless the user asks.";
+
     /**
      * The connector a piece of generated code needs.
      *
@@ -62,7 +66,7 @@ public record AdapterCodeResult(
 
     /**
      * The setup as short lines for the model: what the code needs, the check, the install command, for R how to read its version, how to
-     * hand the code over, and any warnings. The code itself is not included.
+     * hand the code over, what to report from a run, and any warnings. The code itself is not included.
      *
      * @return the setup text, lines separated by newlines
      */
@@ -70,7 +74,7 @@ public record AdapterCodeResult(
         List<String> lines = new ArrayList<>();
         String version = requires.minVersion() == null ? "" : " >= " + requires.minVersion();
         lines.add("Requires " + requires.packageName() + version + " (" + requires.runtime() + ").");
-        lines.add("Check: " + check);
+        lines.add("Check, before running the code: " + check);
         lines.add("Install, only after the user confirms, if the check fails or shows an older version: " + install);
         if (Language.r.name().equals(language)) {
             lines.add(R_MIN_VERSION_NOTE);
@@ -78,6 +82,7 @@ public record AdapterCodeResult(
         lines.add(
             "Show the code to the user. It runs in the user's environment with their token from PICSURE_TOKEN. Do not run it unless the user asks."
         );
+        lines.add(REPORT_ONLY_PRINTED_NOTE);
         if (warnings != null) {
             warnings.forEach(warning -> lines.add("Warning: " + warning));
         }
