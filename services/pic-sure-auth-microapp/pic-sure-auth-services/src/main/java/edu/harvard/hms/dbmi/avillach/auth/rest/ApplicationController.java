@@ -51,7 +51,7 @@ public class ApplicationController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{applicationId}")
     public ResponseEntity<ApplicationResponse> getApplicationById(
-        @Parameter(required = true, description = "The UUID of the application to fetch information about.") @PathVariable(
+        @Parameter(required = true, description = "The UUID of the application to fetch.") @PathVariable(
             "applicationId"
         ) String applicationId
     ) {
