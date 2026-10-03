@@ -127,7 +127,10 @@ public class UserController {
      * Returns the caller's profile. The profile always carries the caller's long-term token, which is issued and saved on the first read.
      * The {@code hasToken} query parameter is accepted and has no effect.
      */
-    @Operation(summary = "The caller's profile, with the long-term token", description = "Retrieve information of current user.")
+    @Operation(
+        summary = "The caller's profile, with the long-term token",
+        description = "Returns the caller's profile, including the long-term token."
+    )
     @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
@@ -155,8 +158,11 @@ public class UserController {
      * @param httpHeaders the http headers
      * @return the refreshed long term token
      */
-    @Operation(summary = "Issue the caller a new long-term token", description = "Refresh the long term token of the current user.")
-    @ApiResponse(responseCode = "200", description = "A new long term token for the caller.")
+    @Operation(
+        summary = "Issue the caller a new long-term token",
+        description = "Issues the caller a new long-term token and invalidates the previous one."
+    )
+    @ApiResponse(responseCode = "200", description = "A new long-term token for the caller.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
     public ResponseEntity<LongTermTokenResponse> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
@@ -171,7 +177,7 @@ public class UserController {
         return PICSUREResponse.success(new LongTermTokenResponse(refreshed.get("userLongTermToken")));
     }
 
-    @Operation(summary = "The caller's consents", description = "Retrieve consents of current user.")
+    @Operation(summary = "The caller's consents", description = "Returns the caller's consents.")
     @ApiResponse(responseCode = "200", description = "The caller's consents.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")

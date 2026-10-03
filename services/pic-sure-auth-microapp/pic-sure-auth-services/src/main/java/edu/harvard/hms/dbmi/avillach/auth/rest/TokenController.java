@@ -54,7 +54,7 @@ public class TokenController {
 
     @Operation(
         summary = "Introspect a token on behalf of an application",
-        description = "Token introspection endpoint for user to retrieve a valid token."
+        description = "Reports whether a token is active and returns the claims it carries, checked against the request it is used for."
     )
     @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active.")
     @AuditEvent(type = "ACCESS", action = "token.introspect")
@@ -95,7 +95,9 @@ public class TokenController {
         return PICSUREResponse.success(TokenInspectionResponse.from(resultMap));
     }
 
-    @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user.")
+    @Operation(
+        summary = "Refresh the caller's token", description = "Issues a refreshed token for the caller when the caller is an active user."
+    )
     @ApiResponse(responseCode = "200", description = "A refreshed token and its expiration date.")
     @ApiResponse(responseCode = "400", description = "The user no longer exists or is deactivated.")
     @ApiResponse(responseCode = "401", description = "The token's session has ended, expired, or been replaced by a newer login.")

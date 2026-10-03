@@ -77,7 +77,7 @@ class OpenApiDocumentTest {
         assertThat(description(paths, "/accessRule", "post"))
             .isEqualTo("POST a list of AccessRules.\n\nRequired authorities: SUPER_ADMIN.");
         assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users.\n\nRequired authorities: ADMIN.");
-        assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user.");
+        assertThat(description(paths, "/user/me", "get")).isEqualTo("Returns the caller's profile, including the long-term token.");
         assertThat(description(paths, "/application", "get"))
             .isEqualTo("GET a list of existing Applications.\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         paths.forEach(

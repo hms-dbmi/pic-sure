@@ -50,7 +50,7 @@ public class TermsOfServiceController {
         this.userService = userService;
     }
 
-    @Operation(summary = "The current terms of service as HTML", description = "GET the latest Terms of Service.")
+    @Operation(summary = "The current terms of service as HTML", description = "Returns the latest terms of service.")
     @ApiResponse(
         responseCode = "200", description = "The current terms of service as HTML, or an empty body when none are stored.",
         content = @Content(
@@ -68,7 +68,7 @@ public class TermsOfServiceController {
         return PICSUREResponse.success(tosService.getLatest());
     }
 
-    @Operation(summary = "Replace the terms of service", description = "Update the Terms of Service html body.")
+    @Operation(summary = "Replace the terms of service", description = "Replaces the terms of service with the submitted HTML body.")
     @ApiResponse(
         responseCode = "200", description = "The stored terms of service, or an empty body when the store could not read them back."
     )
@@ -91,7 +91,8 @@ public class TermsOfServiceController {
     }
 
     @Operation(
-        summary = "Whether the caller has accepted the current terms", description = "GET if current user has accepted his TOS or not."
+        summary = "Whether the caller has accepted the current terms",
+        description = "Returns whether the caller has accepted the current terms of service."
     )
     @ApiResponse(
         responseCode = "200", description = "True when the caller has accepted the current terms.",
@@ -111,7 +112,8 @@ public class TermsOfServiceController {
     }
 
     @Operation(
-        summary = "Accept the current terms for the caller", description = "Endpoint for current user to accept his terms of service."
+        summary = "Accept the current terms for the caller",
+        description = "Records that the caller has accepted the current terms of service."
     )
     @ApiResponse(responseCode = "200", description = "The terms were accepted; the response has no body.")
     @AuditEvent(type = "ACCESS", action = "tos.accept")
