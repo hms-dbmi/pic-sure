@@ -37,42 +37,42 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 @AutoConfigureMockMvc
 class SchemaAssertionsDocumentTest {
 
-    @Schema(description = "How far a role reaches")
+    @Schema(description = "How far a role reaches.")
     enum Reach {
-        @Schema(description = "One study")
-        STUDY, @Schema(description = "Every study")
+        @Schema(description = "One study.")
+        STUDY, @Schema(description = "Every study.")
         GLOBAL
     }
 
-    @Schema(description = "A role to create or change")
+    @Schema(description = "A role to create or change.")
     record RoleRequest(
-        @Schema(description = "The role's name", example = "PIC-SURE Top Admin") String name,
-        @Schema(description = "How far the role reaches") Reach reach
+        @Schema(description = "The role's name.", example = "PIC-SURE Top Admin") String name,
+        @Schema(description = "How far the role reaches.") Reach reach
     ) {
     }
 
-    @Schema(description = "A role as the API returns it")
+    @Schema(description = "A role as the API returns it.")
     record RoleResponse(
-        @Schema(description = "The role's id", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6") UUID uuid,
-        @Schema(description = "The role's name", example = "PIC-SURE Top Admin") String name,
-        @Schema(description = "Names of the privileges the role grants", example = "[\"SUPER_ADMIN\", \"ADMIN\"]") List<String> privileges,
-        @Schema(description = "How far the role reaches") Reach reach,
-        @Schema(description = "Whether the role can be deleted") boolean removable,
-        @Schema(description = "Free-form settings keyed by setting name") Map<String, String> settings,
-        @Schema(description = "The role this one was copied from") RoleOrigin origin
+        @Schema(description = "The role's id.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6") UUID uuid,
+        @Schema(description = "The role's name.", example = "PIC-SURE Top Admin") String name,
+        @Schema(description = "Names of the privileges the role grants.", example = "[\"SUPER_ADMIN\", \"ADMIN\"]") List<String> privileges,
+        @Schema(description = "How far the role reaches.") Reach reach,
+        @Schema(description = "Whether the role can be deleted.") boolean removable,
+        @Schema(description = "Free-form settings keyed by setting name.") Map<String, String> settings,
+        @Schema(description = "The role this one was copied from.") RoleOrigin origin
     ) {
     }
 
-    @Schema(description = "Where a role came from")
-    record RoleOrigin(@Schema(description = "The source role's id", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6") UUID uuid) {
+    @Schema(description = "Where a role came from.")
+    record RoleOrigin(@Schema(description = "The source role's id.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6") UUID uuid) {
     }
 
-    record Undocumented(String name, @Schema(description = "A count") int count) {
+    record Undocumented(String name, @Schema(description = "A count.") int count) {
     }
 
-    @Schema(description = "A message with its payload")
+    @Schema(description = "A message with its payload.")
     record Envelope<T>(
-        @Schema(description = "What happened", example = "Roles saved") String message, @Schema(description = "The payload") T content
+        @Schema(description = "What happened.", example = "Roles saved") String message, @Schema(description = "The payload.") T content
     ) {
     }
 
@@ -104,7 +104,7 @@ class SchemaAssertionsDocumentTest {
         }
 
         @DeleteMapping("/role/one")
-        @ApiResponse(responseCode = "204", description = "Deleted")
+        @ApiResponse(responseCode = "204", description = "Deleted.")
         public ResponseEntity<Void> delete() {
             return ResponseEntity.noContent().build();
         }

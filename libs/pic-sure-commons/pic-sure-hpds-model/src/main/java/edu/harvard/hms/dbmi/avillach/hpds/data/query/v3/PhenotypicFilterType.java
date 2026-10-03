@@ -2,7 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "How a phenotypic filter matches its concept path")
+@Schema(description = "How a phenotypic filter matches its concept path.")
 public enum PhenotypicFilterType {
     @Schema(description = "Specifies that a filter will match if a concept path contains any value")
     REQUIRED, @Schema(

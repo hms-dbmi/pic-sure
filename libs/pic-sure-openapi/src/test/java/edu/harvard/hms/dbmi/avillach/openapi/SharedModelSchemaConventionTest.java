@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,11 +22,17 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningResponse;
+import edu.harvard.dbmi.avillach.domain.DispatchResponse;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.SavedQueryReference;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 
 /**
@@ -62,6 +69,26 @@ class SharedModelSchemaConventionTest {
         public ResourceInfo info() {
             return new ResourceInfo();
         }
+
+        @PostMapping("/shared/internal/queries")
+        public SavedQueryReference save(@RequestBody SaveQueryRequest request) {
+            return null;
+        }
+
+        @PatchMapping("/shared/internal/queries/update")
+        public StoredQuery update(@RequestBody UpdateQueryRequest request) {
+            return null;
+        }
+
+        @GetMapping("/shared/internal/queries/dispatch")
+        public DispatchResponse dispatch() {
+            return null;
+        }
+
+        @PostMapping("/shared/bin/continuous")
+        public ContinuousBinningResponse binContinuous() {
+            return null;
+        }
     }
 
     @Autowired
@@ -83,10 +110,22 @@ class SharedModelSchemaConventionTest {
     }
 
     @Test
+    void internalQueryModelMeetsTheConvention() {
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document, "SaveQueryRequest", "UpdateQueryRequest", "StoredQuery", "SavedQueryReference", "DispatchResponse"
+        );
+    }
+
+    @Test
     void hpdsModelMeetsTheConvention() {
         OpenApiDocumentAssertions.assertSchemaDocumented(
             document, "Query", "AuthorizationFilter", "GenomicFilter", "PhenotypicClause", "PhenotypicFilter", "PhenotypicSubquery"
         );
+    }
+
+    @Test
+    void binningModelMeetsTheConvention() {
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "ContinuousBinningResponse");
     }
 
     @Test
@@ -95,7 +134,10 @@ class SharedModelSchemaConventionTest {
         assertRequired("PaginatedSearchResultString", "results", "page", "total");
         assertRequired("SignedUrlResponse", "signedUrl");
         assertRequired("ResourceInfo", "id", "name");
+        assertRequired("StoredQuery", "picsureId");
+        assertRequired("SavedQueryReference", "picsureId");
         assertRequired("Query", "expectedResultType");
+        assertRequired("ContinuousBinningResponse", "bins");
     }
 
     private void assertRequired(String schemaName, String... members) {

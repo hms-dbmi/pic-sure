@@ -5,23 +5,23 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Where a query stands and how to fetch its result")
+@Schema(description = "Where a query stands and how to fetch its result.")
 public class QueryStatus {
 
-    @Schema(description = "Where the query stands", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Where the query stands.", requiredMode = Schema.RequiredMode.REQUIRED)
     private PicSureStatus status;
 
     /**
      * a uuid associated to a Resource in the database
      */
-    @Schema(description = "The id of the resource the query ran against", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6")
+    @Schema(description = "The id of the resource the query ran against.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6")
     private UUID resourceID;
 
-    @Schema(description = "The resource's own status name for the query, which is more detailed than `status`", example = "SUCCESS")
+    @Schema(description = "The resource's own status name for the query, which is more detailed than `status`.", example = "SUCCESS")
     private String resourceStatus;
 
     @Schema(
-        description = "The id PIC-SURE assigned to the query. The status, result, signed-url and metadata endpoints take it",
+        description = "The id PIC-SURE assigned to the query. The status, result, signed-url and metadata endpoints take it.",
         example = "8694e3d4-5cb4-410f-8431-993445e6d3f6", requiredMode = Schema.RequiredMode.REQUIRED
     )
     private UUID picsureResultId;
@@ -29,26 +29,26 @@ public class QueryStatus {
     /**
      * when a resource might generate its own resultId and return it, we can keep it here
      */
-    @Schema(description = "The id the resource assigned to the result", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6")
+    @Schema(description = "The id the resource assigned to the result.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6")
     private String resourceResultId;
 
     @Schema(
-        description = "Details about the query and its result, keyed by name. `picsureQueryId` is the query's id on the resource, present "
+        description = "Details about the query and its result, keyed by name. `picsureQueryId` is the query's id on the resource, present ."
             + "when the query is submitted or its status is read. `queryJson` is the stored request body and `queryResultMetadata` the "
             + "stored result metadata, both present on a metadata read."
     )
     private Map<String, Object> resultMetadata;
 
-    @Schema(description = "The estimated size of the result in bytes, 0 until the result exists", example = "52428")
+    @Schema(description = "The estimated size of the result in bytes, 0 until the result exists.", example = "52428")
     private long sizeInBytes;
 
-    @Schema(description = "When the query was queued, in epoch milliseconds", example = "1790777100000")
+    @Schema(description = "When the query was queued, in epoch milliseconds.", example = "1790777100000")
     private long startTime;
 
-    @Schema(description = "How long the query took in milliseconds, 0 until it completes", example = "8250")
+    @Schema(description = "How long the query took in milliseconds, 0 until it completes.", example = "8250")
     private long duration;
 
-    @Schema(description = "When the result expires, in epoch milliseconds. No current resource sets it, so it is 0", example = "0")
+    @Schema(description = "When the result expires, in epoch milliseconds. No current resource sets it, so it is 0.", example = "0")
     private long expiration;
 
     public PicSureStatus getStatus() {
