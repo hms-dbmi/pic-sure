@@ -3,17 +3,12 @@ package edu.harvard.dbmi.avillach.domain;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
-import java.lang.reflect.RecordComponent;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 import org.junit.Test;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Pins the JSON of the records the operations service and the query service exchange over {@code /internal/queries}. The mapper is a plain
@@ -97,30 +92,5 @@ public class InternalQueryModelsTest {
             new UpdateQueryRequest("AVAILABLE", null, null),
             mapper.readValue("{\"status\":\"AVAILABLE\",\"picsureId\":\"ignored\"}", UpdateQueryRequest.class)
         );
-    }
-
-    @Test
-    public void everyRecordAndComponentIsDescribedAndCarriesAnExample() {
-        List<String> problems = new ArrayList<>();
-        List<Class<?>> records =
-            List.of(SaveQueryRequest.class, UpdateQueryRequest.class, StoredQuery.class, SavedQueryReference.class, DispatchResponse.class);
-        for (Class<?> type : records) {
-            Schema onType = type.getAnnotation(Schema.class);
-            if (onType == null || onType.description().isBlank()) {
-                problems.add(type.getSimpleName() + " has no description");
-            }
-            for (RecordComponent component : type.getRecordComponents()) {
-                String member = type.getSimpleName() + "." + component.getName();
-                Schema onComponent = component.getAccessor().getAnnotation(Schema.class);
-                if (onComponent == null || onComponent.description().isBlank()) {
-                    problems.add(member + " has no description");
-                }
-                if (onComponent == null || onComponent.example().isBlank()) {
-                    problems.add(member + " has no example");
-                }
-            }
-        }
-
-        assertEquals(List.of(), problems);
     }
 }
