@@ -4,7 +4,7 @@ package edu.harvard.hms.dbmi.avillach.mcp.tool;
 public final class ToolArguments {
 
     /** Longest search text accepted, in characters. */
-    public static final int MAX_QUERY_LENGTH = 500;
+    public static final int MAX_SEARCH_LENGTH = 500;
 
     private ToolArguments() {}
 

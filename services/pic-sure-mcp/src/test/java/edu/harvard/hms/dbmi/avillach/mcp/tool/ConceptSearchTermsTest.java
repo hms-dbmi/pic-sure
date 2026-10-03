@@ -91,7 +91,7 @@ class ConceptSearchTermsTest {
         assertThat(matched(result, "D")).containsExactly("bp");
         assertThat(matched(result, "E")).containsExactly("hypertension");
         assertThat(result.total()).isEqualTo(50);
-        assertThat(result.query()).isNull();
+        assertThat(result.search()).isNull();
         assertThat(result.page()).isZero();
         assertThat(result.pageSize()).isEqualTo(ConceptSearchTool.DEFAULT_PAGE_SIZE);
         assertThat(result.truncated()).isFalse();
@@ -162,11 +162,11 @@ class ConceptSearchTermsTest {
     @Test
     void queryAndTermsTogetherOrNeitherIsRejectedWithoutCallingTheGateway() {
         assertThatThrownBy(() -> search.searchConcepts(context, "sex", List.of("bp"), null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'query' or 'terms', not both.");
+            .hasMessage("Give either 'search' or 'terms', not both.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'query' or 'terms'.");
+            .hasMessage("Give either 'search' or 'terms'.");
         assertThatThrownBy(() -> search.searchConcepts(context, " ", List.of(), null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'query' or 'terms'.");
+            .hasMessage("Give either 'search' or 'terms'.");
         server.verify();
     }
 
@@ -191,7 +191,7 @@ class ConceptSearchTermsTest {
 
         ConceptSearchResult result = search.searchConcepts(context, "sex", null, null, null);
 
-        assertThat(result.query()).isEqualTo("sex");
+        assertThat(result.search()).isEqualTo("sex");
         assertThat(result.terms()).isNull();
         assertThat(result.truncated()).isNull();
         assertThat(result.warnings()).isNull();

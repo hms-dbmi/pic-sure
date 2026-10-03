@@ -116,7 +116,7 @@ class ToolAuditAspectTest {
         assertThat(event.getRequest().getRequestId()).isEqualTo("req-42");
         assertThat(event.getError()).isNull();
         assertThat(event.getMetadata()).containsExactly(
-            Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("query", "blood pressure"), Map.entry("page", 2),
+            Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("search", "blood pressure"), Map.entry("page", 2),
             Map.entry("page_size", 15)
         );
     }
@@ -170,7 +170,7 @@ class ToolAuditAspectTest {
         LoggingEvent event = onlyEvent();
         assertThat(event.getEventType()).isEqualTo("SEARCH");
         assertThat(event.getAction()).isEqualTo("facet.search");
-        assertThat(event.getMetadata()).containsEntry("outcome", "success").containsEntry("query", "sex");
+        assertThat(event.getMetadata()).containsEntry("outcome", "success").containsEntry("search", "sex");
     }
 
     @Test
@@ -213,7 +213,7 @@ class ToolAuditAspectTest {
     @Test
     void aToolFailureIsAFailureEventThatKeepsTheActionAndRethrows() {
         assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'query' or 'terms'.");
+            .hasMessage("Give either 'search' or 'terms'.");
 
         LoggingEvent event = onlyEvent();
         assertThat(event.getEventType()).isEqualTo("SEARCH");
@@ -334,7 +334,7 @@ class ToolAuditAspectTest {
 
         assertThat(facets.listFacets(context, "sex")).isNotNull();
         assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'query' or 'terms'.");
+            .hasMessage("Give either 'search' or 'terms'.");
     }
 
     @Test
@@ -374,7 +374,7 @@ class ToolAuditAspectTest {
 
         assertThatThrownBy(() -> facets.listFacets(context, "a\nb" + "x".repeat(600))).isInstanceOf(ToolFailure.class);
 
-        assertThat(String.valueOf(onlyEvent().getMetadata().get("query"))).hasSize(ToolAuditAspect.MAX_FIELD_LENGTH).startsWith("a b");
+        assertThat(String.valueOf(onlyEvent().getMetadata().get("search"))).hasSize(ToolAuditAspect.MAX_FIELD_LENGTH).startsWith("a b");
     }
 
     private static Map<String, Object> filter(String conceptPath) {
