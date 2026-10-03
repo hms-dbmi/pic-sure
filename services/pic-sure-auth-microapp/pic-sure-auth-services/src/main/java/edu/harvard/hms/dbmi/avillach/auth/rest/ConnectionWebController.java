@@ -28,7 +28,7 @@ import java.util.List;
  * <p>Endpoint for service handling business logic for connections to PSAMA. <br> Note: Only users with the super admin role can access this
  * endpoint.</p>
  */
-@Tag(name = "Connection Management", description = "Identity provider connections")
+@Tag(name = "Connection Management", description = "Identity provider connections.")
 @Controller
 @RequestMapping("/connection")
 public class ConnectionWebController {
@@ -44,7 +44,7 @@ public class ConnectionWebController {
     @Operation(
         summary = "Read one connection", description = "Read one connection by its business id, the same value GET /connection lists as id."
     )
-    @ApiResponse(responseCode = "200", description = "The connection")
+    @ApiResponse(responseCode = "200", description = "The connection.")
     @ApiResponse(responseCode = "400", description = "No connection with that id.")
     @AuditEvent(type = "OTHER", action = "connection.read")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
@@ -57,8 +57,8 @@ public class ConnectionWebController {
         return ResponseEntity.ok(ConnectionResponse.from(connectionWebService.getConnectionById(connectionId)));
     }
 
-    @Operation(summary = "List every connection", description = "GET a list of existing Connection")
-    @ApiResponse(responseCode = "200", description = "Every connection")
+    @Operation(summary = "List every connection", description = "GET a list of existing Connection.")
+    @ApiResponse(responseCode = "200", description = "Every connection.")
     @AuditEvent(type = "OTHER", action = "connection.list")
     @GetMapping
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN', 'ADMIN')")
@@ -66,14 +66,14 @@ public class ConnectionWebController {
         return ResponseEntity.ok(ConnectionResponse.fromAll(connectionWebService.getAllConnections()));
     }
 
-    @Operation(summary = "Create connections", description = "POST a list of Connections")
+    @Operation(summary = "Create connections", description = "POST a list of Connections.")
     @ApiResponse(responseCode = "200", description = "The created connections, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<PicSureResponseBody<List<ConnectionResponse>>> addConnection(
         @Parameter(
-            required = true, description = "The connections to create; the server generates each identifier"
+            required = true, description = "The connections to create; the server generates each identifier."
         ) @RequestBody List<@NotNull @Valid ConnectionCreateRequest> connectionRequests, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connectionRequests.size()));
@@ -91,7 +91,7 @@ public class ConnectionWebController {
     @PutMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<List<ConnectionResponse>> updateConnection(
         @Parameter(
-            required = true, description = "The connections to update, each named by UUID; a field left out keeps its stored value"
+            required = true, description = "The connections to update, each named by UUID; a field left out keeps its stored value."
         ) @RequestBody List<@NotNull @Valid ConnectionUpdateRequest> connections, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connections.size()));
@@ -100,16 +100,17 @@ public class ConnectionWebController {
 
     @Operation(
         summary = "Delete a connection that nothing references",
-        description = "DELETE an Connection by Id only if the Connection is not associated by others"
+        description = "DELETE an Connection by Id only if the Connection is not associated by others."
     )
-    @ApiResponse(responseCode = "200", description = "The remaining connections")
-    @ApiResponse(responseCode = "409", description = "Other entities still reference this connection")
+    @ApiResponse(responseCode = "200", description = "The remaining connections.")
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this connection.")
     @AuditEvent(type = "ADMIN", action = "connection.delete")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{connectionId}", produces = "application/json")
     public ResponseEntity<List<ConnectionResponse>> removeById(
-        @Parameter(required = true, description = "A valid connection Id") @PathVariable("connectionId") final String connectionId,
-        HttpServletRequest request
+        @Parameter(required = true, description = "The business id of the connection to delete, not its uuid.") @PathVariable(
+            "connectionId"
+        ) final String connectionId, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "connection_id", connectionId);
         return ResponseEntity.ok(ConnectionResponse.fromAll(connectionWebService.removeConnectionById(connectionId)));

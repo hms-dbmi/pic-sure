@@ -29,7 +29,7 @@ import java.util.List;
  * <p>Endpoint for service handling business logic for privileges. <br>Note: Only users with the super admin role can access this
  * endpoint.</p>
  */
-@Tag(name = "Privilege Management", description = "Privileges granted through roles")
+@Tag(name = "Privilege Management", description = "Privileges granted through roles.")
 @RestController
 @RequestMapping("/privilege")
 public class PrivilegeController {
@@ -42,13 +42,13 @@ public class PrivilegeController {
     }
 
     @Operation(summary = "Read one privilege", description = "GET information of one Privilege with the UUID.")
-    @ApiResponse(responseCode = "200", description = "The privilege")
-    @ApiResponse(responseCode = "400", description = "No privilege with that UUID")
+    @ApiResponse(responseCode = "200", description = "The privilege.")
+    @ApiResponse(responseCode = "400", description = "No privilege with that UUID.")
     @AuditEvent(type = "OTHER", action = "privilege.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "/{privilegeId}", produces = "application/json")
     public ResponseEntity<PrivilegeResponse> getPrivilegeById(
-        @Parameter(description = "The UUID of the privilege to fetch information about") @PathVariable("privilegeId") String privilegeId
+        @Parameter(description = "The UUID of the privilege to fetch information about.") @PathVariable("privilegeId") String privilegeId
     ) {
         Privilege privilegeById = this.privilegeService.getPrivilegeById(privilegeId);
 
@@ -59,8 +59,8 @@ public class PrivilegeController {
         return PICSUREResponse.success(PrivilegeResponse.from(privilegeById));
     }
 
-    @Operation(summary = "List every privilege", description = "GET a list of existing privileges")
-    @ApiResponse(responseCode = "200", description = "Every privilege")
+    @Operation(summary = "List every privilege", description = "GET a list of existing privileges.")
+    @ApiResponse(responseCode = "200", description = "Every privilege.")
     @AuditEvent(type = "OTHER", action = "privilege.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json")
@@ -68,14 +68,14 @@ public class PrivilegeController {
         return PICSUREResponse.success(PrivilegeResponse.fromAll(this.privilegeService.getPrivilegesAll()));
     }
 
-    @Operation(summary = "Create privileges", description = "POST a list of privileges")
-    @ApiResponse(responseCode = "200", description = "The created privileges")
+    @Operation(summary = "Create privileges", description = "POST a list of privileges.")
+    @ApiResponse(responseCode = "200", description = "The created privileges.")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<PrivilegeResponse>> addPrivilege(
         @Parameter(
-            required = true, description = "The privileges to create, each naming its application by UUID"
+            required = true, description = "The privileges to create, each naming its application by UUID."
         ) @RequestBody List<@NotNull @Valid PrivilegeCreateRequest> privileges, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
@@ -91,7 +91,7 @@ public class PrivilegeController {
     @PutMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<PrivilegeResponse>> updatePrivilege(
         @Parameter(
-            required = true, description = "The privileges to update, each named by UUID; a field left out keeps its stored value"
+            required = true, description = "The privileges to update, each named by UUID; a field left out keeps its stored value."
         ) @RequestBody List<@NotNull @Valid PrivilegeUpdateRequest> privileges, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
@@ -100,16 +100,17 @@ public class PrivilegeController {
 
     @Operation(
         summary = "Delete a privilege that nothing references",
-        description = "DELETE an privilege by Id only if the privilege is not associated by others"
+        description = "DELETE an privilege by Id only if the privilege is not associated by others."
     )
-    @ApiResponse(responseCode = "200", description = "The remaining privileges")
-    @ApiResponse(responseCode = "409", description = "Other entities still reference this privilege")
+    @ApiResponse(responseCode = "200", description = "The remaining privileges.")
+    @ApiResponse(responseCode = "409", description = "Other entities still reference this privilege.")
     @AuditEvent(type = "ADMIN", action = "privilege.delete")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(path = "/{privilegeId}", produces = "application/json")
     public ResponseEntity<List<PrivilegeResponse>> removeById(
-        @Parameter(required = true, description = "A valid privilege Id") @PathVariable("privilegeId") final String privilegeId,
-        HttpServletRequest request
+        @Parameter(required = true, description = "The uuid of the privilege to delete.") @PathVariable(
+            "privilegeId"
+        ) final String privilegeId, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "privilege_id", privilegeId);
         return ResponseEntity.ok(PrivilegeResponse.fromAll(this.privilegeService.deletePrivilegeByPrivilegeId(privilegeId)));

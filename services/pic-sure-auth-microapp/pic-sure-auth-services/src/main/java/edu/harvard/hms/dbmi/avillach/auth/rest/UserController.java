@@ -32,7 +32,7 @@ import java.util.*;
 /**
  * <p>Endpoint for service handling business logic for users.</p>
  */
-@Tag(name = "User Management", description = "Users, their roles, and the caller's own profile")
+@Tag(name = "User Management", description = "Users, their roles, and the caller's own profile.")
 @Controller
 @RequestMapping("/user")
 public class UserController {
@@ -47,21 +47,21 @@ public class UserController {
         this.userService = userService;
     }
 
-    @Operation(summary = "Read one user", description = "GET information of one user with the UUID")
+    @Operation(summary = "Read one user", description = "GET information of one user with the UUID.")
     @ApiResponse(responseCode = "200", description = "The user, without the long-term token, passport and identity provider metadata.")
-    @ApiResponse(responseCode = "400", description = "The id is not a UUID, or no user has it")
+    @ApiResponse(responseCode = "400", description = "The id is not a UUID, or no user has it.")
     @AuditEvent(type = "OTHER", action = "user.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "/{userId}", produces = "application/json")
     public ResponseEntity<UserResponse> getUserById(
-        @Parameter(required = true, description = "The UUID of the user to fetch information about") @PathVariable("userId") String userId,
+        @Parameter(required = true, description = "The UUID of the user to fetch information about.") @PathVariable("userId") String userId,
         HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_id", userId);
         return PICSUREResponse.success(UserResponse.from(this.userService.getUserById(userId)));
     }
 
-    @Operation(summary = "List every user", description = "GET a list of existing users")
+    @Operation(summary = "List every user", description = "GET a list of existing users.")
     @ApiResponse(responseCode = "200", description = "Every user, as a bare array.")
     @AuditEvent(type = "OTHER", action = "user.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -70,14 +70,14 @@ public class UserController {
         return PICSUREResponse.success(UserResponse.fromAll(this.userService.getAllUsers()));
     }
 
-    @Operation(summary = "Create users", description = "POST a list of users")
+    @Operation(summary = "Create users", description = "POST a list of users.")
     @ApiResponse(responseCode = "200", description = "The created users, as a bare array.")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
     @PostMapping(produces = "application/json")
     public ResponseEntity<List<UserResponse>> addUser(
         @Parameter(
-            required = true, description = "The users to create, each naming its connection by id and its roles by UUID"
+            required = true, description = "The users to create, each naming its connection by id and its roles by UUID."
         ) @RequestBody List<@NotNull @Valid UserCreateRequest> users, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
@@ -91,7 +91,7 @@ public class UserController {
     @PutMapping(produces = "application/json")
     public ResponseEntity<List<UserResponse>> updateUser(
         @Parameter(
-            required = true, description = "The users to update, each named by UUID; a field left out keeps its stored value"
+            required = true, description = "The users to update, each named by UUID; a field left out keeps its stored value."
         ) @RequestBody List<@NotNull @Valid UserUpdateRequest> users, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));

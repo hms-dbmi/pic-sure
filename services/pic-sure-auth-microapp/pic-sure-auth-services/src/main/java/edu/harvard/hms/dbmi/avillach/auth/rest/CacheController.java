@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-@Tag(name = "Cache", description = "Cache inspection, enabled only when app.cache.inspect.enabled is true")
+@Tag(name = "Cache", description = "Cache inspection, enabled only when app.cache.inspect.enabled is true.")
 @RestController
 @ConditionalOnExpression("${app.cache.inspect.enabled:false}")
 @RequestMapping("/cache")
@@ -31,7 +31,7 @@ public class CacheController {
     }
 
     @Operation(summary = "List cache names")
-    @ApiResponse(responseCode = "200", description = "Names of every configured cache")
+    @ApiResponse(responseCode = "200", description = "Names of every configured cache.")
     @AuditEvent(type = "OTHER", action = "cache.list")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @GetMapping

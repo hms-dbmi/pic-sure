@@ -73,12 +73,13 @@ class OpenApiDocumentTest {
             objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString()).path("paths");
 
         assertThat(description(paths, "/user", "get"))
-            .isEqualTo("GET a list of existing users\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
-        assertThat(description(paths, "/accessRule", "post")).isEqualTo("POST a list of AccessRules\n\nRequired authorities: SUPER_ADMIN.");
-        assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users\n\nRequired authorities: ADMIN.");
+            .isEqualTo("GET a list of existing users.\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
+        assertThat(description(paths, "/accessRule", "post"))
+            .isEqualTo("POST a list of AccessRules.\n\nRequired authorities: SUPER_ADMIN.");
+        assertThat(description(paths, "/user", "post")).isEqualTo("POST a list of users.\n\nRequired authorities: ADMIN.");
         assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user");
         assertThat(description(paths, "/application", "get"))
-            .isEqualTo("GET a list of existing Applications\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
+            .isEqualTo("GET a list of existing Applications.\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         paths.forEach(
             path -> path.forEach(
                 operation -> assertThat(operation.path("description").asText()).doesNotContainIgnoringCase("requires")
