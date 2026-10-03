@@ -119,7 +119,8 @@ class InstructionsTest {
         assertThat(descriptions.get("cross_count"))
             .contains("obfuscated open-access count that ignores the caller's consents", "At most 100 cells", "cellsOmitted")
             .contains("the open channel uses it for none of the three", "These cells are never the authorized answer")
-            .contains("get_adapter_code with resultType cross_count", "phs999999");
+            .contains("get_adapter_code with resultType cross_count", "phs999999")
+            .contains("CONTINUOUS_CROSS_COUNT gives one cell per bin", "or one cell per distinct value where the site does not bin");
     }
 
     @Test
@@ -153,6 +154,27 @@ class InstructionsTest {
 
         assertThat(crossCount.path("description").asText()).contains(WITHHELD_SENTENCE).doesNotContain("too few participants");
         assertThat(outputSchema).contains(WITHHELD_SENTENCE).doesNotContain("too few participants");
+    }
+
+    @Test
+    void adapterCodeWarningsTellTheModelToPassThemOn() throws Exception {
+        String outputSchema = objectMapper.writeValueAsString(tools().get("get_adapter_code").path("outputSchema"));
+
+        assertThat(outputSchema).contains("Notes to pass on to the user")
+            .contains("a concept path check that stopped at the first 100 paths", "why the paths could not be checked");
+    }
+
+    @Test
+    void searchResultFieldsSayWhatTruncatedAndWarningsMean() throws Exception {
+        JsonNode searchConcepts = tools().get("search_concepts");
+        String outputSchema = objectMapper.writeValueAsString(searchConcepts.path("outputSchema"));
+        String inputSchema = objectMapper.writeValueAsString(searchConcepts.path("inputSchema"));
+
+        assertThat(outputSchema).contains("matched more than 25 distinct concepts on the pages asked for and only the first 25 were kept")
+            .contains("One entry per term whose search failed, naming the term and the failure; those terms returned no concepts.")
+            .contains("The search text of a single search", "The terms of a search by terms, in the order given");
+        assertThat(inputSchema).contains("at most 200 characters", "punctuation is ignored and splits words")
+            .contains("punctuation in it is ignored and splits words");
     }
 
     @Test
