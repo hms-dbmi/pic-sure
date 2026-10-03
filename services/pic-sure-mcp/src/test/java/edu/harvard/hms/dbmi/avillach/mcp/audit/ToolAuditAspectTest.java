@@ -36,6 +36,7 @@ import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -103,7 +104,7 @@ class ToolAuditAspectTest {
         when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
             .thenReturn(new DictionaryPage(List.of(), 0L, null));
 
-        search.searchConcepts(context, "blood pressure", 2, 15);
+        search.searchConcepts(context, "blood pressure", null, 2, 15);
 
         LoggingEvent event = onlyEvent();
         assertThat(event.getEventType()).isEqualTo("SEARCH");
@@ -114,6 +115,46 @@ class ToolAuditAspectTest {
             Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("query", "blood pressure"), Map.entry("page", 2),
             Map.entry("page_size", 15)
         );
+    }
+
+    @Test
+    void searchConceptsWithTermsRecordsTheTermsJoinedAndNoQuery() {
+        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
+            .thenReturn(new DictionaryPage(List.of(), 0L, null));
+
+        search.searchConcepts(context, null, List.of("blood pressure", "bp"), null, null);
+
+        LoggingEvent event = onlyEvent();
+        assertThat(event.getAction()).isEqualTo("concept.search");
+        assertThat(event.getMetadata()).containsExactly(
+            Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("terms", "blood pressure|bp")
+        );
+    }
+
+    @Test
+    void joinedTermsAreCappedLikeSearchText() {
+        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
+            .thenReturn(new DictionaryPage(List.of(), 0L, null));
+
+        search.searchConcepts(context, null, List.of("a".repeat(200), "b".repeat(200), "c".repeat(200)), null, null);
+
+        assertThat(String.valueOf(onlyEvent().getMetadata().get("terms"))).hasSize(ToolAuditAspect.MAX_FIELD_LENGTH)
+            .startsWith("a".repeat(200) + "|b");
+    }
+
+    @Test
+    void theRequestIdReachesTheParallelTermCalls() {
+        List<String> seen = new CopyOnWriteArrayList<>();
+        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
+            .thenAnswer(invocation -> {
+                seen.add(String.valueOf(MDC.get(CallerHeaders.MDC_KEY)));
+                return new DictionaryPage(List.of(), 0L, null);
+            });
+
+        search.searchConcepts(context, null, List.of("alpha", "beta", "gamma"), null, null);
+
+        assertThat(seen).containsExactly("req-42", "req-42", "req-42");
+        assertThat(MDC.get(CallerHeaders.MDC_KEY)).isNull();
     }
 
     @Test
@@ -142,8 +183,8 @@ class ToolAuditAspectTest {
 
     @Test
     void aToolFailureIsAFailureEventThatKeepsTheActionAndRethrows() {
-        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Argument 'query' is required.");
+        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Give either 'query' or 'terms'.");
 
         LoggingEvent event = onlyEvent();
         assertThat(event.getEventType()).isEqualTo("SEARCH");
@@ -234,7 +275,7 @@ class ToolAuditAspectTest {
         when(openQuery.querySync(any(), any())).thenReturn("12 ±3");
         List<String> tokens = List.of(BEARER, API_KEY, MCP_TOKEN);
 
-        search.searchConcepts(context, "sex", null, null);
+        search.searchConcepts(context, "sex", null, null, null);
         count.handle(context, Map.of("query", Map.of("phenotypicClause", filter(BODY_PATH))));
         assertThatThrownBy(() -> count.handle(context, Map.of("query", Map.of("bogus", MCP_TOKEN)))).isInstanceOf(ToolFailure.class);
 
@@ -263,8 +304,8 @@ class ToolAuditAspectTest {
         when(dictionary.listFacets(any(), any())).thenReturn(List.of());
 
         assertThat(facets.listFacets(context, "sex")).isNotNull();
-        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Argument 'query' is required.");
+        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Give either 'query' or 'terms'.");
     }
 
     @Test
@@ -293,7 +334,7 @@ class ToolAuditAspectTest {
 
     @Test
     void theMdcIsClearAfterAFailedCall() {
-        assertThatThrownBy(() -> search.searchConcepts(context, "", null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "", null, null, null)).isInstanceOf(ToolFailure.class);
 
         assertThat(MDC.get(CallerHeaders.MDC_KEY)).isNull();
     }

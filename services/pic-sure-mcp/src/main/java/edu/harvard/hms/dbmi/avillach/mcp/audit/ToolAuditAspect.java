@@ -17,19 +17,22 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Sends one audit event for every call to a tool method annotated with {@link AuditEvent}, and binds the caller's request ID into the MDC
  * for the length of the call so every log line inside it carries the ID.
  *
  * <p>The event carries the annotation's type and action, an {@code outcome} of {@code success} or {@code failure}, the request ID, the
- * gateway's {@code X-User-Id} as {@code user_id}, and only these argument fields: {@code query} (search text), {@code page},
- * {@code page_size}, {@code dataset}, {@code concept_path}, and {@code result_type} for the count tools and {@code get_adapter_code}.
- * Nothing from a query body, and never a credential, is read. A failure event also carries {@code error.error_type} of {@code tool_failure}
- * or {@code internal}, and no message.
+ * gateway's {@code X-User-Id} as {@code user_id}, and only these argument fields: {@code query} (search text), {@code terms} (the search
+ * terms joined with {@code |}), {@code page}, {@code page_size}, {@code dataset}, {@code concept_path}, {@code concept_paths} (the concept
+ * paths joined with {@code |}), and {@code result_type} for the count tools and {@code get_adapter_code}. Each text field is cut at
+ * {@value #MAX_FIELD_LENGTH} characters. Nothing from a query body, and never a credential, is read. A failure event also carries
+ * {@code error.error_type} of {@code tool_failure} or {@code internal}, and no message.
  *
  * <p>Sending is fire-and-forget. A failure to build or send an event is logged once at WARN with its exception class and never reaches the
  * tool call.
@@ -42,6 +45,8 @@ public class ToolAuditAspect {
     static final int MAX_FIELD_LENGTH = 500;
 
     private static final Set<String> TEXT_PARAMETERS = Set.of("query", "dataset", "conceptPath");
+    private static final Set<String> LIST_PARAMETERS = Set.of("terms", "conceptPaths");
+    private static final String LIST_SEPARATOR = "|";
     private static final Set<String> NUMBER_PARAMETERS = Set.of("page", "pageSize");
     private static final Pattern RESULT_TYPE = Pattern.compile("[A-Za-z_]{1,40}");
     private static final Logger log = LoggerFactory.getLogger(ToolAuditAspect.class);
@@ -107,6 +112,8 @@ public class ToolAuditAspect {
             Object value = args[i];
             if (TEXT_PARAMETERS.contains(names[i]) && value instanceof String text) {
                 fields.put(snake(names[i]), clean(text));
+            } else if (LIST_PARAMETERS.contains(names[i]) && value instanceof List<?> list) {
+                fields.put(snake(names[i]), clean(joined(list)));
             } else if (NUMBER_PARAMETERS.contains(names[i]) && value instanceof Integer number) {
                 fields.put(snake(names[i]), number);
             } else if (value instanceof Map<?, ?> arguments) {
@@ -114,6 +121,10 @@ public class ToolAuditAspect {
             }
         }
         return fields;
+    }
+
+    private static String joined(List<?> list) {
+        return list.stream().filter(String.class::isInstance).map(String.class::cast).collect(Collectors.joining(LIST_SEPARATOR));
     }
 
     private static String resultType(Object target, Map<?, ?> arguments) {

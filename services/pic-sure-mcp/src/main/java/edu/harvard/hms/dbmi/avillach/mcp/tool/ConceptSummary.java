@@ -27,6 +27,7 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
  * @param min the continuous minimum
  * @param max the continuous maximum
  * @param meta a few metadata entries, set on detail lookups
+ * @param matchedTerms the terms of a several-term search that returned this concept, in the order they were given
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ConceptSummary(
@@ -34,7 +35,7 @@ public record ConceptSummary(
     @Schema(requiredMode = NOT_REQUIRED) String name, @Schema(requiredMode = NOT_REQUIRED) String description,
     @Schema(requiredMode = NOT_REQUIRED) List<String> values, @Schema(requiredMode = NOT_REQUIRED) Integer valuesOmitted,
     @Schema(requiredMode = NOT_REQUIRED) Double min, @Schema(requiredMode = NOT_REQUIRED) Double max,
-    @Schema(requiredMode = NOT_REQUIRED) Map<String, String> meta
+    @Schema(requiredMode = NOT_REQUIRED) Map<String, String> meta, @Schema(requiredMode = NOT_REQUIRED) List<String> matchedTerms
 ) {
 
     /** The most categorical values a result carries. */
@@ -66,6 +67,18 @@ public record ConceptSummary(
         return of(concept, true);
     }
 
+    /**
+     * Copies this summary with the terms that returned it.
+     *
+     * @param terms the terms of a several-term search that returned this concept
+     * @return the copy
+     */
+    public ConceptSummary withMatchedTerms(List<String> terms) {
+        return new ConceptSummary(
+            conceptPath, display, dataset, type, studyAcronym, name, description, values, valuesOmitted, min, max, meta, List.copyOf(terms)
+        );
+    }
+
     private static ConceptSummary of(DictionaryConcept concept, boolean detail) {
         List<String> values = concept.values();
         List<String> kept = values == null ? null : values.stream().limit(MAX_VALUES).toList();
@@ -73,7 +86,7 @@ public record ConceptSummary(
         String type = concept.type() == null ? null : concept.type().toLowerCase(Locale.ROOT);
         return new ConceptSummary(
             concept.conceptPath(), concept.display(), concept.dataset(), type, concept.studyAcronym(), detail ? concept.name() : null,
-            concept.description(), kept, omitted, concept.min(), concept.max(), detail ? cappedMeta(concept.meta()) : null
+            concept.description(), kept, omitted, concept.min(), concept.max(), detail ? cappedMeta(concept.meta()) : null, null
         );
     }
 

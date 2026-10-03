@@ -48,7 +48,9 @@ public class FacetTool {
             concepts each facet matches for an optional free-text search. Returns open-access dictionary metadata only, \
             never participant data. Use it to see how a search spreads across studies before calling search_concepts. \
             At most 25 categories and 25 facets per category come back, and categoriesOmitted and facetsOmitted say how many \
-            were dropped.""", generateOutputSchema = true,
+            were dropped. The dictionary ANDs every word of the search with prefix matching, so a multi-word search must \
+            describe one concept. Search synonyms and abbreviations as separate terms; search_concepts takes several in one \
+            call with its terms argument.""", generateOutputSchema = true,
         annotations = @McpTool.McpAnnotations(
             title = "List facets", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false
         )
