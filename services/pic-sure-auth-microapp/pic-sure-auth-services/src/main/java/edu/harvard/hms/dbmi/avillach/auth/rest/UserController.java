@@ -7,7 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.UserConsentsResponse;
-import edu.harvard.hms.dbmi.avillach.auth.model.response.UserForDisplay;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.UserResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -131,14 +131,14 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
-    public ResponseEntity<UserForDisplay> getCurrentUser(
+    public ResponseEntity<UserProfileResponse> getCurrentUser(
         @RequestHeader("Authorization") String authorizationHeader,
         @Parameter(description = "Accepted for compatibility; the long-term token is included whether or not it is sent") @RequestParam(
             name = "hasToken", required = false
         ) Boolean hasToken
     ) {
         logger.info("getCurrentUser() authorizationHeader: {}, hasToken {}", authorizationHeader, hasToken);
-        UserForDisplay currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
+        UserProfileResponse currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
 
         if (currentUser == null) {
             throw new PicSureResponseException(

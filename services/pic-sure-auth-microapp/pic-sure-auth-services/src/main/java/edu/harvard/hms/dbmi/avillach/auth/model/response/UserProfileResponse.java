@@ -20,7 +20,7 @@ import java.util.Set;
     description = "The caller's own profile. A member that is null or empty is absent, so a user with no privileges has no privileges "
         + "member. The long-term token is always included; the hasToken query parameter is accepted and has no effect."
 )
-public record UserForDisplay(
+public record UserProfileResponse(
     @Schema(
         description = "Row identifier of the user.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED

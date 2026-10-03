@@ -319,14 +319,15 @@ class OpenApiDocumentTest {
     void currentUserEndpointsDocumentTheProfileShapes() throws Exception {
         JsonNode document = document();
 
-        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/me", "200", "UserForDisplay");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/me", "200", "UserProfileResponse");
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/me/refresh_long_term_token", "200", "LongTermTokenResponse");
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/me/consents", "200", "UserConsentsResponse");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "LongTermTokenResponse", "userLongTermToken");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "UserConsentsResponse", "uuid", "userId", "consents");
-        OpenApiDocumentAssertions.assertSchemaHasFields(document, "UserForDisplay", "privileges", "token", "email", "uuid", "acceptedTOS");
-        OpenApiDocumentAssertions.assertSchemaDocumented(document, "UserForDisplay", "LongTermTokenResponse", "UserConsentsResponse");
-        JsonNode profile = document.path("components").path("schemas").path("UserForDisplay").path("properties");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "UserProfileResponse", "privileges", "token", "email", "uuid", "acceptedTOS");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "UserProfileResponse", "LongTermTokenResponse", "UserConsentsResponse");
+        JsonNode profile = document.path("components").path("schemas").path("UserProfileResponse").path("properties");
         assertThat(profile.path("acceptedTOS").path("type").asText()).as("acceptedTOS is a boolean on the profile").isEqualTo("boolean");
         JsonNode consents = document.path("components").path("schemas").path("UserConsentsResponse").path("properties").path("consents");
         assertThat(consents.path("additionalProperties").path("type").asText()).isEqualTo("array");
