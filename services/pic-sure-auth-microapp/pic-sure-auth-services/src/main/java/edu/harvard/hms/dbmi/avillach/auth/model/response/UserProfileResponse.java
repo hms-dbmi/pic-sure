@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * The body of {@code GET /user/me}: the caller's own profile, with the long-term token the caller uses from scripts. A member that is
@@ -24,7 +25,7 @@ public record UserProfileResponse(
     @Schema(
         description = "Row identifier of the user.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) String uuid,
+    ) UUID uuid,
     @Schema(description = "Email address of the user. Absent when the user has none.", example = "researcher@example.org") String email,
     @Schema(
         description = "Names of every privilege the user's roles grant. Absent when there are none.",

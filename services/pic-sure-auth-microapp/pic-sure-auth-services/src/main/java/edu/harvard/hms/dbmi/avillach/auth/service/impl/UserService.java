@@ -497,7 +497,7 @@ public class UserService {
         }
 
         return new UserProfileResponse(
-            user.getUuid().toString(), user.getEmail(), user.getPrivilegeNameSet(), user.getToken(),
+            user.getUuid(), user.getEmail(), user.getPrivilegeNameSet(), user.getToken(),
             this.tosService.hasUserAcceptedLatest(user.getSubject())
         );
     }

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -41,8 +42,9 @@ public class UserControllerTest {
     @Test
     public void profileIsTheUserProfileResponseJson() throws Exception {
         Set<String> privileges = new LinkedHashSet<>(List.of("SUPER_ADMIN", "PRIV_FENCE_phs000007_c1"));
-        UserProfileResponse profile =
-            new UserProfileResponse("8694e3d4-5cb4-410f-8431-993445e6d3f6", "researcher@example.org", privileges, "long-term-token", true);
+        UserProfileResponse profile = new UserProfileResponse(
+            UUID.fromString("8694e3d4-5cb4-410f-8431-993445e6d3f6"), "researcher@example.org", privileges, "long-term-token", true
+        );
         when(userService.getCurrentUser("Bearer session-token", null)).thenReturn(profile);
 
         mockMvc.perform(get("/user/me").header("Authorization", "Bearer session-token")).andExpect(status().isOk()).andExpect(
@@ -56,7 +58,7 @@ public class UserControllerTest {
     @Test
     public void profileLeavesOutEmptyMembersAndAcceptsHasToken() throws Exception {
         UserProfileResponse profile =
-            new UserProfileResponse("8694e3d4-5cb4-410f-8431-993445e6d3f6", null, Set.of(), "long-term-token", false);
+            new UserProfileResponse(UUID.fromString("8694e3d4-5cb4-410f-8431-993445e6d3f6"), null, Set.of(), "long-term-token", false);
         when(userService.getCurrentUser(eq("Bearer session-token"), eq(Boolean.TRUE))).thenReturn(profile);
 
         mockMvc.perform(get("/user/me").param("hasToken", "true").header("Authorization", "Bearer session-token"))
