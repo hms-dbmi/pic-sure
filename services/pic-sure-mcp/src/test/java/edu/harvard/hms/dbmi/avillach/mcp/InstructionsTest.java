@@ -93,7 +93,7 @@ class InstructionsTest {
             .contains("up to 20 values", "valuesOmitted", "at most 25", "get_adapter_code")
             .contains("The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept")
             .contains("Search synonyms and abbreviations as separate terms, which the terms argument does in one call.")
-            .contains("Give either query or terms (up to 5), not both.", "matchedTerms", "truncated", "warnings");
+            .contains("Give either search or terms (up to 5), not both.", "matchedTerms", "truncated", "warnings");
         assertThat(descriptions.get("list_facets")).contains("open-access dictionary metadata only, never participant data")
             .contains("At most 25 categories and 25 facets per category", "categoriesOmitted", "facetsOmitted")
             .contains(

@@ -11,12 +11,12 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
  * The facet categories that match a search, capped at {@link FacetTool#MAX_CATEGORIES} categories and
  * {@link FacetTool#MAX_FACETS_PER_CATEGORY} facets per category.
  *
- * @param query the search text, empty for none
+ * @param search the search text, empty for none
  * @param categories the categories returned
  * @param categoriesOmitted how many categories the cap dropped
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record FacetResult(String query, List<Category> categories, @Schema(requiredMode = NOT_REQUIRED) Integer categoriesOmitted) {
+public record FacetResult(String search, List<Category> categories, @Schema(requiredMode = NOT_REQUIRED) Integer categoriesOmitted) {
 
     /**
      * One facet category.

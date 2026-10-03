@@ -215,13 +215,13 @@ class QueryToolEndToEndTest {
     @Test
     void anAnnotatedDictionaryToolCallIsAuditedThroughItsProxy() throws Exception {
         call("""
-            {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"search_concepts","arguments":{"query":"sex","page":1}}}""");
+            {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"search_concepts","arguments":{"search":"sex","page":1}}}""");
 
         ArgumentCaptor<LoggingEvent> audit = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient, times(1)).send(audit.capture(), isNull(), org.mockito.ArgumentMatchers.eq("req-audit"));
         assertThat(audit.getValue().getEventType()).isEqualTo("SEARCH");
         assertThat(audit.getValue().getAction()).isEqualTo("concept.search");
-        assertThat(audit.getValue().getMetadata()).containsEntry("query", "sex").containsEntry("page", 1);
+        assertThat(audit.getValue().getMetadata()).containsEntry("search", "sex").containsEntry("page", 1);
     }
 
     @Test
