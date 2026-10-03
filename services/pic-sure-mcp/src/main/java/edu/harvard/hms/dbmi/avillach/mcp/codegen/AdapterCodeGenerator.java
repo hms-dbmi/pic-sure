@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicSubquery;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.mcp.query.QueryInput;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.ToolArguments;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ToolFailure;
 import org.springframework.stereotype.Component;
 
@@ -152,13 +153,8 @@ public class AdapterCodeGenerator {
         if (value.indexOf('\0') >= 0) {
             throw new ToolFailure("Field 'values' must not contain a NUL character.");
         }
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (Character.isHighSurrogate(c) && i + 1 < value.length() && Character.isLowSurrogate(value.charAt(i + 1))) {
-                i++;
-            } else if (Character.isSurrogate(c)) {
-                throw new ToolFailure("Field 'values' must not contain an unpaired UTF-16 surrogate.");
-            }
+        if (ToolArguments.hasUnpairedSurrogate(value)) {
+            throw new ToolFailure("Field 'values' must not contain an unpaired UTF-16 surrogate.");
         }
         return value;
     }

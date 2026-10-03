@@ -13,6 +13,8 @@ import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -34,7 +36,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Posts real {@code tools/call} requests for {@code count_participants} to {@code /mcp}, with a loopback HTTP server standing in for the
  * gateway. Proves the specification bean is registered, the caller's token and the MCP credential reach the gateway with the exact open
- * query, the count comes back as {@code structuredContent}, and a {@code not} in the input is an {@code isError} naming the field.
+ * query, the count comes back as {@code structuredContent}, and a {@code not} in the input, or an unpaired surrogate in a concept path,
+ * select entry, genomic key, or search, is an {@code isError} naming the field.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -153,6 +156,29 @@ class QueryToolEndToEndTest {
         assertThat(audit.getValue().getMetadata()).containsEntry("outcome", "failure");
     }
 
+    @ParameterizedTest
+    @CsvSource(
+        delimiter = '|',
+        textBlock = """
+            conceptPath | count_participants | {"query":{"phenotypicClause":{"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\phs1\\\\a\\ud800\\\\"}}}
+            select      | get_adapter_code   | {"resultType":"participant","language":"python","query":{"select":["\\\\phs1\\\\b\\udc00\\\\"]}}
+            key         | count_participants | {"query":{"genomicFilters":[{"key":"Gene\\ud800_with_variant","values":["BRCA1"]}]}}
+            search      | search_concepts    | {"search":"blood\\ud800"}
+            terms[1]    | search_concepts    | {"terms":["blood","pressure\\udbff"]}
+            """
+    )
+    void anUnpairedSurrogateInATextArgumentIsAnIsErrorNamingTheField(String field, String tool, String arguments) throws Exception {
+        JsonNode result = call(
+            "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"" + tool + "\",\"arguments\":" + arguments
+                + "}}"
+        );
+
+        assertThat(result.path("isError").asBoolean()).isTrue();
+        assertThat(result.path("content").path(0).path("text").asText())
+            .isEqualTo("Argument '" + field + "' must not contain an unpaired UTF-16 surrogate.");
+        assertThat(REQUESTS).isEmpty();
+    }
+
     @Test
     void getAdapterCodeReturnsStructuredContentASetupBlockAndACodeBlockForTheUser() throws Exception {
         String response = post("""
@@ -166,7 +192,7 @@ class QueryToolEndToEndTest {
         assertThat(structured.path("language").asText()).isEqualTo("python");
         assertThat(structured.path("requires"))
             .isEqualTo(objectMapper.readTree("{\"package\":\"picsure\",\"minVersion\":\"3.0.0\",\"runtime\":\"Python >= 3.10\"}"));
-        assertThat(structured.path("install").asText()).isEqualTo("pip install 'picsure>=3.0.0'");
+        assertThat(structured.path("install").asText()).isEqualTo("python3 -m pip install 'picsure>=3.0.0'");
         assertThat(structured.path("code").asText())
             .contains("picsure.connect(\"https://picsure.test\", token=os.environ[\"PICSURE_TOKEN\"]").contains("categories=[\"Female\"]")
             .endsWith("print(count.raw)\n");

@@ -26,7 +26,7 @@ The service only ever reads the open, obfuscated view of the data. Query calls g
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `PICSURE_GATEWAY_URL` | yes | The gateway's internal base URL, not httpd. Every outbound call goes here. |
+| `PICSURE_GATEWAY_URL` | yes | The gateway's internal base URL, not httpd. Every outbound call goes here. It must be the scheme (`http` or `https`), host, and optional port alone, such as `http://gateway:8080`, with no path, query, fragment, or user info, and startup fails otherwise. |
 | `MCP_SERVICE_TOKEN` | yes | Shared secret sent as `X-PIC-SURE-MCP-TOKEN` on loop-back calls so the gateway can mark them as MCP. Must match the gateway's value. |
 | `MCP_ADAPTER_BASE_URL` | yes | The site's public URL, written into generated adapter code. The adapters add `/picsure/...` themselves, so this is the host alone, such as `https://picsure.example.org`. |
 | `MCP_ADAPTER_INCLUDE_CONSENTS` | no, default `false` | Whether generated adapter code passes `include_consents=True`. True on BDC. |

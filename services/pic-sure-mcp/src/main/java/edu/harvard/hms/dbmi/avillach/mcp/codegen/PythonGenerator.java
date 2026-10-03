@@ -76,7 +76,7 @@ public final class PythonGenerator implements LanguageGenerator {
         lines.add("");
         lines.addAll(run(query.resultKind()));
         String code = String.join("\n", lines) + "\n";
-        String install = "pip install '" + PACKAGE + ">=" + setup.pythonMinVersion() + "'";
+        String install = "python3 -m pip install '" + PACKAGE + ">=" + setup.pythonMinVersion() + "'";
         return new GeneratedCode(Language.python, PACKAGE, setup.pythonMinVersion(), RUNTIME, CHECK, install, code);
     }
 

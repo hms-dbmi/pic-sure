@@ -27,7 +27,7 @@ class AdapterCodeToolConfigTest {
 
     private static final AdapterCodeResult RESULT = new AdapterCodeResult(
         "python", new AdapterCodeResult.Requires("picsure", "3.0.0", "Python >= 3.10"), "python3 -c \"check\"",
-        "pip install 'picsure>=3.0.0'", "import os\nimport picsure\n", null
+        "python3 -m pip install 'picsure>=3.0.0'", "import os\nimport picsure\n", null
     );
 
     private AdapterCodeTool adapterCodeTool;
@@ -66,7 +66,7 @@ class AdapterCodeToolConfigTest {
         assertThat(result.structuredContent()).isEqualTo(
             Map.of(
                 "language", "python", "requires", Map.of("package", "picsure", "minVersion", "3.0.0", "runtime", "Python >= 3.10"), "check",
-                "python3 -c \"check\"", "install", "pip install 'picsure>=3.0.0'", "code", "import os\nimport picsure\n"
+                "python3 -c \"check\"", "install", "python3 -m pip install 'picsure>=3.0.0'", "code", "import os\nimport picsure\n"
             )
         );
         assertThat(result.content()).hasSize(2);

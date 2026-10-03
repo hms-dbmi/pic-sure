@@ -188,9 +188,8 @@ public final class RGenerator implements LanguageGenerator {
      * Writes a string as a double-quoted, ASCII-only R literal. Backslashes and quotes are escaped, newline, carriage return, and tab use
      * their short escapes, and every other control character and everything outside printable ASCII becomes {@code \\uNNNN} or
      * {@code \\U{NNNNNNNN}}. R refuses a string that mixes {@code \\x} and {@code \\u} escapes, so {@code \\x} is never used. A NUL
-     * character or an unpaired surrogate cannot appear in an R string. The walk refuses both in filter and genomic filter values, and the
-     * query tools refuse every control character, NUL included, in concept paths, select entries, and genomic keys; an unpaired surrogate
-     * in one of those is not refused and is written as a {@code \\u} escape that R will not parse.
+     * character or an unpaired surrogate cannot appear in an R string, and neither reaches this method: the tools refuse both in every
+     * string the query carries.
      *
      * @param value the string
      * @return the literal

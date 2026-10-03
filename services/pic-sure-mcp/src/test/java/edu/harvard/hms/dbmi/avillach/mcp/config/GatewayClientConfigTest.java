@@ -204,7 +204,8 @@ class GatewayClientConfigTest {
     @ParameterizedTest
     @ValueSource(
         strings = {"https://user:secret-password@aio.example.org", "https://user:secret-password@aio example.org",
-            "aio:secret-password@aio.example.org", "https://user:secret-password@aio.example.org/picsure"}
+            "aio:secret-password@aio.example.org", "https://user:secret-password@aio.example.org/picsure",
+            "http://user:secret/secret-password@gateway:8080", "https://user:secret?secret-password@aio.example.org"}
     )
     void aRejectedBaseUrlIsNamedWithoutItsUserInfo(String baseUrl) {
         runner.withPropertyValues("picsure.mcp.adapter.base-url=" + baseUrl).run(context -> {
@@ -222,7 +223,8 @@ class GatewayClientConfigTest {
             "http://gateway:8080?next=1 | it must not carry a query", "http://gateway:8080#top | it must not carry a fragment",
             "http://user:secret-password@gateway:8080 | it must not carry user info", "gateway:8080 | it must be an absolute URL",
             "ftp://gateway:8080 | it must use http or https", "/gateway | it must be an absolute URL", "http:///path | it must name a host",
-            "http://gate way:8080 | it is not a valid URL"}
+            "http://gate way:8080 | it is not a valid URL", "http://user:secret/secret-password@gateway:8080 | it must name a host",
+            "https://user:secret?secret-password@gateway | it must name a host"}
     )
     void startupFailsWhenTheGatewayUrlIsNotABareOrigin(String gatewayUrl, String reason) {
         runner.withPropertyValues("picsure.mcp.gateway-url=" + gatewayUrl).run(context -> {
