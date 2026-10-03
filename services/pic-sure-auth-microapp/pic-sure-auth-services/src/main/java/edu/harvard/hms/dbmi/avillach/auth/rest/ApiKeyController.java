@@ -37,7 +37,7 @@ import java.util.UUID;
  * <p>Endpoints for open-access API keys. Key generation for anonymous users is public (CAPTCHA-gated); listing, platform-key minting, and
  * revocation are admin operations.</p> <br>The plaintext key appears only in the creation response body. It is never persisted or logged.
  */
-@Tag(name = "API Key Management", description = "Open-access API key generation, listing, and revocation")
+@Tag(name = "API Key Management", description = "Open-access API key generation, listing, and revocation.")
 @Controller
 public class ApiKeyController {
 
@@ -65,13 +65,15 @@ public class ApiKeyController {
         summary = "Generate an open-access USER API key",
         description = "Generate a USER API key for open access. Public endpoint, gated by CAPTCHA. The key is returned once and cannot be recovered."
     )
-    @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext")
-    @ApiResponse(responseCode = "400", description = "Generation is disabled, a metadata field is too long, or CAPTCHA verification failed")
+    @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext.")
+    @ApiResponse(
+        responseCode = "400", description = "Generation is disabled, a metadata field is too long, or CAPTCHA verification failed."
+    )
     @AuditEvent(type = "ACCESS", action = "api_key.create")
     @PostMapping(produces = "application/json", path = "/open/apiKey")
     public ResponseEntity<ApiKeyCreationResponse> createUserKey(
         @Parameter(
-            required = true, description = "captchaToken (required when CAPTCHA is enabled) and optional contact name/email"
+            required = true, description = "captchaToken (required when CAPTCHA is enabled) and optional contact name/email."
         ) @RequestBody UserApiKeyRequest keyRequest, HttpServletRequest request
     ) {
         if (!generationEnabled || !openIdpProviderIsEnabled) {
@@ -95,9 +97,9 @@ public class ApiKeyController {
 
     @Operation(
         summary = "List API key metadata",
-        description = "GET a page of API key metadata (never key material), newest first, optionally filtered by keyType"
+        description = "GET a page of API key metadata (never key material), newest first, optionally filtered by keyType."
     )
-    @ApiResponse(responseCode = "200", description = "A page of API key metadata")
+    @ApiResponse(responseCode = "200", description = "A page of API key metadata.")
     @AuditEvent(type = "OTHER", action = "api_key.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json", path = "/apiKey")
@@ -114,14 +116,14 @@ public class ApiKeyController {
             + " or neverExpires=true (mutually exclusive), or neither for the configured platform TTL default."
             + " The key is returned once and cannot be recovered."
     )
-    @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext")
-    @ApiResponse(responseCode = "400", description = "Name or email is missing or too long, or the expiry is invalid")
+    @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext.")
+    @ApiResponse(responseCode = "400", description = "Name or email is missing or too long, or the expiry is invalid.")
     @AuditEvent(type = "ADMIN", action = "api_key.platform.create")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(produces = "application/json", path = "/apiKey/platform")
     public ResponseEntity<ApiKeyCreationResponse> createPlatformKey(
         @Parameter(
-            required = true, description = "name and contact email (both required), optional ISO-8601 expiresAt"
+            required = true, description = "name and contact email (both required), optional ISO-8601 expiresAt."
         ) @RequestBody PlatformApiKeyRequest keyRequest, HttpServletRequest request
     ) {
         String name = normalize(keyRequest.name());
@@ -145,13 +147,13 @@ public class ApiKeyController {
     }
 
     @Operation(summary = "Revoke an API key", description = "Revoke an API key by UUID. Revocation is permanent.")
-    @ApiResponse(responseCode = "200", description = "The revoked key's metadata")
-    @ApiResponse(responseCode = "400", description = "The ID is not a UUID, or no key has that ID")
+    @ApiResponse(responseCode = "200", description = "The revoked key's metadata.")
+    @ApiResponse(responseCode = "400", description = "The ID is not a UUID, or no key has that ID.")
     @AuditEvent(type = "ADMIN", action = "api_key.revoke")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PutMapping(produces = "application/json", path = "/apiKey/{keyId}/revoke")
     public ResponseEntity<ApiKeyMetadata> revokeKey(
-        @Parameter(required = true, description = "UUID of the API key to revoke") @PathVariable("keyId") String keyId,
+        @Parameter(required = true, description = "UUID of the API key to revoke.") @PathVariable("keyId") String keyId,
         HttpServletRequest request
     ) {
         // the raw keyId is client-controlled: never echo it back or record it; the parsed UUID is canonical

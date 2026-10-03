@@ -155,8 +155,8 @@ public class UserController {
      * @param httpHeaders the http headers
      * @return the refreshed long term token
      */
-    @Operation(summary = "Issue the caller a new long-term token", description = "refresh the long term tokne of current user")
-    @ApiResponse(responseCode = "200", description = "A new long term token for the caller")
+    @Operation(summary = "Issue the caller a new long-term token", description = "Refresh the long term token of the current user.")
+    @ApiResponse(responseCode = "200", description = "A new long term token for the caller.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
     public ResponseEntity<LongTermTokenResponse> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
@@ -171,8 +171,8 @@ public class UserController {
         return PICSUREResponse.success(new LongTermTokenResponse(refreshed.get("userLongTermToken")));
     }
 
-    @Operation(summary = "The caller's consents", description = "Retrieve consents of current user")
-    @ApiResponse(responseCode = "200", description = "The caller's consents")
+    @Operation(summary = "The caller's consents", description = "Retrieve consents of current user.")
+    @ApiResponse(responseCode = "200", description = "The caller's consents.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
     public ResponseEntity<UserConsentsResponse> getUserConsents() {

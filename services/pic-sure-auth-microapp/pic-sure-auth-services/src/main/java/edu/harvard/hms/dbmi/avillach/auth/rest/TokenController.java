@@ -36,7 +36,7 @@ import java.util.Map;
  * authorization {@link AuthorizationService} at the access rule level, but this endpoint handles token validation and pre-check at the
  * privilege level.</p>
  */
-@Tag(name = "Token Management", description = "Token introspection and refresh")
+@Tag(name = "Token Management", description = "Token introspection and refresh.")
 @Controller
 @RequestMapping("/token")
 public class TokenController {
@@ -54,9 +54,9 @@ public class TokenController {
 
     @Operation(
         summary = "Introspect a token on behalf of an application",
-        description = "Token introspection endpoint for user to retrieve a valid token"
+        description = "Token introspection endpoint for user to retrieve a valid token."
     )
-    @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active")
+    @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active.")
     @AuditEvent(type = "ACCESS", action = "token.introspect")
     @PostMapping(path = "/inspect", produces = "application/json")
     public ResponseEntity<TokenInspectionResponse> inspectToken(
@@ -95,10 +95,10 @@ public class TokenController {
         return PICSUREResponse.success(TokenInspectionResponse.from(resultMap));
     }
 
-    @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user")
-    @ApiResponse(responseCode = "200", description = "A refreshed token and its expiration date")
-    @ApiResponse(responseCode = "400", description = "The user no longer exists or is deactivated")
-    @ApiResponse(responseCode = "401", description = "The token's session has ended, expired, or been replaced by a newer login")
+    @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user.")
+    @ApiResponse(responseCode = "200", description = "A refreshed token and its expiration date.")
+    @ApiResponse(responseCode = "400", description = "The user no longer exists or is deactivated.")
+    @ApiResponse(responseCode = "401", description = "The token's session has ended, expired, or been replaced by a newer login.")
     @AuditEvent(type = "ACCESS", action = "token.refresh")
     @GetMapping(path = "/refresh", produces = "application/json")
     public ResponseEntity<RefreshedTokenResponse> refreshToken(
