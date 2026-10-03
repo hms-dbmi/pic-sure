@@ -32,8 +32,8 @@ public record TokenInspectionRequest(
 ) {
 
     /**
-     * Returns the body as the mutable map the token service reads, with {@code request} converted to the plain maps, lists and scalars a
-     * {@code Map<String, Object>} binding would have produced, so the access rules see the same tree they always did.
+     * Returns the body as the mutable map the token service reads, with {@code request} converted to the plain maps, lists and scalars of a
+     * {@code Map<String, Object>}, so the access rules evaluate their JSON paths against plain Java values.
      *
      * @param mapper the mapper that converts the request tree
      * @return a mutable map holding the members that were sent

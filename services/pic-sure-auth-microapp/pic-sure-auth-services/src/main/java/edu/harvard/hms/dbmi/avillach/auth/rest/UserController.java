@@ -7,7 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.UserConsentsResponse;
-import edu.harvard.hms.dbmi.avillach.auth.model.response.UserForDisplay;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.UserResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -127,18 +127,18 @@ public class UserController {
      * Returns the caller's profile. The profile always carries the caller's long-term token, which is issued and saved on the first read.
      * The {@code hasToken} query parameter is accepted and has no effect.
      */
-    @Operation(summary = "The caller's profile, with the long-term token", description = "Retrieve information of current user")
-    @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token")
+    @Operation(summary = "The caller's profile, with the long-term token", description = "Retrieve information of current user.")
+    @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
-    public ResponseEntity<UserForDisplay> getCurrentUser(
+    public ResponseEntity<UserProfileResponse> getCurrentUser(
         @RequestHeader("Authorization") String authorizationHeader,
-        @Parameter(description = "Accepted for compatibility; the long-term token is included whether or not it is sent") @RequestParam(
+        @Parameter(description = "Accepted for compatibility; the long-term token is included whether or not it is sent.") @RequestParam(
             name = "hasToken", required = false
         ) Boolean hasToken
     ) {
         logger.info("getCurrentUser() authorizationHeader: {}, hasToken {}", authorizationHeader, hasToken);
-        UserForDisplay currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
+        UserProfileResponse currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
 
         if (currentUser == null) {
             throw new PicSureResponseException(
@@ -155,8 +155,8 @@ public class UserController {
      * @param httpHeaders the http headers
      * @return the refreshed long term token
      */
-    @Operation(summary = "Issue the caller a new long-term token", description = "refresh the long term tokne of current user")
-    @ApiResponse(responseCode = "200", description = "A new long term token for the caller")
+    @Operation(summary = "Issue the caller a new long-term token", description = "Refresh the long term token of the current user.")
+    @ApiResponse(responseCode = "200", description = "A new long term token for the caller.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
     public ResponseEntity<LongTermTokenResponse> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
@@ -171,8 +171,8 @@ public class UserController {
         return PICSUREResponse.success(new LongTermTokenResponse(refreshed.get("userLongTermToken")));
     }
 
-    @Operation(summary = "The caller's consents", description = "Retrieve consents of current user")
-    @ApiResponse(responseCode = "200", description = "The caller's consents")
+    @Operation(summary = "The caller's consents", description = "Retrieve consents of current user.")
+    @ApiResponse(responseCode = "200", description = "The caller's consents.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
     public ResponseEntity<UserConsentsResponse> getUserConsents() {

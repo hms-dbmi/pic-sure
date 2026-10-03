@@ -35,9 +35,9 @@ public record OpenAccessValidationRequest(
 ) {
 
     /**
-     * Returns the body as the map the authorization service reads, with {@code request} converted to the plain maps, lists and scalars a
-     * {@code Map<String, Object>} binding would have produced. A body with no members gives an empty map, which the service treats as a
-     * request with nothing to evaluate.
+     * Returns the body as the map the authorization service reads, with {@code request} converted to the plain maps, lists and scalars of a
+     * {@code Map<String, Object>}. A body with no members gives an empty map, which the service treats as a request with nothing to
+     * evaluate.
      *
      * @param mapper the mapper that converts the request tree
      * @return a mutable map holding the members that were sent

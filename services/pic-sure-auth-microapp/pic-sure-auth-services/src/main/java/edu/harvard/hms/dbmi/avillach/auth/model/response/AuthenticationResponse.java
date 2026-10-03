@@ -10,7 +10,7 @@ import java.util.Map;
  * as a {@code Map<String, String>}: {@code acceptedTOS} is the text {@code "true"} or {@code "false"}, not a boolean.
  *
  * <p>The components are declared in the order the providers' {@code HashMap} emitted them, which is fixed by the keys' hash codes, so a
- * response serializes to the same bytes as before. {@code oktaIdToken} is present only when an Okta-brokered provider (RAS, AIM-AHEAD)
+ * response serializes its members in that fixed order. {@code oktaIdToken} is present only when an Okta-brokered provider (RAS, AIM-AHEAD)
  * answered; the other members are always present, {@code email} as {@code null} when the user has none.</p>
  *
  * @param acceptedTOS whether the user has accepted the current terms of service, as the text {@code "true"} or {@code "false"}

@@ -33,7 +33,7 @@ import java.util.HashMap;
 /**
  * <p>The authentication endpoint for PSAMA.</p>
  */
-@Tag(name = "Authentication", description = "Exchange an identity provider login for a PIC-SURE token")
+@Tag(name = "Authentication", description = "Exchange an identity provider login for a PIC-SURE token.")
 @Controller
 @RequestMapping("/")
 public class AuthenticationController {
@@ -49,12 +49,12 @@ public class AuthenticationController {
 
     @Operation(
         summary = "Exchange an identity provider's code for a PIC-SURE token",
-        description = "The authentication endpoint for retrieving a valid user token"
+        description = "The authentication endpoint for retrieving a valid user token."
     )
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "A PIC-SURE token for the authenticated user"),
-            @ApiResponse(responseCode = "400", description = "No enabled identity provider has that name"),
-            @ApiResponse(responseCode = "401", description = "The identity provider rejected the code, or the code is malformed")}
+        {@ApiResponse(responseCode = "200", description = "A PIC-SURE token for the authenticated user."),
+            @ApiResponse(responseCode = "400", description = "No enabled identity provider has that name."),
+            @ApiResponse(responseCode = "401", description = "The identity provider rejected the code, or the code is malformed.")}
     )
     @AuditEvent(type = "AUTH", action = "auth.login")
     @PostMapping(path = "/authentication/{idpProvider}", consumes = "application/json", produces = "application/json")
@@ -62,7 +62,7 @@ public class AuthenticationController {
         @PathVariable("idpProvider") String idpProvider,
         @Parameter(
             required = true,
-            description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI"
+            description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI."
         ) @RequestBody AuthenticationRequest authRequest, HttpServletRequest request
     ) throws IOException {
         logger.debug("authentication() starting...");

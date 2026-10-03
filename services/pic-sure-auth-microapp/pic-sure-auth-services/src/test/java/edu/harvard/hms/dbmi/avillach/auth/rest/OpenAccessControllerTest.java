@@ -22,8 +22,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 
 /**
- * {@code POST /open/validate} answers the bare boolean the authorization service decides, hands the service the gateway's body as the plain
- * map it always read, answers {@code false} without consulting it when open access is off, and no longer answers any other verb.
+ * {@code POST /open/validate} answers the bare boolean the authorization service decides, hands the service the gateway's body as a plain
+ * map, answers {@code false} without consulting it when open access is off, and answers no other verb.
  */
 class OpenAccessControllerTest {
 

@@ -35,7 +35,7 @@ import java.util.Optional;
 /**
  * <p>Endpoint for creating and updating terms of service entities. Records when a user accepts a term of service.</p>
  */
-@Tag(name = "Terms of Service Management", description = "Terms of service text and acceptance")
+@Tag(name = "Terms of Service Management", description = "Terms of service text and acceptance.")
 @Controller
 @RequestMapping("/tos")
 public class TermsOfServiceController {
@@ -50,9 +50,9 @@ public class TermsOfServiceController {
         this.userService = userService;
     }
 
-    @Operation(summary = "The current terms of service as HTML", description = "GET the latest Terms of Service")
+    @Operation(summary = "The current terms of service as HTML", description = "GET the latest Terms of Service.")
     @ApiResponse(
-        responseCode = "200", description = "The current terms of service as HTML, or an empty body when none are stored",
+        responseCode = "200", description = "The current terms of service as HTML, or an empty body when none are stored.",
         content = @Content(
             mediaType = "text/html",
             schema = @Schema(
@@ -68,9 +68,9 @@ public class TermsOfServiceController {
         return PICSUREResponse.success(tosService.getLatest());
     }
 
-    @Operation(summary = "Replace the terms of service", description = "Update the Terms of Service html body")
+    @Operation(summary = "Replace the terms of service", description = "Update the Terms of Service html body.")
     @ApiResponse(
-        responseCode = "200", description = "The stored terms of service, or an empty body when the store could not read them back"
+        responseCode = "200", description = "The stored terms of service, or an empty body when the store could not read them back."
     )
     @AuditEvent(type = "ADMIN", action = "tos.update")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -91,10 +91,10 @@ public class TermsOfServiceController {
     }
 
     @Operation(
-        summary = "Whether the caller has accepted the current terms", description = "GET if current user has acceptted his TOS or not"
+        summary = "Whether the caller has accepted the current terms", description = "GET if current user has accepted his TOS or not."
     )
     @ApiResponse(
-        responseCode = "200", description = "True when the caller has accepted the current terms",
+        responseCode = "200", description = "True when the caller has accepted the current terms.",
         content = @Content(
             mediaType = "text/plain",
             schema = @Schema(type = "boolean", description = "True when the caller has accepted the current terms of service.")
@@ -111,9 +111,9 @@ public class TermsOfServiceController {
     }
 
     @Operation(
-        summary = "Accept the current terms for the caller", description = "Endpoint for current user to accept his terms of service"
+        summary = "Accept the current terms for the caller", description = "Endpoint for current user to accept his terms of service."
     )
-    @ApiResponse(responseCode = "200", description = "The terms were accepted; the response has no body")
+    @ApiResponse(responseCode = "200", description = "The terms were accepted; the response has no body.")
     @AuditEvent(type = "ACCESS", action = "tos.accept")
     @PostMapping(path = "/accept", produces = "application/json")
     public ResponseEntity<Void> acceptTermsOfService(HttpServletRequest request) {
