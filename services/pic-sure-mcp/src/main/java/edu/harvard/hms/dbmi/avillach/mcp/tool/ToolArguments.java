@@ -3,8 +3,11 @@ package edu.harvard.hms.dbmi.avillach.mcp.tool;
 /** Argument checks shared by the tools. Spring AI does not validate arguments against the input schema, so each tool does it. */
 public final class ToolArguments {
 
-    /** Longest search text accepted, in characters. */
-    public static final int MAX_SEARCH_LENGTH = 500;
+    /**
+     * Longest search text accepted, in characters. The dictionary cuts a longer search to this length before it strips punctuation, so a
+     * longer one would be searched only in part.
+     */
+    public static final int MAX_SEARCH_LENGTH = 200;
 
     private ToolArguments() {}
 
