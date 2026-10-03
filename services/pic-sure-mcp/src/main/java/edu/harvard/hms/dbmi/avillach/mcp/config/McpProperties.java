@@ -66,6 +66,9 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
     }
 
     private static URI parse(String property, String url) {
+        if (hasUserInfo(url)) {
+            throw invalid(property, url, "it must not carry user info");
+        }
         URI uri;
         try {
             uri = new URI(url);
@@ -82,9 +85,6 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
     }
 
     private static void requireBareOrigin(String property, String url, URI uri) {
-        if (uri.getRawUserInfo() != null) {
-            throw invalid(property, url, "it must not carry user info");
-        }
         if (uri.getRawQuery() != null) {
             throw invalid(property, url, "it must not carry a query");
         }
@@ -111,13 +111,29 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
      * @return the URL with any user info replaced
      */
     static String redactUserInfo(String url) {
-        int schemeEnd = url.indexOf("://");
-        int start = schemeEnd < 0 ? 0 : schemeEnd + 3;
+        int start = authorityStart(url);
         int at = url.lastIndexOf('@');
         if (at < start) {
             return url;
         }
         return url.substring(0, start) + REDACTED + url.substring(at);
+    }
+
+    /**
+     * Whether a URL with a scheme separator has an {@code @} anywhere after it, the same span {@link #redactUserInfo} replaces. The raw
+     * text is checked before parsing, because a password holding {@code /}, {@code ?}, or {@code #} ends the authority early and leaves
+     * {@link URI} with no user info and no host.
+     *
+     * @param url the URL as configured
+     * @return true when the URL carries user info
+     */
+    private static boolean hasUserInfo(String url) {
+        return url.contains("://") && url.lastIndexOf('@') >= authorityStart(url);
+    }
+
+    private static int authorityStart(String url) {
+        int schemeEnd = url.indexOf("://");
+        return schemeEnd < 0 ? 0 : schemeEnd + 3;
     }
 
     /**

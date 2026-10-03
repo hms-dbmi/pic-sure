@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.mcp.audit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -44,7 +45,8 @@ import java.util.stream.IntStream;
 /**
  * Covers {@link ToolAuditAspect} around the real tool classes, proxied the way Spring proxies them: one event per call with the
  * annotation's type and action, the outcome, the request ID, the user ID and only the allow-listed argument fields, no credential or query
- * body in any event, a logging failure that never reaches the tool, and a request ID that is in the MDC for the call and gone after it.
+ * body in any event, a logging failure that never reaches the tool, a request ID that is in the MDC for the call and gone after it, and an
+ * unexpected exception from any tool recorded as an internal failure and rethrown as the fixed {@link ToolFailure#unexpected()}.
  */
 class ToolAuditAspectTest {
 
@@ -52,6 +54,7 @@ class ToolAuditAspectTest {
     private static final String API_KEY = "SECRET-API-KEY-93ab";
     private static final String MCP_TOKEN = "SECRET-MCP-TOKEN-51d0";
     private static final String BODY_PATH = "SECRET-BODY-PATH-e402";
+    private static final String LEAK = "SECRET-EXCEPTION-MESSAGE-5b19";
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private LoggingClient client;
@@ -97,6 +100,14 @@ class ToolAuditAspectTest {
         ArgumentCaptor<LoggingEvent> event = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client, times(1)).send(event.capture(), isNull(), org.mockito.ArgumentMatchers.eq("req-42"));
         return event.getValue();
+    }
+
+    private void assertUnexpectedFailure(Runnable call) {
+        assertThatThrownBy(call::run).isExactlyInstanceOf(ToolFailure.class).hasMessage(ToolFailure.UNEXPECTED_MESSAGE).hasNoCause();
+
+        LoggingEvent event = onlyEvent();
+        assertThat(event.getMetadata()).containsEntry("outcome", "failure");
+        assertThat(event.getError()).containsExactly(Map.entry("error_type", "internal"));
     }
 
     private static String serialized(LoggingEvent event) throws Exception {
@@ -223,14 +234,47 @@ class ToolAuditAspectTest {
     }
 
     @Test
-    void anUnexpectedExceptionIsAnInternalFailureEventAndRethrows() {
-        when(dictionary.listFacets(any(), any())).thenThrow(new IllegalStateException("boom"));
+    void anUnexpectedExceptionInListFacetsIsAnInternalFailureEventAndAFixedToolFailure() {
+        when(dictionary.listFacets(any(), any())).thenThrow(new IllegalStateException(LEAK));
 
-        assertThatThrownBy(() -> facets.listFacets(context, null)).isInstanceOf(RuntimeException.class);
+        assertUnexpectedFailure(() -> facets.listFacets(context, null));
+    }
 
-        LoggingEvent event = onlyEvent();
-        assertThat(event.getMetadata()).containsEntry("outcome", "failure");
-        assertThat(event.getError()).containsExactly(Map.entry("error_type", "internal"));
+    @Test
+    void anUnexpectedExceptionInSearchConceptsIsAnInternalFailureEventAndAFixedToolFailure() {
+        when(dictionary.searchConcepts(any(), anyInt(), anyInt(), any())).thenThrow(new IllegalStateException(LEAK));
+
+        assertUnexpectedFailure(() -> search.searchConcepts(context, "sex", null, null, null));
+    }
+
+    @Test
+    void anUnexpectedExceptionInOneParallelTermIsAnInternalFailureEventAndAFixedToolFailure() {
+        when(dictionary.searchConcepts(any(), anyInt(), anyInt(), any())).thenReturn(new DictionaryPage(List.of(), 0L, null));
+        when(dictionary.searchConcepts(org.mockito.ArgumentMatchers.eq("bp"), anyInt(), anyInt(), any()))
+            .thenThrow(new IllegalStateException(LEAK));
+
+        assertUnexpectedFailure(() -> search.searchConcepts(context, null, List.of("sex", "bp"), null, null));
+    }
+
+    @Test
+    void anUnexpectedExceptionInGetConceptIsAnInternalFailureEventAndAFixedToolFailure() {
+        when(dictionary.conceptDetail(any(), any(), any())).thenThrow(new IllegalStateException(LEAK));
+
+        assertUnexpectedFailure(() -> detail.getConcept(context, "phs1", "\\phs1\\sex\\"));
+    }
+
+    @Test
+    void anUnexpectedExceptionInGetConceptsIsAnInternalFailureEventAndAFixedToolFailure() {
+        when(dictionary.conceptsDetail(any(), any())).thenThrow(new IllegalStateException(LEAK));
+
+        assertUnexpectedFailure(() -> batchDetail.getConcepts(context, List.of("\\phs1\\sex\\")));
+    }
+
+    @Test
+    void anUnexpectedExceptionInAQueryToolHandleIsAlsoAFixedToolFailure() {
+        when(openQuery.querySync(any(), any())).thenThrow(new IllegalStateException(LEAK));
+
+        assertUnexpectedFailure(() -> count.handle(context, Map.of("query", Map.of("phenotypicClause", filter(BODY_PATH)))));
     }
 
     @Test

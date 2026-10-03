@@ -36,6 +36,11 @@ import java.util.stream.Collectors;
  *
  * <p>Sending is fire-and-forget. A failure to build or send an event is logged once at WARN with its exception class and never reaches the
  * tool call.
+ *
+ * <p>A runtime exception other than {@link ToolFailure} is recorded as {@code internal}, logged at ERROR with its class and the frame that
+ * threw it, and rethrown as {@link ToolFailure#unexpected()}. Its message is never logged or rethrown, because it can carry downstream
+ * text, and Spring AI would otherwise hand it to the model as the {@code isError} text of an {@code @McpTool} call. A {@link ToolFailure}
+ * and an {@link Error} are rethrown unchanged.
  */
 @Aspect
 @Component
@@ -68,7 +73,8 @@ public class ToolAuditAspect {
      * @param joinPoint the tool method call
      * @param audit the annotation on the method
      * @return whatever the tool returns
-     * @throws Throwable whatever the tool throws, unchanged
+     * @throws ToolFailure what the tool threw, or {@link ToolFailure#unexpected()} in place of any other runtime exception
+     * @throws Throwable an {@link Error} or checked exception the tool threw, unchanged
      */
     @Around("@annotation(audit) && within(edu.harvard.hms.dbmi.avillach.mcp.tool..*)")
     public Object audit(ProceedingJoinPoint joinPoint, AuditEvent audit) throws Throwable {
@@ -79,11 +85,21 @@ public class ToolAuditAspect {
                 result = joinPoint.proceed();
             } catch (Throwable failure) {
                 emit(joinPoint, audit, headers, failure);
-                throw failure;
+                throw modelFacing(audit, failure);
             }
             emit(joinPoint, audit, headers, null);
             return result;
         }
+    }
+
+    private static Throwable modelFacing(AuditEvent audit, Throwable failure) {
+        if (!(failure instanceof RuntimeException) || failure instanceof ToolFailure) {
+            return failure;
+        }
+        StackTraceElement[] frames = failure.getStackTrace();
+        Object origin = frames.length == 0 ? "an unknown frame" : frames[0];
+        log.error("Tool call {} failed unexpectedly with {} at {}", audit.action(), failure.getClass().getName(), origin);
+        return ToolFailure.unexpected();
     }
 
     private void emit(ProceedingJoinPoint joinPoint, AuditEvent audit, CallerHeaders headers, Throwable failure) {
