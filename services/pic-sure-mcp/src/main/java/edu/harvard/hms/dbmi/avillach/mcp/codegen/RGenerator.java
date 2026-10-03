@@ -82,7 +82,8 @@ public final class RGenerator implements LanguageGenerator {
         lines.add("");
         lines.addAll(run(query.resultKind()));
         String code = String.join("\n", lines) + "\n";
-        String install = "Rscript -e 'remotes::install_github(\"" + REPOSITORY + "@" + setup.rTag() + "\")'";
+        String install = "Rscript -e 'if (!requireNamespace(\"remotes\", quietly = TRUE)) install.packages(\"remotes\", "
+            + "repos = \"https://cloud.r-project.org\"); " + "remotes::install_github(\"" + REPOSITORY + "@" + setup.rTag() + "\")'";
         return new GeneratedCode(Language.r, PACKAGE, setup.rTag(), RUNTIME, CHECK, install, code);
     }
 
@@ -187,7 +188,9 @@ public final class RGenerator implements LanguageGenerator {
      * Writes a string as a double-quoted, ASCII-only R literal. Backslashes and quotes are escaped, newline, carriage return, and tab use
      * their short escapes, and every other control character and everything outside printable ASCII becomes {@code \\uNNNN} or
      * {@code \\U{NNNNNNNN}}. R refuses a string that mixes {@code \\x} and {@code \\u} escapes, so {@code \\x} is never used. A NUL
-     * character or an unpaired surrogate cannot appear in an R string; the walk refuses both before a generator runs.
+     * character or an unpaired surrogate cannot appear in an R string. The walk refuses both in filter and genomic filter values, and the
+     * query tools refuse every control character, NUL included, in concept paths, select entries, and genomic keys; an unpaired surrogate
+     * in one of those is not refused and is written as a {@code \\u} escape that R will not parse.
      *
      * @param value the string
      * @return the literal

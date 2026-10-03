@@ -86,7 +86,7 @@ class AdapterCodeToolTest {
         server.verify();
         assertThat(result.language()).isEqualTo("python");
         assertThat(result.requires()).isEqualTo(new AdapterCodeResult.Requires("picsure", "3.0.0", "Python >= 3.10"));
-        assertThat(result.check()).isEqualTo("python -c \"import importlib.metadata as m; print(m.version('picsure'))\"");
+        assertThat(result.check()).isEqualTo("python3 -c \"import importlib.metadata as m; print(m.version('picsure'))\"");
         assertThat(result.install()).isEqualTo("pip install 'picsure>=3.0.0'");
         assertThat(result.code()).startsWith("import os\nimport picsure\n\nsession = picsure.connect(\"https://picsure.example.org\"")
             .contains("includeConcepts=[").contains("output_path = \"picsure_results/participant.csv\"");
@@ -205,6 +205,18 @@ class AdapterCodeToolTest {
         assertThat(result.code()).contains("picsure.buildQuery(");
         assertThat(result.setupText())
             .endsWith("Warning: Concept path not found in the dictionary, check it with search_concepts: \\phs1\\age\\");
+    }
+
+    @Test
+    void aConceptCheckWithNoResponseBodyIsAWarningRatherThanEveryPathNotFound() throws Exception {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail")).andRespond(withSuccess());
+
+        AdapterCodeResult result = tool.handle(context, arguments("count", "python", true));
+
+        server.verify();
+        assertThat(result.warnings()).containsExactly(
+            "The concept paths could not be checked against the dictionary: The dictionary is unavailable. Try again shortly."
+        );
     }
 
     @Test
