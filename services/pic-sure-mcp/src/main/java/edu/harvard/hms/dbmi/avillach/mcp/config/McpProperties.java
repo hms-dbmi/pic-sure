@@ -13,8 +13,9 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Binds {@code picsure.mcp.*}. Startup fails when the gateway URL, the service token, or the adapter base URL is blank, or when the adapter
- * base URL is not a bare site URL (see {@link Adapter#requireSiteUrl}).
+ * Binds {@code picsure.mcp.*}. Startup fails when the gateway URL, the service token, or the adapter base URL is blank, when the gateway
+ * URL is not a bare origin (see {@link #requireGatewayUrl}), or when the adapter base URL is not a bare site URL (see
+ * {@link Adapter#requireSiteUrl}). A rejected URL is named in the startup error with its user info replaced by {@value #REDACTED}.
  *
  * @param gatewayUrl base URL of the PIC-SURE gateway every outbound call goes through, from {@code PICSURE_GATEWAY_URL}
  * @param serviceToken the credential sent as {@code X-PIC-SURE-MCP-TOKEN} on every loop-back call, from {@code MCP_SERVICE_TOKEN}
@@ -23,6 +24,104 @@ import java.util.Set;
 @Validated
 @ConfigurationProperties("picsure.mcp")
 public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String serviceToken, @Valid @NotNull Adapter adapter) {
+
+    /** What a rejected URL's user info is replaced with in a startup error. */
+    public static final String REDACTED = "<redacted>";
+
+    private static final String GATEWAY_URL_PROPERTY = "picsure.mcp.gateway-url";
+
+    private static final String BASE_URL_PROPERTY = "picsure.mcp.adapter.base-url";
+
+    /**
+     * Checks the gateway URL. A blank one is left to {@code @NotBlank}.
+     *
+     * @throws IllegalArgumentException if a non-blank gateway URL is not a bare origin, which fails startup
+     */
+    public McpProperties {
+        if (gatewayUrl != null && !gatewayUrl.isBlank()) {
+            requireGatewayUrl(gatewayUrl);
+        }
+    }
+
+    /**
+     * Requires a bare gateway origin, because every outbound call is resolved against it and the gateway client refuses any other target.
+     * The URL must be absolute with scheme {@code http} or {@code https} in any case, must name a host, and may carry a port but no user
+     * info, no query, no fragment, and no path other than {@code /}.
+     *
+     * @param gatewayUrl the configured gateway URL, not blank
+     * @return the parsed gateway URL
+     * @throws IllegalArgumentException naming the property and what is wrong with the value
+     */
+    static URI requireGatewayUrl(String gatewayUrl) {
+        URI uri = parse(GATEWAY_URL_PROPERTY, gatewayUrl);
+        String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+        if (!scheme.equals("https") && !scheme.equals("http")) {
+            throw invalid(GATEWAY_URL_PROPERTY, gatewayUrl, "it must use http or https");
+        }
+        requireBareOrigin(GATEWAY_URL_PROPERTY, gatewayUrl, uri);
+        if (!isRootPath(uri)) {
+            throw invalid(GATEWAY_URL_PROPERTY, gatewayUrl, "it must be the gateway origin alone, with no path");
+        }
+        return uri;
+    }
+
+    private static URI parse(String property, String url) {
+        URI uri;
+        try {
+            uri = new URI(url);
+        } catch (URISyntaxException e) {
+            throw invalid(property, url, "it is not a valid URL");
+        }
+        if (uri.getScheme() == null || uri.isOpaque()) {
+            throw invalid(property, url, "it must be an absolute URL such as https://picsure.example.org");
+        }
+        if (uri.getHost() == null || uri.getHost().isEmpty()) {
+            throw invalid(property, url, "it must name a host");
+        }
+        return uri;
+    }
+
+    private static void requireBareOrigin(String property, String url, URI uri) {
+        if (uri.getRawUserInfo() != null) {
+            throw invalid(property, url, "it must not carry user info");
+        }
+        if (uri.getRawQuery() != null) {
+            throw invalid(property, url, "it must not carry a query");
+        }
+        if (uri.getRawFragment() != null) {
+            throw invalid(property, url, "it must not carry a fragment");
+        }
+    }
+
+    private static boolean isRootPath(URI uri) {
+        String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+        return path.isEmpty() || path.equals("/");
+    }
+
+    private static IllegalArgumentException invalid(String property, String url, String reason) {
+        return new IllegalArgumentException(property + " \"" + redactUserInfo(url) + "\" is not allowed: " + reason);
+    }
+
+    /**
+     * Replaces the user info of a URL with {@value #REDACTED}, so a startup error never prints a password. It works on the raw text and
+     * needs no valid URL: everything in the authority before its last {@code @} is user info.
+     *
+     * @param url the URL as configured
+     * @return the URL with any user info replaced
+     */
+    static String redactUserInfo(String url) {
+        int schemeEnd = url.indexOf("://");
+        int start = schemeEnd < 0 ? 0 : schemeEnd + 3;
+        int end = start;
+        while (end < url.length() && "/?#".indexOf(url.charAt(end)) < 0) {
+            end++;
+        }
+        int at = url.lastIndexOf('@', end - 1);
+        if (at < start) {
+            return url;
+        }
+        return url.substring(0, start) + REDACTED + url.substring(at);
+    }
 
     /**
      * Describes the properties without the service token.
@@ -59,14 +158,15 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
         public static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1");
 
         /**
-         * Checks the base URL and fills in the defaults: {@link #DEFAULT_PYTHON_MIN_VERSION} for a missing or blank Python version, and
-         * {@link #DEFAULT_R_TAG} for a missing or blank R tag. A blank base URL is left to {@code @NotBlank}.
+         * Checks the base URL, stores it with its scheme lowercased, and fills in the defaults: {@link #DEFAULT_PYTHON_MIN_VERSION} for a
+         * missing or blank Python version, and {@link #DEFAULT_R_TAG} for a missing or blank R tag. A blank base URL is left to
+         * {@code @NotBlank}.
          *
          * @throws IllegalArgumentException if a non-blank base URL is not a bare site URL, which fails startup
          */
         public Adapter {
             if (baseUrl != null && !baseUrl.isBlank()) {
-                requireSiteUrl(baseUrl);
+                baseUrl = requireSiteUrl(baseUrl);
             }
             pythonMinVersion = pythonMinVersion == null || pythonMinVersion.isBlank() ? DEFAULT_PYTHON_MIN_VERSION : pythonMinVersion;
             rTag = rTag == null || rTag.isBlank() ? DEFAULT_R_TAG : rTag;
@@ -74,52 +174,30 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
 
         /**
          * Requires a bare site URL, because the user's token is sent to it and it is written into every generated script. The URL must be
-         * absolute with scheme {@code https}, or {@code http} on {@code localhost} or {@code 127.0.0.1}; it must name a host; and it may
-         * carry a port but no user info, no query, no fragment, and no path other than {@code /}. A path of {@code /picsure} is refused
-         * with its own message, since the adapters add it themselves.
+         * absolute with scheme {@code https}, or {@code http} on {@code localhost} or {@code 127.0.0.1}, in any case; it must name a host;
+         * and it may carry a port but no user info, no query, no fragment, and no path other than {@code /}. A path of {@code /picsure} is
+         * refused with its own message, since the adapters add it themselves.
          *
          * @param baseUrl the configured base URL, not blank
+         * @return the base URL with its scheme lowercased, so generated code never carries {@code HTTPS://}
          * @throws IllegalArgumentException naming the property and what is wrong with the value
          */
-        static void requireSiteUrl(String baseUrl) {
-            URI uri;
-            try {
-                uri = new URI(baseUrl);
-            } catch (URISyntaxException e) {
-                throw invalid(baseUrl, "it is not a valid URL");
-            }
-            String scheme = uri.getScheme();
-            if (scheme == null || uri.isOpaque()) {
-                throw invalid(baseUrl, "it must be an absolute URL such as https://picsure.example.org");
-            }
-            String host = uri.getHost();
-            if (host == null || host.isEmpty()) {
-                throw invalid(baseUrl, "it must name a host");
-            }
-            boolean loopback = LOOPBACK_HOSTS.contains(host.toLowerCase(Locale.ROOT));
+        static String requireSiteUrl(String baseUrl) {
+            URI uri = parse(BASE_URL_PROPERTY, baseUrl);
+            String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+            boolean loopback = LOOPBACK_HOSTS.contains(uri.getHost().toLowerCase(Locale.ROOT));
             if (!scheme.equals("https") && !(scheme.equals("http") && loopback)) {
-                throw invalid(baseUrl, "it must use https, or http only on localhost or 127.0.0.1");
+                throw invalid(BASE_URL_PROPERTY, baseUrl, "it must use https, or http only on localhost or 127.0.0.1");
             }
-            if (uri.getRawUserInfo() != null) {
-                throw invalid(baseUrl, "it must not carry user info");
-            }
-            if (uri.getRawQuery() != null) {
-                throw invalid(baseUrl, "it must not carry a query");
-            }
-            if (uri.getRawFragment() != null) {
-                throw invalid(baseUrl, "it must not carry a fragment");
-            }
+            requireBareOrigin(BASE_URL_PROPERTY, baseUrl, uri);
             String path = uri.getRawPath() == null ? "" : uri.getRawPath();
             if (path.equalsIgnoreCase("/picsure") || path.equalsIgnoreCase("/picsure/")) {
-                throw invalid(baseUrl, "leave off /picsure, because the adapters add it themselves");
+                throw invalid(BASE_URL_PROPERTY, baseUrl, "leave off /picsure, because the adapters add it themselves");
             }
-            if (!path.isEmpty() && !path.equals("/")) {
-                throw invalid(baseUrl, "it must be the site URL alone, with no path");
+            if (!isRootPath(uri)) {
+                throw invalid(BASE_URL_PROPERTY, baseUrl, "it must be the site URL alone, with no path");
             }
-        }
-
-        private static IllegalArgumentException invalid(String baseUrl, String reason) {
-            return new IllegalArgumentException("picsure.mcp.adapter.base-url \"" + baseUrl + "\" is not allowed: " + reason);
+            return scheme + baseUrl.substring(uri.getScheme().length());
         }
     }
 }
