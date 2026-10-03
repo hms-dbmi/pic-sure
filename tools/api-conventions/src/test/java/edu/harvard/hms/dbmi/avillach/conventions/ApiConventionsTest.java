@@ -125,6 +125,11 @@ class ApiConventionsTest {
         report("property-metadata-complete", overAllModules((module, classes) -> ConfigurationRules.metadataIsComplete(module, metadata(module))));
     }
 
+    @Test
+    void noGetHandlerNarrowsConsumes() {
+        report("get-has-no-consumes", overAllModules(ContentTypeRules::getDoesNotNarrowConsumes));
+    }
+
     private static PropertyMetadata metadata(String module) {
         return PropertyMetadata.load(reactorRoot.resolve(module).resolve("target/classes"));
     }

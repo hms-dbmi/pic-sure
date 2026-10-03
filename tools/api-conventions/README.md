@@ -14,6 +14,8 @@ The configuration rules read every `@Value` in every module, on fields, methods,
 
 `no-trailing-slash` fails a documented module whose controller declares a class-level or method-level mapping path ending in `/`. It reads the `value` and `path` of `@RequestMapping` and of the composed `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` and `@PatchMapping`. A class-level path of exactly `/` is allowed. A method-level `/` is allowed only when the class declares no mapping path or declares `/`, because Spring joins `@RequestMapping("/dataset/named")` and `@GetMapping("/")` into `/dataset/named/`. Spring 6 matches only the declared form, so a handler declared as `/dataset/named/{id}/` answers 404 to a client that calls `/dataset/named/{id}`, while tests that call the declared form still pass. That is how the operations controllers broke every named-dataset call from the frontend after the WildFly port. To satisfy the rule, drop the trailing slash from the mapping, and write a method-level root as `""` or leave the path out. The rule covers documented modules only, because their clients call slash-less paths. Internal modules are left alone: the hpds `/search/values/` mappings keep their slash because `ResourceWebClient`, their only caller, sends it.
 
+`get-has-no-consumes` covers every module. A handler that answers GET, through `@GetMapping` or a `@RequestMapping` whose `method` includes GET or is left empty, sets no `consumes` other than `*/*`. A GET carries no body, so clients send no `Content-Type`, and Spring never matches such a request to the handler. It answers 415, or hands the request to another mapping that fits the path: PSAMA's `GET /accessRule/allTypes` fell through to `GET /accessRule/{accessRuleId}` and answered 400 `Invalid UUID string: allTypes`. A `consumes` on the class's `@RequestMapping` counts too, since Spring applies it to every handler that does not declare its own. To satisfy the rule, drop `consumes` from the GET handler, or set `consumes = "*/*"` when a class level value would otherwise reach it.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -46,6 +48,7 @@ Audit labels, over every compiled module:
 Request mappings, over every compiled module:
 
 - `path-variables-in-template`: every `@PathVariable` that names its variable appears as `{name}` in at least one path its handler maps.
+- `get-has-no-consumes`: a handler that answers GET sets no `consumes` other than `*/*`, on itself or through its class.
 
 Configuration, over every compiled module:
 
