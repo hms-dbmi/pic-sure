@@ -25,6 +25,12 @@ It applies to every type a documented handler binds or returns, and to every typ
 | Field the server always emits or always needs | `requiredMode = Schema.RequiredMode.REQUIRED` |
 | Member marked `@JsonIgnore` | nothing |
 
+Every `description` is one or more sentences, each ending in a period. A bare noun phrase becomes a sentence: "The query id." An
+`@Operation` `summary` stays a short phrase with no period. The examples in this README follow the rule.
+
+Nullability is stated in prose. A member the server always writes, possibly as JSON null, keeps `requiredMode = REQUIRED` and says
+"Null when ..." in its description. `nullable = true` is not used.
+
 A hidden controller's models follow the convention too. Hidden means absent from the document, not undocumented in code.
 
 Examples are real domain values. Never `string`, `foo` or `example`. Use these wherever the kind of value appears, so every service
@@ -49,11 +55,11 @@ shows the same ones:
 
 A scalar `String` example is copied into the document as written, so a concept path takes ordinary Java escapes:
 
-    @Schema(description = "A concept path this filter must match", example = "\\demographics\\SEX\\")
+    @Schema(description = "A concept path this filter must match.", example = "\\demographics\\SEX\\")
 
 A collection example is parsed as JSON first, so each backslash is doubled again:
 
-    @Schema(description = "Concept paths to select", example = "[\"\\\\demographics\\\\AGE\\\\\", \"\\\\demographics\\\\SEX\\\\\"]")
+    @Schema(description = "Concept paths to select.", example = "[\"\\\\demographics\\\\AGE\\\\\", \"\\\\demographics\\\\SEX\\\\\"]")
 
 Any example that parses as JSON is rendered as JSON, whatever the member's type. A `String` member that carries a JSON document
 therefore shows an object under `type: string` in the document. No spelling avoids it: a quoted JSON string literal is rendered

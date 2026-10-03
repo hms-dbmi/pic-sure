@@ -12,7 +12,7 @@ import java.util.Map;
  * @param entries the cached values by key
  */
 @Schema(description = "The entries one cache holds at the moment it is read.")
-public record CacheContents(
+public record CacheContentsResponse(
     @Schema(description = "Name of the cache.", example = "mergedRulesCache", requiredMode = Schema.RequiredMode.REQUIRED) String name,
     @Schema(
         description = "The cached values. Each key is a cache key written as text, which for the sessions, mergedRulesCache and "
@@ -29,12 +29,12 @@ public record CacheContents(
      * @return the cache's entries, keyed by the text form of each cache key
      * @throws IllegalStateException if the store is not a map, which no cache manager this service configures produces
      */
-    public static CacheContents of(String name, Object nativeCache) {
+    public static CacheContentsResponse of(String name, Object nativeCache) {
         if (!(nativeCache instanceof Map<?, ?> store)) {
             throw new IllegalStateException("Cache store is not a map: " + name);
         }
         Map<String, Object> entries = new LinkedHashMap<>();
         store.forEach((key, value) -> entries.put(String.valueOf(key), value));
-        return new CacheContents(name, entries);
+        return new CacheContentsResponse(name, entries);
     }
 }

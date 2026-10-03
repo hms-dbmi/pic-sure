@@ -40,10 +40,15 @@ public record UserMetadataMappingResponse(
     /**
      * Copies a persisted mapping into its response shape.
      *
-     * @param mapping the persisted mapping
-     * @return the response record
+     * <p>A {@code null} mapping yields {@code null}.</p>
+     *
+     * @param mapping the persisted mapping, or {@code null}
+     * @return the response record, or {@code null} when {@code mapping} is {@code null}
      */
     public static UserMetadataMappingResponse from(UserMetadataMapping mapping) {
+        if (mapping == null) {
+            return null;
+        }
         return new UserMetadataMappingResponse(
             mapping.getUuid(), ConnectionResponse.from(mapping.getConnection()), mapping.getGeneralMetadataJsonPath(),
             mapping.getAuth0MetadataJsonPath()
@@ -53,10 +58,15 @@ public record UserMetadataMappingResponse(
     /**
      * Copies a collection of persisted mappings in its iteration order.
      *
-     * @param mappings the persisted mappings
-     * @return the response records in the same order
+     * <p>A {@code null} collection yields {@code null}.</p>
+     *
+     * @param mappings the persisted mappings, or {@code null}
+     * @return the response records in the same order, or {@code null} when {@code mappings} is {@code null}
      */
     public static List<UserMetadataMappingResponse> fromAll(Collection<UserMetadataMapping> mappings) {
+        if (mappings == null) {
+            return null;
+        }
         return mappings.stream().map(UserMetadataMappingResponse::from).toList();
     }
 }

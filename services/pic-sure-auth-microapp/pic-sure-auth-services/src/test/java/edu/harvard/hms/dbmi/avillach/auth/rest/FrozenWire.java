@@ -15,10 +15,10 @@ import edu.harvard.hms.dbmi.avillach.auth.config.ApplicationConfig;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler;
 
 /**
- * Builds the JSON an admin endpoint has to keep emitting, from the entity the endpoint returned before it returned a response record. The
- * expected body is the entity as this service's own {@link ObjectMapper} writes it, with the members the contract drops removed and nothing
- * else changed. A test that compares a response to that string, character for character, proves the record kept every other member, its
- * order, and the rule for leaving out null and empty ones.
+ * Builds the JSON an admin endpoint emits, from the entity a response record is built from. The expected body is the entity as this
+ * service's own {@link ObjectMapper} writes it, with the members the contract drops removed and nothing else changed. A test that compares
+ * a response to that string, character for character, proves the record kept every other member, its order, and the rule for leaving out
+ * null and empty ones.
  *
  * <p>{@code mergedValues} and {@code mergedName} are removed from every access rule at any depth, because an access rule is nested in
  * privileges, roles, users and applications. The members named by the caller are removed only from the root object, or from each element
@@ -43,7 +43,7 @@ final class FrozenWire {
     }
 
     /**
-     * Serializes an entity, or a list of entities, the way the endpoint did before, then removes the dropped members.
+     * Serializes an entity, or a list of entities, the way the entity's own mapper writes it, then removes the dropped members.
      *
      * @param entityOrEntities one entity or a list of entities
      * @param droppedRootMembers members to remove from the root object, or from each element of a root array

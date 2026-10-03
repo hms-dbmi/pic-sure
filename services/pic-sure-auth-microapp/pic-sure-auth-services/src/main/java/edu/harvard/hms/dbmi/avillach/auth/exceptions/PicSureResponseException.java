@@ -5,9 +5,12 @@ import org.springframework.http.HttpStatus;
 import java.util.Objects;
 
 /**
- * Ends a request with a chosen status and this service's {@code {message, content}} error body. A controller throws it where it used to
- * return an error {@code ResponseEntity}, so the handler's declared return type names its success body alone.
+ * Ends a request with a chosen status and this service's {@code {message, content}} error body. A controller throws it instead of returning
+ * an error {@code ResponseEntity}, so the handler's declared return type names its success body alone.
  * {@link GlobalExceptionHandler#handlePicSureResponse} writes the response.
+ *
+ * <p>It is unrelated to {@code edu.harvard.dbmi.avillach.util.exception.PicsureException} in pic-sure-commons, which is a different type
+ * with a different body. This service does not depend on commons and maps this exception itself through {@link GlobalExceptionHandler}.</p>
  */
 public class PicSureResponseException extends RuntimeException {
 

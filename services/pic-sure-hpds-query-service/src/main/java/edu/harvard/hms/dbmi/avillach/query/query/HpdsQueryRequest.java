@@ -13,9 +13,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * key.
  *
  * <p>The envelope ignores members it does not know, so a body that still carries {@code resourceUUID}, {@code resourceCredentials} or
- * {@code @type} binds as it did when the endpoints bound {@code QueryRequest}, and those members are dropped. The query itself is read
- * through {@link StrictQueryDeserializer}, so a member outside the v3 {@link Query} or any of its clauses and filters fails to bind and the
- * request answers 400 instead of running as a query with fewer filters than the caller wrote.
+ * {@code @type} binds, and those members are dropped. The query itself is read through {@link StrictQueryDeserializer}, so a member outside
+ * the v3 {@link Query} or any of its clauses and filters fails to bind and the request answers 400 instead of running as a query with fewer
+ * filters than the caller wrote.
  *
  * @param query the v3 query, or null when the body carries none
  */

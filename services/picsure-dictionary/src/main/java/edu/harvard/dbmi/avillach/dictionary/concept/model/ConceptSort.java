@@ -6,7 +6,7 @@ import org.springframework.data.domain.Sort;
 
 /**
  * The sort block of a concept page, mirroring what Jackson writes for a Spring Data {@link Sort}. The concept endpoints never sort, so
- * every page reports an empty, unsorted sort; the block is kept because the wire has always carried it.
+ * every page reports an empty, unsorted sort; the block is part of the page's wire shape.
  *
  * @param unsorted whether no sort order was applied
  * @param sorted whether a sort order was applied
