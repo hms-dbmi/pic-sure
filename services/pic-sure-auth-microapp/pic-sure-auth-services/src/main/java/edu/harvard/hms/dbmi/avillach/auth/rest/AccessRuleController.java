@@ -43,14 +43,14 @@ public class AccessRuleController {
         this.accessRuleService = accessRuleService;
     }
 
-    @Operation(summary = "Read one access rule", description = "GET information of one AccessRule with the UUID.")
+    @Operation(summary = "Read one access rule", description = "Returns one access rule by its UUID.")
     @ApiResponse(responseCode = "200", description = "The access rule.")
     @ApiResponse(responseCode = "404", description = "No access rule has that id.")
     @AuditEvent(type = "OTHER", action = "access_rule.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{accessRuleId}")
     public ResponseEntity<AccessRuleResponse> getAccessRuleById(
-        @Parameter(description = "The UUID of the accessRule to fetch information about.") @PathVariable("accessRuleId") String accessRuleId
+        @Parameter(description = "The UUID of the access rule to fetch.") @PathVariable("accessRuleId") String accessRuleId
     ) {
         AccessRule accessRule = this.accessRuleService.getAccessRuleById(accessRuleId)
             .orElseThrow(() -> new PicSureResponseException(HttpStatus.NOT_FOUND, "AccessRule not found", null));
@@ -58,7 +58,7 @@ public class AccessRuleController {
         return PICSUREResponse.success(AccessRuleResponse.from(accessRule));
     }
 
-    @Operation(summary = "List every access rule", description = "GET a list of existing AccessRules.")
+    @Operation(summary = "List every access rule", description = "Lists every access rule.")
     @ApiResponse(responseCode = "200", description = "Every access rule.")
     @AuditEvent(type = "OTHER", action = "access_rule.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -67,7 +67,7 @@ public class AccessRuleController {
         return PICSUREResponse.success(AccessRuleResponse.fromAll(this.accessRuleService.getAllAccessRules()));
     }
 
-    @Operation(summary = "Create access rules", description = "POST a list of AccessRules.")
+    @Operation(summary = "Create access rules", description = "Creates the access rules in the request body.")
     @ApiResponse(responseCode = "200", description = "The created access rules.")
     @ApiResponse(responseCode = "400", description = "No access rules were added.")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
@@ -90,7 +90,7 @@ public class AccessRuleController {
 
     @Operation(
         summary = "Update the given fields of access rules",
-        description = "Update a list of AccessRules, will only update the fields listed."
+        description = "Updates the access rules in the request body, changing only the fields each one lists."
     )
     @ApiResponse(responseCode = "200", description = "The updated access rules.")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
@@ -107,7 +107,7 @@ public class AccessRuleController {
 
     @Operation(
         summary = "Delete an access rule that nothing references",
-        description = "DELETE an AccessRule by Id only if the accessRule is not associated by others."
+        description = "Deletes the access rule with the given UUID unless other entities still reference it, and returns the remaining access rules."
     )
     @ApiResponse(responseCode = "200", description = "The remaining access rules.")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this access rule.")
@@ -125,7 +125,7 @@ public class AccessRuleController {
 
     @Operation(
         summary = "The rule types an access rule may use",
-        description = "GET all types listed for the rule in accessRule that could be used."
+        description = "Lists the rule types an access rule may use, each with its numeric value."
     )
     @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values, under the types member.")
     @AuditEvent(type = "OTHER", action = "access_rule.types")

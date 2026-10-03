@@ -14,10 +14,10 @@ public record Query(
         example = "[\"\\\\demographics\\\\AGE\\\\\", \"\\\\demographics\\\\SEX\\\\\"]"
     ) List<String> select,
     @Schema(
-        description = "A list of filters specifically applied for authorization purposes"
+        description = "A list of filters specifically applied for authorization purposes."
     ) List<AuthorizationFilter> authorizationFilters,
-    @Schema(description = "An object specifying phenotypic filters") PhenotypicClause phenotypicClause,
-    @Schema(description = "A list of genomic filters") List<GenomicFilter> genomicFilters,
+    @Schema(description = "An object specifying phenotypic filters.") PhenotypicClause phenotypicClause,
+    @Schema(description = "A list of genomic filters.") List<GenomicFilter> genomicFilters,
     @Schema(
         description = "An object specifying the result type.", requiredMode = Schema.RequiredMode.REQUIRED
     ) ResultType expectedResultType,

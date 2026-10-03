@@ -45,14 +45,14 @@ public class RoleController {
         this.roleService = roleService;
     }
 
-    @Operation(summary = "Read one role", description = "GET information of one Role with the UUID.")
+    @Operation(summary = "Read one role", description = "Returns one role by its UUID.")
     @ApiResponse(responseCode = "200", description = "The role.")
     @ApiResponse(responseCode = "400", description = "No role with that UUID.")
     @AuditEvent(type = "OTHER", action = "role.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<RoleResponse> getRoleById(
-        @Parameter(description = "The UUID of the Role to fetch information about.") @PathVariable("roleId") String roleId
+        @Parameter(description = "The UUID of the role to fetch.") @PathVariable("roleId") String roleId
     ) {
         Role role = this.roleService.getRoleById(roleId).orElseThrow(
             () -> new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", "Role is not found by given role ID: " + roleId)
@@ -60,7 +60,7 @@ public class RoleController {
         return PICSUREResponse.success(RoleResponse.from(role));
     }
 
-    @Operation(summary = "List every role", description = "GET a list of existing Roles.")
+    @Operation(summary = "List every role", description = "Lists every role.")
     @ApiResponse(responseCode = "200", description = "Every role.")
     @AuditEvent(type = "OTHER", action = "role.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -69,7 +69,7 @@ public class RoleController {
         return PICSUREResponse.success(RoleResponse.fromAll(this.roleService.getAllRoles()));
     }
 
-    @Operation(summary = "Create roles", description = "POST a list of Roles.")
+    @Operation(summary = "Create roles", description = "Creates the roles in the request body.")
     @ApiResponse(responseCode = "200", description = "The created roles, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "role.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -83,7 +83,10 @@ public class RoleController {
         return PICSUREResponse.success("All roles are added.", RoleResponse.fromAll(this.roleService.createFrom(roles)));
     }
 
-    @Operation(summary = "Update the given fields of roles", description = "Update a list of Roles, will only update the fields listed.")
+    @Operation(
+        summary = "Update the given fields of roles",
+        description = "Updates the roles in the request body, changing only the fields each one lists."
+    )
     @ApiResponse(responseCode = "200", description = "The updated roles, in the message and content envelope.")
     @AuditEvent(type = "ADMIN", action = "role.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -104,7 +107,7 @@ public class RoleController {
 
     @Operation(
         summary = "Delete a role that nothing references",
-        description = "DELETE an Role by Id only if the Role is not associated by others."
+        description = "Deletes the role with the given UUID unless other entities still reference it, and returns the remaining roles."
     )
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The remaining roles, in the message and content envelope."),

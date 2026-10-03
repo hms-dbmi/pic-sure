@@ -44,7 +44,7 @@ public class ApplicationController {
         this.applicationService = applicationService;
     }
 
-    @Operation(summary = "Read one application", description = "GET information of one Application with the UUID.")
+    @Operation(summary = "Read one application", description = "Returns one application by its UUID.")
     @ApiResponse(responseCode = "200", description = "The application, without its token.")
     @ApiResponse(responseCode = "400", description = "No application with that UUID.")
     @AuditEvent(type = "OTHER", action = "application.read")
@@ -64,7 +64,7 @@ public class ApplicationController {
         return PICSUREResponse.success(ApplicationResponse.from(application));
     }
 
-    @Operation(summary = "List every application", description = "GET a list of existing Applications.")
+    @Operation(summary = "List every application", description = "Lists every registered application.")
     @ApiResponse(responseCode = "200", description = "Every application, without their tokens.")
     @AuditEvent(type = "OTHER", action = "application.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -73,7 +73,7 @@ public class ApplicationController {
         return PICSUREResponse.success(applicationService.getAllApplications().stream().map(ApplicationResponse::from).toList());
     }
 
-    @Operation(summary = "Create applications", description = "POST a list of Applications.")
+    @Operation(summary = "Create applications", description = "Creates the applications in the request body.")
     @ApiResponse(
         responseCode = "200",
         description = "The created applications with their privileges and without their tokens; issue a token to obtain one."
@@ -93,7 +93,7 @@ public class ApplicationController {
 
     @Operation(
         summary = "Update the given fields of applications",
-        description = "Update a list of Applications, will only update the fields listed."
+        description = "Updates the applications in the request body, changing only the fields each one lists."
     )
     @ApiResponse(responseCode = "200", description = "The updated applications with their privileges and without their tokens.")
     @AuditEvent(type = "ADMIN", action = "application.modify")
@@ -109,7 +109,10 @@ public class ApplicationController {
             .success(applicationService.updateFrom(applications).stream().map(ApplicationResponse::withPrivileges).toList());
     }
 
-    @Operation(summary = "Issue a new token for an application", description = "Refresh a token of an application by application Id.")
+    @Operation(
+        summary = "Issue a new token for an application",
+        description = "Replaces the application's token with a newly issued one and returns it."
+    )
     @ApiResponse(responseCode = "200", description = "The application's new token.")
     @ApiResponse(responseCode = "400", description = "No application with that UUID.")
     @AuditEvent(type = "ADMIN", action = "application.token_refresh")
@@ -126,7 +129,7 @@ public class ApplicationController {
 
     @Operation(
         summary = "Delete an application that nothing references",
-        description = "DELETE an Application by Id only if the application is not associated by others."
+        description = "Deletes the application with the given UUID unless other entities still reference it, and returns the remaining applications."
     )
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The remaining applications with their privileges and without their tokens."),
@@ -137,8 +140,9 @@ public class ApplicationController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @DeleteMapping(value = "/{applicationId}")
     public ResponseEntity<List<ApplicationResponse>> removeById(
-        @Parameter(required = true, description = "A valid application uuid.") @PathVariable("applicationId") final String applicationId,
-        HttpServletRequest request
+        @Parameter(required = true, description = "The uuid of the application to delete.") @PathVariable(
+            "applicationId"
+        ) final String applicationId, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "app_id", applicationId);
         return PICSUREResponse
