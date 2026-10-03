@@ -93,7 +93,7 @@ class QueryToolConfigTest {
 
         assertThat(result.isError()).isTrue();
         assertThat(result.content()).singleElement().isInstanceOfSatisfying(
-            McpSchema.TextContent.class, t -> assertThat(t.text()).isEqualTo(QueryToolConfig.UNEXPECTED_FAILURE)
+            McpSchema.TextContent.class, t -> assertThat(t.text()).isEqualTo(ToolFailure.UNEXPECTED_MESSAGE)
         );
     }
 

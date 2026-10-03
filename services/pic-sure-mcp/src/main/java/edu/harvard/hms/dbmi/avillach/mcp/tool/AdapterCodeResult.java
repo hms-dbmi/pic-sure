@@ -39,10 +39,13 @@ public record AdapterCodeResult(
 
     /**
      * The setup line R code adds, because the R adapter's {@code minVersion} is a release tag and {@code check} prints both the package
-     * version and the tag it was installed from.
+     * version and the tag it was installed from. A GitHub install from a branch prints the branch name, and an install from elsewhere
+     * prints no tag, so the line tells the agent to treat either as older than the minimum.
      */
     public static final String R_MIN_VERSION_NOTE =
-        "For r, requires.minVersion is a release tag. Compare it with the release tag check prints, not with the package version.";
+        "For r, requires.minVersion is a release tag. Compare it with the release tag check prints, not with the package version. "
+            + "If check prints no release tag, such as a branch name or nothing after the version, treat the connector as older than "
+            + "requires.minVersion.";
 
     /** The setup line that keeps an agent that runs the code from reading its result files. */
     public static final String REPORT_ONLY_PRINTED_NOTE =

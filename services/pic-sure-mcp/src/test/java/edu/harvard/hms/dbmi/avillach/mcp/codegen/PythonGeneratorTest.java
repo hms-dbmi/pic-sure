@@ -175,8 +175,13 @@ class PythonGeneratorTest {
         AdapterCodeGenerator generator = CodegenCases.generator(SETUP);
 
         assertThatThrownBy(() -> generator.walk(input("{\"select\":[\"\\\\p\\\\x\\\\\"]}"), ResultKind.count))
-            .isInstanceOf(ToolFailure.class).hasMessageStartingWith("Adapter code needs a query with at least one filter");
+            .isInstanceOf(ToolFailure.class).hasMessage(
+                "Adapter code needs a query with at least one filter or genomic filter, or select paths for a cross_count, participant, "
+                    + "or timestamp result."
+            );
         assertThat(generator.walk(input("{\"select\":[\"\\\\p\\\\x\\\\\"]}"), ResultKind.participant).includeConcepts())
+            .containsExactly("\\p\\x\\");
+        assertThat(generator.walk(input("{\"select\":[\"\\\\p\\\\x\\\\\"]}"), ResultKind.cross_count).includeConcepts())
             .containsExactly("\\p\\x\\");
     }
 
