@@ -45,7 +45,7 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "The connection a mapping lookup names",
-        description = "GET the Connection with the given business id. The response is the connection itself, not its mappings."
+        description = "Returns the connection with the given business id. The response is the connection itself, not its mappings."
     )
     @ApiResponse(responseCode = "200", description = "The named connection.")
     @AuditEvent(type = "OTHER", action = "mapping.read")
@@ -55,7 +55,7 @@ public class UserMetadataMappingWebController {
         return PICSUREResponse.success(ConnectionResponse.from(this.mappingService.getAllMappingsForConnection(connection)));
     }
 
-    @Operation(summary = "List every user metadata mapping", description = "GET a list of existing UserMetadataMappings.")
+    @Operation(summary = "List every user metadata mapping", description = "Lists every user metadata mapping.")
     @ApiResponse(responseCode = "200", description = "Every user metadata mapping.")
     @AuditEvent(type = "OTHER", action = "mapping.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -64,7 +64,7 @@ public class UserMetadataMappingWebController {
         return PICSUREResponse.success(UserMetadataMappingResponse.fromAll(mappingService.getAllMappings()));
     }
 
-    @Operation(summary = "Create mappings", description = "POST a list of UserMetadataMappings.")
+    @Operation(summary = "Create mappings", description = "Creates the user metadata mappings in the request body.")
     @ApiResponse(responseCode = "200", description = "The created mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -87,7 +87,7 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "Update the given fields of mappings",
-        description = "Update a list of UserMetadataMappings, will only update the fields listed."
+        description = "Updates the user metadata mappings in the request body, changing only the fields each one lists."
     )
     @ApiResponse(responseCode = "200", description = "The updated mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
@@ -111,7 +111,7 @@ public class UserMetadataMappingWebController {
 
     @Operation(
         summary = "Delete a mapping",
-        description = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others."
+        description = "Deletes the user metadata mapping with the given UUID unless other entities still reference it, and returns the remaining mappings."
     )
     @ApiResponse(responseCode = "200", description = "The remaining mappings.")
     @AuditEvent(type = "ADMIN", action = "mapping.delete")

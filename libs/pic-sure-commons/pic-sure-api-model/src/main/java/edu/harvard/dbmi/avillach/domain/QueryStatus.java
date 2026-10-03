@@ -33,7 +33,7 @@ public class QueryStatus {
     private String resourceResultId;
 
     @Schema(
-        description = "Details about the query and its result, keyed by name. `picsureQueryId` is the query's id on the resource, present ."
+        description = "Details about the query and its result, keyed by name. `picsureQueryId` is the query's id on the resource, present "
             + "when the query is submitted or its status is read. `queryJson` is the stored request body and `queryResultMetadata` the "
             + "stored result metadata, both present on a metadata read."
     )
