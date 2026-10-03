@@ -33,13 +33,11 @@ public class GatewayRequestInterceptor implements ClientHttpRequestInterceptor {
      *
      * @param gatewayUrl the gateway base URL; every request must target its scheme, host, and port
      * @param serviceToken the MCP service credential
-     * @throws IllegalArgumentException if the gateway URL has no host or the token is blank
+     * @throws IllegalArgumentException if the gateway URL is not a bare origin as {@link McpProperties#requireGatewayUrl} requires, or the
+     *         token is blank
      */
     public GatewayRequestInterceptor(String gatewayUrl, String serviceToken) {
-        this.gateway = URI.create(gatewayUrl);
-        if (gateway.getHost() == null) {
-            throw new IllegalArgumentException("picsure.mcp.gateway-url must be an absolute URL with a host");
-        }
+        this.gateway = McpProperties.requireGatewayUrl(gatewayUrl);
         if (serviceToken == null || serviceToken.isBlank()) {
             throw new IllegalArgumentException("picsure.mcp.service-token must not be blank");
         }
