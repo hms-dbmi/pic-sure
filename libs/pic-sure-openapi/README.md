@@ -97,5 +97,6 @@ Rules in `tools/api-conventions` check the convention on compiled bytecode and r
 
 | Rule | Checks |
 |---|---|
+| `typed-handler-signatures` | Every handler's `@RequestBody` type and return type is a concrete model. No `Object`, wildcard, type variable, raw `ResponseEntity`, `Map`, `JsonNode`, `Page`, `Slice` or `@Entity` at any depth. `String`, `byte[]`, `InputStreamResource` and `Void` pass. |
 
 No rule has landed yet; the two that will are the last PRs of this stack.
