@@ -106,6 +106,17 @@ class AdapterCodeToolTest {
     }
 
     @ParameterizedTest
+    @EnumSource(Language.class)
+    void everySetupSaysToCheckBeforeRunningAndToReportOnlyWhatTheCodePrints(Language language) throws Exception {
+        AdapterCodeResult result = tool.handle(context, arguments("participant", language.name(), null));
+
+        assertThat(result.setupText().split("\n")).contains(
+            "Check, before running the code: " + result.check(),
+            "Report only what the code prints. Do not open picsure_results/ unless the user asks."
+        ).noneMatch(line -> line.startsWith("Check: "));
+    }
+
+    @ParameterizedTest
     @EnumSource(ResultKind.class)
     void everyResultTypeBindsAndWritesCodeThatHoldsNoCallerCredential(ResultKind kind) throws Exception {
         AdapterCodeResult result = tool.handle(context, arguments(kind.name(), "python", false));

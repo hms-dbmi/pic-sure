@@ -11,6 +11,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.ThrowableProxyUtil;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
@@ -32,6 +37,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 
@@ -238,6 +244,35 @@ class ToolAuditAspectTest {
         when(dictionary.listFacets(any(), any())).thenThrow(new IllegalStateException(LEAK));
 
         assertUnexpectedFailure(() -> facets.listFacets(context, null));
+    }
+
+    @Test
+    void anUnexpectedExceptionIsLoggedWholeAtErrorUnderTheRequestId() {
+        Logger logger = (Logger) LoggerFactory.getLogger(ToolAuditAspect.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>() {
+            @Override
+            protected void append(ILoggingEvent event) {
+                event.prepareForDeferredProcessing();
+                super.append(event);
+            }
+        };
+        appender.start();
+        logger.addAppender(appender);
+        when(dictionary.listFacets(any(), any())).thenThrow(new IllegalStateException(LEAK, new IllegalArgumentException("root cause")));
+        try {
+            assertUnexpectedFailure(() -> facets.listFacets(context, null));
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+            assertThat(event.getFormattedMessage()).isEqualTo("Tool call facet.search failed unexpectedly");
+            assertThat(event.getMDCPropertyMap()).containsEntry(CallerHeaders.MDC_KEY, "req-42");
+            assertThat(ThrowableProxyUtil.asString(event.getThrowableProxy()))
+                .contains("java.lang.IllegalStateException: " + LEAK, "Caused by: java.lang.IllegalArgumentException: root cause")
+                .contains("at " + ToolAuditAspectTest.class.getName()).doesNotContain(BEARER, API_KEY);
+        });
     }
 
     @Test

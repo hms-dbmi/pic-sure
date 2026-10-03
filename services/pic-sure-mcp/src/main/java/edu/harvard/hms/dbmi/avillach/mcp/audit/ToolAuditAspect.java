@@ -37,10 +37,11 @@ import java.util.stream.Collectors;
  * <p>Sending is fire-and-forget. A failure to build or send an event is logged once at WARN with its exception class and never reaches the
  * tool call.
  *
- * <p>A runtime exception other than {@link ToolFailure} is recorded as {@code internal}, logged at ERROR with its class and the frame that
- * threw it, and rethrown as {@link ToolFailure#unexpected()}. Its message is never logged or rethrown, because it can carry downstream
- * text, and Spring AI would otherwise hand it to the model as the {@code isError} text of an {@code @McpTool} call. A {@link ToolFailure}
- * and an {@link Error} are rethrown unchanged.
+ * <p>A runtime exception other than {@link ToolFailure} is recorded as {@code internal}, logged at ERROR with the whole exception, its
+ * message, stack trace, and cause chain, while the request ID is still bound, and rethrown as {@link ToolFailure#unexpected()}. The
+ * exception goes only to the server log. It is never rethrown, because it can carry downstream text, and Spring AI would otherwise hand its
+ * message to the model as the {@code isError} text of an {@code @McpTool} call. No exception a tool raises is built from a caller
+ * credential or the MCP token. A {@link ToolFailure} and an {@link Error} are rethrown unchanged.
  */
 @Aspect
 @Component
@@ -96,9 +97,7 @@ public class ToolAuditAspect {
         if (!(failure instanceof RuntimeException) || failure instanceof ToolFailure) {
             return failure;
         }
-        StackTraceElement[] frames = failure.getStackTrace();
-        Object origin = frames.length == 0 ? "an unknown frame" : frames[0];
-        log.error("Tool call {} failed unexpectedly with {} at {}", audit.action(), failure.getClass().getName(), origin);
+        log.error("Tool call {} failed unexpectedly", audit.action(), failure);
         return ToolFailure.unexpected();
     }
 

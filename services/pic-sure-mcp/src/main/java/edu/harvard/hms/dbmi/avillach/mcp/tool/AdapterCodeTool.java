@@ -46,19 +46,19 @@ public class AdapterCodeTool {
     /** The tool description, with one complete worked example. */
     public static final String DESCRIPTION = """
         Write code that runs a query on PIC-SURE's authorized channel in the user's own environment, for exact counts filtered by the \
-        user's consents, participant rows, or timestamps. This tool runs no query and returns no data. It returns the code and its \
-        setup (requires, check, install) as separate fields. The code reads the user's own token from the PICSURE_TOKEN environment \
-        variable and never contains a token. Show the code to the user and do not run it unless the user asks. resultType count \
-        prints one number, cross_count prints one number per concept path, and participant and timestamp write a CSV under \
-        picsure_results/ and print only its size and path. language is python, r, or bash. python and r use the picsure adapters, \
-        and bash needs curl 7.55 or later and jq. Pick the language the user works in, from their request, project files such as \
-        .R, .ipynb, or shell scripts, the notebook kernel, or their existing code, and ask when that does not settle it. The query \
-        takes the same shape as in count_participants, with no result type and no not field. select chooses the concept paths \
-        cross_count counts and adds output columns for participant and timestamp, and count ignores it. Each of these is refused \
-        with a message naming the field. A genomic filter with min or max, since genomic filters take values only. A REQUIRED or \
-        ANY_RECORD_OF filter with values, min, or max. A FILTER with both values and min or max, or with neither. A blank entry in \
-        values. A query with no filter, genomic filter, or select path. With checkConcepts true, every concept path is first \
-        checked against the dictionary, and unknown paths come back in warnings without blocking the code. Example arguments: \
+        user's consents, participant rows, or timestamps. This tool runs no query and returns no data. The code reads the user's own \
+        token from the PICSURE_TOKEN environment variable and never contains a token. Show the code to the user and do not run it \
+        unless the user asks. resultType count prints one number, cross_count prints one number per concept path, and participant \
+        and timestamp write a CSV under picsure_results/ and print only its size and path. language is python, r, or bash. python \
+        and r use the picsure adapters, and bash needs curl 7.55 or later and jq. Pick the language the user works in, from their \
+        request, project files such as .R, .ipynb, or shell scripts, the notebook kernel, or their existing code, and ask when that \
+        does not settle it. The query has the count_participants shape, with no result type and no not field. select chooses the \
+        concept paths cross_count counts and adds output columns for participant and timestamp, and count ignores it. The tool \
+        refuses the following, with a message naming the field. A genomic filter with min or max, since genomic filters take values \
+        only. A genomic filter with no values. A REQUIRED or ANY_RECORD_OF filter with values, min, or max. A FILTER with both values \
+        and min or max, or with neither. A blank entry in values. A query with no filter, genomic filter, or select path. With \
+        checkConcepts true, the first 100 distinct concept paths are checked against the dictionary, and warnings report unknown \
+        paths and any cutoff without blocking the code. Example arguments: \
         {"language":"python","resultType":"participant","query":{"select":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":\
         {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65}}}""";
 

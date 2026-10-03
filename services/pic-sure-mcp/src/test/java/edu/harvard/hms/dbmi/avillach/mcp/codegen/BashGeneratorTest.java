@@ -218,7 +218,7 @@ class BashGeneratorTest {
     void theSetupNamesCurlAndJqWithNoVersion() throws IOException {
         GeneratedCode code = CodegenCases.generate(CodegenCases.named("flat_filter"), Language.bash);
 
-        assertThat(code.packageName()).isEqualTo("curl and jq");
+        assertThat(code.packageName()).isEqualTo("curl 7.55 or later and jq");
         assertThat(code.minVersion()).isNull();
         assertThat(code.runtime()).isEqualTo("bash");
         assertThat(code.check()).isEqualTo("curl --version | head -n 1 && jq --version");

@@ -36,8 +36,8 @@ import java.util.Map;
 @Component
 public final class BashGenerator implements LanguageGenerator {
 
-    /** The tools the script calls. */
-    public static final String PACKAGE = "curl and jq";
+    /** The tools the script calls, with the oldest {@code curl} that reads a header file through {@code -H @file}. */
+    public static final String PACKAGE = "curl 7.55 or later and jq";
 
     /** The shell the script runs in. */
     public static final String RUNTIME = "bash";
