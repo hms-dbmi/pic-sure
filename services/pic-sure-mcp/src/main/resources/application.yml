@@ -1,0 +1,71 @@
+spring:
+  application:
+    name: pic-sure-mcp
+  ai:
+    mcp:
+      server:
+        name: pic-sure
+        type: SYNC
+        protocol: STATELESS
+        instructions: |-
+          This server searches the open-access PIC-SURE data dictionary and returns obfuscated open-access participant counts. The server itself never reaches participant-level or authorized data.
+
+          Which tool to use:
+          To find variables or browse studies and facets, use search_concepts, list_facets, get_concept, and get_concepts.
+          The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept. Search synonyms and abbreviations as separate terms, several at once with the terms argument of search_concepts.
+          For a rough cohort size or a feasibility check, use count_participants or cross_count.
+          For exact counts under the user's own consents, use get_adapter_code with resultType count.
+          For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp.
+          To change adapter code the user already has, edit that code directly and use this server only to look up concept paths.
+
+          Open counts and authorized counts are different numbers. An open count from count_participants or cross_count is obfuscated and ignores the user's consents. The same query run through the adapter returns an exact count filtered by the user's consents. Always say which kind of number you are reporting. Never present an open count as the authorized answer.
+
+          Handing off code from get_adapter_code:
+          Show the generated code to the user. Do not run it unless the user asks.
+          Before you run the code, run its check command.
+          If the connector is missing or older than requires.minVersion, show the install command to the user and ask before running it. Never install anything without asking.
+          If you cannot run commands, show check, install, and the code to the user together.
+          Count and cross_count code prints only the counts. Participant and timestamp code writes a CSV to picsure_results/ and prints one line with its size and path. Report only what the code prints. Do not open the result files unless the user asks you to.
+
+          Do not route authorized work around this server. If you have a shell and the picsure adapter is installed, still generate the code with get_adapter_code and hand it to the user instead of calling the adapter yourself.
+
+          Choosing a language:
+          get_adapter_code takes language python, r, or bash. Pick it from what you can see: the user's request, project files such as .R, .ipynb, or shell scripts, the notebook kernel, and code the user already has. Ask the user when that does not settle it.
+
+          Building a query:
+          Take concept paths from search_concepts. Build one query, count it with count_participants, then pass the same query to get_adapter_code. The query has no not field and no authorization fields, and the tools reject both.
+        streamable-http:
+          mcp-endpoint: /mcp
+        capabilities:
+          tool: true
+          prompt: false
+          resource: false
+          completion: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+picsure:
+  mcp:
+    gateway-url: ${PICSURE_GATEWAY_URL:}
+    service-token: ${MCP_SERVICE_TOKEN:}
+    adapter:
+      base-url: ${MCP_ADAPTER_BASE_URL:}
+      include-consents: ${MCP_ADAPTER_INCLUDE_CONSENTS:false}
+      supports-genomic: ${MCP_ADAPTER_SUPPORTS_GENOMIC:false}
+      python-min-version: ${MCP_ADAPTER_PYTHON_MIN_VERSION:3.0.0}
+      r-tag: ${MCP_ADAPTER_R_TAG:v3.0.0}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
