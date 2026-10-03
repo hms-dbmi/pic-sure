@@ -4,7 +4,10 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserConsentsResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.UserResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -124,63 +127,73 @@ public class UserController {
     }
 
     /**
-     * For the long term token, current logic is, every time a user hit this endpoint <code>/me</code> with the query parameter ?hasToken
-     * presented, it will refresh the long term token.
-     *
+     * Returns the caller's profile. The profile always carries the caller's long-term token, which is issued and saved on the first read.
+     * The {@code hasToken} query parameter is accepted and has no effect.
      */
-    @Operation(summary = "The caller's profile, optionally with a long-term token", description = "Retrieve information of current user")
-    @ApiResponse(responseCode = "200", description = "The caller's profile")
+    @Operation(
+        summary = "The caller's profile, with the long-term token",
+        description = "Returns the caller's profile, including the long-term token."
+    )
+    @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
-    public ResponseEntity<?> getCurrentUser(
+    public ResponseEntity<UserProfileResponse> getCurrentUser(
         @RequestHeader("Authorization") String authorizationHeader,
-        @Parameter(description = "Attribute that represents if a long term token will attach to the response") @RequestParam(
+        @Parameter(description = "Accepted for compatibility; the long-term token is included whether or not it is sent.") @RequestParam(
             name = "hasToken", required = false
         ) Boolean hasToken
     ) {
         logger.info("getCurrentUser() authorizationHeader: {}, hasToken {}", authorizationHeader, hasToken);
-        User.UserForDisplay currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
+        UserProfileResponse currentUser = this.userService.getCurrentUser(authorizationHeader, hasToken);
 
         if (currentUser == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "Inner application error, please contact admin."
+            );
         }
 
         return PICSUREResponse.success(currentUser);
     }
 
     /**
-     * For the long term token, current logic is, every time a user hit this endpoint /me with the query parameter ?hasToken presented, it
-     * will refresh the long term token.
+     * Issues the caller a new long-term token and returns it. The previous long-term token stops working.
      *
      * @param httpHeaders the http headers
      * @return the refreshed long term token
      */
-    @Operation(summary = "Issue the caller a new long-term token", description = "refresh the long term tokne of current user")
-    @ApiResponse(responseCode = "200", description = "A new long term token for the caller")
+    @Operation(
+        summary = "Issue the caller a new long-term token",
+        description = "Issues the caller a new long-term token and invalidates the previous one."
+    )
+    @ApiResponse(responseCode = "200", description = "A new long-term token for the caller.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
-    public ResponseEntity<?> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
+    public ResponseEntity<LongTermTokenResponse> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "token_type", "long_term");
-        Map<String, String> stringStringMap = this.userService.refreshUserToken(httpHeaders);
-        if (stringStringMap != null) {
-            return PICSUREResponse.success(stringStringMap);
+        Map<String, String> refreshed = this.userService.refreshUserToken(httpHeaders);
+        if (refreshed == null) {
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "Inner application error, please contact admin."
+            );
         }
 
-        return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        return PICSUREResponse.success(new LongTermTokenResponse(refreshed.get("userLongTermToken")));
     }
 
-    @Operation(summary = "The caller's consents", description = "Retrieve consents of current user")
-    @ApiResponse(responseCode = "200", description = "The caller's consents")
+    @Operation(summary = "The caller's consents", description = "Returns the caller's consents.")
+    @ApiResponse(responseCode = "200", description = "The caller's consents.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
-    public ResponseEntity<?> getUserConsents() {
+    public ResponseEntity<UserConsentsResponse> getUserConsents() {
         UserConsents userConsents = this.userService.getUserConsents();
 
         if (userConsents == null) {
-            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+            throw new PicSureResponseException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Application error", "Inner application error, please contact admin."
+            );
         }
 
-        return PICSUREResponse.success(userConsents);
+        return PICSUREResponse.success(UserConsentsResponse.from(userConsents));
     }
 
 }

@@ -1,10 +1,14 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,40 +16,52 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.util.Map;
 
-@Tag(name = "Open access", description = "Validation of open-access requests, called by the gateway")
+@Tag(name = "Open access", description = "Validation of open-access requests, called by the gateway.")
 @Controller
 @RequestMapping(value = "/open")
 public class OpenAccessController {
 
     private final AuthorizationService authorizationService;
+    private final ObjectMapper objectMapper;
     private final boolean openIdpProviderIsEnabled;
 
     @Autowired
     public OpenAccessController(
-        AuthorizationService authorizationService, @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled
+        AuthorizationService authorizationService, ObjectMapper objectMapper,
+        @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled
     ) {
         this.authorizationService = authorizationService;
+        this.objectMapper = objectMapper;
         this.openIdpProviderIsEnabled = openIdpProviderIsEnabled;
     }
 
     @Operation(summary = "Validate an open-access request against the access rules")
-    @ApiResponse(responseCode = "200", description = "Whether the open access request is permitted")
+    @ApiResponse(
+        responseCode = "200", description = "Whether the open-access request is permitted.",
+        content = @Content(
+            mediaType = "application/json",
+            schema = @Schema(type = "boolean", description = "True when the open access rules permit the request, false otherwise.")
+        )
+    )
     @AuditEvent(type = "ACCESS", action = "open.validate")
-    @RequestMapping(value = "/validate", produces = "application/json")
-    public ResponseEntity<?> validate(
+    @PostMapping(value = "/validate", produces = "application/json")
+    public ResponseEntity<Boolean> validate(
         @Parameter(
-            required = true, description = "A JSON object that at least includes a user and the token for validation"
-        ) @RequestBody Map<String, Object> inputMap, HttpServletRequest request
+            required = true,
+            description = "The open-access request to validate, naming its target service and carrying the API key when one is enforced."
+        ) @RequestBody OpenAccessValidationRequest validation, HttpServletRequest request
     ) {
         if (!openIdpProviderIsEnabled) {
             return ResponseEntity.ok(false);
         }
 
+        Map<String, Object> inputMap = validation.toMap(objectMapper);
         boolean isValid = authorizationService.openAccessRequestIsValid(inputMap);
         AuditAttributes.putMetadata(request, "validation_result", String.valueOf(isValid));
 

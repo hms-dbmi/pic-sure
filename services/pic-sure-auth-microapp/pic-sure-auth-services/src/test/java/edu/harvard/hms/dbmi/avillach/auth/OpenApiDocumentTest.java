@@ -76,7 +76,7 @@ class OpenApiDocumentTest {
         assertThat(description(paths, "/accessRule", "post"))
             .isEqualTo("Creates the access rules in the request body.\n\nRequired authorities: SUPER_ADMIN.");
         assertThat(description(paths, "/user", "post")).isEqualTo("Creates the users in the request body.\n\nRequired authorities: ADMIN.");
-        assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user");
+        assertThat(description(paths, "/user/me", "get")).isEqualTo("Returns the caller's profile, including the long-term token.");
         assertThat(description(paths, "/application", "get"))
             .isEqualTo("Lists every registered application.\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         paths.forEach(
@@ -242,8 +242,10 @@ class OpenApiDocumentTest {
     void noAdminEndpointDocumentsAnEntity() throws Exception {
         JsonNode schemas = document().path("components").path("schemas");
 
-        List.of("User", "Role", "Privilege", "AccessRule", "Application", "ApplicationForDisplay", "Connection", "UserMetadataMapping")
-            .forEach(entity -> assertThat(schemas.has(entity)).as("the document must not describe the %s entity", entity).isFalse());
+        List.of(
+            "User", "Role", "Privilege", "AccessRule", "Application", "ApplicationForDisplay", "Connection", "UserMetadataMapping",
+            "UserConsents", "TermsOfService", "ApiKey"
+        ).forEach(entity -> assertThat(schemas.has(entity)).as("the document must not describe the %s entity", entity).isFalse());
     }
 
     @Test
@@ -268,11 +270,118 @@ class OpenApiDocumentTest {
         );
     }
 
+    @Test
+    void authenticationDocumentsTheLoginShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/authentication/{idpProvider}", "AuthenticationRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/authentication/{idpProvider}", "200", "AuthenticationResponse");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "AuthenticationRequest", "code", "access_token", "redirectURI", "persona");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "AuthenticationResponse", "oktaIdToken", "token", "acceptedTOS", "userId", "email");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "AuthenticationRequest", "AuthenticationResponse");
+        JsonNode acceptedTOS =
+            document.path("components").path("schemas").path("AuthenticationResponse").path("properties").path("acceptedTOS");
+        assertThat(acceptedTOS.path("type").asText()).as("acceptedTOS stays a string on this endpoint").isEqualTo("string");
+    }
+
+    @Test
+    void tokenEndpointsDocumentTheGatewayShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/token/inspect", "TokenInspectionRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/token/inspect", "200", "TokenInspectionResponse");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/token/refresh", "200", "RefreshedTokenResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "RefreshedTokenResponse", "token", "expirationDate");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "TokenInspectionRequest", "token", "request");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "TokenInspectionResponse", "active", "uuid", "sub", "email", "roles", "privileges", "tokenRefreshed", "token",
+            "message"
+        );
+        OpenApiDocumentAssertions
+            .assertSchemaDocumented(document, "TokenInspectionRequest", "TokenInspectionResponse", "RefreshedTokenResponse");
+        JsonNode inspection = document.path("components").path("schemas").path("TokenInspectionResponse").path("properties");
+        assertThat(inspection.has("claims")).as("the other claims are written beside the members, not under a claims key").isFalse();
+        JsonNode request = document.path("components").path("schemas").path("TokenInspectionRequest").path("properties").path("request");
+        assertThat(request.path("type").asText()).as("the request description documents as a free-form object").isEqualTo("object");
+    }
+
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
     }
 
     private static String description(JsonNode paths, String path, String method) {
         return paths.path(path).path(method).path("description").asText();
+    }
+
+    @Test
+    void currentUserEndpointsDocumentTheProfileShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/me", "200", "UserProfileResponse");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/me/refresh_long_term_token", "200", "LongTermTokenResponse");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/me/consents", "200", "UserConsentsResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "LongTermTokenResponse", "userLongTermToken");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "UserConsentsResponse", "uuid", "userId", "consents");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "UserProfileResponse", "privileges", "token", "email", "uuid", "acceptedTOS");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "UserProfileResponse", "LongTermTokenResponse", "UserConsentsResponse");
+        JsonNode profile = document.path("components").path("schemas").path("UserProfileResponse").path("properties");
+        assertThat(profile.path("acceptedTOS").path("type").asText()).as("acceptedTOS is a boolean on the profile").isEqualTo("boolean");
+        JsonNode consents = document.path("components").path("schemas").path("UserConsentsResponse").path("properties").path("consents");
+        assertThat(consents.path("additionalProperties").path("type").asText()).isEqualTo("array");
+    }
+
+    @Test
+    void openAccessValidationDocumentsTheGatewayShapes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/open/validate", "OpenAccessValidationRequest");
+        OpenApiDocumentAssertions.assertMediaType(document, "post", "/open/validate", "200", "application/json", "boolean");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "OpenAccessValidationRequest", "apiKey", "ipAddress", "request");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "OpenAccessValidationRequest");
+        JsonNode request =
+            document.path("components").path("schemas").path("OpenAccessValidationRequest").path("properties").path("request");
+        assertThat(request.path("type").asText()).as("the request description documents as a free-form object").isEqualTo("object");
+        assertThat(document.path("paths").path("/open/validate").properties()).extracting(Map.Entry::getKey).containsExactly("post");
+    }
+
+    @Test
+    void apiKeyEndpointsDocumentTheirRecords() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/open/apiKey", "UserApiKeyRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/open/apiKey", "200", "ApiKeyCreationResponse");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/apiKey/platform", "PlatformApiKeyRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/apiKey/platform", "200", "ApiKeyCreationResponse");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/apiKey", "200", "ApiKeyPage");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "put", "/apiKey/{keyId}/revoke", "200", "ApiKeyMetadata");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "ApiKeyCreationResponse", "apiKey", "uuid", "displayPrefix", "keyType", "expiresAt");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "ApiKeyMetadata", "uuid", "displayPrefix", "keyType", "name", "email", "createdAt", "expiresAt", "revokedAt",
+            "lastUsedAt"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ApiKeyPage", "keys", "totalCount", "page", "size");
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document, "UserApiKeyRequest", "PlatformApiKeyRequest", "ApiKeyCreationResponse", "ApiKeyMetadata", "ApiKeyPage"
+        );
+        JsonNode keyType = document.path("components").path("schemas").path("ApiKeyMetadata").path("properties").path("keyType");
+        assertThat(keyType.path("enum")).extracting(JsonNode::asText).containsExactly("USER", "PLATFORM");
+    }
+
+    @Test
+    void termsOfServiceEndpointsDocumentTheirMediaTypes() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertMediaType(document, "get", "/tos/latest", "200", "text/html", "string");
+        OpenApiDocumentAssertions.assertMediaType(document, "get", "/tos", "200", "text/plain", "boolean");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/tos/update", "200", "TermsOfServiceResponse");
+        OpenApiDocumentAssertions.assertNoResponseBody(document, "post", "/tos/accept", "200");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "TermsOfServiceResponse", "uuid", "content", "dateUpdated");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "TermsOfServiceResponse");
+        JsonNode update = document.path("paths").path("/tos/update").path("post").path("requestBody").path("content");
+        assertThat(update.path("text/html").path("schema").path("type").asText()).isEqualTo("string");
     }
 }

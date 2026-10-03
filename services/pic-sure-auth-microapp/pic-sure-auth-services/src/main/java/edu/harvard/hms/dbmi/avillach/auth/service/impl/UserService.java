@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.ConnectionRef;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
@@ -474,7 +475,7 @@ public class UserService {
     }
 
     @Transactional
-    public User.UserForDisplay getCurrentUser(String authorizationHeader, Boolean hasToken) {
+    public UserProfileResponse getCurrentUser(String authorizationHeader, Boolean hasToken) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         Optional<CustomUserDetails> customUserDetails =
             Optional.ofNullable((CustomUserDetails) securityContext.getAuthentication().getPrincipal());
@@ -490,18 +491,15 @@ public class UserService {
         }
 
         logger.info("getCurrentUser() user found: {}", user.getEmail());
-        User.UserForDisplay userForDisplay = new User.UserForDisplay().setEmail(user.getEmail()).setPrivileges(user.getPrivilegeNameSet())
-            .setUuid(user.getUuid().toString()).setAcceptedTOS(this.tosService.hasUserAcceptedLatest(user.getSubject()));
-
-        if (user.getToken() != null && !user.getToken().isEmpty()) {
-            userForDisplay.setToken(user.getToken());
-        } else {
+        if (user.getToken() == null || user.getToken().isEmpty()) {
             user.setToken(generateUserLongTermToken(authorizationHeader, user));
             this.userRepository.save(user);
-            userForDisplay.setToken(user.getToken());
         }
 
-        return userForDisplay;
+        return new UserProfileResponse(
+            user.getUuid(), user.getEmail(), user.getPrivilegeNameSet(), user.getToken(),
+            this.tosService.hasUserAcceptedLatest(user.getSubject())
+        );
     }
 
     @Transactional

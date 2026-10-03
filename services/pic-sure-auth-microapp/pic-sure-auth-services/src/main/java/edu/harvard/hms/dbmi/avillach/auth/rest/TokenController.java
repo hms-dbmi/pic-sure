@@ -1,9 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.InvalidRefreshToken;
-import edu.harvard.hms.dbmi.avillach.auth.model.RefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.ValidRefreshToken;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.TokenInspectionRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.RefreshedTokenResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.TokenInspectionResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TokenService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -16,6 +20,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -31,7 +36,7 @@ import java.util.Map;
  * authorization {@link AuthorizationService} at the access rule level, but this endpoint handles token validation and pre-check at the
  * privilege level.</p>
  */
-@Tag(name = "Token Management", description = "Token introspection and refresh")
+@Tag(name = "Token Management", description = "Token introspection and refresh.")
 @Controller
 @RequestMapping("/token")
 public class TokenController {
@@ -39,24 +44,27 @@ public class TokenController {
     private final static Logger logger = LoggerFactory.getLogger(TokenController.class);
 
     private final TokenService tokenService;
+    private final ObjectMapper objectMapper;
 
     @Autowired
-    public TokenController(TokenService tokenService) {
+    public TokenController(TokenService tokenService, ObjectMapper objectMapper) {
         this.tokenService = tokenService;
+        this.objectMapper = objectMapper;
     }
 
     @Operation(
         summary = "Introspect a token on behalf of an application",
-        description = "Token introspection endpoint for user to retrieve a valid token"
+        description = "Reports whether a token is active and returns the claims it carries, checked against the request it is used for."
     )
-    @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active")
+    @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active.")
     @AuditEvent(type = "ACCESS", action = "token.introspect")
     @PostMapping(path = "/inspect", produces = "application/json")
-    public ResponseEntity<Map<String, Object>> inspectToken(
+    public ResponseEntity<TokenInspectionResponse> inspectToken(
         @Parameter(
-            required = true, description = "A JSON object that at least" + " include a user the token for validation"
-        ) @RequestBody Map<String, Object> inputMap, HttpServletRequest request
+            required = true, description = "The token to introspect and a description of the request it is used for."
+        ) @RequestBody TokenInspectionRequest inspection, HttpServletRequest request
     ) {
+        Map<String, Object> inputMap = inspection.toMap(objectMapper);
         Map<String, Object> resultMap = this.tokenService.inspectToken(inputMap);
 
         boolean active = Boolean.TRUE.equals(resultMap.getOrDefault("active", false));
@@ -84,31 +92,31 @@ public class TokenController {
             }
         }
 
-        return PICSUREResponse.success(resultMap);
+        return PICSUREResponse.success(TokenInspectionResponse.from(resultMap));
     }
 
-    @Operation(summary = "Refresh the caller's token", description = "To refresh current user's token if the user is an active user")
-    @ApiResponse(responseCode = "200", description = "A refreshed token and its expiration date")
-    @ApiResponse(responseCode = "400", description = "The user no longer exists or is deactivated")
-    @ApiResponse(responseCode = "401", description = "The token's session has ended, expired, or been replaced by a newer login")
+    @Operation(
+        summary = "Refresh the caller's token", description = "Issues a refreshed token for the caller when the caller is an active user."
+    )
+    @ApiResponse(responseCode = "200", description = "A refreshed token and its expiration date.")
+    @ApiResponse(responseCode = "400", description = "The user no longer exists or is deactivated.")
+    @ApiResponse(responseCode = "401", description = "The token's session has ended, expired, or been replaced by a newer login.")
     @AuditEvent(type = "ACCESS", action = "token.refresh")
     @GetMapping(path = "/refresh", produces = "application/json")
-    public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request) {
-        RefreshToken refreshTokenResp = this.tokenService.refreshToken(authorizationHeader);
-
-        if (refreshTokenResp instanceof InvalidRefreshToken invalidRefreshToken) {
-            AuditAttributes.putMetadata(request, "token_refresh_result", "failure");
-            AuditAttributes.putMetadata(request, "token_refresh_error", invalidRefreshToken.error());
-            return PICSUREResponse.protocolError(invalidRefreshToken.error());
-        }
-
-        if (refreshTokenResp instanceof ValidRefreshToken validRefreshToken) {
-            AuditAttributes.putMetadata(request, "token_refresh_result", "success");
-            return PICSUREResponse
-                .success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
-        }
-
-        return PICSUREResponse.success();
+    public ResponseEntity<RefreshedTokenResponse> refreshToken(
+        @RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request
+    ) {
+        return switch (this.tokenService.refreshToken(authorizationHeader)) {
+            case InvalidRefreshToken invalidRefreshToken -> {
+                AuditAttributes.putMetadata(request, "token_refresh_result", "failure");
+                AuditAttributes.putMetadata(request, "token_refresh_error", invalidRefreshToken.error());
+                throw new PicSureResponseException(HttpStatus.BAD_REQUEST, "Invalid request", invalidRefreshToken.error());
+            }
+            case ValidRefreshToken validRefreshToken -> {
+                AuditAttributes.putMetadata(request, "token_refresh_result", "success");
+                yield PICSUREResponse.success(RefreshedTokenResponse.from(validRefreshToken));
+            }
+        };
     }
 
 }

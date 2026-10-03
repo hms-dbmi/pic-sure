@@ -3,13 +3,15 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import static org.junit.jupiter.api.Assertions.*;
 
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.TokenInspectionRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Map;
 
 class ControllerAuditEventTest {
 
@@ -25,15 +27,19 @@ class ControllerAuditEventTest {
     @Test
     void authenticationController() throws Exception {
         Class<?> c = AuthenticationController.class;
-        // authentication(String idpProvider, Map<String, String> authRequest, HttpServletRequest request)
-        assertAuditEvent(c, "authentication", new Class[] {String.class, Map.class, HttpServletRequest.class}, "AUTH", "auth.login");
+        // authentication(String idpProvider, AuthenticationRequest authRequest, HttpServletRequest request)
+        assertAuditEvent(
+            c, "authentication", new Class[] {String.class, AuthenticationRequest.class, HttpServletRequest.class}, "AUTH", "auth.login"
+        );
     }
 
     @Test
     void tokenController() throws Exception {
         Class<?> c = TokenController.class;
-        // inspectToken(Map<String, Object> inputMap, HttpServletRequest request)
-        assertAuditEvent(c, "inspectToken", new Class[] {Map.class, HttpServletRequest.class}, "ACCESS", "token.introspect");
+        // inspectToken(TokenInspectionRequest inspection, HttpServletRequest request)
+        assertAuditEvent(
+            c, "inspectToken", new Class[] {TokenInspectionRequest.class, HttpServletRequest.class}, "ACCESS", "token.introspect"
+        );
         // refreshToken(String authorizationHeader, HttpServletRequest request)
         assertAuditEvent(c, "refreshToken", new Class[] {String.class, HttpServletRequest.class}, "ACCESS", "token.refresh");
     }
@@ -139,8 +145,10 @@ class ControllerAuditEventTest {
     @Test
     void openAccessController() throws Exception {
         Class<?> c = OpenAccessController.class;
-        // validate(Map<String, Object> inputMap, HttpServletRequest request)
-        assertAuditEvent(c, "validate", new Class[] {Map.class, HttpServletRequest.class}, "ACCESS", "open.validate");
+        // validate(OpenAccessValidationRequest validation, HttpServletRequest request)
+        assertAuditEvent(
+            c, "validate", new Class[] {OpenAccessValidationRequest.class, HttpServletRequest.class}, "ACCESS", "open.validate"
+        );
     }
 
     @Test
