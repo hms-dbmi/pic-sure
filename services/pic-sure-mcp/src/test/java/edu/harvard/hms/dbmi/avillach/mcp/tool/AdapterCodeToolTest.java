@@ -87,7 +87,7 @@ class AdapterCodeToolTest {
         assertThat(result.language()).isEqualTo("python");
         assertThat(result.requires()).isEqualTo(new AdapterCodeResult.Requires("picsure", "3.0.0", "Python >= 3.10"));
         assertThat(result.check()).isEqualTo("python3 -c \"import importlib.metadata as m; print(m.version('picsure'))\"");
-        assertThat(result.install()).isEqualTo("pip install 'picsure>=3.0.0'");
+        assertThat(result.install()).isEqualTo("python3 -m pip install 'picsure>=3.0.0'");
         assertThat(result.code()).startsWith("import os\nimport picsure\n\nsession = picsure.connect(\"https://picsure.example.org\"")
             .contains("includeConcepts=[").contains("output_path = \"picsure_results/participant.csv\"");
         assertThat(result.warnings()).isNull();
