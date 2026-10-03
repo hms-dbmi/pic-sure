@@ -30,7 +30,7 @@ class InstructionsTest {
 
     private static final List<String> RULE_SENTENCES = List.of(
         "The server itself never reaches participant-level or authorized data.",
-        "To find variables or browse studies and facets, use search_concepts, list_facets, and get_concept.",
+        "To find variables or browse studies and facets, use search_concepts, list_facets, get_concept, and get_concepts.",
         "The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept.",
         "Search synonyms and abbreviations as separate terms, several at once with the terms argument of search_concepts.",
         "For a rough cohort size or a feasibility check, use count_participants or cross_count.",
@@ -103,6 +103,9 @@ class InstructionsTest {
             );
         assertThat(descriptions.get("get_concept")).contains("open-access dictionary metadata only, never participant data")
             .contains("up to 20 categorical values", "up to 10 metadata entries", "300 characters");
+        assertThat(descriptions.get("get_concepts")).contains("open-access dictionary metadata only, never participant data")
+            .contains("Takes 1 to 25 concept paths.", "the same fields get_concept returns")
+            .contains("Paths the dictionary does not know come back in notFound rather than as an error.");
     }
 
     @Test
@@ -181,7 +184,7 @@ class InstructionsTest {
         for (JsonNode tool : result.path("tools")) {
             tools.put(tool.path("name").asText(), tool);
         }
-        assertThat(tools).hasSize(6);
+        assertThat(tools).hasSize(7);
         return tools;
     }
 
