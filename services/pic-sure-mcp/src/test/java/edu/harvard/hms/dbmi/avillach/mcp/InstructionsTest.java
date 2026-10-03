@@ -183,12 +183,21 @@ class InstructionsTest {
             ).contains("A genomic filter with min or max, since genomic filters take values only.")
             .contains("A REQUIRED or ANY_RECORD_OF filter with values, min, or max.")
             .contains("A FILTER with both values and min or max, or with neither.", "A blank entry in values.")
-            .contains("A query with no filter, genomic filter, or select path.", "phs999999")
+            .contains("A query with no filter, genomic filter, or select path. For count, select alone is not enough.", "phs999999")
             .contains("The tool refuses the following, with a message naming the field. A genomic filter with min or max")
             .contains("A genomic filter with no values.").doesNotContain("Each of these is refused").contains(
                 "With checkConcepts true, the first " + AdapterCodeTool.MAX_CHECKED_PATHS + " distinct concept paths are checked against "
                     + "the dictionary, and warnings report unknown paths and any cutoff without blocking the code."
             );
+    }
+
+    @Test
+    void theCheckConceptsFieldStatesHowManyPathsTheCheckCovers() throws Exception {
+        JsonNode checkConcepts = tools().get("get_adapter_code").path("inputSchema").path("properties").path("checkConcepts");
+
+        assertThat(checkConcepts.path("description").asText()).isEqualTo(
+            "Check the first " + AdapterCodeTool.MAX_CHECKED_PATHS + " distinct concept paths against the dictionary. Defaults to false"
+        );
     }
 
     @Test
