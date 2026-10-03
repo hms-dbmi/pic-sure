@@ -9,7 +9,7 @@ import java.util.UUID;
 
 /**
  * A registered application as the application endpoints return it, and as it is nested in a privilege. The bearer {@code token} is never a
- * member. A member that is {@code null} or empty is left off the wire, as the entity it replaces left it off.
+ * member. A member that is {@code null} or empty is left off the wire.
  *
  * <p>The three factories differ in which optional members they fill, because the endpoints differ today: the reads carry no privileges, the
  * writes carry them, and the application nested in a privilege carries neither privileges nor {@code url}.</p>
