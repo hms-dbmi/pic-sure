@@ -63,7 +63,7 @@ public class ApiKeyController {
 
     @Operation(
         summary = "Generate an open-access USER API key",
-        description = "Generate a USER API key for open access. Public endpoint, gated by CAPTCHA. The key is returned once and cannot be recovered."
+        description = "Generates a USER API key for open access. The endpoint is public and gated by CAPTCHA verification. The key is returned once and cannot be recovered."
     )
     @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext.")
     @ApiResponse(
@@ -73,7 +73,8 @@ public class ApiKeyController {
     @PostMapping(produces = "application/json", path = "/open/apiKey")
     public ResponseEntity<ApiKeyCreationResponse> createUserKey(
         @Parameter(
-            required = true, description = "captchaToken (required when CAPTCHA is enabled) and optional contact name/email."
+            required = true,
+            description = "The CAPTCHA token, which is required when CAPTCHA is enabled, and an optional contact name and email."
         ) @RequestBody UserApiKeyRequest keyRequest, HttpServletRequest request
     ) {
         if (!generationEnabled || !openIdpProviderIsEnabled) {
@@ -97,7 +98,7 @@ public class ApiKeyController {
 
     @Operation(
         summary = "List API key metadata",
-        description = "GET a page of API key metadata (never key material), newest first, optionally filtered by keyType."
+        description = "Lists a page of API key metadata, newest first, optionally filtered by key type. Key material is never returned."
     )
     @ApiResponse(responseCode = "200", description = "A page of API key metadata.")
     @AuditEvent(type = "OTHER", action = "api_key.list")
@@ -112,8 +113,8 @@ public class ApiKeyController {
 
     @Operation(
         summary = "Mint a PLATFORM API key",
-        description = "Mint a PLATFORM API key for a partner service. Expiry: an explicit ISO-8601 expiresAt,"
-            + " or neverExpires=true (mutually exclusive), or neither for the configured platform TTL default."
+        description = "Mints a PLATFORM API key for a partner service. The expiry is an explicit ISO-8601 expiresAt,"
+            + " or neverExpires set to true, but not both; with neither, the configured platform TTL default applies."
             + " The key is returned once and cannot be recovered."
     )
     @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext.")
@@ -123,7 +124,8 @@ public class ApiKeyController {
     @PostMapping(produces = "application/json", path = "/apiKey/platform")
     public ResponseEntity<ApiKeyCreationResponse> createPlatformKey(
         @Parameter(
-            required = true, description = "name and contact email (both required), optional ISO-8601 expiresAt."
+            required = true,
+            description = "The key name and contact email, both required, and an optional ISO-8601 expiresAt or neverExpires flag."
         ) @RequestBody PlatformApiKeyRequest keyRequest, HttpServletRequest request
     ) {
         String name = normalize(keyRequest.name());
@@ -146,7 +148,7 @@ public class ApiKeyController {
         return PICSUREResponse.success(created);
     }
 
-    @Operation(summary = "Revoke an API key", description = "Revoke an API key by UUID. Revocation is permanent.")
+    @Operation(summary = "Revoke an API key", description = "Revokes an API key by UUID. Revocation is permanent.")
     @ApiResponse(responseCode = "200", description = "The revoked key's metadata.")
     @ApiResponse(responseCode = "400", description = "The ID is not a UUID, or no key has that ID.")
     @AuditEvent(type = "ADMIN", action = "api_key.revoke")

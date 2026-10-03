@@ -49,7 +49,7 @@ public class AuthenticationController {
 
     @Operation(
         summary = "Exchange an identity provider's code for a PIC-SURE token",
-        description = "The authentication endpoint for retrieving a valid user token."
+        description = "Authenticates the caller with the named identity provider and returns a PIC-SURE token for the user."
     )
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "A PIC-SURE token for the authenticated user."),
@@ -61,8 +61,7 @@ public class AuthenticationController {
     public ResponseEntity<AuthenticationResponse> authentication(
         @PathVariable("idpProvider") String idpProvider,
         @Parameter(
-            required = true,
-            description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI."
+            required = true, description = "The OAuth details the identity provider needs, such as the access token and the redirect URI."
         ) @RequestBody AuthenticationRequest authRequest, HttpServletRequest request
     ) throws IOException {
         logger.debug("authentication() starting...");
