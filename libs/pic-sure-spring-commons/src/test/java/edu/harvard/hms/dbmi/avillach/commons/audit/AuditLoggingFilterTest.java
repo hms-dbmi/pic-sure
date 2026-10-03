@@ -65,6 +65,18 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void shouldNotFilterMatchesTheDecodedPathSoEncodedSpellingsOfSkippedPathsAreSkipped() {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of("/logging"));
+
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/system/%73tatus"))).isTrue();
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/x/openapi%2Ejson"))).isTrue();
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("POST", "/%6Cogging/audit"))).isTrue();
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("POST", "/%256Cogging/audit"))).isFalse();
+    }
+
+    @Test
     void shouldNotFilterIsFalseForAnOrdinaryRequest() {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
@@ -186,7 +198,7 @@ class AuditLoggingFilterTest {
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), false);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        request.addHeader("X-Client-Type", "MCP_SERVER");
+        request.addHeader("X-Client-Type", "mcp");
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(200);
 
@@ -194,7 +206,7 @@ class AuditLoggingFilterTest {
 
         ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client, times(1)).send(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("MCP_SERVER");
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("mcp");
         assertThat(eventCaptor.getValue().getMetadata()).isNull();
     }
 
@@ -205,7 +217,7 @@ class AuditLoggingFilterTest {
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of(), true);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        request.addHeader("X-Client-Type", "MCP_SERVER");
+        request.addHeader("X-Client-Type", "mcp");
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(200);
 
@@ -214,7 +226,7 @@ class AuditLoggingFilterTest {
         ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client, times(1)).send(eventCaptor.capture());
         assertThat(eventCaptor.getValue().getCaller()).isNull();
-        assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "MCP_SERVER");
+        assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "mcp");
     }
 
     @Test
@@ -227,13 +239,13 @@ class AuditLoggingFilterTest {
         request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(200);
-        FilterChain chainThatVerifiesTheCaller = (req, res) -> VerifiedCaller.set(req, "MCP_SERVER");
+        FilterChain chainThatVerifiesTheCaller = (req, res) -> VerifiedCaller.set(req, "mcp");
 
         filter.doFilter(request, response, chainThatVerifiesTheCaller);
 
         ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(client, times(1)).send(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("MCP_SERVER");
+        assertThat(eventCaptor.getValue().getCaller()).isEqualTo("mcp");
         assertThat(eventCaptor.getValue().getMetadata()).containsEntry("client_type_claimed", "PYTHON_ADAPTER");
     }
 

@@ -19,6 +19,8 @@ import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
@@ -95,7 +97,7 @@ class McpCallerFilterOrderTest {
         PsamaClient psama = mock(PsamaClient.class);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
         request.addHeader("Authorization", "Bearer some.user.jwt");
-        request.addHeader(McpCallerFilter.HEADER, "wrong-secret");
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, "wrong-secret");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<HttpServletRequest> downstream = new AtomicReference<>();
 
@@ -111,7 +113,7 @@ class McpCallerFilterOrderTest {
     void invalidTokenWithoutABearerIsRejectedBeforeOpenAccessCallsPsama() throws Exception {
         PsamaClient psama = mock(PsamaClient.class);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/open/query/sync");
-        request.addHeader(McpCallerFilter.HEADER, "wrong-secret");
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, "wrong-secret");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         containerOrderedChain(gatewayChain(psama, true), capturing(new AtomicReference<>())).doFilter(request, response);
@@ -127,7 +129,7 @@ class McpCallerFilterOrderTest {
             .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "user@example.org", "USER", List.of(), false, null, null));
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
         request.addHeader("Authorization", "Bearer some.user.jwt");
-        request.addHeader(McpCallerFilter.HEADER, SECRET);
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, SECRET);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<HttpServletRequest> downstream = new AtomicReference<>();
 
@@ -142,7 +144,7 @@ class McpCallerFilterOrderTest {
     void internalEndpointGuardStillAnswers404BeforeTheCredentialCheck() throws Exception {
         PsamaClient psama = mock(PsamaClient.class);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/operations/internal/queries/abc/dispatch");
-        request.addHeader(McpCallerFilter.HEADER, "wrong-secret");
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, "wrong-secret");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         containerOrderedChain(gatewayChain(psama, false), capturing(new AtomicReference<>())).doFilter(request, response);
@@ -176,7 +178,7 @@ class McpCallerFilterOrderTest {
         AuditFilterConfig auditConfig = new AuditFilterConfig();
         FilterRegistrationBean<?> auditRegistration = auditConfig.auditLoggingFilter(logging, auditConfig.auditRouteTable(), audit);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/hpds/auth/query/sync");
-        request.addHeader(McpCallerFilter.HEADER, "leaked-looking-value");
+        request.addHeader(McpCallerFilter.TOKEN_HEADER, "leaked-looking-value");
 
         containerOrderedChain(List.of(auditRegistration, mcpRegistration()), capturing(new AtomicReference<>()))
             .doFilter(request, new MockHttpServletResponse());
@@ -186,6 +188,8 @@ class McpCallerFilterOrderTest {
         assertThat(emitted.getValue().getCaller()).isNull();
         assertThat(emitted.getValue().getMetadata()).containsEntry("auth_result", "failure")
             .containsEntry("auth_failure_reason", "invalid_service_credential");
-        assertThat(emitted.getValue().toString()).doesNotContain("leaked-looking-value");
+        String serializedEvent = new ObjectMapper().writeValueAsString(emitted.getValue());
+        assertThat(serializedEvent).contains("invalid_service_credential", "\"error\"", "/hpds/auth/query/sync")
+            .doesNotContain("leaked-looking-value");
     }
 }
