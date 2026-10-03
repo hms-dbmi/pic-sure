@@ -11,6 +11,8 @@ public class AggregateProperties {
 
     /** Open HPDS backend; same value as HPDS_OPEN_URL (the query service's open backend). */
     private String hpdsOpenUrl;
+    /** HPDS query API path appended to {@link #hpdsOpenUrl}; same value as HPDS_API_PATH, {@code /v3} when unset. */
+    private String hpdsApiPath = "/v3";
     /** Bearer token for the open HPDS backend and visualization service; same value as HPDS_OPEN_TOKEN. */
     private String hpdsOpenToken;
     /**
@@ -50,6 +52,14 @@ public class AggregateProperties {
         public void setSalt(String s) {
             this.salt = s;
         }
+    }
+
+    public String getHpdsApiPath() {
+        return hpdsApiPath;
+    }
+
+    public void setHpdsApiPath(String hpdsApiPath) {
+        this.hpdsApiPath = hpdsApiPath;
     }
 
     public String getHpdsOpenUrl() {

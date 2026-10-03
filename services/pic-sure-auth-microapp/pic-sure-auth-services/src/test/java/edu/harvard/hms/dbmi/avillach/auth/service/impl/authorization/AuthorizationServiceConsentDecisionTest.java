@@ -126,7 +126,7 @@ class AuthorizationServiceConsentDecisionTest {
         when(accessRuleService.cachedPreProcessAccessRules(any(), any())).thenReturn(Set.of());
 
         EvaluateAccessRuleResult result =
-            service(true).isAuthorized(application, Map.of("Target Service", "/hpds/auth/v3/query/sync"), user, false);
+            service(true).isAuthorized(application, Map.of("Target Service", "/hpds/auth/query/sync"), user, false);
 
         assertFalse(result.result());
         assertEquals("No access rule grants this request.", result.denialReason().orElseThrow());
@@ -135,7 +135,7 @@ class AuthorizationServiceConsentDecisionTest {
     @Test
     void consentFlagOffSkipsConsentLookup() {
         EvaluateAccessRuleResult result =
-            service(false).isAuthorized(application, Map.of("Target Service", "/hpds/auth/v3/query/sync"), user, false);
+            service(false).isAuthorized(application, Map.of("Target Service", "/hpds/auth/query/sync"), user, false);
 
         assertTrue(result.result());
         verify(userConsentsRepository, never()).findByUserId(any());

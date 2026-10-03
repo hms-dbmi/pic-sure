@@ -11,8 +11,6 @@ import static org.mockito.Mockito.when;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
@@ -23,7 +21,7 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 /**
  * Covers {@code search} and {@code searchGenomicConceptValues}. Backend resolution comes from the ingress {@code {backend}} path segment
  * through {@link HpdsBackendSelector}. Both calls use {@link ResourceWebClient#search} or {@link ResourceWebClient#searchConceptValues},
- * which receive only the non-versioned base URL and no token parameter.
+ * which receive only the versioned (v3) base URL and no token parameter.
  */
 class SearchServiceTest {
 
@@ -39,31 +37,29 @@ class SearchServiceTest {
         return p;
     }
 
-    private QueryRequest req() {
-        GeneralQueryRequest r = new GeneralQueryRequest();
-        r.setQuery("BRCA");
-        return r;
+    private SearchRequest req() {
+        return new SearchRequest("BRCA");
     }
 
     @Test
-    void searchUsesNonVersionedBase() {
+    void searchUsesVersionedBase() {
         SearchResults sr = new SearchResults();
-        when(hpds.search(eq("http://hpds/PIC-SURE"), any())).thenReturn(sr);
+        when(hpds.search(eq("http://hpds/PIC-SURE/v3"), any())).thenReturn(sr);
 
         assertThat(service.search("auth", req())).isSameAs(sr);
 
-        verify(hpds).search(eq("http://hpds/PIC-SURE"), any()); // no /v3, no token param
+        verify(hpds).search(eq("http://hpds/PIC-SURE/v3"), any());
     }
 
     @Test
     void searchResolvesOpenBackendSeparatelyFromAuth() {
         props.setOpenUrl("http://hpds-open/PIC-SURE");
         SearchResults sr = new SearchResults();
-        when(hpds.search(eq("http://hpds-open/PIC-SURE"), any())).thenReturn(sr);
+        when(hpds.search(eq("http://hpds-open/PIC-SURE/v3"), any())).thenReturn(sr);
 
         service.search("open", req());
 
-        verify(hpds).search(eq("http://hpds-open/PIC-SURE"), any());
+        verify(hpds).search(eq("http://hpds-open/PIC-SURE/v3"), any());
     }
 
     @Test
@@ -79,18 +75,18 @@ class SearchServiceTest {
     }
 
     @Test
-    void valuesPassesParamsThroughOnNonVersionedBase() {
-        service.searchConceptValues("auth", req(), "\\gene\\", "BRCA", 1, 10);
+    void valuesPassesParamsThroughOnVersionedBase() {
+        service.searchConceptValues("auth", "\\gene\\", "BRCA", 1, 10);
 
-        verify(hpds).searchConceptValues(eq("http://hpds/PIC-SURE"), any(), eq("\\gene\\"), eq("BRCA"), eq(1), eq(10));
+        verify(hpds).searchConceptValues("http://hpds/PIC-SURE/v3", "\\gene\\", "BRCA", 1, 10);
     }
 
     @Test
     void valuesPropagatesHpdsUpstreamError() {
-        when(hpds.searchConceptValues(any(), any(), any(), any(), any(), any())).thenThrow(new HpdsCommunicationException("boom"));
+        when(hpds.searchConceptValues(any(), any(), any(), any(), any())).thenThrow(new HpdsCommunicationException("boom"));
 
         Assertions.assertThrows(
-            HpdsCommunicationException.class, () -> service.searchConceptValues("auth", req(), "\\gene\\", "BRCA", 1, 10)
+            HpdsCommunicationException.class, () -> service.searchConceptValues("auth", "\\gene\\", "BRCA", 1, 10)
         );
     }
 

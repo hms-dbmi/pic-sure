@@ -38,11 +38,6 @@ class BinningControllerTest {
         assertThat(bin("/bin/continuous")).isEqualTo(WRAPPED_BINS);
     }
 
-    @Test
-    void v3RouteAnswersWithTheSameBody() throws Exception {
-        assertThat(bin("/v3/bin/continuous")).isEqualTo(WRAPPED_BINS);
-    }
-
     private String bin(String path) throws Exception {
         return mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(AGGREGATE_ENVELOPE)).andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);

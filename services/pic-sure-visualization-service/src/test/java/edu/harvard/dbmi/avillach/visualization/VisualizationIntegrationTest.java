@@ -165,11 +165,10 @@ class VisualizationIntegrationTest {
         assertTrue(result.getResponse().getContentAsString().contains("error"));
     }
 
-    /** The v3 binning route shares its handler with {@code /bin/continuous}, so a null query field fails validation there too. */
     @Test
-    void binContinuous_v3Route_nullQueryField_returns400() throws Exception {
+    void binContinuous_v3Route_isRemoved() throws Exception {
         mockMvc.perform(post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": null}"))
-            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("query: Request must contain a 'query' field"));
+            .andExpect(status().isNotFound());
     }
 
     @Test
@@ -198,22 +197,6 @@ class VisualizationIntegrationTest {
         MvcResult result = mockMvc
             .perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody)))
             .andExpect(status().isOk()).andReturn();
-
-        JsonNode bins = objectMapper.readTree(result.getResponse().getContentAsString()).path("bins");
-        assertTrue(bins.has("\\measurements\\bmi\\"));
-        assertFalse(bins.path("\\measurements\\bmi\\").isEmpty());
-    }
-
-    @Test
-    void binContinuous_v3RouteAcceptsQueryRequestFormat() throws Exception {
-        Map<String, Object> requestBody = Map.of(
-            "query", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100, "25.0", 200, "30.0", 150)), "resourceUUID",
-            "550e8400-e29b-41d4-a716-446655440000", "resourceCredentials", Map.of()
-        );
-
-        MvcResult result = mockMvc.perform(
-            post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody))
-        ).andExpect(status().isOk()).andReturn();
 
         JsonNode bins = objectMapper.readTree(result.getResponse().getContentAsString()).path("bins");
         assertTrue(bins.has("\\measurements\\bmi\\"));

@@ -70,14 +70,6 @@ class OpenApiDocumentTest {
     }
 
     @Test
-    void binningV3RouteExchangesTheSameRecords() throws Exception {
-        JsonNode document = document();
-
-        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/v3/bin/continuous", "ContinuousBinningRequest");
-        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/v3/bin/continuous", "200", "ContinuousBinningResponse");
-    }
-
-    @Test
     void requestRecordsAreDocumented() throws Exception {
         JsonNode document = document();
 

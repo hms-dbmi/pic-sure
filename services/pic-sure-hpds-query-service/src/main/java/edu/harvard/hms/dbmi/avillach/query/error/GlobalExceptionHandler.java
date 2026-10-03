@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -24,9 +25,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
  * resolves the most specific handler for its own {@link #unknown} catch-all, regardless of whichever advice bean Spring happens to consult
  * first. {@code GatewayExceptionAdvice}'s equivalent handler, if consulted first, produces the identical response.
  *
- * <p>Adds three mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 because HPDS is upstream
- * infrastructure, {@link NoResourceFoundException} -&gt; 404 for route absence, and any other unmapped exception -&gt; 500. All share the
- * same commons error body shape.
+ * <p>Adds four mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 because HPDS is upstream
+ * infrastructure, {@link NoResourceFoundException} -&gt; 404 for route absence, {@link HttpMessageNotReadableException} -&gt; 400 for a
+ * body that cannot be read, and any other unmapped exception -&gt; 500. All share the same commons error body shape.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -44,6 +45,19 @@ public class GlobalExceptionHandler {
         // here, the 502 is undiagnosable from this service's logs.
         logger.error("HPDS call failed, returning 502", e);
         return body(HttpStatus.BAD_GATEWAY, "upstream_unavailable", e.getMessage());
+    }
+
+    /**
+     * A request body that cannot be read answers 400 rather than falling into the {@link #unknown} 500 catch-all. That covers malformed
+     * JSON, a missing body, a value of the wrong type, a result type the v3 query does not define, and a query the strict reader refuses.
+     * The parser's message can quote the client's payload, so neither the log line nor the response carries it.
+     *
+     * @return 400 with the commons error body and a fixed message
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> unreadableBody() {
+        logger.warn("Rejected an unreadable request body");
+        return body(HttpStatus.BAD_REQUEST, "bad_request", "Malformed request body");
     }
 
     /** Route absence must surface as a 404 rather than falling into the {@link #unknown} 500 catch-all. */

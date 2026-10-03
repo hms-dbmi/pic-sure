@@ -36,5 +36,6 @@ class AggregatePropertiesTest {
         assertThat(props.getObfuscation().getVariance()).isEqualTo(3);
         assertThat(props.getConnectTimeoutSec()).isEqualTo(10);
         assertThat(props.getReadTimeoutSec()).isEqualTo(60);
+        assertThat(props.getHpdsApiPath()).isEqualTo("/v3");
     }
 }

@@ -85,11 +85,11 @@ public class InternalQueryModelsTest {
     @Test
     public void updateQueryRequestWritesEveryMemberAndIgnoresUnknownOnes() throws JsonProcessingException {
         assertEquals(
-            "{\"status\":\"AVAILABLE\",\"resourceResultId\":\"rr-1\",\"metadata\":null}",
-            mapper.writeValueAsString(new UpdateQueryRequest("AVAILABLE", "rr-1", null))
+            "{\"status\":\"AVAILABLE\",\"resourceResultId\":\"rr-1\",\"metadata\":null,\"query\":null,\"version\":null}",
+            mapper.writeValueAsString(new UpdateQueryRequest("AVAILABLE", "rr-1", null, null, null))
         );
         assertEquals(
-            new UpdateQueryRequest("AVAILABLE", null, null),
+            new UpdateQueryRequest("AVAILABLE", null, null, null, null),
             mapper.readValue("{\"status\":\"AVAILABLE\",\"picsureId\":\"ignored\"}", UpdateQueryRequest.class)
         );
     }

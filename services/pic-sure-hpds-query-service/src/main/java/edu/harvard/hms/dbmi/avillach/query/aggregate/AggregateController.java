@@ -7,36 +7,53 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryRequest;
+import edu.harvard.hms.dbmi.avillach.query.query.SyncExamples;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * The v1 aggregate and obfuscation ingress: {@code POST /hpds/open/query/sync} and {@code POST /hpds/open/query}. The gateway audits these
- * paths through {@code AuditRouteTable}. There is no {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here because
- * {@code WebSecurityConfig} already requires an authenticated caller for all of {@code /hpds/**} (the "open"/"auth" distinction is about
- * which HPDS backend answers the query and whether its data is public, not about API-level authentication).
+ * The aggregate/obfuscation ingress: {@code POST /hpds/open/query/sync} and {@code POST /hpds/open/query}. {@link AggregateService} injects
+ * the study-consents allow-list into the query's {@code select} field and calls HPDS under its configured API path. The gateway audits both
+ * paths; the {@code @AuditEvent} labels here are declarative and nothing in this service intercepts them. There is no
+ * {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here because {@code WebSecurityConfig} already requires an
+ * authenticated caller for all of {@code /hpds/**}; "open" names the HPDS backend that answers, not an unauthenticated route.
  *
- * <p><b>{@code /hpds/open/query[/sync]} routing:</b> only this controller serves the literal {@code /hpds/open/query} and
- * {@code /hpds/open/query/sync} mappings, applying consent scoping and obfuscation. Open-path read endpoints
- * ({@code /hpds/open/v3/query/{id}/status}, {@code /result}, {@code /signed-url}, {@code /metadata}) flow through
- * {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller} (the generic v3 ingress) instead.
+ * <p><b>Coexistence with {@code HpdsQueryController}:</b> that controller maps the generic, path-variable {@code /hpds/{backend}/query} and
+ * {@code /hpds/{backend}/query/sync}. This controller maps the LITERAL {@code /hpds/open/query} and {@code /hpds/open/query/sync}, which
+ * Spring MVC prefers, so {@code /hpds/auth/query[/sync]} still flows through the generic controller. Only the two open submissions are
+ * intercepted. The open-path read endpoints ({@code /query/{id}/status}, {@code /result}, {@code /signed-url}, {@code /metadata}) are left
+ * to the generic controller: the async submit stores the rewritten, consent-scoped query through {@code QueryService}, so those reads
+ * already operate on the safe stored query and re-implementing them here would only shadow the generic mappings.
  *
- * <p>Two open submissions are intercepted: {@code query/sync}, which applies obfuscation, and {@code query}, which applies consent scoping
- * to CROSS_COUNT requests before dispatch. The async submit delegates persistence and dispatch to {@code QueryService}, so the stored query
- * is the rewritten, consent-scoped one; subsequent read endpoints operate on that safe stored query. This controller deliberately does NOT
- * re-implement {@code /info}, {@code /search}, {@code /query/{id}/status}, {@code /query/{id}/result}, or {@code /query/format} under the
- * literal {@code /hpds/open} prefix -- doing so would shadow them away from the generic controller for no benefit because the read
- * operations already use the consent-scoped stored query.
+ * <p>Both bodies bind {@link HpdsQueryRequest}, the same v3 request the generic controller binds, and hand its typed query to
+ * {@link AggregateService}.
  */
 @RestController
 @RequestMapping("/hpds/open")
-@Tag(name = "aggregate-data-sharing (open)", description = "Legacy open-access aggregate queries")
+@Tag(name = "aggregate-data-sharing (open)", description = "Open-access aggregate queries.")
 public class AggregateController {
+
+    private static final String COUNT_ABOVE_THRESHOLD_EXAMPLE = "1237 \u00b13";
+
+    private static final String COUNT_BELOW_THRESHOLD_EXAMPLE = "< 10";
+
+    private static final String CROSS_COUNT_EXAMPLE =
+        "{\"\\\\_studies_consents\\\\\":\"1232 \u00b13\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"< 10\"}";
+
+    private static final String CATEGORICAL_CROSS_COUNT_EXAMPLE =
+        "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 \u00b13\",\"variance\":3},"
+            + "\"Male\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}";
+
+    private static final String CONTINUOUS_CROSS_COUNT_EXAMPLE =
+        "{\"\\\\demographics\\\\AGE\\\\\":{\"40 - 49\":{\"count\":348,\"display\":\"348 \u00b13\",\"variance\":3}}}";
 
     private final AggregateService service;
 
@@ -48,24 +65,50 @@ public class AggregateController {
     @PostMapping(value = "/query/sync", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Run an open aggregate query inline")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "400", description = "Missing query data or an unsupported result type"),
-            @ApiResponse(responseCode = "502", description = "Aggregate backend call failed")}
+        {@ApiResponse(
+            responseCode = "200",
+            description = "The obfuscated result. Its shape follows the query's expectedResultType, and the body is labelled "
+                + "application/json for every result type, the plain-text ones included. A CONTINUOUS_CROSS_COUNT whose study consent "
+                + "count is below the obfuscation threshold answers 200 with an empty body.",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(
+                    type = "string",
+                    description = "COUNT: an obfuscated count as text, either a count with its variance or a below-threshold marker. "
+                        + "CROSS_COUNT: a JSON object of study consent path to obfuscated count string. CATEGORICAL_CROSS_COUNT and "
+                        + "CONTINUOUS_CROSS_COUNT: a JSON object of concept path to an object of value or bin to an object with count, "
+                        + "display and variance. INFO_COLUMN_LISTING, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, VCF_EXCERPT and "
+                        + "AGGREGATE_VCF_EXCERPT: the HPDS body unchanged, as on the auth backend."
+                ),
+                examples = {@ExampleObject(name = "COUNT at or above the threshold", value = COUNT_ABOVE_THRESHOLD_EXAMPLE),
+                    @ExampleObject(name = "COUNT below the threshold", value = COUNT_BELOW_THRESHOLD_EXAMPLE),
+                    @ExampleObject(name = "CROSS_COUNT", value = CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = CATEGORICAL_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = CONTINUOUS_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(
+                        name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = SyncExamples.VARIANT_COUNT_WITH_GENOMIC_FILTERS
+                    ),
+                    @ExampleObject(
+                        name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = SyncExamples.VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS
+                    )}
+            )
+        ), @ApiResponse(responseCode = "400", description = "Missing query data, a result type the open path does not serve, or a body that cannot be read as a query request."), @ApiResponse(responseCode = "502", description = "Aggregate backend call failed.")}
     )
-    public ResponseEntity<String> querySync(@RequestBody QueryRequest req) {
-        return service.querySync(req, AggregateVariant.V1);
+    public ResponseEntity<String> querySync(@RequestBody HpdsQueryRequest req) {
+        return service.querySync(req.query());
     }
 
     @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
     @Operation(summary = "Submit an open aggregate query")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Missing query data"),
-            @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed"),
-            @ApiResponse(responseCode = "503", description = "Backend not configured"),
-            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+        {@ApiResponse(responseCode = "200", description = "The status of the submitted open aggregate query."),
+            @ApiResponse(responseCode = "400", description = "Missing query data, or a body that cannot be read as a query request."),
+            @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed."),
+            @ApiResponse(responseCode = "503", description = "Backend not configured."),
+            @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
-    public QueryStatus query(@RequestBody QueryRequest req) {
-        return service.query(req, AggregateVariant.V1);
+    public QueryStatus query(@RequestBody HpdsQueryRequest req) {
+        return service.query(req.query());
     }
 }

@@ -45,7 +45,7 @@ class AuthorizationServiceAuthTargetServiceTest {
 
     @ParameterizedTest
     @ValueSource(
-        strings = {"/hpds/auth", "/hpds/auth/", "/hpds/auth/v3/query/sync", "/visualization/auth", "/visualization/auth/distributions"}
+        strings = {"/hpds/auth", "/hpds/auth/", "/hpds/auth/query/sync", "/visualization/auth", "/visualization/auth/distributions"}
     )
     void recognizesAuthBackendPaths(String targetService) {
         assertTrue(AuthorizationService.isAuthTargetService(targetService));
@@ -54,15 +54,15 @@ class AuthorizationServiceAuthTargetServiceTest {
     @ParameterizedTest
     @NullSource
     @ValueSource(
-        strings = {"", "/hpds/open/v3/query/sync", "/visualization/open/distributions", "/hpds/authentic/v3/query",
-            "/visualization/authorized/distributions", "/foo/hpds/auth/v3/query", "/auth/open/validate"}
+        strings = {"", "/hpds/open/query/sync", "/visualization/open/distributions", "/hpds/authentic/query",
+            "/visualization/authorized/distributions", "/foo/hpds/auth/query", "/auth/open/validate"}
     )
     void rejectsPathsWithoutAnAuthBackendSegment(String targetService) {
         assertFalse(AuthorizationService.isAuthTargetService(targetService));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/hpds/auth/v3/query/sync", "/visualization/auth/distributions"})
+    @ValueSource(strings = {"/hpds/auth/query/sync", "/visualization/auth/distributions"})
     void anonymousCallerCannotReachAuthPathWhenOpenRoleHasNoRules(String targetService) {
         assertFalse(authorizationService.openAccessRequestIsValid(validationRequest(targetService)));
     }
@@ -73,7 +73,7 @@ class AuthorizationServiceAuthTargetServiceTest {
      */
     @Test
     void anonymousCallerIsDeniedOnEveryPathWhenOpenRoleHasNoRules() {
-        assertFalse(authorizationService.openAccessRequestIsValid(validationRequest("/hpds/open/v3/query/sync")));
+        assertFalse(authorizationService.openAccessRequestIsValid(validationRequest("/hpds/open/query/sync")));
         assertFalse(authorizationService.openAccessRequestIsValid(validationRequest("/visualization/open/distributions")));
     }
 
@@ -82,7 +82,7 @@ class AuthorizationServiceAuthTargetServiceTest {
      * rule that would pass, so a denial can only have come from the guard.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"/hpds/auth/v3/query/sync", "/visualization/auth/distributions"})
+    @ValueSource(strings = {"/hpds/auth/query/sync", "/visualization/auth/distributions"})
     void guardDeniesAuthPathEvenWhenARuleWouldPass(String targetService) {
         AuthorizationService service = serviceWith(false, Set.of(passingRule()));
 
@@ -94,7 +94,7 @@ class AuthorizationServiceAuthTargetServiceTest {
      * anonymous Explorer reaching {@code /hpds/auth/**} depends on it.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"/hpds/auth/v3/query/sync", "/visualization/auth/distributions"})
+    @ValueSource(strings = {"/hpds/auth/query/sync", "/visualization/auth/distributions"})
     void publicAccessLetsAnonymousCallerReachAuthPath(String targetService) {
         AuthorizationService service = serviceWith(true, Set.of(passingRule()));
 
@@ -106,7 +106,7 @@ class AuthorizationServiceAuthTargetServiceTest {
      * backend still denies, so the flag alone cannot expose data.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"/hpds/auth/v3/query/sync", "/visualization/auth/distributions"})
+    @ValueSource(strings = {"/hpds/auth/query/sync", "/visualization/auth/distributions"})
     void publicAccessStillRequiresAnOpenAccessRule(String targetService) {
         AuthorizationService service = serviceWith(true, Set.of());
 
@@ -121,8 +121,8 @@ class AuthorizationServiceAuthTargetServiceTest {
         AuthorizationService disabled = serviceWith(false, Set.of(passingRule()));
         AuthorizationService enabled = serviceWith(true, Set.of(passingRule()));
 
-        assertTrue(disabled.openAccessRequestIsValid(validationRequest("/hpds/open/v3/query/sync")));
-        assertTrue(enabled.openAccessRequestIsValid(validationRequest("/hpds/open/v3/query/sync")));
+        assertTrue(disabled.openAccessRequestIsValid(validationRequest("/hpds/open/query/sync")));
+        assertTrue(enabled.openAccessRequestIsValid(validationRequest("/hpds/open/query/sync")));
     }
 
     private AuthorizationService serviceWith(boolean enablePublicAccess, Set<AccessRule> openAccessRules) {
