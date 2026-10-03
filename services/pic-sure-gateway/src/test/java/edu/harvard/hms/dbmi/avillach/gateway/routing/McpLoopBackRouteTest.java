@@ -31,6 +31,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -41,21 +42,25 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.McpCallerFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 
 /**
  * Runs {@code pic-sure-mcp}'s loop-back call through the whole application with the MCP service secrets set through the same
  * {@code MCP_SERVICE_TOKEN} and {@code MCP_SERVICE_TOKEN_PREVIOUS} variables {@code application.yml} reads, so a mistyped key in that file
  * leaves the gateway with no secret and these tests fail. A request presenting the current or previous secret reaches the dictionary
- * service marked {@code X-Client-Type: mcp} without the secret, and is audited with caller {@code mcp}. A request presenting any other
- * value is refused before PSAMA or the dictionary service is called.
+ * service marked {@code X-Client-Type: mcp} without the secret or the {@code X-PICSURE-API-Key}, and is audited with caller {@code mcp}. A
+ * request presenting any other value is refused before PSAMA or the dictionary service is called. A request to {@code /mcp} itself reaches
+ * the MCP service with the API key and without the secret.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class McpLoopBackRouteTest {
 
     private static final String CURRENT = "current-loop-back-secret";
     private static final String PREVIOUS = "previous-loop-back-secret";
+    private static final String API_KEY = "site-api-key";
 
     static WireMockServer dictionaryStub;
+    static WireMockServer mcpStub;
     static WireMockServer psamaStub;
 
     @DynamicPropertySource
@@ -63,6 +68,10 @@ class McpLoopBackRouteTest {
         dictionaryStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         dictionaryStub.start();
         registry.add("DICTIONARY_URL", dictionaryStub::baseUrl);
+
+        mcpStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
+        mcpStub.start();
+        registry.add("MCP_SERVICE_URL", mcpStub::baseUrl);
 
         psamaStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         psamaStub.start();
@@ -75,6 +84,7 @@ class McpLoopBackRouteTest {
     @AfterAll
     static void stopStubs() {
         dictionaryStub.stop();
+        mcpStub.stop();
         psamaStub.stop();
     }
 
@@ -94,6 +104,9 @@ class McpLoopBackRouteTest {
         dictionaryStub.resetAll();
         dictionaryStub.stubFor(any(anyUrl()).willReturn(aResponse().withStatus(200).withBody("dictionary-ok")));
 
+        mcpStub.resetAll();
+        mcpStub.stubFor(post(urlEqualTo("/mcp")).willReturn(aResponse().withStatus(200).withBody("mcp-ok")));
+
         psamaStub.resetAll();
         psamaStub.stubFor(
             post(urlEqualTo("/auth/token/inspect"))
@@ -105,6 +118,7 @@ class McpLoopBackRouteTest {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer user-token");
         headers.set(McpCallerFilter.TOKEN_HEADER, presentedToken);
+        headers.set(OpenAccessFilter.API_KEY_HEADER, API_KEY);
         return rest.exchange(
             URI.create("http://127.0.0.1:" + port + "/dictionary/facets"), HttpMethod.GET, new HttpEntity<>(headers), String.class
         );
@@ -125,7 +139,7 @@ class McpLoopBackRouteTest {
         dictionaryStub.verify(
             1,
             getRequestedFor(urlEqualTo("/facets")).withHeader("X-Client-Type", equalTo("mcp"))
-                .withHeader(McpCallerFilter.TOKEN_HEADER, absent())
+                .withHeader(McpCallerFilter.TOKEN_HEADER, absent()).withHeader(OpenAccessFilter.API_KEY_HEADER, absent())
         );
         assertThat(emittedEvent().getCaller()).isEqualTo("mcp");
     }
@@ -151,5 +165,31 @@ class McpLoopBackRouteTest {
         assertThat(response.getBody()).contains("invalid_service_credential");
         dictionaryStub.verify(0, anyRequestedFor(anyUrl()));
         psamaStub.verify(0, postRequestedFor(anyUrl()));
+        LoggingEvent event = emittedEvent();
+        assertThat(event.getCaller()).isNull();
+        assertThat(event.getMetadata()).containsEntry("auth_result", "failure")
+            .containsEntry("auth_failure_reason", "invalid_service_credential");
+    }
+
+    @Test
+    void theApiKeyReachesTheMcpServiceAndTheSecretDoesNot() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer user-token");
+        headers.set("Accept", "application/json, text/event-stream");
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set(OpenAccessFilter.API_KEY_HEADER, API_KEY);
+        headers.set(McpCallerFilter.TOKEN_HEADER, CURRENT);
+
+        ResponseEntity<String> response = rest.exchange(
+            URI.create("http://127.0.0.1:" + port + McpCallerFilter.MCP_PATH), HttpMethod.POST, new HttpEntity<>("{}", headers),
+            String.class
+        );
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        mcpStub.verify(
+            1,
+            postRequestedFor(urlEqualTo("/mcp")).withHeader(OpenAccessFilter.API_KEY_HEADER, equalTo(API_KEY))
+                .withHeader(McpCallerFilter.TOKEN_HEADER, absent())
+        );
     }
 }
