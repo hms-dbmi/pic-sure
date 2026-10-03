@@ -17,8 +17,9 @@ import java.util.stream.Collectors;
 
 /**
  * Binds a query tool's arguments strictly. Spring AI does not validate arguments against the input schema, and its own binder drops unknown
- * fields, which would silently discard a {@code not: true} and invert a filter. This binder fails on any unknown field instead and turns
- * every binding error into a one-sentence {@link ToolFailure}, never Jackson's message.
+ * fields, which would silently discard a {@code not: true} and invert a filter. This binder fails on any unknown field instead, refuses an
+ * enum given by its index, as a number or a numeric string, so {@code "language": 2} cannot pick a language by position, and turns every
+ * binding error into a one-sentence {@link ToolFailure}, never Jackson's message.
  */
 public final class QueryBinder {
 
@@ -26,7 +27,7 @@ public final class QueryBinder {
     static final int MAX_FIELD_NAME_LENGTH = 64;
 
     private static final ObjectMapper STRICT = JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-        .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES).build();
+        .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES).enable(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS).build();
 
     private QueryBinder() {}
 
