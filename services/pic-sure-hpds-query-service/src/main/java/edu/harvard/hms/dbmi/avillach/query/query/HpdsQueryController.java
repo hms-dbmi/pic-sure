@@ -43,6 +43,31 @@ public class HpdsQueryController {
 
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request";
 
+    private static final String COUNT_EXAMPLE = "1234";
+
+    private static final String CROSS_COUNT_EXAMPLE = "{\"\\\\demographics\\\\SEX\\\\\":1234}";
+
+    private static final String CATEGORICAL_CROSS_COUNT_EXAMPLE = "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":634,\"Male\":600}}";
+
+    private static final String CONTINUOUS_CROSS_COUNT_EXAMPLE = "{\"\\\\demographics\\\\AGE\\\\\":{\"42.0\":17,\"43.0\":12}}";
+
+    private static final String OBSERVATION_CROSS_COUNT_EXAMPLE = "{\"\\\\demographics\\\\SEX\\\\\":4321}";
+
+    private static final String INFO_COLUMN_LISTING_EXAMPLE =
+        "[{\"key\":\"Gene_with_variant\",\"description\":\"The official symbol for a gene affected by a variant.\","
+            + "\"continuous\":false,\"min\":null,\"max\":null}]";
+
+    private static final String VARIANT_COUNT_WITH_GENOMIC_FILTERS_EXAMPLE = "{\"count\":17,\"message\":\"Query ran successfully\"}";
+
+    private static final String VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS_EXAMPLE =
+        "{\"count\":\"0\",\"message\":\"No variant filters were supplied, so no query was run.\"}";
+
+    private static final String VARIANT_LIST_EXAMPLE = "[19,44908684,T,C,APOE,missense_variant, 19,44908822,C,T,APOE,missense_variant]";
+
+    private static final String VCF_EXCERPT_EXAMPLE =
+        "CHROM\tPOSITION\tREF\tALT\tPatients with this variant in subset\tPatients with this variant NOT in subset\n"
+            + "19\t44908684\tT\tC\t12/1234\t3/4000\n";
+
     private final QueryService service;
 
     public HpdsQueryController(QueryService service) {
@@ -90,9 +115,19 @@ public class HpdsQueryController {
                         + "genomic filters and the string \"0\" when it has none. VARIANT_LIST_FOR_QUERY: a bracketed, comma-separated "
                         + "list of variants as text. VCF_EXCERPT and AGGREGATE_VCF_EXCERPT: tab-separated text with a header row."
                 ),
-                examples = {@ExampleObject(name = "COUNT", value = "1234"), @ExampleObject(
-                    name = "CROSS_COUNT", value = "{\"\\\\demographics\\\\SEX\\\\\":1234}"
-                ), @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":634,\"Male\":600}}"), @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = "{\"\\\\demographics\\\\AGE\\\\\":{\"42.0\":17,\"43.0\":12}}"), @ExampleObject(name = "OBSERVATION_CROSS_COUNT", value = "{\"\\\\demographics\\\\SEX\\\\\":4321}"), @ExampleObject(name = "INFO_COLUMN_LISTING", value = "[{\"key\":\"Gene_with_variant\",\"description\":\"The official symbol for a gene affected by a variant.\"," + "\"continuous\":false,\"min\":null,\"max\":null}]"), @ExampleObject(name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = "{\"count\":17,\"message\":\"Query ran successfully\"}"), @ExampleObject(name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = "{\"count\":\"0\",\"message\":\"No variant filters were supplied, so no query was run.\"}"), @ExampleObject(name = "VARIANT_LIST_FOR_QUERY", value = "[19,44908684,T,C,APOE,missense_variant, 19,44908822,C,T,APOE,missense_variant]"), @ExampleObject(name = "VCF_EXCERPT", value = "CHROM\tPOSITION\tREF\tALT\tPatients with this variant in subset\tPatients with this variant NOT in subset\n" + "19\t44908684\tT\tC\t12/1234\t3/4000\n")}
+                examples = {@ExampleObject(name = "COUNT", value = COUNT_EXAMPLE),
+                    @ExampleObject(name = "CROSS_COUNT", value = CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = CATEGORICAL_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = CONTINUOUS_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "OBSERVATION_CROSS_COUNT", value = OBSERVATION_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "INFO_COLUMN_LISTING", value = INFO_COLUMN_LISTING_EXAMPLE),
+                    @ExampleObject(
+                        name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = VARIANT_COUNT_WITH_GENOMIC_FILTERS_EXAMPLE
+                    ),
+                    @ExampleObject(
+                        name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS_EXAMPLE
+                    ), @ExampleObject(name = "VARIANT_LIST_FOR_QUERY", value = VARIANT_LIST_EXAMPLE),
+                    @ExampleObject(name = "VCF_EXCERPT", value = VCF_EXCERPT_EXAMPLE)}
             )
         ), @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data, a result type served asynchronously," + UNREADABLE_BODY), @ApiResponse(responseCode = "403", description = "Consent does not permit this query"), @ApiResponse(responseCode = "502", description = "Consent lookup, HPDS call, or query save failed"), @ApiResponse(responseCode = "503", description = "Backend not configured"), @ApiResponse(responseCode = "504", description = "operations-service timed out")}
     )
