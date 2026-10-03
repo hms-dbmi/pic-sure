@@ -37,7 +37,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  */
 @RestController
 @RequestMapping("/hpds/open")
-@Tag(name = "aggregate-data-sharing (open)", description = "Open-access aggregate queries")
+@Tag(name = "aggregate-data-sharing (open)", description = "Open-access aggregate queries.")
 public class AggregateController {
 
     private final AggregateService service;
@@ -69,7 +69,7 @@ public class AggregateController {
                     name = "COUNT below the threshold", value = "< 10"
                 ), @ExampleObject(name = "CROSS_COUNT", value = "{\"\\\\_studies_consents\\\\\":\"1232 \u00b13\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"< 10\"}"), @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 \u00b13\",\"variance\":3}," + "\"Male\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}"), @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = "{\"\\\\demographics\\\\AGE\\\\\":{\"40 - 49\":{\"count\":348,\"display\":\"348 \u00b13\",\"variance\":3}}}"), @ExampleObject(name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = "{\"count\":17,\"message\":\"Query ran successfully\"}"), @ExampleObject(name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = "{\"count\":\"0\",\"message\":\"No variant filters were supplied, so no query was run.\"}")}
             )
-        ), @ApiResponse(responseCode = "400", description = "Missing query data, a result type the open path does not serve, or a body that cannot be read as a query request"), @ApiResponse(responseCode = "502", description = "Aggregate backend call failed")}
+        ), @ApiResponse(responseCode = "400", description = "Missing query data, a result type the open path does not serve, or a body that cannot be read as a query request."), @ApiResponse(responseCode = "502", description = "Aggregate backend call failed.")}
     )
     public ResponseEntity<String> querySync(@RequestBody HpdsQueryRequest req) {
         return service.querySync(req.query());
@@ -79,11 +79,11 @@ public class AggregateController {
     @PostMapping("/query")
     @Operation(summary = "Submit an open aggregate query")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "400", description = "Missing query data, or a body that cannot be read as a query request"),
-            @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed"),
-            @ApiResponse(responseCode = "503", description = "Backend not configured"),
-            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+        {@ApiResponse(responseCode = "200", description = "OK."),
+            @ApiResponse(responseCode = "400", description = "Missing query data, or a body that cannot be read as a query request."),
+            @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed."),
+            @ApiResponse(responseCode = "503", description = "Backend not configured."),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out.")}
     )
     public QueryStatus query(@RequestBody HpdsQueryRequest req) {
         return service.query(req.query());

@@ -20,7 +20,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * {@link SearchService} to the API base URL ({@code HPDS_API_PATH} appended) of that backend's own HPDS instance.
  */
 @RestController
-@Tag(name = "Search", description = "Concept search and value lookup on an HPDS backend")
+@Tag(name = "Search", description = "Concept search and value lookup on an HPDS backend.")
 public class HpdsSearchController {
 
     private final SearchService service;
@@ -33,10 +33,10 @@ public class HpdsSearchController {
     @PostMapping("/hpds/{backend}/search")
     @Operation(summary = "Search concepts on a backend")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"),
-            @ApiResponse(responseCode = "400", description = "Unknown backend, or a body that is not a search request"),
-            @ApiResponse(responseCode = "502", description = "HPDS backend call failed"),
-            @ApiResponse(responseCode = "503", description = "Backend not configured")}
+        {@ApiResponse(responseCode = "200", description = "OK."),
+            @ApiResponse(responseCode = "400", description = "Unknown backend, or a body that is not a search request."),
+            @ApiResponse(responseCode = "502", description = "HPDS backend call failed."),
+            @ApiResponse(responseCode = "503", description = "Backend not configured.")}
     )
     public SearchResults search(@PathVariable("backend") String backend, @RequestBody SearchRequest req) {
         return service.search(backend, req);
@@ -46,9 +46,9 @@ public class HpdsSearchController {
     @GetMapping("/hpds/{backend}/search/values")
     @Operation(summary = "Page through the values of a concept")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Unknown backend"),
-            @ApiResponse(responseCode = "502", description = "HPDS backend call failed"),
-            @ApiResponse(responseCode = "503", description = "Backend not configured")}
+        {@ApiResponse(responseCode = "200", description = "OK."), @ApiResponse(responseCode = "400", description = "Unknown backend."),
+            @ApiResponse(responseCode = "502", description = "HPDS backend call failed."),
+            @ApiResponse(responseCode = "503", description = "Backend not configured.")}
     )
     public PaginatedSearchResult<String> values(
         @PathVariable("backend") String backend, @RequestParam(name = "genomicConceptPath", required = false) String conceptPath,
