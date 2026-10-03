@@ -14,6 +14,8 @@ The OpenAPI document publishes each guard's authorities as "Required authorities
 
 `no-entity-parameters` covers every module. No controller handler parameter may be, or contain, a class annotated `@Entity`. The check follows generic arguments at any depth, array component types and `Optional`, so `List<Role>`, `Map<String, List<User>>`, `User[]` and `Optional<User>` all fail, and it applies to every parameter, not only `@RequestBody`. A class counts as an entity by its annotation, not its package, so `User.UserForDisplay` passes. Fields are not followed: a request record with an entity-typed field passes. A bound entity lets a caller set any column Jackson can reach. To satisfy it, bind a request record that lists only the fields the endpoint accepts, and map it onto the entity in the service.
 
+`typed-handler-signatures` covers the modules marked `documented`, hidden controllers included. On every handler, the `@RequestBody` parameter type and the return type must name a concrete model. The check looks through `ResponseEntity`, `Mono`, `Optional`, `List`, `Set`, arrays and the type arguments of any other generic class, and at every level it rejects `Object`, a wildcard such as `ResponseEntity<?>`, a type variable, one of those five wrappers used raw, `Map` or any `java.util` map type, `JsonNode` or another Jackson tree type, Spring Data's `Page` or `Slice`, and a class annotated `@Entity`. `String`, `byte[]`, `InputStreamResource`, `Void` and `void` pass. An open shape publishes an empty schema, so a client cannot tell what to send or what comes back. To satisfy it, declare a record that mirrors the body the endpoint already emits. Where a handler returns `ResponseEntity<?>` because it builds both a success body and an error body, declare the success type and throw an exception for the error. The rule reads declared types only, so a `String` return whose body is JSON passes here, and the service's `OpenApiDocumentTest` is what catches it.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -54,6 +56,10 @@ Request mappings, over every compiled module:
 Persistence, over every compiled module:
 
 - `no-entity-parameters`: no controller handler parameter is, or contains, a class annotated `@Entity`.
+
+Contracts, over the modules marked `documented`:
+
+- `typed-handler-signatures`: every handler's `@RequestBody` type and return type names a concrete model, with no `Object`, wildcard, type variable, raw wrapper, map, Jackson tree type, Spring Data page or `@Entity` at any depth.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
