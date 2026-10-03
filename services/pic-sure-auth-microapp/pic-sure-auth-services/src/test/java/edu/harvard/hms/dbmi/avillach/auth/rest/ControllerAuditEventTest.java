@@ -45,9 +45,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getUserById", new Class[] {String.class, HttpServletRequest.class}, "OTHER", "user.read");
         // getUserAll()
         assertAuditEvent(c, "getUserAll", new Class[] {}, "OTHER", "user.list");
-        // addUser(List<User> users, HttpServletRequest request)
+        // addUser(List<UserCreateRequest> users, HttpServletRequest request)
         assertAuditEvent(c, "addUser", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "user.modify");
-        // updateUser(List<User> users, HttpServletRequest request)
+        // updateUser(List<UserUpdateRequest> users, HttpServletRequest request)
         assertAuditEvent(c, "updateUser", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "user.modify");
         // getCurrentUser(String authorizationHeader, Boolean hasToken)
         assertAuditEvent(c, "getCurrentUser", new Class[] {String.class, Boolean.class}, "ACCESS", "user.profile");
@@ -64,9 +64,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getRoleById", new Class[] {String.class}, "OTHER", "role.read");
         // getRoleAll()
         assertAuditEvent(c, "getRoleAll", new Class[] {}, "OTHER", "role.list");
-        // addRole(List<Role> roles, HttpServletRequest request)
+        // addRole(List<RoleCreateRequest> roles, HttpServletRequest request)
         assertAuditEvent(c, "addRole", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "role.modify");
-        // updateRole(List<Role> roles, HttpServletRequest request)
+        // updateRole(List<RoleUpdateRequest> roles, HttpServletRequest request)
         assertAuditEvent(c, "updateRole", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "role.modify");
         // removeById(String roleId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "role.delete");
@@ -79,9 +79,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getPrivilegeById", new Class[] {String.class}, "OTHER", "privilege.read");
         // getPrivilegeAll()
         assertAuditEvent(c, "getPrivilegeAll", new Class[] {}, "OTHER", "privilege.list");
-        // addPrivilege(List<Privilege> privileges, HttpServletRequest request)
+        // addPrivilege(List<PrivilegeCreateRequest> privileges, HttpServletRequest request)
         assertAuditEvent(c, "addPrivilege", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "privilege.modify");
-        // updatePrivilege(List<Privilege> privileges, HttpServletRequest request)
+        // updatePrivilege(List<PrivilegeUpdateRequest> privileges, HttpServletRequest request)
         assertAuditEvent(c, "updatePrivilege", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "privilege.modify");
         // removeById(String privilegeId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "privilege.delete");
@@ -94,9 +94,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getAccessRuleById", new Class[] {String.class}, "OTHER", "access_rule.read");
         // getAccessRuleAll()
         assertAuditEvent(c, "getAccessRuleAll", new Class[] {}, "OTHER", "access_rule.list");
-        // addAccessRule(List<AccessRule> accessRules, HttpServletRequest request)
+        // addAccessRule(List<AccessRuleCreateRequest> accessRuleRequests, HttpServletRequest request)
         assertAuditEvent(c, "addAccessRule", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "access_rule.modify");
-        // updateAccessRule(List<AccessRule> accessRules, HttpServletRequest request)
+        // updateAccessRule(List<AccessRuleUpdateRequest> accessRules, HttpServletRequest request)
         assertAuditEvent(c, "updateAccessRule", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "access_rule.modify");
         // removeById(String accessRuleId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "access_rule.delete");
@@ -111,9 +111,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getApplicationById", new Class[] {String.class}, "OTHER", "application.read");
         // getApplicationAll()
         assertAuditEvent(c, "getApplicationAll", new Class[] {}, "OTHER", "application.list");
-        // addApplication(List<Application> applications, HttpServletRequest request)
+        // addApplication(List<ApplicationCreateRequest> applications, HttpServletRequest request)
         assertAuditEvent(c, "addApplication", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "application.modify");
-        // updateApplication(List<Application> applications, HttpServletRequest request)
+        // updateApplication(List<ApplicationUpdateRequest> applications, HttpServletRequest request)
         assertAuditEvent(c, "updateApplication", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "application.modify");
         // refreshApplicationToken(String applicationId, HttpServletRequest request)
         assertAuditEvent(
@@ -170,9 +170,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getConnectionById", new Class[] {String.class}, "OTHER", "connection.read");
         // getAllConnections()
         assertAuditEvent(c, "getAllConnections", new Class[] {}, "OTHER", "connection.list");
-        // addConnection(List<Connection> connections, HttpServletRequest request)
+        // addConnection(List<ConnectionCreateRequest> connectionRequests, HttpServletRequest request)
         assertAuditEvent(c, "addConnection", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "connection.modify");
-        // updateConnection(List<Connection> connections, HttpServletRequest request)
+        // updateConnection(List<ConnectionUpdateRequest> connections, HttpServletRequest request)
         assertAuditEvent(c, "updateConnection", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "connection.modify");
         // removeById(String connectionId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "connection.delete");
@@ -185,9 +185,9 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getMappingsForConnection", new Class[] {String.class}, "OTHER", "mapping.read");
         // getAllMappings()
         assertAuditEvent(c, "getAllMappings", new Class[] {}, "OTHER", "mapping.list");
-        // addMapping(List<UserMetadataMapping> mappings, HttpServletRequest request)
+        // addMapping(List<UserMetadataMappingCreateRequest> mappings, HttpServletRequest request)
         assertAuditEvent(c, "addMapping", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "mapping.modify");
-        // updateMapping(List<UserMetadataMapping> mappings, HttpServletRequest request)
+        // updateMapping(List<UserMetadataMappingUpdateRequest> mappings, HttpServletRequest request)
         assertAuditEvent(c, "updateMapping", new Class[] {List.class, HttpServletRequest.class}, "ADMIN", "mapping.modify");
         // removeById(String mappingId, HttpServletRequest request)
         assertAuditEvent(c, "removeById", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "mapping.delete");
