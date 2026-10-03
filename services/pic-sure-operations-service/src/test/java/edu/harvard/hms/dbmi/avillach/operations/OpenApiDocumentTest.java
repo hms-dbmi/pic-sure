@@ -66,4 +66,100 @@ class OpenApiDocumentTest {
             .isEqualTo("Required authorities: SUPER_ADMIN.");
         assertThat(paths.path("/configuration").path("get").path("description").isMissingNode()).isTrue();
     }
+
+    @Test
+    void namedDatasetOperationsPublishTheirSchemas() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/dataset/named", "200", "NamedDatasetDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/dataset/named", "NamedDatasetRequestDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/dataset/named", "201", "NamedDatasetDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/dataset/named/{id}", "200", "NamedDatasetDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "put", "/dataset/named/{id}", "NamedDatasetRequestDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "put", "/dataset/named/{id}", "200", "NamedDatasetDto");
+        OpenApiDocumentAssertions.assertNoResponseBody(document, "delete", "/dataset/named/{id}", "204");
+        OpenApiDocumentAssertions
+            .assertSchemaHasFields(document, "NamedDatasetDto", "uuid", "user", "name", "query", "archived", "metadata");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "NamedDatasetQueryDto", "uuid", "query", "startTime", "status");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "NamedDatasetRequestDto", "queryId", "name", "archived", "metadata");
+        assertThat(document.at("/components/schemas/NamedDatasetDto/properties/query/$ref").asText())
+            .isEqualTo("#/components/schemas/NamedDatasetQueryDto");
+        assertThat(document.at("/components/schemas/NamedDatasetQueryDto/properties/query/type").asText()).isEqualTo("string");
+        assertThat(document.at("/components/schemas/NamedDatasetQueryDto/properties/startTime/type").asText()).isEqualTo("integer");
+    }
+
+    @Test
+    void configurationOperationsPublishTheirSchemas() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/configuration", "200", "ConfigurationDto");
+        assertThat(document.at("/paths/~1configuration/get/parameters/0/name").asText()).isEqualTo("kind");
+        assertThat(document.at("/paths/~1configuration/get/parameters/0/in").asText()).isEqualTo("query");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/configuration/{identifier}", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/configuration/admin", "ConfigurationRequestDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/configuration/admin", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "patch", "/configuration/admin/{id}", "ConfigurationRequestDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "patch", "/configuration/admin/{id}", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "delete", "/configuration/admin/{id}", "200", "ConfigurationDto");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ConfigurationDto", "uuid", "name", "kind", "value", "description");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ConfigurationRequestDto", "name", "kind", "value", "description");
+    }
+
+    @Test
+    void namedDatasetAndConfigurationModelsAreDocumented() throws Exception {
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document(), "NamedDatasetDto", "NamedDatasetQueryDto", "NamedDatasetRequestDto", "ConfigurationDto", "ConfigurationRequestDto"
+        );
+    }
+
+    @Test
+    void bannerOperationsPublishTheirSchemas() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/banners/active", "200", "ActiveBannerDto");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/banners", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "put", "/banners/order", "ReorderBannersRequest");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/banners/order", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/banners", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners", "201", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/banners/saved", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/saved", "201", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "put", "/banners/{uuid}", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "put", "/banners/{uuid}", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/banners/{uuid}/publish", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/{uuid}/publish", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/{uuid}/disable", "200", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/{uuid}/archive", "200", "ArchivedBannerDto");
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/banners/{uuid}/restore", "PublishBannerRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/banners/{uuid}/restore", "201", "ManagementBannerDto");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "ActiveBannerDto", "uuid", "htmlContent", "title", "appearance", "icon", "dismissible", "audience", "placement",
+            "pageTargets", "priority", "presentationHash"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "ManagementBannerDto", "uuid", "status", "lifecycle", "htmlContent", "title", "appearance", "icon", "dismissible",
+            "audience", "placement", "pageTargets", "startAt", "endAt", "priority", "presentationHash", "createdAt", "createdBy",
+            "updatedAt", "updatedBy", "publishedAt", "publishedBy", "disabledAt", "disabledBy", "restoredFromUuid"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ArchivedBannerDto", "uuid", "status", "archivedAt", "archivedBy");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "BannerPageTarget", "kind", "path");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "PublishBannerRequest", "htmlContent", "title", "appearance", "icon", "dismissible", "audience", "placement",
+            "pageTargets", "startAt", "endAt"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ReorderBannersRequest", "bannerUuids");
+    }
+
+    @Test
+    void bannerModelsAreDocumented() throws Exception {
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document(), "ActiveBannerDto", "ManagementBannerDto", "ArchivedBannerDto", "BannerPageTarget", "PublishBannerRequest",
+            "ReorderBannersRequest"
+        );
+    }
+
+    private JsonNode document() throws Exception {
+        return objectMapper
+            .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
 }
