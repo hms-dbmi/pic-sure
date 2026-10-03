@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
-import edu.harvard.hms.dbmi.avillach.auth.model.response.UserForDisplay;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.ConnectionRef;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
@@ -475,7 +475,7 @@ public class UserService {
     }
 
     @Transactional
-    public UserForDisplay getCurrentUser(String authorizationHeader, Boolean hasToken) {
+    public UserProfileResponse getCurrentUser(String authorizationHeader, Boolean hasToken) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         Optional<CustomUserDetails> customUserDetails =
             Optional.ofNullable((CustomUserDetails) securityContext.getAuthentication().getPrincipal());
@@ -496,8 +496,8 @@ public class UserService {
             this.userRepository.save(user);
         }
 
-        return new UserForDisplay(
-            user.getUuid().toString(), user.getEmail(), user.getPrivilegeNameSet(), user.getToken(),
+        return new UserProfileResponse(
+            user.getUuid(), user.getEmail(), user.getPrivilegeNameSet(), user.getToken(),
             this.tosService.hasUserAcceptedLatest(user.getSubject())
         );
     }

@@ -33,11 +33,11 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 
 /**
- * The terms of service endpoints keep their bodies: the HTML text of the current terms, the stored row's JSON after an update (or an empty
- * 200 when the store cannot read it back), and an empty 200 after acceptance. The handlers read the caller from the security context, so
- * each test signs a user in. The MockMvc carries the string converter ahead of the JSON one, as the application does, so the HTML request
- * and response bodies are read and written as text. {@code GET /tos} is not exercised: it is unchanged and answers 500 on every tree,
- * because no converter writes a {@code Boolean} as {@code text/plain}.
+ * The terms of service endpoints answer the HTML text of the current terms, the stored row's JSON after an update (or an empty 200 when the
+ * store cannot read it back), and an empty 200 after acceptance. The handlers read the caller from the security context, so each test signs
+ * a user in. The MockMvc carries the string converter ahead of the JSON one, as the application does, so the HTML request and response
+ * bodies are read and written as text. {@code GET /tos} is not exercised: it answers 500 on every tree, because no converter writes a
+ * {@code Boolean} as {@code text/plain}.
  */
 class TermsOfServiceControllerTest {
 

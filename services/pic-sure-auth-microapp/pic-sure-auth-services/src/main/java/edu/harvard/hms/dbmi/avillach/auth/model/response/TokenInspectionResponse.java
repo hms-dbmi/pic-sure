@@ -9,9 +9,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The body of {@code POST /token/inspect}. The named members are the keys the gateway reads. Every other claim of the introspected token
- * ({@code iss}, {@code iat}, {@code exp}, {@code jti}, {@code sid}, {@code name}, {@code idp} and the RAS claims) is written beside them,
- * as it always was, through {@link #claims()}.
+ * The body of {@code POST /token/inspect}. The named members are the keys the gateway reads. The gateway's {@code IntrospectionResponse} is
+ * the reader of these members. Every other claim of the introspected token ({@code iss}, {@code iat}, {@code exp}, {@code jti},
+ * {@code sid}, {@code name}, {@code idp} and the RAS claims) is written beside them through {@link #claims()}.
  *
  * <p>A rejected token carries only {@code active} and {@code message}. An accepted token carries {@code active}, the claims, {@code roles},
  * {@code privileges}, and either {@code tokenRefreshed} with a replacement {@code token} or {@code tokenRefreshed} false. A member that is
