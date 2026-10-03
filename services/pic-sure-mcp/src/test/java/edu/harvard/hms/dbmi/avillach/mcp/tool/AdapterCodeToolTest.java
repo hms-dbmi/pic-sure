@@ -93,6 +93,18 @@ class AdapterCodeToolTest {
         assertThat(result.warnings()).isNull();
     }
 
+    @Test
+    void rSetupSaysMinVersionIsAReleaseTagToCompareWithTheTagCheckPrints() throws Exception {
+        AdapterCodeResult r = tool.handle(context, arguments("count", "r", null));
+        AdapterCodeResult python = tool.handle(context, arguments("count", "python", null));
+
+        assertThat(r.requires().minVersion()).isEqualTo("v3.0.0");
+        assertThat(r.setupText()).contains(
+            "For r, requires.minVersion is a release tag. Compare it with the release tag check prints, not with the package version."
+        );
+        assertThat(python.setupText()).doesNotContain("release tag");
+    }
+
     @ParameterizedTest
     @EnumSource(ResultKind.class)
     void everyResultTypeBindsAndWritesCodeThatHoldsNoCallerCredential(ResultKind kind) throws Exception {

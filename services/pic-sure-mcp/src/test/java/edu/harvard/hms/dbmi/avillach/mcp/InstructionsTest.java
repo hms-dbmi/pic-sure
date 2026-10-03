@@ -112,6 +112,7 @@ class InstructionsTest {
             .contains("up to 20 values", "valuesOmitted", "at most 25", "get_adapter_code")
             .contains("The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept")
             .contains("Search synonyms and abbreviations as separate terms, which the terms argument does in one call.")
+            .contains("must describe one concept. For example, \"blood pressure hypertension\" finds nothing")
             .contains("Give either search or terms (up to 5), not both.", "matchedTerms", "truncated", "warnings");
         assertThat(descriptions.get("list_facets")).contains("open-access dictionary metadata only, never participant data")
             .contains("At most 25 categories and 25 facets per category", "categoriesOmitted", "facetsOmitted")
@@ -121,9 +122,11 @@ class InstructionsTest {
                 "Search synonyms and abbreviations as separate terms; search_concepts takes several in one call with its terms argument."
             );
         assertThat(descriptions.get("get_concept")).contains("open-access dictionary metadata only, never participant data")
+            .contains("never participant data. The metadata is the display name, description, type,")
             .contains("up to 20 categorical values", "up to 10 metadata entries", "300 characters");
         assertThat(descriptions.get("get_concepts")).contains("open-access dictionary metadata only, never participant data")
-            .contains("Takes 1 to 25 concept paths.", "the same fields get_concept returns")
+            .contains("Takes 1 to 25 concept paths.")
+            .contains("never participant data. For each concept found, it returns the same fields get_concept returns")
             .contains("Paths the dictionary does not know come back in notFound rather than as an error.");
     }
 
@@ -133,15 +136,23 @@ class InstructionsTest {
 
         assertThat(descriptions.get("count_participants"))
             .contains("obfuscated open-access count that ignores the caller's consents", "suppressed true, with threshold")
-            .contains("It is never the authorized answer", "get_adapter_code with resultType count", "phs999999")
+            .contains("ignores the caller's consents and study access. It carries a small random offset")
+            .contains(
+                "It is never the authorized answer. For an exact count filtered by the user's consents, pass the same query to "
+                    + "get_adapter_code with resultType count."
+            ).contains("get_adapter_code with resultType count", "phs999999")
             .contains("give genomic filters values only, with no min or max")
             .contains("Build the query from conceptPath values that search_concepts returns.")
             .contains("pass the same query to get_adapter_code with resultType count")
             .contains("The query has no result type, no not field, and no authorization fields, and the tools reject all three.");
         assertThat(descriptions.get("cross_count"))
             .contains("obfuscated open-access count that ignores the caller's consents", "At most 100 cells", "cellsOmitted")
-            .contains("the open channel uses it for none of the three", "These cells are never the authorized answer")
-            .contains("get_adapter_code with resultType cross_count", "phs999999")
+            .contains("the open channel uses it for none of the three")
+            .contains("CROSS_COUNT gives one cell per study consent concept. The open channel replaces select with every concept path")
+            .contains(
+                "These cells are never the authorized answer. For exact counts filtered by the user's consents, use get_adapter_code "
+                    + "with resultType cross_count"
+            ).contains("get_adapter_code with resultType cross_count", "phs999999")
             .contains("CONTINUOUS_CROSS_COUNT gives one cell per bin", "or one cell per distinct value where the site does not bin");
     }
 
@@ -206,6 +217,16 @@ class InstructionsTest {
             .contains("The search text of a single search", "The terms of a search by terms, in the order given");
         assertThat(inputSchema).contains("at most 200 characters", "punctuation is ignored and splits words")
             .contains("punctuation in it is ignored and splits words");
+    }
+
+    @Test
+    void noToolDescriptionOrInstructionJoinsClausesWithAColon() throws Exception {
+        List<String> texts = new ArrayList<>(descriptions().values());
+        texts.add(instructions());
+
+        for (String text : texts) {
+            assertThat(text.replace("Example arguments: ", "")).doesNotContainPattern("\\S: ");
+        }
     }
 
     @Test
