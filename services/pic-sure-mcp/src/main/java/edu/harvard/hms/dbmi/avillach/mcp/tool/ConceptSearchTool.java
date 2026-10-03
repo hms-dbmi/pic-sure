@@ -79,10 +79,13 @@ public class ConceptSearchTool {
     public ConceptSearchResult searchConcepts(
         McpTransportContext context,
         @McpToolParam(
-            description = "Free-text search; every word must match. Give search or terms, not both", required = false
+            description = "Free-text search of at most 200 characters; every word must match, and punctuation is ignored and splits words. "
+                + "Give search or terms, not both",
+            required = false
         ) String search,
         @McpToolParam(
-            description = "Up to 5 separate searches, such as synonyms and abbreviations, run in one call. Give search or terms, not both",
+            description = "Up to 5 separate searches, such as synonyms and abbreviations, run in one call. Each is at most 200 characters, "
+                + "and punctuation in it is ignored and splits words. Give search or terms, not both",
             required = false
         ) List<String> terms, @McpToolParam(description = "Zero-based page number, default 0", required = false) Integer page,
         @McpToolParam(description = "Results per page, default 10, max 25", required = false) Integer pageSize

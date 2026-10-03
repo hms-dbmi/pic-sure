@@ -15,6 +15,8 @@ import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -91,6 +93,16 @@ class ConceptsDetailToolTest {
 
         assertThat(result.concepts()).isEmpty();
         assertThat(result.notFound()).containsExactly(UNKNOWN, AGE);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {200, 204, 302})
+    void aResponseWithNoBodyIsUnavailableRatherThanEveryPathNotFound(int status) {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail")).andRespond(DictionaryToolsTest.noBody(status));
+
+        assertThatThrownBy(() -> tool.getConcepts(context, List.of(AGE))).isInstanceOf(ToolFailure.class)
+            .hasMessage("The dictionary is unavailable. Try again shortly.").hasNoCause();
+        server.verify();
     }
 
     @Test

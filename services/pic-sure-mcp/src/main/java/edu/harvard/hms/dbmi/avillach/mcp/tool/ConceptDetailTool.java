@@ -8,7 +8,6 @@ import io.modelcontextprotocol.common.McpTransportContext;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
 
 /** MCP tool that fetches one concept's metadata from the PIC-SURE data dictionary. */
 @Component
@@ -62,19 +61,9 @@ public class ConceptDetailTool {
             throw new ToolFailure("Argument 'dataset' is not a valid dataset name.");
         }
         String path = ToolArguments.requireText("conceptPath", conceptPath, MAX_CONCEPT_PATH_LENGTH);
-        DictionaryConcept concept =
-            DictionaryCalls.run(DictionaryClient.DETAIL_PATH, () -> lookup(datasetName, path, CallerHeaders.from(context)));
-        if (concept == null) {
-            throw ToolFailure.conceptNotFound();
-        }
+        DictionaryConcept concept = DictionaryCalls
+            .lookup(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptDetail(datasetName, path, CallerHeaders.from(context)))
+            .orElseThrow(ToolFailure::conceptNotFound);
         return ConceptSummary.detail(concept);
-    }
-
-    private DictionaryConcept lookup(String dataset, String path, CallerHeaders caller) {
-        try {
-            return dictionary.conceptDetail(dataset, path, caller);
-        } catch (HttpClientErrorException.NotFound e) {
-            return null;
-        }
     }
 }

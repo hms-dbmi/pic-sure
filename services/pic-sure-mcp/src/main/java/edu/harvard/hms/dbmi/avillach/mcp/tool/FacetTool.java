@@ -57,7 +57,10 @@ public class FacetTool {
     )
     public FacetResult listFacets(
         McpTransportContext context,
-        @McpToolParam(description = "Free-text search, or empty for all concepts", required = false) String search
+        @McpToolParam(
+            description = "Free-text search of at most 200 characters, or empty for all concepts; punctuation is ignored and splits words",
+            required = false
+        ) String search
     ) {
         String text = ToolArguments.optionalText("search", search, ToolArguments.MAX_SEARCH_LENGTH);
         List<FacetCategory> categories =
