@@ -125,6 +125,11 @@ class ApiConventionsTest {
         report("property-metadata-complete", overAllModules((module, classes) -> ConfigurationRules.metadataIsComplete(module, metadata(module))));
     }
 
+    @Test
+    void everyRequestMappingHandlerNamesItsVerbs() {
+        report("request-mapping-names-method", overAllModules(RequestMethodRules::requestMappingNamesMethod));
+    }
+
     private static PropertyMetadata metadata(String module) {
         return PropertyMetadata.load(reactorRoot.resolve(module).resolve("target/classes"));
     }
