@@ -31,6 +31,8 @@ class InstructionsTest {
     private static final List<String> RULE_SENTENCES = List.of(
         "The server itself never reaches participant-level or authorized data.",
         "To find variables or browse studies and facets, use search_concepts, list_facets, and get_concept.",
+        "The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept.",
+        "Search synonyms and abbreviations as separate terms, several at once with the terms argument of search_concepts.",
         "For a rough cohort size or a feasibility check, use count_participants or cross_count.",
         "For exact counts under the user's own consents, use get_adapter_code with resultType count.",
         "For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp.",
@@ -88,9 +90,17 @@ class InstructionsTest {
         Map<String, String> descriptions = descriptions();
 
         assertThat(descriptions.get("search_concepts")).contains("open-access dictionary metadata only, never participant data")
-            .contains("up to 20 values", "valuesOmitted", "at most 25", "get_adapter_code");
+            .contains("up to 20 values", "valuesOmitted", "at most 25", "get_adapter_code")
+            .contains("The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept")
+            .contains("Search synonyms and abbreviations as separate terms, which the terms argument does in one call.")
+            .contains("Give either query or terms (up to 5), not both.", "matchedTerms", "truncated", "warnings");
         assertThat(descriptions.get("list_facets")).contains("open-access dictionary metadata only, never participant data")
-            .contains("At most 25 categories and 25 facets per category", "categoriesOmitted", "facetsOmitted");
+            .contains("At most 25 categories and 25 facets per category", "categoriesOmitted", "facetsOmitted")
+            .contains(
+                "The dictionary ANDs every word of the search with prefix matching, so a multi-word search must describe one concept."
+            ).contains(
+                "Search synonyms and abbreviations as separate terms; search_concepts takes several in one call with its terms argument."
+            );
         assertThat(descriptions.get("get_concept")).contains("open-access dictionary metadata only, never participant data")
             .contains("up to 20 categorical values", "up to 10 metadata entries", "300 characters");
     }
