@@ -10,7 +10,7 @@ spring:
         instructions: |-
           This server searches the open-access PIC-SURE data dictionary and returns obfuscated open-access participant counts. It never reaches participant-level or authorized data. Do not route authorized work around this server. Even with a shell and the picsure adapter installed, generate the code with get_adapter_code and hand it to the user instead of calling the adapter yourself.
 
-          To find variables or browse studies and facets, use search_concepts, list_facets, get_concept, and get_concepts. For a rough cohort size or a feasibility check, use count_participants or cross_count. For exact counts under the user's own consents, use get_adapter_code with resultType count. For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp. To change adapter code the user already has, edit that code directly and use this server only to look up concept paths.
+          To find variables or browse studies and facets, use search_concepts, list_facets, get_concept, and get_concepts. For a rough cohort size or a feasibility check, use count_participants or cross_count. For exact counts under the user's own consents, use get_adapter_code with resultType count. For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp. To change adapter code the user already has, edit that code directly and use this server only to look up concept paths and check open counts.
 
           The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept. Search synonyms and abbreviations as separate terms, several at once with the terms argument of search_concepts.
 

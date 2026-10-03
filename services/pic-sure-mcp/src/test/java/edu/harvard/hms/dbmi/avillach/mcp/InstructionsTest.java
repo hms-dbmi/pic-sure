@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.AdapterCodeTool;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -43,7 +45,8 @@ class InstructionsTest {
         "For a rough cohort size or a feasibility check, use count_participants or cross_count.",
         "For exact counts under the user's own consents, use get_adapter_code with resultType count.",
         "For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp.",
-        "To change adapter code the user already has, edit that code directly and use this server only to look up concept paths.",
+        "To change adapter code the user already has, edit that code directly and use this server only to look up concept paths and "
+            + "check open counts.",
         "The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept.",
         "Search synonyms and abbreviations as separate terms, several at once with the terms argument of search_concepts.",
         "An open count from count_participants or cross_count is obfuscated and ignores the user's consents.",
@@ -60,6 +63,9 @@ class InstructionsTest {
         "For get_adapter_code, select adds output columns for participant and timestamp results, and names the concept paths cross_count "
             + "counts on the authorized channel."
     );
+
+    /** A colon right after a word and followed by whitespace or the end of a line, which reads as a clause connector. */
+    private static final Pattern COLON_CONNECTOR = Pattern.compile("\\S:(\\s|$)", Pattern.MULTILINE);
 
     private static final String WITHHELD_SENTENCE = "no result was returned (the open channel withholds small results)";
 
@@ -177,7 +183,12 @@ class InstructionsTest {
             ).contains("A genomic filter with min or max, since genomic filters take values only.")
             .contains("A REQUIRED or ANY_RECORD_OF filter with values, min, or max.")
             .contains("A FILTER with both values and min or max, or with neither.", "A blank entry in values.")
-            .contains("A query with no filter, genomic filter, or select path.", "With checkConcepts true", "phs999999");
+            .contains("A query with no filter, genomic filter, or select path.", "phs999999")
+            .contains("The tool refuses the following, with a message naming the field. A genomic filter with min or max")
+            .contains("A genomic filter with no values.").doesNotContain("Each of these is refused").contains(
+                "With checkConcepts true, the first " + AdapterCodeTool.MAX_CHECKED_PATHS + " distinct concept paths are checked against "
+                    + "the dictionary, and warnings report unknown paths and any cutoff without blocking the code."
+            );
     }
 
     @Test
@@ -225,7 +236,7 @@ class InstructionsTest {
         texts.add(instructions());
 
         for (String text : texts) {
-            assertThat(text.replace("Example arguments: ", "")).doesNotContainPattern("\\S: ");
+            assertThat(text.replace("Example arguments: ", "")).doesNotContainPattern(COLON_CONNECTOR);
         }
     }
 
