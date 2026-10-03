@@ -35,34 +35,34 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @AutoConfigureMockMvc
 class EnumDescriptionDocumentTest {
 
-    @Schema(description = "The shape of an export")
+    @Schema(description = "The shape of an export.")
     enum ExportFormat {
-        @Schema(description = "One row per patient, comma separated")
-        CSV, @Schema(description = "Avro in the PFB layout")
+        @Schema(description = "One row per patient, comma separated.")
+        CSV, @Schema(description = "Avro in the PFB layout.")
         PFB, UNDESCRIBED
     }
 
     enum Compression {
-        @JsonProperty("gz") @Schema(description = "Gzip")
-        GZIP, @Schema(description = "No compression")
+        @JsonProperty("gz") @Schema(description = "Gzip.")
+        GZIP, @Schema(description = "No compression.")
         NONE
     }
 
-    @Schema(description = "Where an export stands", enumAsRef = true)
+    @Schema(description = "Where an export stands.", enumAsRef = true)
     enum ExportState {
-        @Schema(description = "Still being written")
-        RUNNING, @Schema(description = "Ready to download")
+        @Schema(description = "Still being written.")
+        RUNNING, @Schema(description = "Ready to download.")
         AVAILABLE
     }
 
-    @Schema(description = "An export to start")
+    @Schema(description = "An export to start.")
     record ExportRequest(
-        @Schema(description = "The format wanted") ExportFormat format,
-        @Schema(description = "Formats to fall back to") List<ExportFormat> fallbacks, Compression compression
+        @Schema(description = "The format wanted.") ExportFormat format,
+        @Schema(description = "Formats to fall back to.") List<ExportFormat> fallbacks, Compression compression
     ) {
     }
 
-    @Schema(description = "An export that was started")
+    @Schema(description = "An export that was started.")
     record ExportStatus(ExportState state) {
     }
 
@@ -80,7 +80,7 @@ class EnumDescriptionDocumentTest {
     }
 
     private static final String FORMAT_BULLETS =
-        "- `CSV`: One row per patient, comma separated\n- `PFB`: Avro in the PFB layout\n- `UNDESCRIBED`";
+        "- `CSV`: One row per patient, comma separated.\n- `PFB`: Avro in the PFB layout.\n- `UNDESCRIBED`";
 
     @Autowired
     private MockMvc mockMvc;
@@ -99,8 +99,8 @@ class EnumDescriptionDocumentTest {
     void fieldWithItsOwnDescriptionKeepsItAndGainsTheList() throws Exception {
         JsonNode format = document().path("components").path("schemas").path("ExportRequest").path("properties").path("format");
 
-        assertThat(format.path("description").asText()).isEqualTo("The format wanted\n\n" + FORMAT_BULLETS);
-        assertThat(extension(format)).containsExactly("One row per patient, comma separated", "Avro in the PFB layout", "");
+        assertThat(format.path("description").asText()).isEqualTo("The format wanted.\n\n" + FORMAT_BULLETS);
+        assertThat(extension(format)).containsExactly("One row per patient, comma separated.", "Avro in the PFB layout.", "");
     }
 
     @Test
@@ -108,7 +108,7 @@ class EnumDescriptionDocumentTest {
         JsonNode items =
             document().path("components").path("schemas").path("ExportRequest").path("properties").path("fallbacks").path("items");
 
-        assertThat(items.path("description").asText()).isEqualTo("The shape of an export\n\n" + FORMAT_BULLETS);
+        assertThat(items.path("description").asText()).isEqualTo("The shape of an export.\n\n" + FORMAT_BULLETS);
         assertThat(extension(items)).hasSize(3);
     }
 
@@ -117,8 +117,8 @@ class EnumDescriptionDocumentTest {
         JsonNode compression = document().path("components").path("schemas").path("ExportRequest").path("properties").path("compression");
 
         assertThat(compression.path("enum").get(0).asText()).isEqualTo("gz");
-        assertThat(compression.path("description").asText()).isEqualTo("- `gz`: Gzip\n- `NONE`: No compression");
-        assertThat(extension(compression)).containsExactly("Gzip", "No compression");
+        assertThat(compression.path("description").asText()).isEqualTo("- `gz`: Gzip.\n- `NONE`: No compression.");
+        assertThat(extension(compression)).containsExactly("Gzip.", "No compression.");
     }
 
     @Test
@@ -129,8 +129,8 @@ class EnumDescriptionDocumentTest {
         assertThat(document.path("components").path("schemas").path("ExportStatus").path("properties").path("state").path("$ref").asText())
             .isEqualTo("#/components/schemas/ExportState");
         assertThat(state.path("description").asText())
-            .isEqualTo("Where an export stands\n\n- `RUNNING`: Still being written\n- `AVAILABLE`: Ready to download");
-        assertThat(extension(state)).containsExactly("Still being written", "Ready to download");
+            .isEqualTo("Where an export stands.\n\n- `RUNNING`: Still being written.\n- `AVAILABLE`: Ready to download.");
+        assertThat(extension(state)).containsExactly("Still being written.", "Ready to download.");
     }
 
     @Test
@@ -139,8 +139,8 @@ class EnumDescriptionDocumentTest {
         JsonNode returned = operation.path("responses").path("200").path("content").elements().next().path("schema");
         JsonNode parameter = operation.path("parameters").get(0).path("schema");
 
-        assertThat(returned.path("description").asText()).isEqualTo("The shape of an export\n\n" + FORMAT_BULLETS);
-        assertThat(parameter.path("description").asText()).isEqualTo("The shape of an export\n\n" + FORMAT_BULLETS);
+        assertThat(returned.path("description").asText()).isEqualTo("The shape of an export.\n\n" + FORMAT_BULLETS);
+        assertThat(parameter.path("description").asText()).isEqualTo("The shape of an export.\n\n" + FORMAT_BULLETS);
     }
 
     @Test
@@ -148,7 +148,7 @@ class EnumDescriptionDocumentTest {
         document();
         JsonNode format = document().path("components").path("schemas").path("ExportRequest").path("properties").path("format");
 
-        assertThat(format.path("description").asText()).isEqualTo("The format wanted\n\n" + FORMAT_BULLETS);
+        assertThat(format.path("description").asText()).isEqualTo("The format wanted.\n\n" + FORMAT_BULLETS);
     }
 
     @Test

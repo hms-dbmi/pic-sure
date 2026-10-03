@@ -8,9 +8,9 @@ import java.util.Set;
     description = "A consent filter. On the authorized backend the server builds these from the caller's consents and replaces whatever the client sent. On the open backend the server adds none, and any the client sends are applied like phenotypic filters."
 )
 public record AuthorizationFilter(
-    @Schema(description = "A concept path this filter must match", example = "\\_consents\\") String conceptPath,
+    @Schema(description = "A concept path this filter must match.", example = "\\_consents\\") String conceptPath,
     @Schema(
-        description = "Values for this concept path. Patients returned by this query must match at least one value for this concept path",
+        description = "Values for this concept path. Patients returned by this query must match at least one value for this concept path.",
         example = "[\"phs000007.c1\", \"phs000007.c2\"]"
     ) Set<String> values
 ) {
