@@ -28,15 +28,19 @@ class AggregateAuditRouteTest {
 
     @Test
     void mcpPostMapsToMcpRequest() {
-        Optional<AuditRoute> r = config.auditRouteTable().match("/mcp", "POST");
+        Optional<AuditRoute> r = config.auditRouteTable().match(McpCallerFilter.MCP_PATH, "POST");
 
         assertThat(r).isPresent();
         assertThat(r.get().getEventType()).isEqualTo("OTHER");
         assertThat(r.get().getAction()).isEqualTo("mcp.request");
     }
 
+    /**
+     * The {@code mcp.request} entry matches only POST on the exact path. Other methods and spellings still get the generic audit event;
+     * this pins only the route table entry.
+     */
     @Test
-    void mcpIsAuditedOnlyForPostOnTheExactPath() {
+    void mcpRouteEntryMatchesOnlyPostOnTheExactPath() {
         assertThat(config.auditRouteTable().match("/mcp", "GET")).isEmpty();
         assertThat(config.auditRouteTable().match("/mcp/", "POST")).isEmpty();
     }

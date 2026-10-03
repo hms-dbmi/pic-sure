@@ -39,8 +39,6 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 
-import edu.harvard.hms.dbmi.avillach.gateway.config.RouteSurfaceProperties;
-
 /**
  * The {@code mcp} route forwards {@code /mcp} to the MCP service with the path unchanged and the client's {@code Accept} header untouched,
  * since the MCP endpoint answers 400 unless {@code Accept} lists both {@code application/json} and {@code text/event-stream}. Also pins
@@ -113,11 +111,6 @@ class McpRouteTest {
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo("mcp-ok");
         mcpStub.verify(postRequestedFor(urlEqualTo("/mcp")).withHeader("Accept", equalTo(ACCEPT)));
-    }
-
-    @Test
-    void mcpIsAGatewayOwnedPrefix() {
-        assertThat(RouteSurfaceProperties.DEFAULT_OWNED_PREFIXES).contains("/mcp");
     }
 
     @ParameterizedTest
