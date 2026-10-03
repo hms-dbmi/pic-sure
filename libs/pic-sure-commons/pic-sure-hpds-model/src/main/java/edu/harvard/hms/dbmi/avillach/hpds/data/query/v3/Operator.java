@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "How the clauses of a subquery are combined.")
 public enum Operator {
-    @Schema(description = "Filters combined with AND will return patients who match all filters")
-    AND, @Schema(description = "Filters combined with OR will return patients who match any filters")
+    @Schema(description = "Filters combined with AND will return patients who match all filters.")
+    AND, @Schema(description = "Filters combined with OR will return patients who match any filters.")
     OR
 }
