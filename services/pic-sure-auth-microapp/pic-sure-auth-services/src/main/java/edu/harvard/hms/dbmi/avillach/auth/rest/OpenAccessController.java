@@ -43,7 +43,7 @@ public class OpenAccessController {
 
     @Operation(summary = "Validate an open-access request against the access rules")
     @ApiResponse(
-        responseCode = "200", description = "Whether the open access request is permitted",
+        responseCode = "200", description = "Whether the open access request is permitted.",
         content = @Content(
             mediaType = "application/json",
             schema = @Schema(type = "boolean", description = "True when the open access rules permit the request, false otherwise.")
@@ -53,7 +53,7 @@ public class OpenAccessController {
     @PostMapping(value = "/validate", produces = "application/json")
     public ResponseEntity<Boolean> validate(
         @Parameter(
-            required = true, description = "The open access request to validate: its target service, and the API key when enforced"
+            required = true, description = "The open access request to validate: its target service, and the API key when enforced."
         ) @RequestBody OpenAccessValidationRequest validation, HttpServletRequest request
     ) {
         if (!openIdpProviderIsEnabled) {

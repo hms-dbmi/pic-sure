@@ -62,7 +62,7 @@ public class AuthenticationController {
         @PathVariable("idpProvider") String idpProvider,
         @Parameter(
             required = true,
-            description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI"
+            description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI."
         ) @RequestBody AuthenticationRequest authRequest, HttpServletRequest request
     ) throws IOException {
         logger.debug("authentication() starting...");

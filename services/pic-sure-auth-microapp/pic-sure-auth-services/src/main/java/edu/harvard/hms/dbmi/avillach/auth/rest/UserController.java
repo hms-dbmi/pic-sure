@@ -127,13 +127,13 @@ public class UserController {
      * Returns the caller's profile. The profile always carries the caller's long-term token, which is issued and saved on the first read.
      * The {@code hasToken} query parameter is accepted and has no effect.
      */
-    @Operation(summary = "The caller's profile, with the long-term token", description = "Retrieve information of current user")
-    @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token")
+    @Operation(summary = "The caller's profile, with the long-term token", description = "Retrieve information of current user.")
+    @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
     public ResponseEntity<UserProfileResponse> getCurrentUser(
         @RequestHeader("Authorization") String authorizationHeader,
-        @Parameter(description = "Accepted for compatibility; the long-term token is included whether or not it is sent") @RequestParam(
+        @Parameter(description = "Accepted for compatibility; the long-term token is included whether or not it is sent.") @RequestParam(
             name = "hasToken", required = false
         ) Boolean hasToken
     ) {

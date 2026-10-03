@@ -61,7 +61,7 @@ public class TokenController {
     @PostMapping(path = "/inspect", produces = "application/json")
     public ResponseEntity<TokenInspectionResponse> inspectToken(
         @Parameter(
-            required = true, description = "The token to introspect and a description of the request it is used for"
+            required = true, description = "The token to introspect and a description of the request it is used for."
         ) @RequestBody TokenInspectionRequest inspection, HttpServletRequest request
     ) {
         Map<String, Object> inputMap = inspection.toMap(objectMapper);

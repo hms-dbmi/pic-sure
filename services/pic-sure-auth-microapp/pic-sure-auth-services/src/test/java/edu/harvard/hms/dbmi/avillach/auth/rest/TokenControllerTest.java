@@ -30,13 +30,13 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.TokenService;
 /**
  * {@code POST /token/inspect} writes the same members with the same values as the {@code HashMap} the token service builds, on the accepted
  * path with every claim of the token and on the rejected path with {@code active} and {@code message} alone, and the service receives the
- * token and the request description as the plain map it always read.
+ * token and the request description as a plain map.
  *
  * <p>The success bodies are compared as JSON trees rather than as text, each tree parsed from the text the service's mapper writes so that
  * a number compares by value. The service builds a {@code HashMap}, whose iteration order is not part of any contract.</p>
  *
  * <p>{@code GET /token/refresh} writes the two members of a valid refresh and answers 400 in the {@code {message, content}} body for an
- * invalid one; its body was a {@code Map.of}, whose order changes between JVM runs, so it too compares as a tree.</p>
+ * invalid one. The success body compares as a JSON tree too.</p>
  */
 class TokenControllerTest {
 
