@@ -78,7 +78,7 @@ public class AdapterCodeGenerator {
         List<String> include = query.select() == null ? List.of() : List.copyOf(new LinkedHashSet<>(query.select()));
         if (clause == null && genomic.isEmpty() && include.isEmpty()) {
             throw new ToolFailure(
-                "Adapter code needs a query with at least one filter or genomic filter, or select paths for a participant or timestamp result."
+                "Adapter code needs a query with at least one filter or genomic filter, or select paths for a cross_count, participant, or timestamp result."
             );
         }
         return new AdapterQuery(resultKind, clause, genomic, include);
