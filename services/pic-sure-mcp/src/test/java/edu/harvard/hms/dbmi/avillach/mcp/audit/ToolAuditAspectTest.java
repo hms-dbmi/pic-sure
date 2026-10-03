@@ -21,6 +21,7 @@ import edu.harvard.hms.dbmi.avillach.mcp.gateway.OpenQueryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.AdapterCodeTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptDetailTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptSearchTool;
+import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptsDetailTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.FacetTool;
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.IntStream;
 
 /**
  * Covers {@link ToolAuditAspect} around the real tool classes, proxied the way Spring proxies them: one event per call with the
@@ -58,6 +60,7 @@ class ToolAuditAspectTest {
     private McpTransportContext context;
     private ConceptSearchTool search;
     private ConceptDetailTool detail;
+    private ConceptsDetailTool batchDetail;
     private FacetTool facets;
     private CountTool count;
     private CrossCountTool crossCount;
@@ -72,6 +75,7 @@ class ToolAuditAspectTest {
         ToolAuditAspect aspect = new ToolAuditAspect(client);
         search = proxy(new ConceptSearchTool(dictionary), aspect);
         detail = proxy(new ConceptDetailTool(dictionary), aspect);
+        batchDetail = proxy(new ConceptsDetailTool(dictionary), aspect);
         facets = proxy(new FacetTool(dictionary), aspect);
         count = proxy(new CountTool(openQuery), aspect);
         crossCount = proxy(new CrossCountTool(openQuery), aspect);
@@ -179,6 +183,31 @@ class ToolAuditAspectTest {
         assertThat(event.getAction()).isEqualTo("concept.detail");
         assertThat(event.getMetadata()).containsEntry("dataset", "phs1").containsEntry("concept_path", "\\phs1\\sex\\")
             .containsEntry("outcome", "failure");
+    }
+
+    @Test
+    void getConceptsSendsAConceptDetailEventWithThePathsJoined() {
+        when(dictionary.conceptsDetail(any(), any())).thenReturn(List.of());
+
+        batchDetail.getConcepts(context, List.of("\\phs1\\sex\\", "\\phs1\\age\\"));
+
+        LoggingEvent event = onlyEvent();
+        assertThat(event.getEventType()).isEqualTo("SEARCH");
+        assertThat(event.getAction()).isEqualTo("concept.detail");
+        assertThat(event.getMetadata()).containsExactly(
+            Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("concept_paths", "\\phs1\\sex\\|\\phs1\\age\\")
+        );
+    }
+
+    @Test
+    void joinedConceptPathsAreCappedAndARejectedListIsAFailureEvent() {
+        List<String> paths = IntStream.range(0, 26).mapToObj(i -> "\\phs1\\" + "p".repeat(30) + i + "\\").toList();
+
+        assertThatThrownBy(() -> batchDetail.getConcepts(context, paths)).isInstanceOf(ToolFailure.class);
+
+        LoggingEvent event = onlyEvent();
+        assertThat(event.getMetadata()).containsEntry("outcome", "failure");
+        assertThat(String.valueOf(event.getMetadata().get("concept_paths"))).hasSize(ToolAuditAspect.MAX_FIELD_LENGTH);
     }
 
     @Test

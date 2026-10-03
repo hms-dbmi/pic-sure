@@ -2,6 +2,18 @@
 
 `pic-sure-mcp` is the PIC-SURE Model Context Protocol (MCP) server. It lets an MCP client such as Claude Code search the data dictionary and run obfuscated participant counts. It speaks MCP over stateless Streamable HTTP on `/mcp` and answers every request with a single JSON body, never an SSE stream. It sits behind the gateway, which authenticates the caller and routes `/mcp` here. Each tool call becomes ordinary REST calls back through the gateway (`PICSURE_GATEWAY_URL`), so PSAMA access rules and the gateway audit apply to every operation. The service has no database and no Spring Security.
 
+## Tools
+
+| Tool | Does |
+|---|---|
+| `search_concepts` | Searches the dictionary by free text. The dictionary ANDs every word with prefix matching, so `query` must describe one concept; `terms` runs up to 5 separate searches, such as synonyms and abbreviations, in one call and merges the results. |
+| `list_facets` | Lists facet categories, such as study, with concept counts for an optional search. |
+| `get_concept` | Gets one concept by dataset and concept path. |
+| `get_concepts` | Gets up to 25 concepts by concept path in one call, listing the paths the dictionary does not know in `notFound`. |
+| `count_participants` | Returns the obfuscated open-access participant count for a query. |
+| `cross_count` | Returns obfuscated open-access cross counts for a query. |
+| `get_adapter_code` | Returns Python, R, or bash code the user runs with their own token for exact, consent-filtered results. |
+
 ## The open-only rule
 
 The service only ever reads the open, obfuscated view of the data. Query calls go to `/hpds/open/query/sync` and nowhere else: no client method exists for `/hpds/auth` or for the async query endpoints, and no setting or tool argument can select another channel. Only the four result types the open channel obfuscates are allowed (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT). The dictionary search and facet calls send an empty consent list, the same view the open UI gets, and the concept detail lookups carry no consents field.
