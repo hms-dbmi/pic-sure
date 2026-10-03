@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryRequest;
+import edu.harvard.hms.dbmi.avillach.query.query.SyncExamples;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -40,6 +41,20 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Tag(name = "aggregate-data-sharing (open)", description = "Open-access aggregate queries.")
 public class AggregateController {
 
+    private static final String COUNT_ABOVE_THRESHOLD_EXAMPLE = "1237 \u00b13";
+
+    private static final String COUNT_BELOW_THRESHOLD_EXAMPLE = "< 10";
+
+    private static final String CROSS_COUNT_EXAMPLE =
+        "{\"\\\\_studies_consents\\\\\":\"1232 \u00b13\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"< 10\"}";
+
+    private static final String CATEGORICAL_CROSS_COUNT_EXAMPLE =
+        "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 \u00b13\",\"variance\":3},"
+            + "\"Male\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}";
+
+    private static final String CONTINUOUS_CROSS_COUNT_EXAMPLE =
+        "{\"\\\\demographics\\\\AGE\\\\\":{\"40 - 49\":{\"count\":348,\"display\":\"348 \u00b13\",\"variance\":3}}}";
+
     private final AggregateService service;
 
     public AggregateController(AggregateService service) {
@@ -65,9 +80,17 @@ public class AggregateController {
                         + "display and variance. INFO_COLUMN_LISTING, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, VCF_EXCERPT and "
                         + "AGGREGATE_VCF_EXCERPT: the HPDS body unchanged, as on the auth backend."
                 ),
-                examples = {@ExampleObject(name = "COUNT at or above the threshold", value = "1237 \u00b13"), @ExampleObject(
-                    name = "COUNT below the threshold", value = "< 10"
-                ), @ExampleObject(name = "CROSS_COUNT", value = "{\"\\\\_studies_consents\\\\\":\"1232 \u00b13\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"< 10\"}"), @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = "{\"\\\\demographics\\\\SEX\\\\\":{\"Female\":{\"count\":698,\"display\":\"698 \u00b13\",\"variance\":3}," + "\"Male\":{\"count\":0,\"display\":\"< 10\",\"variance\":9}}}"), @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = "{\"\\\\demographics\\\\AGE\\\\\":{\"40 - 49\":{\"count\":348,\"display\":\"348 \u00b13\",\"variance\":3}}}"), @ExampleObject(name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = "{\"count\":17,\"message\":\"Query ran successfully\"}"), @ExampleObject(name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = "{\"count\":\"0\",\"message\":\"No variant filters were supplied, so no query was run.\"}")}
+                examples = {@ExampleObject(name = "COUNT at or above the threshold", value = COUNT_ABOVE_THRESHOLD_EXAMPLE),
+                    @ExampleObject(name = "COUNT below the threshold", value = COUNT_BELOW_THRESHOLD_EXAMPLE),
+                    @ExampleObject(name = "CROSS_COUNT", value = CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = CATEGORICAL_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = CONTINUOUS_CROSS_COUNT_EXAMPLE),
+                    @ExampleObject(
+                        name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = SyncExamples.VARIANT_COUNT_WITH_GENOMIC_FILTERS
+                    ),
+                    @ExampleObject(
+                        name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = SyncExamples.VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS
+                    )}
             )
         ), @ApiResponse(responseCode = "400", description = "Missing query data, a result type the open path does not serve, or a body that cannot be read as a query request."), @ApiResponse(responseCode = "502", description = "Aggregate backend call failed.")}
     )

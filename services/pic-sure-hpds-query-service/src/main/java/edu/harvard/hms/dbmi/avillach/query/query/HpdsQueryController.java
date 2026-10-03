@@ -57,11 +57,6 @@ public class HpdsQueryController {
         "[{\"key\":\"Gene_with_variant\",\"description\":\"The official symbol for a gene affected by a variant.\","
             + "\"continuous\":false,\"min\":null,\"max\":null}]";
 
-    private static final String VARIANT_COUNT_WITH_GENOMIC_FILTERS_EXAMPLE = "{\"count\":17,\"message\":\"Query ran successfully\"}";
-
-    private static final String VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS_EXAMPLE =
-        "{\"count\":\"0\",\"message\":\"No variant filters were supplied, so no query was run.\"}";
-
     private static final String VARIANT_LIST_EXAMPLE = "[19,44908684,T,C,APOE,missense_variant, 19,44908822,C,T,APOE,missense_variant]";
 
     private static final String VCF_EXCERPT_EXAMPLE =
@@ -122,10 +117,10 @@ public class HpdsQueryController {
                     @ExampleObject(name = "OBSERVATION_CROSS_COUNT", value = OBSERVATION_CROSS_COUNT_EXAMPLE),
                     @ExampleObject(name = "INFO_COLUMN_LISTING", value = INFO_COLUMN_LISTING_EXAMPLE),
                     @ExampleObject(
-                        name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = VARIANT_COUNT_WITH_GENOMIC_FILTERS_EXAMPLE
+                        name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = SyncExamples.VARIANT_COUNT_WITH_GENOMIC_FILTERS
                     ),
                     @ExampleObject(
-                        name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS_EXAMPLE
+                        name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = SyncExamples.VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS
                     ), @ExampleObject(name = "VARIANT_LIST_FOR_QUERY", value = VARIANT_LIST_EXAMPLE),
                     @ExampleObject(name = "VCF_EXCERPT", value = VCF_EXCERPT_EXAMPLE)}
             )
