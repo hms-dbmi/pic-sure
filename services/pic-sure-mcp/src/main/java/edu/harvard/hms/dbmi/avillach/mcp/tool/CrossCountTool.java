@@ -39,8 +39,8 @@ public class CrossCountTool {
         open-access count that ignores the caller's consents and study access, read the same way as count_participants (count and \
         variance, or suppressed with threshold). resultType picks the breakdown. CATEGORICAL_CROSS_COUNT gives one cell per value of \
         each categorical concept filtered in the query. CONTINUOUS_CROSS_COUNT gives one cell per bin of each continuous concept \
-        filtered in the query. withheld true means no result was returned (the open channel withholds small results), and there are \
-        no cells. \
+        filtered in the query, or one cell per distinct value where the site does not bin. withheld true means no result was \
+        returned (the open channel withholds small results), and there are no cells. \
         CROSS_COUNT gives one cell per study consent concept: the open channel replaces select with every concept path under \
         \\_studies_consents\\, so the cells are keyed by those paths, and the \\_studies_consents\\ cell itself, the participants \
         matching the query across all studies, is kept rather than dropped. select is passed on unchanged, but the open channel uses it \
@@ -119,7 +119,7 @@ public class CrossCountTool {
         /** One cell per value of each categorical concept filtered in the query. */
         CATEGORICAL_CROSS_COUNT(ResultType.CATEGORICAL_CROSS_COUNT),
 
-        /** One cell per bin of each continuous concept filtered in the query. */
+        /** One cell per bin of each continuous concept filtered in the query, or per distinct value where the site does not bin. */
         CONTINUOUS_CROSS_COUNT(ResultType.CONTINUOUS_CROSS_COUNT);
 
         private final ResultType resultType;

@@ -116,7 +116,24 @@ class RGeneratorTest {
         assertThat(code.runtime()).isEqualTo("R >= 4.1, reticulate >= 1.41, and Python >= 3.10");
         assertThat(code.check())
             .isEqualTo("Rscript -e 'cat(format(packageVersion(\"picsure\")), packageDescription(\"picsure\")$RemoteRef, fill = TRUE)'");
-        assertThat(code.install()).isEqualTo("Rscript -e 'remotes::install_github(\"hms-dbmi/pic-sure-r-adapter-hpds@v3.0.0\")'");
+        assertThat(code.install()).isEqualTo(
+            "Rscript -e 'if (!requireNamespace(\"remotes\", quietly = TRUE)) install.packages(\"remotes\", "
+                + "repos = \"https://cloud.r-project.org\"); " + "remotes::install_github(\"hms-dbmi/pic-sure-r-adapter-hpds@v3.0.0\")'"
+        );
+    }
+
+    @Test
+    void theInstallCommandIsOneRExpressionThatParses() throws IOException {
+        assumeTrue(CodegenCases.available("Rscript", "--version"), "Rscript is not installed");
+        String install = CodegenCases.generate(CodegenCases.named("flat_filter"), Language.r).install();
+        assertThat(install).startsWith("Rscript -e '").endsWith("'");
+        String expression = install.substring("Rscript -e '".length(), install.length() - 1);
+
+        CodegenCases.Outcome outcome =
+            CodegenCases.run(null, Map.of(), "Rscript", "-e", "invisible(parse(text = commandArgs(TRUE)[1])); cat('parsed')", expression);
+
+        assertThat(outcome.exitCode()).as(outcome.stderr()).isZero();
+        assertThat(outcome.stdout()).isEqualTo("parsed");
     }
 
     @Test

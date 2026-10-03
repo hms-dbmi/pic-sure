@@ -125,7 +125,7 @@ class PythonGeneratorTest {
         assertThat(code.packageName()).isEqualTo("picsure");
         assertThat(code.minVersion()).isEqualTo("3.2.1");
         assertThat(code.runtime()).isEqualTo("Python >= 3.10");
-        assertThat(code.check()).isEqualTo("python -c \"import importlib.metadata as m; print(m.version('picsure'))\"");
+        assertThat(code.check()).isEqualTo("python3 -c \"import importlib.metadata as m; print(m.version('picsure'))\"");
         assertThat(code.install()).isEqualTo("pip install 'picsure>=3.2.1'");
     }
 

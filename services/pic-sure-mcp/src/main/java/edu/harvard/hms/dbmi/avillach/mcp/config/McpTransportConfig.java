@@ -20,15 +20,15 @@ public class McpTransportConfig {
      * The stateless Streamable HTTP transport, with {@link CallerHeaders#extract} as its context extractor.
      *
      * @param objectMapper the starter's MCP object mapper
-     * @param serverProperties the starter's Streamable HTTP properties, whose endpoint is {@code spring.ai.mcp.server.streamable-http.mcp-endpoint}
+     * @param serverProperties the starter's Streamable HTTP properties, whose endpoint is
+     *        {@code spring.ai.mcp.server.streamable-http.mcp-endpoint}
      * @return the transport the starter's router function binds
      */
     @Bean
     public WebMvcStatelessServerTransport picsureStatelessTransport(
-        @Qualifier("mcpServerObjectMapper") ObjectMapper objectMapper,
-        McpServerStreamableHttpProperties serverProperties
+        @Qualifier("mcpServerObjectMapper") ObjectMapper objectMapper, McpServerStreamableHttpProperties serverProperties
     ) {
-        return WebMvcStatelessServerTransport.builder().jsonMapper(new JacksonMcpJsonMapper(objectMapper)).messageEndpoint(serverProperties.getMcpEndpoint())
-            .contextExtractor(CallerHeaders::extract).build();
+        return WebMvcStatelessServerTransport.builder().jsonMapper(new JacksonMcpJsonMapper(objectMapper))
+            .messageEndpoint(serverProperties.getMcpEndpoint()).contextExtractor(CallerHeaders::extract).build();
     }
 }

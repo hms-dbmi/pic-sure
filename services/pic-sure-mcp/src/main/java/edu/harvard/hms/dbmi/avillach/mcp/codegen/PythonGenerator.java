@@ -25,7 +25,7 @@ public final class PythonGenerator implements LanguageGenerator {
     public static final String RUNTIME = "Python >= 3.10";
 
     /** Prints the installed adapter version, or fails when the adapter is missing. */
-    public static final String CHECK = "python -c \"import importlib.metadata as m; print(m.version('picsure'))\"";
+    public static final String CHECK = "python3 -c \"import importlib.metadata as m; print(m.version('picsure'))\"";
 
     /** The directory participant and timestamp results are written to. */
     public static final String RESULTS_DIRECTORY = "picsure_results";

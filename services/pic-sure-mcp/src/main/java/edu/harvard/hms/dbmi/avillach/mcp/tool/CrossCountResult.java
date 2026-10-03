@@ -13,8 +13,8 @@ import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIR
 
 /**
  * The cells of an obfuscated open-access cross count, capped at {@link #MAX_CELLS}. A CROSS_COUNT has one cell per concept path; a
- * CATEGORICAL_CROSS_COUNT has one per concept path and category value; a CONTINUOUS_CROSS_COUNT has one per concept path and bin. Fields
- * that do not apply are omitted from the JSON.
+ * CATEGORICAL_CROSS_COUNT has one per concept path and category value; a CONTINUOUS_CROSS_COUNT has one per concept path and bin, or per
+ * concept path and distinct value where the site does not bin. Fields that do not apply are omitted from the JSON.
  *
  * @param resultType the result type that ran
  * @param totalCells how many cells the open channel returned
@@ -41,13 +41,13 @@ public record CrossCountResult(
      * One cross-count cell.
      *
      * @param conceptPath the concept path counted
-     * @param category the category value or continuous bin, for categorical and continuous cross counts
+     * @param category the category value, or the continuous bin or distinct value, for categorical and continuous cross counts
      * @param count the obfuscated count
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Cell(
         @Schema(description = "The concept path counted") String conceptPath,
-        @Schema(requiredMode = NOT_REQUIRED, description = "The category value or continuous bin") String category,
+        @Schema(requiredMode = NOT_REQUIRED, description = "The category value, or the continuous bin or distinct value") String category,
         @Schema(description = "The obfuscated count") CountResult count
     ) {
     }
