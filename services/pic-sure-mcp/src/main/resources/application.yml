@@ -11,7 +11,7 @@ spring:
           This server searches the open-access PIC-SURE data dictionary and returns obfuscated open-access participant counts. The server itself never reaches participant-level or authorized data.
 
           Which tool to use:
-          To find variables or browse studies and facets, use search_concepts, list_facets, and get_concept.
+          To find variables or browse studies and facets, use search_concepts, list_facets, get_concept, and get_concepts.
           The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept. Search synonyms and abbreviations as separate terms, several at once with the terms argument of search_concepts.
           For a rough cohort size or a feasibility check, use count_participants or cross_count.
           For exact counts under the user's own consents, use get_adapter_code with resultType count.

@@ -46,14 +46,14 @@ class McpEndpointTest {
     }
 
     @Test
-    void toolsListNamesTheSixToolsWithReadOnlyAnnotationsAndOutputSchemas() throws Exception {
+    void toolsListNamesTheSevenToolsWithReadOnlyAnnotationsAndOutputSchemas() throws Exception {
         JsonNode result = call("""
             {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""");
 
         JsonNode tools = result.path("tools");
         assertThat(tools.isArray()).isTrue();
         assertThat(tools).extracting(t -> t.path("name").asText()).containsExactlyInAnyOrder(
-            "search_concepts", "list_facets", "get_concept", "count_participants", "cross_count", "get_adapter_code"
+            "search_concepts", "list_facets", "get_concept", "get_concepts", "count_participants", "cross_count", "get_adapter_code"
         );
         for (JsonNode tool : tools) {
             JsonNode annotations = tool.path("annotations");
@@ -72,7 +72,7 @@ class McpEndpointTest {
         }
         assertThat(getConcept).isNotNull();
         assertThat(getConcept.path("outputSchema").path("required")).extracting(JsonNode::asText).contains("conceptPath")
-            .doesNotContain("min", "max", "values", "valuesOmitted", "meta", "name");
+            .doesNotContain("min", "max", "values", "valuesOmitted", "meta", "name", "matchedTerms");
     }
 
     /**
