@@ -14,6 +14,8 @@ The configuration rules read every `@Value` in every module, on fields, methods,
 
 `no-trailing-slash` fails a documented module whose controller declares a class-level or method-level mapping path ending in `/`. It reads the `value` and `path` of `@RequestMapping` and of the composed `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` and `@PatchMapping`. A class-level path of exactly `/` is allowed. A method-level `/` is allowed only when the class declares no mapping path or declares `/`, because Spring joins `@RequestMapping("/dataset/named")` and `@GetMapping("/")` into `/dataset/named/`. Spring 6 matches only the declared form, so a handler declared as `/dataset/named/{id}/` answers 404 to a client that calls `/dataset/named/{id}`, while tests that call the declared form still pass. That is how the operations controllers broke every named-dataset call from the frontend after the WildFly port. To satisfy the rule, drop the trailing slash from the mapping, and write a method-level root as `""` or leave the path out. The rule covers documented modules only, because their clients call slash-less paths. Internal modules are left alone: the hpds `/search/values/` mappings keep their slash because `ResourceWebClient`, their only caller, sends it.
 
+`entity-enums-stored-by-name` covers persistence in every module. A field whose type is an enum, in a class annotated `@Entity`, `@MappedSuperclass` or `@Embeddable`, must carry `@Enumerated(EnumType.STRING)` or `@Convert(converter = ...)`. A bare field and a bare `@Enumerated` both store the constant's ordinal, so reordering or adding a constant remaps existing rows, and a stored ordinal the enum does not define fails every read of that row. Static, `transient` and `@Transient` fields are skipped. The rule reads field annotations only, and it does not recognise a converter registered with `autoApply = true`, so name the converter on the field. An enum compiled in another module still counts as an enum. An enum from outside the reactor counts only when the checker's test classpath has it: JDK and `jakarta.persistence` enums do, but a Hibernate, Spring or other third-party enum does not, so a bare field of that type passes unchecked.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -56,6 +58,10 @@ Configuration, over every compiled module:
 Request mappings, over the modules marked `documented`:
 
 - `no-trailing-slash`: no class-level or method-level mapping path on a controller ends in `/`, except a bare `/` that serves the root.
+
+Persistence, over every compiled module:
+
+- `entity-enums-stored-by-name`: every enum field in an `@Entity`, `@MappedSuperclass` or `@Embeddable` carries `@Enumerated(EnumType.STRING)` or `@Convert`.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
