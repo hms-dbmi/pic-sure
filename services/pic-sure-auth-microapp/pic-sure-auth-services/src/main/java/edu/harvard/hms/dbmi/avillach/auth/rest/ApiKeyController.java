@@ -63,7 +63,7 @@ public class ApiKeyController {
 
     @Operation(
         summary = "Generate an open-access USER API key",
-        description = "Generates a USER API key for open access. The endpoint is public and gated by CAPTCHA verification. The key is returned once and cannot be recovered."
+        description = "Generates a USER API key for open access. The endpoint is public and gated by CAPTCHA verification when a provider is configured. The key is returned once and cannot be recovered."
     )
     @ApiResponse(responseCode = "200", description = "The new key, including its one-time plaintext.")
     @ApiResponse(
