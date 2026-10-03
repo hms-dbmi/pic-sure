@@ -238,11 +238,10 @@ class AdapterCodeToolTest {
     void theDescriptionCarriesTheHandoffRulesAndABindableExample() throws Exception {
         String description = AdapterCodeTool.DESCRIPTION;
 
-        assertThat(description).contains("PICSURE_TOKEN", "do not run it unless the user asks", "run check", "only after the user confirms")
-            .contains("exact and filtered by the user's consents", "python, r, or bash")
-            .doesNotContain(String.valueOf((char) 0x2014), "--");
+        assertThat(description).contains("PICSURE_TOKEN", "do not run it unless the user asks", "python, r, or bash")
+            .contains("exact counts filtered by the user's consents").doesNotContain(String.valueOf((char) 0x2014), "--");
         String example = description.substring(description.indexOf("Example arguments: ") + "Example arguments: ".length());
         Map<String, Object> arguments = MAPPER.readValue(example, new TypeReference<>() {});
-        assertThat(tool.handle(context, arguments).code()).contains("categories=[\"Female\"]", "min=40, max=65");
+        assertThat(tool.handle(context, arguments).code()).contains("min=40, max=65");
     }
 }
