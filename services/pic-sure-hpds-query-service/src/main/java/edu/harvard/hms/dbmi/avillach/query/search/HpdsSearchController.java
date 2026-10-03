@@ -33,7 +33,7 @@ public class HpdsSearchController {
     @PostMapping("/hpds/{backend}/search")
     @Operation(summary = "Search concepts on a backend")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK."),
+        {@ApiResponse(responseCode = "200", description = "The concepts and variant annotations that match the search term."),
             @ApiResponse(responseCode = "400", description = "Unknown backend, or a body that is not a search request."),
             @ApiResponse(responseCode = "502", description = "HPDS backend call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured.")}
@@ -46,7 +46,8 @@ public class HpdsSearchController {
     @GetMapping("/hpds/{backend}/search/values")
     @Operation(summary = "Page through the values of a concept")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK."), @ApiResponse(responseCode = "400", description = "Unknown backend."),
+        {@ApiResponse(responseCode = "200", description = "One page of the values of the concept."),
+            @ApiResponse(responseCode = "400", description = "Unknown backend."),
             @ApiResponse(responseCode = "502", description = "HPDS backend call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured.")}
     )

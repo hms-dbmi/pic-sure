@@ -79,7 +79,7 @@ public class AggregateController {
     @PostMapping("/query")
     @Operation(summary = "Submit an open aggregate query")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK."),
+        {@ApiResponse(responseCode = "200", description = "The status of the submitted open aggregate query."),
             @ApiResponse(responseCode = "400", description = "Missing query data, or a body that cannot be read as a query request."),
             @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured."),

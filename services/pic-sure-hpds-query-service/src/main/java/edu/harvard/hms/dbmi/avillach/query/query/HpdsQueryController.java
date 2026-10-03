@@ -78,7 +78,7 @@ public class HpdsQueryController {
     @PostMapping("/query")
     @Operation(summary = "Submit an asynchronous query")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK."),
+        {@ApiResponse(responseCode = "200", description = "The status of the submitted query."),
             @ApiResponse(responseCode = "400", description = "Unknown backend, missing query data," + UNREADABLE_BODY),
             @ApiResponse(responseCode = "403", description = "Consent does not permit this query."),
             @ApiResponse(responseCode = "410", description = "Institutional (federated) queries are no longer supported."),
@@ -143,7 +143,7 @@ public class HpdsQueryController {
     @PostMapping("/query/{id}/status")
     @Operation(summary = "Status of a submitted query")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK."),
+        {@ApiResponse(responseCode = "200", description = "The status of the query."),
             @ApiResponse(responseCode = "400", description = "Unknown backend," + UNREADABLE_BODY),
             @ApiResponse(responseCode = "403", description = "Consent does not permit re-running a query stored before v3."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
@@ -198,7 +198,7 @@ public class HpdsQueryController {
     @PostMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "A signed URL for a completed query's result")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK."),
+        {@ApiResponse(responseCode = "200", description = "The signed URL for the completed query's result."),
             @ApiResponse(
                 responseCode = "400", description = "Unknown backend, a body that cannot be read, or a result that is not ready yet."
             ), @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
@@ -219,7 +219,8 @@ public class HpdsQueryController {
     @RequestMapping(path = "/query/{id}/metadata", method = {RequestMethod.GET, RequestMethod.POST})
     @Operation(summary = "Metadata of a submitted query")
     @ApiResponses(
-        {@ApiResponse(responseCode = "200", description = "OK."), @ApiResponse(responseCode = "400", description = "Missing query id."),
+        {@ApiResponse(responseCode = "200", description = "The metadata of the submitted query."),
+            @ApiResponse(responseCode = "400", description = "Missing query id."),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
             @ApiResponse(responseCode = "502", description = "Consent or query lookup failed."),
