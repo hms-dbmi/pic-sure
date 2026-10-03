@@ -72,8 +72,8 @@ class AdapterCodeToolConfigTest {
         assertThat(result.content()).hasSize(2);
         McpSchema.TextContent setup = (McpSchema.TextContent) result.content().get(0);
         McpSchema.TextContent code = (McpSchema.TextContent) result.content().get(1);
-        assertThat(setup.text()).isEqualTo(RESULT.setupText()).contains("Check: python3 -c \"check\"")
-            .contains("Do not run it unless the user asks.");
+        assertThat(setup.text()).isEqualTo(RESULT.setupText()).contains("\nCheck, before running the code: python3 -c \"check\"\n")
+            .contains("Do not run it unless the user asks.", "\n" + AdapterCodeResult.REPORT_ONLY_PRINTED_NOTE);
         assertThat(setup.annotations()).isNull();
         assertThat(code.text()).isEqualTo("import os\nimport picsure\n");
         assertThat(code.annotations().audience()).containsExactly(McpSchema.Role.USER);
@@ -82,15 +82,16 @@ class AdapterCodeToolConfigTest {
     @Test
     void aResultWithNoConnectorVersionLeavesMinVersionOut() {
         AdapterCodeResult bash = new AdapterCodeResult(
-            "bash", new AdapterCodeResult.Requires("curl and jq", null, "bash"), "jq --version", "Install curl and jq",
+            "bash", new AdapterCodeResult.Requires("curl 7.55 or later and jq", null, "bash"), "jq --version", "Install curl and jq",
             "#!/usr/bin/env bash\n", null
         );
         when(adapterCodeTool.handle(any(), any())).thenReturn(bash);
 
         CallToolResult result = call();
 
-        assertThat(((Map<?, ?>) result.structuredContent()).get("requires")).isEqualTo(Map.of("package", "curl and jq", "runtime", "bash"));
-        assertThat(bash.setupText()).startsWith("Requires curl and jq (bash).\n");
+        assertThat(((Map<?, ?>) result.structuredContent()).get("requires"))
+            .isEqualTo(Map.of("package", "curl 7.55 or later and jq", "runtime", "bash"));
+        assertThat(bash.setupText()).startsWith("Requires curl 7.55 or later and jq (bash).\n");
     }
 
     @Test
