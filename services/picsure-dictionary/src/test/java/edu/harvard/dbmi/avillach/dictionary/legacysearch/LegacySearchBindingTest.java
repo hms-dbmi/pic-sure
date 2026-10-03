@@ -28,9 +28,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * Pins what the legacy search accepts now that Jackson binds its body to a record. Every body the hand-written parser turned into a search
- * with a string term and a positive limit still does, with the same text search query and page size. The bodies the parser failed on with
- * an uncaught exception now answer 400.
+ * Pins what the legacy search accepts when Jackson binds its body to a record. A body with a string term and a positive limit becomes a
+ * search with the matching text search query and page size. A body that is not JSON, has no query object, or has a missing or non-positive
+ * limit answers 400.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

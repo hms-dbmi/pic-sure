@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Response body of {@code POST /internal/queries} on the operations service: the id under which the query was persisted. The query service
- * reads it to answer its own caller with the PIC-SURE result id.
+ * reads it to answer its own caller with the PIC-SURE result id. No client reads it.
  */
 @Schema(description = "The id under which the operations service persisted a query.")
 public record SavedQueryReference(
