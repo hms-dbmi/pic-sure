@@ -171,7 +171,7 @@ class GatewayClientConfigTest {
         runner.withPropertyValues("picsure.mcp.adapter.base-url=" + baseUrl).run(context -> {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure()).rootCause().isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("picsure.mcp.adapter.base-url").hasMessageContaining(reason);
+                .hasMessageContaining("picsure.mcp.adapter.base-url").hasMessageContaining(reason).hasMessageNotContaining(":secret");
         });
     }
 
@@ -186,15 +186,58 @@ class GatewayClientConfigTest {
     }
 
     @ParameterizedTest
-    @ValueSource(
-        strings = {"https://aio.example.org", "https://aio.example.org/", "https://aio.example.org:8443", "http://localhost",
-            "http://localhost:8080", "http://127.0.0.1:8080"}
+    @CsvSource(
+        delimiter = '|',
+        value = {"https://aio.example.org | https://aio.example.org", "https://aio.example.org/ | https://aio.example.org/",
+            "https://aio.example.org:8443 | https://aio.example.org:8443", "http://localhost | http://localhost",
+            "http://localhost:8080 | http://localhost:8080", "http://127.0.0.1:8080 | http://127.0.0.1:8080",
+            "HTTPS://aio.example.org | https://aio.example.org", "HTTP://localhost | http://localhost",
+            "Https://AIO.example.org:8443/ | https://AIO.example.org:8443/"}
     )
-    void startupAcceptsABareSiteUrl(String baseUrl) {
+    void startupAcceptsABareSiteUrlAndLowercasesItsScheme(String baseUrl, String stored) {
         runner.withPropertyValues("picsure.mcp.adapter.base-url=" + baseUrl).run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context.getBean(McpProperties.class).adapter().baseUrl()).isEqualTo(baseUrl);
+            assertThat(context.getBean(McpProperties.class).adapter().baseUrl()).isEqualTo(stored);
         });
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {"https://user:secret-password@aio.example.org", "https://user:secret-password@aio example.org",
+            "aio:secret-password@aio.example.org", "https://user:secret-password@aio.example.org/picsure"}
+    )
+    void aRejectedBaseUrlIsNamedWithoutItsUserInfo(String baseUrl) {
+        runner.withPropertyValues("picsure.mcp.adapter.base-url=" + baseUrl).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("picsure.mcp.adapter.base-url").hasMessageContaining(McpProperties.REDACTED)
+                .hasMessageNotContaining("secret-password");
+        });
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        delimiter = '|',
+        value = {"http://gateway:8080/picsure | with no path", "http://gateway:8080/dictionary/ | with no path",
+            "http://gateway:8080?next=1 | it must not carry a query", "http://gateway:8080#top | it must not carry a fragment",
+            "http://user:secret-password@gateway:8080 | it must not carry user info", "gateway:8080 | it must be an absolute URL",
+            "ftp://gateway:8080 | it must use http or https", "/gateway | it must be an absolute URL", "http:///path | it must name a host",
+            "http://gate way:8080 | it is not a valid URL"}
+    )
+    void startupFailsWhenTheGatewayUrlIsNotABareOrigin(String gatewayUrl, String reason) {
+        runner.withPropertyValues("picsure.mcp.gateway-url=" + gatewayUrl).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("picsure.mcp.gateway-url").hasMessageContaining(reason).hasMessageNotContaining("secret-password");
+        });
+        assertThatThrownBy(() -> new GatewayRequestInterceptor(gatewayUrl, MCP_TOKEN)).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining(reason);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"http://gateway:8080", "http://gateway:8080/", "HTTP://gateway:8080", "https://gateway.internal"})
+    void startupAcceptsABareGatewayOrigin(String gatewayUrl) {
+        runner.withPropertyValues("picsure.mcp.gateway-url=" + gatewayUrl).run(context -> assertThat(context).hasNotFailed());
     }
 
     @Test
