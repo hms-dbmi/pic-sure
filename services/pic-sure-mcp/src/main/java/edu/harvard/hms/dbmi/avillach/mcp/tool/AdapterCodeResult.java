@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.mcp.tool;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import edu.harvard.hms.dbmi.avillach.mcp.codegen.Language;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.ArrayList;
@@ -37,6 +38,13 @@ public record AdapterCodeResult(
             + " paths, concept paths the dictionary did not know, or why the paths could not be checked";
 
     /**
+     * The setup line R code adds, because the R adapter's {@code minVersion} is a release tag and {@code check} prints both the package
+     * version and the tag it was installed from.
+     */
+    public static final String R_MIN_VERSION_NOTE =
+        "For r, requires.minVersion is a release tag. Compare it with the release tag check prints, not with the package version.";
+
+    /**
      * The connector a piece of generated code needs.
      *
      * @param packageName the connector package
@@ -53,8 +61,8 @@ public record AdapterCodeResult(
     }
 
     /**
-     * The setup as short lines for the model: what the code needs, the check, the install command, how to hand the code over, and any
-     * warnings. The code itself is not included.
+     * The setup as short lines for the model: what the code needs, the check, the install command, for R how to read its version, how to
+     * hand the code over, and any warnings. The code itself is not included.
      *
      * @return the setup text, lines separated by newlines
      */
@@ -64,6 +72,9 @@ public record AdapterCodeResult(
         lines.add("Requires " + requires.packageName() + version + " (" + requires.runtime() + ").");
         lines.add("Check: " + check);
         lines.add("Install, only after the user confirms, if the check fails or shows an older version: " + install);
+        if (Language.r.name().equals(language)) {
+            lines.add(R_MIN_VERSION_NOTE);
+        }
         lines.add(
             "Show the code to the user. It runs in the user's environment with their token from PICSURE_TOKEN. Do not run it unless the user asks."
         );
