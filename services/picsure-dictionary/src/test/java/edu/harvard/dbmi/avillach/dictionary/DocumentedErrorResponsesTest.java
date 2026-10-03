@@ -171,6 +171,15 @@ class DocumentedErrorResponsesTest {
         assertEmptyNotFound(response);
     }
 
+    /** A legacy search whose query names no limit is rejected before any search runs. */
+    @Test
+    void legacySearchWithoutLimitIs400() {
+        ResponseEntity<String> response = rest.postForEntity("/search", json("{\"query\":{\"searchTerm\":\"age\"}}"), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNull();
+    }
+
     /**
      * With a dashboard layout other than {@code default}, the drawer service answers no dataset id, so even a dataset the database holds is
      * a 404.
