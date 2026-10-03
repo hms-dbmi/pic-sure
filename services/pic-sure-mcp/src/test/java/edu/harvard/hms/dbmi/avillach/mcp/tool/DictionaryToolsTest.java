@@ -70,7 +70,7 @@ class DictionaryToolsTest {
         ConceptSearchResult result = search.searchConcepts(context, "blood pressure", null, null, null);
 
         server.verify();
-        assertThat(result.query()).isEqualTo("blood pressure");
+        assertThat(result.search()).isEqualTo("blood pressure");
         assertThat(result.page()).isZero();
         assertThat(result.pageSize()).isEqualTo(10);
         assertThat(result.total()).isZero();
@@ -148,7 +148,7 @@ class DictionaryToolsTest {
     @Test
     void searchRejectsBadQueriesWithoutCallingTheGateway() {
         assertThatThrownBy(() -> search.searchConcepts(context, null, null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'query' or 'terms'.");
+            .hasMessage("Give either 'search' or 'terms'.");
         assertThatThrownBy(() -> search.searchConcepts(context, "   ", null, null, null)).isInstanceOf(ToolFailure.class);
         assertThatThrownBy(() -> search.searchConcepts(context, "x".repeat(501), null, null, null)).isInstanceOf(ToolFailure.class);
         assertThatThrownBy(() -> search.searchConcepts(context, "a\nb", null, null, null)).isInstanceOf(ToolFailure.class);
@@ -170,7 +170,7 @@ class DictionaryToolsTest {
         FacetResult result = facets.listFacets(context, "asthma");
 
         server.verify();
-        assertThat(result.query()).isEqualTo("asthma");
+        assertThat(result.search()).isEqualTo("asthma");
         assertThat(result.categoriesOmitted()).isNull();
         assertThat(result.categories()).singleElement().satisfies(category -> {
             assertThat(category.name()).isEqualTo("study_ids");
