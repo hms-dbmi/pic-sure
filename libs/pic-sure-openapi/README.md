@@ -17,10 +17,10 @@ It applies to every type a documented handler binds or returns, and to every typ
 |---|---|
 | Record, class or enum | `@Schema(description = ...)` on the type |
 | Field or record component | `description` |
-| Scalar field: a numeric primitive or its box, `String`, `UUID`, `Instant`, `Date`, `LocalDate` | `example` as well |
+| Scalar field: a numeric primitive, `char` or their boxes, `String`, `UUID`, `Instant`, `Date`, `LocalDate` | `example` as well |
 | Collection or array of scalars | `example` as well, written as a JSON array |
-| Boolean, enum, nested model, `Map` | no `example` |
-| `Map` | the description names the keys |
+| Boolean, enum, nested model, `Map`, `JsonNode` | no `example` |
+| `Map` or `JsonNode` | the description names the keys, or says the value is passed through unread |
 | Enum constant | `@Schema(description = ...)` on the constant |
 | Field the server always emits or always needs | `requiredMode = Schema.RequiredMode.REQUIRED` |
 | Member marked `@JsonIgnore` | nothing |
@@ -75,7 +75,7 @@ description appears by name alone.
 Do not put `allowableValues` on an enum-typed field. swagger-core replaces the real list of values with it.
 
 An enum-typed field with no description of its own shows the enum type's description in the document, so the document cannot tell
-that the field was left undescribed. The bytecode rule can.
+that the field was left undescribed. `schema-documented-models` can.
 
 ## Testing a service's document
 
@@ -104,5 +104,4 @@ Rules in `tools/api-conventions` check the convention on compiled bytecode and r
 | Rule | Checks |
 |---|---|
 | `typed-handler-signatures` | Every handler's `@RequestBody` type and return type is a concrete model. No `Object`, wildcard, type variable, raw `ResponseEntity`, `Map`, `JsonNode`, `Page`, `Slice` or `@Entity` at any depth. `String`, `byte[]`, `InputStreamResource` and `Void` pass. |
-
-`schema-documented-models`, which checks the `@Schema` convention itself, is the last PR of this stack and joins the table when it lands.
+| `schema-documented-models` | Every model reachable from a handler carries a class-level `@Schema` description, a description on each field, record component and enum constant, and an example on each scalar and each collection or array of scalars. Booleans, enums, nested models, `Map` and `JsonNode` fields need no example. `@JsonIgnore`d members are skipped. |

@@ -120,6 +120,11 @@ class ApiConventionsTest {
         );
     }
 
+    @Test
+    void everyReachableModelIsDocumented() {
+        report("schema-documented-models", SchemaRules.documentedModels(registry, modules, SchemaRules.SHARED_MODEL_MODULES));
+    }
+
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
