@@ -30,9 +30,9 @@ public class CountTool {
     /** The tool description, with one complete worked query. */
     public static final String DESCRIPTION = """
         Count the participants who match a query, through PIC-SURE's open-access channel. The number is an obfuscated open-access \
-        count that ignores the caller's consents and study access: it carries a small random offset (count, with variance giving the \
+        count that ignores the caller's consents and study access. It carries a small random offset (count, with variance giving the \
         band the true count lies in), and a count below the threshold is hidden (suppressed true, with threshold, as in "< 10"). \
-        Use it for a rough cohort size or a feasibility check. It is never the authorized answer: for an exact count filtered by the \
+        Use it for a rough cohort size or a feasibility check. It is never the authorized answer. For an exact count filtered by the \
         user's consents, pass the same query to get_adapter_code with resultType count. \
         Build the query from conceptPath values that search_concepts returns. A clause is either a filter (phenotypicFilterType and \
         conceptPath, plus values for a categorical FILTER or min and max for a numeric FILTER; REQUIRED and ANY_RECORD_OF take \

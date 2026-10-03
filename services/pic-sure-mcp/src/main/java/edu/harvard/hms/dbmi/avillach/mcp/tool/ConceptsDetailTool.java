@@ -48,7 +48,7 @@ public class ConceptsDetailTool {
         name = "get_concepts", description = """
             Get several variables (concepts) from the PIC-SURE data dictionary in one call, by conceptPath exactly as \
             search_concepts returned them. Takes 1 to 25 concept paths. Returns open-access dictionary metadata only, never \
-            participant data: for each concept found, the same fields get_concept returns (display name, description, type, up \
+            participant data. For each concept found, it returns the same fields get_concept returns (display name, description, type, up \
             to 20 categorical values with valuesOmitted for the rest, min and max for continuous concepts, and up to 10 metadata \
             entries with each value cut at 300 characters). Paths the dictionary does not know come back in notFound rather than \
             as an error.""", generateOutputSchema = true,

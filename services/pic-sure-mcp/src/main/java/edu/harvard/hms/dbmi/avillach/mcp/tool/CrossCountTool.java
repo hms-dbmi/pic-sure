@@ -41,11 +41,11 @@ public class CrossCountTool {
         each categorical concept filtered in the query. CONTINUOUS_CROSS_COUNT gives one cell per bin of each continuous concept \
         filtered in the query, or one cell per distinct value where the site does not bin. withheld true means no result was \
         returned (the open channel withholds small results), and there are no cells. \
-        CROSS_COUNT gives one cell per study consent concept: the open channel replaces select with every concept path under \
+        CROSS_COUNT gives one cell per study consent concept. The open channel replaces select with every concept path under \
         \\_studies_consents\\, so the cells are keyed by those paths, and the \\_studies_consents\\ cell itself, the participants \
         matching the query across all studies, is kept rather than dropped. select is passed on unchanged, but the open channel uses it \
         for none of the three. At most 100 cells are returned, and cellsOmitted says how many were dropped. These cells are never the \
-        authorized answer: for exact counts filtered by the user's consents, use get_adapter_code with resultType cross_count, where \
+        authorized answer. For exact counts filtered by the user's consents, use get_adapter_code with resultType cross_count, where \
         select does choose the concept paths counted. The query takes the same \
         shape as in count_participants, with no result type and no not field. Example arguments: \
         {"resultType":"CATEGORICAL_CROSS_COUNT","query":{"phenotypicClause":{"operator":"AND","phenotypicClauses":[\

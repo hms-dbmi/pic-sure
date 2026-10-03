@@ -65,8 +65,8 @@ public class ConceptSearchTool {
             get_adapter_code take. Categorical concepts list up to 20 values and report valuesOmitted when there are more, and \
             continuous concepts give min and max. Results are paged, 10 per page by default and at most 25, so request the next \
             page when total exceeds what you have. \
-            The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept: \
-            "blood pressure hypertension" finds nothing, and "blood pressure" misses concepts named "BP". Search synonyms and \
+            The dictionary ANDs every word of a search with prefix matching, so a multi-word search must describe one concept. \
+            For example, "blood pressure hypertension" finds nothing, and "blood pressure" misses concepts named "BP". Search synonyms and \
             abbreviations as separate terms, which the terms argument does in one call. Give either search or terms (up to 5), \
             not both. With terms, each concept lists the matchedTerms that returned it, total is the sum of the per-term totals, \
             page and pageSize apply to each term, at most 25 concepts come back with truncated true when more matched, and a \
