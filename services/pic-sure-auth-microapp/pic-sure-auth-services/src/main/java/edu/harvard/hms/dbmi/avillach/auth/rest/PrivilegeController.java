@@ -41,14 +41,14 @@ public class PrivilegeController {
         this.privilegeService = privilegeService;
     }
 
-    @Operation(summary = "Read one privilege", description = "GET information of one Privilege with the UUID.")
+    @Operation(summary = "Read one privilege", description = "Returns one privilege by its UUID.")
     @ApiResponse(responseCode = "200", description = "The privilege.")
     @ApiResponse(responseCode = "400", description = "No privilege with that UUID.")
     @AuditEvent(type = "OTHER", action = "privilege.read")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(path = "/{privilegeId}", produces = "application/json")
     public ResponseEntity<PrivilegeResponse> getPrivilegeById(
-        @Parameter(description = "The UUID of the privilege to fetch information about.") @PathVariable("privilegeId") String privilegeId
+        @Parameter(description = "The UUID of the privilege to fetch.") @PathVariable("privilegeId") String privilegeId
     ) {
         Privilege privilegeById = this.privilegeService.getPrivilegeById(privilegeId);
 
@@ -59,7 +59,7 @@ public class PrivilegeController {
         return PICSUREResponse.success(PrivilegeResponse.from(privilegeById));
     }
 
-    @Operation(summary = "List every privilege", description = "GET a list of existing privileges.")
+    @Operation(summary = "List every privilege", description = "Lists every privilege.")
     @ApiResponse(responseCode = "200", description = "Every privilege.")
     @AuditEvent(type = "OTHER", action = "privilege.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
@@ -68,7 +68,7 @@ public class PrivilegeController {
         return PICSUREResponse.success(PrivilegeResponse.fromAll(this.privilegeService.getPrivilegesAll()));
     }
 
-    @Operation(summary = "Create privileges", description = "POST a list of privileges.")
+    @Operation(summary = "Create privileges", description = "Creates the privileges in the request body.")
     @ApiResponse(responseCode = "200", description = "The created privileges.")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
@@ -83,7 +83,8 @@ public class PrivilegeController {
     }
 
     @Operation(
-        summary = "Update the given fields of privileges", description = "Update a list of privileges, will only update the fields listed."
+        summary = "Update the given fields of privileges",
+        description = "Updates the privileges in the request body, changing only the fields each one lists."
     )
     @ApiResponse(responseCode = "200", description = "Every privilege after the update, not only the updated ones.")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
@@ -100,7 +101,7 @@ public class PrivilegeController {
 
     @Operation(
         summary = "Delete a privilege that nothing references",
-        description = "DELETE an privilege by Id only if the privilege is not associated by others."
+        description = "Deletes the privilege with the given UUID unless other entities still reference it, and returns the remaining privileges."
     )
     @ApiResponse(responseCode = "200", description = "The remaining privileges.")
     @ApiResponse(responseCode = "409", description = "Other entities still reference this privilege.")
