@@ -22,7 +22,7 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.ConnectionWebService;
 
 /**
  * Each connection endpoint returns exactly the JSON the {@link Connection} entity serialized to, in the same bare or enveloped shape, and
- * its error paths answer the status they always did in the {@code {message, content}} body.
+ * its error paths answer in the {@code {message, content}} body.
  */
 class ConnectionWebControllerTest {
 

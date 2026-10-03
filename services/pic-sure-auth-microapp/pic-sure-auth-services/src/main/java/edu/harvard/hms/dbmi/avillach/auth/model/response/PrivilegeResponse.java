@@ -39,10 +39,15 @@ public record PrivilegeResponse(
     /**
      * Copies a persisted privilege, its access rules and its owning application into their response shape.
      *
-     * @param privilege the persisted privilege
-     * @return the response record
+     * <p>A {@code null} privilege yields {@code null}.</p>
+     *
+     * @param privilege the persisted privilege, or {@code null}
+     * @return the response record, or {@code null} when {@code privilege} is {@code null}
      */
     public static PrivilegeResponse from(Privilege privilege) {
+        if (privilege == null) {
+            return null;
+        }
         return new PrivilegeResponse(
             privilege.getUuid(), privilege.getName(), privilege.getDescription(), AccessRuleResponse.fromAll(privilege.getAccessRules()),
             ApplicationResponse.ownerOfPrivilege(privilege.getApplication())
@@ -51,6 +56,8 @@ public record PrivilegeResponse(
 
     /**
      * Copies a collection of persisted privileges in its iteration order.
+     *
+     * <p>A {@code null} collection yields {@code null}.</p>
      *
      * @param privileges the persisted privileges, or {@code null}
      * @return the response records in the same order, or {@code null} when {@code privileges} is {@code null}

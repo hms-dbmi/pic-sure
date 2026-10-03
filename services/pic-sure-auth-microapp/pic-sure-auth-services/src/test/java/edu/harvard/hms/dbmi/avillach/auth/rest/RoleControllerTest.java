@@ -25,7 +25,7 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 
 /**
  * The two role reads return the JSON the {@link Role} entity serialized to, bare. Create, update and delete return it inside the
- * {@code {message, content}} envelope with the message each always carried. The three error paths the controller owns keep their 400.
+ * {@code {message, content}} envelope with a fixed message for each endpoint. The three error paths the controller owns answer 400.
  */
 class RoleControllerTest {
 

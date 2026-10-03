@@ -24,7 +24,7 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 /**
  * The four admin user endpoints return the JSON the {@link User} entity serialized to, as a bare object or a bare array, minus the
  * long-term {@code token}, the {@code passport} and {@code auth0metadata}, and minus the merged members of every nested access rule. A
- * failed notification email no longer changes the shape of a create or update response.
+ * failed notification email does not change the shape of a create or update response.
  */
 class UserControllerAdminTest {
 

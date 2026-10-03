@@ -10,7 +10,7 @@ import java.util.Map;
  * @param types each rule type name mapped to the number an access rule stores in its {@code type}
  */
 @Schema(description = "The comparison types an access rule may use.")
-public record AccessRuleTypes(
+public record AccessRuleTypesResponse(
     @Schema(
         description = "Each key is the name of a comparison type, such as ALL_EQUALS or ANY_CONTAINS, and its value is the number an "
             + "access rule carries in its type member.",

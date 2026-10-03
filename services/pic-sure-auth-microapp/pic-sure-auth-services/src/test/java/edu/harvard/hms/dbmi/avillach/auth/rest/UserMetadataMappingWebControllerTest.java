@@ -24,8 +24,7 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserMetadataMappingServic
 
 /**
  * Each mapping endpoint returns exactly the JSON its entity serialized to, and the two error paths the controller owns keep their 500 in
- * the {@code {message, content}} body. {@code GET /mapping/{connectionId}} returns the connection itself, not its mappings, as it always
- * has.
+ * the {@code {message, content}} body. {@code GET /mapping/{connectionId}} returns the connection itself, not its mappings.
  */
 class UserMetadataMappingWebControllerTest {
 
