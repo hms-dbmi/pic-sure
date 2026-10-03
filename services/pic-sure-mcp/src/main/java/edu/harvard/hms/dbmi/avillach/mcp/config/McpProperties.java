@@ -104,7 +104,8 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
 
     /**
      * Replaces the user info of a URL with {@value #REDACTED}, so a startup error never prints a password. It works on the raw text and
-     * needs no valid URL: everything in the authority before its last {@code @} is user info.
+     * needs no valid URL: everything after the scheme separator and before the last {@code @} in the whole value is replaced, even when a
+     * {@code /}, {@code ?}, or {@code #} comes first, because a password may hold any of them. This can hide part of a path or query too.
      *
      * @param url the URL as configured
      * @return the URL with any user info replaced
@@ -112,11 +113,7 @@ public record McpProperties(@NotBlank String gatewayUrl, @NotBlank String servic
     static String redactUserInfo(String url) {
         int schemeEnd = url.indexOf("://");
         int start = schemeEnd < 0 ? 0 : schemeEnd + 3;
-        int end = start;
-        while (end < url.length() && "/?#".indexOf(url.charAt(end)) < 0) {
-            end++;
-        }
-        int at = url.lastIndexOf('@', end - 1);
+        int at = url.lastIndexOf('@');
         if (at < start) {
             return url;
         }
