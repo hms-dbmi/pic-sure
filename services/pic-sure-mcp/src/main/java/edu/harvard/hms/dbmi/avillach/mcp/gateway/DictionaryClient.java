@@ -11,9 +11,10 @@ import org.springframework.web.client.RestClient;
 import java.util.List;
 
 /**
- * Calls the PIC-SURE data dictionary through the gateway. Every request sends an empty consents list, the same open view the public UI
- * gets, and replays the caller's headers. Failures surface as {@link org.springframework.web.client.RestClientException}s for the calling
- * tool to map.
+ * Calls the PIC-SURE data dictionary through the gateway, replaying the caller's headers on every request. The search and facet requests
+ * send a filter with an empty consents list, the same open view the public UI gets; the concept lookups send only concept paths and carry
+ * no consents field. Failures surface as {@link org.springframework.web.client.RestClientException}s for the calling tool to map, and a
+ * response with no body comes back as null.
  */
 @Component
 public class DictionaryClient {
@@ -45,7 +46,7 @@ public class DictionaryClient {
      * @param pageNumber the zero-based page
      * @param pageSize the page size
      * @param caller the caller's headers to replay
-     * @return the page of concepts
+     * @return the page of concepts, or null when the response had no body
      */
     public DictionaryPage searchConcepts(String search, int pageNumber, int pageSize, CallerHeaders caller) {
         return restClient.post().uri(CONCEPTS_PATH + "?page_number={p}&page_size={s}", pageNumber, pageSize).headers(caller::applyTo)
@@ -57,12 +58,11 @@ public class DictionaryClient {
      *
      * @param search the free-text search, possibly empty
      * @param caller the caller's headers to replay
-     * @return the facet categories, empty when the dictionary returned none
+     * @return the facet categories, or null when the response had no body
      */
     public List<FacetCategory> listFacets(String search, CallerHeaders caller) {
-        List<FacetCategory> categories = restClient.post().uri(FACETS_PATH).headers(caller::applyTo).contentType(MediaType.APPLICATION_JSON)
+        return restClient.post().uri(FACETS_PATH).headers(caller::applyTo).contentType(MediaType.APPLICATION_JSON)
             .body(DictionaryFilter.open(search)).retrieve().body(new ParameterizedTypeReference<List<FacetCategory>>() {});
-        return categories == null ? List.of() : categories;
     }
 
     /**
@@ -71,7 +71,7 @@ public class DictionaryClient {
      * @param dataset the dataset the concept belongs to
      * @param conceptPath the raw concept path, sent as the request body
      * @param caller the caller's headers to replay
-     * @return the concept
+     * @return the concept, or null when the response had no body
      */
     public DictionaryConcept conceptDetail(String dataset, String conceptPath, CallerHeaders caller) {
         return restClient.post().uri(DETAIL_PATH + "/{dataset}", dataset).headers(caller::applyTo).contentType(MediaType.TEXT_PLAIN)
@@ -83,12 +83,10 @@ public class DictionaryClient {
      *
      * @param conceptPaths the raw concept paths, sent as a JSON array
      * @param caller the caller's headers to replay
-     * @return the concepts found, empty when the dictionary returned none
+     * @return the concepts found, or null when the response had no body
      */
     public List<DictionaryConcept> conceptsDetail(List<String> conceptPaths, CallerHeaders caller) {
-        List<DictionaryConcept> concepts =
-            restClient.post().uri(DETAIL_PATH).headers(caller::applyTo).contentType(MediaType.APPLICATION_JSON).body(conceptPaths)
-                .retrieve().body(new ParameterizedTypeReference<List<DictionaryConcept>>() {});
-        return concepts == null ? List.of() : concepts;
+        return restClient.post().uri(DETAIL_PATH).headers(caller::applyTo).contentType(MediaType.APPLICATION_JSON).body(conceptPaths)
+            .retrieve().body(new ParameterizedTypeReference<List<DictionaryConcept>>() {});
     }
 }

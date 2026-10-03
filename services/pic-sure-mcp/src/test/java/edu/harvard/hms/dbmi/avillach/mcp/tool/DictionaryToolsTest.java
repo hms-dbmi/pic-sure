@@ -18,10 +18,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.test.web.client.ResponseCreator;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
@@ -39,6 +41,7 @@ class DictionaryToolsTest {
     private static final String GATEWAY = "http://gateway.test:8080";
     private static final String BEARER = "Bearer caller-token";
     private static final String LEAK = "SECRET-DOWNSTREAM-BODY-7f3a";
+    private static final String UNAVAILABLE = "The dictionary is unavailable. Try again shortly.";
 
     private MockRestServiceServer server;
     private ConceptSearchTool search;
@@ -150,7 +153,8 @@ class DictionaryToolsTest {
         assertThatThrownBy(() -> search.searchConcepts(context, null, null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Give either 'search' or 'terms'.");
         assertThatThrownBy(() -> search.searchConcepts(context, "   ", null, null, null)).isInstanceOf(ToolFailure.class);
-        assertThatThrownBy(() -> search.searchConcepts(context, "x".repeat(501), null, null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "x".repeat(ToolArguments.MAX_SEARCH_LENGTH + 1), null, null, null))
+            .isInstanceOf(ToolFailure.class);
         assertThatThrownBy(() -> search.searchConcepts(context, "a\nb", null, null, null)).isInstanceOf(ToolFailure.class);
         server.verify();
     }
@@ -307,12 +311,23 @@ class DictionaryToolsTest {
             .hasMessage("The dictionary endpoint was not found.").hasNoCause();
     }
 
-    @Test
-    void detailWithAnEmptyBodyIsConceptNotFound() {
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail/phs1")).andRespond(withSuccess());
+    @ParameterizedTest
+    @ValueSource(ints = {200, 204, 302})
+    void everyToolTreatsAResponseWithNoBodyAsUnavailable(int status) {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10")).andRespond(noBody(status));
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(noBody(status));
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail/phs1")).andRespond(noBody(status));
 
-        assertThatThrownBy(() -> detail.getConcept(context, "phs1", "\\p\\")).isInstanceOf(ToolFailure.class)
-            .hasMessage("Concept path not found. Call search_concepts to find valid paths.").hasNoCause();
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage(UNAVAILABLE).hasNoCause();
+        assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class).hasMessage(UNAVAILABLE).hasNoCause();
+        assertThatThrownBy(() -> detail.getConcept(context, "phs1", "\\p\\")).isInstanceOf(ToolFailure.class).hasMessage(UNAVAILABLE)
+            .hasNoCause();
+        server.verify();
+    }
+
+    static ResponseCreator noBody(int status) {
+        return withStatus(HttpStatus.valueOf(status)).header("Location", "http://elsewhere.test/");
     }
 
     @Test

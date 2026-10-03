@@ -139,6 +139,22 @@ class ConceptSearchTermsTest {
     }
 
     @Test
+    void aTermWhoseResponseHasNoBodyBecomesAWarning() {
+        expectTerm("blood pressure", page(1, concepts("A")));
+        server.expect(once(), content().json("{\"search\":\"bp\"}")).andRespond(withSuccess());
+        server.expect(once(), content().json("{\"search\":\"htn\"}")).andRespond(DictionaryToolsTest.noBody(302));
+
+        ConceptSearchResult result = search.searchConcepts(context, null, List.of("blood pressure", "bp", "htn"), null, null);
+
+        server.verify();
+        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("A");
+        assertThat(result.warnings()).containsExactly(
+            "Term 'bp' failed: The dictionary is unavailable. Try again shortly.",
+            "Term 'htn' failed: The dictionary is unavailable. Try again shortly."
+        );
+    }
+
+    @Test
     void whenEveryTermFailsTheToolFails() {
         server.expect(once(), content().json("{\"search\":\"alpha\"}")).andRespond(withStatus(HttpStatus.FORBIDDEN).body(LEAK));
         server.expect(once(), content().json("{\"search\":\"beta\"}")).andRespond(withStatus(HttpStatus.FORBIDDEN).body(LEAK));
@@ -178,8 +194,8 @@ class ConceptSearchTermsTest {
             .hasMessage("Argument 'terms[1]' is required.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, Arrays.asList("bp", null), null, null))
             .isInstanceOf(ToolFailure.class).hasMessage("Argument 'terms[1]' is required.");
-        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("x".repeat(501)), null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Argument 'terms[0]' must be at most 500 characters.");
+        assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("x".repeat(201)), null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Argument 'terms[0]' must be at most 200 characters.");
         assertThatThrownBy(() -> search.searchConcepts(context, null, List.of("a\nb"), null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'terms[0]' must not contain control characters.");
         server.verify();
