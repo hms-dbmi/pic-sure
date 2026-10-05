@@ -16,6 +16,8 @@ The configuration rules read every `@Value` in every module, on fields, methods,
 
 `base-images-pinned` reads files instead of classes. Every git-tracked file named `Dockerfile`, `Dockerfile.*` or `*.Dockerfile` (such as `bdc.Dockerfile` or `dev.Dockerfile`) in the repository must pin each external base image by digest, as `FROM amazoncorretto:25-alpine@sha256:<digest>`, keeping the tag for readability. A floating tag builds from whatever the registry points it at on build day. A `FROM` that names a stage declared earlier in the same file, such as `FROM builder`, is exempt, and so is `FROM scratch`. `--platform=...` flags are skipped. To satisfy it, copy the digest another Dockerfile in the reactor already uses for the same image, or read it with `docker buildx imagetools inspect <image:tag>`. `base-images-pinned` does not check `USER` or `HEALTHCHECK`; some images declare `HEALTHCHECK NONE` on purpose. It lists files with `git ls-files`, so it needs a git checkout and fails if it finds no Dockerfile at all.
 
+`request-mapping-names-method` checks every module for a handler method that carries `@RequestMapping` itself with no `method`. Such a mapping answers every HTTP verb, so an endpoint meant for POST also answers GET, PUT, PATCH, DELETE, HEAD and OPTIONS, and the published document lists all seven. Use a composed annotation (`@GetMapping`, `@PostMapping` and the rest), or set `method` to the verbs the endpoint serves, for example `method = {RequestMethod.GET, RequestMethod.POST}`. A class-level `@RequestMapping` only sets a path prefix and is out of scope.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -48,6 +50,7 @@ Audit labels, over every compiled module:
 Request mappings, over every compiled module:
 
 - `path-variables-in-template`: every `@PathVariable` that names its variable appears as `{name}` in at least one path its handler maps.
+- `request-mapping-names-method`: every handler method that carries `@RequestMapping` itself names at least one verb in its `method`.
 
 Configuration, over every compiled module:
 
