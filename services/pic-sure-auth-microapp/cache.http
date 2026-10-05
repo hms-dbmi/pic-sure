@@ -4,9 +4,12 @@
 # app.cache.inspect.enabled=true
 # If you are using a environment variable to set the property, you can set it like this:
 # CACHE_INSPECT_ENABLED=true
+# Both requests need a PSAMA token in the token variable.
 
 ### GET /cache - Get a list of all caches in the application
 GET https://dev.picsure.biodatacatalyst.nhlbi.nih.gov/psama/cache
+Authorization: Bearer {{token}}
 
 ### GET /cache/{cacheName} - Get the contents of a specific cache
 GET https://dev.picsure.biodatacatalyst.nhlbi.nih.gov/psama/cache/mergedRulesCache
+Authorization: Bearer {{token}}

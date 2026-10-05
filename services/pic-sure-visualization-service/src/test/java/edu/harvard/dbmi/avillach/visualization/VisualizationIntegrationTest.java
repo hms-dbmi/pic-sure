@@ -1,23 +1,31 @@
 package edu.harvard.dbmi.avillach.visualization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -36,6 +44,9 @@ class VisualizationIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockitoBean
+    private LoggingClient loggingClient;
 
     @Test
     void healthEndpoint_isPublic() throws Exception {
@@ -95,7 +106,7 @@ class VisualizationIntegrationTest {
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         mockMvc.perform(post("/superuser/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest());
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Missing or unrecognized visualization backend"));
     }
 
     @Test
@@ -153,6 +164,13 @@ class VisualizationIntegrationTest {
         assertTrue(result.getResponse().getContentAsString().contains("error"));
     }
 
+    /** The v3 binning route shares its handler with {@code /bin/continuous}, so a null query field fails validation there too. */
+    @Test
+    void binContinuous_v3Route_nullQueryField_returns400() throws Exception {
+        mockMvc.perform(post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": null}"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("query: Request must contain a 'query' field"));
+    }
+
     @Test
     void binContinuous_invalidDataFormat_returns400() throws Exception {
         MvcResult result =
@@ -204,16 +222,6 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void info_returnsResourceInfo() throws Exception {
-        MvcResult result =
-            mockMvc.perform(post("/info").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk()).andReturn();
-
-        String content = result.getResponse().getContentAsString();
-        assertTrue(content.contains("PIC-SURE Visualization Service"));
-        assertTrue(content.contains("queryFormats"));
-    }
-
-    @Test
     void queryFormat_returnsDistributionFormat() throws Exception {
         MvcResult result = mockMvc.perform(post("/query/format").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isOk()).andReturn();
@@ -223,5 +231,38 @@ class VisualizationIntegrationTest {
         assertTrue(content.contains("query"));
         // hpdsResourceUUID is no longer part of the request. The path selects the backend.
         assertFalse(content.contains("hpdsResourceUUID"));
+    }
+
+    @Test
+    void binContinuous_sendsOneAuditEventCarryingTheHandlerLabel() throws Exception {
+        MvcResult result = mockMvc.perform(
+            post("/bin/continuous").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\": {\"\\\\age\\\\\": {\"30\": 12, \"40\": 15}}}")
+        ).andExpect(status().isOk()).andReturn();
+
+        assertEquals("QUERY", result.getRequest().getAttribute(AuditLoggingContext.EVENT_TYPE_ATTR));
+        assertEquals("visualization.bin_continuous", result.getRequest().getAttribute(AuditLoggingContext.ACTION_ATTR));
+        LoggingEvent event = singleAuditEvent();
+        assertEquals("QUERY", event.getEventType());
+        assertEquals("visualization.bin_continuous", event.getAction());
+    }
+
+    @Test
+    void distributions_sendsOneAuditEventCarryingTheHandlerLabel() throws Exception {
+        MvcResult result = mockMvc.perform(post("/open/distributions").contentType(MediaType.APPLICATION_JSON).content("{\"query\": {}}"))
+            .andExpect(status().isOk()).andReturn();
+
+        assertEquals("QUERY", result.getRequest().getAttribute(AuditLoggingContext.EVENT_TYPE_ATTR));
+        assertEquals("visualization.distributions", result.getRequest().getAttribute(AuditLoggingContext.ACTION_ATTR));
+        LoggingEvent event = singleAuditEvent();
+        assertEquals("QUERY", event.getEventType());
+        assertEquals("visualization.distributions", event.getAction());
+    }
+
+    private LoggingEvent singleAuditEvent() {
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient, times(1)).send(captor.capture(), any(), any());
+        verify(loggingClient, never()).send(any());
+        return captor.getValue();
     }
 }

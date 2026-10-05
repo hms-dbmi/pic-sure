@@ -15,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
@@ -22,6 +23,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
 class ResourceWebClientTest {
@@ -129,7 +131,7 @@ class ResourceWebClientTest {
                 .willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}"))
         );
 
-        var result = client().search(base(), req()); // String base, not HpdsTarget -- no token path
+        var result = client().search(base(), req()); // String base, not HpdsTarget, so no token path
 
         assertThat(result).isNotNull();
     }
@@ -148,7 +150,28 @@ class ResourceWebClientTest {
     }
 
     @Test
-    void hpdsNon2xxThrowsCommunicationException() {
+    void hpdsClientErrorKeepsItsStatusAndBody() {
+        hpds.stubFor(
+            post(urlEqualTo("/PIC-SURE/query/sync"))
+                .willReturn(aResponse().withStatus(400).withBody("Result type DATAFRAME is served asynchronously."))
+        );
+
+        assertThatThrownBy(() -> client().querySync(target(), req(), null)).isInstanceOf(PicsureException.class)
+            .satisfies(e -> assertThat(((PicsureException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST))
+            .hasMessageContaining("served asynchronously");
+    }
+
+    @Test
+    void hpdsLockedResourceSurfacesAsForbidden() {
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/query")).willReturn(aResponse().withStatus(403).withBody("Resource is locked")));
+
+        assertThatThrownBy(() -> client().query(target(), req())).isInstanceOf(PicsureException.class)
+            .satisfies(e -> assertThat(((PicsureException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN))
+            .hasMessage("Resource is locked");
+    }
+
+    @Test
+    void hpdsServerErrorThrowsCommunicationException() {
         hpds.stubFor(post(urlEqualTo("/PIC-SURE/query")).willReturn(aResponse().withStatus(500)));
         assertThatThrownBy(() -> client().query(target(), req())).isInstanceOf(HpdsCommunicationException.class);
     }

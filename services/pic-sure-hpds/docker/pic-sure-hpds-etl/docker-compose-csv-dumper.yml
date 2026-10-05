@@ -1,7 +1,11 @@
-version: '3.3'
+name: pic-sure-hpds-etl-csv-dumper
 services:
   csv-loader:
-    image: dbmi/pic-sure-hpds-etl:jason-refactoring-project-structure_62b8ef6
+    image: pic-sure-hpds-etl:local
+    user: "${ETL_UID:-1000}:${ETL_GID:-1000}"
+    build:
+      context: ../..
+      dockerfile: docker/pic-sure-hpds-etl/Dockerfile
     environment:
       - HEAPSIZE=4096
       - LOADER_NAME=CSVDumper

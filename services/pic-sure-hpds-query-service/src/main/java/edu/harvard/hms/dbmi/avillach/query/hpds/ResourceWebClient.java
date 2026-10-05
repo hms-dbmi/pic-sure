@@ -1,12 +1,19 @@
 package edu.harvard.hms.dbmi.avillach.query.hpds;
 
+import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -16,12 +23,14 @@ import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
 /**
  * HTTP client for HPDS. Query-lifecycle calls ({@link #query}, {@link #queryStatus}, {@link #queryResult}, {@link #queryResultSignedUrl},
  * and {@link #querySync}) inject {@code Authorization: Bearer <backend service token>}. {@link #search} and {@link #searchConceptValues}
- * send no service token. HPDS non-2xx and I/O errors surface as {@link HpdsCommunicationException}, which maps to 502 upstream.
+ * send no service token. An HPDS 4xx surfaces as a {@link PicsureException} carrying HPDS's status and body, so the caller learns why HPDS
+ * refused the request. HPDS 5xx and I/O errors surface as {@link HpdsCommunicationException}, which maps to 502 upstream.
  */
 @Component
 public class ResourceWebClient {
@@ -32,7 +41,19 @@ public class ResourceWebClient {
     private final RestClient http;
 
     public ResourceWebClient(@Qualifier("hpdsClient") RestClient hpdsClient) {
-        this.http = hpdsClient;
+        this.http = hpdsClient.mutate().defaultStatusHandler(HttpStatusCode::is4xxClientError, ResourceWebClient::rejectedByHpds).build();
+    }
+
+    /**
+     * Rethrows an HPDS 4xx as a {@link PicsureException} with HPDS's status, an error type derived from that status (for example
+     * {@code bad_request}), and HPDS's response body as the message, falling back to the status reason phrase when the body is empty.
+     *
+     * @throws PicsureException always
+     */
+    private static void rejectedByHpds(HttpRequest request, ClientHttpResponse response) throws IOException {
+        HttpStatus status = Optional.ofNullable(HttpStatus.resolve(response.getStatusCode().value())).orElse(HttpStatus.BAD_REQUEST);
+        String body = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8).trim();
+        throw new PicsureException(status, status.name().toLowerCase(Locale.ENGLISH), body.isEmpty() ? status.getReasonPhrase() : body);
     }
 
     public record QuerySyncResult(byte[] body, String queryMetadata) {

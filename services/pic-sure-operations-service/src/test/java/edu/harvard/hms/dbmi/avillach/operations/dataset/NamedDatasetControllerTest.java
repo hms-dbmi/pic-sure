@@ -1,6 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.assertj.core.api.Assertions.assertThat;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import static org.hamcrest.Matchers.isA;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -37,7 +41,7 @@ class NamedDatasetControllerTest {
 
     private static final String ALICE = "alice@example.com";
     private static final String BOB = "bob@example.com";
-    private static final String QUERY_BODY = "{\"select\":[]}";
+    private static final String QUERY_BODY = "{\"categoryFilters\":{}}";
 
     @Autowired
     private MockMvc mockMvc;
@@ -57,7 +61,7 @@ class NamedDatasetControllerTest {
     void listWithUserIdButNoEmailIsUnauthorized() throws Exception {
         // Passes the WebSecurityConfig gate (X-User-Id present) but trips the email guard in NamedDatasetService.
         mockMvc.perform(get("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice"))
-            .andExpect(status().isUnauthorized());
+            .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorType").value("unauthorized"));
     }
 
     @Test
@@ -92,7 +96,7 @@ class NamedDatasetControllerTest {
             post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + UUID.randomUUID() + "\",\"name\":\"my dataset\"}")
-        ).andExpect(status().isNotFound());
+        ).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"));
     }
 
     @Test
@@ -109,7 +113,7 @@ class NamedDatasetControllerTest {
             post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"second\"}")
-        ).andExpect(status().isConflict());
+        ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"));
     }
 
     @Test
@@ -142,7 +146,7 @@ class NamedDatasetControllerTest {
         mockMvc.perform(
             get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
-        ).andExpect(status().isNotFound());
+        ).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"));
     }
 
     @Test
@@ -166,7 +170,7 @@ class NamedDatasetControllerTest {
             put("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"hijacked\"}")
-        ).andExpect(status().isNotFound());
+        ).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"));
     }
 
     @Test
@@ -188,7 +192,7 @@ class NamedDatasetControllerTest {
         mockMvc.perform(
             delete("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
-        ).andExpect(status().isNotFound());
+        ).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"));
     }
 
     /**
@@ -219,27 +223,29 @@ class NamedDatasetControllerTest {
 
     @Test
     void queryBlobRoundTripsThroughTheLinkedNamedDataset() throws Exception {
-        String emptyV3QueryString = "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
+        String emptyV3QueryString =
+            "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
         Query query = new Query();
-        query.setQuery(emptyV3QueryString);
+        query.setQuery(emptyV3QueryString).setVersion("3");
         query = queryRepo.save(query);
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("with-query").setQuery(query));
 
         mockMvc
-                .perform(
-                        get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
-                                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
-                ).andExpect(status().isOk()).andExpect(jsonPath("$.query.uuid").value(query.getUuid().toString()))
-                .andExpect(jsonPath("$.query.query").value(emptyV3QueryString));
+            .perform(
+                get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.query.uuid").value(query.getUuid().toString()))
+            .andExpect(jsonPath("$.query.query").value("{\"query\":" + emptyV3QueryString + "}"));
 
         Query reloaded = queryRepo.findById(query.getUuid()).orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(reloaded.getQuery()).isEqualTo(emptyV3QueryString);
+        assertThat(reloaded.getQuery()).isEqualTo(emptyV3QueryString);
     }
 
     @Test
     void queryConvertedFromV1ToV3() throws Exception {
         String emptyV1QueryString = "{\"categoryFilters\":{}}";
-        String emptyV3QueryString = "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
+        String emptyV3QueryString =
+            "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
         Query query = new Query();
         query.setVersion("2");
         query.setQuery(emptyV1QueryString);
@@ -247,10 +253,103 @@ class NamedDatasetControllerTest {
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("with-query").setQuery(query));
 
         mockMvc
-                .perform(
-                        get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
-                                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
-                ).andExpect(status().isOk()).andExpect(jsonPath("$.query.uuid").value(query.getUuid().toString()))
-                .andExpect(jsonPath("$.query.query").value(emptyV3QueryString));
+            .perform(
+                get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                    .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andExpect(jsonPath("$.query.uuid").value(query.getUuid().toString()))
+            .andExpect(jsonPath("$.query.query").value("{\"query\":" + emptyV3QueryString + "}"));
+    }
+
+    @Test
+    void listAndDetailPreserveSavedLegacyFiltersWithoutUpdatingTheQueryRow() throws Exception {
+        String stored = """
+            {"query":{"categoryFilters":{"sex":["Female"]},"fields":["age"],"expectedResultType":"DATAFRAME"},
+            "commonAreaUUID":"common-id"}
+            """;
+        Query query = queryRepo.save(new Query().setQuery(stored).setVersion("2"));
+        NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("historical").setQuery(query));
+        ObjectMapper json = new ObjectMapper();
+        for (String path : List.of("/dataset/named", "/dataset/named/" + saved.getUuid())) {
+            String body = mockMvc.perform(
+                get(path).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice").header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
+            ).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            JsonNode response = json.readTree(body);
+            JsonNode dataset = response.isArray() ? response.get(0) : response;
+            JsonNode request = json.readTree(dataset.at("/query/query").asText());
+            assertThat(dataset.at("/query/uuid").asText()).isEqualTo(query.getUuid().toString());
+            assertThat(request.at("/query/select/0").asText()).isEqualTo("age");
+            assertThat(request.at("/query/phenotypicClause/conceptPath").asText()).isEqualTo("sex");
+            assertThat(request.at("/query/phenotypicClause/values/0").asText()).isEqualTo("Female");
+            assertThat(request.at("/query/expectedResultType").asText()).isEqualTo("DATAFRAME");
+            assertThat(request.path("commonAreaUUID").asText()).isEqualTo("common-id");
+        }
+        Query reloaded = queryRepo.findById(query.getUuid()).orElseThrow();
+        assertThat(json.readTree(reloaded.getQuery())).isEqualTo(json.readTree(stored));
+        assertThat(reloaded.getVersion()).isEqualTo("2");
+    }
+
+    /** POST with {@code X-User-Id} but no {@code X-User-Email} passes the security chain and is rejected by the service email guard. */
+    @Test
+    void createWithUserIdButNoEmailIsUnauthorized() throws Exception {
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+
+        mockMvc.perform(
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"my dataset\"}")
+        ).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorType").value("unauthorized"));
+    }
+
+    /** GET by id with {@code X-User-Id} but no {@code X-User-Email} is rejected by the service email guard. */
+    @Test
+    void getWithUserIdButNoEmailIsUnauthorized() throws Exception {
+        mockMvc.perform(get("/dataset/named/{id}", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice"))
+            .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorType").value("unauthorized"));
+    }
+
+    /** PUT with {@code X-User-Id} but no {@code X-User-Email} is rejected by the service email guard. */
+    @Test
+    void updateWithUserIdButNoEmailIsUnauthorized() throws Exception {
+        mockMvc.perform(
+            put("/dataset/named/{id}", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"queryId\":\"" + UUID.randomUUID() + "\",\"name\":\"renamed\"}")
+        ).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorType").value("unauthorized"));
+    }
+
+    /** DELETE with {@code X-User-Id} but no {@code X-User-Email} is rejected by the service email guard. */
+    @Test
+    void deleteWithUserIdButNoEmailIsUnauthorized() throws Exception {
+        mockMvc.perform(delete("/dataset/named/{id}", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice"))
+            .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.errorType").value("unauthorized"));
+    }
+
+    /** PUT that re-points the caller's own dataset at a queryId with no stored query returns 404 from the query lookup. */
+    @Test
+    void updateRepointedToUnknownQueryReturns404() throws Exception {
+        Query query = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
+
+        mockMvc.perform(
+            put("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryId\":\"" + UUID.randomUUID() + "\",\"name\":\"mine\"}")
+        ).andExpect(status().isNotFound()).andExpect(jsonPath("$.errorType").value("not_found"));
+    }
+
+    /**
+     * PUT that re-points one of the caller's datasets at a query the caller already named fails the flush on a unique constraint over
+     * {@code queryId}, which the service translates to 409. No pre-check runs, so this proves the constraint-to-409 translation.
+     */
+    @Test
+    void updateRepointedOntoAlreadyNamedQueryReturns409() throws Exception {
+        Query first = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        Query second = queryRepo.save(new Query().setQuery(QUERY_BODY));
+        namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("first").setQuery(first));
+        NamedDataset onSecond = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("second").setQuery(second));
+
+        mockMvc.perform(
+            put("/dataset/named/{id}", onSecond.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryId\":\"" + first.getUuid() + "\",\"name\":\"second\"}")
+        ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"));
     }
 }

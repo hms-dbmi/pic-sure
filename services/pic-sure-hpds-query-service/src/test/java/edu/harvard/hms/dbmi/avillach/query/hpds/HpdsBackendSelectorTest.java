@@ -2,8 +2,10 @@ package edu.harvard.hms.dbmi.avillach.query.hpds;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
@@ -55,5 +57,22 @@ class HpdsBackendSelectorTest {
     @Test
     void nullBackendThrows() {
         assertThatThrownBy(() -> selector().select(null, false)).isInstanceOf(PicsureException.class);
+    }
+
+    /**
+     * A deployment without an open HPDS instance leaves {@code HPDS_OPEN_URL} unset, which binds to the empty string. Selecting that
+     * backend must fail fast with a clear 503 rather than composing a bogus base ("" or "/v3") that surfaces later as an opaque 500.
+     */
+    @Test
+    void unconfiguredBackendThrowsServiceUnavailable() {
+        HpdsProperties p = new HpdsProperties();
+        p.setAuthUrl("http://hpds-auth:8080/PIC-SURE");
+        p.setOpenUrl("");
+
+        HpdsBackendSelector selector = new HpdsBackendSelector(p);
+
+        PicsureException thrown = assertThrows(PicsureException.class, () -> selector.select("open", false));
+
+        assertThat(thrown.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
     }
 }

@@ -82,7 +82,7 @@ public class SecurityConfig {
 
     @Bean
     PublicEndpointPolicy publicEndpointPolicy(GatewaySecurityProperties props) {
-        return new PublicEndpointPolicy(props.allowListPrefixes());
+        return new PublicEndpointPolicy(props.publicRoutes());
     }
 
     @Bean

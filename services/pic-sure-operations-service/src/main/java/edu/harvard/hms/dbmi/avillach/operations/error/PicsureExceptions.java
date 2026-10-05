@@ -26,4 +26,8 @@ public final class PicsureExceptions {
     public static PicsureException unauthorized(String message) {
         return new PicsureException(HttpStatus.UNAUTHORIZED, "unauthorized", message);
     }
+
+    public static PicsureException badRequest(String message) {
+        return new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", message);
+    }
 }

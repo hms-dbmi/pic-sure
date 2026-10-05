@@ -28,6 +28,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
 import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 
@@ -142,7 +143,7 @@ class AuthorizationServiceConsentDecisionTest {
 
     private AuthorizationService service(boolean enabled) {
         return new AuthorizationService(
-            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, enabled, false
+            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, enabled, false, mock(ApiKeyService.class), false
         );
     }
 

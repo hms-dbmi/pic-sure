@@ -1,8 +1,52 @@
 {
   "properties": [
     {
+      "name": "DEST_IP",
+      "type": "java.lang.String",
+      "description": "IP address recorded as the destination IP on audit log events sent by AuditLoggingFilter. When unset (the default), the filter falls back to the current request's local address (HttpServletRequest#getLocalAddr())."
+    },
+    {
+      "name": "DEST_PORT",
+      "type": "java.lang.Integer",
+      "description": "Port number recorded as the destination port on audit log events sent by AuditLoggingFilter. When unset (the default), the filter falls back to the current request's local port (HttpServletRequest#getLocalPort())."
+    },
+    {
+      "name": "LARGE_TASK_THREADS",
+      "type": "java.lang.Integer",
+      "description": "Number of worker threads in the executor QueryService and QueryV3Service use to run queries whose field count exceeds SMALL_JOB_LIMIT."
+    },
+    {
+      "name": "SMALL_JOB_LIMIT",
+      "type": "java.lang.Integer",
+      "description": "Field-count threshold QueryService and QueryV3Service use to classify a query as small or large. A query selecting more fields than this limit runs on the large-task executor instead of the small-task executor."
+    },
+    {
+      "name": "SMALL_TASK_THREADS",
+      "type": "java.lang.Integer",
+      "description": "Number of worker threads in the executor QueryService and QueryV3Service use to run queries whose field count is at or below SMALL_JOB_LIMIT."
+    },
+    {
+      "name": "enable_file_sharing",
+      "type": "java.lang.Boolean",
+      "description": "Enables the file-sharing feature that writes query result files to disk and serves them back through FileSystemService and FileSystemV3Service. False (the default) makes the configured sharing root resolve to /dev/null and rejects file moves and writes.",
+      "defaultValue": false
+    },
+    {
+      "name": "file_sharing_root",
+      "type": "java.lang.String",
+      "description": "Filesystem directory FileSystemConfig resolves as the shared results root when enable_file_sharing is true. The directory must already exist; startup fails with a RuntimeException if it does not.",
+      "defaultValue": "/gic_query_results/"
+    },
+    {
+      "name": "hpds.genomicProcessor.impl",
+      "type": "java.lang.String",
+      "description": "Name of the genomic processor implementation bean configured elsewhere in the application (local, localDistributed, localPatientDistributed, localPatientOnlyDistributed, or remote). HpdsReadinessHealthIndicator reads it only to decide whether genomic readiness should be checked. Blank or unset (the default) means genomic support is not configured, so readiness depends on phenotype data alone and the genomic store is not inspected.",
+      "defaultValue": ""
+    },
+    {
       "name": "log.pattern",
       "type": "java.lang.String",
-      "description": "Description for log.pattern."
-  }
-] }
+      "description": "Logback pattern applied to both the console and file appenders, bound into logback-spring.xml through Spring's springProperty element (source=\"log.pattern\"). The base application.properties sets a default pattern tagged [hpds]; the bdc-auth-dev, bdc-auth-prod, and open profiles override it with their own bracketed service tag ([auth-hpds] or [open-hpds])."
+    }
+  ]
+}

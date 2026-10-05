@@ -9,6 +9,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
@@ -31,7 +35,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  */
 @RestController
 @RequestMapping("/hpds/open")
-@Tag(name = "aggregate-data-sharing (open)")
+@Tag(name = "aggregate-data-sharing (open)", description = "Legacy open-access aggregate queries")
 public class AggregateController {
 
     private final AggregateService service;
@@ -40,12 +44,27 @@ public class AggregateController {
         this.service = service;
     }
 
+    @AuditEvent(type = "QUERY", action = "query.sync")
     @PostMapping(value = "/query/sync", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Run an open aggregate query inline")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"),
+            @ApiResponse(responseCode = "400", description = "Missing query data or an unsupported result type"),
+            @ApiResponse(responseCode = "502", description = "Aggregate backend call failed")}
+    )
     public ResponseEntity<String> querySync(@RequestBody QueryRequest req) {
         return service.querySync(req, AggregateVariant.V1);
     }
 
+    @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
+    @Operation(summary = "Submit an open aggregate query")
+    @ApiResponses(
+        {@ApiResponse(responseCode = "200", description = "OK"), @ApiResponse(responseCode = "400", description = "Missing query data"),
+            @ApiResponse(responseCode = "502", description = "Downstream aggregate or persistence call failed"),
+            @ApiResponse(responseCode = "503", description = "Backend not configured"),
+            @ApiResponse(responseCode = "504", description = "operations-service timed out")}
+    )
     public QueryStatus query(@RequestBody QueryRequest req) {
         return service.query(req, AggregateVariant.V1);
     }

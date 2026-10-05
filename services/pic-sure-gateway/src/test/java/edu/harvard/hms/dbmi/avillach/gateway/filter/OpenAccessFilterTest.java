@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -26,6 +25,7 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ShippedPublicRoutes;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,9 +33,7 @@ import jakarta.servlet.http.HttpServletResponse;
 class OpenAccessFilterTest {
 
     private OpenAccessFilter filter(PsamaClient client, AuditContext ctx, boolean enabled) {
-        return new OpenAccessFilter(
-            client, ctx, enabled, new PublicEndpointPolicy(List.of("/actuator", "/openapi", "/swagger-ui", "/logging"))
-        );
+        return new OpenAccessFilter(client, ctx, enabled, new PublicEndpointPolicy(ShippedPublicRoutes.routes()));
     }
 
     @Test
@@ -84,6 +82,46 @@ class OpenAccessFilterTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> request = (Map<String, Object>) body.get("request");
         assertThat(request.get("Target Service")).isEqualTo("/v3/search/abc"); // real path verbatim
+    }
+
+    @Test
+    void enabledOpenAccessForwardsNonBlankApiKeyAtTopLevelValidationPayload() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap(null, "picsure_testKeyValue123");
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
+    }
+
+    @Test
+    void enabledOpenAccessOmitsApiKeyWhenHeaderAbsent() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        f.doFilter(wrap(null), mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).doesNotContainKey("apiKey");
+    }
+
+    @Test
+    void enabledOpenAccessOmitsApiKeyWhenHeaderBlank() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        f.doFilter(wrap(null, "   "), mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).doesNotContainKey("apiKey");
     }
 
     @Test
@@ -190,15 +228,24 @@ class OpenAccessFilterTest {
     }
 
     private static BufferedRequestWrapper wrap(String authHeader) {
-        return wrap(authHeader, "/v3/search/abc", "POST");
+        return wrap(authHeader, null);
+    }
+
+    private static BufferedRequestWrapper wrap(String authHeader, String apiKeyHeader) {
+        return wrap(authHeader, "/v3/search/abc", "POST", apiKeyHeader);
     }
 
     private static BufferedRequestWrapper wrap(String authHeader, String uri, String method) {
+        return wrap(authHeader, uri, method, null);
+    }
+
+    private static BufferedRequestWrapper wrap(String authHeader, String uri, String method, String apiKeyHeader) {
         HttpServletRequest base = mock(HttpServletRequest.class);
         when(base.getRequestURI()).thenReturn(uri);
         when(base.getContextPath()).thenReturn("");
         lenient().when(base.getMethod()).thenReturn(method);
         if (authHeader != null) when(base.getHeader("Authorization")).thenReturn(authHeader);
+        if (apiKeyHeader != null) when(base.getHeader(OpenAccessFilter.API_KEY_HEADER)).thenReturn(apiKeyHeader);
         lenient().when(base.getServerName()).thenReturn("aio.local");
         // Bare Mockito mocks don't retain state across calls; BufferedRequestWrapper delegates
         // setAttribute/getAttribute to the wrapped request (HttpServletRequestWrapper default), so back
