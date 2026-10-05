@@ -14,6 +14,8 @@ The configuration rules read every `@Value` in every module, on fields, methods,
 
 `no-trailing-slash` fails a documented module whose controller declares a class-level or method-level mapping path ending in `/`. It reads the `value` and `path` of `@RequestMapping` and of the composed `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` and `@PatchMapping`. A class-level path of exactly `/` is allowed. A method-level `/` is allowed only when the class declares no mapping path or declares `/`, because Spring joins `@RequestMapping("/dataset/named")` and `@GetMapping("/")` into `/dataset/named/`. Spring 6 matches only the declared form, so a handler declared as `/dataset/named/{id}/` answers 404 to a client that calls `/dataset/named/{id}`, while tests that call the declared form still pass. That is how the operations controllers broke every named-dataset call from the frontend after the WildFly port. To satisfy the rule, drop the trailing slash from the mapping, and write a method-level root as `""` or leave the path out. The rule covers documented modules only, because their clients call slash-less paths. Internal modules are left alone: the hpds `/search/values/` mappings keep their slash because `ResourceWebClient`, their only caller, sends it.
 
+`base-images-pinned` reads files instead of classes. Every git-tracked file named `Dockerfile`, `Dockerfile.*` or `*.Dockerfile` (such as `bdc.Dockerfile` or `dev.Dockerfile`) in the repository must pin each external base image by digest, as `FROM amazoncorretto:25-alpine@sha256:<digest>`, keeping the tag for readability. A floating tag builds from whatever the registry points it at on build day. A `FROM` that names a stage declared earlier in the same file, such as `FROM builder`, is exempt, and so is `FROM scratch`. `--platform=...` flags are skipped. To satisfy it, copy the digest another Dockerfile in the reactor already uses for the same image, or read it with `docker buildx imagetools inspect <image:tag>`. `base-images-pinned` does not check `USER` or `HEALTHCHECK`; some images declare `HEALTHCHECK NONE` on purpose. It lists files with `git ls-files`, so it needs a git checkout and fails if it finds no Dockerfile at all.
+
 `request-mapping-names-method` checks every module for a handler method that carries `@RequestMapping` itself with no `method`. Such a mapping answers every HTTP verb, so an endpoint meant for POST also answers GET, PUT, PATCH, DELETE, HEAD and OPTIONS, and the published document lists all seven. Use a composed annotation (`@GetMapping`, `@PostMapping` and the rest), or set `method` to the verbs the endpoint serves, for example `method = {RequestMethod.GET, RequestMethod.POST}`. A class-level `@RequestMapping` only sets a path prefix and is out of scope.
 
 ## Rules
@@ -59,6 +61,10 @@ Configuration, over every compiled module:
 Request mappings, over the modules marked `documented`:
 
 - `no-trailing-slash`: no class-level or method-level mapping path on a controller ends in `/`, except a bare `/` that serves the root.
+
+Docker images, over every git-tracked Dockerfile:
+
+- `base-images-pinned`: every `FROM` that names an external image pins it by an `@sha256:` digest.
 
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
