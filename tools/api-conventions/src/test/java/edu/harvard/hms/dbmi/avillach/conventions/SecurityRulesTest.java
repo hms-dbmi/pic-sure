@@ -56,6 +56,26 @@ class SecurityRulesTest {
     }
 
     @Test
+    void flagsHandlersThatDeclareNeitherOrBothAndClassLevelDeclarations() {
+        List<String> violations = SecurityRules.handlersDeclareAuthorization("fixtures", fixtures("declared"));
+
+        assertEquals(3, violations.size(), violations.toString());
+        assertMentions(violations, "ClassLevelPublicController carries @PublicEndpoint at class level");
+        assertMentions(violations, "DeclaringController#undeclared carries neither @PreAuthorize nor @PublicEndpoint");
+        assertMentions(violations, "DeclaringController#both carries both @PreAuthorize and @PublicEndpoint");
+        assertTrue(violations.get(0).startsWith("fixtures :: "), violations.get(0));
+    }
+
+    @Test
+    void acceptsAGuardOrEitherPublicLevelAndIgnoresNonHandlers() {
+        List<String> violations = SecurityRules.handlersDeclareAuthorization("fixtures", fixtures("declared"));
+
+        for (String accepted : List.of("#guarded ", "#anonymous ", "#authenticated ", "#helper ", "ClassLevelPublicController#read ")) {
+            assertTrue(violations.stream().noneMatch(v -> v.contains(accepted)), accepted + " in " + violations);
+        }
+    }
+
+    @Test
     void flagsEveryRoleCheckOnAFrameworkType() {
         List<String> violations = SecurityRules.noRoleChecks("fixtures", ROLE_CHECKS);
 
