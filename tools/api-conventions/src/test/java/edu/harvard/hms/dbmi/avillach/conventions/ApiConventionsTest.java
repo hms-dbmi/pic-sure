@@ -126,6 +126,11 @@ class ApiConventionsTest {
     }
 
     @Test
+    void everyRequestMappingHandlerNamesItsVerbs() {
+        report("request-mapping-names-method", overAllModules(RequestMethodRules::requestMappingNamesMethod));
+    }
+
+    @Test
     void noGetHandlerNarrowsConsumes() {
         report("get-has-no-consumes", overAllModules(ContentTypeRules::getDoesNotNarrowConsumes));
     }
