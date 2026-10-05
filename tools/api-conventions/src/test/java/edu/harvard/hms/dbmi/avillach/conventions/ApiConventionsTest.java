@@ -70,6 +70,11 @@ class ApiConventionsTest {
     }
 
     @Test
+    void noMappingPathEndsInASlash() {
+        report("no-trailing-slash", overDocumentedModules(MappingPathRules::noTrailingSlash));
+    }
+
+    @Test
     void noHandlerUsesAReplacedSecurityAnnotation() {
         report("no-replaced-security-annotations", overAllModules(SecurityRules::noReplacedSecurityAnnotations));
     }
@@ -121,6 +126,11 @@ class ApiConventionsTest {
     @Test
     void everyPropertyMetadataFileIsComplete() {
         report("property-metadata-complete", overAllModules((module, classes) -> ConfigurationRules.metadataIsComplete(module, metadata(module))));
+    }
+
+    @Test
+    void everyRequestMappingHandlerNamesItsVerbs() {
+        report("request-mapping-names-method", overAllModules(RequestMethodRules::requestMappingNamesMethod));
     }
 
     private static PropertyMetadata metadata(String module) {
