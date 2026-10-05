@@ -130,6 +130,11 @@ class ApiConventionsTest {
         report("request-mapping-names-method", overAllModules(RequestMethodRules::requestMappingNamesMethod));
     }
 
+    @Test
+    void noGetHandlerNarrowsConsumes() {
+        report("get-has-no-consumes", overAllModules(ContentTypeRules::getDoesNotNarrowConsumes));
+    }
+
     private static PropertyMetadata metadata(String module) {
         return PropertyMetadata.load(reactorRoot.resolve(module).resolve("target/classes"));
     }

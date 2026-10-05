@@ -18,6 +18,8 @@ The configuration rules read every `@Value` in every module, on fields, methods,
 
 `request-mapping-names-method` checks every module for a handler method that carries `@RequestMapping` itself with no `method`. Such a mapping answers every HTTP verb, so an endpoint meant for POST also answers GET, PUT, PATCH, DELETE, HEAD and OPTIONS, and the published document lists all seven. Use a composed annotation (`@GetMapping`, `@PostMapping` and the rest), or set `method` to the verbs the endpoint serves, for example `method = {RequestMethod.GET, RequestMethod.POST}`. A class-level `@RequestMapping` only sets a path prefix and is out of scope.
 
+`get-has-no-consumes` covers every module. A handler that answers GET, through `@GetMapping` or a `@RequestMapping` whose `method` includes GET or is left empty, sets no `consumes` other than `*/*`. A GET carries no body, so clients send no `Content-Type`, and Spring never matches such a request to the handler. It answers 415, or hands the request to another mapping that fits the path: PSAMA's `GET /accessRule/allTypes` fell through to `GET /accessRule/{accessRuleId}` and answered 400 `Invalid UUID string: allTypes`. A `consumes` on the class's `@RequestMapping` counts too, since Spring applies it to every handler that does not declare its own. To satisfy the rule, drop `consumes` from the GET handler, or set `consumes = "*/*"` when a class level value would otherwise reach it.
+
 ## Rules
 
 A failing build names the rule by its slug, for example `controller-tagged-or-hidden failed with 2 violation(s):`. Look the slug up here.
@@ -51,6 +53,7 @@ Request mappings, over every compiled module:
 
 - `path-variables-in-template`: every `@PathVariable` that names its variable appears as `{name}` in at least one path its handler maps.
 - `request-mapping-names-method`: every handler method that carries `@RequestMapping` itself names at least one verb in its `method`.
+- `get-has-no-consumes`: a handler that answers GET sets no `consumes` other than `*/*`, on itself or through its class.
 
 Configuration, over every compiled module:
 
