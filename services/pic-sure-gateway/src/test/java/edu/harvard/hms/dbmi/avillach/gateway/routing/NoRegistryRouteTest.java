@@ -18,8 +18,9 @@ import org.springframework.core.env.Environment;
  * The resource registry is removed. Assert on the configured route IDS (behavior-pinning, not a weak bean-name check) — the gateway exposes
  * NO {@code /info/resources} or {@code /resource} route. Those paths are unmatched and 404.
  *
- * <p>Configured routes: {@code logging}, {@code dictionary}, {@code visualization}, plus {@code hpds}, {@code operations} — verbatim routes
- * to the query-service / operations-service. The load-bearing assertion is that no registry id ever appears.
+ * <p>Configured routes: {@code logging}, {@code dictionary}, {@code visualization}, plus {@code hpds}, {@code operations}, {@code mcp},
+ * {@code ai} — verbatim routes to the query-service / operations-service / MCP server / AI-assisted-search service. The load-bearing
+ * assertion is that no registry id ever appears.
  */
 @SpringBootTest
 class NoRegistryRouteTest {
@@ -38,7 +39,7 @@ class NoRegistryRouteTest {
     @Test
     void exposesOnlyTheExpectedRouteIdsAndNoRegistryRoute() {
         Set<String> ids = configuredRouteIds();
-        assertThat(ids).containsExactlyInAnyOrder("logging", "dictionary", "visualization", "hpds", "operations", "mcp");
+        assertThat(ids).containsExactlyInAnyOrder("logging", "dictionary", "visualization", "hpds", "operations", "mcp", "ai");
         assertThat(ids).doesNotContain("uploader");
         assertThat(ids).noneMatch(id -> {
             String lower = id.toLowerCase();
