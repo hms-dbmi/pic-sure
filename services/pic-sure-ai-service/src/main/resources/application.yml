@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: pic-sure-ai-service
+  ai:
+    bedrock:
+      aws:
+        region: ${BEDROCK_REGION:us-east-1}
+        # access-key/secret-key left unset on purpose: the default AWS SDK credential chain
+        # (the IAM role bedrock-infra/ provisions) is the credential path. Never set a long-term
+        # key here outside local dev.
+      converse:
+        chat:
+          options:
+            model: ${BEDROCK_MODEL_ID:amazon.nova-lite-v1:0}
+            max-tokens: ${BEDROCK_MAX_TOKENS:1024}
+            # The tool-use loop (iteration cap, MCP dispatch, error shaping) is hand-written in
+            # ai.chat/ai.model -- Spring AI must never auto-execute tool calls on its own, or that
+            # control is lost.
+            internal-tool-execution-enabled: false
+
+picsure:
+  ai:
+    # Hard cap on tool-call round-trips per turn. Hitting it
+    # returns the best answer so far, prose only -- never an error.
+    max-tool-iterations: ${AI_MAX_TOOL_ITERATIONS:8}
+    model:
+      # aws-sdk (default): ConverseSdkModelClient, real AWS Bedrock Converse over SigV4/IAM.
+      # http: ConverseHttpModelClient, the same Converse wire shape over a plain bearer token to a
+      # configurable base-url -- for a self-hosted deployment pointing at a different model vendor via
+      # its own translating proxy, or at LiteLLM's bearer-token Converse ingress.
+      provider: ${AI_MODEL_PROVIDER:aws-sdk}
+      http:
+        # Required only when provider=http -- ConverseHttpModelClient fails fast at startup if blank
+        # while selected, rather than resolving the placeholder eagerly regardless of provider.
+        base-url: ${AI_MODEL_HTTP_BASE_URL:}
+        api-token: ${AI_MODEL_HTTP_API_TOKEN:}
+        model-id: ${AI_MODEL_HTTP_MODEL_ID:}
+    mcp:
+      # mock (default) | gateway (a real MCP client against pic-sure-mcp via the
+      # gateway's /mcp route). See McpToolGateway and its MockMcpToolGateway implementation.
+      mode: ${AI_MCP_MODE:mock}
+  # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
+  # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons).
+  actuator:
+    require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
+    token: ${PICSURE_APPLICATION_TOKEN:}
+    header-name: X-Application-Token
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /ai
+  max-http-request-header-size: ${PICSURE_MAX_REQUEST_HEADER_SIZE:64KB}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # OFF BY DEFAULT: 'none' is a sentinel that matches no endpoint, so /actuator/** is 404. (An
+        # EMPTY include is NOT off -- Spring Boot then falls back to exposing health.)
+        include: ${PICSURE_ACTUATOR_EXPOSURE:none}
+  endpoint:
+    health:
+      show-details: ${PICSURE_ACTUATOR_DETAILS:never}
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState
+  health:
+    defaults:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
