@@ -10,7 +10,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
 import edu.harvard.hms.dbmi.avillach.ai.config.WebSecurityConfig;
-import edu.harvard.hms.dbmi.avillach.commons.error.GatewayExceptionAdvice;
+import edu.harvard.hms.dbmi.avillach.ai.error.ValidationExceptionAdvice;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * verified here by a {@link ChatOrchestrator} test double that fails the test if it is ever called.
  */
 @WebMvcTest(ChatController.class)
-@Import({GatewayExceptionAdvice.class, WebSecurityConfig.class, ChatControllerAuthValidationTest.OrchestratorConfig.class})
+@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, ChatControllerAuthValidationTest.OrchestratorConfig.class})
 class ChatControllerAuthValidationTest {
 
     @Autowired

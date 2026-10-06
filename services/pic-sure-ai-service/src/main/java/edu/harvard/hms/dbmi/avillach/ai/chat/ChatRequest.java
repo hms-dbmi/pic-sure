@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.ai.chat;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
 /**
@@ -25,12 +26,22 @@ import jakarta.validation.constraints.NotBlank;
  * @param facets the researcher's current facet selection, in the slimmed {@link FacetSelection} shape
  * @param search the researcher's current dictionary-search state, if any
  */
+@Schema(description = "One researcher chat turn, plus the query, facet selection and dictionary-search state the turn starts from.")
 public record ChatRequest(
-    @NotBlank String message,
-    @NotBlank String conversationId,
-    @NotBlank String requestId,
-    JsonNode query,
-    List<FacetSelection> facets,
-    JsonNode search
+    @Schema(
+        description = "The researcher's chat message.", example = "Which studies have blood pressure measurements?",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    ) @NotBlank String message,
+    @Schema(
+        description = "Client-generated id of the conversation this turn belongs to.", example = "c4b1f7e2-6a0d-4a7e-9d1b-2f3c8e5a9b10",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    ) @NotBlank String conversationId,
+    @Schema(
+        description = "Client-generated idempotency key for this turn.", example = "9f2d6c1a-3b8e-4c57-a1d4-7e0b5f6c2a83",
+        requiredMode = Schema.RequiredMode.REQUIRED
+    ) @NotBlank String requestId,
+    @Schema(description = "The researcher's current query object, if any. Passed through unvalidated.") JsonNode query,
+    @Schema(description = "The researcher's current facet selection, if any.") List<FacetSelection> facets,
+    @Schema(description = "The researcher's current dictionary-search state, if any. Passed through unvalidated.") JsonNode search
 ) {
 }
