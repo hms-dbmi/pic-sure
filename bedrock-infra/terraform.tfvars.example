@@ -1,5 +1,5 @@
 # Copy to poc.tfvars (or fisma.tfvars) and fill in. Never commit real account details if your repo is public.
-# "poc" here = the existing NHANES dev AWS account (TASKS.md Story 1), not a newly created account.
+# "poc" here = the existing NHANES dev AWS account, not a newly created account.
 
 region      = "<nhanes-dev-region>"
 environment = "poc"
@@ -16,8 +16,8 @@ allowed_model_ids = [
 
 # Attach the invocation policy to the role pic-sure-ai-service's EC2 hosts
 # actually use. Verify this against pic-sure-ai-service's real deployment (it
-# follows pic-sure-operations-service's conventions per TASKS.md Story 2, but
-# confirm the role name itself rather than assuming it's identical).
+# follows pic-sure-operations-service's conventions but confirm the role name 
+# itself rather than assuming it's identical).
 attach_invocation_policy_to_role_names = ["<pic-sure-ai-service-instance-role-name>"]
 
 # Optional: a Bedrock admin role for humans (MFA required by default).
