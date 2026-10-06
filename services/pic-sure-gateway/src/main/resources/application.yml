@@ -60,6 +60,15 @@ spring:
               order: 100
               predicates:
                 - Path=/mcp
+            # pic-sure-ai-service: the AI-assisted-search chat endpoint. Same verbatim-path, no-StripPrefix
+            # shape as hpds/operations/mcp above, and NOT in public-routes below -- every call is introspected
+            # like /operations writes and /dictionary, since it is access-control-sensitive even though it
+            # carries no patient-level data.
+            - id: ai
+              uri: ${AI_SERVICE_URL:http://pic-sure-ai-service:8080}
+              order: 100
+              predicates:
+                - Path=/ai/**
 
 management:
   endpoints:
