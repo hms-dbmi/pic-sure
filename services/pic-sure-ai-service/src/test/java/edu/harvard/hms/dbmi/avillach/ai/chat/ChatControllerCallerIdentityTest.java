@@ -66,7 +66,7 @@ class ChatControllerCallerIdentityTest {
 
         @Bean
         ChatOrchestrator chatOrchestrator() {
-            return new ToolUseLoopService(echoingFakeModel(), new CallerEchoingToolGateway(), 8);
+            return new ToolUseLoopService(echoingFakeModel(), new CallerEchoingToolGateway(), new ProposeQueryTool(new ObjectMapper()), 8);
         }
 
         /** Echoes the caller's {@code userId} in every result, so two different callers visibly get two different results. */
