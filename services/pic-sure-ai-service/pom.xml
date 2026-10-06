@@ -54,10 +54,18 @@
             <artifactId>spring-ai-starter-model-bedrock-converse</artifactId>
         </dependency>
 
-        <!-- GatewayUserResolver/GatewayUser, PicsureException, GatewayExceptionAdvice, RequestIdFilter. -->
+        <!-- GatewayUserResolver/GatewayUser, PicsureException, PicsureErrorBodyAdvice, RequestIdFilter. -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-spring-commons</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>edu.harvard.dbmi.avillach</groupId>
+            <artifactId>pic-sure-logging-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-openapi</artifactId>
         </dependency>
         <dependency>
             <groupId>edu.harvard.dbmi.avillach</groupId>

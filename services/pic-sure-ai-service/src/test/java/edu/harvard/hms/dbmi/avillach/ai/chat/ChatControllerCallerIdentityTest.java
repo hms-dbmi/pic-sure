@@ -19,7 +19,7 @@ import edu.harvard.hms.dbmi.avillach.ai.model.ConverseModelClient;
 import edu.harvard.hms.dbmi.avillach.ai.model.ConversationEntry;
 import edu.harvard.hms.dbmi.avillach.ai.model.ModelTurnResult;
 import edu.harvard.hms.dbmi.avillach.ai.model.RequestedToolCall;
-import edu.harvard.hms.dbmi.avillach.commons.error.GatewayExceptionAdvice;
+import edu.harvard.hms.dbmi.avillach.ai.error.ValidationExceptionAdvice;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * HTTP responses is what the gateway put in the tool result for each caller.
  */
 @WebMvcTest(ChatController.class)
-@Import({GatewayExceptionAdvice.class, WebSecurityConfig.class, ChatControllerCallerIdentityTest.RealLoopWithFakeModel.class})
+@Import({ValidationExceptionAdvice.class, WebSecurityConfig.class, ChatControllerCallerIdentityTest.RealLoopWithFakeModel.class})
 class ChatControllerCallerIdentityTest {
 
     @Autowired

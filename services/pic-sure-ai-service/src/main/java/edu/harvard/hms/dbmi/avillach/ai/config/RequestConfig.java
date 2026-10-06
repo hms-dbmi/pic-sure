@@ -9,7 +9,7 @@ import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
 
 /**
  * Registers the commons {@link RequestIdFilter} (same pattern as {@code pic-sure-operations-service}'s {@code RequestConfig}) so every
- * request/response carries {@code X-Request-Id} and every log line + {@code GatewayExceptionAdvice} error body on this service is tagged
+ * request/response carries {@code X-Request-Id} and every log line + {@code PicsureErrorBodyAdvice} error body on this service is tagged
  * with it.
  */
 @Configuration
