@@ -2,7 +2,10 @@ package edu.harvard.dbmi.avillach.domain;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "The matches for a search term.")
+@Schema(
+    description = "The concept-search matches for a search term. The matches are drawn from phenotype and info metadata, not from "
+        + "genomic data."
+)
 public class SearchResults {
 
     @Schema(
