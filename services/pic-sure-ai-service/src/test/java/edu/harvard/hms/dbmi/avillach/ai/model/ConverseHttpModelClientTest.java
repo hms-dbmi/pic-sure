@@ -17,6 +17,7 @@ import edu.harvard.hms.dbmi.avillach.ai.model.ConversationEntry.UserEntry;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -118,6 +119,42 @@ class ConverseHttpModelClientTest {
                 .withRequestBody(matchingJsonPath("$.toolConfig.tools[0].toolSpec.name", equalTo("search_concepts")))
                 .withRequestBody(matchingJsonPath("$.messages[1].content[0].toolUse.toolUseId", equalTo("call-1")))
                 .withRequestBody(matchingJsonPath("$.messages[2].content[0].toolResult.toolUseId", equalTo("call-1")))
+        );
+    }
+
+    @Test
+    void rejectsBlankConfiguration() {
+        ObjectMapper mapper = new ObjectMapper();
+        assertThrows(IllegalStateException.class, () -> new ConverseHttpModelClient("", "t", "m", mapper));
+        assertThrows(IllegalStateException.class, () -> new ConverseHttpModelClient("http://x", " ", "m", mapper));
+        assertThrows(IllegalStateException.class, () -> new ConverseHttpModelClient("http://x", "t", null, mapper));
+    }
+
+    @Test
+    void sendsAssistantTextBatchesToolResultsAndToleratesMalformedArguments() {
+        server.stubFor(
+            post(urlEqualTo("/model/test-model/converse"))
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("""
+                    {"output":{"message":{"role":"assistant","content":[{"text":"a"},{"text":"b"}]}}}"""))
+        );
+        List<ConversationEntry> history = List.of(
+            new UserEntry("go"),
+            new AssistantToolCallEntry(
+                "thinking", List.of(new RequestedToolCall("c1", "a", "not json"), new RequestedToolCall("c2", "b", "{}"))
+            ),
+            new ToolResultEntry("c1", "a", "r1"), new ToolResultEntry("c2", "b", "r2")
+        );
+        ToolDefinition badSchema = new ToolDefinition("a", "d", "not json");
+
+        ModelTurnResult result = client.send("sys", history, List.of(badSchema));
+
+        assertEquals("ab", result.text());
+        server.verify(
+            postRequestedFor(urlEqualTo("/model/test-model/converse"))
+                .withRequestBody(matchingJsonPath("$.messages[1].content[0].text", equalTo("thinking")))
+                .withRequestBody(matchingJsonPath("$.messages[1].content[1].toolUse.input", equalToJson("{}")))
+                .withRequestBody(matchingJsonPath("$.messages[2].content[1].toolResult.toolUseId", equalTo("c2")))
+                .withRequestBody(matchingJsonPath("$.toolConfig.tools[0].toolSpec.inputSchema.json", equalToJson("{}")))
         );
     }
 

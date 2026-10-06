@@ -1,0 +1,28 @@
+{
+  "properties": [
+    {
+      "name": "picsure.ai.max-tool-iterations",
+      "type": "java.lang.Integer",
+      "description": "Hard cap on tool-call round-trips per chat turn. Hitting it returns the best answer so far, prose only, never an error. Maps from the AI_MAX_TOOL_ITERATIONS environment variable.",
+      "defaultValue": 8
+    },
+    {
+      "name": "picsure.ai.model.http.base-url",
+      "type": "java.lang.String",
+      "description": "Base URL of the HTTP Converse endpoint ConverseHttpModelClient posts to ({base}/model/{modelId}/converse). Required when picsure.ai.model.provider=http; startup fails when blank.",
+      "defaultValue": ""
+    },
+    {
+      "name": "picsure.ai.model.http.api-token",
+      "type": "java.lang.String",
+      "description": "Bearer token ConverseHttpModelClient sends in the Authorization header. Required when picsure.ai.model.provider=http; startup fails when blank.",
+      "defaultValue": ""
+    },
+    {
+      "name": "picsure.ai.model.http.model-id",
+      "type": "java.lang.String",
+      "description": "Model id ConverseHttpModelClient puts in the request path. Required when picsure.ai.model.provider=http; startup fails when blank.",
+      "defaultValue": ""
+    }
+  ]
+}
