@@ -21,9 +21,9 @@ import edu.harvard.hms.dbmi.avillach.ai.model.RequestedToolCall;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * Runs one chat turn's tool-use loop. Every tool call the model requests -- the dictionary/count lookups and the query/facets/search
- * proposal alike -- is dispatched to {@link McpToolGateway}; this service has no locally-handled tool of its own (the proposal tool is
- * assumed to live on the MCP server too, so this service only ever talks to the model or the MCP gateway).
+ * Runs one chat turn's tool-use loop. The dictionary/count lookups are dispatched to {@link McpToolGateway}; the query/facets/search
+ * proposal tool ({@link ProposeQueryTool}) is the one exception, handled entirely locally -- it is not a data-access call, so it never
+ * reaches the gateway (see {@link ProposeQueryTool}'s class Javadoc for why).
  *
  * <p><strong>Deliberately out of scope for now:</strong> the final {@link ChatResponse} never carries a
  * {@code query}/{@code facets}/{@code search} value yet, even when the proposal tool was called. Promoting a proposed object into those
@@ -47,19 +47,23 @@ class ToolUseLoopService implements ChatOrchestrator {
 
     private final ConverseModelClient modelClient;
     private final McpToolGateway toolGateway;
+    private final ProposeQueryTool proposeQueryTool;
     private final int maxIterations;
 
     ToolUseLoopService(
-        ConverseModelClient modelClient, McpToolGateway toolGateway, @Value("${picsure.ai.max-tool-iterations:8}") int maxIterations
+        ConverseModelClient modelClient, McpToolGateway toolGateway, ProposeQueryTool proposeQueryTool,
+        @Value("${picsure.ai.max-tool-iterations:8}") int maxIterations
     ) {
         this.modelClient = modelClient;
         this.toolGateway = toolGateway;
+        this.proposeQueryTool = proposeQueryTool;
         this.maxIterations = maxIterations;
     }
 
     @Override
     public ChatResponse handle(ChatRequest request, CallerContext caller) {
-        List<ToolDefinition> tools = toolGateway.listTools();
+        List<ToolDefinition> tools = new ArrayList<>(toolGateway.listTools());
+        tools.add(proposeQueryTool.definition());
         List<ConversationEntry> history = new ArrayList<>();
         history.add(new UserEntry(request.message()));
 
@@ -101,6 +105,9 @@ class ToolUseLoopService implements ChatOrchestrator {
     /** A tool/MCP failure never crashes the turn -- it becomes a normal, model-visible error result. */
     private ToolResult callToolSafely(RequestedToolCall call, CallerContext caller) {
         try {
+            if (ProposeQueryTool.NAME.equals(call.name())) {
+                return proposeQueryTool.propose(call.argumentsJson());
+            }
             return toolGateway.callTool(call.name(), call.argumentsJson(), caller);
         } catch (RuntimeException e) {
             return ToolResult.failure("The " + call.name() + " lookup failed: " + e.getMessage());

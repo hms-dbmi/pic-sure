@@ -59,6 +59,13 @@
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-spring-commons</artifactId>
         </dependency>
+        <!-- The real Query/PhenotypicFilter/PhenotypicSubquery/GenomicFilter types, reused for propose_query's
+             shape validation (ProposeQueryInput/ProposeQueryBinder): the same library pic-sure-mcp builds
+             queries from. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+            <artifactId>pic-sure-hpds-model</artifactId>
+        </dependency>
         <dependency>
             <groupId>edu.harvard.dbmi.avillach</groupId>
             <artifactId>pic-sure-logging-client</artifactId>
