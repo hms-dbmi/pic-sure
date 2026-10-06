@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import edu.harvard.hms.dbmi.avillach.ai.mcp.McpToolGateway;
@@ -26,13 +27,14 @@ class ToolUseLoopServiceTest {
 
     private static final ChatRequest REQUEST = new ChatRequest("hi", "conv-1", "req-1", null, null, null);
     private static final CallerContext CALLER = new CallerContext("Bearer test-jwt", "req-1", "user-1");
+    private static final ProposeQueryTool PROPOSE_QUERY_TOOL = new ProposeQueryTool(new ObjectMapper());
 
     @Test
     void returnsTextOnlyResponseWhenModelEndsTurnImmediately() {
         FakeModelClient model = FakeModelClient.returning(doneTurn("Hello there"));
         FakeToolGateway tools = new FakeToolGateway();
 
-        ChatResponse response = new ToolUseLoopService(model, tools, 8).handle(REQUEST, CALLER);
+        ChatResponse response = new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
 
         assertEquals("Hello there", response.response());
         assertNull(response.query());
@@ -43,18 +45,35 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
-    void dispatchesEveryToolCallToTheMcpGatewayIncludingTheProposalTool() {
+    void dispatchesDataLookupsToTheMcpGatewayButHandlesTheProposalToolLocally() {
         FakeModelClient model = FakeModelClient
             .returning(toolCallTurn("search_concepts", "{\"query\":\"bmi\"}"), toolCallTurn("propose_query", "{}"), doneTurn("Done"));
         FakeToolGateway tools = new FakeToolGateway();
 
-        ChatResponse response = new ToolUseLoopService(model, tools, 8).handle(REQUEST, CALLER);
+        ChatResponse response = new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
 
         assertEquals("Done", response.response());
-        assertEquals(List.of("search_concepts", "propose_query"), tools.calls.stream().map(c -> c.name).toList());
+        // propose_query never reaches the gateway -- it's handled locally (see ToolUseLoopService/ProposeQueryTool).
+        assertEquals(List.of("search_concepts"), tools.calls.stream().map(c -> c.name).toList());
         assertEquals(CALLER, tools.calls.get(0).caller);
-        // A proposal result is dispatched and fed back, but never promoted to the structured fields yet.
+        // A proposal result is handled and fed back, but never promoted to the structured fields yet.
         assertNull(response.query());
+    }
+
+    @Test
+    void aMalformedProposalIsFedBackAsAnErrorResultWithoutReachingTheGateway() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("propose_query", "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\"}}}"), doneTurn("Handled the error")
+        );
+        FakeToolGateway tools = new FakeToolGateway();
+
+        ChatResponse response = new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals("Handled the error", response.response());
+        assertTrue(tools.calls.isEmpty(), "a malformed proposal is never forwarded to the gateway");
+        ConversationEntry.ToolResultEntry fedBack =
+            (ConversationEntry.ToolResultEntry) model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
+        assertTrue(fedBack.content().contains("phenotypicClauses"), "the missing field must be named in the result fed back to the model");
     }
 
     @Test
@@ -63,7 +82,7 @@ class ToolUseLoopServiceTest {
             .returning(toolCallTurn("search_concepts", "{}"), toolCallTurn("search_concepts", "{}"), toolCallTurn("search_concepts", "{}"));
         FakeToolGateway tools = new FakeToolGateway();
 
-        ChatResponse response = new ToolUseLoopService(model, tools, 3).handle(REQUEST, CALLER);
+        ChatResponse response = new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 3).handle(REQUEST, CALLER);
 
         assertEquals(3, model.callCount, "the cap bounds model calls, not just tool calls");
         assertEquals(2, tools.calls.size(), "only two rounds are dispatched before the third call hits the cap");
@@ -75,7 +94,7 @@ class ToolUseLoopServiceTest {
         FakeModelClient model = FakeModelClient.returning(toolCallTurn("search_concepts", "{}"), doneTurn("Handled the error"));
         FakeToolGateway tools = FakeToolGateway.thatFailsEveryCall();
 
-        ChatResponse response = new ToolUseLoopService(model, tools, 8).handle(REQUEST, CALLER);
+        ChatResponse response = new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
 
         assertEquals("Handled the error", response.response());
         ConversationEntry lastEntryOfFirstReplay = model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
@@ -88,7 +107,7 @@ class ToolUseLoopServiceTest {
         FakeToolGateway tools = new FakeToolGateway();
 
         PicsureException thrown =
-            assertThrows(PicsureException.class, () -> new ToolUseLoopService(model, tools, 8).handle(REQUEST, CALLER));
+            assertThrows(PicsureException.class, () -> new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER));
 
         assertEquals("model_unavailable", thrown.getErrorType());
         assertTrue(tools.calls.isEmpty(), "the model never got a chance to request a tool");
