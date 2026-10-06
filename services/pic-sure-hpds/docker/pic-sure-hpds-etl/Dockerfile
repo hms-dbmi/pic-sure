@@ -1,7 +1,7 @@
 FROM amazoncorretto:25-alpine@sha256:2ad5f5cf03a3970f2478b130dc28f51b179ce13c58154fe3ec1a6fdeb3b86e3a
 
 RUN apk upgrade --no-cache && \
-    apk add --no-cache gnupg=2.4.9-r1 openssl=3.5.8-r0 && \
+    apk add --no-cache gnupg openssl && \
     rm -rf /var/cache/apk/* /tmp/*
 
 RUN addgroup -g 1000 etl && \
