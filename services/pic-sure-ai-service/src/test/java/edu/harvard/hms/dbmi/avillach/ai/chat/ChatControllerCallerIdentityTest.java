@@ -14,7 +14,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import edu.harvard.hms.dbmi.avillach.ai.config.WebSecurityConfig;
-import edu.harvard.hms.dbmi.avillach.ai.mcp.mock.MockMcpToolGateway;
+import edu.harvard.hms.dbmi.avillach.ai.mcp.McpToolGateway;
+import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolDefinition;
+import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolResult;
 import edu.harvard.hms.dbmi.avillach.ai.model.ConverseModelClient;
 import edu.harvard.hms.dbmi.avillach.ai.model.ConversationEntry;
 import edu.harvard.hms.dbmi.avillach.ai.model.ModelTurnResult;
@@ -27,10 +29,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Two different users' JWTs produce two different consent-scoped MCP results, with no shared or synthetic credential in between. Runs the
- * real {@link ChatController}, {@link CallerContextArgumentResolver}, {@link ToolUseLoopService}, and {@link MockMcpToolGateway} -- only
- * {@link ConverseModelClient} is faked, since calling a real model from a test is out of bounds. The fake always asks for
- * {@code search_concepts} once, then echoes that tool result back as its final answer, so the one thing that can differ between the two
- * HTTP responses is what the gateway put in the tool result for each caller.
+ * real {@link ChatController}, {@link CallerContextArgumentResolver}, and {@link ToolUseLoopService} -- only {@link ConverseModelClient}
+ * and the {@link McpToolGateway} are faked, since calling a real model or a real MCP server from a test is out of bounds. The fake gateway
+ * echoes the caller's {@code userId} in its result, so the one thing that can differ between the two HTTP responses is which caller the
+ * gateway was actually invoked with.
  */
 @WebMvcTest(ChatController.class)
 @Import({GatewayExceptionAdvice.class, WebSecurityConfig.class, ChatControllerCallerIdentityTest.RealLoopWithFakeModel.class})
@@ -64,8 +66,21 @@ class ChatControllerCallerIdentityTest {
 
         @Bean
         ChatOrchestrator chatOrchestrator() {
-            MockMcpToolGateway gateway = new MockMcpToolGateway(new ObjectMapper());
-            return new ToolUseLoopService(echoingFakeModel(), gateway, 8);
+            return new ToolUseLoopService(echoingFakeModel(), new CallerEchoingToolGateway(), 8);
+        }
+
+        /** Echoes the caller's {@code userId} in every result, so two different callers visibly get two different results. */
+        private static final class CallerEchoingToolGateway implements McpToolGateway {
+
+            @Override
+            public List<ToolDefinition> listTools() {
+                return List.of();
+            }
+
+            @Override
+            public ToolResult callTool(String name, String argumentsJson, CallerContext caller) {
+                return ToolResult.success("{\"caller\":\"" + caller.userId() + "\"}");
+            }
         }
 
         private static ConverseModelClient echoingFakeModel() {
