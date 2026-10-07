@@ -82,3 +82,46 @@ touching the dispatch loop, the controller, or anything else in the service).
 Misconfiguring the `http` provider (any of its three variables blank while selected), or leaving
 `PICSURE_GATEWAY_URL` blank while `AI_MCP_MODE=gateway`, fails fast at startup with a clear message,
 rather than silently resolving to a blank URL or token.
+
+## AWS credentials for the `aws-sdk` provider
+
+The service sets no access key or secret. It uses the AWS SDK's default credential chain, so the same image
+runs everywhere. Credentials resolve lazily on the first Bedrock call, so a clean startup does not prove they
+work; send one real chat request to check. A startup warning, `Failed to load region from
+DefaultAwsRegionProviderChain, using US_EAST_1`, is harmless once `BEDROCK_REGION` is set. Set `AWS_REGION`
+too if you want it gone.
+
+Do not pass `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` into the container. They are
+short-lived and fixed at container start, so they expire while it runs. Use one of the two paths below, where
+the SDK refreshes credentials itself.
+
+### On EC2: instance profile
+
+Nothing to configure in the container; the SDK reads the instance role from the metadata service (IMDS).
+
+- **Hop limit.** The instance's IMDSv2 `HttpPutResponseHopLimit` must be `2`. The default is `1`, and a container on
+  Docker's bridge network adds a hop, so the SDK cannot reach IMDS and fails with `Unable to contact EC2 metadata
+  service`. Keep `HttpTokens = required`. For an existing instance:
+  `aws ec2 modify-instance-metadata-options --instance-id <id> --http-put-response-hop-limit 2 --http-endpoint enabled`
+  (also settable in the console under Actions > Instance settings > Modify instance metadata options, or in the
+  launch template).
+- **Role permissions.** The instance's role needs `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`
+  on the model or inference profile. `bedrock-infra/` provides this via `attach_invocation_policy_to_role_names`;
+  confirm that the role named there is the one this instance actually uses.
+- Raising the hop limit lets every container on the instance reach the instance role, not just this one.
+
+### Locally: your authenticated AWS role
+
+Mount your AWS config into the container instead of exporting keys, and select the profile:
+
+- Mount `~/.aws` read-write (SSO token refresh writes to `~/.aws/sso/cache`) and set `AWS_PROFILE`,
+  `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE` to the mounted paths. Keep this in a local compose override,
+  not the shared compose file.
+- The profile must be one the SDK can refresh on its own: `role_arn` plus `source_profile`, or SSO. When the
+  underlying login expires, run `aws sso login` on the host; no container restart is needed.
+- SSO profiles need the AWS SDK's SSO modules on the classpath. This has not been verified for this service; if
+  SSO profiles fail, use `role_arn` plus `source_profile` instead.
+- An IAM Identity Center identity cannot have the invoke policy attached directly. Use the dedicated `invoke` role
+  from `bedrock-infra/` (`invocation_role_enabled = true`) and reference it via `role_arn` in the profile.
+- If mounting is not enough (for example `credential_process` profiles), run a credentials sidecar such as
+  `amazon-ecs-local-container-endpoints` and set `AWS_CONTAINER_CREDENTIALS_FULL_URI` to it.
