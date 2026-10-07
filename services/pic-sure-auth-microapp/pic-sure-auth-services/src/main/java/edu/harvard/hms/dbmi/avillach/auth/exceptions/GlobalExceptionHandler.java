@@ -1,43 +1,30 @@
 package edu.harvard.hms.dbmi.avillach.auth.exceptions;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.lang.Nullable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.context.request.WebRequest;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.sql.SQLIntegrityConstraintViolationException;
-import java.util.Arrays;
-import java.util.stream.Collectors;
 
 /**
- * Global exception handler for the PICSURE Auth application. Provides centralized exception handling for various types of exceptions.
- *
- * <p>Extends {@link ResponseEntityExceptionHandler} so Spring MVC's own request errors keep their statuses: a wrong method answers 405 with
- * {@code Allow}, an unsupported media type 415 with {@code Accept}, a missing parameter 400 and an unknown path 404. Those handlers are
- * closer matches than the {@link RuntimeException} and {@link Exception} fallbacks below, so Spring picks them first, and
- * {@link #handleExceptionInternal} gives their responses this service's {@code {message, content}} body.
+ * Global exception handler for the PICSURE Auth application, answering with this service's {@code {message, content}} body. Inherits the
+ * client-error and catch-all handling from {@link PicsureExceptionAdvice}, which renders through {@link #errorBody} with the status's
+ * reason phrase as {@code message} and the shared fixed text as {@code content}, and adds the handlers below for this service's own
+ * exceptions.
  */
 @RestControllerAdvice
-public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
-
-    private static final String UNEXPECTED_MESSAGE = "An unexpected error occurred";
-    private static final String UNEXPECTED_CONTENT = "Please contact the system administrator with the time this error occurred.";
+public class GlobalExceptionHandler extends PicsureExceptionAdvice {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
@@ -79,38 +66,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<?> handleNotAuthorized(NotAuthorizedException ex) {
         logger.warn("Not authorized: {}", ex.getMessage());
         return PICSUREResponse.error(HttpStatus.UNAUTHORIZED, "Authorization failed", ex.getMessage());
-    }
-
-    /**
-     * Answers an unreadable request body without echoing the parser's message, which can quote the client's payload.
-     *
-     * @param ex the parse failure
-     * @param headers headers the base class prepared for the response
-     * @param status the status the base class chose, always 400
-     * @param request the current request
-     * @return a 400 with a fixed message
-     */
-    @Override
-    protected ResponseEntity<Object> handleHttpMessageNotReadable(
-        HttpMessageNotReadableException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request
-    ) {
-        logger.warn("Rejected unreadable request body");
-        return handleExceptionInternal(
-            ex, PICSUREResponse.error(HttpStatus.BAD_REQUEST, "Malformed request body", "The request body could not be parsed.").getBody(),
-            headers, status, request
-        );
-    }
-
-    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<?> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        Class<?> requiredType = ex.getRequiredType();
-        String expected = requiredType == null ? "a different type"
-            : requiredType.isEnum()
-                ? "one of " + Arrays.stream(requiredType.getEnumConstants()).map(Object::toString).collect(Collectors.joining(", "))
-                : "a " + requiredType.getSimpleName();
-        logger.warn("Type mismatch for request parameter '{}': expected {}", ex.getName(), expected);
-        return PICSUREResponse
-            .error(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + ex.getName() + "'", "Expected " + expected + ".");
     }
 
     /**
@@ -175,7 +130,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Handles RuntimeException, which includes many business logic errors.
+     * Handles RuntimeException, which includes many business logic errors. Logs the exception and answers with the shared server-error text
+     * rather than the exception's message.
      * 
      * @param ex The runtime exception
      * @return A response with HTTP 500 Internal Server Error status
@@ -183,69 +139,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<?> handleRuntime(RuntimeException ex) {
         logger.error("Runtime exception: ", ex);
-        return PICSUREResponse.error(HttpStatus.INTERNAL_SERVER_ERROR, "An error occurred while processing your request", ex.getMessage());
+        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+        return ResponseEntity.status(status).body(errorBody(status, status.getReasonPhrase(), SERVER_ERROR));
     }
 
-    /**
-     * Fallback handler for all other exceptions that aren't specifically handled.
-     * 
-     * @param ex The exception
-     * @return A response with HTTP 500 Internal Server Error status
-     */
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<?> handleGenericException(Exception ex) {
-        logger.error("Unhandled exception: ", ex);
-        return PICSUREResponse.error(HttpStatus.INTERNAL_SERVER_ERROR, UNEXPECTED_MESSAGE, UNEXPECTED_CONTENT);
-    }
-
-    /**
-     * Writes every response the base class produces in this service's {@code {message, content}} shape, keeping the status and headers it
-     * chose. A 4xx carries the status's reason phrase and fixed text that never quotes the request; a 5xx is logged and carries the same
-     * fixed text as {@link #handleGenericException}. A body an override already built passes through unchanged.
-     *
-     * @param ex the exception being handled
-     * @param body the body built so far, or {@code null}
-     * @param headers response headers, such as {@code Allow} on a 405 and {@code Accept} on a 415
-     * @param statusCode the response status
-     * @param request the current request
-     * @return the response, or {@code null} when the response is already committed
-     */
     @Override
-    protected ResponseEntity<Object> handleExceptionInternal(
-        Exception ex, @Nullable Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request
-    ) {
-        ResponseEntity<Object> framework = super.handleExceptionInternal(ex, body, headers, statusCode, request);
-        if (framework == null || !(framework.getBody() == null || framework.getBody() instanceof ProblemDetail)) {
-            return framework;
-        }
-        Object unified;
-        if (statusCode.is5xxServerError()) {
-            logger.error("Unhandled exception: ", ex);
-            unified = PICSUREResponse.error(UNEXPECTED_MESSAGE, UNEXPECTED_CONTENT).getBody();
-        } else {
-            unified = PICSUREResponse.error(reasonPhrase(statusCode), clientErrorContent(statusCode)).getBody();
-        }
-        return new ResponseEntity<>(unified, framework.getHeaders(), framework.getStatusCode());
-    }
-
-    private static String reasonPhrase(HttpStatusCode statusCode) {
-        HttpStatus resolved = HttpStatus.resolve(statusCode.value());
-        return resolved == null ? "Request could not be completed" : resolved.getReasonPhrase();
-    }
-
-    /**
-     * Fixed text for each client error the base class produces. Spring's own detail can quote the request's path, method or Content-Type,
-     * and this service never echoes client input.
-     */
-    private static String clientErrorContent(HttpStatusCode statusCode) {
-        return switch (statusCode.value()) {
-            case 400 -> "The request is missing a required value or contains an invalid one.";
-            case 404 -> "The requested resource does not exist.";
-            case 405 -> "This endpoint does not support the request method.";
-            case 406 -> "This endpoint cannot produce any of the accepted media types.";
-            case 413 -> "The request is too large.";
-            case 415 -> "This endpoint does not accept the request's content type.";
-            default -> "The request could not be completed.";
-        };
+    protected Object errorBody(HttpStatusCode status, String title, String detail) {
+        return PICSUREResponse.error(title, detail).getBody();
     }
 }
