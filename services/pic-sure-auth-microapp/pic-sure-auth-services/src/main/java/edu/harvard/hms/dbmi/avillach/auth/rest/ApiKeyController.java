@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.PlatformApiKeyRequest;
@@ -67,6 +69,7 @@ public class ApiKeyController {
     @ApiResponse(responseCode = "400", description = "Generation is disabled, a metadata field is too long, or CAPTCHA verification failed")
     @AuditEvent(type = "ACCESS", action = "api_key.create")
     @PostMapping(produces = "application/json", path = "/open/apiKey")
+    @PublicEndpoint(Access.ANONYMOUS)
     public ResponseEntity<?> createUserKey(
         @Parameter(
             required = true, description = "captchaToken (required when CAPTCHA is enabled) and optional contact name/email"
