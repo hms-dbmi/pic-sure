@@ -1,0 +1,10 @@
+{
+  "properties": [
+    {
+      "name": "picsure.gateway.health.status-window-ms",
+      "type": "java.lang.Long",
+      "description": "Throttle window, in milliseconds, during which GET /system/status reuses the last computed deep-health result instead of re-running SystemHealthService's check.",
+      "defaultValue": 60000
+    }
+  ]
+}
