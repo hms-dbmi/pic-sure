@@ -9,6 +9,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,6 +48,16 @@ class ReactorModulesTest {
             modules.get("services/pic-sure-visualization-service").stream()
                 .anyMatch(type -> type.getSimpleName().equals("DistributionController"))
         );
+    }
+
+    @Test
+    void resolvesASupertypeDeclaredInAnotherModule() {
+        Path root = Path.of(System.getProperty("reactor.root"));
+
+        JavaClass handler = ReactorModules.discover(root).get("services/pic-sure-auth-microapp/pic-sure-auth-services")
+            .get("edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler");
+
+        assertTrue(handler.isAssignableTo(ExceptionAdviceRules.RESPONSE_ENTITY_EXCEPTION_HANDLER));
     }
 
     private static void makeModule(Path root, String modulePath) throws IOException {

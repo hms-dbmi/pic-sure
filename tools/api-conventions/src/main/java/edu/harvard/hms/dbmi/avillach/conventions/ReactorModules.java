@@ -2,8 +2,12 @@ package edu.harvard.hms.dbmi.avillach.conventions;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +26,10 @@ import com.tngtech.archunit.core.importer.ClassFileImporter;
  * <p>Each module is imported separately and kept under its own key. Attributing classes to modules by
  * path prefix afterwards would fold a nested module such as services/picsure-dictionary/aggregate into
  * its parent and give it the wrong scope.
+ *
+ * <p>A supertype declared in another reactor module, such as a library's shared base class, is still
+ * resolved: every module's {@code target/classes} sits on the context class loader ArchUnit resolves
+ * missing types from during the import, so a hierarchy check sees the whole chain rather than a stub.
  */
 public final class ReactorModules {
 
@@ -35,7 +43,7 @@ public final class ReactorModules {
      *     no {@code target/classes} directory is absent.
      */
     public static Map<String, JavaClasses> discover(Path reactorRoot) {
-        Map<String, JavaClasses> modules = new LinkedHashMap<>();
+        Map<String, Path> classDirectories = new LinkedHashMap<>();
         for (Path pom : pomFiles(reactorRoot)) {
             Path moduleDir = pom.getParent();
             Path classes = moduleDir.resolve("target/classes");
@@ -46,9 +54,33 @@ public final class ReactorModules {
             if (key.isEmpty()) {
                 continue;
             }
-            modules.put(key, new ClassFileImporter().importPaths(classes));
+            classDirectories.put(key, classes);
         }
-        return modules;
+        Thread thread = Thread.currentThread();
+        ClassLoader previous = thread.getContextClassLoader();
+        try (URLClassLoader reactor = new URLClassLoader(urls(classDirectories.values()), previous)) {
+            thread.setContextClassLoader(reactor);
+            Map<String, JavaClasses> modules = new LinkedHashMap<>();
+            classDirectories.forEach((key, classes) -> modules.put(key, new ClassFileImporter().importPaths(classes)));
+            return modules;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } finally {
+            thread.setContextClassLoader(previous);
+        }
+    }
+
+    private static URL[] urls(Collection<Path> directories) {
+        try {
+            URL[] urls = new URL[directories.size()];
+            int i = 0;
+            for (Path directory : directories) {
+                urls[i++] = directory.toUri().toURL();
+            }
+            return urls;
+        } catch (MalformedURLException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static List<Path> pomFiles(Path reactorRoot) {
