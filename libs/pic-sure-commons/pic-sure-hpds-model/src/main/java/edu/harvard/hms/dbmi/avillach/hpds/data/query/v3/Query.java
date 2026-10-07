@@ -12,10 +12,7 @@ public record Query(
     @Schema(
         description = "A list of concept paths to select. Ignored for expectedResultType that do not return fields, such as COUNT.",
         example = "[\"\\\\demographics\\\\AGE\\\\\", \"\\\\demographics\\\\SEX\\\\\"]"
-    ) List<String> select,
-    @Schema(
-        description = "A list of filters specifically applied for authorization purposes."
-    ) List<AuthorizationFilter> authorizationFilters,
+    ) List<String> select, @Schema(hidden = true) List<AuthorizationFilter> authorizationFilters,
     @Schema(description = "An object specifying phenotypic filters.") PhenotypicClause phenotypicClause,
     @Schema(description = "A list of genomic filters.") List<GenomicFilter> genomicFilters,
     @Schema(

@@ -5,23 +5,21 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "The status of a query and how to fetch its result.")
+@Schema(description = "The status of the query.")
 public class QueryStatus {
 
-    @Schema(description = "The status of this query.", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "The status of the query.", requiredMode = Schema.RequiredMode.REQUIRED)
     private PicSureStatus status;
 
     /**
      * a uuid associated to a Resource in the database
      */
-    @Schema(
-        description = "Always unset. The application no longer uses resource uuids and nothing sets this field.",
-        example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"
-    )
+    @Schema(hidden = true)
     private UUID resourceID;
 
     @Schema(
-        description = "A status string returned by HPDS for this query. The values are the resource's own and not a fixed set.",
+        description = "A status string returned by HPDS. One of `PENDING`, `RUNNING`, `RETRY`, `SUCCESS` or `ERROR`, or `Resource is locked.` "
+            + "when HPDS refused the query.",
         example = "SUCCESS"
     )
     private String resourceStatus;
@@ -35,10 +33,7 @@ public class QueryStatus {
     /**
      * when a resource might generate its own resultId and return it, we can keep it here
      */
-    @Schema(
-        description = "The id the resource assigned to the result, in whatever form that resource uses.",
-        example = "8694e3d4-5cb4-410f-8431-993445e6d3f6"
-    )
+    @Schema(description = "The uuid the resource assigned to the result.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6")
     private String resourceResultId;
 
     @Schema(

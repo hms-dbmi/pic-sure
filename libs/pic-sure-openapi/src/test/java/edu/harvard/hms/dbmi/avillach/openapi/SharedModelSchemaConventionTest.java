@@ -84,9 +84,8 @@ class SharedModelSchemaConventionTest {
 
     @Test
     void hpdsModelMeetsTheConvention() {
-        OpenApiDocumentAssertions.assertSchemaDocumented(
-            document, "Query", "AuthorizationFilter", "GenomicFilter", "PhenotypicClause", "PhenotypicFilter", "PhenotypicSubquery"
-        );
+        OpenApiDocumentAssertions
+            .assertSchemaDocumented(document, "Query", "GenomicFilter", "PhenotypicClause", "PhenotypicFilter", "PhenotypicSubquery");
     }
 
     @Test
@@ -96,6 +95,18 @@ class SharedModelSchemaConventionTest {
         assertRequired("SignedUrlResponse", "signedUrl");
         assertRequired("ResourceInfo", "id", "name");
         assertRequired("Query", "expectedResultType");
+    }
+
+    @Test
+    void queryStatusLeavesResourceIdOutOfTheDocument() {
+        assertThat(document.path("components").path("schemas").path("QueryStatus").path("properties").has("resourceID")).isFalse();
+    }
+
+    @Test
+    void queryLeavesAuthorizationFiltersOutOfTheDocument() {
+        JsonNode schemas = document.path("components").path("schemas");
+        assertThat(schemas.path("Query").path("properties").has("authorizationFilters")).isFalse();
+        assertThat(schemas.has("AuthorizationFilter")).isFalse();
     }
 
     private void assertRequired(String schemaName, String... members) {
