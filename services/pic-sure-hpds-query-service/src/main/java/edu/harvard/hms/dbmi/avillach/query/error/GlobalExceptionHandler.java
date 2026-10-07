@@ -26,13 +26,13 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 
 /**
- * This service's own exception-to-HTTP mapping. {@code pic-sure-spring-commons}' {@code GatewayExceptionAdvice} already maps
+ * This service's own exception-to-HTTP mapping. {@code pic-sure-spring-commons}' {@code PicsureErrorBodyAdvice} already maps
  * {@link PicsureException} to its carried status with the {@code {errorType,message,requestId}} body shape. That handler is duplicated here
  * (identical behavior) rather than relied upon exclusively, because Spring's {@code ExceptionHandlerExceptionResolver} picks the FIRST
  * {@code @ControllerAdvice} bean (in an unspecified-by-us order) that has ANY matching handler for a given exception, not the most-specific
  * match across all beans. Keeping a self-contained {@link PicsureException} handler in this same class guarantees this advice always
  * resolves the most specific handler for its own {@link #unknown} catch-all, regardless of whichever advice bean Spring happens to consult
- * first. {@code GatewayExceptionAdvice}'s equivalent handler, if consulted first, produces the identical response.
+ * first. {@code PicsureErrorBodyAdvice}'s equivalent handler, if consulted first, produces the identical response.
  *
  * <p>Adds three mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 because HPDS is upstream
  * infrastructure, {@link NoResourceFoundException} -&gt; 404 for route absence, and any other unmapped exception -&gt; 500. All share the

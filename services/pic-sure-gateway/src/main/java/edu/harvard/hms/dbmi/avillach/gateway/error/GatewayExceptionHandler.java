@@ -29,7 +29,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 /**
  * The gateway's exception-to-HTTP mapping, mirroring the query-service's {@code GlobalExceptionHandler} so every service in the stack
  * answers with the same {@code {errorType, message, requestId}} body. Self-contained rather than extending commons'
- * {@code GatewayExceptionAdvice}: Spring's {@code ExceptionHandlerExceptionResolver} picks the FIRST {@code @ControllerAdvice} bean that
+ * {@code PicsureErrorBodyAdvice}: Spring's {@code ExceptionHandlerExceptionResolver} picks the FIRST {@code @ControllerAdvice} bean that
  * has ANY matching handler, so keeping a {@link PicsureException} handler in this same class guarantees the catch-all below always resolves
  * against a bean that also handles the specific cases.
  *
