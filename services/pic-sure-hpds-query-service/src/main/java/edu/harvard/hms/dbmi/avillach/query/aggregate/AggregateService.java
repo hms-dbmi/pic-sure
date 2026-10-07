@@ -29,15 +29,15 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 
 /**
- * Orchestrates querySync obfuscation, {@code CROSS_COUNT} query scoping through {@code changeQueryToOpenCrossCount}, and continuous-result
- * suppression. This DB-free module stores no {@code Query} rows; async open submissions ({@link #query}) delegate persistence and HPDS
- * dispatch to {@link QueryService}, which persists through operations-service. Audit logging is handled by the gateway.
+ * Orchestrates querySync obfuscation, {@code CROSS_COUNT} query scoping through {@code changeQueryToOpenCrossCount}, and chart suppression.
+ * This DB-free module stores no {@code Query} rows; async open submissions ({@link #query}) delegate persistence and HPDS dispatch to
+ * {@link QueryService}, which persists through operations-service. Audit logging is handled by the gateway.
  *
  * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the complete 10-type allow-list; a type not on it is rejected with a 400
- * rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold and variance
- * obfuscation (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT) versus a raw pass-through (INFO_COLUMN_LISTING,
- * OBSERVATION_COUNT, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, and VCF_EXCERPT). Any divergence here is a
- * privacy regression.
+ * rather than silently forwarded. A sync COUNT runs as the study-consents CROSS_COUNT and returns its obfuscated total. The per-type
+ * dispatch in {@link #getExpectedResponse} determines which types are obfuscated (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT,
+ * CONTINUOUS_CROSS_COUNT) versus a raw pass-through (INFO_COLUMN_LISTING, OBSERVATION_COUNT, OBSERVATION_CROSS_COUNT,
+ * VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, and VCF_EXCERPT). Any divergence here is a privacy regression.
  */
 @Service
 public class AggregateService {
@@ -104,7 +104,7 @@ public class AggregateService {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrect result type: " + expectedResultType);
         }
 
-        if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
+        if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType) || "COUNT".equalsIgnoreCase(expectedResultType)) {
             changeQueryToOpenCrossCount(req, variant);
         }
 
@@ -129,7 +129,7 @@ public class AggregateService {
         try {
             switch (expectedResultType) {
                 case "COUNT":
-                    return obfuscation.obfuscateCount(entityString);
+                    return obfuscation.processCount(entityString);
                 case "CROSS_COUNT":
                     return objectMapper.writeValueAsString(obfuscation.processCrossCounts(entityString));
                 case "CATEGORICAL_CROSS_COUNT":
@@ -144,7 +144,7 @@ public class AggregateService {
         }
     }
 
-    /** No matter the type, fetch the CROSS_COUNT incl. ALL study consents (used for variance + suppression). */
+    /** No matter the type, fetch the CROSS_COUNT incl. ALL study consents (used for chart suppression). */
     private String getCrossCountForQuery(QueryRequest req, AggregateVariant variant) {
         changeQueryToOpenCrossCount(req, variant);
         return backend.querySync(req, variant).getBody();
@@ -156,19 +156,17 @@ public class AggregateService {
             return null;
         }
         Map<String, String> crossCounts = objectMapper.readValue(crossCountJson, new TypeReference<>() {});
-        int generatedVariance = obfuscation.generateVarianceWithCrossCounts(crossCounts);
-
-        if (obfuscation.shouldSuppressContinuousCrossCounts(crossCounts)) {
+        if (obfuscation.shouldSuppressChart(crossCounts)) {
             return null;
         }
 
         if (props.hasVisualization()) {
             Map<String, Map<String, Integer>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
             Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(continuous, variant);
-            return objectMapper.writeValueAsString(obfuscation.obfuscateCrossCount(generatedVariance, binned));
+            return objectMapper.writeValueAsString(obfuscation.obfuscateChartCounts(binned));
         } else {
             Map<String, Map<String, Object>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
-            return objectMapper.writeValueAsString(obfuscation.obfuscateCrossCount(generatedVariance, continuous));
+            return objectMapper.writeValueAsString(obfuscation.obfuscateChartCounts(continuous));
         }
     }
 

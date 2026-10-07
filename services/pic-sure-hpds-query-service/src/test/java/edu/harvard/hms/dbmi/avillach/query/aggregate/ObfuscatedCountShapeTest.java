@@ -6,8 +6,6 @@ import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -20,60 +18,25 @@ class ObfuscatedCountShapeTest {
 
     @BeforeEach
     void setup() {
-        AggregateProperties props = new AggregateProperties();
-        props.getObfuscation().setThreshold(10);
-        props.getObfuscation().setVariance(3);
-        props.getObfuscation().setSalt("salt-for-test");
-        subject = new ObfuscationService(props, new VisualizationFormatter());
+        subject = new ObfuscationService(new AggregateProperties(), new VisualizationFormatter());
     }
 
     @Test
-    void applyThresholdFloor_belowThreshold_returnsZeroCountWithThresholdBandAndLessThanDisplay() {
-        Optional<ObfuscatedCount> result = subject.applyThresholdFloor(3);
+    void chartBucket_belowThreshold_returnsZeroCountWithThresholdBandAndLessThanDisplay() {
+        ObfuscatedCount result = subject.obfuscateChartBucket(3);
 
-        assertThat(result).isPresent();
-        assertThat(result.get().count()).isZero();
-        assertThat(result.get().display()).isEqualTo("< 10");
-        assertThat(result.get().variance()).isEqualTo(9);
+        assertThat(result.count()).isZero();
+        assertThat(result.display()).isEqualTo("< 10");
+        assertThat(result.variance()).isEqualTo(9);
     }
 
     @Test
-    void applyThresholdFloor_zero_returnsZeroCountWithThresholdBandAndLessThanDisplay() {
-        Optional<ObfuscatedCount> result = subject.applyThresholdFloor(0);
+    void chartBucket_atOrAboveThreshold_returnsRoundedCountWithBand() {
+        ObfuscatedCount result = subject.obfuscateChartBucket(222);
 
-        assertThat(result).isPresent();
-        assertThat(result.get().count()).isZero();
-        assertThat(result.get().display()).isEqualTo("< 10");
-        assertThat(result.get().variance()).isEqualTo(9);
-    }
-
-    @Test
-    void applyThresholdFloor_atOrAboveThreshold_returnsEmpty() {
-        assertThat(subject.applyThresholdFloor(10)).isEmpty();
-        assertThat(subject.applyThresholdFloor(999)).isEmpty();
-    }
-
-    @Test
-    void applyThresholdFloor_stringOverload_nonNumeric_returnsEmpty() {
-        assertThat(subject.applyThresholdFloor("not-a-number")).isEmpty();
-    }
-
-    @Test
-    void randomize_appliesVariance_returnsNumericDisplayAndVariance() {
-        ObfuscatedCount result = subject.randomize(100, 2);
-
-        assertThat(result.count()).isEqualTo(102);
-        assertThat(result.display()).isEqualTo("102 ±3");
-        assertThat(result.variance()).isEqualTo(3);
-    }
-
-    @Test
-    void randomize_floorsAtThreshold_whenVarianceTakesItBelow() {
-        ObfuscatedCount result = subject.randomize(10, -5);
-
-        assertThat(result.count()).isEqualTo(10);
-        assertThat(result.display()).isEqualTo("10 ±3");
-        assertThat(result.variance()).isEqualTo(3);
+        assertThat(result.count()).isEqualTo(225);
+        assertThat(result.display()).isEqualTo("225 ±5");
+        assertThat(result.variance()).isEqualTo(5);
     }
 
     @Test
@@ -123,7 +86,7 @@ class ObfuscatedCountShapeTest {
         assertThat(mapper.writeValueAsString(ObfuscatedCount.ofInt(45000)))
             .isEqualTo("{\"count\":45000,\"display\":\"45000\",\"variance\":null}");
 
-        ObfuscatedCount belowThreshold = subject.applyThresholdFloor(3).orElseThrow(IllegalStateException::new);
+        ObfuscatedCount belowThreshold = subject.obfuscateChartBucket(3);
         assertThat(mapper.writeValueAsString(belowThreshold)).isEqualTo("{\"count\":0,\"display\":\"< 10\",\"variance\":9}");
     }
 }

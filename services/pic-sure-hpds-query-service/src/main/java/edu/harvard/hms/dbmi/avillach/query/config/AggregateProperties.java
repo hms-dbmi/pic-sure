@@ -23,32 +23,28 @@ public class AggregateProperties {
     private final Obfuscation obfuscation = new Obfuscation();
 
     public static class Obfuscation {
-        private int threshold = 10; // ApplicationProperties.DEFAULT_OBFUSCATION_THRESHOLD
-        private int variance = 3; // ApplicationProperties.DEFAULT_OBFUSCATION_VARIANCE
-        private String salt; // null/blank => random UUID at startup (ObfuscationService)
+        /**
+         * Base consent threshold. Every other obfuscation value except {@link #chartMinimumCohort} is derived from it in
+         * {@code ObfuscationService}.
+         */
+        private int consentThreshold = 5;
+        /** No chart is returned for a cohort smaller than this. */
+        private int chartMinimumCohort = 50;
 
-        public int getThreshold() {
-            return threshold;
+        public int getConsentThreshold() {
+            return consentThreshold;
         }
 
-        public void setThreshold(int t) {
-            this.threshold = t;
+        public void setConsentThreshold(int consentThreshold) {
+            this.consentThreshold = consentThreshold;
         }
 
-        public int getVariance() {
-            return variance;
+        public int getChartMinimumCohort() {
+            return chartMinimumCohort;
         }
 
-        public void setVariance(int v) {
-            this.variance = v;
-        }
-
-        public String getSalt() {
-            return salt;
-        }
-
-        public void setSalt(String s) {
-            this.salt = s;
+        public void setChartMinimumCohort(int chartMinimumCohort) {
+            this.chartMinimumCohort = chartMinimumCohort;
         }
     }
 

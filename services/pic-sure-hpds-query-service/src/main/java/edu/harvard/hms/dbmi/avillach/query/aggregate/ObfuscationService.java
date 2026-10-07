@@ -9,17 +9,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
 
 /**
- * Implements privacy-critical obfuscation math for both v1 and v3 aggregate requests. The threshold, variance, salt, randomization, and
- * "&lt; threshold" suppression rules determine which counts are suppressed or perturbed; unintended divergence is a privacy regression.
+ * Privacy-critical obfuscation for open (aggregate) v1 and v3 requests.
+ *
+ * <p>Cross counts are keyed {@code \_studies_consents\}, {@code \_studies_consents\<study>\} and
+ * {@code \_studies_consents\<study>\<consent>\}. Consent groups are suppressed below the consent threshold, a study is the sum of its
+ * consent groups, and the total is rounded. Chart buckets are suppressed below the chart threshold and rounded, and small cohorts get no
+ * chart.
  */
 @Service
 public class ObfuscationService {
@@ -30,137 +32,144 @@ public class ObfuscationService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final VisualizationFormatter visualizationFormatter;
 
-    private final int threshold;
-    private final int variance;
-    private final String randomSalt;
+    private final int consentThreshold;
+    // A suppressed consent group (0..consentThreshold-1) counts toward its study as the middle of that range, with a band covering it.
+    private final int suppressedEstimate;
+    private final int suppressedVariance;
+    private final int maxVariance;
+    private final int roundingStep;
+    private final int chartThreshold;
+    private final int chartVariance;
+    private final int chartMinimumCohort;
 
     public ObfuscationService(AggregateProperties props, VisualizationFormatter visualizationFormatter) {
         this.visualizationFormatter = visualizationFormatter;
-        this.threshold = props.getObfuscation().getThreshold();
-        this.variance = props.getObfuscation().getVariance();
-        String salt = props.getObfuscation().getSalt();
-        this.randomSalt = (salt == null || salt.isBlank()) ? UUID.randomUUID().toString() : salt;
+        this.consentThreshold = props.getObfuscation().getConsentThreshold();
+        this.suppressedEstimate = Math.max(consentThreshold - 1, 0) / 2;
+        this.suppressedVariance = Math.max(consentThreshold - 1, 0) - suppressedEstimate;
+        this.maxVariance = 5 * suppressedVariance;
+        this.roundingStep = consentThreshold;
+        this.chartThreshold = 2 * consentThreshold;
+        this.chartVariance = consentThreshold;
+        this.chartMinimumCohort = props.getObfuscation().getChartMinimumCohort();
     }
 
-    public int getThreshold() {
-        return threshold;
-    }
-
-    /**
-     * Generates a deterministic request variance between {@code -variance} and {@code +variance}. The salt is appended to the entity
-     * string, hashed, and reduced modulo {@code variance * 2 + 1}, then shifted down by {@code variance}.
-     */
-    int generateRequestVariance(String entityString) {
-        return Math.abs((entityString + randomSalt).hashCode()) % (variance * 2 + 1) - variance;
-    }
-
-    ObfuscatedCount randomize(int crossCount, int requestVariance) {
-        int randomized = Math.max(crossCount + requestVariance, threshold);
-        return new ObfuscatedCount(randomized, randomized + " ±" + variance, variance);
-    }
-
-    /**
-     * Core privacy floor: small (potentially identifiable) cohorts get hidden behind a "&lt; threshold" display. The value is encoded as
-     * count 0 with variance threshold-1, so consumers rendering the uncertainty band [max(0, count - variance), count + variance] draw
-     * 0..threshold-1 -- the true count lies somewhere in that band but we don't disclose where.
-     *
-     * <p>Returns empty when the value is at or above the threshold (caller should then call {@link #randomize}).
-     */
-    Optional<ObfuscatedCount> applyThresholdFloor(int actualCount) {
-        if (actualCount < threshold) {
-            return Optional.of(new ObfuscatedCount(0, "< " + threshold, threshold - 1));
-        }
-        return Optional.empty();
-    }
-
-    /**
-     * String overload for callers (COUNT / CROSS_COUNT) that hold the value as a JSON string. Logs and returns empty on parse failure so
-     * the caller can fall through to its untouched-value path.
-     */
-    Optional<ObfuscatedCount> applyThresholdFloor(String actualCount) {
-        try {
-            return applyThresholdFloor(Integer.parseInt(actualCount));
-        } catch (NumberFormatException nfe) {
-            logger.warn("Count was not a number! {}", actualCount);
-            return Optional.empty();
-        }
-    }
-
-    /** COUNT case: floor if below threshold, else variance-randomize; non-numeric passes through unchanged. */
-    public String obfuscateCount(String entityString) {
-        try {
-            int count = Integer.parseInt(entityString);
-            int requestVariance = generateRequestVariance(entityString);
-            return applyThresholdFloor(count).map(ObfuscatedCount::display).orElseGet(() -> randomize(count, requestVariance).display());
-        } catch (NumberFormatException nfe) {
-            logger.warn("COUNT response was not a number! {}", entityString);
-            return entityString;
-        }
-    }
-
-    /** CROSS_COUNT case: floor-then-randomize each entry with one deterministic per-query variance. */
     public Map<String, String> processCrossCounts(String entityString) throws JsonProcessingException {
-        Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>() {});
-        int requestVariance = generateVarianceWithCrossCounts(crossCounts);
-        return obfuscateCrossCounts(crossCounts, requestVariance);
+        Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<LinkedHashMap<String, String>>() {});
+        return crossCounts == null ? null : obfuscateCrossCounts(crossCounts);
     }
 
-    private Map<String, String> obfuscateCrossCounts(Map<String, String> crossCounts, int requestVariance) {
-        Set<String> obfuscatedKeys = new HashSet<>();
-        if (crossCounts != null) {
-            crossCounts.keySet().forEach(key -> {
-                String crossCount = crossCounts.get(key);
-                Optional<ObfuscatedCount> floored = applyThresholdFloor(crossCount);
-                floored.ifPresent(x -> obfuscatedKeys.add(key));
-                crossCounts.put(key, floored.map(ObfuscatedCount::display).orElse(crossCount));
-            });
-            crossCounts.keySet().forEach(key -> {
-                String crossCount = crossCounts.get(key);
-                if (!obfuscatedKeys.contains(key)) {
-                    crossCounts.put(key, randomize(Integer.parseInt(crossCount), requestVariance).display());
-                }
-            });
-        }
-        return crossCounts;
+    Map<String, String> obfuscateCrossCounts(Map<String, String> crossCounts) {
+        Map<String, List<String>> consentKeysByStudy = new HashMap<>();
+        crossCounts.keySet().forEach(key -> {
+            List<String> segments = studyConsentSegments(key);
+            if (segments != null && segments.size() == 2) {
+                consentKeysByStudy.computeIfAbsent(segments.get(0), study -> new ArrayList<>()).add(key);
+            }
+        });
+
+        Map<String, String> result = new LinkedHashMap<>();
+        crossCounts.forEach((key, raw) -> {
+            List<String> segments = studyConsentSegments(key);
+            if (segments != null && segments.isEmpty()) {
+                result.put(key, obfuscateTotal(raw));
+            } else if (segments != null && segments.size() == 1 && consentKeysByStudy.containsKey(segments.get(0))) {
+                result.put(key, obfuscateStudy(segments.get(0), raw, consentKeysByStudy.get(segments.get(0)), crossCounts));
+            } else {
+                // Consent groups, studies with no consent groups, and anything unexpected.
+                result.put(key, obfuscateConsentGroup(raw));
+            }
+        });
+        return result;
     }
 
-    /** Deterministic per-query variance from the sorted key:value\n join (so reruns match). */
-    public int generateVarianceWithCrossCounts(Map<String, String> crossCounts) {
-        List<Map.Entry<String, String>> entryList = new ArrayList<>(crossCounts.entrySet());
-        entryList.sort(Map.Entry.comparingByKey());
-        StringBuilder crossCountsString = new StringBuilder();
-        entryList.forEach(e -> crossCountsString.append(e.getKey()).append(":").append(e.getValue()).append("\n"));
-        return generateRequestVariance(crossCountsString.toString());
+    /** Path segments below {@code \_studies_consents\}, or null for a key outside it. Tolerates a missing trailing separator. */
+    private static List<String> studyConsentSegments(String key) {
+        String root = STUDIES_CONSENTS_KEY.substring(0, STUDIES_CONSENTS_KEY.length() - 1);
+        if (!key.startsWith(root)) {
+            return null;
+        }
+        String rest = key.substring(root.length());
+        if (!rest.isEmpty() && rest.charAt(0) != '\\') {
+            return null;
+        }
+        return Arrays.stream(rest.split("\\\\")).filter(segment -> !segment.isEmpty()).toList();
     }
 
-    /**
-     * Suppresses continuous results when the raw study-consents cross-count is below the threshold. Numeric strings are compared directly;
-     * missing or unparseable counts fail closed and are suppressed.
-     */
-    public boolean shouldSuppressContinuousCrossCounts(Map<String, String> crossCounts) {
-        String v = crossCounts == null ? null : crossCounts.get(STUDIES_CONSENTS_KEY);
-        if (v == null) {
-            return true;
-        }
-        if (v.contains("< " + this.threshold)) {
-            return true;
-        }
-        try {
-            return Integer.parseInt(v.trim()) < this.threshold;
-        } catch (NumberFormatException nfe) {
-            logger.warn("Study-consents cross-count was not a number ({}); suppressing continuous response", v);
-            return true;
-        }
+    private String obfuscateConsentGroup(String raw) {
+        Integer count = parse(raw);
+        return isSuppressed(count) ? suppressedDisplay() : Integer.toString(count);
     }
 
-    /** CATEGORICAL case: bucket via the formatter, then obfuscate. Null inputs short-circuit to null. */
+    private String obfuscateStudy(String study, String raw, List<String> consentKeys, Map<String, String> crossCounts) {
+        int sum = 0;
+        int trueSum = 0;
+        int suppressed = 0;
+        boolean allParsed = true;
+        for (String consentKey : consentKeys) {
+            Integer count = parse(crossCounts.get(consentKey));
+            if (count == null) {
+                allParsed = false;
+            } else {
+                trueSum += count;
+            }
+            if (isSuppressed(count)) {
+                suppressed++;
+                sum += suppressedEstimate;
+            } else {
+                sum += count;
+            }
+        }
+
+        Integer studyCount = parse(raw);
+        if (allParsed && studyCount != null && studyCount != trueSum) {
+            logger.warn("HPDS count for study {} differs from the sum of its consent groups", study);
+        }
+
+        if (suppressed == 0) {
+            return Integer.toString(sum);
+        }
+        return sum + " ±" + Math.min(suppressed * suppressedVariance, maxVariance);
+    }
+
+    /** COUNT case: takes the study-consents CROSS_COUNT and returns only its obfuscated total. A missing total is suppressed. */
+    public String processCount(String crossCountEntityString) throws JsonProcessingException {
+        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {});
+        return obfuscateTotal(crossCounts == null ? null : crossCounts.get(STUDIES_CONSENTS_KEY));
+    }
+
+    private String obfuscateTotal(String raw) {
+        Integer count = parse(raw);
+        if (isSuppressed(count)) {
+            return suppressedDisplay();
+        }
+        return roundUp(count) + " ±" + maxVariance;
+    }
+
+    private boolean isSuppressed(Integer count) {
+        return count == null || count < consentThreshold;
+    }
+
+    private String suppressedDisplay() {
+        return "< " + consentThreshold;
+    }
+
+    /** True when the cohort is too small for a chart. Takes the raw backend cross count; a missing or unreadable total suppresses. */
+    public boolean shouldSuppressChart(Map<String, String> crossCounts) {
+        Integer total = crossCounts == null ? null : parse(crossCounts.get(STUDIES_CONSENTS_KEY));
+        return total == null || total < chartMinimumCohort;
+    }
+
+    /** CATEGORICAL case: null when either input is missing or the cohort is too small, otherwise bucketed and obfuscated. */
     public String processCategoricalCrossCounts(String categoricalEntityString, String crossCountEntityString)
         throws JsonProcessingException {
         if (categoricalEntityString == null || crossCountEntityString == null) {
             return null;
         }
         Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {});
-        int generatedVariance = generateVarianceWithCrossCounts(crossCounts);
+        if (shouldSuppressChart(crossCounts)) {
+            return null;
+        }
 
         Map<String, Map<String, Object>> categorical = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {});
         if (categorical == null) {
@@ -170,23 +179,45 @@ public class ObfuscationService {
             if (visualizationFormatter.skipKey(entry.getKey())) continue;
             categorical.put(entry.getKey(), visualizationFormatter.processResults(entry.getValue()));
         }
-        return objectMapper.writeValueAsString(obfuscateCrossCount(generatedVariance, categorical));
+        return objectMapper.writeValueAsString(obfuscateChartCounts(categorical));
     }
 
-    /** Obfuscate every value of a nested cross-count map. */
-    public Map<String, Map<String, ObfuscatedCount>> obfuscateCrossCount(
-        int generatedVariance, Map<String, Map<String, Object>> crossCount
-    ) {
+    public Map<String, Map<String, ObfuscatedCount>> obfuscateChartCounts(Map<String, Map<String, Object>> chartCounts) {
         Map<String, Map<String, ObfuscatedCount>> result = new LinkedHashMap<>();
-        crossCount.forEach((key, value) -> {
+        chartCounts.forEach((key, value) -> {
             Map<String, ObfuscatedCount> obfuscated = new LinkedHashMap<>();
-            value.forEach((innerKey, innerValue) -> {
-                int count = toInt(innerValue);
-                obfuscated.put(innerKey, applyThresholdFloor(count).orElseGet(() -> randomize(count, generatedVariance)));
-            });
+            value.forEach((innerKey, innerValue) -> obfuscated.put(innerKey, obfuscateChartBucket(toInt(innerValue))));
             result.put(key, obfuscated);
         });
         return result;
+    }
+
+    /** Below the chart threshold: count 0 with band threshold-1, which is how consumers draw the hidden range. */
+    ObfuscatedCount obfuscateChartBucket(int count) {
+        if (count < chartThreshold) {
+            return new ObfuscatedCount(0, "< " + chartThreshold, chartThreshold - 1);
+        }
+        int rounded = roundUp(count);
+        return new ObfuscatedCount(rounded, rounded + " ±" + chartVariance, chartVariance);
+    }
+
+    private int roundUp(int count) {
+        if (roundingStep <= 0) {
+            return count;
+        }
+        return ((count + roundingStep - 1) / roundingStep) * roundingStep;
+    }
+
+    private Integer parse(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            logger.warn("Cross count was not a number; treating it as suppressed");
+            return null;
+        }
     }
 
     /** Narrows Jackson's Object-typed Integer, Long, Double, or numeric String counts to int. */

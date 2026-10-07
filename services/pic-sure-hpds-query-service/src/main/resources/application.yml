@@ -55,9 +55,10 @@ aggregate:
   connect-timeout-sec: 10
   read-timeout-sec: 60
   obfuscation:
-    threshold: ${AGGREGATE_OBFUSCATION_THRESHOLD:10}
-    variance: ${AGGREGATE_OBFUSCATION_VARIANCE:3}
-    salt: ${AGGREGATE_OBFUSCATION_SALT:}
+    # Base consent threshold; the other obfuscation values except chart-minimum-cohort are multiples of it.
+    consent-threshold: ${AGGREGATE_OBFUSCATION_CONSENT_THRESHOLD:5}
+    # No chart is returned for a cohort smaller than this.
+    chart-minimum-cohort: ${AGGREGATE_OBFUSCATION_CHART_MINIMUM_COHORT:50}
 
 management:
   endpoints:

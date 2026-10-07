@@ -15,8 +15,8 @@ class AggregatePropertiesTest {
         var source = new MapConfigurationPropertySource(
             Map.of(
                 "aggregate.hpds-open-url", "http://hpds-open:8080", "aggregate.hpds-open-token", "open-token",
-                "aggregate.visualization-url", "http://viz:8080", "aggregate.obfuscation.threshold", "10", "aggregate.obfuscation.variance",
-                "3", "aggregate.obfuscation.salt", "fixed-salt"
+                "aggregate.visualization-url", "http://viz:8080", "aggregate.obfuscation.consent-threshold", "6",
+                "aggregate.obfuscation.chart-minimum-cohort", "60"
             )
         );
         AggregateProperties props = new Binder(source).bind("aggregate", AggregateProperties.class).get();
@@ -24,16 +24,15 @@ class AggregatePropertiesTest {
         assertThat(props.getHpdsOpenUrl()).isEqualTo("http://hpds-open:8080");
         assertThat(props.getHpdsOpenToken()).isEqualTo("open-token");
         assertThat(props.getVisualizationUrl()).isEqualTo("http://viz:8080");
-        assertThat(props.getObfuscation().getThreshold()).isEqualTo(10);
-        assertThat(props.getObfuscation().getVariance()).isEqualTo(3);
-        assertThat(props.getObfuscation().getSalt()).isEqualTo("fixed-salt");
+        assertThat(props.getObfuscation().getConsentThreshold()).isEqualTo(6);
+        assertThat(props.getObfuscation().getChartMinimumCohort()).isEqualTo(60);
     }
 
     @Test
     void appliesDefaults() {
         AggregateProperties props = new AggregateProperties();
-        assertThat(props.getObfuscation().getThreshold()).isEqualTo(10);
-        assertThat(props.getObfuscation().getVariance()).isEqualTo(3);
+        assertThat(props.getObfuscation().getConsentThreshold()).isEqualTo(5);
+        assertThat(props.getObfuscation().getChartMinimumCohort()).isEqualTo(50);
         assertThat(props.getConnectTimeoutSec()).isEqualTo(10);
         assertThat(props.getReadTimeoutSec()).isEqualTo(60);
     }
