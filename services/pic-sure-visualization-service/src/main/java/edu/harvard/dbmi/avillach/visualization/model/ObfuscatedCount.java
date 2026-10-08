@@ -24,13 +24,12 @@ public record ObfuscatedCount(
         description = "The label shown for the value. On the authorized backend, the exact count as text. On the open backend, the "
             + "result is obfuscated: the label is the obfuscated count with its variance, or a marker that the true count is below the "
             + "obfuscation threshold.",
-        example = "1234 ±3", requiredMode = Schema.RequiredMode.REQUIRED
+        example = "1234", requiredMode = Schema.RequiredMode.REQUIRED
     ) String display,
     @Schema(
         description = "Half-width of the uncertainty band around `count`. The band runs from `max(0, count - variance)` to "
             + "`count + variance`. Null when the count is exact. A below-threshold value has a `count` of 0 and a variance of the "
-            + "threshold minus one.",
-        example = "3"
+            + "threshold minus one. The variance on the open backend is configured per deployment."
     ) Integer variance
 ) {
 
