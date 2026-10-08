@@ -119,6 +119,7 @@ class OpenApiDocumentTest {
         JsonNode denial =
             document.path("components").path("schemas").path("OpenAccessValidationResponse").path("properties").path("denial");
         assertThat(denial.path("enum")).extracting(JsonNode::asText).containsExactly("key_missing", "key_invalid", "rules");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "OpenAccessValidationResponse");
     }
 
     private static String description(JsonNode paths, String path, String method) {

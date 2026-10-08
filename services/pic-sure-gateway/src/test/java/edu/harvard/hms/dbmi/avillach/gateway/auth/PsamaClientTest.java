@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.gateway.auth;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.ok;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
@@ -166,12 +167,22 @@ class PsamaClientTest {
         // an immutable map: the client must add the field to a copy, not the caller's payload
         client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host", "apiKey", "picsure_testKeyValue123"));
 
+        // whole-body equality: PSAMA reads the string "2" as a legacy caller, so the number type must be pinned too
+        String expectedBody =
+            "{\"" + PsamaClient.RESPONSE_VERSION + "\":2,\"ipAddress\":\"OPEN_ACCESS:host\",\"apiKey\":\"picsure_testKeyValue123\"}";
         psama.verify(
             1,
             postRequestedFor(urlEqualTo("/open/validate")).withHeader("Authorization", equalTo("Bearer service-token"))
-                .withRequestBody(matchingJsonPath("$." + PsamaClient.RESPONSE_VERSION, equalTo("2")))
-                .withRequestBody(matchingJsonPath("$.ipAddress", equalTo("OPEN_ACCESS:host")))
-                .withRequestBody(matchingJsonPath("$.apiKey", equalTo("picsure_testKeyValue123")))
+                .withRequestBody(equalToJson(expectedBody))
         );
+    }
+
+    @Test
+    void openValidateIgnoresNonTextIdentityFieldsAndAbsentOnes() {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("{\"valid\":true,\"keyType\":\"USER\",\"keyId\":123}")));
+
+        OpenAccessValidation validation = client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"));
+
+        assertThat(validation).isEqualTo(new OpenAccessValidation(true, "USER", null, null, null, null));
     }
 }

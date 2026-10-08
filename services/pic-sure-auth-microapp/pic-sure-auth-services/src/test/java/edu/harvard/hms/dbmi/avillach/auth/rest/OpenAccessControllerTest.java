@@ -282,7 +282,9 @@ public class OpenAccessControllerTest {
         assertEquals("false", validate(mockMvc, null, null).getResponse().getContentAsString());
         assertEquals("true", validate(mockMvc, key.plaintext(), 1).getResponse().getContentAsString());
         assertEquals("true", validate(mockMvc, key.plaintext(), "2").getResponse().getContentAsString());
+        assertEquals("true", validate(mockMvc, key.plaintext(), 3).getResponse().getContentAsString());
         assertTrue(objectMapper.readTree(validate(mockMvc, key.plaintext(), 2).getResponse().getContentAsString()).isObject());
+        assertTrue(objectMapper.readTree(validate(mockMvc, key.plaintext(), 2.0).getResponse().getContentAsString()).isObject());
     }
 
     @Test

@@ -52,12 +52,13 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     /** 401 error type when the presented key is unknown, malformed, expired, or revoked. Part of the frontend contract. */
     public static final String ERROR_API_KEY_INVALID = "api_key_invalid";
 
-    private record Denial(String errorType, String message) {
+    private record Denial(String errorType, String failureReason, String message) {
     }
 
-    private static final Denial KEY_MISSING = new Denial(ERROR_API_KEY_MISSING, "An API key is required.");
-    private static final Denial KEY_INVALID = new Denial(ERROR_API_KEY_INVALID, "API key is not valid.");
-    private static final Denial NOT_AUTHORIZED = new Denial("unauthorized", "User is not authorized.");
+    private static final Denial KEY_MISSING = new Denial(ERROR_API_KEY_MISSING, ERROR_API_KEY_MISSING, "An API key is required.");
+    private static final Denial KEY_INVALID = new Denial(ERROR_API_KEY_INVALID, ERROR_API_KEY_INVALID, "API key is not valid.");
+    private static final Denial RULES_DENIED = new Denial("unauthorized", "access_rules_denied", "User is not authorized.");
+    private static final Denial NOT_AUTHORIZED = new Denial("unauthorized", "open_access_denied", "User is not authorized.");
 
     private static final Logger log = LoggerFactory.getLogger(OpenAccessFilter.class);
 
@@ -128,17 +129,19 @@ public class OpenAccessFilter extends OncePerRequestFilter {
 
     /**
      * Key denials get their own error type so a client can tell "get a new key or session" apart from "the access rules said no". A denial
-     * PSAMA gave no reason for (a bare-boolean {@code false}) or one this gateway doesn't know is {@code unauthorized}.
+     * PSAMA gave no reason for (a bare-boolean {@code false}) or one this gateway doesn't know is {@code unauthorized}, and its audit
+     * reason claims no cause.
      */
     private void denied(HttpServletResponse resp, String reason) throws IOException {
         Denial denial = switch (reason == null ? "" : reason) {
             case OpenAccessValidation.DENIAL_KEY_MISSING -> KEY_MISSING;
             case OpenAccessValidation.DENIAL_KEY_INVALID -> KEY_INVALID;
+            case OpenAccessValidation.DENIAL_RULES -> RULES_DENIED;
             default -> NOT_AUTHORIZED;
         };
         audit.put("auth_result", "failure");
         audit.put("auth_action", "open_access.denied");
-        audit.put("auth_failure_reason", denial.errorType());
+        audit.put("auth_failure_reason", denial.failureReason());
         GatewayErrors.write(resp, HttpStatus.UNAUTHORIZED, denial.errorType(), denial.message());
     }
 

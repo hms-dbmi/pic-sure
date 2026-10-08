@@ -250,17 +250,21 @@ class OpenAccessFilterTest {
 
     static Stream<Arguments> denialsAndErrorTypes() {
         return Stream.of(
-            Arguments.of(OpenAccessValidation.DENIAL_KEY_MISSING, OpenAccessFilter.ERROR_API_KEY_MISSING),
-            Arguments.of(OpenAccessValidation.DENIAL_KEY_INVALID, OpenAccessFilter.ERROR_API_KEY_INVALID),
-            Arguments.of(OpenAccessValidation.DENIAL_RULES, "unauthorized"),
-            // no reason at all: what a bare-boolean false from an older PSAMA becomes
-            Arguments.of(null, "unauthorized"), Arguments.of("some_future_reason", "unauthorized")
+            Arguments.of(
+                OpenAccessValidation.DENIAL_KEY_MISSING, OpenAccessFilter.ERROR_API_KEY_MISSING, OpenAccessFilter.ERROR_API_KEY_MISSING
+            ),
+            Arguments.of(
+                OpenAccessValidation.DENIAL_KEY_INVALID, OpenAccessFilter.ERROR_API_KEY_INVALID, OpenAccessFilter.ERROR_API_KEY_INVALID
+            ), Arguments.of(OpenAccessValidation.DENIAL_RULES, "unauthorized", "access_rules_denied"),
+            // no reason at all (a bare-boolean false from an older PSAMA) or one this gateway doesn't know: the audit claims no cause
+            Arguments.of(null, "unauthorized", "open_access_denied"),
+            Arguments.of("some_future_reason", "unauthorized", "open_access_denied")
         );
     }
 
     @ParameterizedTest
     @MethodSource("denialsAndErrorTypes")
-    void eachDenialMapsToItsErrorType(String denial, String expectedErrorType) throws Exception {
+    void eachDenialMapsToItsErrorType(String denial, String expectedErrorType, String expectedFailureReason) throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         when(client.validateOpenAccess(any())).thenReturn(new OpenAccessValidation(false, null, null, null, denial, null));
         AuditContext ctx = new AuditContext();
@@ -277,7 +281,24 @@ class OpenAccessFilterTest {
         verify(chain, never()).doFilter(any(), any());
         assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_VALIDATION)).isNull();
         assertThat(ctx.getMetadata()).containsEntry("auth_result", "failure").containsEntry("auth_action", "open_access.denied")
-            .containsEntry("auth_failure_reason", expectedErrorType);
+            .containsEntry("auth_failure_reason", expectedFailureReason);
+    }
+
+    @Test
+    void nullValidationIsDeniedAsUnauthorized() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(null);
+        AuditContext ctx = new AuditContext();
+        OpenAccessFilter f = filter(client, ctx, true);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(wrap(null), resp, chain);
+
+        assertThat(resp.getStatus()).isEqualTo(401);
+        assertThat(resp.getContentAsString()).contains("\"errorType\":\"unauthorized\"");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(ctx.getMetadata()).containsEntry("auth_failure_reason", "open_access_denied");
     }
 
     @Test
