@@ -154,10 +154,26 @@ class OpenAccessFilterTest {
         f.doFilter(wrap("Bearer " + "picsure_testKeyValue123"), resp, chain);
 
         assertThat(resp.getStatus()).isEqualTo(401);
-        assertThat(resp.getContentAsString()).contains("\"errorType\":\"unauthorized\"");
+        assertThat(resp.getContentAsString()).contains("\"errorType\":\"unauthorized\"").contains("Open access is not enabled.");
         verify(chain, never()).doFilter(any(), any());
         verifyNoInteractions(client);
-        assertThat(ctx.getMetadata()).containsEntry("auth_action", "open_access.denied");
+        assertThat(ctx.getMetadata()).containsEntry("auth_action", "open_access.denied")
+            .containsEntry("auth_failure_reason", "open_access_disabled");
+    }
+
+    @Test
+    void legacyApiKeyHeaderIsNoLongerRead() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+        BufferedRequestWrapper req = wrap(null);
+        lenient().when(((HttpServletRequest) req.getRequest()).getHeader("X-PICSURE-API-Key")).thenReturn("picsure_u_legacy");
+
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).doesNotContainKey("apiKey");
     }
 
     @Test

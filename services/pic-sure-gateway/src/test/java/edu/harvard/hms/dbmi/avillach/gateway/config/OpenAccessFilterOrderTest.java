@@ -71,6 +71,46 @@ class OpenAccessFilterOrderTest {
         assertThat(Collections.list(downstreamRequest.get().getHeaderNames())).doesNotContain("Authorization", "authorization");
     }
 
+    // the filter reads the first Authorization value; the sanitizer drops the whole header once any value carries a key
+    @Test
+    @SuppressWarnings("unchecked")
+    void keyBeforeLoginTokenTakesTheOpenAccessPathAndNeitherReachesDownstream() throws Exception {
+        PsamaClient psama = mock(PsamaClient.class);
+        when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
+        List<FilterRegistrationBean<? extends Filter>> registrations = assembledRegistrations(psama);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer picsure_testKeyValue123");
+        request.addHeader("Authorization", "Bearer eyJlogin.token");
+        AtomicReference<HttpServletRequest> downstreamRequest = new AtomicReference<>();
+
+        invokeInRegisteredOrder(
+            registrations, request, new MockHttpServletResponse(), (req, resp) -> downstreamRequest.set((HttpServletRequest) req)
+        );
+
+        ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
+        verify(psama).validateOpenAccess(payload.capture());
+        assertThat(payload.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
+        assertThat(downstreamRequest.get().getHeaders("Authorization").hasMoreElements()).isFalse();
+    }
+
+    @Test
+    void loginTokenBeforeKeyIsLeftForIntrospectionWithoutTheHeader() throws Exception {
+        PsamaClient psama = mock(PsamaClient.class);
+        List<FilterRegistrationBean<? extends Filter>> registrations = assembledRegistrations(psama);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer eyJlogin.token");
+        request.addHeader("Authorization", "Bearer picsure_testKeyValue123");
+        AtomicReference<HttpServletRequest> downstreamRequest = new AtomicReference<>();
+
+        invokeInRegisteredOrder(
+            registrations, request, new MockHttpServletResponse(), (req, resp) -> downstreamRequest.set((HttpServletRequest) req)
+        );
+
+        verifyNoInteractions(psama);
+        assertThat(downstreamRequest.get().getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED)).isNull();
+        assertThat(downstreamRequest.get().getHeaders("Authorization").hasMoreElements()).isFalse();
+    }
+
     private static List<FilterRegistrationBean<? extends Filter>> assembledRegistrations(PsamaClient psama) {
         GatewaySecurityProperties props = new GatewaySecurityProperties(
             List.of(), true, 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token"

@@ -22,14 +22,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Performs per-request PSAMA token introspection. Runs after {@code OpenAccessFilter} (no-bearer short-circuit) and {@code BufferingFilter}
- * (body buffering). The shared {@link PublicEndpointPolicy} exempts intentionally public routes from both authentication filters. Every
- * other request must carry a real {@code Bearer} token (open access is handled entirely upstream by {@code OpenAccessFilter}); the
- * introspection request sends the decoded path that Spring resolved as the root-level {@code "Target Service"}. It does not send or mutate
- * the request body. On success this filter stashes {@code X-User-*} request attributes, including privileges, for
- * {@code IdentityPropagationFilter} to turn into outbound headers. On token refresh it stashes {@link #ATTR_REFRESHED_TOKEN} for
- * {@code TokenRefreshResponseFilter}. An {@code active:false} response denies access. Introspection infrastructure failures
- * ({@link PicsureException}, or any transport error) fail closed: the mapped error is written and the request is never forwarded.
+ * Performs per-request PSAMA token introspection. Runs after {@code OpenAccessFilter} (the open-access short-circuit for requests with no
+ * bearer or with a PSAMA key as the bearer) and {@code BufferingFilter} (body buffering). The shared {@link PublicEndpointPolicy} exempts
+ * intentionally public routes from both authentication filters. Every other request must carry a real {@code Bearer} token (open access is
+ * handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the decoded path that Spring resolved as the
+ * root-level {@code "Target Service"}. It does not send or mutate the request body. On success this filter stashes {@code X-User-*} request
+ * attributes, including privileges, for {@code IdentityPropagationFilter} to turn into outbound headers. On token refresh it stashes
+ * {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}. An {@code active:false} response denies access. Introspection
+ * infrastructure failures ({@link PicsureException}, or any transport error) fail closed: the mapped error is written and the request is
+ * never forwarded.
  */
 public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
@@ -62,9 +63,9 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             return;
         }
 
-        // OpenAccessFilter (order 20) already authenticated this no-bearer request via PSAMA's open-access
-        // validate; demanding a Bearer token here would veto that grant. Only its dedicated grant attribute
-        // skips introspection -- a user-id attribute alone (any other identity source) must still be introspected.
+        // OpenAccessFilter (order 20) already authenticated this request (no bearer, or a PSAMA key as the bearer) via
+        // PSAMA's open-access validate; demanding a login token here would veto that grant. Only its dedicated grant
+        // attribute skips introspection -- a user-id attribute alone (any other identity source) must still be introspected.
         if (Boolean.TRUE.equals(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED))) {
             chain.doFilter(req, resp);
             return;
