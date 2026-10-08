@@ -52,12 +52,12 @@ class OpenAccessFilterOrderTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void assembledFiltersConsumeApiKeyBeforeCaseInsensitiveSanitizingRemovesItDownstream() throws Exception {
+    void assembledFiltersConsumeBearerApiKeyBeforeSanitizingRemovesItDownstream() throws Exception {
         PsamaClient psama = mock(PsamaClient.class);
         when(psama.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         List<FilterRegistrationBean<? extends Filter>> registrations = assembledRegistrations(psama);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        request.addHeader("x-PiCsUrE-aPi-kEy", "picsure_testKeyValue123");
+        request.addHeader("authorization", "Bearer picsure_testKeyValue123");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<HttpServletRequest> downstreamRequest = new AtomicReference<>();
 
@@ -66,10 +66,9 @@ class OpenAccessFilterOrderTest {
         ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
         verify(psama).validateOpenAccess(payload.capture());
         assertThat(payload.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
-        assertThat(downstreamRequest.get().getHeader("X-PICSURE-API-Key")).isNull();
-        assertThat(downstreamRequest.get().getHeader("x-picsure-api-key")).isNull();
-        assertThat(downstreamRequest.get().getHeaders("X-PICSURE-API-Key").hasMoreElements()).isFalse();
-        assertThat(Collections.list(downstreamRequest.get().getHeaderNames())).doesNotContain("X-PICSURE-API-Key", "x-PiCsUrE-aPi-kEy");
+        assertThat(downstreamRequest.get().getHeader("Authorization")).isNull();
+        assertThat(downstreamRequest.get().getHeaders("Authorization").hasMoreElements()).isFalse();
+        assertThat(Collections.list(downstreamRequest.get().getHeaderNames())).doesNotContain("Authorization", "authorization");
     }
 
     private static List<FilterRegistrationBean<? extends Filter>> assembledRegistrations(PsamaClient psama) {

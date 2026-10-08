@@ -12,6 +12,7 @@ import org.springframework.web.util.UrlPathHelper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
@@ -22,17 +23,17 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Handles no-bearer requests when open access is enabled, short-circuiting before {@code PsamaIntrospectionFilter} runs. Triggers when open
- * access is enabled and {@code Authorization} is blank or at most 7 characters. The open-access payload contains the decoded path Spring
- * resolved as {@code "Target Service"} plus {@code ipAddress}; it does not contain a token or request body. A denial whose reason is the
- * API key gets its own 401 error type ({@code api_key_missing} / {@code api_key_invalid}); every other denial is {@code unauthorized}. On a
- * grant the {@link OpenAccessValidation} is stored as {@link #ATTR_OPEN_ACCESS_VALIDATION}, and a refreshed open-access session token is
- * returned in {@value #SESSION_REFRESH_HEADER}. Routes selected by the shared {@link PublicEndpointPolicy}, a real bearer token, or
- * disabled open access pass through untouched.
+ * Handles open-access requests, short-circuiting before {@code PsamaIntrospectionFilter} runs. Triggers when open access is enabled and
+ * {@code Authorization} is blank, at most 7 characters, or a bearer PSAMA key ({@link ApiKeyBearer}). The open-access payload contains the
+ * decoded path Spring resolved as {@code "Target Service"}, {@code ipAddress}, and the key as {@code apiKey} when one was presented; it
+ * does not contain a login token or request body. A key presented while open access is disabled is denied here rather than introspected,
+ * since PSAMA could only reject it as a login token. A denial whose reason is the API key gets its own 401 error type
+ * ({@code api_key_missing} / {@code api_key_invalid}); every other denial is {@code unauthorized}. On a grant the
+ * {@link OpenAccessValidation} is stored as {@link #ATTR_OPEN_ACCESS_VALIDATION}, and a refreshed open-access session token is returned in
+ * {@value #SESSION_REFRESH_HEADER}. Routes selected by the shared {@link PublicEndpointPolicy}, a login bearer token, or disabled open
+ * access without a key pass through untouched.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
-
-    public static final String API_KEY_HEADER = "X-PICSURE-API-Key";
 
     /**
      * Response header carrying a replacement open-access session token once the presented one is half used. Part of the frontend contract.
@@ -49,7 +50,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
 
     /**
      * The {@link OpenAccessValidation} PSAMA granted, set only by this filter and only on a grant. Later filters read the verified key
-     * identity from here, so none of them needs the {@value #API_KEY_HEADER} header or trusts what the caller claimed in it.
+     * identity from here, so none of them needs the key or trusts what the caller claimed with it.
      */
     public static final String ATTR_OPEN_ACCESS_VALIDATION = OpenAccessFilter.class.getName() + ".validation";
 
@@ -66,6 +67,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     private static final Denial KEY_INVALID = new Denial(ERROR_API_KEY_INVALID, ERROR_API_KEY_INVALID, "API key is not valid.");
     private static final Denial RULES_DENIED = new Denial("unauthorized", "access_rules_denied", "User is not authorized.");
     private static final Denial NOT_AUTHORIZED = new Denial("unauthorized", "open_access_denied", "User is not authorized.");
+    private static final Denial OPEN_ACCESS_DISABLED = new Denial("unauthorized", "open_access_disabled", "Open access is not enabled.");
 
     private static final Logger log = LoggerFactory.getLogger(OpenAccessFilter.class);
 
@@ -97,10 +99,15 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         }
 
         String authz = req.getHeader("Authorization");
+        String apiKey = ApiKeyBearer.extract(authz);
         boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // Missing or empty Bearer value.
 
-        if (!openAccessEnabled || !noToken) {
+        if (apiKey == null && (!openAccessEnabled || !noToken)) {
             chain.doFilter(req, resp);
+            return;
+        }
+        if (!openAccessEnabled) {
+            deny(resp, OPEN_ACCESS_DISABLED);
             return;
         }
 
@@ -109,8 +116,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         body.put("request", queryMap);
         String hostMarker = openAccessIpAddress(req);
         body.put("ipAddress", hostMarker); // Open-access validation sends no token field.
-        String apiKey = req.getHeader(API_KEY_HEADER);
-        if (apiKey != null && !apiKey.isBlank()) {
+        if (apiKey != null) {
             body.put("apiKey", apiKey);
         }
 
@@ -157,6 +163,10 @@ public class OpenAccessFilter extends OncePerRequestFilter {
             case OpenAccessValidation.DENIAL_RULES -> RULES_DENIED;
             default -> NOT_AUTHORIZED;
         };
+        deny(resp, denial);
+    }
+
+    private void deny(HttpServletResponse resp, Denial denial) throws IOException {
         audit.put("auth_result", "failure");
         audit.put("auth_action", "open_access.denied");
         audit.put("auth_failure_reason", denial.failureReason());

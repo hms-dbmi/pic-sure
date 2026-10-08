@@ -96,7 +96,7 @@ class SessionRefreshRouteTest {
 
     private ResponseEntity<String> anonymousRequest(String path) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set(OpenAccessFilter.API_KEY_HEADER, "picsure_s_current.session.token");
+        headers.setBearerAuth("picsure_s_current.session.token");
         return rest.exchange(url(path), HttpMethod.GET, new HttpEntity<>(headers), String.class);
     }
 
@@ -110,7 +110,7 @@ class SessionRefreshRouteTest {
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getHeaders().getFirst(OpenAccessFilter.SESSION_REFRESH_HEADER)).isEqualTo(REFRESHED);
         // the credential is stripped before the request leaves the gateway
-        operationsStub.verify(getRequestedFor(urlEqualTo(path)).withHeader(OpenAccessFilter.API_KEY_HEADER, absent()));
+        operationsStub.verify(getRequestedFor(urlEqualTo(path)).withHeader(HttpHeaders.AUTHORIZATION, absent()));
     }
 
     @ParameterizedTest

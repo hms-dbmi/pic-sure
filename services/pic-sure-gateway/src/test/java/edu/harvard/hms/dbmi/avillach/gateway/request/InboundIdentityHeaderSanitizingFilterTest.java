@@ -139,7 +139,7 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
-    void stripsApiKeyHeaderRegardlessOfCaseBeforeDownstream() throws Exception {
+    void stripsLegacyApiKeyHeaderRegardlessOfCaseBeforeDownstream() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
         request.addHeader("x-PiCsUrE-aPi-kEy", "secret-api-key");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -152,6 +152,34 @@ class InboundIdentityHeaderSanitizingFilterTest {
         assertThat(downstream.getHeader("x-picsure-api-key")).isNull();
         assertThat(downstream.getHeaders("X-PICSURE-API-Key").hasMoreElements()).isFalse();
         assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("x-PiCsUrE-aPi-kEy", "X-PICSURE-API-Key");
+    }
+
+    @Test
+    void stripsAuthorizationCarryingAnApiKeyBeforeDownstream() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("authorization", "bearer picsure_u_secretKey");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        HttpServletRequest downstream = captured.get();
+        assertThat(downstream.getHeader("Authorization")).isNull();
+        assertThat(downstream.getHeaders("Authorization").hasMoreElements()).isFalse();
+        assertThat(Collections.list(downstream.getHeaderNames())).doesNotContain("authorization", "Authorization");
+    }
+
+    @Test
+    void stripsAuthorizationWhenAnyValueCarriesAnApiKey() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("Authorization", "Bearer eyJlogin.token");
+        request.addHeader("Authorization", "Bearer picsure_u_secretKey");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        assertThat(captured.get().getHeaders("Authorization").hasMoreElements()).isFalse();
     }
 
     @Test
