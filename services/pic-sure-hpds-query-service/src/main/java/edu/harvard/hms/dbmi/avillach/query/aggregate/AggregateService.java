@@ -57,14 +57,17 @@ public class AggregateService {
     private final ObfuscationService obfuscation;
     private final AggregateProperties props;
     private final QueryService queryService;
+    private final ChartRangeResolver chartRanges;
 
     public AggregateService(
-        AggregateBackendClient backend, ObfuscationService obfuscation, AggregateProperties props, QueryService queryService
+        AggregateBackendClient backend, ObfuscationService obfuscation, AggregateProperties props, QueryService queryService,
+        ChartRangeResolver chartRanges
     ) {
         this.backend = backend;
         this.obfuscation = obfuscation;
         this.props = props;
         this.queryService = queryService;
+        this.chartRanges = chartRanges;
     }
 
     // ---- async open submit ----
@@ -162,7 +165,8 @@ public class AggregateService {
 
         if (props.hasVisualization()) {
             Map<String, Map<String, Integer>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
-            Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(continuous, variant);
+            Map<String, Map<String, Object>> binned =
+                getBinnedContinuousCrossCount(continuous, variant, obfuscation.maxChartBins(crossCounts));
             return objectMapper.writeValueAsString(obfuscation.obfuscateChartCounts(binned));
         } else {
             Map<String, Map<String, Object>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
@@ -170,13 +174,16 @@ public class AggregateService {
         }
     }
 
-    /** Sends continuous results to the configured visualization URL for binning. */
+    /**
+     * Sends continuous results to the configured visualization URL for binning. Each chart spans its concept's overall range, a concept
+     * with no known range is left out, and charts are capped at {@code maxBins}.
+     */
     private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(
-        Map<String, Map<String, Integer>> continuous, AggregateVariant variant
+        Map<String, Map<String, Integer>> continuous, AggregateVariant variant, int maxBins
     ) throws IOException {
-        QueryRequest vizRequest = new GeneralQueryRequest();
-        vizRequest.setQuery(continuous);
-        String binResponse = backend.binContinuous(vizRequest, variant);
+        Map<String, ChartRange> ranges = chartRanges.resolve(continuous.keySet());
+        continuous.keySet().retainAll(ranges.keySet());
+        String binResponse = backend.binContinuous(new ContinuousBinningRequest(continuous, ranges, maxBins), variant);
         return objectMapper.readValue(binResponse, new TypeReference<>() {});
     }
 

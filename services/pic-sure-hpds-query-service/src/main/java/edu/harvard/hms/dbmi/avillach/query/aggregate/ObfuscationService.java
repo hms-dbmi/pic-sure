@@ -27,6 +27,7 @@ import java.util.Map;
 public class ObfuscationService {
 
     private static final String STUDIES_CONSENTS_KEY = "\\_studies_consents\\";
+    private static final int MAX_CHART_BINS = 50;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -152,6 +153,18 @@ public class ObfuscationService {
 
     private String suppressedDisplay() {
         return "< " + consentThreshold;
+    }
+
+    /**
+     * Most bins an open continuous chart may have: the cohort total divided by the chart threshold, between 1 and 50. Uses the total as
+     * displayed (rounded), so the bin count reveals nothing more precise about the cohort size.
+     */
+    public int maxChartBins(Map<String, String> crossCounts) {
+        Integer total = crossCounts == null ? null : parse(crossCounts.get(STUDIES_CONSENTS_KEY));
+        if (total == null || chartThreshold <= 0) {
+            return 1;
+        }
+        return Math.max(1, Math.min(roundUp(total) / chartThreshold, MAX_CHART_BINS));
     }
 
     /** True when the cohort is too small for a chart. Takes the raw backend cross count; a missing or unreadable total suppresses. */

@@ -193,4 +193,15 @@ class ObfuscationServiceTest {
         assertThat(custom.shouldSuppressChart(Map.of(TOTAL, "200"))).isFalse();
         assertThat(custom.obfuscateChartBucket(9)).isEqualTo(new ObfuscatedCount(0, "< 10", 9));
     }
+
+    @Test
+    void maxChartBinsScalesWithTheDisplayedCohortTotal() {
+        assertThat(svc.maxChartBins(Map.of(TOTAL, "50"))).isEqualTo(5);
+        // 51 displays as 55, so it still gets 5 bins rather than revealing more than the displayed total
+        assertThat(svc.maxChartBins(Map.of(TOTAL, "51"))).isEqualTo(5);
+        assertThat(svc.maxChartBins(Map.of(TOTAL, "56"))).isEqualTo(6);
+        assertThat(svc.maxChartBins(Map.of(TOTAL, "200"))).isEqualTo(20);
+        assertThat(svc.maxChartBins(Map.of(TOTAL, "100000"))).isEqualTo(50);
+        assertThat(svc.maxChartBins(Map.of())).isEqualTo(1);
+    }
 }

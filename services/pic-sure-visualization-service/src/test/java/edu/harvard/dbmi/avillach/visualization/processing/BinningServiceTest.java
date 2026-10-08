@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.processing;
 
+import edu.harvard.dbmi.avillach.visualization.model.BinRange;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -229,5 +230,93 @@ class BinningServiceTest {
         assertEquals(1, result.size());
         assertEquals("25.0", result.keySet().iterator().next(), "Single data point should not be labeled as a range");
         assertEquals(100, result.values().iterator().next());
+    }
+
+    // ---- supplied range ----
+
+    private static Map<String, Integer> ages(int from, int to) {
+        Map<String, Integer> input = new LinkedHashMap<>();
+        for (int age = from; age <= to; age++) {
+            input.put(age + ".0", 3);
+        }
+        return input;
+    }
+
+    @Test
+    void bucketData_withRange_spansTheRangeNotTheObservedValues() {
+        Map<String, Integer> result = binningService.bucketData(ages(30, 40), new BinRange(18, 65), null);
+
+        String first = result.keySet().iterator().next();
+        assertTrue(first.startsWith("18.0"), first);
+        assertEquals(0, result.get(first), "bins below the observed values are still emitted, empty");
+        assertEquals(33, result.values().stream().mapToInt(Integer::intValue).sum());
+    }
+
+    @Test
+    void bucketData_withRange_usesMoreBinsThanTheObservedSpread() {
+        int observedBins = binningService.bucketData(ages(30, 40)).size();
+        int rangeBins = binningService.bucketData(ages(30, 40), new BinRange(18, 65), null).size();
+        assertTrue(rangeBins > observedBins, observedBins + " vs " + rangeBins);
+    }
+
+    @Test
+    void bucketData_withRange_singleValueIsOneBinOverTheRange() {
+        Map<String, Integer> result = binningService.bucketData(Map.of("25.0", 100), new BinRange(18, 65), null);
+        assertEquals(Map.of("18.0 - 65.0", 100), result);
+    }
+
+    @Test
+    void bucketData_withRange_valuesOutsideTheRangeGoToTheEndBins() {
+        Map<String, Integer> input = ages(30, 40);
+        input.put("10.0", 1);
+        input.put("70.0", 2);
+
+        Map<String, Integer> result = binningService.bucketData(input, new BinRange(18, 65), null);
+
+        assertEquals(36, result.values().stream().mapToInt(Integer::intValue).sum());
+        assertTrue(result.keySet().iterator().next().startsWith("18.0"));
+    }
+
+    @Test
+    void binContinuousData_appliesRangesPerConcept() {
+        Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
+        data.put("\\age\\", ages(30, 40));
+        data.put("\\bmi\\", ages(30, 40));
+
+        var result = binningService.binContinuousData(data, Map.of("\\age\\", new BinRange(18, 65)), null);
+
+        assertTrue(result.get("\\age\\").keySet().iterator().next().startsWith("18.0"));
+        assertTrue(result.get("\\bmi\\").keySet().iterator().next().startsWith("30.0"));
+    }
+
+    @Test
+    void bucketData_maxBinsCapsTheBinCount() {
+        Map<String, Integer> uncapped = binningService.bucketData(ages(30, 40), new BinRange(0, 1000), null);
+        Map<String, Integer> capped = binningService.bucketData(ages(30, 40), new BinRange(0, 1000), 5);
+
+        assertTrue(uncapped.size() > 5, "uncapped: " + uncapped.size());
+        assertEquals(5, capped.size());
+        assertTrue(capped.keySet().iterator().next().startsWith("0.0"));
+        assertEquals(33, capped.values().stream().mapToInt(Integer::intValue).sum());
+    }
+
+    @Test
+    void bucketData_maxBinsAboveTheFormulaChangesNothing() {
+        assertEquals(binningService.bucketData(ages(30, 40)), binningService.bucketData(ages(30, 40), null, 50));
+    }
+
+    @Test
+    void bucketData_withRange_lastBinKeepsItsUpperBound() {
+        Map<String, Integer> result = binningService.bucketData(ages(30, 40), new BinRange(18, 65), 5);
+
+        String last = result.keySet().stream().reduce((a, b) -> b).orElseThrow();
+        assertTrue(last.endsWith(" - 65.0"), last);
+        assertFalse(result.keySet().stream().anyMatch(label -> label.endsWith("+")));
+    }
+
+    @Test
+    void bucketData_withoutRange_lastBinIsStillOpenEnded() {
+        String last = binningService.bucketData(ages(30, 40)).keySet().stream().reduce((a, b) -> b).orElseThrow();
+        assertTrue(last.endsWith(" +"), last);
     }
 }

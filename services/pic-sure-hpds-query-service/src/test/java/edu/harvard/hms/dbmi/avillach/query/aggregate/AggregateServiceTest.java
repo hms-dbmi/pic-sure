@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.query.aggregate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -36,7 +38,7 @@ class AggregateServiceTest {
 
     /** obfuscation-path tests don't exercise persistence; a throwaway QueryService mock keeps their construction terse. */
     private AggregateService service(AggregateBackendClient backend, AggregateProperties props) {
-        return new AggregateService(backend, obfuscation(), props, mock(QueryService.class));
+        return new AggregateService(backend, obfuscation(), props, mock(QueryService.class), new ChartRangeResolver(backend));
     }
 
     private QueryRequest sync(String expectedResultType) {
@@ -213,7 +215,7 @@ class AggregateServiceTest {
     @Test
     void continuousCrossCountBinsViaVisualizationWhenConfigured() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.search(any())).thenReturn(consentsSearch());
+        stubSearchWithAgeRange(backend);
         when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
         when(backend.binContinuous(any(), eq(AggregateVariant.V1))).thenReturn("{\"\\\\age\\\\\":{\"0-10\":100}}");
@@ -223,17 +225,63 @@ class AggregateServiceTest {
 
         ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V1);
         assertThat(out.getBody()).contains("\"0-10\"");
-        verify(backend).binContinuous(any(), eq(AggregateVariant.V1));
+        verify(backend).binContinuous(
+            argThat(r -> r.ranges().equals(Map.of("\\age\\", new ChartRange(0, 120))) && r.maxBins() == 50), eq(AggregateVariant.V1)
+        );
     }
 
-    // ---- async open submit: scope CROSS_COUNT before persistence and dispatch ----
+    @Test
+    void v3ContinuousChartSpansTheConceptsOverallRangeNotTheQueryRange() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        stubSearchWithAgeRange(backend);
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"30\":100}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+        when(backend.binContinuous(any(), eq(AggregateVariant.V3))).thenReturn("{\"\\\\age\\\\\":{\"0.0 - 120.0\":100}}");
+        AggregateProperties props = new AggregateProperties();
+        props.setVisualizationUrl("http://viz.example");
+        AggregateService svc = service(backend, props);
+
+        Map<String, Object> filter = Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\age\\", "min", 18, "max", 65, "not", false);
+        QueryRequest req = new GeneralQueryRequest()
+            .setQuery(Map.of("expectedResultType", "CONTINUOUS_CROSS_COUNT", "select", List.of("\\age\\"), "phenotypicClause", filter));
+
+        svc.querySync(req, AggregateVariant.V3);
+        verify(backend).binContinuous(
+            argThat(r -> r.ranges().equals(Map.of("\\age\\", new ChartRange(0, 120))) && r.maxBins() == 50), eq(AggregateVariant.V3)
+        );
+    }
+
+    @Test
+    void continuousConceptWithNoKnownRangeIsLeftOut() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"30\":100}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+        when(backend.binContinuous(any(), eq(AggregateVariant.V3))).thenReturn("{}");
+        AggregateProperties props = new AggregateProperties();
+        props.setVisualizationUrl("http://viz.example");
+
+        service(backend, props).querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3);
+        verify(backend).binContinuous(argThat(r -> r.query().isEmpty() && r.ranges().isEmpty()), eq(AggregateVariant.V3));
+    }
+
+    private void stubSearchWithAgeRange(AggregateBackendClient backend) {
+        when(backend.search(any())).thenAnswer(inv -> {
+            QueryRequest req = inv.getArgument(0);
+            if ("\\age\\".equals(req.getQuery())) {
+                return new SearchResults().setResults(Map.of("phenotypes", Map.of("\\age\\", Map.of("min", 0, "max", 120))));
+            }
+            return consentsSearch();
+        });
+    }
 
     @Test
     void asyncOpenCrossCountIsRewrittenThenDispatchedViaQueryServiceV1() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         QueryService queryService = mock(QueryService.class);
-        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
+        AggregateService svc =
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ChartRangeResolver(backend));
 
         svc.query(sync("CROSS_COUNT"), AggregateVariant.V1);
 
@@ -251,7 +299,8 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         QueryService queryService = mock(QueryService.class);
-        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
+        AggregateService svc =
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ChartRangeResolver(backend));
 
         svc.query(sync("CROSS_COUNT"), AggregateVariant.V3);
 
@@ -267,7 +316,8 @@ class AggregateServiceTest {
         // Async submissions rewrite only CROSS_COUNT; other types pass through without fetching consents.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
-        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
+        AggregateService svc =
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ChartRangeResolver(backend));
 
         svc.query(sync("OBSERVATION_COUNT"), AggregateVariant.V1);
 
@@ -285,7 +335,8 @@ class AggregateServiceTest {
         // Reject a missing expectedResultType before touching the backend.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
-        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
+        AggregateService svc =
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ChartRangeResolver(backend));
 
         QueryRequest noErt = new GeneralQueryRequest().setQuery(Map.of("fields", "x"));
         assertThatThrownBy(() -> svc.query(noErt, AggregateVariant.V1)).isInstanceOf(PicsureException.class);

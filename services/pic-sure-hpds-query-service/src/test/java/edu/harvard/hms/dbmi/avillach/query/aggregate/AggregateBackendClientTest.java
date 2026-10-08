@@ -9,6 +9,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,14 +83,14 @@ class AggregateBackendClientTest {
     @Test
     void v1BinContinuousHasNoVersionPrefix() {
         hpds.stubFor(post(urlEqualTo("/bin/continuous")).willReturn(okJson("{}")));
-        client().binContinuous(req("{}"), AggregateVariant.V1);
+        client().binContinuous(new ContinuousBinningRequest(Map.of(), Map.of(), null), AggregateVariant.V1);
         hpds.verify(postRequestedFor(urlEqualTo("/bin/continuous")));
     }
 
     @Test
     void v3BinContinuousPrependsVersionPrefix() {
         hpds.stubFor(post(urlEqualTo("/v3/bin/continuous")).willReturn(okJson("{}")));
-        client().binContinuous(req("{}"), AggregateVariant.V3);
+        client().binContinuous(new ContinuousBinningRequest(Map.of(), Map.of(), null), AggregateVariant.V3);
         hpds.verify(postRequestedFor(urlEqualTo("/v3/bin/continuous")));
     }
 

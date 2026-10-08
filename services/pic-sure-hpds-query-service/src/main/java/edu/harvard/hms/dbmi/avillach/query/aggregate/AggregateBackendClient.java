@@ -64,7 +64,7 @@ public class AggregateBackendClient {
     }
 
     /** Visualization /bin/continuous (v3 prepends /v3). */
-    public String binContinuous(QueryRequest vizRequest, AggregateVariant variant) {
+    public String binContinuous(ContinuousBinningRequest vizRequest, AggregateVariant variant) {
         String uri = props.getVisualizationUrl() + variant.downstreamVersionPrefix + "/bin/continuous";
         try {
             return withAuth(http.post().uri(uri).contentType(MediaType.APPLICATION_JSON)).body(vizRequest).retrieve().body(String.class);

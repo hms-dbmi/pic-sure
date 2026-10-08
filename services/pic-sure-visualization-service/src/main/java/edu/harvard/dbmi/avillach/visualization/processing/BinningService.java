@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.processing;
 
+import edu.harvard.dbmi.avillach.visualization.model.BinRange;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.springframework.stereotype.Component;
 
@@ -11,14 +12,26 @@ public class BinningService {
     private static final double THIRD = 1.0 / 3.0;
 
     public Map<String, Map<String, Integer>> binContinuousData(Map<String, Map<String, Integer>> continuousDataMap) {
+        return binContinuousData(continuousDataMap, Map.of(), null);
+    }
+
+    public Map<String, Map<String, Integer>> binContinuousData(
+        Map<String, Map<String, Integer>> continuousDataMap, Map<String, BinRange> ranges, Integer maxBins
+    ) {
         Map<String, Map<String, Integer>> result = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, Integer>> entry : continuousDataMap.entrySet()) {
-            result.put(entry.getKey(), bucketData(entry.getValue()));
+            BinRange range = ranges == null ? null : ranges.get(entry.getKey());
+            result.put(entry.getKey(), bucketData(entry.getValue(), range, maxBins));
         }
         return result;
     }
 
     public Map<String, Integer> bucketData(Map<String, Integer> originalMap) {
+        return bucketData(originalMap, null, null);
+    }
+
+    /** Bins across {@code range} when given, otherwise across the observed values, using at most {@code maxBins} bins when given. */
+    public Map<String, Integer> bucketData(Map<String, Integer> originalMap, BinRange range, Integer maxBins) {
         if (originalMap == null || originalMap.isEmpty()) {
             return new LinkedHashMap<>();
         }
@@ -36,12 +49,14 @@ public class BinningService {
             return new LinkedHashMap<>();
         }
 
-        boolean isSameMinMax = data.size() == 1;
+        double min = range != null ? range.min() : data.keySet().stream().min(Double::compareTo).orElse(0.0);
+        double max = range != null ? range.max() : data.keySet().stream().max(Double::compareTo).orElse(0.0);
+        boolean isSameMinMax = min == max;
 
-        int numBins = calcNumBins(data);
-        double min = data.keySet().stream().min(Double::compareTo).orElse(0.0);
-        double max = data.keySet().stream().max(Double::compareTo).orElse(0.0);
-
+        int numBins = calcNumBins(data, min, max);
+        if (maxBins != null && maxBins > 0) {
+            numBins = Math.min(numBins, maxBins);
+        }
         if (numBins <= 0) {
             numBins = 1;
         }
@@ -53,45 +68,42 @@ public class BinningService {
 
         Map<Integer, Integer> counts = createBinsAndMergeCounts(data, numBins, min, binSize);
 
-        int bucketMax = counts.keySet().stream().max(Integer::compareTo).orElse(0);
+        // Every bin in the range is emitted, empty or not, so the chart does not reveal where the data stops.
         Map<Integer, Integer> results = new LinkedHashMap<>();
         Map<Integer, List<Double>> ranges = new HashMap<>();
-        for (int key = 0; key <= bucketMax; key++) {
+        for (int key = 0; key < numBins; key++) {
             double rangeStart = min + (key * binSize);
             double rangeEnd = min + ((key + 1) * binSize);
             ranges.put(key, new ArrayList<>(List.of(rangeStart, rangeEnd)));
             results.put(key, counts.getOrDefault(key, 0));
         }
 
-        return createLabelsForBins(results, ranges, isSameMinMax);
+        return createLabelsForBins(results, ranges, isSameMinMax, range == null);
     }
 
-    private static int calcNumBins(Map<Double, Integer> countMap) {
+    /** Bin width comes from the spread of the observed values; the number of bins is how many of those fit in {@code min..max}. */
+    private static int calcNumBins(Map<Double, Integer> countMap, double min, double max) {
+        if (min == max || countMap.size() < 2) return 1;
         double[] keys = countMap.keySet().stream().mapToDouble(Double::doubleValue).toArray();
         DescriptiveStatistics da = new DescriptiveStatistics(keys);
-        double smallestKey = da.getMin();
-        double largestKey = da.getMax();
-        if (smallestKey == largestKey) return 1;
         double binWidth = (3.5 * da.getStandardDeviation()) / Math.pow(countMap.size(), THIRD);
-        return (int) Math.round((largestKey - smallestKey) / binWidth);
+        if (binWidth <= 0.0) return 1;
+        return (int) Math.round((max - min) / binWidth);
     }
 
     private static Map<Integer, Integer> createBinsAndMergeCounts(Map<Double, Integer> data, int numBins, double min, double binSize) {
         Map<Integer, Integer> results = new LinkedHashMap<>();
         for (Map.Entry<Double, Integer> entry : data.entrySet()) {
             int bin = (int) Math.floor((entry.getKey() - min) / binSize);
-            if (bin < numBins) {
-                results.merge(bin, entry.getValue(), Integer::sum);
-            } else {
-                // Value at the exact max — merge into last bin
-                results.merge(numBins - 1, entry.getValue(), Integer::sum);
-            }
+            // Values at the exact max, or outside a supplied range, go into the nearest end bin.
+            bin = Math.max(0, Math.min(bin, numBins - 1));
+            results.merge(bin, entry.getValue(), Integer::sum);
         }
         return results;
     }
 
     private static Map<String, Integer> createLabelsForBins(
-        Map<Integer, Integer> results, Map<Integer, List<Double>> ranges, boolean isSameMinMax
+        Map<Integer, Integer> results, Map<Integer, List<Double>> ranges, boolean isSameMinMax, boolean openEndedLastBin
     ) {
         Map<String, Integer> finalMap = new LinkedHashMap<>();
         String label = "";
@@ -108,7 +120,8 @@ public class BinningService {
         }
 
         Integer lastCount = finalMap.get(label);
-        if (lastCount != null && finalMap.size() > 1) {
+        // Only a chart over its observed values is open-ended; a supplied range has a real upper bound.
+        if (openEndedLastBin && lastCount != null && finalMap.size() > 1) {
             String newLabel = label;
             int hasDash = label.indexOf(" -");
             if (hasDash > 0) {
