@@ -164,17 +164,6 @@ public class ApiKeyServiceTest {
         verify(apiKeyRepository, never()).touchLastUsed(any(UUID.class), any(Instant.class), any(Instant.class));
     }
 
-    // no SESSION row is ever minted; one that appears anyway must not verify
-    @Test
-    public void testVerifyKey_storedSessionTypeRejected() {
-        ApiKeyCreationResponse response = apiKeyService.generateUserKey(null, null);
-        ApiKey stored = storedKeyFor(response).setKeyType(ApiKeyType.SESSION);
-        when(apiKeyRepository.findByKeyHash(stored.getKeyHash())).thenReturn(Optional.of(stored));
-
-        assertTrue(apiKeyService.verifyKey(response.apiKey()).isEmpty());
-        verify(apiKeyRepository, never()).touchLastUsed(any(UUID.class), any(Instant.class), any(Instant.class));
-    }
-
     @Test
     public void testVerifyKey_sessionTokenNeverLooksUpTheTable() {
         assertTrue(apiKeyService.verifyKey(ApiKeyService.SESSION_KEY_PREFIX + "eyJhbGciOiJIUzI1NiJ9.e30.x").isEmpty());

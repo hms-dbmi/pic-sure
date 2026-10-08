@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
@@ -51,10 +52,15 @@ public class JWTUtil {
     }
 
     /**
-     * The HMAC key bytes every token here is signed and verified with, derived from {@code application.client.secret} exactly as signing
-     * does. Other signers compare against these bytes to prove they use a different key.
+     * Whether {@code candidate} is the HMAC key every token here is signed and verified with, derived from
+     * {@code application.client.secret} exactly as signing does. Other signers call this to prove they use a key of their own; the key
+     * bytes themselves never leave this class.
      */
-    public byte[] signingKeyBytes() {
+    public boolean signsWith(byte[] candidate) {
+        return MessageDigest.isEqual(candidate, signingKeyBytes());
+    }
+
+    private byte[] signingKeyBytes() {
         return getDecodedClientSecret().getBytes(StandardCharsets.UTF_8);
     }
 

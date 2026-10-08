@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures.MutableClock;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService.VerifiedSession;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,14 +26,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Standalone MockMvc over a real {@link OpenSessionService}, so the issued token is checked by the same verifier {@code /open/validate}
- * uses.
+ * {@code POST /open/session}: standalone MockMvc over a real {@link OpenSessionService}, so the issued token is checked by the same
+ * verifier {@code /open/validate} uses. The validate endpoint has its own tests in {@link OpenAccessControllerTest}.
  */
-public class OpenSessionControllerTest {
+public class OpenAccessControllerSessionTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private OpenSessionService openSessionService;
@@ -44,7 +46,8 @@ public class OpenSessionControllerTest {
 
     private MockMvc mockMvc(OpenSessionService service, boolean openIdpProviderIsEnabled) {
         // the application's ObjectMapper, so expiresAt goes out as PSAMA really writes it
-        return MockMvcBuilders.standaloneSetup(new OpenSessionController(service, openIdpProviderIsEnabled))
+        return MockMvcBuilders
+            .standaloneSetup(new OpenAccessController(mock(AuthorizationService.class), service, openIdpProviderIsEnabled))
             .setMessageConverters(new MappingJackson2HttpMessageConverter(new ApplicationConfig(null).objectMapper()))
             .setControllerAdvice(new GlobalExceptionHandler()).build();
     }

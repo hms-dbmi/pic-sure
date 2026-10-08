@@ -141,13 +141,7 @@ class ControllerAuditEventTest {
         Class<?> c = OpenAccessController.class;
         // validate(Map<String, Object> inputMap, HttpServletRequest request)
         assertAuditEvent(c, "validate", new Class[] {Map.class, HttpServletRequest.class}, "ACCESS", "open.validate");
-    }
-
-    @Test
-    void openSessionController() throws Exception {
-        assertAuditEvent(
-            OpenSessionController.class, "createSession", new Class[] {HttpServletRequest.class}, "ACCESS", "open_session.create"
-        );
+        assertAuditEvent(c, "createSession", new Class[] {HttpServletRequest.class}, "ACCESS", "open_session.create");
     }
 
     @Test

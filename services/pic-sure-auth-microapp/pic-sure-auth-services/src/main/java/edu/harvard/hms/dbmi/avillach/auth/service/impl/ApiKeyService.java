@@ -97,9 +97,6 @@ public class ApiKeyService {
     }
 
     private ApiKeyCreationResponse generate(ApiKeyType keyType, String name, String email, Instant expiresAt, boolean neverExpires) {
-        if (keyType == ApiKeyType.SESSION) {
-            throw new IllegalArgumentException("Open-access sessions are stateless tokens, never stored API keys");
-        }
         Instant createdAt = Instant.now();
         if (neverExpires && expiresAt != null) {
             throw new IllegalArgumentException("neverExpires and expiresAt are mutually exclusive");
@@ -225,9 +222,6 @@ public class ApiKeyService {
         return switch (keyType) {
             case PLATFORM -> PLATFORM_KEY_PREFIX;
             case USER -> USER_KEY_PREFIX;
-            // generate refuses this type. If a stored row claims it anyway, verifyKey rejects the key: hasTypedPrefix never admits
-            // this prefix
-            case SESSION -> SESSION_KEY_PREFIX;
         };
     }
 

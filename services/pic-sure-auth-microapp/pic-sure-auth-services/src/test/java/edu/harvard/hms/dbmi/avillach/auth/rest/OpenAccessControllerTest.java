@@ -100,7 +100,8 @@ public class OpenAccessControllerTest {
             accessRuleService, mock(SessionService.class), roleService, "fence,okta", mock(UserConsentsRepository.class), false, false,
             apiKeyService, openSessionService, apiKeyEnforcementEnabled
         );
-        return MockMvcBuilders.standaloneSetup(new OpenAccessController(authorizationService, openIdpProviderIsEnabled)).build();
+        return MockMvcBuilders.standaloneSetup(new OpenAccessController(authorizationService, openSessionService, openIdpProviderIsEnabled))
+            .build();
     }
 
     private void openAccessRulesPass(boolean pass) {
@@ -228,16 +229,19 @@ public class OpenAccessControllerTest {
         MintedKey revoked = mintKey(ApiKeyType.USER, stored -> stored.setRevokedAt(Instant.now().minusSeconds(60)));
         MintedKey expired = mintKey(ApiKeyType.PLATFORM, stored -> stored.setExpiresAt(Instant.now().minusSeconds(60)));
         String malformed = "picsure_u_not-a-real-key";
+        String userJwt = OpenSessionFixtures.applicationJwtUtil().createJwtToken(null, "psama", Map.of(), "user-subject", 60_000);
         MockMvc mockMvc = mockMvc(true, true);
 
         String unknownBody = validate(mockMvc, unknown, 2).getResponse().getContentAsString();
         String revokedBody = validate(mockMvc, revoked.plaintext(), 2).getResponse().getContentAsString();
         String expiredBody = validate(mockMvc, expired.plaintext(), 2).getResponse().getContentAsString();
         String malformedBody = validate(mockMvc, malformed, 2).getResponse().getContentAsString();
+        String userJwtBody = validate(mockMvc, userJwt, 2).getResponse().getContentAsString();
 
         assertEquals(unknownBody, revokedBody);
         assertEquals(unknownBody, expiredBody);
         assertEquals(unknownBody, malformedBody);
+        assertEquals(unknownBody, userJwtBody);
         JsonNode response = objectMapper.readTree(revokedBody);
         assertFalse(response.get("valid").asBoolean());
         assertEquals("key_invalid", response.get("denial").asText());

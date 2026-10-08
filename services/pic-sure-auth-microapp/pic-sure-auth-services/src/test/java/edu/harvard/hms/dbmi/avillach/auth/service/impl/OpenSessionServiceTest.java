@@ -156,6 +156,18 @@ public class OpenSessionServiceTest {
     }
 
     @Test
+    public void testRefreshFromASubSecondClockExpiresWhenItsTokenSays() {
+        VerifiedSession session = verified(service.issue().token());
+        clock.advance(TTL.dividedBy(2).plusMillis(500));
+
+        IssuedSession refreshed = service.refreshIfDue(session).orElseThrow();
+
+        VerifiedSession claims = verified(refreshed.token());
+        assertEquals(claims.expiresAt(), refreshed.expiresAt());
+        assertEquals(START.plus(TTL.dividedBy(2)), claims.issuedAt());
+    }
+
+    @Test
     public void testRefreshAtHalfLifeKeepsSessionIdAndStart() {
         IssuedSession issued = service.issue();
         clock.advance(TTL.dividedBy(2));
@@ -415,6 +427,16 @@ public class OpenSessionServiceTest {
         assertThrows(IllegalStateException.class, () -> enabled(SESSION_SECRET, 61, 1, applicationJwtUtil()));
         assertThrows(IllegalStateException.class, () -> enabled(SESSION_SECRET, 15, 0, applicationJwtUtil()));
         assertDoesNotThrow(() -> enabled(SESSION_SECRET, 60, 1, applicationJwtUtil()));
+    }
+
+    // a lifetime Duration can hold but Instant cannot would otherwise fail on the first issue(), not at startup
+    @Test
+    public void testStartupFailsWhenTheMaxLifetimeOutlivesInstant() {
+        long hoursBeyondInstantMax = Long.MAX_VALUE / 7200;
+
+        IllegalStateException e =
+            assertThrows(IllegalStateException.class, () -> enabled(SESSION_SECRET, 15, hoursBeyondInstantMax, applicationJwtUtil()));
+        assertTrue(e.getMessage().contains("max.lifetime.hours"), e.getMessage());
     }
 
     @Test

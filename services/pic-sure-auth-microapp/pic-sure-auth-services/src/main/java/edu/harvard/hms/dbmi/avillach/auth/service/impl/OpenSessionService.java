@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
-import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -101,8 +100,13 @@ public class OpenSessionService {
                     + " minutes)"
             );
         }
+        if (maxLifetime.compareTo(Duration.between(clock.instant(), Instant.MAX)) > 0) {
+            throw new IllegalStateException(
+                "api.key.session.max.lifetime.hours (" + maxLifetimeHours + ") reaches past the end of time, so no session could be issued"
+            );
+        }
         byte[] keyBytes = decodeSecret(signingSecret);
-        if (MessageDigest.isEqual(keyBytes, jwtUtil.signingKeyBytes())) {
+        if (jwtUtil.signsWith(keyBytes)) {
             throw new IllegalStateException(
                 "api.key.session.signing.secret gives the same signing key as application.client.secret. Sessions need a key of their own, "
                     + "or a session token and a user token could each be presented as the other."

@@ -17,24 +17,49 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record OpenAccessValidationResponse(
     @Schema(description = "Whether the request is granted.", requiredMode = Schema.RequiredMode.REQUIRED) boolean valid,
     @Schema(
-        description = "The type of the verified key. Null on a denial, and on a grant to a request that presented no valid key.",
+        description = "The kind of credential verified. Null on a denial, and on a grant to a request that presented no valid key.",
         requiredMode = Schema.RequiredMode.REQUIRED
-    ) ApiKeyType keyType,
+    ) KeyType keyType,
     @Schema(
-        description = "The id of the verified key. Null on a denial, and on a grant to a request that presented no valid key.",
+        description = "The id of the verified key, or the session id of a verified session. Null on a denial, and on a grant to a "
+            + "request that presented no valid key.",
         example = "8694e3d4-5cb4-410f-8431-993445e6d3f6", requiredMode = Schema.RequiredMode.REQUIRED
     ) String keyId,
     @Schema(
-        description = "The first characters of the verified key's body, as shown in the admin key list. Null on a denial, and on a grant "
-            + "to a request that presented no valid key.",
+        description = "The first characters of the verified key's body, as shown in the admin key list. Null on a denial, on a session "
+            + "grant, and on a grant to a request that presented no valid key.",
         example = "AbCd1234", requiredMode = Schema.RequiredMode.REQUIRED
     ) String displayPrefix,
     @Schema(description = "Why the request was denied. Null on a grant.", requiredMode = Schema.RequiredMode.REQUIRED) Denial denial,
     @Schema(
-        description = "Reserved for a replacement open-access session token. Null until PSAMA issues sessions.",
+        description = "A replacement open-access session token, when the presented session is due for a refresh. Null otherwise.",
         example = "picsure_s_eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI4Njk0ZTNkNCJ9.sig", requiredMode = Schema.RequiredMode.REQUIRED
     ) String refreshedToken
 ) {
+
+    /**
+     * The kind of credential a grant verified. {@link #USER} and {@link #PLATFORM} are stored API keys; {@link #SESSION} is a stateless
+     * open-access session token, which is never generated, stored, or listed as an API key.
+     */
+    @Schema(description = "The kind of credential that was verified.")
+    public enum KeyType {
+
+        @Schema(description = "A key an anonymous user generated for themselves.")
+        USER,
+
+        @Schema(description = "A key an admin minted for a deployment or partner.")
+        PLATFORM,
+
+        @Schema(description = "An open-access session token from POST /open/session.")
+        SESSION;
+
+        static KeyType of(ApiKeyType stored) {
+            return switch (stored) {
+                case USER -> USER;
+                case PLATFORM -> PLATFORM;
+            };
+        }
+    }
 
     /**
      * Why a request was denied. {@link #KEY_INVALID} covers unknown, malformed, expired, and revoked keys alike, so the response does not
@@ -70,7 +95,7 @@ public record OpenAccessValidationResponse(
             return new OpenAccessValidationResponse(true, null, null, null, null, null);
         }
         return new OpenAccessValidationResponse(
-            true, verifiedKey.getKeyType(), verifiedKey.getUuid() == null ? null : verifiedKey.getUuid().toString(),
+            true, KeyType.of(verifiedKey.getKeyType()), verifiedKey.getUuid() == null ? null : verifiedKey.getUuid().toString(),
             verifiedKey.getDisplayPrefix(), null, null
         );
     }
@@ -80,7 +105,7 @@ public record OpenAccessValidationResponse(
      * the replacement token when this one is due for a refresh, otherwise null.
      */
     public static OpenAccessValidationResponse grantedSession(String sessionId, String refreshedToken) {
-        return new OpenAccessValidationResponse(true, ApiKeyType.SESSION, sessionId, null, null, refreshedToken);
+        return new OpenAccessValidationResponse(true, KeyType.SESSION, sessionId, null, null, refreshedToken);
     }
 
     public static OpenAccessValidationResponse denied(Denial denial) {

@@ -15,14 +15,11 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
@@ -101,25 +98,14 @@ public class ApiKeyController {
         summary = "List API key metadata",
         description = "GET a page of API key metadata (never key material), newest first, optionally filtered by keyType"
     )
-    @ApiResponse(
-        responseCode = "200", description = "A page of API key metadata",
-        content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiKeyPage.class))
-    )
-    @ApiResponse(responseCode = "400", description = "keyType is not USER or PLATFORM")
+    @ApiResponse(responseCode = "200", description = "A page of API key metadata")
     @AuditEvent(type = "OTHER", action = "api_key.list")
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(produces = "application/json", path = "/apiKey")
-    public ResponseEntity<?> listKeys(
+    public ResponseEntity<ApiKeyPage> listKeys(
         @RequestParam(value = "page", defaultValue = "0") int page, @RequestParam(value = "size", defaultValue = "100") int size,
-        @Parameter(schema = @Schema(allowableValues = {"USER", "PLATFORM"})) @RequestParam(
-            value = "keyType", required = false
-        ) ApiKeyType keyType
+        @RequestParam(value = "keyType", required = false) ApiKeyType keyType
     ) {
-        // sessions are never stored, so filtering on them would return a silently empty page
-        if (keyType == ApiKeyType.SESSION) {
-            return PICSUREResponse
-                .error(HttpStatus.BAD_REQUEST, "Invalid value for parameter 'keyType'", "Expected one of USER, PLATFORM.");
-        }
         return PICSUREResponse.success(apiKeyService.listKeys(Math.max(0, page), Math.clamp(size, 1, MAX_PAGE_SIZE), keyType));
     }
 
