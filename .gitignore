@@ -23,6 +23,9 @@ log/
 #Mac
 .DS_Store
 
+#VSCode
+.vscode/
+
 
 # Avoid ignoring Maven wrapper jar file (.jar files are usually ignored)
 !/.mvn/wrapper/maven-wrapper.jar
@@ -36,3 +39,6 @@ docs/superpowers/
 # TODO: Remove once development is complete
 george_development_notes.md
 fable-master-handoff.md
+
+# Tools pinned for the risk workflows (.github/scripts/risk/package.json)
+.github/scripts/risk/node_modules/
