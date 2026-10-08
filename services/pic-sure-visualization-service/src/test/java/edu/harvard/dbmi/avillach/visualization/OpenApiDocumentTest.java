@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Set;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -30,6 +32,8 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
 @ActiveProfiles("test")
 class OpenApiDocumentTest {
 
+    private static final String SCHEMA_REF_PREFIX = "#/components/schemas/";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -51,5 +55,92 @@ class OpenApiDocumentTest {
         assertThat(document.path("components").path("securitySchemes").has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         OpenApiDocumentAssertions.assertCovers(document, handlerMapping);
+    }
+
+    @Test
+    void binningHandlerExchangesTypedRecords() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/bin/continuous", "ContinuousBinningRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/bin/continuous", "200", "ContinuousBinningResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ContinuousBinningResponse", "bins");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "ContinuousBinningResponse");
+        assertThat(
+            schema(document, "ContinuousBinningResponse").path("properties").path("bins").path("additionalProperties")
+                .path("additionalProperties").path("type").asText()
+        ).isEqualTo("integer");
+    }
+
+    @Test
+    void binningV3RouteExchangesTheSameRecords() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/v3/bin/continuous", "ContinuousBinningRequest");
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/v3/bin/continuous", "200", "ContinuousBinningResponse");
+    }
+
+    @Test
+    void requestRecordsAreDocumented() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertRequestSchema(document, "post", "/{backend}/distributions", "DistributionRequest");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "DistributionRequest", "query");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ContinuousBinningRequest", "query");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "DistributionRequest", "ContinuousBinningRequest");
+        assertThat(schema(document, "DistributionRequest").path("properties").path("query").path("$ref").asText())
+            .isEqualTo(SCHEMA_REF_PREFIX + "Query");
+    }
+
+    @Test
+    void distributionResponseIsDocumented() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/{backend}/distributions", "200", "VisualizationResponse");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "VisualizationResponse", "categoricalData", "continuousData");
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "CategoricalDistributionData", "conceptPath", "title", "continuous", "categoricalMap", "obfuscated", "xaxisName",
+            "yaxisName", "chartWidth", "chartHeight"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(
+            document, "ContinuousDistributionData", "conceptPath", "title", "continuous", "continuousMap", "obfuscated", "xaxisName",
+            "yaxisName", "chartWidth", "chartHeight"
+        );
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "ObfuscatedCount", "count", "display", "variance");
+        OpenApiDocumentAssertions.assertSchemaDocumented(
+            document, Set.of("ObfuscatedCount.variance"), "VisualizationResponse", "CategoricalDistributionData",
+            "ContinuousDistributionData", "ObfuscatedCount"
+        );
+
+        JsonNode response = schema(document, "VisualizationResponse").path("properties");
+        assertThat(response.path("categoricalData").path("items").path("$ref").asText())
+            .isEqualTo(SCHEMA_REF_PREFIX + "CategoricalDistributionData");
+        assertThat(response.path("continuousData").path("items").path("$ref").asText())
+            .isEqualTo(SCHEMA_REF_PREFIX + "ContinuousDistributionData");
+        assertThat(
+            schema(document, "CategoricalDistributionData").path("properties").path("categoricalMap").path("additionalProperties")
+                .path("$ref").asText()
+        ).isEqualTo(SCHEMA_REF_PREFIX + "ObfuscatedCount");
+        assertThat(
+            schema(document, "ContinuousDistributionData").path("properties").path("continuousMap").path("additionalProperties")
+                .path("$ref").asText()
+        ).isEqualTo(SCHEMA_REF_PREFIX + "ObfuscatedCount");
+    }
+
+    @Test
+    void queryFormatHandlerIsPinned() throws Exception {
+        JsonNode document = document();
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/query/format", "200", "QueryFormat");
+        OpenApiDocumentAssertions.assertSchemaHasFields(document, "QueryFormat", "name", "description", "specification", "examples");
+        assertThat(document.path("paths").path("/query/format").path("post").has("requestBody")).isFalse();
+    }
+
+    private JsonNode document() throws Exception {
+        return objectMapper
+            .readTree(mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    private static JsonNode schema(JsonNode document, String name) {
+        return document.path("components").path("schemas").path(name);
     }
 }

@@ -276,7 +276,23 @@ public final class OpenApiDocumentAssertions {
      * @throws AssertionError listing every gap in every named schema
      */
     public static void assertSchemaDocumented(JsonNode document, String... schemaNames) {
+        assertSchemaDocumented(document, Set.of(), schemaNames);
+    }
+
+    /**
+     * Asserts the same convention as {@link #assertSchemaDocumented(JsonNode, String...)}, except that the named scalar properties must
+     * have no example. It is for a property whose only honest example is a value the deployment configures, which the document would
+     * otherwise state as if it were fixed. Each exemption must name a scalar property of one of the checked schemas that has no example, so
+     * an exemption that no longer applies fails rather than lingers.
+     *
+     * @param document the parsed {@code /v3/api-docs} body
+     * @param withoutExample property labels in {@code Schema.property} form that must have no example
+     * @param schemaNames the keys under {@code components.schemas}
+     * @throws AssertionError listing every gap in every named schema, and every exemption that does not apply
+     */
+    public static void assertSchemaDocumented(JsonNode document, Set<String> withoutExample, String... schemaNames) {
         List<String> problems = new ArrayList<>();
+        Set<String> exemptionsApplied = new HashSet<>();
         boolean describedRefs = document.path("openapi").asText().startsWith("3.1");
         for (String schemaName : schemaNames) {
             JsonNode schema = document.path("components").path("schemas").path(schemaName);
@@ -289,7 +305,14 @@ public final class OpenApiDocumentAssertions {
             }
             checkEnum(schema, schemaName, problems);
             for (Map.Entry<String, JsonNode> property : properties(schema).entrySet()) {
-                checkProperty(schemaName + "." + property.getKey(), property.getValue(), describedRefs, problems);
+                checkProperty(
+                    schemaName + "." + property.getKey(), property.getValue(), describedRefs, withoutExample, exemptionsApplied, problems
+                );
+            }
+        }
+        for (String label : withoutExample) {
+            if (!exemptionsApplied.contains(label)) {
+                problems.add(label + " is exempt from the example rule but is not a scalar property of a checked schema");
             }
         }
         if (!problems.isEmpty()) {
@@ -297,7 +320,10 @@ public final class OpenApiDocumentAssertions {
         }
     }
 
-    private static void checkProperty(String label, JsonNode property, boolean describedRefs, List<String> problems) {
+    private static void checkProperty(
+        String label, JsonNode property, boolean describedRefs, Set<String> withoutExample, Set<String> exemptionsApplied,
+        List<String> problems
+    ) {
         if (property.has("$ref")) {
             if (describedRefs && property.path("description").asText().isBlank()) {
                 problems.add(label + " has no description");
@@ -314,7 +340,15 @@ public final class OpenApiDocumentAssertions {
         }
         boolean scalar = types(valueSchema).stream().anyMatch(SCALAR_TYPES::contains) && !valueSchema.has("enum")
             && !BINARY_FORMATS.contains(valueSchema.path("format").asText());
-        if (scalar && !property.has("example")) {
+        if (!scalar) {
+            return;
+        }
+        if (withoutExample.contains(label)) {
+            exemptionsApplied.add(label);
+            if (property.has("example")) {
+                problems.add(label + " is exempt from the example rule but has an example");
+            }
+        } else if (!property.has("example")) {
             problems.add(label + " has no example");
         }
     }

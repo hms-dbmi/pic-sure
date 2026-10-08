@@ -21,6 +21,7 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningResponse;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
@@ -62,6 +63,11 @@ class SharedModelSchemaConventionTest {
         public ResourceInfo info() {
             return new ResourceInfo();
         }
+
+        @PostMapping("/shared/bin/continuous")
+        public ContinuousBinningResponse binContinuous() {
+            return null;
+        }
     }
 
     @Autowired
@@ -90,12 +96,18 @@ class SharedModelSchemaConventionTest {
     }
 
     @Test
+    void binningModelMeetsTheConvention() {
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "ContinuousBinningResponse");
+    }
+
+    @Test
     void requiredMembersAreListed() {
         assertRequired("QueryStatus", "status", "picsureResultId");
         assertRequired("PaginatedSearchResultString", "results", "page", "total");
         assertRequired("SignedUrlResponse", "signedUrl");
         assertRequired("ResourceInfo", "id", "name");
         assertRequired("Query", "expectedResultType");
+        assertRequired("ContinuousBinningResponse", "bins");
     }
 
     private void assertRequired(String schemaName, String... members) {
