@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -23,7 +25,8 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
 /**
  * The live document is served unauthenticated, names this service, carries the bearer scheme, and covers every visible handler with a
  * summarised operation. An endpoint cannot vanish from the document, and the annotation pass cannot skip one, without failing here.
- * {@code InternalQueryController} is {@code @Hidden}, so its {@code /internal/queries} handlers must never appear in {@code paths}.
+ * {@code InternalQueryController} is {@code @Hidden}, so its {@code /internal/queries} handlers must never appear in {@code paths}, and the
+ * records only those handlers use must never appear in {@code components}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -51,6 +54,14 @@ class OpenApiDocumentTest {
         assertThat(document.path("security").get(0).has(OpenApiConfiguration.BEARER_SCHEME)).isTrue();
         assertThat(document.path("paths").has("/internal/queries")).isFalse();
         OpenApiDocumentAssertions.assertCovers(document, handlerMapping);
+    }
+
+    @Test
+    void internalQueryRecordsStayOutOfTheDocument() throws Exception {
+        JsonNode schemas = document().path("components").path("schemas");
+
+        assertThat(List.of("SaveQueryRequest", "UpdateQueryRequest", "StoredQuery", "SavedQueryReference", "DispatchResponse"))
+            .noneMatch(schemas::has);
     }
 
     @Test
