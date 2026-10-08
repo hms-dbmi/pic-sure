@@ -75,6 +75,16 @@ public class TokenService {
         return tokenInspection.getResponseMap();
     }
 
+    /**
+     * Inspects a user token for the authenticated application's request, including session or stored long-term token checks and access
+     * rules. Missing or rejected tokens and authorization failures produce an inactive result; an authorized regular token may be
+     * refreshed. Removes {@code token} from the input after successful parsing.
+     *
+     * @param inputMap mutable introspection input containing {@code token} and optional {@code request} details
+     * @throws IllegalAccessException if the authenticated principal is not an application principal
+     * @throws NullPointerException if the application principal has no associated application
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
+     */
     private TokenInspection validateToken(Map<String, Object> inputMap) throws IllegalAccessException {
         // the token is a live credential, and a rejected one may be an open-access session sent as a bearer by mistake: never log it
         logger.debug(

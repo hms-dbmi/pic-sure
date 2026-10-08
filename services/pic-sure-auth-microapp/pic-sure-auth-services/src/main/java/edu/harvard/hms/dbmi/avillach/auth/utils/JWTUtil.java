@@ -60,16 +60,18 @@ public class JWTUtil {
         return MessageDigest.isEqual(candidate, signingKeyBytes());
     }
 
+    /** Returns the decoded application secret encoded as UTF-8, matching the key used for signing and verification. */
     private byte[] signingKeyBytes() {
         return getDecodedClientSecret().getBytes(StandardCharsets.UTF_8);
     }
 
     /**
-     * @param id      - id
-     * @param issuer  - issuer
-     * @param claims  - claims
-     * @param subject - subject
-     * @return JWT token
+     * Creates a compact JWT signed with the application secret. The supplied id, issuer, subject, current issuance time, and computed
+     * expiration override the corresponding entries in {@code claims}.
+     *
+     * @param ttlMillis lifetime in milliseconds; negative values use seven days, and zero uses 999 days
+     * @return the signed JWT without a bearer or API key prefix
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
      */
     public String createJwtToken(String id, String issuer, Map<String, Object> claims, String subject, long ttlMillis) {
         logger.debug("createJwtToken() starting...");
@@ -106,6 +108,13 @@ public class JWTUtil {
         return jwt_token;
     }
 
+    /**
+     * Verifies a compact JWT with the application signing key and returns its signed claims, enforcing expiration and not-before claims
+     * when present.
+     *
+     * @throws NotAuthorizedException if parsing or verification fails, including an expired, null, or empty token
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
+     */
     public Jws<Claims> parseToken(String token) {
         SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
@@ -131,6 +140,7 @@ public class JWTUtil {
      * its subject just as reliably as a live one.
      *
      * @return the claims, or empty if the signature or structure could not be verified
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
      */
     public Optional<Claims> parseTokenAllowingExpiration(String token) {
         SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());

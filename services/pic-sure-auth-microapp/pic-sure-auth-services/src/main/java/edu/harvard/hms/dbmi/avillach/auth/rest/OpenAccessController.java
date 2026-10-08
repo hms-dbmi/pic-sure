@@ -40,6 +40,7 @@ public class OpenAccessController {
     private final OpenSessionService openSessionService;
     private final boolean openIdpProviderIsEnabled;
 
+    /** Configures open-access validation and session issuance; both endpoints require the open identity provider to be enabled. */
     @Autowired
     public OpenAccessController(
         AuthorizationService authorizationService, OpenSessionService openSessionService,
@@ -51,8 +52,10 @@ public class OpenAccessController {
     }
 
     /**
-     * Issues an open-access session to an anonymous browser. Public and ungated. The token is stateless, so the {@code open_session.create}
-     * audit event is the only record that a session was issued.
+     * Issues an open-access session to an anonymous browser without requiring a credential or evaluating access rules. Records the session
+     * id in the request's audit metadata without persisting the token.
+     *
+     * @return HTTP 200 with the token and expiration, or HTTP 404 if sessions or the open identity provider are disabled
      */
     @Operation(
         summary = "Start an open-access session",

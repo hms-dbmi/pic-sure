@@ -81,6 +81,13 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         this.publicEndpoints = publicEndpoints;
     }
 
+    /**
+     * Applies open-access validation to eligible requests. Denials produce HTTP 401; exceptions from PSAMA validation produce HTTP 502.
+     * On a grant, sets the open-access identity and validation attributes and any session refresh header before continuing the chain.
+     *
+     * @throws ServletException if the downstream filter chain fails
+     * @throws IOException if writing an error response or executing the downstream filter chain fails
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {

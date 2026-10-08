@@ -20,6 +20,7 @@ public record OpenSessionResponse(
 ) {
 
     // the default record toString would embed a live credential, one accidental log statement away from a leak
+    /** Returns the expiration with the token replaced by {@code REDACTED}. */
     @Override
     public String toString() {
         return "OpenSessionResponse[token=REDACTED, expiresAt=%s]".formatted(expiresAt);

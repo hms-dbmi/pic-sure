@@ -53,6 +53,11 @@ public record OpenAccessValidationResponse(
         @Schema(description = "An open-access session token from POST /open/session.")
         SESSION;
 
+        /**
+         * Maps a stored API key type to the corresponding validation response type.
+         *
+         * @throws NullPointerException if {@code stored} is null
+         */
         static KeyType of(ApiKeyType stored) {
             return switch (stored) {
                 case USER -> USER;

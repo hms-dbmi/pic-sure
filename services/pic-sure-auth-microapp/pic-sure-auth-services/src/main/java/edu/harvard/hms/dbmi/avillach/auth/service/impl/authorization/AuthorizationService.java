@@ -71,6 +71,10 @@ public class AuthorizationService {
     private final OpenSessionService openSessionService;
     private final boolean apiKeyEnforcementEnabled;
 
+    /**
+     * Configures authorization rules and credential verifiers. {@code apiKeyEnforcementEnabled} requires a verified stored key or session
+     * for open access; disabling it still evaluates open-access rules.
+     */
     @Autowired
     public AuthorizationService(
         AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
@@ -262,8 +266,12 @@ public class AuthorizationService {
 
     /**
      * Decides an open-access request. A presented key is verified whatever {@code api.key.enforcement.enabled} says, so a grant reports a
-     * valid key either way. Enforcement decides only whether a missing or invalid key denies; with it off, such a request is evaluated
-     * against the open-access rules as an anonymous one.
+     * valid key either way. Session credentials are also accepted, and a granted session includes a replacement token when due for refresh.
+     * Enforcement decides only whether a missing or invalid key denies; with it off, such a request is evaluated against the open-access
+     * rules as an anonymous one. Stored-key verification may update its last-used time even if the access rules later deny the request.
+     *
+     * @param inputMap optional input containing {@code apiKey} and {@code request}; a missing request body passes the rules check
+     * @throws java.time.DateTimeException if a signed session's start or maximum lifetime exceeds the supported instant range
      */
     public OpenAccessValidationResponse validateOpenAccessRequest(Map<String, Object> inputMap) {
         Object presentedKey = inputMap == null ? null : inputMap.get("apiKey");

@@ -45,6 +45,7 @@ public class OpenSessionService {
     public record IssuedSession(String sessionId, String token, Instant expiresAt) {
 
         // the default record toString would embed a live credential, one accidental log statement away from a leak
+        /** Returns the session id and expiration with the token replaced by {@code REDACTED}. */
         @Override
         public String toString() {
             return "IssuedSession[sessionId=%s, token=REDACTED, expiresAt=%s]".formatted(sessionId, expiresAt);
@@ -62,6 +63,15 @@ public class OpenSessionService {
     private final Duration maxLifetime;
     private final Clock clock;
 
+    /**
+     * Configures session tokens using the UTC system clock. Disabled sessions skip signing-secret and lifetime validation.
+     *
+     * @param signingSecret Base64-encoded signing key, at least 32 bytes after decoding and distinct from the application signing key
+     * @param ttlMinutes token lifetime in minutes; must be positive when enabled
+     * @param maxLifetimeHours session lifetime in hours; must cover the token lifetime when enabled
+     * @throws IllegalStateException if enabled and the signing secret or lifetime settings fail validation
+     * @throws ArithmeticException if either lifetime cannot be represented as a duration, even when disabled
+     */
     @Autowired
     public OpenSessionService(
         @Value("${api.key.session.enabled}") boolean enabled, @Value("${api.key.session.signing.secret}") String signingSecret,
@@ -71,6 +81,12 @@ public class OpenSessionService {
         this(enabled, signingSecret, ttlMinutes, maxLifetimeHours, enforcementEnabled, jwtUtil, Clock.systemUTC());
     }
 
+    /**
+     * Configures session tokens with a supplied clock for issuance, expiration checks, and refresh decisions.
+     *
+     * @throws IllegalStateException if enabled and the signing secret or lifetime settings fail validation
+     * @throws ArithmeticException if either lifetime cannot be represented as a duration, even when disabled
+     */
     OpenSessionService(
         boolean enabled, String signingSecret, long ttlMinutes, long maxLifetimeHours, boolean enforcementEnabled, JWTUtil jwtUtil,
         Clock clock
@@ -117,11 +133,17 @@ public class OpenSessionService {
             .clock(() -> Date.from(clock.instant())).build();
     }
 
+    /** Returns whether this service is configured to issue and verify session tokens. */
     public boolean isEnabled() {
         return enabled;
     }
 
-    /** Starts a new session with a new open-access session id. */
+    /**
+     * Starts a new session with a new open-access session id. The token expires after the configured TTL, measured from the current
+     * clock time truncated to whole seconds, and is not persisted.
+     *
+     * @throws IllegalStateException if sessions are disabled
+     */
     public IssuedSession issue() {
         if (!enabled) {
             throw new IllegalStateException("Open-access sessions are not enabled");
@@ -131,8 +153,11 @@ public class OpenSessionService {
     }
 
     /**
+     * Verifies the session signature, issuer, audience, algorithm, required claims, and lifetime bounds.
+     *
      * @param presented the full {@code picsure_s_} credential
      * @return the session, or empty if sessions are disabled or the token fails any check. Never logs the token.
+     * @throws java.time.DateTimeException if the signed session start or its maximum lifetime exceeds the supported instant range
      */
     public Optional<VerifiedSession> verify(String presented) {
         if (!enabled || presented == null || !presented.startsWith(SESSION_KEY_PREFIX)) {
@@ -177,6 +202,8 @@ public class OpenSessionService {
     /**
      * A replacement for a session token that has used at least half its lifetime, with the same session id and start. Empty before the
      * half-life, and at the cap, where a replacement would expire no later than the token it replaces.
+     *
+     * @param session a session just verified by this enabled service; expiration is not rechecked here
      */
     public Optional<IssuedSession> refreshIfDue(VerifiedSession session) {
         Instant now = now();
@@ -187,6 +214,7 @@ public class OpenSessionService {
         return Optional.of(mint(session.sessionId(), session.sessionStart(), now));
     }
 
+    /** Signs a token for the given session, expiring at the earlier of {@code now} plus the TTL and the session lifetime cap. */
     private IssuedSession mint(String sessionId, Instant sessionStart, Instant now) {
         Instant expiresAt = expiryFor(sessionStart, now);
         String jwt = Jwts.builder().issuer(ISSUER).audience().add(AUDIENCE).and().subject(sessionId).issuedAt(Date.from(now))
@@ -195,6 +223,7 @@ public class OpenSessionService {
         return new IssuedSession(sessionId, SESSION_KEY_PREFIX + jwt, expiresAt);
     }
 
+    /** Returns the earlier of the token TTL measured from {@code now} and the maximum lifetime measured from {@code sessionStart}. */
     private Instant expiryFor(Instant sessionStart, Instant now) {
         Instant byTtl = now.plus(ttl);
         Instant cap = sessionStart.plus(maxLifetime);
@@ -202,15 +231,18 @@ public class OpenSessionService {
     }
 
     // JWT times are whole seconds; truncating here keeps the half-life and cap comparisons exact
+    /** Returns the configured clock's current instant truncated to whole seconds. */
     private Instant now() {
         return clock.instant().truncatedTo(ChronoUnit.SECONDS);
     }
 
+    /** Returns an empty verification result; {@code reason} must be safe to include in diagnostics without exposing the token. */
     private static Optional<VerifiedSession> rejected(String reason) {
         logger.debug("Rejected open-access session token: {}", reason);
         return Optional.empty();
     }
 
+    /** Returns whether {@code value} is a canonical lowercase, hyphenated UUID; null and malformed values return false. */
     private static boolean isCanonicalUuid(String value) {
         if (value == null) {
             return false;
@@ -222,6 +254,11 @@ public class OpenSessionService {
         }
     }
 
+    /**
+     * Decodes a Base64 signing secret after stripping surrounding whitespace.
+     *
+     * @throws IllegalStateException if the secret is missing, invalid Base64, or decodes to fewer than 32 bytes
+     */
     private static byte[] decodeSecret(String signingSecret) {
         if (signingSecret == null || signingSecret.isBlank()) {
             throw new IllegalStateException(
