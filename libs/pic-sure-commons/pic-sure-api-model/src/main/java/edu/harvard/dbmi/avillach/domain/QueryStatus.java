@@ -5,43 +5,54 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "A query status object")
+@Schema(description = "The status of the query.")
 public class QueryStatus {
 
-    @Schema(description = "The status of the query", allowableValues = "PENDING, RUNNING, COMPLETED, FAILED, CANCELED")
+    @Schema(description = "The status of the query.", requiredMode = Schema.RequiredMode.REQUIRED)
     private PicSureStatus status;
 
     /**
      * a uuid associated to a Resource in the database
      */
-    @Schema(description = "A UUID associated to a Resource")
+    @Schema(hidden = true)
     private UUID resourceID;
 
-    @Schema(description = "A status string returned by the resource")
+    @Schema(
+        description = "A status string returned by HPDS. One of `PENDING`, `RUNNING`, `RETRY`, `SUCCESS` or `ERROR`, or `Resource is locked.` "
+            + "when HPDS refused the query.",
+        example = "SUCCESS"
+    )
     private String resourceStatus;
 
-    @Schema(description = "When a user makes a query, a corresponding Result UUID is generated")
+    @Schema(
+        description = "The uuid PIC-SURE assigned to the query. The status, result, signed-url and metadata endpoints take it.",
+        example = "8694e3d4-5cb4-410f-8431-993445e6d3f6", requiredMode = Schema.RequiredMode.REQUIRED
+    )
     private UUID picsureResultId;
 
     /**
      * when a resource might generate its own resultId and return it, we can keep it here
      */
-    @Schema(description = "If a resource generates its own resultId, it is stored here")
+    @Schema(description = "The uuid the resource assigned to the result.", example = "8694e3d4-5cb4-410f-8431-993445e6d3f6")
     private String resourceResultId;
 
-    @Schema(description = "The result metadata")
+    @Schema(
+        description = "Details about the query and its result, keyed by name. `picsureQueryId` is the query's id on the resource, present "
+            + "when the query is submitted or its status is read. `queryJson` is the stored request body and `queryResultMetadata` the "
+            + "stored result metadata, both present on a metadata read."
+    )
     private Map<String, Object> resultMetadata;
 
-    @Schema(description = "The size of the result in bytes")
+    @Schema(description = "The estimated size of the result in bytes, 0 until the result exists.", example = "52428")
     private long sizeInBytes;
 
-    @Schema(description = "The start time of the query")
+    @Schema(description = "When the query was queued, in epoch milliseconds.", example = "1790777100000")
     private long startTime;
 
-    @Schema(description = "The duration of the query")
+    @Schema(description = "How long the query took in milliseconds, 0 until it completes.", example = "8250")
     private long duration;
 
-    @Schema(description = "The expiration time of the query")
+    @Schema(description = "When the result expires, in epoch milliseconds. No current resource sets it, so it is 0.", example = "0")
     private long expiration;
 
     public PicSureStatus getStatus() {
