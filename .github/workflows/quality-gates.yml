@@ -1,0 +1,51 @@
+name: Quality Gates
+
+# Extra evidence for low-risk PRs, which skip human review: whether a PR adds duplicated code.
+# Diff coverage lives in github-actions-test.yml so it can reuse the full build's JaCoCo reports.
+# Both run for every PR, not just risk:low ones, so the numbers are always visible. Make them
+# required checks in the branch ruleset: they are what stands in for a reviewer on risk:low PRs.
+#
+# Secret scanning (and optional CodeQL SAST, off by default) are repo settings, not workflows: see RISK_REVIEW.md.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  duplication:
+    name: Duplication delta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: .github/scripts/risk/package-lock.json
+      - name: Install jscpd
+        run: npm ci --prefix .github/scripts/risk --ignore-scripts --no-audit --no-fund
+      # Fails only on clones origin/${BASE_REF} doesn't have (--baseline-from-ref needs fetch-depth: 0).
+      # --fail-on-empty catches filters that match no files.
+      - name: Check for new duplicated code
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >-
+          .github/scripts/risk/node_modules/.bin/jscpd
+          --pattern '**/src/main/**/*.java'
+          --ignore '**/generated/**,**/target/**'
+          --min-lines 6 --min-tokens 60
+          --baseline-from-ref "origin/${BASE_REF}"
+          --fail-on-new-clones 0
+          --fail-on-empty
+          --reporters console
+          .
