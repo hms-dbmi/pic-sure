@@ -4,13 +4,16 @@
 use std::io::Write;
 use std::path::Path;
 
-use hpds_format::{INDEX_FILE_NAME, PhenoIndex, Protection};
+use hpds_format::{
+    BLOCKS_FILE_NAME, BlocksReader, BlocksWriter, ConceptMeta, INDEX_FILE_NAME, PhenoIndex,
+    Protection,
+};
 use serde::Serialize;
 
 use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
 use crate::load::COLUMN_META_CSV_NAME;
-use crate::store::{read_index, replace_file};
+use crate::store::{StagedFile, read_index, replace_file, sync_parent};
 
 /// What `remove-concepts` did.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -23,6 +26,12 @@ pub struct RemoveReport {
     pub remaining: u64,
     /// Lines that named no concept in the store, in file order. Java ignores them silently.
     pub not_found: Vec<String>,
+    /// Whether `pheno.blocks` was rewritten to hold only the remaining concepts' blocks.
+    pub compacted: bool,
+    /// Size of `pheno.blocks` in bytes before the command.
+    pub blocks_bytes_before: u64,
+    /// Size of `pheno.blocks` in bytes after the command.
+    pub blocks_bytes_after: u64,
 }
 
 /// Splits `text` into lines the way `BufferedReader.readLine` does: a line ends at `\n`,
@@ -61,19 +70,25 @@ pub fn java_read_lines(text: &str) -> Vec<&str> {
 /// trimmed and a line is never a prefix match. The patient ID set is left as it is, as Java
 /// leaves `allIds`.
 ///
-/// `pheno.index` is rewritten with the store's id and header and renamed over the old one;
-/// `pheno.blocks` is not touched, so the removed concepts' blocks stay in it as unreferenced
-/// bytes, as Java leaves their cubes in `allObservationsStore.javabin`. `columnMeta.csv` is
+/// With `compact`, `pheno.blocks` is rewritten to hold only the remaining concepts' blocks,
+/// each verified on the way, so the removed concepts' observations are physically gone;
+/// Java instead leaves their cubes in `allObservationsStore.javabin`. The store keeps its
+/// id, so the blocks are copied without being re-encrypted. The new blocks file and index
+/// are written beside the old ones and renamed into place, blocks first and index last; a
+/// reader holding the old index meanwhile fails authentication on a moved block rather
+/// than reading another concept's data. Without `compact`, only `pheno.index` is rewritten
+/// and the removed blocks stay in `pheno.blocks` as unreferenced bytes. `columnMeta.csv` is
 /// then regenerated from the new index, which Java leaves to a separate
 /// `CreateColumnmetaCSV` run.
 ///
 /// # Errors
 /// [`EtlError::Io`] when the concepts file cannot be read or is not UTF-8, and the errors
-/// of reading and writing the index and `columnMeta.csv`.
+/// of reading, verifying and writing the index, the blocks and `columnMeta.csv`.
 pub fn remove_concepts(
     dir: &Path,
     concepts_file: &Path,
     protection: &Protection,
+    compact: bool,
 ) -> Result<RemoveReport> {
     let text =
         std::fs::read_to_string(concepts_file).map_err(EtlError::io("reading", concepts_file))?;
@@ -91,7 +106,7 @@ pub fn remove_concepts(
             None => report.not_found.push(line.to_string()),
         }
     }
-    let kept: Vec<_> = index
+    let mut kept: Vec<ConceptMeta> = index
         .concepts()
         .iter()
         .zip(&remove)
@@ -100,11 +115,44 @@ pub fn remove_concepts(
         .collect();
     report.removed = (index.concepts().len() - kept.len()) as u64;
     report.remaining = kept.len() as u64;
+
+    let blocks_path = dir.join(BLOCKS_FILE_NAME);
+    let index_path = dir.join(INDEX_FILE_NAME);
+    let reader = BlocksReader::open(&blocks_path, index.store_id())?;
+    report.blocks_bytes_before = reader.len();
+    let staged_blocks = if compact {
+        let codec = index.block_codec(protection.clone())?;
+        let mut new_len = 0;
+        let staged = StagedFile::write(&blocks_path, |out| {
+            let mut writer = BlocksWriter::new(out, index.store_id())?;
+            for concept in &mut kept {
+                reader.read_block(&codec, concept)?;
+                let stored = reader.read_stored(concept.block)?;
+                concept.block = writer.append_stored(&stored)?;
+            }
+            new_len = writer.len();
+            writer.finish()?;
+            Ok(())
+        })?;
+        report.blocks_bytes_after = new_len;
+        report.compacted = true;
+        Some(staged)
+    } else {
+        report.blocks_bytes_after = report.blocks_bytes_before;
+        None
+    };
+    drop(reader);
+
     let rewritten = PhenoIndex::new(index.header().clone(), index.patients().clone(), kept)?;
-    replace_file(&dir.join(INDEX_FILE_NAME), |out| {
+    let staged_index = StagedFile::write(&index_path, |out| {
         out.write_all(&rewritten.encode(protection)?)
-            .map_err(EtlError::io("writing", dir.join(INDEX_FILE_NAME)))
+            .map_err(EtlError::io("writing", &index_path))
     })?;
+    if let Some(staged_blocks) = staged_blocks {
+        staged_blocks.commit()?;
+    }
+    staged_index.commit()?;
+    sync_parent(&index_path)?;
     write_column_meta_csv_file(&rewritten, &dir.join(COLUMN_META_CSV_NAME))?;
     Ok(report)
 }

@@ -86,6 +86,9 @@ pub enum KeySource {
     File(PathBuf),
     /// Encrypt with the key in the `encryption_key` file of the output directory.
     OutputDirectoryKeyFile,
+    /// Use the key in the `encryption_key` file of the existing store a command reads or
+    /// changes in place. `load` treats it as [`KeySource::OutputDirectoryKeyFile`].
+    StoreDirectory,
     /// Do not encrypt. For local benchmarking only.
     Plain,
 }
@@ -591,7 +594,9 @@ fn resolve_protection(options: &LoadOptions) -> Result<Protection> {
     let path = match &options.key {
         KeySource::Plain => return Ok(Protection::Plain),
         KeySource::File(path) => path.clone(),
-        KeySource::OutputDirectoryKeyFile => options.out.join(DEFAULT_KEY_FILE_NAME),
+        KeySource::OutputDirectoryKeyFile | KeySource::StoreDirectory => {
+            options.out.join(DEFAULT_KEY_FILE_NAME)
+        }
     };
     CryptoKey::load(&path)
         .map(Protection::Encrypted)

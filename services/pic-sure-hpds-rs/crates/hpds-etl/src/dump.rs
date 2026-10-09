@@ -17,7 +17,7 @@
 
 use std::io::Write;
 
-use hpds_format::{Block, NO_TIMESTAMP};
+use hpds_format::{Block, FormatError, NO_TIMESTAMP};
 use serde::Serialize;
 
 use crate::column_meta_csv::write_commons_csv_record;
@@ -46,8 +46,9 @@ pub struct DumpCounts {
 /// Writes every observation in `store` to `out` as canonical CSV with a header.
 ///
 /// # Errors
-/// [`EtlError::Format`] when a block fails to read or verify, and [`EtlError::Io`] when
-/// writing to `out` fails.
+/// [`EtlError::Format`] when a block fails to read or verify, or a categorical observation
+/// refers to a dictionary entry the block does not have, and [`EtlError::Io`] when writing
+/// to `out` fails.
 pub fn dump<W: Write>(store: &OpenStore, out: &mut W) -> Result<DumpCounts> {
     let write_error = |e| EtlError::io("writing", "the dump")(e);
     write_commons_csv_record(out, &DUMP_HEADER).map_err(write_error)?;
@@ -80,10 +81,16 @@ pub fn dump<W: Write>(store: &OpenStore, out: &mut W) -> Result<DumpCounts> {
                 for position in 0..block.len() {
                     fields[0] = block.patients()[position].to_string();
                     let value = block.value_indices()[position] as usize;
-                    fields[3] = block
-                        .dictionary_value(value)
-                        .unwrap_or_default()
-                        .to_string();
+                    let text = block.dictionary_value(value).ok_or_else(|| {
+                        EtlError::Format(FormatError::Corrupt {
+                            what: "categorical block",
+                            detail: format!(
+                                "concept {:?}: observation {position} refers to dictionary entry {value}, past the end of the dictionary",
+                                concept.path
+                            ),
+                        })
+                    })?;
+                    fields[3] = text.to_string();
                     fields[4] = timestamp(block.timestamp_at_key_pos(position));
                     write_commons_csv_record(out, &fields).map_err(write_error)?;
                     counts.observations += 1;

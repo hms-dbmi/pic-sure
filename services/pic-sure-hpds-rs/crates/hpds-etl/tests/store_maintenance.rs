@@ -9,10 +9,11 @@ use std::process::Command;
 use common::{KEY, Store, fixture, load_files};
 use hpds_etl::column_meta_csv::write_column_meta_csv;
 use hpds_etl::dump::{dump, dump_patients};
+use hpds_etl::java::java_double_to_string;
 use hpds_etl::load::Mode;
-use hpds_etl::maintain::{regenerate_column_meta_csv, remove_concepts};
 use hpds_etl::store::OpenStore;
-use hpds_format::{BLOCKS_FILE_NAME, CryptoKey, Protection};
+use hpds_etl::store_maintenance::{regenerate_column_meta_csv, remove_concepts};
+use hpds_format::{BLOCKS_FILE_NAME, Block, CryptoKey, NO_TIMESTAMP, Protection};
 
 fn protection() -> Protection {
     Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap())
@@ -34,6 +35,39 @@ fn hpds_etl(args: &[&str]) -> std::process::Output {
         String::from_utf8_lossy(&output.stderr)
     );
     output
+}
+
+/// The rows of `path` read from an opened store, in the shape of [`Store::rows`].
+fn open_store_rows(store: &OpenStore, path: &str) -> Vec<common::Row> {
+    let ts = |t: i64| (t != NO_TIMESTAMP).then_some(t);
+    match store
+        .reader
+        .read_block(&store.codec, store.index.get(path).unwrap())
+        .unwrap()
+    {
+        Block::Numeric(b) => b
+            .by_key()
+            .iter()
+            .map(|&i| {
+                let i = i as usize;
+                (
+                    b.patients()[i],
+                    java_double_to_string(b.values()[i]),
+                    ts(b.timestamp_at_value_pos(i)),
+                )
+            })
+            .collect(),
+        Block::Categorical(b) => (0..b.len())
+            .map(|i| {
+                let value = b.dictionary_value(b.value_indices()[i] as usize).unwrap();
+                (
+                    b.patients()[i],
+                    value.to_string(),
+                    ts(b.timestamp_at_key_pos(i)),
+                )
+            })
+            .collect(),
+    }
 }
 
 fn key_file(store: &Store) -> String {
@@ -67,7 +101,7 @@ fn column_meta_csv_regenerates_what_load_wrote() {
 }
 
 #[test]
-fn remove_concepts_drops_exact_lines_from_the_index_only() {
+fn remove_concepts_without_compaction_drops_exact_lines_from_the_index_only() {
     let store = edge_store();
     let before: Vec<String> = store
         .index
@@ -86,8 +120,10 @@ fn remove_concepts_drops_exact_lines_from_the_index_only() {
     std::fs::write(&list_path, list).unwrap();
     let blocks_before = std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap();
 
-    let report = remove_concepts(&store.out, &list_path, &protection()).unwrap();
+    let report = remove_concepts(&store.out, &list_path, &protection(), false).unwrap();
 
+    assert!(!report.compacted);
+    assert_eq!(report.blocks_bytes_before, report.blocks_bytes_after);
     assert_eq!(report.lines, 7);
     assert_eq!(report.removed, 3);
     assert_eq!(report.remaining as usize, before.len() - 3);
@@ -128,6 +164,58 @@ fn remove_concepts_drops_exact_lines_from_the_index_only() {
 }
 
 #[test]
+fn remove_concepts_compacts_the_blocks_by_default() {
+    let store = edge_store();
+    let before = OpenStore::open(&store.out, protection()).unwrap();
+    let removed: Vec<String> = before.index.concepts()[..3]
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    let kept_rows: Vec<_> = before.index.concepts()[3..]
+        .iter()
+        .map(|c| (c.path.clone(), store.rows(&c.path)))
+        .collect();
+    let removed_bytes: u64 = before.index.concepts()[..3]
+        .iter()
+        .map(|c| c.block.length)
+        .sum();
+    drop(before);
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, removed.join("\n")).unwrap();
+    let blocks_before = std::fs::metadata(store.out.join(BLOCKS_FILE_NAME))
+        .unwrap()
+        .len();
+
+    let report = remove_concepts(&store.out, &list_path, &protection(), true).unwrap();
+
+    assert!(report.compacted);
+    assert_eq!(report.removed, 3);
+    assert_eq!(report.blocks_bytes_before, blocks_before);
+    assert_eq!(report.blocks_bytes_after, blocks_before - removed_bytes);
+    assert_eq!(
+        std::fs::metadata(store.out.join(BLOCKS_FILE_NAME))
+            .unwrap()
+            .len(),
+        report.blocks_bytes_after
+    );
+    let after = OpenStore::open(&store.out, protection()).unwrap();
+    assert_eq!(after.index.store_id(), store.index.store_id());
+    assert_eq!(after.index.patients(), store.index.patients());
+    for (path, rows) in &kept_rows {
+        assert_eq!(&open_store_rows(&after, path), rows, "{path}");
+    }
+    for path in &removed {
+        assert!(after.index.get(path).is_none());
+    }
+    let leftovers: Vec<String> = std::fs::read_dir(&store.out)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains(".tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
 fn remove_concepts_through_the_binary() {
     let store = edge_store();
     let first = store.index.concepts()[0].path.clone();
@@ -145,8 +233,28 @@ fn remove_concepts_through_the_binary() {
     ]);
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["removed"], 1);
+    assert_eq!(report["compacted"], true);
     let after = OpenStore::open(&store.out, protection()).unwrap();
     assert!(after.index.get(&first).is_none());
+
+    let second = after.index.concepts()[0].path.clone();
+    std::fs::write(&list_path, format!("{second}\n")).unwrap();
+    let blocks_before = std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap();
+    std::fs::write(store.out.join("encryption_key"), format!("{KEY}\n")).unwrap();
+    let output = hpds_etl(&[
+        "remove-concepts",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--concepts",
+        list_path.to_str().unwrap(),
+        "--no-compact",
+    ]);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["compacted"], false);
+    assert_eq!(
+        std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap(),
+        blocks_before
+    );
 }
 
 fn dump_text(dir: &Path) -> String {

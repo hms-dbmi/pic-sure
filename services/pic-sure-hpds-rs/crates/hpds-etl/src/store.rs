@@ -14,7 +14,8 @@ use crate::load::{DEFAULT_KEY_FILE_NAME, KeySource};
 use crate::private_fs;
 
 /// Resolves the protection of the store in `dir`: the key in the named file, the key in
-/// `<dir>/encryption_key`, or plain.
+/// `<dir>/encryption_key` for [`KeySource::OutputDirectoryKeyFile`] and
+/// [`KeySource::StoreDirectory`], or plain.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when the key file cannot be read or holds an invalid key.
@@ -22,7 +23,9 @@ pub fn resolve_protection(key: &KeySource, dir: &Path) -> Result<Protection> {
     let path = match key {
         KeySource::Plain => return Ok(Protection::Plain),
         KeySource::File(path) => path.clone(),
-        KeySource::OutputDirectoryKeyFile => dir.join(DEFAULT_KEY_FILE_NAME),
+        KeySource::OutputDirectoryKeyFile | KeySource::StoreDirectory => {
+            dir.join(DEFAULT_KEY_FILE_NAME)
+        }
     };
     CryptoKey::load(&path)
         .map(Protection::Encrypted)
@@ -84,27 +87,76 @@ pub fn replace_file<F>(target: &Path, write: F) -> Result<()>
 where
     F: FnOnce(&mut BufWriter<File>) -> Result<()>,
 {
-    let tmp = temporary_sibling(target)?;
-    let _ = std::fs::remove_file(&tmp);
-    let result = (|| {
-        let file = private_fs::create_file(&tmp).map_err(EtlError::io("creating", &tmp))?;
+    let staged = StagedFile::write(target, write)?;
+    staged.commit()?;
+    sync_parent(target)
+}
+
+/// A complete, synced temporary file beside its target, removed on drop unless committed.
+pub(crate) struct StagedFile {
+    tmp: PathBuf,
+    target: PathBuf,
+    committed: bool,
+}
+
+impl StagedFile {
+    /// Writes the temporary file for `target` by calling `write` on it, then flushes and
+    /// syncs it.
+    ///
+    /// # Errors
+    /// I/O errors creating, writing or syncing the file, and any error from `write`.
+    pub(crate) fn write<F>(target: &Path, write: F) -> Result<Self>
+    where
+        F: FnOnce(&mut BufWriter<File>) -> Result<()>,
+    {
+        let tmp = temporary_sibling(target)?;
+        let _ = std::fs::remove_file(&tmp);
+        let staged = StagedFile {
+            tmp,
+            target: target.to_path_buf(),
+            committed: false,
+        };
+        let file =
+            private_fs::create_file(&staged.tmp).map_err(EtlError::io("creating", &staged.tmp))?;
         let mut out = BufWriter::with_capacity(1 << 20, file);
         write(&mut out)?;
-        out.flush().map_err(EtlError::io("writing", &tmp))?;
+        out.flush().map_err(EtlError::io("writing", &staged.tmp))?;
         out.get_ref()
             .sync_all()
-            .map_err(EtlError::io("writing", &tmp))?;
-        std::fs::rename(&tmp, target).map_err(EtlError::io("moving into place", target))?;
-        let dir = match target.parent() {
-            Some(p) if !p.as_os_str().is_empty() => p,
-            _ => Path::new("."),
-        };
-        private_fs::sync_dir(dir).map_err(EtlError::io("syncing", dir))
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+            .map_err(EtlError::io("writing", &staged.tmp))?;
+        Ok(staged)
     }
-    result
+
+    /// Renames the temporary file over its target. The caller syncs the directory.
+    ///
+    /// # Errors
+    /// The I/O error of the rename.
+    pub(crate) fn commit(mut self) -> Result<()> {
+        std::fs::rename(&self.tmp, &self.target)
+            .map_err(EtlError::io("moving into place", &self.target))?;
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for StagedFile {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.tmp);
+        }
+    }
+}
+
+/// Syncs the directory holding `target`.
+///
+/// # Errors
+/// The I/O error of the sync.
+pub(crate) fn sync_parent(target: &Path) -> Result<()> {
+    let dir = match target.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    private_fs::sync_dir(dir).map_err(EtlError::io("syncing", dir))
 }
 
 fn temporary_sibling(target: &Path) -> Result<PathBuf> {

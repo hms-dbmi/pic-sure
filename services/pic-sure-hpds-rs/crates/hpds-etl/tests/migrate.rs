@@ -1,4 +1,5 @@
-//! Migrates hand-built `ExportForMigration` exports and reads the stores back.
+//! Migrates hand-built `ExportForMigration` exports and the golden export Java wrote, and
+//! reads the stores back.
 
 mod common;
 
@@ -10,8 +11,8 @@ use hpds_etl::dump::dump;
 use hpds_etl::java::java_double_to_string;
 use hpds_etl::load::KeySource;
 use hpds_etl::migrate::{
-    EXPORT_CONCEPTS_FILE, EXPORT_MAGIC, EXPORT_PATIENTS_FILE, KeyCollision, MigrateOptions,
-    MigrateReport, migrate,
+    EXPORT_CONCEPTS_FILE, EXPORT_ID_LEN, EXPORT_PATIENTS_FILE, ExportKind, KeyCollision,
+    MigrateOptions, MigrateReport, NameMismatch, SkippedConcept, migrate, seal_export,
 };
 use hpds_etl::store::OpenStore;
 use hpds_format::{Block, ConceptType, CryptoKey, NO_TIMESTAMP, Protection};
@@ -100,11 +101,9 @@ fn put_nullable_i64(out: &mut Vec<u8>, value: Option<i64>) {
     }
 }
 
-/// Encodes `entries` in the `concepts.bin` layout, with the end record's counts.
+/// Encodes `entries` as the content of `concepts.bin`, with the end record's counts.
 fn encode(entries: &[Entry]) -> Vec<u8> {
     let mut out = Vec::new();
-    out.extend_from_slice(EXPORT_MAGIC);
-    out.extend_from_slice(&1i32.to_be_bytes());
     let mut observations = 0i64;
     for e in entries {
         out.push(1);
@@ -165,7 +164,16 @@ fn key_file(dir: &Path) -> PathBuf {
     path
 }
 
-fn write_export(dir: &Path, concepts: &[u8], patients: &str) -> PathBuf {
+fn crypto_key() -> CryptoKey {
+    CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap()
+}
+
+/// Seals content into an export file in 64-byte frames, so every test crosses frames.
+fn seal(id: [u8; EXPORT_ID_LEN], kind: ExportKind, content: &[u8]) -> Vec<u8> {
+    seal_export(&crypto_key(), id, kind, content, 64).unwrap()
+}
+
+fn write_raw_export(dir: &Path, concepts: &[u8], patients: &[u8]) -> PathBuf {
     let export = dir.join("export");
     std::fs::create_dir_all(&export).unwrap();
     std::fs::write(export.join(EXPORT_CONCEPTS_FILE), concepts).unwrap();
@@ -173,19 +181,51 @@ fn write_export(dir: &Path, concepts: &[u8], patients: &str) -> PathBuf {
     export
 }
 
+fn write_export(dir: &Path, concepts: &[u8], patients: &str) -> PathBuf {
+    let id = [7u8; EXPORT_ID_LEN];
+    write_raw_export(
+        dir,
+        &seal(id, ExportKind::Concepts, concepts),
+        &seal(id, ExportKind::Patients, patients.as_bytes()),
+    )
+}
+
+fn options(export: PathBuf, out: PathBuf, key: KeySource) -> MigrateOptions {
+    MigrateOptions {
+        export,
+        out,
+        key,
+        threads: Some(2),
+        skip_inconsistent: false,
+    }
+}
+
 fn run(concepts: &[u8], patients: &str) -> Result<Migrated, EtlError> {
+    run_with(concepts, patients, false)
+}
+
+fn run_with(
+    concepts: &[u8],
+    patients: &str,
+    skip_inconsistent: bool,
+) -> Result<Migrated, EtlError> {
     let dir = tempfile::tempdir().unwrap();
     let export = write_export(dir.path(), concepts, patients);
+    run_export(dir, export, skip_inconsistent)
+}
+
+fn run_export(
+    dir: tempfile::TempDir,
+    export: PathBuf,
+    skip_inconsistent: bool,
+) -> Result<Migrated, EtlError> {
     let out = dir.path().join("store");
     let key = key_file(dir.path());
     let report = migrate(&MigrateOptions {
-        export,
-        out: out.clone(),
-        key: KeySource::File(key),
-        threads: Some(2),
+        skip_inconsistent,
+        ..options(export, out.clone(), KeySource::File(key))
     })?;
-    let protection = Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap());
-    let store = OpenStore::open(&out, protection).unwrap();
+    let store = OpenStore::open(&out, Protection::Encrypted(crypto_key())).unwrap();
     Ok(Migrated {
         _dir: dir,
         out,
@@ -344,6 +384,7 @@ fn migrate_strips_replacement_characters_and_keeps_the_later_colliding_key() {
     );
     assert_eq!(migrated.report.keys_with_replacement_character, 2);
     assert_eq!(migrated.report.exported_concepts, 3);
+    assert_eq!(migrated.report.patients_without_observations, 1);
     assert_eq!(
         migrated.report.collisions,
         vec![KeyCollision {
@@ -413,38 +454,263 @@ fn migrate_refuses_what_it_cannot_reproduce() {
 }
 
 #[test]
+fn inconsistent_concepts_stop_the_migration_without_naming_values() {
+    let mut wrong_values = Entry::text("\\t\\", vec![(4242, "secret-value", None)]);
+    wrong_values.category_values = Some(vec!["other-secret"]);
+    let message = refused(&[wrong_values], "4242\n");
+    assert!(message.contains("categoryValues"), "{message}");
+    assert!(message.contains("--skip-inconsistent"), "{message}");
+    assert!(!message.contains("secret"), "{message}");
+    assert!(!message.contains("4242"), "{message}");
+
+    let message = refused(
+        &[Entry::numeric(
+            "\\n\\",
+            vec![(4242, 1.0, None), (17, 1.0, None)],
+        )],
+        "17\n4242\n",
+    );
+    assert!(
+        message.contains("not ordered by patient at observation 1"),
+        "{message}"
+    );
+    assert!(
+        !message.contains("4242") && !message.contains("17 "),
+        "{message}"
+    );
+
+    let message = refused(&[Entry::numeric("\\n\\", vec![(-4242, 1.0, None)])], "1\n");
+    assert!(message.contains("negative"), "{message}");
+    assert!(!message.contains("4242"), "{message}");
+
+    let message = refused(&[Entry::numeric("\\n\\", vec![(1, 1.0, None)])], "-4242\n");
+    assert!(
+        message.contains("line 1") && message.contains("negative"),
+        "{message}"
+    );
+    assert!(!message.contains("4242"), "{message}");
+}
+
+#[test]
+fn skip_inconsistent_leaves_concepts_out_and_reports_them() {
+    let mut wrong_count = Entry::numeric("\\a\\wrong\\", vec![(1, 1.0, None)]);
+    wrong_count.observation_count = 2;
+    let entries = vec![
+        wrong_count,
+        Entry::numeric("\\b\\fine\\", vec![(2, 2.0, None)]),
+    ];
+    let migrated = run_with(&encode(&entries), "1\n2\n", true).unwrap();
+    let paths: Vec<&str> = migrated
+        .store
+        .index
+        .concepts()
+        .iter()
+        .map(|c| c.path.as_str())
+        .collect();
+    assert_eq!(paths, ["\\b\\fine\\"]);
+    assert_eq!(
+        migrated.report.skipped,
+        vec![SkippedConcept {
+            key: "\\a\\wrong\\".into(),
+            reason: "ColumnMeta.observationCount is 2 but the cube holds 1 observations".into(),
+        }]
+    );
+    assert_eq!(migrated.report.exported_concepts, 2);
+    assert_eq!(migrated.report.patients_without_observations, 1);
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(migrated.out.join("etl-report.json")).unwrap())
+            .unwrap();
+    assert_eq!(report["skipped"][0]["key"], "\\a\\wrong\\");
+}
+
+/// The export `ExportForMigrationTest.writesTheGoldenExportForRust` wrote with the real Java
+/// classes, checked in with its key.
+#[test]
+fn migrate_reads_the_java_golden_export() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/java-export");
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("store");
+    let report = migrate(&options(
+        fixture.clone(),
+        out.clone(),
+        KeySource::File(fixture.join("encryption_key")),
+    ))
+    .unwrap();
+    let key = CryptoKey::load(fixture.join("encryption_key")).unwrap();
+    let store = OpenStore::open(&out, Protection::Encrypted(key)).unwrap();
+
+    let paths: Vec<&str> = store
+        .index
+        .concepts()
+        .iter()
+        .map(|c| c.path.as_str())
+        .collect();
+    assert_eq!(
+        paths,
+        ["\\golden\\ab\\", "\\golden\\empty\\", "\\golden\\text\\"]
+    );
+    assert_eq!(
+        rows(&store, "\\golden\\ab\\"),
+        vec![
+            row(2, "2.5", Some(1_700_000_000_000)),
+            row(2, "-0.0", None),
+            row(3, "1.0E10", None),
+            row(4, "NaN", Some(-5)),
+        ]
+    );
+    let awkward = "multi\nline, \"quoted\" \u{1F600} \u{B5}";
+    assert_eq!(
+        rows(&store, "\\golden\\text\\"),
+        vec![
+            row(0, "z", None),
+            row(0, awkward, Some(10)),
+            row(6, "z", None)
+        ]
+    );
+    let text = store.index.get("\\golden\\text\\").unwrap();
+    assert_eq!(
+        text.category_values.as_deref(),
+        Some(&[awkward.to_string(), "z".into()][..])
+    );
+    assert_eq!(text.width_in_bytes, 22);
+    let ab = store.index.get("\\golden\\ab\\").unwrap();
+    assert_eq!((ab.width_in_bytes, ab.column_offset), (8, 4));
+    assert!(rows(&store, "\\golden\\empty\\").is_empty());
+    assert_eq!(
+        store.index.patients().iter().collect::<Vec<_>>(),
+        [0, 1, 2, 3, 4, 6, 8]
+    );
+
+    assert_eq!(report.exported_concepts, 4);
+    assert_eq!(report.keys_with_replacement_character, 1);
+    assert_eq!(
+        report.collisions,
+        vec![KeyCollision {
+            path: "\\golden\\ab\\".into(),
+            replaced: "\\golden\\ab\\".into(),
+            kept: "\\golden\\a\u{FFFD}b\\".into(),
+        }]
+    );
+    assert_eq!(
+        report.name_mismatches,
+        vec![NameMismatch {
+            key: "\\golden\\text\\".into(),
+            name: Some("\\golden\\renamed\\".into()),
+        }]
+    );
+    assert!(report.skipped.is_empty());
+    assert_eq!(report.patients_without_observations, 2);
+    assert_eq!(report.observed_patients_missing_from_set, 0);
+}
+
+#[test]
 fn migrate_refuses_a_truncated_export() {
     let full = encode(&sample());
-    for cut in [4, 20, full.len() / 2, full.len() - 1] {
+    for cut in [0, 20, full.len() / 2, full.len() - 1] {
         let message = match run(&full[..cut], "1\n") {
             Err(e) => e.to_string(),
             Ok(_) => panic!("a {cut}-byte export migrated"),
         };
-        assert!(
-            message.contains("incomplete") || message.contains("HPDSMIG1"),
-            "{message}"
-        );
+        assert!(message.contains("incomplete"), "{message}");
     }
     let mut extra = full.clone();
     extra.push(0);
     assert!(run(&extra, "1\n").is_err());
 }
 
+fn refused_container(concepts: Vec<u8>, patients: Vec<u8>) -> String {
+    let dir = tempfile::tempdir().unwrap();
+    let export = write_raw_export(dir.path(), &concepts, &patients);
+    match run_export(dir, export, false) {
+        Err(e) => e.to_string(),
+        Ok(_) => panic!("migration succeeded"),
+    }
+}
+
+#[test]
+fn migrate_refuses_an_altered_or_mismatched_container() {
+    let id = [7u8; EXPORT_ID_LEN];
+    let content = encode(&sample());
+    let concepts = seal(id, ExportKind::Concepts, &content);
+    let patients = seal(id, ExportKind::Patients, b"1\n2\n5\n7\n");
+
+    let mut flipped = concepts.clone();
+    let last = flipped.len() - 1;
+    flipped[last] ^= 1;
+    let message = refused_container(flipped, patients.clone());
+    assert!(message.contains("does not decrypt"), "{message}");
+
+    let cut = concepts[..concepts.len() - 10].to_vec();
+    let message = refused_container(cut, patients.clone());
+    assert!(message.contains("incomplete"), "{message}");
+
+    let first_frame_end =
+        28 + 4 + i32::from_be_bytes(concepts[28..32].try_into().unwrap()) as usize;
+    let mut dropped = concepts[..28].to_vec();
+    dropped.extend_from_slice(&concepts[first_frame_end..]);
+    let message = refused_container(dropped, patients.clone());
+    assert!(
+        message.contains("frame 1 found where frame 0 belongs"),
+        "{message}"
+    );
+
+    let message = refused_container(
+        concepts.clone(),
+        seal([8u8; EXPORT_ID_LEN], ExportKind::Patients, b"1\n"),
+    );
+    assert!(message.contains("different export"), "{message}");
+
+    let message = refused_container(concepts.clone(), seal(id, ExportKind::Concepts, b"1\n"));
+    assert!(message.contains("other export file"), "{message}");
+
+    let message = refused_container(content, patients);
+    assert!(message.contains("HPDSMIG2"), "{message}");
+}
+
+#[test]
+fn migrate_refuses_the_wrong_key_and_a_plain_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let export = write_export(dir.path(), &encode(&sample()), "1\n2\n5\n7\n");
+    let wrong = dir.path().join("wrong");
+    std::fs::write(&wrong, "FEDCBA9876543210FEDCBA9876543210\n").unwrap();
+    let out = dir.path().join("store");
+    let message = migrate(&options(
+        export.clone(),
+        out.clone(),
+        KeySource::File(wrong),
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(
+        message.contains("does not decrypt with the given key"),
+        "{message}"
+    );
+    assert!(!out.exists());
+
+    let message = migrate(&options(export, out.clone(), KeySource::Plain))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.contains("needs the javabin store's key"),
+        "{message}"
+    );
+    assert!(!out.exists());
+}
+
 #[test]
 fn migrate_replaces_an_existing_store_and_leaves_the_export_alone() {
     let dir = tempfile::tempdir().unwrap();
-    let concepts = encode(&sample());
-    let export = write_export(dir.path(), &concepts, "1\n2\n5\n7\n");
+    let export = write_export(dir.path(), &encode(&sample()), "1\n2\n5\n7\n");
+    let concepts = std::fs::read(export.join(EXPORT_CONCEPTS_FILE)).unwrap();
     let out = dir.path().join("store");
     std::fs::create_dir(&out).unwrap();
     std::fs::write(out.join("encryption_key"), format!("{KEY}\n")).unwrap();
     for _ in 0..2 {
-        migrate(&MigrateOptions {
-            export: export.clone(),
-            out: out.clone(),
-            key: KeySource::OutputDirectoryKeyFile,
-            threads: None,
-        })
+        migrate(&options(
+            export.clone(),
+            out.clone(),
+            KeySource::OutputDirectoryKeyFile,
+        ))
         .unwrap();
     }
     assert_eq!(

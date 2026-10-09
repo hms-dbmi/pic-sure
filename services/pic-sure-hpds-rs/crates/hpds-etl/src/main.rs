@@ -43,11 +43,12 @@ struct KeyArgs {
 }
 
 impl KeyArgs {
-    fn source(&self) -> KeySource {
+    /// The key source these flags select, `default` when neither is given.
+    fn source(&self, default: KeySource) -> KeySource {
         match (self.plain, &self.key_file) {
             (true, _) => KeySource::Plain,
             (false, Some(path)) => KeySource::File(path.clone()),
-            (false, None) => KeySource::OutputDirectoryKeyFile,
+            (false, None) => default,
         }
     }
 }
@@ -60,11 +61,17 @@ struct MigrateArgs {
     /// Store directory to create or replace.
     #[arg(long)]
     out: PathBuf,
-    #[command(flatten)]
-    key: KeyArgs,
+    /// The javabin store's key file, which opens the export and encrypts the new store.
+    /// Defaults to encryption_key in the output directory.
+    #[arg(long)]
+    key_file: Option<PathBuf>,
     /// Worker threads for sealing blocks.
     #[arg(long)]
     threads: Option<usize>,
+    /// Leave out concepts whose recorded metadata disagrees with their observations and
+    /// list them in etl-report.json, instead of stopping.
+    #[arg(long)]
+    skip_inconsistent: bool,
 }
 
 #[derive(Args)]
@@ -75,6 +82,9 @@ struct RemoveConceptsArgs {
     /// File naming one concept path per line (conceptsToRemove.txt).
     #[arg(long)]
     concepts: PathBuf,
+    /// Rewrite only pheno.index, leaving the removed concepts' blocks in pheno.blocks.
+    #[arg(long)]
+    no_compact: bool,
     #[command(flatten)]
     key: KeyArgs,
 }
@@ -245,23 +255,32 @@ fn run_migrate(args: MigrateArgs) -> Result<()> {
     let report = hpds_etl::migrate::migrate(&MigrateOptions {
         export: args.export,
         out: args.out,
-        key: args.key.source(),
+        key: match args.key_file {
+            Some(path) => KeySource::File(path),
+            None => KeySource::OutputDirectoryKeyFile,
+        },
         threads: args.threads,
+        skip_inconsistent: args.skip_inconsistent,
     })?;
     print_json(&report);
     Ok(())
 }
 
 fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
-    let protection = resolve_protection(&args.key.source(), &args.store)?;
-    let report = hpds_etl::maintain::remove_concepts(&args.store, &args.concepts, &protection)?;
+    let protection = resolve_protection(&args.key.source(KeySource::StoreDirectory), &args.store)?;
+    let report = hpds_etl::store_maintenance::remove_concepts(
+        &args.store,
+        &args.concepts,
+        &protection,
+        !args.no_compact,
+    )?;
     print_json(&report);
     Ok(())
 }
 
 fn run_column_meta_csv(args: ColumnMetaCsvArgs) -> Result<()> {
-    let protection = resolve_protection(&args.key.source(), &args.store)?;
-    let rows = hpds_etl::maintain::regenerate_column_meta_csv(
+    let protection = resolve_protection(&args.key.source(KeySource::StoreDirectory), &args.store)?;
+    let rows = hpds_etl::store_maintenance::regenerate_column_meta_csv(
         &args.store,
         args.out.as_deref(),
         &protection,
@@ -271,7 +290,7 @@ fn run_column_meta_csv(args: ColumnMetaCsvArgs) -> Result<()> {
 }
 
 fn run_dump(args: DumpArgs) -> Result<()> {
-    let protection = resolve_protection(&args.key.source(), &args.store)?;
+    let protection = resolve_protection(&args.key.source(KeySource::StoreDirectory), &args.store)?;
     let store = OpenStore::open(&args.store, protection)?;
     match &args.out {
         Some(path) => {
