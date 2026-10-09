@@ -73,6 +73,14 @@ class ConceptPathsTest {
     }
 
     @Test
+    void aPathFirstSeenWithSurroundingWhitespaceIsCanonicalWithoutIt() throws Exception {
+        ConceptPaths paths = new ConceptPaths();
+        paths.learnFrom(new ObjectMapper().readTree("{\"select\":[\" \\\\demo\\\\age\\\\ \"]}"));
+
+        assertEquals("\\demo\\age\\", paths.canonical("\\demo\\age\\"));
+    }
+
+    @Test
     void canonicalizeRewritesASeenVariantToThePathAsReturnedAndLeavesTheRestAlone() {
         ConceptPaths paths = new ConceptPaths();
         paths.learnFrom(TOOL_RESULT);

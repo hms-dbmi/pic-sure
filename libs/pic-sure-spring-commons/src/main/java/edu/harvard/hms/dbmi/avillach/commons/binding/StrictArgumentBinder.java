@@ -26,6 +26,7 @@ public final class StrictArgumentBinder {
     public static final int MAX_FIELD_NAME_LENGTH = 64;
 
     private final ObjectMapper mapper;
+    private final ObjectMapper ignoringUnknown;
     private final Class<?> clauseType;
     private final Function<String, ? extends RuntimeException> failure;
 
@@ -43,6 +44,7 @@ public final class StrictArgumentBinder {
             builder.enable(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS);
         }
         this.mapper = builder.build();
+        this.ignoringUnknown = mapper.copy().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         this.clauseType = clauseType;
         this.failure = failure;
     }
@@ -58,8 +60,27 @@ public final class StrictArgumentBinder {
      *         or not a valid clause
      */
     public <T> T bind(Map<String, Object> arguments, Class<T> type) {
+        return convert(mapper, arguments == null ? Map.of() : arguments, type);
+    }
+
+    /**
+     * Binds a value the caller trusts to carry fields the record does not model, dropping those fields. Everything the record does model is
+     * still bound and type-checked, and failures read as they do for {@link #bind}.
+     *
+     * @param value the value to bind, such as a {@code JsonNode} or a map
+     * @param type the input record
+     * @param <T> the input type
+     * @return the bound input
+     * @throws RuntimeException built by the failure function, naming the offending field when a modeled field is of the wrong type or not a
+     *         valid clause
+     */
+    public <T> T bindIgnoringUnknown(Object value, Class<T> type) {
+        return convert(ignoringUnknown, value, type);
+    }
+
+    private <T> T convert(ObjectMapper from, Object value, Class<T> type) {
         try {
-            return mapper.convertValue(arguments == null ? Map.of() : arguments, type);
+            return from.convertValue(value, type);
         } catch (IllegalArgumentException e) {
             throw failure.apply(e.getCause() instanceof JsonMappingException mapping ? describe(mapping) : unreadable());
         }

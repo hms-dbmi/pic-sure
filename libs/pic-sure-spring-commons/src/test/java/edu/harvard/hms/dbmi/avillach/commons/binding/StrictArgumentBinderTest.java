@@ -106,4 +106,13 @@ class StrictArgumentBinderTest {
         assertThatThrownBy(() -> lenientEnums.bind(Map.of("not", true), Input.class)).isExactlyInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> strict.bind(Map.of("not", true), Input.class)).isExactlyInstanceOf(Failure.class);
     }
+
+    @Test
+    void bindIgnoringUnknownDropsUnmodeledFieldsButStillChecksModeledOnes() {
+        Input input = strict.bindIgnoringUnknown(Map.of("name", "n", "not", true), Input.class);
+
+        assertThat(input.name()).isEqualTo("n");
+        assertThatThrownBy(() -> strict.bindIgnoringUnknown(Map.of("not", true, "name", Map.of("a", 1)), Input.class))
+            .isInstanceOf(Failure.class).hasMessage("Field 'name' has the wrong type.");
+    }
 }

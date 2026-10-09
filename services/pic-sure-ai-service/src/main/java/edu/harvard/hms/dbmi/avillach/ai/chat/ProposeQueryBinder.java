@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.ai.chat;
 
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.hms.dbmi.avillach.commons.binding.StrictArgumentBinder;
 
 /**
@@ -18,6 +19,19 @@ final class ProposeQueryBinder {
         new StrictArgumentBinder(ProposeQueryInput.Clause.class, false, IllegalArgumentException::new);
 
     private ProposeQueryBinder() {}
+
+    /**
+     * Binds the request's current {@code query} to its input record, ignoring fields the record doesn't model. This is the researcher's own
+     * query: the UI's full query object carries fields the model may not set ({@code authorizationFilters}, {@code expectedResultType},
+     * {@code not}, ...), and those must not make a legitimate request fail. Everything the record models is still bound and type-checked.
+     *
+     * @param query the query object from the request
+     * @return the bound input
+     * @throws IllegalArgumentException naming the offending field when a modeled field is of the wrong type or not a valid clause
+     */
+    static ProposeQueryInput bindClientQuery(JsonNode query) {
+        return BINDER.bindIgnoringUnknown(query, ProposeQueryInput.class);
+    }
 
     /**
      * Binds a {@code propose_query} call's arguments to its input record.
