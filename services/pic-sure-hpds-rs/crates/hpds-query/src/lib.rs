@@ -14,10 +14,6 @@
 //! `tokio::task::spawn_blocking`; the `tokio` feature adds [`Engine::run_blocking`] and
 //! [`Store::block_async`] for that.
 
-use std::path::Path;
-
-use hpds_format::INDEX_FILE_NAME;
-
 pub mod cohort;
 mod engine;
 mod error;
@@ -26,8 +22,8 @@ mod results;
 mod store;
 pub mod validate;
 
-pub use cohort::evaluate_cohort;
-pub use engine::Engine;
+pub use cohort::{evaluate_cohort, evaluate_cohort_cow};
+pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine};
 pub use error::{QueryError, Result};
 pub use model::{
     AuthorizationFilter, GenomicFilter, Operator, PhenotypicClause, PhenotypicFilter,
@@ -35,7 +31,7 @@ pub use model::{
 };
 pub use results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,
-    PATIENT_ID_FIELD_NAME, PATIENTS_HEADER, SyncResult,
+    PATIENT_ID_FIELD_NAME, PATIENTS_HEADER, RowBuffer, SyncResult,
 };
 pub use store::{DEFAULT_CACHE_BYTES, KEY_FILE_NAME, Store, StoreOptions};
 pub use validate::{ConceptLookup, QueryValidator, check_supported, path_is_variant_spec};
@@ -43,43 +39,3 @@ pub use validate::{ConceptLookup, QueryValidator, check_supported, path_is_varia
 /// Directory used when `HPDS_DATA_DIRECTORY` is not set. Matches the Java service, so the
 /// all-in-one stack bind-mounts the hpds-rs host directory at the same path.
 pub const DEFAULT_DATA_DIRECTORY: &str = "/opt/local/hpds/";
-
-/// Whether the store in a data directory can serve queries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HealthState {
-    /// The store is present and queries can be served.
-    Up,
-    /// The store is missing or not usable.
-    Down,
-}
-
-/// Reports the health of the store in `data_dir` without opening it.
-///
-/// Returns `Up` when `pheno.index` exists in `data_dir` and `Down` otherwise. A server that
-/// holds an open [`Store`] should use [`Store::is_healthy`] instead, which requires the
-/// index to hold at least one concept.
-pub fn health_for(data_dir: &Path) -> HealthState {
-    if data_dir.join(INDEX_FILE_NAME).is_file() {
-        HealthState::Up
-    } else {
-        HealthState::Down
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn missing_index_is_down() {
-        let dir = tempfile::tempdir().unwrap();
-        assert_eq!(health_for(dir.path()), HealthState::Down);
-    }
-
-    #[test]
-    fn present_index_is_up() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(INDEX_FILE_NAME), b"").unwrap();
-        assert_eq!(health_for(dir.path()), HealthState::Up);
-    }
-}

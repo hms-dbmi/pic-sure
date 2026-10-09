@@ -51,6 +51,20 @@ pub enum QueryError {
         expected: &'static str,
     },
 
+    /// A block's kind disagrees with the index entry for its concept. The store is corrupt
+    /// or was assembled from mismatched files, so this is a server error.
+    #[error("the store is inconsistent for {concept_path}: {detail}")]
+    StoreInconsistent {
+        /// Concept path of the offending block.
+        concept_path: String,
+        /// What disagrees.
+        detail: &'static str,
+    },
+
+    /// A DATAFRAME export whose selected blocks together exceed the pinned memory cap.
+    #[error("export too wide; select fewer concepts")]
+    ExportTooWide,
+
     /// A result type that `/query/sync` does not serve because it is produced by an
     /// asynchronous job.
     #[error("Result type {0} is served asynchronously")]
@@ -83,11 +97,15 @@ pub enum QueryError {
 
 impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
-    /// variant except [`QueryError::Open`], [`QueryError::Block`] and [`QueryError::Task`].
+    /// variant except [`QueryError::Open`], [`QueryError::Block`],
+    /// [`QueryError::StoreInconsistent`] and [`QueryError::Task`].
     pub fn is_client_error(&self) -> bool {
         !matches!(
             self,
-            QueryError::Open { .. } | QueryError::Block { .. } | QueryError::Task(_)
+            QueryError::Open { .. }
+                | QueryError::Block { .. }
+                | QueryError::StoreInconsistent { .. }
+                | QueryError::Task(_)
         )
     }
 }

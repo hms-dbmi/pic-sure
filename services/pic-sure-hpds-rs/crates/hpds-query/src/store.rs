@@ -169,12 +169,12 @@ impl Store {
     }
 
     /// Number of cached blocks. Eventually consistent: pending evictions may not show yet.
-    pub fn cached_blocks(&self) -> u64 {
+    pub fn cached_block_count(&self) -> u64 {
         self.cache.entry_count()
     }
 
     /// Summed weight of the cached blocks in bytes. Eventually consistent, like
-    /// [`Store::cached_blocks`].
+    /// [`Store::cached_block_count`].
     pub fn cached_bytes(&self) -> u64 {
         self.cache.weighted_size()
     }

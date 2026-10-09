@@ -326,6 +326,35 @@ fn dataframe_keeps_input_order_within_a_patient() {
     );
 }
 
+#[test]
+fn row_buffer_matches_the_iterator_and_is_reused() {
+    let s = demographics();
+    let mut q = query(ResultType::Dataframe, None);
+    q.select = vec![AGE.into(), SEX.into()];
+    let expected: Vec<Vec<String>> = s.engine.dataframe(&q).unwrap().rows.collect();
+    let mut rows = s.engine.dataframe(&q).unwrap().rows;
+    let mut buffer = hpds_query::RowBuffer::new();
+    let mut rendered = Vec::new();
+    while rows.next_into(&mut buffer) {
+        rendered.push(buffer.fields().map(str::to_owned).collect::<Vec<_>>());
+    }
+    assert_eq!(rendered, expected);
+}
+
+#[test]
+fn a_dataframe_over_the_pin_cap_is_a_client_error() {
+    let s = demographics();
+    let engine = Engine::open(&s.out, &StoreOptions::default())
+        .unwrap()
+        .with_export_pin_bytes(1);
+    let mut q = query(ResultType::Dataframe, None);
+    q.select = vec![AGE.into()];
+    let error = engine.dataframe(&q).err().unwrap();
+    assert!(matches!(error, hpds_query::QueryError::ExportTooWide));
+    assert!(error.is_client_error());
+    assert_eq!(error.to_string(), "export too wide; select fewer concepts");
+}
+
 #[cfg(feature = "tokio")]
 #[tokio::test]
 async fn blocking_wrappers_run_on_the_blocking_pool() {

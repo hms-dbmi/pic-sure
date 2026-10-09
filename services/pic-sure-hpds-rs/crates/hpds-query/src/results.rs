@@ -139,10 +139,13 @@ pub enum SyncResult {
 }
 
 impl SyncResult {
-    /// True when Java answers with `application/json`; false for COUNT, which is
-    /// `text/plain`.
-    pub fn is_json(&self) -> bool {
-        !matches!(self, SyncResult::Count(_))
+    /// The content type Java sends: `text/plain` for COUNT, `application/json` for the
+    /// cross counts.
+    pub fn content_type(&self) -> &'static str {
+        match self {
+            SyncResult::Count(_) => "text/plain",
+            _ => "application/json",
+        }
     }
 
     /// The response body Java writes: the bare decimal count for COUNT
@@ -202,18 +205,24 @@ impl DataframeRows {
 }
 
 impl Column {
-    fn cell(&mut self, patient: u32) -> String {
+    fn write_cell(&mut self, patient: u32, out: &mut String) {
         let Some(block) = self.block.as_deref() else {
-            return String::new();
+            return;
         };
-        let mut values: Vec<String> = Vec::new();
+        let mut first = true;
+        let mut separator = |out: &mut String| {
+            if !std::mem::take(&mut first) {
+                out.push('\t');
+            }
+        };
         match block {
             Block::Categorical(b) => {
                 let patients = b.patients();
                 self.cursor += patients[self.cursor..].partition_point(|&p| p < patient);
                 while patients.get(self.cursor) == Some(&patient) {
                     let index = b.value_indices()[self.cursor] as usize;
-                    values.push(b.dictionary_value(index).unwrap_or_default().to_owned());
+                    separator(out);
+                    out.push_str(b.dictionary_value(index).unwrap_or_default());
                     self.cursor += 1;
                 }
             }
@@ -223,14 +232,65 @@ impl Column {
                 self.cursor +=
                     by_key[self.cursor..].partition_point(|&i| patients[i as usize] < patient);
                 while self.cursor < by_key.len() && at(self.cursor) == patient {
-                    values.push(java_double_to_string(
+                    separator(out);
+                    out.push_str(&java_double_to_string(
                         b.values()[by_key[self.cursor] as usize],
                     ));
                     self.cursor += 1;
                 }
             }
         }
-        values.join("\t")
+    }
+}
+
+/// A reusable buffer holding one rendered DATAFRAME row: every field's text back to back
+/// and the end offset of each, so a row costs no allocation once the buffer has grown.
+#[derive(Debug, Default, Clone)]
+pub struct RowBuffer {
+    text: String,
+    ends: Vec<usize>,
+}
+
+impl RowBuffer {
+    /// An empty buffer.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn clear(&mut self) {
+        self.text.clear();
+        self.ends.clear();
+    }
+
+    fn end_field(&mut self) {
+        self.ends.push(self.text.len());
+    }
+
+    /// The fields of the row, in order: the patient id, then one per `select` path.
+    pub fn fields(&self) -> impl Iterator<Item = &str> {
+        let starts = std::iter::once(0).chain(self.ends.iter().copied());
+        starts
+            .zip(self.ends.iter().copied())
+            .map(|(start, end)| &self.text[start..end])
+    }
+}
+
+impl DataframeRows {
+    /// Renders the next row into `row`, replacing its previous content, and returns false
+    /// when no patients remain. No per-row or per-cell allocation once `row` has grown.
+    pub fn next_into(&mut self, row: &mut RowBuffer) -> bool {
+        use std::fmt::Write;
+        let Some(patient) = self.patients.next() else {
+            return false;
+        };
+        row.clear();
+        let _ = write!(row.text, "{patient}");
+        row.end_field();
+        for column in &mut self.columns {
+            column.write_cell(patient, &mut row.text);
+            row.end_field();
+        }
+        true
     }
 }
 
@@ -238,11 +298,9 @@ impl Iterator for DataframeRows {
     type Item = Vec<String>;
 
     fn next(&mut self) -> Option<Vec<String>> {
-        let patient = self.patients.next()?;
-        let mut row = Vec::with_capacity(self.columns.len() + 1);
-        row.push(patient.to_string());
-        row.extend(self.columns.iter_mut().map(|c| c.cell(patient)));
-        Some(row)
+        let mut row = RowBuffer::new();
+        self.next_into(&mut row)
+            .then(|| row.fields().map(str::to_owned).collect())
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -271,6 +329,7 @@ mod tests {
             entries: vec![("\\b\\".into(), 3), ("\\a\\".into(), -1)],
         });
         assert_eq!(cross.body(), r#"{"\\b\\":3,"\\a\\":-1}"#);
-        assert!(!SyncResult::Count(0).is_json());
+        assert_eq!(SyncResult::Count(0).content_type(), "text/plain");
+        assert_eq!(cross.content_type(), "application/json");
     }
 }

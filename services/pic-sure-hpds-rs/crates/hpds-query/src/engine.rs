@@ -1,6 +1,7 @@
 //! The engine: one [`Store`] and the v3 result computations of `CountV3Processor`,
 //! `PatientV3Processor` and `MultiValueQueryV3Processor`.
 
+use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use hpds_format::{Block, ConceptType, java_double_cmp, java_string_cmp};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 
-use crate::cohort::{all_patients, evaluate_cohort};
+use crate::cohort::evaluate_cohort_cow;
 use crate::error::{QueryError, Result};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
 use crate::results::{
@@ -18,6 +19,10 @@ use crate::results::{
 };
 use crate::store::{Store, StoreOptions};
 use crate::validate::{QueryValidator, check_supported, path_is_variant_spec};
+
+/// Default cap on the summed decoded size of the blocks one DATAFRAME export may hold at
+/// once: 2 GiB.
+pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 
 /// The query engine over one store. Share it behind an `Arc`.
 ///
@@ -31,6 +36,7 @@ use crate::validate::{QueryValidator, check_supported, path_is_variant_spec};
 #[derive(Debug)]
 pub struct Engine {
     store: Store,
+    export_pin_bytes: u64,
 }
 
 impl Engine {
@@ -39,14 +45,24 @@ impl Engine {
     /// # Errors
     /// [`QueryError::Open`] when the store cannot be opened.
     pub fn open(dir: &Path, options: &StoreOptions) -> Result<Self> {
-        Ok(Engine {
-            store: Store::open(dir, options)?,
-        })
+        Ok(Engine::new(Store::open(dir, options)?))
     }
 
     /// An engine over an already open store.
     pub fn new(store: Store) -> Self {
-        Engine { store }
+        Engine {
+            store,
+            export_pin_bytes: DEFAULT_EXPORT_PIN_BYTES,
+        }
+    }
+
+    /// Sets the cap on the summed decoded size of the blocks one DATAFRAME export holds at
+    /// once ([`DEFAULT_EXPORT_PIN_BYTES`] by default). An export over the cap fails with
+    /// [`QueryError::ExportTooWide`].
+    #[must_use]
+    pub fn with_export_pin_bytes(mut self, bytes: u64) -> Self {
+        self.export_pin_bytes = bytes;
+        self
     }
 
     /// The store.
@@ -69,8 +85,21 @@ impl Engine {
     /// [`QueryError::Unsupported`] for genomic input, and the errors of
     /// [`crate::evaluate_cohort`].
     pub fn cohort(&self, query: &Query) -> Result<RoaringBitmap> {
+        self.cohort_cow(query).map(Cow::into_owned)
+    }
+
+    /// [`Engine::cohort`] that borrows the index's patient set instead of copying it when
+    /// the query selects every patient.
+    ///
+    /// # Errors
+    /// As for [`Engine::cohort`].
+    pub fn cohort_cow(&self, query: &Query) -> Result<Cow<'_, RoaringBitmap>> {
         check_supported(query)?;
-        evaluate_cohort(&self.store, query)
+        self.cohort_unchecked(query)
+    }
+
+    fn cohort_unchecked(&self, query: &Query) -> Result<Cow<'_, RoaringBitmap>> {
+        evaluate_cohort_cow(&self.store, query)
     }
 
     /// COUNT: the cohort size (`CountV3Processor.runCounts`).
@@ -78,7 +107,7 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn count(&self, query: &Query) -> Result<u64> {
-        Ok(self.cohort(query)?.len())
+        Ok(self.cohort_cow(query)?.len())
     }
 
     /// CROSS_COUNT (`CountV3Processor.runCrossCounts`): for each `select` path, the number
@@ -90,13 +119,18 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn cross_count(&self, query: &Query) -> Result<ConceptCounts> {
-        let cohort = self.cohort(query)?;
+        let cohort = self.cohort_cow(query)?;
+        self.cross_count_in(query, &cohort)
+    }
+
+    fn cross_count_in(&self, query: &Query, cohort: &RoaringBitmap) -> Result<ConceptCounts> {
         let paths = distinct(&query.select);
         let entries = paths
             .par_iter()
             .map(|path| {
-                let count = match all_patients(&self.store, path) {
-                    Ok(patients) => patients.intersection_len(&cohort) as i64,
+                let count = match self.store.block(path) {
+                    Ok(None) => 0,
+                    Ok(Some(block)) => block.all_patients().intersection_len(cohort) as i64,
                     Err(e) => {
                         tracing::warn!(concept = %path, error = %e, "cross count failed");
                         -1
@@ -121,7 +155,15 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`], and [`QueryError::Block`] when a block cannot be loaded.
     pub fn categorical_cross_count(&self, query: &Query) -> Result<CategoricalCrossCounts> {
-        let cohort = self.cohort(query)?;
+        let cohort = self.cohort_cow(query)?;
+        self.categorical_cross_count_in(query, &cohort)
+    }
+
+    fn categorical_cross_count_in(
+        &self,
+        query: &Query,
+        cohort: &RoaringBitmap,
+    ) -> Result<CategoricalCrossCounts> {
         let mut called_out: HashMap<&str, HashSet<&str>> = HashMap::new();
         for filter in query.all_filters() {
             if !self.is_categorical_cross_count_filter(filter) {
@@ -140,7 +182,7 @@ impl Engine {
                         .dictionary()
                         .zip(block.bitmaps())
                         .filter_map(|(category, patients)| {
-                            let count = patients.intersection_len(&cohort);
+                            let count = patients.intersection_len(cohort);
                             (count > 0 || named.contains(category))
                                 .then(|| (category.to_owned(), count))
                         })
@@ -178,7 +220,15 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`], and [`QueryError::Block`] when a block cannot be loaded.
     pub fn continuous_cross_count(&self, query: &Query) -> Result<ContinuousCrossCounts> {
-        let cohort = self.cohort(query)?;
+        let cohort = self.cohort_cow(query)?;
+        self.continuous_cross_count_in(query, &cohort)
+    }
+
+    fn continuous_cross_count_in(
+        &self,
+        query: &Query,
+        cohort: &RoaringBitmap,
+    ) -> Result<ContinuousCrossCounts> {
         let paths: BTreeSet<&str> = query
             .all_filters()
             .into_iter()
@@ -221,7 +271,15 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn observation_cross_count(&self, query: &Query) -> Result<ConceptCounts> {
-        let cohort = self.cohort(query)?;
+        let cohort = self.cohort_cow(query)?;
+        self.observation_cross_count_in(query, &cohort)
+    }
+
+    fn observation_cross_count_in(
+        &self,
+        query: &Query,
+        cohort: &RoaringBitmap,
+    ) -> Result<ConceptCounts> {
         let mut entries: Vec<(String, i64)> = distinct(&query.select)
             .par_iter()
             .filter_map(|path| {
@@ -251,17 +309,24 @@ impl Engine {
     /// errors of the computation.
     pub fn run_sync(&self, query: &Query) -> Result<SyncResult> {
         check_supported(query)?;
-        match query.expected_result_type {
-            ResultType::Count => self.count(query).map(SyncResult::Count),
-            ResultType::CrossCount => self.cross_count(query).map(SyncResult::CrossCount),
+        let result_type = query.expected_result_type;
+        if !result_type.is_sync() {
+            return Err(QueryError::NotSync(result_type));
+        }
+        let cohort = self.cohort_unchecked(query)?;
+        match result_type {
+            ResultType::Count => Ok(SyncResult::Count(cohort.len())),
+            ResultType::CrossCount => self
+                .cross_count_in(query, &cohort)
+                .map(SyncResult::CrossCount),
             ResultType::CategoricalCrossCount => self
-                .categorical_cross_count(query)
+                .categorical_cross_count_in(query, &cohort)
                 .map(SyncResult::CategoricalCrossCount),
             ResultType::ContinuousCrossCount => self
-                .continuous_cross_count(query)
+                .continuous_cross_count_in(query, &cohort)
                 .map(SyncResult::ContinuousCrossCount),
             ResultType::ObservationCrossCount => self
-                .observation_cross_count(query)
+                .observation_cross_count_in(query, &cohort)
                 .map(SyncResult::ObservationCrossCount),
             other => Err(QueryError::NotSync(other)),
         }
@@ -280,17 +345,32 @@ impl Engine {
 
     /// DATAFRAME: the header and a streaming iterator over one row per cohort patient,
     /// ascending (see [`DataframeRows`]). The blocks of every known `select` path are
-    /// loaded before this returns and held by the iterator, so iteration does no I/O.
+    /// loaded before this returns and held by the iterator, so iteration does no I/O. They
+    /// are loaded in chunks and the load stops as soon as their summed decoded size passes
+    /// the export cap ([`Engine::with_export_pin_bytes`]).
     ///
     /// # Errors
-    /// As for [`Engine::cohort`], and [`QueryError::Block`] when a block cannot be loaded.
+    /// As for [`Engine::cohort`], [`QueryError::Block`] when a block cannot be loaded, and
+    /// [`QueryError::ExportTooWide`] when the blocks exceed the cap.
     pub fn dataframe(&self, query: &Query) -> Result<Dataframe> {
-        let cohort = self.cohort(query)?;
+        let cohort = self.cohort_cow(query)?.into_owned();
         let paths = distinct(&query.select);
-        let loaded: HashMap<&str, Option<Arc<Block>>> = paths
-            .par_iter()
-            .map(|path| Ok((*path, self.store.block(path)?)))
-            .collect::<Result<_>>()?;
+        let mut loaded: HashMap<&str, Option<Arc<Block>>> = HashMap::with_capacity(paths.len());
+        let mut pinned: u64 = 0;
+        for chunk in paths.chunks(EXPORT_LOAD_CHUNK) {
+            let blocks = chunk
+                .par_iter()
+                .map(|path| Ok((*path, self.store.block(path)?)))
+                .collect::<Result<Vec<_>>>()?;
+            for (path, block) in blocks {
+                pinned =
+                    pinned.saturating_add(block.as_deref().map_or(0, |b| b.heap_size() as u64));
+                loaded.insert(path, block);
+            }
+            if pinned > self.export_pin_bytes {
+                return Err(QueryError::ExportTooWide);
+            }
+        }
         let blocks = query
             .select
             .iter()
@@ -322,6 +402,8 @@ impl Engine {
             .map_err(|e| QueryError::Task(e.to_string()))?
     }
 }
+
+const EXPORT_LOAD_CHUNK: usize = 16;
 
 fn distinct(paths: &[String]) -> Vec<&str> {
     let mut seen = HashSet::new();

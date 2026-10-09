@@ -21,7 +21,9 @@ use axum::extract::{Path as PathParam, State};
 use axum::http::StatusCode;
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
-use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType, check_supported};
+use hpds_query::{
+    Engine, PATIENTS_HEADER, Query, QueryError, ResultType, RowBuffer, check_supported,
+};
 use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
@@ -480,12 +482,11 @@ fn write_export(engine: &Engine, query: &Query, path: &Path) -> Result<u64, Expo
         ResultType::Dataframe => {
             let frame = engine.dataframe(query)?;
             let mut out = create_result_file(path)?;
-            let mut line = Vec::with_capacity(4096);
             write_csv_row(&mut out, &frame.header)?;
-            for row in frame.rows {
-                line.clear();
-                write_csv_row(&mut line, &row)?;
-                out.write_all(&line)?;
+            let mut rows = frame.rows;
+            let mut row = RowBuffer::new();
+            while rows.next_into(&mut row) {
+                write_csv_row(&mut out, row.fields())?;
             }
             close_result_file(out)
         }

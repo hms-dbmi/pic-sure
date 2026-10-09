@@ -5,7 +5,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
-use hpds_query::{SyncResult, check_supported};
+use hpds_query::check_supported;
 
 use crate::envelope::{random_uuid, read_query};
 use crate::error::ApiError;
@@ -49,25 +49,14 @@ pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Re
             .into_response());
     }
     let engine = state.engine()?;
-    check_supported(&query)?;
     let _slot = state.engine_slot().await;
     let result = engine.run_blocking(move |e| e.run_sync(&query)).await?;
     Ok((
         [
-            (CONTENT_TYPE.as_str(), content_type(&result).to_owned()),
+            (CONTENT_TYPE.as_str(), result.content_type().to_owned()),
             (QUERY_METADATA_HEADER, random_uuid()),
         ],
         result.body(),
     )
         .into_response())
-}
-
-/// The content type Java sends with `result`: `text/plain` for COUNT, `application/json` for
-/// the cross counts.
-fn content_type(result: &SyncResult) -> &'static str {
-    if result.is_json() {
-        "application/json"
-    } else {
-        "text/plain"
-    }
 }

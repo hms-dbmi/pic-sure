@@ -1,5 +1,7 @@
 //! Cohort evaluation: `PhenotypicQueryExecutor.getPatientSet` over roaring bitmaps.
 
+use std::borrow::Cow;
+
 use hpds_format::Block;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
@@ -21,8 +23,18 @@ use crate::store::Store;
 /// # Errors
 /// [`QueryError::FilterWithoutCriteria`], [`QueryError::EmptySubquery`],
 /// [`QueryError::MissingOperator`] and [`QueryError::TypeMismatch`] where Java's executor
-/// throws, and [`QueryError::Block`] when a block cannot be loaded.
+/// throws, [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index,
+/// and [`QueryError::Block`] when a block cannot be loaded.
 pub fn evaluate_cohort(store: &Store, query: &Query) -> Result<RoaringBitmap> {
+    evaluate_cohort_cow(store, query).map(Cow::into_owned)
+}
+
+/// [`evaluate_cohort`] without copying the store's patient set when the query has no
+/// authorization filters and no phenotypic clause: the result then borrows the index.
+///
+/// # Errors
+/// As for [`evaluate_cohort`].
+pub fn evaluate_cohort_cow<'a>(store: &'a Store, query: &Query) -> Result<Cow<'a, RoaringBitmap>> {
     let authorization: Vec<PhenotypicClause> = query
         .authorization_filters
         .iter()
@@ -36,10 +48,10 @@ pub fn evaluate_cohort(store: &Store, query: &Query) -> Result<RoaringBitmap> {
     let mut clauses: Vec<&PhenotypicClause> = authorization.iter().collect();
     clauses.extend(query.phenotypic_clause.as_ref());
     if clauses.is_empty() {
-        return Ok(store.index().patients().clone());
+        return Ok(Cow::Borrowed(store.index().patients()));
     }
     check_structure_all(store, &clauses)?;
-    combine(store, &clauses, Operator::And)
+    combine(store, &clauses, Operator::And).map(Cow::Owned)
 }
 
 /// Patients matching one clause.
@@ -192,8 +204,9 @@ pub fn any_record_of(store: &Store, prefix: &str) -> Result<RoaringBitmap> {
 /// set.
 ///
 /// # Errors
-/// [`QueryError::TypeMismatch`] when `values` is non-empty and the concept is numeric,
-/// [`QueryError::Block`] when the block cannot be loaded.
+/// [`QueryError::StoreInconsistent`] when the block is numeric, which the structure check
+/// has already ruled out through the index, [`QueryError::Block`] when the block cannot be
+/// loaded.
 pub fn patients_with_values(store: &Store, path: &str, values: &[String]) -> Result<RoaringBitmap> {
     if values.is_empty() {
         return Ok(RoaringBitmap::new());
@@ -204,9 +217,9 @@ pub fn patients_with_values(store: &Store, path: &str, values: &[String]) -> Res
             .iter()
             .filter_map(|value| block.find_value(value))
             .fold(RoaringBitmap::new(), |acc, i| acc | block.bitmap(i))),
-        Some(Block::Numeric(_)) => Err(QueryError::TypeMismatch {
+        Some(Block::Numeric(_)) => Err(QueryError::StoreInconsistent {
             concept_path: path.to_owned(),
-            expected: "categorical",
+            detail: "the index says categorical but the block is numeric",
         }),
     }
 }
@@ -220,8 +233,9 @@ pub fn patients_with_values(store: &Store, path: &str, values: &[String]) -> Res
 /// when some value lies strictly between `max` and a larger `min`.
 ///
 /// # Errors
-/// [`QueryError::TypeMismatch`] when the concept is categorical, [`QueryError::Block`]
-/// when the block cannot be loaded.
+/// [`QueryError::StoreInconsistent`] when the block is categorical, which the structure
+/// check has already ruled out through the index, [`QueryError::Block`] when the block
+/// cannot be loaded.
 pub fn patients_in_range(
     store: &Store,
     path: &str,
@@ -240,9 +254,9 @@ pub fn patients_in_range(
             patients.dedup();
             Ok(RoaringBitmap::from_sorted_iter(patients).unwrap_or_default())
         }
-        Some(Block::Categorical(_)) => Err(QueryError::TypeMismatch {
+        Some(Block::Categorical(_)) => Err(QueryError::StoreInconsistent {
             concept_path: path.to_owned(),
-            expected: "numeric",
+            detail: "the index says numeric but the block is categorical",
         }),
     }
 }
