@@ -49,6 +49,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `LARGE_TASK_THREADS` | 1 | Exports run at once on the large pool |
 /// | `HPDS_EXPORT_CONCURRENCY` | 2 | Exports run at once across both pools; each pins its selected blocks |
 /// | `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) run at once |
+/// | `HPDS_MAX_CONNECTIONS` | 512 | Most connections served at once; further clients wait for a slot |
 /// | `HPDS_BLOCKING_THREADS` | 64, or the engine concurrency plus 16 when larger | Cap on tokio's blocking threads, which run every engine call; must exceed `HPDS_ENGINE_CONCURRENCY` |
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -88,6 +89,8 @@ pub struct Config {
     pub engine_concurrency: usize,
     /// Cap on tokio's blocking threads.
     pub blocking_threads: usize,
+    /// Most connections served at once.
+    pub max_connections: usize,
     /// Settings that were read but have no effect, as messages for the log.
     pub warnings: Vec<String>,
 }
@@ -200,6 +203,7 @@ impl Config {
             export_concurrency: positive(&lookup, "HPDS_EXPORT_CONCURRENCY", 2)?,
             engine_concurrency,
             blocking_threads,
+            max_connections: positive(&lookup, "HPDS_MAX_CONNECTIONS", 512)?,
             warnings,
         })
     }
@@ -302,6 +306,8 @@ mod tests {
         assert_eq!(c.sync_timeout, Duration::from_secs(300));
         assert_eq!(c.result_limit, 1000);
         assert!(c.engine_concurrency < c.blocking_threads);
+        assert_eq!(c.max_connections, 512);
+        assert!(config(&[("HPDS_MAX_CONNECTIONS", "0")]).is_err());
     }
 
     #[test]

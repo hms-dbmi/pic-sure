@@ -20,7 +20,7 @@ axum.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "sync", "time"] }
 hyper = { version = "1", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["server-auto", "server-graceful", "service", "tokio", "http1", "http2"] }
-tower-http = { version = "0.6", default-features = false, features = ["timeout"] }
+http-body-util = "0.1"
 tracing-appender = "0.2"
 libc.workspace = true
 serde.workspace = true
@@ -33,6 +33,5 @@ bytes = "1"
 
 [dev-dependencies]
 hpds-etl = { path = "../hpds-etl" }
-http-body-util = "0.1"
 tempfile.workspace = true
 tower = { version = "0.5", features = ["util"] }

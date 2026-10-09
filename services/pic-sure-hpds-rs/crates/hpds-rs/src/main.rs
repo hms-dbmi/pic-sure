@@ -150,7 +150,10 @@ async fn run(config: Config) -> ExitCode {
         listener,
         router(state),
         shutdown_signal(),
-        ServerTimeouts::default(),
+        ServerTimeouts {
+            max_connections: config.max_connections,
+            ..ServerTimeouts::default()
+        },
     )
     .await;
     match served {

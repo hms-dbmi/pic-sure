@@ -19,27 +19,31 @@
 //! `hpds_rs::access` target with its method, path, status and latency, never its body.
 //!
 //! Client errors and server errors are `text/plain` messages ([`ApiError`]). A request body
-//! that stalls for 30 seconds is cut off, and so is a request whose headers take more than
-//! 10 seconds to arrive ([`serve`]).
+//! that is not fully received within 30 seconds of the request starting is answered 408, however
+//! steadily it trickles, and so is a request whose headers take more than 10 seconds to arrive
+//! ([`serve`]). Open connections are capped ([`ServerTimeouts::max_connections`]).
 
 use std::future::Future;
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use http_body_util::{BodyExt, LengthLimitError, Limited};
 use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use hyper_util::server::conn::auto;
 use hyper_util::server::graceful::GracefulShutdown;
 use hyper_util::service::TowerToHyperService;
 use serde::Serialize;
 use tokio::net::TcpListener;
-use tower_http::timeout::RequestBodyTimeoutLayer;
+use tokio::sync::Semaphore;
 
 pub mod config;
 pub mod envelope;
@@ -53,7 +57,8 @@ pub use config::{Config, DEFAULT_PORT, port_from_env};
 pub use error::ApiError;
 pub use state::AppState;
 
-/// How long a request body may go without delivering data before it is cut off.
+/// How long a request body may take to arrive in full, measured from the start of the request.
+/// A client that trickles bytes still hits it.
 pub const BODY_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Timeouts of the HTTP listener.
@@ -63,13 +68,22 @@ pub struct ServerTimeouts {
     pub header_read: Duration,
     /// How long open connections may take to finish after shutdown starts.
     pub shutdown_grace: Duration,
+    /// Most connections served at once. When the cap is reached the accept loop stops accepting
+    /// until one closes, and further clients wait in the kernel backlog. A connection that
+    /// sits idle between requests is closed by `header_read`, since hyper starts the header
+    /// timer when it waits for the next request on a kept-alive connection.
+    pub max_connections: usize,
 }
+
+/// Default for [`ServerTimeouts::max_connections`].
+pub const DEFAULT_MAX_CONNECTIONS: usize = 512;
 
 impl Default for ServerTimeouts {
     fn default() -> Self {
         ServerTimeouts {
             header_read: Duration::from_secs(10),
             shutdown_grace: Duration::from_secs(5),
+            max_connections: DEFAULT_MAX_CONNECTIONS,
         }
     }
 }
@@ -116,6 +130,30 @@ async fn access_log(request: Request, next: Next) -> Response {
     response
 }
 
+async fn bound_body_read(
+    State(deadline): State<Duration>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let (parts, body) = request.into_parts();
+    let limited = Limited::new(body, config::MAX_BODY_BYTES);
+    let collected = match tokio::time::timeout(deadline, limited.collect()).await {
+        Ok(Ok(collected)) => collected,
+        Ok(Err(error)) if error.downcast_ref::<LengthLimitError>().is_some() => {
+            return ApiError::payload_too_large("request body is too large").into_response();
+        }
+        Ok(Err(_)) => {
+            return ApiError::bad_request("request body could not be read").into_response();
+        }
+        Err(_) => {
+            return ApiError::request_timeout("request body was not received in time")
+                .into_response();
+        }
+    };
+    next.run(Request::from_parts(parts, Body::from(collected.to_bytes())))
+        .await
+}
+
 fn api() -> Router<AppState> {
     Router::new()
         .route("/query/sync", post(sync::query_sync))
@@ -136,14 +174,18 @@ pub fn router(state: AppState) -> Router {
     router_with_body_timeout(state, BODY_READ_TIMEOUT)
 }
 
-/// [`router`] with `body_timeout` as the longest a request body may stall.
+/// [`router`] with `body_timeout` as the longest a request body may take to arrive in full.
+/// A body over 2 MiB is answered 413 and a body that misses the deadline 408.
 pub fn router_with_body_timeout(state: AppState, body_timeout: Duration) -> Router {
     Router::new()
         .route("/actuator/health", get(health))
         .nest("/PIC-SURE/v3", api())
         .nest("/PIC-SURE", api())
         .layer(DefaultBodyLimit::max(config::MAX_BODY_BYTES))
-        .layer(RequestBodyTimeoutLayer::new(body_timeout))
+        .layer(middleware::from_fn_with_state(
+            body_timeout,
+            bound_body_read,
+        ))
         .layer(middleware::from_fn(access_log))
         .with_state(state)
 }
@@ -166,7 +208,8 @@ pub fn spawn_result_reaper(state: AppState, period: Duration) -> tokio::task::Jo
 /// connections finish for at most `timeouts.shutdown_grace`, and returns.
 ///
 /// A connection that has not delivered a request's headers within `timeouts.header_read` is
-/// closed. HTTP/1 and HTTP/2 are both served.
+/// closed. At most `timeouts.max_connections` connections are served at once; the accept loop
+/// waits for a slot rather than spawning more tasks. HTTP/1 and HTTP/2 are both served.
 ///
 /// # Errors
 /// Never fails once the listener is bound; accept errors are logged and retried.
@@ -183,8 +226,16 @@ pub async fn serve(
         .header_read_timeout(timeouts.header_read);
     builder.http2().timer(TokioTimer::new());
     let graceful = GracefulShutdown::new();
+    let slots = Arc::new(Semaphore::new(timeouts.max_connections.max(1)));
     tokio::pin!(shutdown);
     loop {
+        let permit = tokio::select! {
+            permit = Arc::clone(&slots).acquire_owned() => match permit {
+                Ok(permit) => permit,
+                Err(_) => break,
+            },
+            () = &mut shutdown => break,
+        };
         let stream = tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok((stream, _peer)) => stream,
@@ -202,6 +253,7 @@ pub async fn serve(
         );
         let watched = graceful.watch(connection.into_owned());
         tokio::spawn(async move {
+            let _slot = permit;
             if let Err(error) = watched.await {
                 tracing::debug!(%error, "connection ended with an error");
             }
