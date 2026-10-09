@@ -20,6 +20,7 @@ import edu.harvard.hms.dbmi.avillach.ai.model.RequestedToolCall;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -150,6 +151,189 @@ class ToolUseLoopServiceTest {
         new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
 
         assertEquals(List.of("count_participants"), tools.calls.stream().map(c -> c.name).toList());
+    }
+
+    @Test
+    void aPathOnlyInTheCurrentQuerysHiddenFieldsIsNotSeen() throws Exception {
+        ChatRequest request = new ChatRequest(
+            "narrow it", "conv-1", "req-1",
+            new ObjectMapper().readTree("{\"authorizationFilters\":[{\"conceptPath\":\"\\\\secret\\\\consent\\\\\",\"values\":[\"x\"]}]}"),
+            null, null
+        );
+        String countWithThatPath = "{\"query\":{\"select\":[\"\\\\secret\\\\consent\\\\\"]}}";
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("count_participants", countWithThatPath), doneTurn("Done"));
+        FakeToolGateway tools = new FakeToolGateway();
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+        assertTrue(tools.calls.isEmpty(), "a path the model was never shown must not reach the gateway");
+    }
+
+    /** A search/facet result in one: the concept path {@code \demo\age\} and the facet study/demo. */
+    private static final String DICTIONARY_RESULT =
+        "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\age\\\\\"}],\"categories\":[{\"name\":\"study\",\"facets\":[{\"name\":\"demo\"}]}]}";
+    private static final String AGE_QUERY =
+        "{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\age\\\\\"}}";
+    private static final String AGE_PATH = "\\demo\\age\\";
+
+    @Test
+    void aMalformedQueryOnTheRequestIsRefusedBeforeTheModelIsCalled() throws Exception {
+        ChatRequest request = new ChatRequest("hi", "conv-1", "req-1", new ObjectMapper().readTree("\"not an object\""), null, null);
+        FakeModelClient model = FakeModelClient.returning(doneTurn("unreachable"));
+
+        PicsureException thrown =
+            assertThrows(PicsureException.class, () -> new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER));
+
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, thrown.getStatus());
+        assertTrue(thrown.getMessage().contains("query"), thrown.getMessage());
+        assertEquals(0, model.callCount);
+    }
+
+    @Test
+    void aMalformedFacetOrSearchOnTheRequestIsRefusedToo() throws Exception {
+        ChatRequest badFacet = new ChatRequest("hi", "c", "r", null, List.of(new FacetSelection("study", " ")), null);
+        ChatRequest badSearch = new ChatRequest("hi", "c", "r", null, null, "bad\nsearch");
+        FakeModelClient model = FakeModelClient.returning(doneTurn("unreachable"));
+        ToolUseLoopService service = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8);
+
+        assertTrue(assertThrows(PicsureException.class, () -> service.handle(badFacet, CALLER)).getMessage().contains("facets"));
+        assertTrue(assertThrows(PicsureException.class, () -> service.handle(badSearch, CALLER)).getMessage().contains("search"));
+        assertEquals(0, model.callCount);
+    }
+
+    @Test
+    void theUisFullQueryObjectWithFieldsTheModelMayNotSetIsAccepted() throws Exception {
+        String full = "{\"select\":[],\"authorizationFilters\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":null,"
+            + "\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"not\":false}}";
+        ChatRequest request = new ChatRequest("hi", "c", "r", new ObjectMapper().readTree(full), null, null);
+        FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
+
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+        assertEquals("ok", response.response());
+    }
+
+    @Test
+    void anAcceptedQueryProposalSurfacesInTheResponseWithThePathAsTheToolReturnedIt() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"query\":\"age\"}"),
+            toolCallTurn("propose_query", "{\"query\":" + AGE_QUERY.replace("\\\\demo\\\\age\\\\", "demo\\\\age") + "}"), doneTurn("Done")
+        );
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals(AGE_PATH, response.query().path("phenotypicClause").path("conceptPath").asText());
+        assertEquals("REQUIRED", response.query().path("phenotypicClause").path("phenotypicFilterType").asText());
+        assertFalse(response.query().has("genomicFilters"), "unset fields are not echoed as nulls");
+        assertNull(response.facets());
+        assertNull(response.search());
+    }
+
+    @Test
+    void aProposalMatchingTheRequestsCurrentQueryIsOmittedAsUnchanged() throws Exception {
+        ChatRequest request = new ChatRequest("same", "c", "r", new ObjectMapper().readTree(AGE_QUERY), null, null);
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", "{\"query\":" + AGE_QUERY + "}"), doneTurn("Done"));
+
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+        assertNull(response.query());
+    }
+
+    @Test
+    void aFacetProposalNeedsAListFacetsResultAndIsOtherwiseNeverSurfaced() {
+        String proposal = "{\"facets\":[{\"category\":\"study\",\"name\":\"demo\"}]}";
+        FakeModelClient refused = FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done"));
+        FakeModelClient accepted =
+            FakeModelClient.returning(toolCallTurn("list_facets", "{}"), toolCallTurn("propose_query", proposal), doneTurn("Done"));
+
+        ChatResponse withoutListing =
+            new ToolUseLoopService(refused, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+        ChatResponse withListing =
+            new ToolUseLoopService(accepted, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertNull(withoutListing.facets());
+        assertEquals(List.of(new FacetSelection("study", "demo")), withListing.facets());
+    }
+
+    @Test
+    void aFacetProposalEqualToTheCurrentSelectionIsOmittedRegardlessOfOrder() {
+        ChatRequest request =
+            new ChatRequest("hi", "c", "r", null, List.of(new FacetSelection("study", "demo"), new FacetSelection("sex", "f")), null);
+        String proposal = "{\"facets\":[{\"category\":\"sex\",\"name\":\"f\"},{\"category\":\"study\",\"name\":\"demo\"}]}";
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done"));
+
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+        assertNull(response.facets());
+    }
+
+    @Test
+    void aSearchProposalSurfacesOnlyWhenItDiffersFromTheRequests() throws Exception {
+        ChatRequest same = new ChatRequest("hi", "c", "r", null, null, "bmi");
+        String proposal = "{\"search\":\"bmi\"}";
+
+        ChatResponse unchanged = new ToolUseLoopService(
+            FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done")), new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8
+        ).handle(same, CALLER);
+        ChatResponse changed = new ToolUseLoopService(
+            FakeModelClient.returning(toolCallTurn("propose_query", proposal), doneTurn("Done")), new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8
+        ).handle(REQUEST, CALLER);
+
+        assertNull(unchanged.search());
+        assertEquals("bmi", changed.search());
+    }
+
+    @Test
+    void aRejectedProposalNeverSurfacesEvenIfALaterTurnEndsNormally() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("propose_query", "{\"query\":{\"phenotypicClause\":{\"operator\":\"AND\"}}}"), doneTurn("Gave up")
+        );
+
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals("Gave up", response.response());
+        assertNull(response.query());
+    }
+
+    @Test
+    void aLaterProposalReplacesEarlierOnesOnlyForThePartsItSends() {
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("propose_query", "{\"search\":\"first\"}"),
+            toolCallTurn("propose_query", "{\"search\":\"second\",\"facets\":[]}"), doneTurn("Done")
+        );
+
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals("second", response.search());
+    }
+
+    @Test
+    void theCurrentQueryFacetsAndSearchAreShownToTheModelAfterTheMessage() throws Exception {
+        String uiQuery = "{\"authorizationFilters\":[\"secret\"],\"expectedResultType\":\"COUNT\"," + "\"phenotypicClause\":"
+            + new ObjectMapper().readTree(AGE_QUERY).get("phenotypicClause") + "}";
+        ChatRequest request = new ChatRequest(
+            "narrow it", "c", "r", new ObjectMapper().readTree(uiQuery), List.of(new FacetSelection("study", "demo")), "age"
+        );
+        FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
+
+        new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+        String shown = ((ConversationEntry.UserEntry) model.historySeenOnCall(1).get(0)).text();
+        assertTrue(shown.startsWith("narrow it"), shown);
+        assertTrue(shown.contains("query: {\"phenotypicClause\":"), shown);
+        assertTrue(shown.contains("facets: [{\"category\":\"study\",\"name\":\"demo\"}]"), shown);
+        assertTrue(shown.contains("search: \"age\""), shown);
+        assertFalse(shown.contains("secret"), "fields the model may not set are not passed along: " + shown);
+    }
+
+    @Test
+    void aMessageWithNoCurrentStateIsSentUnchanged() {
+        FakeModelClient model = FakeModelClient.returning(doneTurn("ok"));
+
+        new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals("hi", ((ConversationEntry.UserEntry) model.historySeenOnCall(1).get(0)).text());
     }
 
     @Test

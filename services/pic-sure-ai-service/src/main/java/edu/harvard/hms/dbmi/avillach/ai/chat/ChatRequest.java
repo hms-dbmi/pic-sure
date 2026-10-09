@@ -17,15 +17,15 @@ import jakarta.validation.constraints.Size;
  * request body on arrival (Spring Boot leaves {@code FAIL_ON_UNKNOWN_PROPERTIES} off by default), so "removed before any downstream call"
  * is a consequence of this shape, not something a filter has to strip.
  *
- * <p>{@code query} and {@code search} are kept as opaque {@link JsonNode} for now: validating them against a real schema is Story 4's job,
- * out of scope while the proposal tool (see {@code McpToolGateway}) is still a stub.
+ * <p>{@code query} is kept as an opaque {@link JsonNode} and validated by {@link ChatStateValidator}; {@code search} is the dictionary
+ * search text, a plain string (the UI sends it to {@code /dictionary} together with {@code facets}).
  *
  * @param message the user's chat message
  * @param conversationId the UI-generated conversation id this turn belongs to
  * @param requestId the UI-generated idempotency key for this turn
  * @param query the researcher's current query object, if any
  * @param facets the researcher's current facet selection, in the slimmed {@link FacetSelection} shape
- * @param search the researcher's current dictionary-search state, if any
+ * @param search the researcher's current dictionary search text, if any
  */
 @Schema(description = "One researcher chat turn, plus the query, facet selection and dictionary-search state the turn starts from.")
 public record ChatRequest(
@@ -41,9 +41,12 @@ public record ChatRequest(
         description = "Client-generated idempotency key for this turn.", example = "9f2d6c1a-3b8e-4c57-a1d4-7e0b5f6c2a83",
         requiredMode = Schema.RequiredMode.REQUIRED
     ) @NotBlank String requestId,
-    @Schema(description = "The researcher's current query object, if any. Passed through unvalidated.") JsonNode query,
+    @Schema(
+        description = "The researcher's current query object, if any: a full v3 query. Fields the assistant does not model "
+            + "(expectedResultType, authorizationFilters, ...) are accepted and ignored; the rest is validated."
+    ) JsonNode query,
     @Schema(description = "The researcher's current facet selection, if any.") List<FacetSelection> facets,
-    @Schema(description = "The researcher's current dictionary-search state, if any. Passed through unvalidated.") JsonNode search
+    @Schema(description = "The researcher's current dictionary search text, if any.", example = "blood pressure") String search
 ) {
 
     /** Upper bound on {@code message}, so an oversized prompt is rejected by validation before it reaches the model. */
