@@ -1,7 +1,8 @@
 # bench
 
 Harness for comparing the Java HPDS service with the Rust one, and for measuring either.
-Everything here drives `hpds-bench` (`crates/hpds-bench`) over the `PIC-SURE/v3` HTTP contract.
+The service harness drives `hpds-bench` (`crates/hpds-bench`) over the `PIC-SURE/v3` HTTP
+contract; the ETL parity harness compares the stores the two ETLs build.
 
 | Path | Purpose |
 |---|---|
@@ -9,6 +10,8 @@ Everything here drives `hpds-bench` (`crates/hpds-bench`) over the `PIC-SURE/v3`
 | `divergences.json` | Accepted differences between Java and Rust, applied by `compare --divergences` |
 | `golden/1000genomes.json` | Expected answers for the fixture, checked by `compare --golden` |
 | `baseline.sh`, `docker-compose.yml` | Java baseline stack and profiling matrix |
+| `etl-parity.sh`, `etl-parity-compare.py` | Java ETL vs `hpds-etl` on the same inputs, see [ETL parity](#etl-parity) |
+| `etl-divergences.json` | Accepted differences between the Java and Rust stores, each citing the spec |
 
 ## Java fixture
 
@@ -86,6 +89,42 @@ applied. Tail percentiles are therefore a lower bound on what independent client
   The top-level `overall` and `per_type` then cover all passes together.
 - Async `picsureId` values are derived from the worker index, so they are unique among in-flight
   requests while the Java result map stays bounded.
+
+## ETL parity
+
+```bash
+WORK_DIR=/tmp/parity EDGE_DIR=<edge inputs> bench/etl-parity.sh            # light cases
+DEV_DIR=... DEV_PATIENT_DIR=... AIO_DIR=<local_all_in_one> bench/etl-parity.sh aio dev-newsearch
+bench/etl-parity.sh --list
+```
+
+Each case loads the same CSV input with a Java loader (`CSVLoaderNewSearch` or
+`LowRAMMultiCSVLoader`) and with the matching `hpds-etl load --mode`, then compares:
+
+- the canonical dumps, Java `DumpSourceCSV` against `hpds-etl dump`, concept by concept. Rows
+  match on patient, value (numbers by their parsed bits, every NaN equal) and timestamp. The
+  first line of each dump is skipped, because Java's header line is the `toString` of an array.
+  Rows that match as a multiset but not in order are a difference, since within-patient order
+  is part of the contract;
+- `columnMeta.csv`, every column but 8 and 9 (block offset and length), min and max by value;
+- the patient ID sets. Java's `allIds` is read by migrating the Java store with
+  `bin/migrate-javabins` and running `hpds-etl dump --patients` on the result. The migrated
+  store is also compared with the Java dump, so every case doubles as a migration check
+  (`<case>-migration`).
+
+`etl-parity-compare.py` prints each difference as `WHITELISTED` with the rule from
+`etl-divergences.json`, its reason and the spec text it cites, or as `UNEXPECTED`. Any
+unexpected difference fails the run. Rules that depend on the Java loaders' data loss use a
+model of how the named loader ingests the files: its row order, its loading cache (16
+concepts for new-search, 1 for LowRAM) and LowRAM's chunking. A rule applies only when the
+model says the loss can reach that concept or patient and every Java row is also in the Rust
+store.
+
+Reports (`<case>.json`, `<case>.txt`, `summary.tsv`) go to `results/etl-parity-<date>/`;
+stores and dumps go to `WORK_DIR`. The `aio` case copies the AIO's `hpds_input` files and
+javabin store into `WORK_DIR` with `cp` (nothing in `AIO_DIR` is mounted or written), writes
+counts-only reports, keeps the migrated store at `AIO_MIGRATED_OUT` and deletes every other
+AIO-derived file when it ends. Java containers are named `parity-<case>-<step>`.
 
 ## Container
 
