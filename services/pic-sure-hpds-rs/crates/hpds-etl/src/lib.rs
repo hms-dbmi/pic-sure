@@ -1,13 +1,20 @@
 //! Loading and migration pipeline that produces the phenotype store.
 //!
-//! [`load`] turns phenotype CSV into a store, reproducing the Java loaders' rules.
-//! [`java`] holds the JDK and library behavior those rules depend on, and
-//! [`column_meta_csv`] writes `columnMeta.csv` byte for byte as Java does.
+//! [`load`] turns phenotype CSV into a store, reproducing the Java loaders' rules, and
+//! [`migrate`] turns a javabin store exported by the Java `ExportForMigration` loader into
+//! one. [`dump`] writes a store as canonical CSV, and [`maintain`] removes concepts and
+//! regenerates `columnMeta.csv`. [`java`] holds the JDK and library behavior those rules
+//! depend on, [`column_meta_csv`] writes `columnMeta.csv` byte for byte as Java does, and
+//! [`store`] opens existing stores.
 
 pub mod column_meta_csv;
+pub mod dump;
 mod error;
 pub mod java;
 pub mod load;
+pub mod maintain;
+pub mod migrate;
+pub mod store;
 
 pub use error::{EtlError, Result};
 

@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Migrates a javabin phenotype store (columnMeta.javabin, allObservationsStore.javabin,
+# encryption_key) into a Rust store, through the Java ExportForMigration loader and
+# hpds-etl migrate. The javabin directory is mounted read-only and never written.
+#
+# Usage: bin/migrate-javabins <javabin-dir> <out-dir>
+#
+# Env:
+#   JAVA_ETL_IMAGE   Java ETL image holding ExportForMigration (hms-dbmi/pic-sure-hpds-etl:bench)
+#   RUST_ETL_IMAGE   Rust ETL image, used when no host binary runs (hms-dbmi/pic-sure-hpds-rs-etl:LATEST)
+#   HPDS_ETL         host hpds-etl binary, or "image" to use RUST_ETL_IMAGE; by default the
+#                    first of target/release/hpds-etl and target/debug/hpds-etl that runs, else
+#                    the image
+#   EXPORT_DIR       where the intermediate export goes (a fresh temporary directory)
+#   KEEP_EXPORT      1 keeps the export after a successful migration
+#   HEAPSIZE         Java heap in MiB for the exporter (4096)
+set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+  echo "usage: $0 <javabin-dir> <out-dir>" >&2
+  exit 2
+fi
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+java_image="${JAVA_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-etl:bench}"
+rust_image="${RUST_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-rs-etl:LATEST}"
+heap="${HEAPSIZE:-4096}"
+
+source_dir="$(cd "$1" && pwd)"
+for name in columnMeta.javabin allObservationsStore.javabin encryption_key; do
+  if [[ ! -r "$source_dir/$name" ]]; then
+    echo "$source_dir/$name is missing or unreadable" >&2
+    exit 1
+  fi
+done
+
+mkdir -p "$2"
+out_dir="$(cd "$2" && pwd)"
+if [[ "$out_dir" == "$source_dir" ]]; then
+  echo "the output directory must differ from the javabin directory" >&2
+  exit 1
+fi
+if [[ -e "$out_dir/encryption_key" ]] && ! cmp -s "$source_dir/encryption_key" "$out_dir/encryption_key"; then
+  echo "$out_dir/encryption_key exists and differs from the javabin store's key" >&2
+  exit 1
+fi
+
+created_export=0
+if [[ -n "${EXPORT_DIR:-}" ]]; then
+  mkdir -p "$EXPORT_DIR"
+  export_dir="$(cd "$EXPORT_DIR" && pwd)"
+else
+  export_dir="$(mktemp -d "${TMPDIR:-/tmp}/hpds-export.XXXXXX")"
+  created_export=1
+fi
+case "$export_dir/" in
+  "$source_dir"/*) echo "the export directory must be outside the javabin directory" >&2; exit 1 ;;
+esac
+
+suffix="$$-$(date +%s)"
+cleanup() {
+  docker rm -f "etl-export-$suffix" "etl-migrate-$suffix" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+user="$(id -u):$(id -g)"
+
+echo "exporting $source_dir to $export_dir"
+docker run --rm --name "etl-export-$suffix" --user "$user" \
+  -e LOADER_NAME=ExportForMigration \
+  -e LOADER_ARGS="/opt/local/hpds /opt/local/export" \
+  -e HEAPSIZE="$heap" \
+  -v "$source_dir:/opt/local/hpds:ro" \
+  -v "$export_dir:/opt/local/export" \
+  "$java_image"
+
+cp "$source_dir/encryption_key" "$out_dir/encryption_key"
+
+host_binary=""
+if [[ -n "${HPDS_ETL:-}" ]]; then
+  [[ "$HPDS_ETL" == "image" ]] || host_binary="$HPDS_ETL"
+else
+  for candidate in "$root/target/release/hpds-etl" "$root/target/debug/hpds-etl"; do
+    if [[ -x "$candidate" ]] && "$candidate" --version >/dev/null 2>&1; then
+      host_binary="$candidate"
+      break
+    fi
+  done
+fi
+
+echo "migrating into $out_dir"
+if [[ -n "$host_binary" ]]; then
+  "$host_binary" migrate --export "$export_dir" --out "$out_dir"
+else
+  parent="$(dirname "$out_dir")"
+  docker run --rm --name "etl-migrate-$suffix" --user "$user" \
+    -v "$export_dir:/export:ro" \
+    -v "$parent:/work" \
+    "$rust_image" migrate --export /export --out "/work/$(basename "$out_dir")"
+fi
+
+if [[ "${KEEP_EXPORT:-0}" == "1" ]]; then
+  echo "export kept in $export_dir"
+elif [[ "$created_export" == "1" ]]; then
+  rm -rf "$export_dir"
+else
+  rm -f "$export_dir/concepts.bin" "$export_dir/patients.txt"
+fi

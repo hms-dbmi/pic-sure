@@ -540,13 +540,13 @@ impl Drop for RemoveOnDrop {
 
 /// The directory a store is written into before it is moved to its final place. Removed
 /// on drop unless published.
-struct Staging {
-    path: PathBuf,
+pub(crate) struct Staging {
+    pub(crate) path: PathBuf,
     published: bool,
 }
 
 impl Staging {
-    fn create(out: &Path) -> Result<Self> {
+    pub(crate) fn create(out: &Path) -> Result<Self> {
         let parent = match out.parent() {
             Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
             _ => PathBuf::from("."),
@@ -568,7 +568,7 @@ impl Staging {
         })
     }
 
-    fn publish(mut self, out: &Path) -> Result<()> {
+    pub(crate) fn publish(mut self, out: &Path) -> Result<()> {
         if !out.exists() {
             std::fs::rename(&self.path, out).map_err(EtlError::io("moving the store to", out))?;
             self.published = true;

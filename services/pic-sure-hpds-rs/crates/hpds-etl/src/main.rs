@@ -1,8 +1,13 @@
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use hpds_etl::load::{KeySource, LoadOptions, Mode};
+use hpds_etl::migrate::MigrateOptions;
+use hpds_etl::store::{OpenStore, resolve_protection};
+use hpds_etl::{EtlError, Result};
 
 /// Builds and maintains the Rust HPDS phenotype store.
 #[derive(Parser)]
@@ -16,6 +21,89 @@ struct Cli {
 enum Command {
     /// Load phenotype CSV into a new store, following one of the Java loaders.
     Load(LoadArgs),
+    /// Build a new store from a javabin store exported by the Java ExportForMigration loader.
+    Migrate(MigrateArgs),
+    /// Remove the concepts named in a file from a store, as RemoveConceptFromMetadata does.
+    RemoveConcepts(RemoveConceptsArgs),
+    /// Regenerate a store's columnMeta.csv from its index.
+    ColumnMetaCsv(ColumnMetaCsvArgs),
+    /// Write a store as canonical CSV in DumpSourceCSV layout and order, or its patient IDs.
+    Dump(DumpArgs),
+}
+
+#[derive(Args)]
+struct KeyArgs {
+    /// Key file, read with Crypto.loadKey rules. Defaults to encryption_key in the store
+    /// directory.
+    #[arg(long, conflicts_with = "plain")]
+    key_file: Option<PathBuf>,
+    /// The store is unencrypted, for local benchmarking only.
+    #[arg(long)]
+    plain: bool,
+}
+
+impl KeyArgs {
+    fn source(&self) -> KeySource {
+        match (self.plain, &self.key_file) {
+            (true, _) => KeySource::Plain,
+            (false, Some(path)) => KeySource::File(path.clone()),
+            (false, None) => KeySource::OutputDirectory,
+        }
+    }
+}
+
+#[derive(Args)]
+struct MigrateArgs {
+    /// Directory holding the export's concepts.bin and patients.txt.
+    #[arg(long)]
+    export: PathBuf,
+    /// Store directory to create or replace.
+    #[arg(long)]
+    out: PathBuf,
+    #[command(flatten)]
+    key: KeyArgs,
+    /// Worker threads for sealing blocks.
+    #[arg(long)]
+    threads: Option<usize>,
+}
+
+#[derive(Args)]
+struct RemoveConceptsArgs {
+    /// Store directory to change in place.
+    #[arg(long)]
+    store: PathBuf,
+    /// File naming one concept path per line (conceptsToRemove.txt).
+    #[arg(long)]
+    concepts: PathBuf,
+    #[command(flatten)]
+    key: KeyArgs,
+}
+
+#[derive(Args)]
+struct ColumnMetaCsvArgs {
+    /// Store directory to read.
+    #[arg(long)]
+    store: PathBuf,
+    /// File to write. Defaults to columnMeta.csv in the store directory.
+    #[arg(long)]
+    out: Option<PathBuf>,
+    #[command(flatten)]
+    key: KeyArgs,
+}
+
+#[derive(Args)]
+struct DumpArgs {
+    /// Store directory to read.
+    #[arg(long)]
+    store: PathBuf,
+    /// File to write. Defaults to standard output.
+    #[arg(long)]
+    out: Option<PathBuf>,
+    /// Write the patient ID set, one per line, instead of the observations.
+    #[arg(long)]
+    patients: bool,
+    #[command(flatten)]
+    key: KeyArgs,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -107,6 +195,10 @@ fn main() -> ExitCode {
                 println!("{json}");
             }
         }),
+        Command::Migrate(args) => run_migrate(args),
+        Command::RemoveConcepts(args) => run_remove_concepts(args),
+        Command::ColumnMetaCsv(args) => run_column_meta_csv(args),
+        Command::Dump(args) => run_dump(args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -115,5 +207,79 @@ fn main() -> ExitCode {
             eprintln!("hpds-etl: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+fn print_json<T: serde::Serialize>(value: &T) {
+    if let Ok(json) = serde_json::to_string_pretty(value) {
+        println!("{json}");
+    }
+}
+
+fn run_migrate(args: MigrateArgs) -> Result<()> {
+    let report = hpds_etl::migrate::migrate(&MigrateOptions {
+        export: args.export,
+        out: args.out,
+        key: args.key.source(),
+        threads: args.threads,
+    })?;
+    print_json(&report);
+    Ok(())
+}
+
+fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
+    let protection = resolve_protection(&args.key.source(), &args.store)?;
+    let report = hpds_etl::maintain::remove_concepts(&args.store, &args.concepts, &protection)?;
+    print_json(&report);
+    Ok(())
+}
+
+fn run_column_meta_csv(args: ColumnMetaCsvArgs) -> Result<()> {
+    let protection = resolve_protection(&args.key.source(), &args.store)?;
+    let rows = hpds_etl::maintain::regenerate_column_meta_csv(
+        &args.store,
+        args.out.as_deref(),
+        &protection,
+    )?;
+    tracing::info!(rows, "columnMeta.csv written");
+    Ok(())
+}
+
+fn run_dump(args: DumpArgs) -> Result<()> {
+    let protection = resolve_protection(&args.key.source(), &args.store)?;
+    let store = OpenStore::open(&args.store, protection)?;
+    match &args.out {
+        Some(path) => {
+            let file = File::create(path).map_err(|e| io_error("creating", path, e))?;
+            write_dump(
+                &store,
+                args.patients,
+                &mut BufWriter::with_capacity(1 << 20, file),
+            )
+        }
+        None => write_dump(&store, args.patients, &mut std::io::stdout().lock()),
+    }
+}
+
+fn write_dump(store: &OpenStore, patients: bool, out: &mut impl Write) -> Result<()> {
+    if patients {
+        let count = hpds_etl::dump::dump_patients(store, out)?;
+        tracing::info!(patients = count, "patient IDs written");
+    } else {
+        let counts = hpds_etl::dump::dump(store, out)?;
+        tracing::info!(
+            concepts = counts.concepts,
+            observations = counts.observations,
+            "dump written"
+        );
+    }
+    Ok(())
+}
+
+fn io_error(action: &'static str, path: &Path, source: std::io::Error) -> EtlError {
+    EtlError::Io {
+        action,
+        path: path.to_path_buf(),
+        source,
     }
 }

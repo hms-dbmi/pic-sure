@@ -53,6 +53,16 @@ pub enum EtlError {
         detail: String,
     },
 
+    /// A migration export is malformed, or holds something the store cannot represent
+    /// exactly.
+    #[error("export {path}: {detail}")]
+    Export {
+        /// The export file.
+        path: PathBuf,
+        /// What is wrong with it.
+        detail: String,
+    },
+
     /// The command line asked for something the loader cannot do.
     #[error("{0}")]
     Usage(String),
