@@ -1,20 +1,22 @@
 //! `hpds-etl load`: phenotype CSV to a new store, reproducing one of the two Java loaders
-//! the all-in-one runs.
+//! the all-in-one runs, or to one store per consent partition.
 //!
 //! [`Mode::NewSearch`] follows `CSVLoaderNewSearch` ("Load HPDS Data From CSV").
 //! [`Mode::Sequential`] follows `SequentialLoader` ("Load HPDS Data From Multiple Files"),
-//! which for an all-CSV input set runs `LowRAMMultiCSVLoader`. The rules both share, and
+//! which for an all-CSV input set runs `LowRAMMultiCSVLoader`. [`Mode::Partitioned`]
+//! follows the harmonization branch's `CSVLoader`, one store per
+//! `<partition>-allConcepts.csv`, through [`load_partitioned`]. The rules both share, and
 //! the places they differ, are in [`rules`]. Where reproducing Java would reproduce a
 //! defect, the loader does the correct thing instead:
 //!
-//! - Every row of a concept is kept. Both Java loaders overwrite a concept's metadata when
+//! - Every row of a concept is kept. The Java loaders overwrite a concept's metadata when
 //!   its rows are not contiguous in ingest order (a 16-entry cache in `LoadingStore`, a
 //!   1-entry cache in `LowRAMLoadingStore`), losing the earlier rows.
 //! - Numeric min and max are the real extremes, `null` for a concept with no values. Java
 //!   starts max at `Double.MIN_VALUE` and min at `Double.MAX_VALUE`.
 //! - `has_timestamp` and the timestamp range are set. Java never sets them.
-//! - An unparseable number or timestamp drops the row or its timestamp in new-search mode.
-//!   `CSVLoaderNewSearch` aborts the load.
+//! - An unparseable number or timestamp drops the row or its timestamp in new-search and
+//!   partitioned mode. `CSVLoaderNewSearch` and `CSVLoader` abort the load.
 //! - Every record is ingested in sequential mode. `LowRAMCSVProcessor` never ingests its
 //!   last chunk when the file holds more lines than records (an embedded newline or a blank
 //!   line), and fails on a record with a single field.
@@ -30,6 +32,7 @@
 
 mod build;
 mod partition;
+mod partitioned;
 pub mod rules;
 mod spill;
 
@@ -48,7 +51,11 @@ use roaring::RoaringBitmap;
 use serde::Serialize;
 
 use self::build::{BuildContext, BuiltConcept, BuiltPartition, build_partition};
-use self::partition::{InputFile, PartitionSettings, partition};
+pub(crate) use self::partition::InputFile;
+use self::partition::{PartitionSettings, partition};
+pub use self::partitioned::{
+    PartitionedLoadOptions, PartitionedLoadReport, discover_partition_inputs, load_partitioned,
+};
 pub use self::rules::{ConfigMap, CsvConfig, Mode};
 use crate::cleanup::{self, TemporaryDir};
 use crate::column_meta_csv::write_column_meta_csv;
@@ -215,12 +222,16 @@ pub struct LoadReport {
 /// once complete; see [`Staging::publish`].
 ///
 /// # Errors
-/// [`EtlError::Usage`] for options the selected mode does not support, missing inputs, an
-/// unreadable key, or an `out` that [`check_output`] refuses; [`EtlError::InvalidPatient`]
-/// for the first row whose patient number Java would fail on, or that is negative; I/O,
-/// CSV, config and format errors.
+/// [`EtlError::Usage`] for options the selected mode does not support (partitioned mode
+/// goes through [`load_partitioned`]), missing inputs, an unreadable key, or an `out` that
+/// [`check_output`] refuses; [`EtlError::InvalidPatient`] for the first row whose patient
+/// number Java would fail on, or that is negative; I/O, CSV, config and format errors.
 pub fn load(options: &LoadOptions) -> Result<LoadReport> {
-    let started = Instant::now();
+    if options.mode == Mode::Partitioned {
+        return Err(EtlError::Usage(
+            "partitioned mode loads a directory of <partition>-allConcepts.csv files; use --input-dir".into(),
+        ));
+    }
     if options.mode == Mode::NewSearch && options.max_chunk_gib.is_some() {
         return Err(EtlError::Usage(
             "--max-chunk-gib applies to sequential mode only".into(),
@@ -231,78 +242,145 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
     check_output(&options.out, &options.key)?;
     let configs = resolve_config(options)?;
     let protection = resolve_protection(options)?;
-    let staging = Staging::create(&options.out)?;
-    let spill = TemporaryDir::create(
-        options.tmp.as_deref().unwrap_or(staging.path()),
-        "hpds-etl-spill",
+    let settings = StoreSettings::new(
+        options.mode,
+        rollup,
+        &configs,
+        &protection,
+        options.tmp.as_deref(),
+        options.partitions,
+        options.max_chunk_gib,
     )?;
+    let staging = Staging::create(&options.out)?;
+    let pool = thread_pool(options.threads)?;
+    let report = pool.install(|| build_store(staging.path(), &inputs, &settings))?;
+    staging.publish(&options.out)?;
+    tracing::info!(out = %options.out.display(), blocks_bytes = report.blocks_bytes, seconds = report.elapsed_seconds, "store written");
+    Ok(report)
+}
+
+/// Builds a rayon pool of `threads` workers, one per core when `None`.
+///
+/// # Errors
+/// [`EtlError::ThreadPool`] when the pool cannot be started.
+pub(crate) fn thread_pool(threads: Option<usize>) -> Result<rayon::ThreadPool> {
+    let mut builder = rayon::ThreadPoolBuilder::new();
+    if let Some(threads) = threads {
+        builder = builder.num_threads(threads);
+    }
+    builder
+        .build()
+        .map_err(|e| EtlError::ThreadPool(e.to_string()))
+}
+
+/// Everything [`build_store`] needs besides its inputs and output directory.
+pub(crate) struct StoreSettings<'a> {
+    mode: Mode,
+    rollup: bool,
+    configs: &'a ConfigMap,
+    protection: &'a Protection,
+    tmp: Option<&'a Path>,
+    partitions: Option<usize>,
+    max_chunk_bytes: f64,
+}
+
+impl<'a> StoreSettings<'a> {
+    /// Checks the spill partition count and chunk size and collects the settings.
+    ///
+    /// # Errors
+    /// [`EtlError::Usage`] for zero spill partitions or a chunk size that is not positive.
+    pub(crate) fn new(
+        mode: Mode,
+        rollup: bool,
+        configs: &'a ConfigMap,
+        protection: &'a Protection,
+        tmp: Option<&'a Path>,
+        partitions: Option<usize>,
+        max_chunk_gib: Option<f64>,
+    ) -> Result<Self> {
+        if partitions == Some(0) {
+            return Err(EtlError::Usage("--partitions must be at least 1".into()));
+        }
+        let max_chunk_gib = max_chunk_gib.unwrap_or(DEFAULT_MAX_CHUNK_GIB);
+        if max_chunk_gib.is_nan() || max_chunk_gib <= 0.0 {
+            return Err(EtlError::Usage("--max-chunk-gib must be positive".into()));
+        }
+        Ok(StoreSettings {
+            mode,
+            rollup,
+            configs,
+            protection,
+            tmp,
+            partitions,
+            max_chunk_bytes: max_chunk_gib * (1u64 << 30) as f64,
+        })
+    }
+}
+
+/// Builds one store from `inputs` into the existing directory `dir`: `pheno.blocks`,
+/// `pheno.index`, `columnMeta.csv` and `etl-report.json`, each synced. Spill files go to a
+/// temporary directory under `settings.tmp` or `dir`, removed before returning. The build
+/// pass runs on the current rayon pool.
+///
+/// # Errors
+/// [`EtlError::InvalidPatient`] for the first row whose patient number Java would fail
+/// on, or that is negative; I/O, CSV and format errors.
+pub(crate) fn build_store(
+    dir: &Path,
+    inputs: &[InputFile],
+    settings: &StoreSettings<'_>,
+) -> Result<LoadReport> {
+    let started = Instant::now();
+    let spill = TemporaryDir::create(settings.tmp.unwrap_or(dir), "hpds-etl-spill")?;
     let spill_dir = spill.path().to_path_buf();
 
     let input_bytes: u64 = inputs
         .iter()
         .map(|i| std::fs::metadata(&i.path).map(|m| m.len()).unwrap_or(0))
         .sum();
-    let partitions = options.partitions.unwrap_or_else(|| {
+    let partitions = settings.partitions.unwrap_or_else(|| {
         (input_bytes.div_ceil(INPUT_BYTES_PER_PARTITION) as usize).clamp(1, MAX_DEFAULT_PARTITIONS)
     });
-    if partitions == 0 {
-        return Err(EtlError::Usage("--partitions must be at least 1".into()));
-    }
-    let max_chunk_gib = options.max_chunk_gib.unwrap_or(DEFAULT_MAX_CHUNK_GIB);
-    if max_chunk_gib.is_nan() || max_chunk_gib <= 0.0 {
-        return Err(EtlError::Usage("--max-chunk-gib must be positive".into()));
-    }
     tracing::info!(
-        mode = ?options.mode,
+        mode = ?settings.mode,
         files = inputs.len(),
         input_bytes,
         partitions,
-        rollup,
-        encrypted = protection.is_encrypted(),
+        rollup = settings.rollup,
+        encrypted = settings.protection.is_encrypted(),
         "loading"
     );
 
     let partitioned = partition(
-        &inputs,
+        inputs,
         &PartitionSettings {
-            mode: options.mode,
-            rollup,
-            configs: &configs,
+            mode: settings.mode,
+            rollup: settings.rollup,
+            configs: settings.configs,
             spill_dir: &spill_dir,
             partitions,
-            max_chunk_bytes: max_chunk_gib * (1u64 << 30) as f64,
+            max_chunk_bytes: settings.max_chunk_bytes,
         },
     )?;
 
     let store_id = StoreId::random()?;
-    let codec = BlockCodec::new(protection.clone(), store_id, true);
+    let codec = BlockCodec::new(settings.protection.clone(), store_id, true);
     let ctx = BuildContext {
-        mode: options.mode,
+        mode: settings.mode,
         concepts: &partitioned.concepts,
         raw_path_ranks: &partitioned.raw_path_ranks,
         chunk_starts: &partitioned.chunk_starts,
         codec: &codec,
     };
-    let pool = {
-        let mut builder = rayon::ThreadPoolBuilder::new();
-        if let Some(threads) = options.threads {
-            builder = builder.num_threads(threads);
-        }
-        builder
-            .build()
-            .map_err(|e| EtlError::ThreadPool(e.to_string()))?
-    };
     let build_started = Instant::now();
-    let built: Vec<BuiltPartition> = pool.install(|| {
-        partitioned
-            .spill_files
-            .par_iter()
-            .enumerate()
-            .map(|(i, spill)| {
-                build_partition(&ctx, i, spill, spill_dir.join(format!("blocks-{i:05}.bin")))
-            })
-            .collect::<Result<Vec<_>>>()
-    })?;
+    let built: Vec<BuiltPartition> = partitioned
+        .spill_files
+        .par_iter()
+        .enumerate()
+        .map(|(i, spill)| {
+            build_partition(&ctx, i, spill, spill_dir.join(format!("blocks-{i:05}.bin")))
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     if let Some(failure) = built
         .iter()
@@ -347,26 +425,24 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
         "built"
     );
 
-    let blocks_bytes = write_store(staging.path(), &built, store_id, patients, &protection)?;
+    let blocks_bytes = write_store(dir, &built, store_id, patients, settings.protection)?;
     drop(built);
     drop(spill);
 
     let report = LoadReport {
-        mode: options.mode,
-        inputs: inputs.into_iter().map(|i| i.path).collect(),
-        rollup,
-        encrypted: protection.is_encrypted(),
+        mode: settings.mode,
+        inputs: inputs.iter().map(|i| i.path.clone()).collect(),
+        rollup: settings.rollup,
+        encrypted: settings.protection.is_encrypted(),
         store_id: store_id.to_string(),
         counts,
         blocks_bytes,
         elapsed_seconds: started.elapsed().as_secs_f64(),
     };
-    let report_path = staging.path().join(REPORT_FILE_NAME);
+    let report_path = dir.join(REPORT_FILE_NAME);
     let json = serde_json::to_vec_pretty(&report)
         .map_err(|e| EtlError::io("encoding", &report_path)(e.into()))?;
     private_fs::write_file(&report_path, &json).map_err(EtlError::io("writing", &report_path))?;
-    staging.publish(&options.out)?;
-    tracing::info!(out = %options.out.display(), blocks_bytes, seconds = report.elapsed_seconds, "store written");
     Ok(report)
 }
 
@@ -483,6 +559,10 @@ fn resolve_rollup(options: &LoadOptions) -> Result<bool> {
         )),
         (Mode::NewSearch, _) => Ok(false),
         (Mode::Sequential, rollup) => Ok(rollup.unwrap_or(true)),
+        (Mode::Partitioned, Some(false)) => Err(EtlError::Usage(
+            "partitioned mode always rolls up variable names, as CSVLoader does".into(),
+        )),
+        (Mode::Partitioned, _) => Ok(true),
     }
 }
 
@@ -491,7 +571,7 @@ fn resolve_inputs(options: &LoadOptions) -> Result<Vec<InputFile>> {
         return Err(EtlError::Usage("at least one --input is required".into()));
     }
     match options.mode {
-        Mode::NewSearch => {
+        Mode::NewSearch | Mode::Partitioned => {
             let [path] = options.inputs.as_slice() else {
                 return Err(EtlError::Usage(
                     "new-search mode reads exactly one input file".into(),
@@ -664,18 +744,9 @@ impl Staging {
             let parent = parent_dir(out);
             return private_fs::sync_dir(&parent).map_err(EtlError::io("syncing", &parent));
         }
-        for name in [
-            BLOCKS_FILE_NAME,
-            COLUMN_META_CSV_NAME,
-            REPORT_FILE_NAME,
-            INDEX_FILE_NAME,
-        ] {
-            let target = out.join(name);
-            std::fs::rename(staged.join(name), &target)
-                .map_err(EtlError::io("moving into place", &target))?;
-        }
+        let replaced = crate::partitions::replace_store_files(&staged, out);
         drop(registered);
-        private_fs::sync_dir(out).map_err(EtlError::io("syncing", out))
+        replaced
     }
 }
 

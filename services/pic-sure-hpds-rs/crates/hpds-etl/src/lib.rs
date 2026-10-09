@@ -5,8 +5,9 @@
 //! one. [`dump`] writes a store as canonical CSV, and [`store_maintenance`] removes concepts and
 //! regenerates `columnMeta.csv`. [`java`] holds the JDK and library behavior those rules
 //! depend on, [`column_meta_csv`] writes `columnMeta.csv` byte for byte as Java does, and
-//! [`store`] opens existing stores. [`cleanup`] removes the temporary directories of an
-//! interrupted run.
+//! [`store`] opens existing stores. [`partitions`] holds the layout of a consent-partitioned
+//! store, one store per partition directory. [`cleanup`] removes the temporary directories of
+//! an interrupted run.
 
 pub mod cleanup;
 pub mod column_meta_csv;
@@ -15,6 +16,7 @@ mod error;
 pub mod java;
 pub mod load;
 pub mod migrate;
+pub mod partitions;
 mod private_fs;
 pub mod store;
 pub mod store_maintenance;

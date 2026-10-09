@@ -217,12 +217,19 @@ pub fn java_double_to_string(value: f64) -> String {
 /// `String.split`), trims every segment with `String.trim`, rejoins with `\`, appends a
 /// trailing `\`, and removes every U+FFFD.
 pub fn normalize_concept_path(raw: &str) -> String {
-    let replaced = raw.replace('µ', "\\");
-    let mut segments: Vec<&str> = replaced.split('\\').collect();
+    resplit_concept_path(&raw.replace('µ', "\\"))
+}
+
+/// Splits `path` on `\` dropping trailing empty segments (Java `String.split`), trims every
+/// segment with `String.trim`, rejoins with `\`, appends a trailing `\`, and removes every
+/// U+FFFD. [`normalize_concept_path`] is this after replacing `µ`; `CSVLoader` applies it
+/// once more after `CSVParserUtil.parseConceptPath` has added the dataset root node.
+pub fn resplit_concept_path(path: &str) -> String {
+    let mut segments: Vec<&str> = path.split('\\').collect();
     while segments.last() == Some(&"") {
         segments.pop();
     }
-    let mut out = String::with_capacity(replaced.len() + 1);
+    let mut out = String::with_capacity(path.len() + 1);
     for (i, segment) in segments.iter().enumerate() {
         if i > 0 {
             out.push('\\');

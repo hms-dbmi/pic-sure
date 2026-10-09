@@ -18,7 +18,7 @@ use crate::java::java_double_to_string;
 ///
 /// # Errors
 /// Any error from `out`.
-pub fn write_commons_csv_record<W: Write, S: AsRef<str>>(
+pub fn write_commons_csv_record<W: Write + ?Sized, S: AsRef<str>>(
     out: &mut W,
     fields: &[S],
 ) -> io::Result<()> {

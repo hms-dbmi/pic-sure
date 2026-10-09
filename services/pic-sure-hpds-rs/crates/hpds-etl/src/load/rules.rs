@@ -8,7 +8,10 @@ use hpds_format::{java_trim, parse_java_double};
 use serde::Deserialize;
 
 use crate::error::{EtlError, Result};
-use crate::java::{is_log4j_blank, parse_java_int, parse_java_long};
+use crate::java::{
+    is_log4j_blank, normalize_concept_path, parse_java_int, parse_java_long, resplit_concept_path,
+    roll_up, rollup_text,
+};
 
 /// Which Java loader `hpds-etl load` reproduces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize)]
@@ -24,6 +27,14 @@ pub enum Mode {
     /// text when `NUMERIC_VALUE` is blank, rolls up by default, and looks up its CSV config
     /// by file name.
     Sequential,
+    /// `CSVLoader` as the harmonization branch runs it, one store per
+    /// `<partition>-allConcepts.csv` file: no header (the first line is data), rows in file
+    /// order, a row is text when `NUMERIC_VALUE` is empty unless its trimmed `TEXT_VALUE`
+    /// with U+FFFD removed parses as a Java double (then it is that number), the concept
+    /// path is `CSVParserUtil.parseConceptPath` without rollup, split, trimmed and stripped
+    /// once more, then always rolled up, and the CSV config is looked up under the name
+    /// `allConcepts`.
+    Partitioned,
 }
 
 /// One entry of the CSV config file (`config.json`), as `CSVConfig` maps it.
@@ -108,6 +119,22 @@ pub fn apply_dataset_root(path: String, config: Option<&CsvConfig>) -> String {
     }
 }
 
+/// The concept path `CSVLoader.processRecord` stores a row under: the raw path normalized
+/// as `CSVParserUtil.parseConceptPath` does with rollup off, prefixed with the dataset root
+/// node when `config` asks for it, split, trimmed and stripped of U+FFFD once more, then
+/// rolled up when it ends with `\<text>\` for `text` the trimmed `TEXT_VALUE` with U+FFFD
+/// removed. Because the rollup comes after the prefix, the root node can itself be rolled
+/// up, which `parseConceptPath` with rollup on never does.
+pub fn csv_loader_concept_path(raw: &str, text: &str, config: Option<&CsvConfig>) -> String {
+    let base = csv_loader_base_path(raw, config);
+    roll_up(&base, &rollup_text(text)).unwrap_or(base)
+}
+
+/// The path `CSVLoader` rolls up: [`csv_loader_concept_path`] before its rollup step.
+pub fn csv_loader_base_path(raw: &str, config: Option<&CsvConfig>) -> String {
+    resplit_concept_path(&apply_dataset_root(normalize_concept_path(raw), config))
+}
+
 /// What became of a row's value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueStatus {
@@ -141,9 +168,25 @@ pub struct ClassifiedValue<'a> {
 /// Sequential: the row is text when `NUMERIC_VALUE` is blank by `Character.isWhitespace`.
 /// A numeric value is trimmed and parsed, and is unparseable even when trimming empties
 /// it. A text value is trimmed and is blank when that empties it.
+///
+/// Partitioned: as new-search, except that when `NUMERIC_VALUE` is empty and the trimmed
+/// `TEXT_VALUE` with U+FFFD removed parses with `Double.parseDouble`, the row is numeric
+/// with that number. `CSVLoader` stores `Double.parseDouble(Double.toString(x))`, which is
+/// `x` again.
 pub fn classify_value<'a>(mode: Mode, numeric: &'a str, text: &'a str) -> ClassifiedValue<'a> {
+    if mode == Mode::Partitioned
+        && numeric.is_empty()
+        && let Some(number) = parse_java_double(&rollup_text(text))
+    {
+        return ClassifiedValue {
+            text: false,
+            status: ValueStatus::Present,
+            number,
+            value: "",
+        };
+    }
     let is_text = match mode {
-        Mode::NewSearch => numeric.is_empty(),
+        Mode::NewSearch | Mode::Partitioned => numeric.is_empty(),
         Mode::Sequential => is_log4j_blank(numeric),
     };
     let raw = if is_text { text } else { numeric };
@@ -160,7 +203,7 @@ pub fn classify_value<'a>(mode: Mode, numeric: &'a str, text: &'a str) -> Classi
         } else {
             out.value = trimmed;
         }
-    } else if mode == Mode::NewSearch && trimmed.is_empty() {
+    } else if mode != Mode::Sequential && trimmed.is_empty() {
         out.status = ValueStatus::Blank;
     } else {
         match parse_java_double(trimmed) {
@@ -386,6 +429,143 @@ mod tests {
         assert_eq!(
             apply_dataset_root("\\a\\".into(), Some(&CsvConfig::default())),
             "\\a\\"
+        );
+    }
+
+    #[test]
+    fn partitioned_text_that_parses_as_a_java_double_is_numeric() {
+        let number = |text: &str| {
+            let c = classify_value(Mode::Partitioned, "", text);
+            assert!(!c.text, "{text:?} should be numeric");
+            assert_eq!(c.status, ValueStatus::Present, "{text:?}");
+            c.number
+        };
+        assert_eq!(number("42"), 42.0);
+        assert_eq!(number("  7  "), 7.0);
+        assert_eq!(number("0x1p3"), 8.0);
+        assert_eq!(number("1.5d"), 1.5);
+        assert_eq!(number("-Infinity"), f64::NEG_INFINITY);
+        assert!(number("NaN").is_nan());
+        assert_eq!(number("4\u{FFFD}2"), 42.0);
+        assert_eq!(number("1 \u{FFFD}"), 1.0);
+        assert_eq!(number("-0"), 0.0);
+        assert!(number("-0").is_sign_negative());
+    }
+
+    #[test]
+    fn partitioned_text_that_does_not_parse_stays_text() {
+        for text in ["abc", "1e3x", "nan", "infinity", "1,5", "0x10"] {
+            let c = classify_value(Mode::Partitioned, "", text);
+            assert_eq!(
+                (c.text, c.status, c.value),
+                (true, ValueStatus::Present, text)
+            );
+        }
+        let c = classify_value(Mode::Partitioned, "", " Maybe\u{FFFD} ");
+        assert_eq!(c.value, "Maybe\u{FFFD}", "the stored text keeps U+FFFD");
+        assert_eq!(
+            classify(Mode::Partitioned, "", "   "),
+            (true, ValueStatus::Blank)
+        );
+        assert_eq!(
+            classify(Mode::Partitioned, "", ""),
+            (true, ValueStatus::Blank)
+        );
+    }
+
+    #[test]
+    fn partitioned_numeric_field_follows_new_search() {
+        assert_eq!(
+            classify(Mode::Partitioned, " ", "12"),
+            (false, ValueStatus::Blank),
+            "a whitespace NUMERIC_VALUE is numeric and blank; the text is not coerced"
+        );
+        let c = classify_value(Mode::Partitioned, "  2.5 ", "");
+        assert_eq!((c.text, c.number), (false, 2.5));
+        assert_eq!(
+            classify(Mode::Partitioned, "abc", ""),
+            (false, ValueStatus::Unparseable)
+        );
+        assert_eq!(
+            classify(Mode::NewSearch, "", "42"),
+            (true, ValueStatus::Present),
+            "only partitioned mode coerces"
+        );
+    }
+
+    fn dataset(name: &str) -> CsvConfig {
+        CsvConfig {
+            dataset_name: Some(name.into()),
+            dataset_name_as_root_node: true,
+        }
+    }
+
+    #[test]
+    fn csv_loader_paths_normalize_then_prefix_then_resplit() {
+        assert_eq!(
+            csv_loader_concept_path("µeµmuµvar", "1", None),
+            "\\e\\mu\\var\\"
+        );
+        assert_eq!(
+            csv_loader_concept_path(" \\e \\ spaced \\ var ", "", None),
+            "\\e\\spaced\\var\\"
+        );
+        assert_eq!(
+            csv_loader_concept_path("\\e\\ff\u{FFFD}d\\", "", None),
+            "\\e\\ffd\\"
+        );
+        assert_eq!(
+            csv_loader_concept_path("\\e\\ \u{FFFD} x\\", "", None),
+            "\\e\\x\\",
+            "the second split trims the space U+FFFD hid"
+        );
+        assert_eq!(
+            normalize_concept_path("\\e\\ \u{FFFD} x\\"),
+            "\\e\\ x\\",
+            "the other loaders keep it"
+        );
+        assert_eq!(
+            csv_loader_concept_path("\\a\\b\\", "", Some(&dataset(" ds "))),
+            "\\ds\\a\\b\\",
+            "the dataset name is trimmed by the second split"
+        );
+        assert_eq!(
+            csv_loader_concept_path("a\\b", "", Some(&dataset("dsµx"))),
+            "\\dsµx\\a\\b\\",
+            "a µ in the dataset name is not a separator"
+        );
+        assert_eq!(
+            csv_loader_concept_path("\\a\\", "", Some(&dataset("d\u{FFFD}s"))),
+            "\\ds\\a\\"
+        );
+        assert_eq!(csv_loader_concept_path("", "", None), "\\");
+    }
+
+    #[test]
+    fn csv_loader_always_rolls_up_after_the_prefix() {
+        assert_eq!(csv_loader_concept_path("\\q\\Yes\\", "Yes", None), "\\q\\");
+        assert_eq!(
+            csv_loader_concept_path("\\q\\Yes\\", " Yes ", None),
+            "\\q\\"
+        );
+        assert_eq!(
+            csv_loader_concept_path("\\q\\Maybe\\", "Maybe\u{FFFD}", None),
+            "\\q\\"
+        );
+        assert_eq!(
+            csv_loader_concept_path("\\q\\Yes\\", "No", None),
+            "\\q\\Yes\\"
+        );
+        assert_eq!(csv_loader_concept_path("\\r\\42\\", "42", None), "\\r\\");
+        assert_eq!(
+            csv_loader_concept_path("", "ds", Some(&dataset("ds"))),
+            "\\",
+            "the root node itself rolls up when the text names it"
+        );
+        assert_eq!(
+            csv_loader_concept_path("\\a\\ \\", "", None),
+            "\\a\\",
+            "a blank last node rolls up on an empty text"
         );
     }
 }

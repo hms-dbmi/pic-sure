@@ -148,4 +148,32 @@ any that a killed run left behind.
 Memory: the partition pass holds the concept and path dictionaries. The build pass runs
 `--threads` workers (one per core by default), each holding one partition's spill file plus
 40 bytes per row of it, so peak memory is about `threads` times the largest partitions.
-`--partitions` (default one per 32 MiB of input, at most 128) lowers it.
+`--partitions` (default one per 32 MiB of input, at most 128) lowers it. These are spill
+partitions, unrelated to consent partitions.
+
+### Consent-partitioned stores
+
+`hpds-etl load --mode partitioned --input-dir <dir> --out <dir>` follows the harmonization
+branch's `CSVLoader`: every `<partition>-allConcepts.csv` in `--input-dir` becomes its own
+store in `<out>/<partition>/`, all encrypted with `<out>/encryption_key` (`--key-file` installs
+a copy there). The partition name is the file name up to its first `-`. Input is headerless,
+rollup is always on and comes after the dataset root prefix, and a `TEXT_VALUE` that parses as
+a Java double makes the row numeric. The `allConcepts` entry of the CSV config applies to every
+partition. Partitions build in parallel and are published together once all are complete.
+
+Where `CSVLoader` would crash, overwrite or hide a partition, the load is refused before
+anything is written: a file without a partition prefix (a bare `allConcepts.csv`), two files
+with the same prefix, a partition file in a subdirectory, and an `--out` that holds an
+unpartitioned store or partitions this load does not write. Unparseable numbers and timestamps
+are dropped and counted, as in the other modes; Java aborts on them.
+
+`migrate` takes a directory of per-partition exports and writes `<out>/<partition>/`;
+`bin/migrate-javabins` detects a partitioned javabin directory and exports each partition.
+`dump`, `remove-concepts` and `column-meta-csv` act on every partition of a partitioned store.
+`dump --out <dir>` writes `<dir>/<partition>.csv`, and `dump --merged` writes one file, the
+partitions in name order under one header (with `--patients`, the union of the patient sets).
+`column-meta-csv --merged` writes one `columnMeta.csv` across partitions for dictionary
+hydration, merged as the Java service's `SummaryColumnMeta` merges in memory: summed counts,
+unioned category values, widest width, block offsets 0. Java writes no such file. A concept
+typed differently in two partitions loads into both, but `--merged` refuses it, as the query
+engine refuses to open such a store.

@@ -3,6 +3,14 @@
 # encryption_key) into a Rust store, through the Java ExportForMigration loader and
 # hpds-etl migrate. The javabin directory is mounted read-only and never written.
 #
+# A consent-partitioned javabin directory, as the harmonization CSVLoader writes it (one
+# encryption_key at the root and one subdirectory per partition holding columnMeta.javabin
+# and allObservationsStore.javabin), is migrated partition by partition into
+# <out-dir>/<partition>/, sharing <out-dir>/encryption_key. ExportForMigration runs once
+# per partition, with the partition's two javabin files and the root key mounted read-only
+# as its store directory. Subdirectories without both javabin files, and hidden ones, are
+# not partitions.
+#
 # Usage: bin/migrate-javabins [--dry-run] <javabin-dir> <out-dir>
 #
 #   --dry-run   print the resolved paths, the hpds-etl that would run and every mount, and
@@ -41,6 +49,7 @@
 #   EXPORT_DIR       where the intermediate export goes (a fresh temporary directory)
 #   KEEP_EXPORT      1 keeps the export when the script exits
 #   FORCE            1 migrates into a non-empty output directory, replacing the store files
+#   CONTAINER_PREFIX prefix of the container names (etl-mig)
 #   HEAPSIZE         Java heap in MiB for the exporter (4096). The exporter holds one cube
 #                    at a time as its encrypted bytes, its plaintext and the deserialized
 #                    objects, so the heap must exceed about 6 times the largest cube in
@@ -94,6 +103,7 @@ root="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 java_image="${JAVA_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-etl:bench}"
 rust_image="${RUST_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-rs-etl:LATEST}"
 heap="${HEAPSIZE:-4096}"
+prefix="${CONTAINER_PREFIX:-etl-mig}"
 [[ "$heap" =~ ^[0-9]+$ ]] || fail "HEAPSIZE must be a whole number of MiB"
 
 [[ -d "$1" ]] || fail "$1 is not a directory"
@@ -105,9 +115,25 @@ else
   export_dir=""
 fi
 
-for name in columnMeta.javabin allObservationsStore.javabin encryption_key; do
-  [[ -r "$source_dir/$name" ]] || fail "$source_dir/$name is missing or unreadable"
-done
+[[ -r "$source_dir/encryption_key" ]] || fail "$source_dir/encryption_key is missing or unreadable"
+partitions=()
+if [[ -e "$source_dir/columnMeta.javabin" || -e "$source_dir/allObservationsStore.javabin" ]]; then
+  for name in columnMeta.javabin allObservationsStore.javabin; do
+    [[ -r "$source_dir/$name" ]] || fail "$source_dir/$name is missing or unreadable"
+  done
+else
+  for dir in "$source_dir"/*/; do
+    [[ -d "$dir" ]] || continue
+    dir="${dir%/}"
+    if [[ -f "$dir/columnMeta.javabin" && -f "$dir/allObservationsStore.javabin" ]]; then
+      for name in columnMeta.javabin allObservationsStore.javabin; do
+        [[ -r "$dir/$name" ]] || fail "$dir/$name is unreadable"
+      done
+      partitions+=("${dir##*/}")
+    fi
+  done
+  [[ ${#partitions[@]} -gt 0 ]] || fail "$source_dir holds neither a javabin store nor partition subdirectories holding one"
+fi
 within "$out_dir" "$source_dir" && fail "the output directory $out_dir is inside the javabin directory $source_dir"
 within "$source_dir" "$out_dir" && fail "the javabin directory $source_dir is inside the output directory $out_dir"
 if [[ -n "$export_dir" ]]; then
@@ -124,6 +150,20 @@ if [[ -e "$out_dir" ]]; then
   fi
   if [[ -e "$out_dir/encryption_key" ]] && ! cmp -s "$source_dir/encryption_key" "$out_dir/encryption_key"; then
     fail "$out_dir/encryption_key exists and differs from the javabin store's key"
+  fi
+  if [[ ${#partitions[@]} -gt 0 ]]; then
+    [[ -e "$out_dir/pheno.index" ]] && fail "$out_dir holds an unpartitioned store; migrate the partitions into another directory"
+    for dir in "$out_dir"/*/; do
+      [[ -f "$dir/pheno.index" ]] || continue
+      dir="${dir%/}"
+      known=0
+      for name in "${partitions[@]}"; do [[ "$name" == "${dir##*/}" ]] && known=1; done
+      [[ "$known" == "1" ]] || fail "$out_dir holds partition ${dir##*/}, which the javabin directory does not; remove it or migrate into another directory"
+    done
+  else
+    for dir in "$out_dir"/*/; do
+      [[ -f "$dir/pheno.index" ]] && fail "$out_dir holds partition stores; migrate the unpartitioned store into another directory"
+    done
   fi
 fi
 next_dir="$out_dir/.next"
@@ -153,6 +193,9 @@ user="$(id -u):$(id -g)"
 export_mount_note="${export_dir:-<new temporary directory under ${TMPDIR:-/tmp}>}"
 
 echo "javabin store: $source_dir (read-only)"
+if [[ ${#partitions[@]} -gt 0 ]]; then
+  echo "partitions:    ${partitions[*]}"
+fi
 echo "output:        $out_dir (staged in $next_dir)"
 echo "export:        $export_mount_note"
 echo "java exporter: $java_image, HEAPSIZE=${heap}m"
@@ -163,18 +206,29 @@ else
 fi
 
 if [[ "$dry_run" == "1" ]]; then
-  echo "mounts, export step (container etl-mig-export-*):"
-  echo "  $source_dir -> /opt/local/hpds (read-only)"
-  echo "  $export_mount_note -> /opt/local/export"
+  if [[ ${#partitions[@]} -gt 0 ]]; then
+    echo "mounts, export step per partition <p> (container $prefix-export-*):"
+    echo "  $source_dir/<p>/columnMeta.javabin, $source_dir/<p>/allObservationsStore.javabin,"
+    echo "  $source_dir/encryption_key -> /opt/local/hpds/ (read-only)"
+    echo "  $export_mount_note/<p> -> /opt/local/export"
+  else
+    echo "mounts, export step (container $prefix-export-*):"
+    echo "  $source_dir -> /opt/local/hpds (read-only)"
+    echo "  $export_mount_note -> /opt/local/export"
+  fi
   if [[ -n "$host_binary" ]]; then
     echo "migrate step runs on the host: $host_binary migrate --export $export_mount_note --out $next_dir/store"
   else
-    echo "mounts, migrate step (container etl-mig-migrate-*):"
+    echo "mounts, migrate step (container $prefix-migrate-*):"
     echo "  $export_mount_note -> /export (read-only)"
     echo "  $next_dir -> /work"
   fi
   echo "key: install -m 600 $source_dir/encryption_key $next_dir/store/encryption_key"
-  echo "then the store files move from $next_dir/store into $out_dir, pheno.index last"
+  if [[ ${#partitions[@]} -gt 0 ]]; then
+    echo "then each partition moves from $next_dir/store into $out_dir (the store files of an existing partition, pheno.index last), and the key last"
+  else
+    echo "then the store files move from $next_dir/store into $out_dir, pheno.index last"
+  fi
   exit 0
 fi
 
@@ -183,7 +237,7 @@ created_export=0
 staged=0
 cleanup() {
   local status=$?
-  docker rm -f "etl-mig-export-$suffix" "etl-mig-migrate-$suffix" >/dev/null 2>&1 || true
+  docker rm -f "$prefix-export-$suffix" "$prefix-migrate-$suffix" >/dev/null 2>&1 || true
   rm -rf "$next_dir"
   if [[ "$status" -ne 0 && "$created_out" == "1" ]]; then
     rmdir "$out_dir" 2>/dev/null || true
@@ -196,6 +250,9 @@ cleanup() {
     else
       rm -f "$export_dir/concepts.bin" "$export_dir/patients.txt" \
         "$export_dir/concepts.bin.tmp" "$export_dir/patients.txt.tmp"
+      for name in ${partitions[@]+"${partitions[@]}"}; do
+        rm -rf "${export_dir:?}/$name"
+      done
     fi
   fi
   if [[ "$status" -ne 0 && "$staged" == "0" ]]; then
@@ -226,14 +283,31 @@ else
 fi
 chmod 700 "$export_dir"
 
-echo "exporting $source_dir to $export_dir"
-docker run --rm --name "etl-mig-export-$suffix" --user "$user" \
-  -e LOADER_NAME=ExportForMigration \
-  -e LOADER_ARGS="/opt/local/hpds /opt/local/export" \
-  -e HEAPSIZE="$heap" \
-  -v "$source_dir:/opt/local/hpds:ro" \
-  -v "$export_dir:/opt/local/export" \
-  "$java_image"
+if [[ ${#partitions[@]} -gt 0 ]]; then
+  for name in "${partitions[@]}"; do
+    echo "exporting partition $name to $export_dir/$name"
+    rm -rf "${export_dir:?}/$name"
+    mkdir -m 700 "$export_dir/$name"
+    docker run --rm --name "$prefix-export-$suffix" --user "$user" \
+      -e LOADER_NAME=ExportForMigration \
+      -e LOADER_ARGS="/opt/local/hpds /opt/local/export" \
+      -e HEAPSIZE="$heap" \
+      -v "$source_dir/$name/columnMeta.javabin:/opt/local/hpds/columnMeta.javabin:ro" \
+      -v "$source_dir/$name/allObservationsStore.javabin:/opt/local/hpds/allObservationsStore.javabin:ro" \
+      -v "$source_dir/encryption_key:/opt/local/hpds/encryption_key:ro" \
+      -v "$export_dir/$name:/opt/local/export" \
+      "$java_image"
+  done
+else
+  echo "exporting $source_dir to $export_dir"
+  docker run --rm --name "$prefix-export-$suffix" --user "$user" \
+    -e LOADER_NAME=ExportForMigration \
+    -e LOADER_ARGS="/opt/local/hpds /opt/local/export" \
+    -e HEAPSIZE="$heap" \
+    -v "$source_dir:/opt/local/hpds:ro" \
+    -v "$export_dir:/opt/local/export" \
+    "$java_image"
+fi
 
 mkdir -m 700 "$next_dir/store"
 install -m 600 "$source_dir/encryption_key" "$next_dir/store/encryption_key"
@@ -242,17 +316,38 @@ echo "migrating into $next_dir/store"
 if [[ -n "$host_binary" ]]; then
   "$host_binary" migrate --export "$export_dir" --out "$next_dir/store"
 else
-  docker run --rm --name "etl-mig-migrate-$suffix" --user "$user" \
+  docker run --rm --name "$prefix-migrate-$suffix" --user "$user" \
     -v "$export_dir:/export:ro" \
     -v "$next_dir:/work" \
     "$rust_image" migrate --export /export --out /work/store
 fi
 
-for name in pheno.blocks columnMeta.csv etl-report.json encryption_key pheno.index; do
-  [[ -f "$next_dir/store/$name" ]] || fail "hpds-etl migrate did not write $name"
-done
-staged=1
-for name in pheno.blocks columnMeta.csv etl-report.json encryption_key pheno.index; do
-  mv -f "$next_dir/store/$name" "$out_dir/$name"
-done
-echo "migrated store in $out_dir"
+store_files=(pheno.blocks columnMeta.csv etl-report.json pheno.index)
+if [[ ${#partitions[@]} -gt 0 ]]; then
+  for name in "${partitions[@]}"; do
+    for file in "${store_files[@]}"; do
+      [[ -f "$next_dir/store/$name/$file" ]] || fail "hpds-etl migrate did not write $name/$file"
+    done
+  done
+  staged=1
+  for name in "${partitions[@]}"; do
+    if [[ -d "$out_dir/$name" ]]; then
+      for file in "${store_files[@]}"; do
+        mv -f "$next_dir/store/$name/$file" "$out_dir/$name/$file"
+      done
+    else
+      mv "$next_dir/store/$name" "$out_dir/$name"
+    fi
+  done
+  mv -f "$next_dir/store/encryption_key" "$out_dir/encryption_key"
+  echo "migrated ${#partitions[@]} partitions in $out_dir"
+else
+  for name in "${store_files[@]}" encryption_key; do
+    [[ -f "$next_dir/store/$name" ]] || fail "hpds-etl migrate did not write $name"
+  done
+  staged=1
+  for name in pheno.blocks columnMeta.csv etl-report.json encryption_key pheno.index; do
+    mv -f "$next_dir/store/$name" "$out_dir/$name"
+  done
+  echo "migrated store in $out_dir"
+fi

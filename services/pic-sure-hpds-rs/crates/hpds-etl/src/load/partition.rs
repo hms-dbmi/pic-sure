@@ -14,7 +14,9 @@ use rustc_hash::FxHashMap;
 use super::rules::{ConfigMap, Mode, apply_dataset_root, parse_patient};
 use super::spill::{OutRow, PatientField, write_row};
 use crate::error::{EtlError, Result};
-use crate::java::{is_log4j_blank, normalize_concept_path, roll_up, rolls_up, rollup_text};
+use crate::java::{
+    is_log4j_blank, normalize_concept_path, resplit_concept_path, roll_up, rolls_up, rollup_text,
+};
 use crate::private_fs;
 
 /// One input file and the name its CSV config is looked up under.
@@ -174,16 +176,17 @@ pub(crate) struct PartitionSettings<'a> {
 }
 
 /// Reads `path` as CSV on a separate thread and calls `route` on every data record in
-/// order, so CSV parsing and UTF-8 decoding overlap routing. A field that is not valid
-/// UTF-8 has each invalid sequence replaced by U+FFFD. Stops at the first error `route`
-/// returns.
+/// order, so CSV parsing and UTF-8 decoding overlap routing. With `header`, the first
+/// record is a header and skipped. A field that is not valid UTF-8 has each invalid
+/// sequence replaced by U+FFFD. Stops at the first error `route` returns.
 fn for_each_record(
     path: &Path,
+    header: bool,
     mut route: impl FnMut(&csv::StringRecord) -> Result<()>,
 ) -> Result<()> {
     let file = File::open(path).map_err(EtlError::io("opening", path))?;
     let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
+        .has_headers(header)
         .flexible(true)
         .from_reader(BufReader::with_capacity(1 << 20, file));
     let (full_tx, full_rx) =
@@ -373,6 +376,7 @@ fn route(
     sink: &mut SpillSink,
 ) -> Result<Partitioned> {
     let sequential = settings.mode == Mode::Sequential;
+    let csv_loader = settings.mode == Mode::Partitioned;
     let mut interner = Interner {
         raw_ids: FxHashMap::default(),
         raw_paths: Vec::new(),
@@ -399,9 +403,10 @@ fn route(
             }
         };
         let mut concept_cache: FxHashMap<(u32, bool), u32> = FxHashMap::default();
+        let mut csv_loader_bases: FxHashMap<u32, String> = FxHashMap::default();
         let mut record_index = 0u64;
         let mut last_chunk = None;
-        for_each_record(path, |record| {
+        for_each_record(path, !csv_loader, |record| {
             let this_seq = seq;
             seq += 1;
             let index_in_file = record_index;
@@ -424,6 +429,29 @@ fn route(
             }
             let field = |i| record.get(i).unwrap_or_default();
             let raw_id = interner.raw_path(field(1).as_bytes());
+            if csv_loader {
+                let base = csv_loader_bases.entry(raw_id).or_insert_with(|| {
+                    resplit_concept_path(&apply_dataset_root(
+                        interner.raw_paths[raw_id as usize].normalized.clone(),
+                        config,
+                    ))
+                });
+                let rolled = rolls_up(base, &rollup_text(field(3)));
+                let concept = match concept_cache.get(&(raw_id, rolled)) {
+                    Some(&id) => id,
+                    None => {
+                        let path_value = if rolled {
+                            roll_up(base, &rollup_text(field(3))).unwrap_or_else(|| base.clone())
+                        } else {
+                            base.clone()
+                        };
+                        let id = interner.concept(path_value);
+                        concept_cache.insert((raw_id, rolled), id);
+                        id
+                    }
+                };
+                return route_row(record, this_seq, concept, raw_id, settings, sink);
+            }
             let rolled = settings.rollup
                 && rolls_up(
                     &interner.raw_paths[raw_id as usize].normalized,
@@ -444,37 +472,14 @@ fn route(
                     id
                 }
             };
-            let line = || record.position().map_or(0, |p| p.line());
-            let patient = match parse_patient(field(0)) {
-                Ok(p) => PatientField::Parsed(p),
-                Err(_) if sequential => {
-                    return Err(EtlError::InvalidPatient {
-                        file: path.clone(),
-                        record: index_in_file + 1,
-                        line: line(),
-                    });
-                }
-                Err(_) => PatientField::Unparseable { line: line() },
-            };
-            let numeric = field(2);
-            let is_text = match settings.mode {
-                Mode::NewSearch => numeric.is_empty(),
-                Mode::Sequential => is_log4j_blank(numeric),
-            };
-            let row = OutRow {
-                seq: this_seq,
-                concept,
-                raw_path: raw_id,
-                patient,
-                numeric: numeric.as_bytes(),
-                text: if is_text { field(3).as_bytes() } else { &[] },
-                timestamp: field(4).as_bytes(),
-            };
-            if sink.push(partition_of(concept, settings.partitions), &row) {
-                Ok(())
-            } else {
-                Err(EtlError::ThreadPool("the spill writer stopped".into()))
+            if sequential && parse_patient(field(0)).is_err() {
+                return Err(EtlError::InvalidPatient {
+                    file: path.clone(),
+                    record: index_in_file + 1,
+                    line: record.position().map_or(0, |p| p.line()),
+                });
             }
+            route_row(record, this_seq, concept, raw_id, settings, sink)
         })?;
         chunk_base = last_chunk.map_or(chunk_base, |c| c + 1);
     }
@@ -500,6 +505,49 @@ fn route(
         rows_read: seq,
         short_rows,
     })
+}
+
+/// Spills one record of `concept`. The value and timestamp go unparsed; a patient number
+/// that does not parse is spilled with the record's line, for the build pass to report if
+/// the row would have been stored. The text field is spilled only for rows that may be
+/// text.
+///
+/// # Errors
+/// [`EtlError::ThreadPool`] when the spill writer thread has stopped.
+fn route_row(
+    record: &csv::StringRecord,
+    seq: u64,
+    concept: u32,
+    raw_path: u32,
+    settings: &PartitionSettings<'_>,
+    sink: &mut SpillSink,
+) -> Result<()> {
+    let field = |i| record.get(i).unwrap_or_default();
+    let patient = match parse_patient(field(0)) {
+        Ok(p) => PatientField::Parsed(p),
+        Err(_) => PatientField::Unparseable {
+            line: record.position().map_or(0, |p| p.line()),
+        },
+    };
+    let numeric = field(2);
+    let maybe_text = match settings.mode {
+        Mode::NewSearch | Mode::Partitioned => numeric.is_empty(),
+        Mode::Sequential => is_log4j_blank(numeric),
+    };
+    let row = OutRow {
+        seq,
+        concept,
+        raw_path,
+        patient,
+        numeric: numeric.as_bytes(),
+        text: if maybe_text { field(3).as_bytes() } else { &[] },
+        timestamp: field(4).as_bytes(),
+    };
+    if sink.push(partition_of(concept, settings.partitions), &row) {
+        Ok(())
+    } else {
+        Err(EtlError::ThreadPool("the spill writer stopped".into()))
+    }
 }
 
 fn rank_raw_paths(raw_paths: &[RawPath]) -> Vec<u32> {

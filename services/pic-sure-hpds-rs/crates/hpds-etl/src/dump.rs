@@ -18,6 +18,7 @@
 use std::io::Write;
 
 use hpds_format::{Block, FormatError, NO_TIMESTAMP};
+use roaring::RoaringBitmap;
 use serde::Serialize;
 
 use crate::column_meta_csv::write_commons_csv_record;
@@ -49,10 +50,35 @@ pub struct DumpCounts {
 /// [`EtlError::Format`] when a block fails to read or verify, or a categorical observation
 /// refers to a dictionary entry the block does not have, and [`EtlError::Io`] when writing
 /// to `out` fails.
-pub fn dump<W: Write>(store: &OpenStore, out: &mut W) -> Result<DumpCounts> {
-    let write_error = |e| EtlError::io("writing", "the dump")(e);
+pub fn dump<W: Write + ?Sized>(store: &OpenStore, out: &mut W) -> Result<DumpCounts> {
+    dump_merged(std::slice::from_ref(store), out)
+}
+
+/// Writes every observation of every store in `stores`, in that order, to `out` as one
+/// canonical CSV with a single header: the per-store dumps of [`dump`] concatenated without
+/// their repeated headers. Used for a partitioned store, its partitions in name order.
+///
+/// # Errors
+/// As [`dump`].
+pub fn dump_merged<W: Write + ?Sized>(stores: &[OpenStore], out: &mut W) -> Result<DumpCounts> {
     write_commons_csv_record(out, &DUMP_HEADER).map_err(write_error)?;
     let mut counts = DumpCounts::default();
+    for store in stores {
+        write_observations(store, out, &mut counts)?;
+    }
+    out.flush().map_err(write_error)?;
+    Ok(counts)
+}
+
+fn write_error(e: std::io::Error) -> EtlError {
+    EtlError::io("writing", "the dump")(e)
+}
+
+fn write_observations<W: Write + ?Sized>(
+    store: &OpenStore,
+    out: &mut W,
+    counts: &mut DumpCounts,
+) -> Result<()> {
     let mut fields: [String; 5] = Default::default();
     for concept in store.index.concepts() {
         counts.concepts += 1;
@@ -98,8 +124,7 @@ pub fn dump<W: Write>(store: &OpenStore, out: &mut W) -> Result<DumpCounts> {
             }
         }
     }
-    out.flush().map_err(write_error)?;
-    Ok(counts)
+    Ok(())
 }
 
 /// Writes the store's patient ID set to `out`, one decimal ID per line in ascending order,
@@ -107,11 +132,24 @@ pub fn dump<W: Write>(store: &OpenStore, out: &mut W) -> Result<DumpCounts> {
 ///
 /// # Errors
 /// [`EtlError::Io`] when writing to `out` fails.
-pub fn dump_patients<W: Write>(store: &OpenStore, out: &mut W) -> Result<u64> {
+pub fn dump_patients<W: Write + ?Sized>(store: &OpenStore, out: &mut W) -> Result<u64> {
+    dump_patients_merged(std::slice::from_ref(store), out)
+}
+
+/// Writes the union of the patient ID sets of `stores` to `out`, one decimal ID per line
+/// in ascending order, each ID once: the patients a query over every partition can see.
+///
+/// # Errors
+/// [`EtlError::Io`] when writing to `out` fails.
+pub fn dump_patients_merged<W: Write + ?Sized>(stores: &[OpenStore], out: &mut W) -> Result<u64> {
     let write_error = |e| EtlError::io("writing", "the patient list")(e);
-    for patient in store.index.patients() {
+    let mut patients = RoaringBitmap::new();
+    for store in stores {
+        patients |= store.index.patients();
+    }
+    for patient in &patients {
         writeln!(out, "{patient}").map_err(write_error)?;
     }
     out.flush().map_err(write_error)?;
-    Ok(store.index.patients().len())
+    Ok(patients.len())
 }

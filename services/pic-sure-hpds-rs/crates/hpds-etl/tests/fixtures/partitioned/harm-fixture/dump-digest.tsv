@@ -1,0 +1,116 @@
+partition1	\open_access-1000Genomes\data\1000 GENOMES 30X ON GRCH38\	494	c586bd90309411b6
+partition1	\open_access-1000Genomes\data\1000 GENOMES PHASE 1 RELEASE\	494	dcc4a078d55124d9
+partition1	\open_access-1000Genomes\data\90 HAN CHINESE HIGH COVERAGE GENOMES\	494	1e534e9adc43355f
+partition1	\open_access-1000Genomes\data\BIOSAMPLE ID\	423	2d55e6cec4fcad0a
+partition1	\open_access-1000Genomes\data\DATA COLLECTIONS\	479	4e690be1763c807c
+partition1	\open_access-1000Genomes\data\GAMBIAN GENOME VARIATION PROJECT (GRCH37)\	494	52594c67988b5d0b
+partition1	\open_access-1000Genomes\data\GAMBIAN GENOME VARIATION PROJECT (GRCH38)\	494	e49b2c7cee06290f
+partition1	\open_access-1000Genomes\data\GENOMES ON GRCH381000\	494	83a94e8611bc164a
+partition1	\open_access-1000Genomes\data\GENOMES PHASE 3 RELEASE\	494	79c04ab7249d9e16
+partition1	\open_access-1000Genomes\data\GEUVADIS\	494	c27095474b86a8f5
+partition1	\open_access-1000Genomes\data\HGDP TRANSCRIPTOME\	494	36d6fdfc46020aaa
+partition1	\open_access-1000Genomes\data\HUMAN GENOME DIVERSITY PROJECT\	494	3191e7c8d1287f0a
+partition1	\open_access-1000Genomes\data\HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM, PHASE 21000\	494	b62c9aafebb5285e
+partition1	\open_access-1000Genomes\data\HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM, PHASE 3\	494	488747caa3f111c6
+partition1	\open_access-1000Genomes\data\ILLUMINA PLATINUM PEDIGREE\	494	d6fc59482f94bb48
+partition1	\open_access-1000Genomes\data\POPULATION CODE\	433	4465c8c3ea6af6a9
+partition1	\open_access-1000Genomes\data\POPULATION ELASTIC ID\	494	384baa1d282156d1
+partition1	\open_access-1000Genomes\data\POPULATION NAME\	494	ff976a8728f638be
+partition1	\open_access-1000Genomes\data\SAMPLE NAME\	494	4332cd766953d3c1
+partition1	\open_access-1000Genomes\data\SEX\	494	e47588d9ecc309fd
+partition1	\open_access-1000Genomes\data\SIMONS GENOME DIVERSITY PROJECT\	494	baed63c9b89e7a0d
+partition1	\open_access-1000Genomes\data\SUPERPOPULATION CODE\	433	bbf6ff208fecdd0a
+partition1	\open_access-1000Genomes\data\SUPERPOPULATION NAME\	494	6a8bc5aa5eb0eb0d
+partition1	\open_access-1000Genomes\data\SYNTHETIC_AGE\	113	7d5bc597adfc2303
+partition1	\open_access-1000Genomes\data\SYNTHETIC_HEIGHT\	113	3631465738294ee4
+partition1	\open_access-1000Genomes\data\SYNTHETIC_SEX\	113	8b07201ad1849a09
+partition1	\open_access-1000Genomes\data\SYNTHETIC_STATUS\	113	8f82708adc4c2022
+partition1	\open_access-1000Genomes\data\SYNTHETIC_STUDY\	113	78b1b3a4602533f5
+partition1	\open_access-1000Genomes\data\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\	494	6bf93f10cca58ef8
+partition2	\open_access-1000Genomes\data\1000 GENOMES 30X ON GRCH38\	1000	e2463ff615e7cdef
+partition2	\open_access-1000Genomes\data\1000 GENOMES PHASE 1 RELEASE\	1000	3d47f7075a71439a
+partition2	\open_access-1000Genomes\data\90 HAN CHINESE HIGH COVERAGE GENOMES\	1000	8cb8ca3c4f2377a1
+partition2	\open_access-1000Genomes\data\BIOSAMPLE ID\	558	128e2069286f14cc
+partition2	\open_access-1000Genomes\data\DATA COLLECTIONS\	981	fc745bcf9a5c1b0d
+partition2	\open_access-1000Genomes\data\GAMBIAN GENOME VARIATION PROJECT (GRCH37)\	1000	b837b83c808fe15f
+partition2	\open_access-1000Genomes\data\GAMBIAN GENOME VARIATION PROJECT (GRCH38)\	1000	a22a6c11ef1012d3
+partition2	\open_access-1000Genomes\data\GENOMES ON GRCH381000\	1000	ebaa53df66f4bd31
+partition2	\open_access-1000Genomes\data\GENOMES PHASE 3 RELEASE\	1000	6d944f1ea0020e91
+partition2	\open_access-1000Genomes\data\GEUVADIS\	1000	640c78e4bbdd310c
+partition2	\open_access-1000Genomes\data\HGDP TRANSCRIPTOME\	1000	09091b09e5e2d003
+partition2	\open_access-1000Genomes\data\HUMAN GENOME DIVERSITY PROJECT\	1000	39891d28fa2ae7fc
+partition2	\open_access-1000Genomes\data\HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM, PHASE 21000\	1000	dcc723eb7e628d61
+partition2	\open_access-1000Genomes\data\HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM, PHASE 3\	1000	07f93e43e58af289
+partition2	\open_access-1000Genomes\data\ILLUMINA PLATINUM PEDIGREE\	1000	3a712ad0ce80e5c9
+partition2	\open_access-1000Genomes\data\POPULATION CODE\	781	3b068954c4d85c9f
+partition2	\open_access-1000Genomes\data\POPULATION ELASTIC ID\	1000	415ac2961e8a43c6
+partition2	\open_access-1000Genomes\data\POPULATION NAME\	1000	7c0235c54e1c2fd2
+partition2	\open_access-1000Genomes\data\SAMPLE NAME\	1000	168c04387a5c6272
+partition2	\open_access-1000Genomes\data\SEX\	1000	d7cb75d3062e8295
+partition2	\open_access-1000Genomes\data\SIMONS GENOME DIVERSITY PROJECT\	1000	f94a51836b719e0c
+partition2	\open_access-1000Genomes\data\SUPERPOPULATION CODE\	780	62eee830ff72c2fa
+partition2	\open_access-1000Genomes\data\SUPERPOPULATION NAME\	1000	f0c4b834b152030e
+partition2	\open_access-1000Genomes\data\SYNTHETIC_AGE\	170	5e177bc19435f7f6
+partition2	\open_access-1000Genomes\data\SYNTHETIC_HEIGHT\	170	1956b3e5dcff4930
+partition2	\open_access-1000Genomes\data\SYNTHETIC_SEX\	170	874bd3542bc31337
+partition2	\open_access-1000Genomes\data\SYNTHETIC_STATUS\	170	f92ac17d73fd116c
+partition2	\open_access-1000Genomes\data\SYNTHETIC_STUDY\	170	c97489859c5f7717
+partition2	\open_access-1000Genomes\data\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\	1000	2e2bd9e004841c74
+partition3	\open_access-1000Genomes\data\1000 GENOMES 30X ON GRCH38\	1000	1af25a35b5e10adb
+partition3	\open_access-1000Genomes\data\1000 GENOMES PHASE 1 RELEASE\	1000	c673a44aa75dfc1b
+partition3	\open_access-1000Genomes\data\90 HAN CHINESE HIGH COVERAGE GENOMES\	1000	f0cf20adf5361a50
+partition3	\open_access-1000Genomes\data\BIOSAMPLE ID\	737	a42e292110331285
+partition3	\open_access-1000Genomes\data\DATA COLLECTIONS\	985	8654ba6279b767a4
+partition3	\open_access-1000Genomes\data\GAMBIAN GENOME VARIATION PROJECT (GRCH37)\	1000	614dbcfcca85dae3
+partition3	\open_access-1000Genomes\data\GAMBIAN GENOME VARIATION PROJECT (GRCH38)\	1000	29ef4dda9b808e46
+partition3	\open_access-1000Genomes\data\GENOMES ON GRCH381000\	1000	b8c409bc4fae48b1
+partition3	\open_access-1000Genomes\data\GENOMES PHASE 3 RELEASE\	1000	63573530831540aa
+partition3	\open_access-1000Genomes\data\GEUVADIS\	1000	2798c6ceccdbe90d
+partition3	\open_access-1000Genomes\data\HGDP TRANSCRIPTOME\	1000	0ed7358a09a9cc12
+partition3	\open_access-1000Genomes\data\HUMAN GENOME DIVERSITY PROJECT\	1000	c6ec80f39e27bcac
+partition3	\open_access-1000Genomes\data\HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM, PHASE 21000\	1000	3bc27c98ca288ef1
+partition3	\open_access-1000Genomes\data\HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM, PHASE 3\	1000	856a32fce805f04c
+partition3	\open_access-1000Genomes\data\ILLUMINA PLATINUM PEDIGREE\	1000	9eee0077ed7fd721
+partition3	\open_access-1000Genomes\data\POPULATION CODE\	673	f707944b03ce357a
+partition3	\open_access-1000Genomes\data\POPULATION ELASTIC ID\	1000	73f0254456b35a20
+partition3	\open_access-1000Genomes\data\POPULATION NAME\	1000	0c044b2b5cb39150
+partition3	\open_access-1000Genomes\data\SAMPLE NAME\	1000	a127e3d11e1a2a3d
+partition3	\open_access-1000Genomes\data\SEX\	1000	7ebecfc1e61e7fbd
+partition3	\open_access-1000Genomes\data\SIMONS GENOME DIVERSITY PROJECT\	1000	802df117e2b21726
+partition3	\open_access-1000Genomes\data\SUPERPOPULATION CODE\	673	0110f8614a059bdb
+partition3	\open_access-1000Genomes\data\SUPERPOPULATION NAME\	1000	1595a3eca53dacaa
+partition3	\open_access-1000Genomes\data\SYNTHETIC_AGE\	136	2508607076a1206a
+partition3	\open_access-1000Genomes\data\SYNTHETIC_HEIGHT\	136	c602e6d604eac2c0
+partition3	\open_access-1000Genomes\data\SYNTHETIC_SEX\	136	defe331a251d59a5
+partition3	\open_access-1000Genomes\data\SYNTHETIC_STATUS\	136	66a6ea0860b6c913
+partition3	\open_access-1000Genomes\data\SYNTHETIC_STUDY\	136	842dd33ce5773f19
+partition3	\open_access-1000Genomes\data\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\	1000	972cb3330a599ace
+partition4	\open_access-1000Genomes\data\1000 GENOMES 30X ON GRCH38\	2484	59cbff269e1da8cf
+partition4	\open_access-1000Genomes\data\1000 GENOMES PHASE 1 RELEASE\	2484	03928cca48ec981b
+partition4	\open_access-1000Genomes\data\90 HAN CHINESE HIGH COVERAGE GENOMES\	2484	7ddd1c77f5d3c391
+partition4	\open_access-1000Genomes\data\BIOSAMPLE ID\	2026	e96f43ecd4bf12e4
+partition4	\open_access-1000Genomes\data\DATA COLLECTIONS\	2435	45f454b2cdc46213
+partition4	\open_access-1000Genomes\data\GAMBIAN GENOME VARIATION PROJECT (GRCH37)\	2484	b3bf7fe2e0c050e6
+partition4	\open_access-1000Genomes\data\GAMBIAN GENOME VARIATION PROJECT (GRCH38)\	2484	0f509a5ffb5ef6a7
+partition4	\open_access-1000Genomes\data\GENOMES ON GRCH381000\	2484	4a5f3de953032ebd
+partition4	\open_access-1000Genomes\data\GENOMES PHASE 3 RELEASE\	2484	174845863fb9755f
+partition4	\open_access-1000Genomes\data\GEUVADIS\	2484	4c8f5dfc6be2d20a
+partition4	\open_access-1000Genomes\data\HGDP TRANSCRIPTOME\	2484	4f61730e3543c6f9
+partition4	\open_access-1000Genomes\data\HUMAN GENOME DIVERSITY PROJECT\	2484	b367a9cc7901ee03
+partition4	\open_access-1000Genomes\data\HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM, PHASE 21000\	2484	ee920cf7a31db479
+partition4	\open_access-1000Genomes\data\HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM, PHASE 3\	2484	5f94842fbd8d53c6
+partition4	\open_access-1000Genomes\data\ILLUMINA PLATINUM PEDIGREE\	2484	f3f31e28d4c8e355
+partition4	\open_access-1000Genomes\data\POPULATION CODE\	2024	87a8896ff8ec1521
+partition4	\open_access-1000Genomes\data\POPULATION ELASTIC ID\	2484	5891d0b1ff570589
+partition4	\open_access-1000Genomes\data\POPULATION NAME\	2484	9f41212b88a11cd3
+partition4	\open_access-1000Genomes\data\SAMPLE NAME\	2484	5279cdd9f0468576
+partition4	\open_access-1000Genomes\data\SEX\	2484	391cfb1e68a6b3a6
+partition4	\open_access-1000Genomes\data\SIMONS GENOME DIVERSITY PROJECT\	2484	ddc0019c14f32034
+partition4	\open_access-1000Genomes\data\SUPERPOPULATION CODE\	2022	a9146b0f17bd13ef
+partition4	\open_access-1000Genomes\data\SUPERPOPULATION NAME\	2484	015cc70f835524a3
+partition4	\open_access-1000Genomes\data\SYNTHETIC_AGE\	707	f9e9495a86dfe090
+partition4	\open_access-1000Genomes\data\SYNTHETIC_HEIGHT\	707	71bbfe7547cdcbc2
+partition4	\open_access-1000Genomes\data\SYNTHETIC_SEX\	707	b826b093ad8d373f
+partition4	\open_access-1000Genomes\data\SYNTHETIC_STATUS\	707	f32abfd62c084b9e
+partition4	\open_access-1000Genomes\data\SYNTHETIC_STUDY\	707	ff8584cca0873603
+partition4	\open_access-1000Genomes\data\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\	2484	2e10f5d1539ad35e

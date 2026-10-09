@@ -27,7 +27,7 @@
 //!
 //! No error or log line names an observation value, a category value or a patient number.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -48,8 +48,11 @@ use serde::Serialize;
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
 use crate::load::{
-    DEFAULT_KEY_NAME, KeySource, REPORT_FILE_NAME, Staging, check_output,
+    DEFAULT_KEY_NAME, KeySource, REPORT_FILE_NAME, Staging, check_output, thread_pool,
     write_index_and_column_meta,
+};
+use crate::partitions::{
+    PartitionedStaging, StoreLayout, check_partitioned_output, resolve_shared_key,
 };
 use crate::private_fs;
 use crate::store::resolve_protection;
@@ -271,10 +274,109 @@ pub struct MigrateReport {
 /// metadata disagrees with its observations when `skip_inconsistent` is off; I/O and
 /// format errors.
 pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
+    check_export_files(&options.export)?;
+    refuse_plain(&options.key)?;
+    check_output(&options.out, &options.key)?;
+    let protection = resolve_protection(&options.key, &options.out)?;
+    let pool = thread_pool(options.threads)?;
+    let staging = Staging::create(&options.out)?;
+    let report = migrate_into(
+        &options.export,
+        staging.path(),
+        &protection,
+        &pool,
+        options.skip_inconsistent,
+    )?;
+    staging.publish(&options.out)?;
+    tracing::info!(
+        out = %options.out.display(),
+        concepts = report.concepts,
+        observations = report.observations,
+        patients = report.patients,
+        collisions = report.collisions.len(),
+        skipped = report.skipped.len(),
+        seconds = report.elapsed_seconds,
+        "store migrated"
+    );
+    Ok(report)
+}
+
+/// What a partitioned migration did: one [`MigrateReport`] per partition, also written to
+/// that partition's `etl-report.json`.
+#[derive(Clone, Debug, Serialize)]
+pub struct PartitionedMigrateReport {
+    /// Partition name to its report, in byte order of the names.
+    pub partitions: BTreeMap<String, MigrateReport>,
+    /// Wall time in seconds.
+    pub elapsed_seconds: f64,
+}
+
+/// Migrates a partitioned export into `<options.out>/<partition>/`, one store per
+/// partition, all under one key.
+///
+/// The export at `options.export` holds one export directory per partition, each named
+/// after its partition (`bin/migrate-javabins` runs `ExportForMigration` once for each
+/// partition of a partitioned javabin directory). [`KeySource::File`] also installs a copy
+/// of the key as `<out>/encryption_key`. Every partition is staged beside `out` and the set
+/// is moved into place together once all are migrated, as
+/// [`crate::load::load_partitioned`] does.
+///
+/// # Errors
+/// [`EtlError::Usage`] when the export is not partitioned, for a partition name that
+/// cannot be a directory, an output [`check_partitioned_output`] refuses, a plain key
+/// source, an unreadable key, or a key file that differs from an existing
+/// `<out>/encryption_key`; every error of [`migrate`] for each partition.
+pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrateReport> {
     let started = Instant::now();
-    let concepts_path = options.export.join(EXPORT_CONCEPTS_FILE);
-    let patients_path = options.export.join(EXPORT_PATIENTS_FILE);
-    for path in [&concepts_path, &patients_path] {
+    let StoreLayout::Partitioned(partitions) =
+        StoreLayout::detect(&options.export, EXPORT_CONCEPTS_FILE)?
+    else {
+        return Err(EtlError::Usage(format!(
+            "{} is an unpartitioned export; migrate it without partitions",
+            options.export.display()
+        )));
+    };
+    for partition in &partitions {
+        check_export_files(&partition.dir)?;
+    }
+    refuse_plain(&options.key)?;
+    let names: Vec<String> = partitions.iter().map(|p| p.name.clone()).collect();
+    check_partitioned_output(&options.out, &names)?;
+    let (protection, install_key) = resolve_shared_key(&options.key, &options.out)?;
+    let pool = thread_pool(options.threads)?;
+    let mut staging = PartitionedStaging::create(&options.out, &names)?;
+    let mut reports = BTreeMap::new();
+    for partition in &partitions {
+        tracing::info!(partition = %partition.name, "migrating partition");
+        let report = migrate_into(
+            &partition.dir,
+            &staging.partition_dir(&partition.name),
+            &protection,
+            &pool,
+            options.skip_inconsistent,
+        )?;
+        reports.insert(partition.name.clone(), report);
+    }
+    if let Some(key) = install_key {
+        staging.stage_key(&key)?;
+    }
+    staging.publish(&options.out)?;
+    let report = PartitionedMigrateReport {
+        partitions: reports,
+        elapsed_seconds: started.elapsed().as_secs_f64(),
+    };
+    tracing::info!(
+        out = %options.out.display(),
+        partitions = report.partitions.len(),
+        seconds = report.elapsed_seconds,
+        "partitions migrated"
+    );
+    Ok(report)
+}
+
+fn check_export_files(export: &Path) -> Result<()> {
+    for name in [EXPORT_CONCEPTS_FILE, EXPORT_PATIENTS_FILE] {
+        let path = export.join(name);
         if !path.is_file() {
             return Err(EtlError::Usage(format!(
                 "{} does not exist",
@@ -282,28 +384,42 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
             )));
         }
     }
-    if matches!(options.key, KeySource::Plain) {
+    Ok(())
+}
+
+fn refuse_plain(key: &KeySource) -> Result<()> {
+    if matches!(key, KeySource::Plain) {
         return Err(EtlError::Usage(
             "migrate needs the javabin store's key: the export is encrypted with it".into(),
         ));
     }
-    check_output(&options.out, &options.key)?;
-    let protection = resolve_protection(&options.key, &options.out)?;
+    Ok(())
+}
+
+/// Migrates the export in `export` into the existing, empty directory `dir`: `pheno.blocks`,
+/// `pheno.index`, `columnMeta.csv` and `etl-report.json`, each synced.
+///
+/// # Errors
+/// [`EtlError::Usage`] for a plain `protection`; [`EtlError::Export`] for an export that
+/// does not decrypt with the key, is malformed or truncated, holds a negative patient ID or
+/// a null value, or holds a concept whose metadata disagrees with its observations when
+/// `skip_inconsistent` is off; I/O and format errors.
+fn migrate_into(
+    export: &Path,
+    dir: &Path,
+    protection: &Protection,
+    pool: &rayon::ThreadPool,
+    skip_inconsistent: bool,
+) -> Result<MigrateReport> {
+    let started = Instant::now();
+    let concepts_path = export.join(EXPORT_CONCEPTS_FILE);
+    let patients_path = export.join(EXPORT_PATIENTS_FILE);
     let Some(key) = protection.key().cloned() else {
         return Err(EtlError::Usage(
             "migrate needs the javabin store's key".into(),
         ));
     };
     let (patients, patients_export_id) = read_patients(&patients_path, &key)?;
-    let pool = {
-        let mut builder = rayon::ThreadPoolBuilder::new();
-        if let Some(threads) = options.threads {
-            builder = builder.num_threads(threads);
-        }
-        builder
-            .build()
-            .map_err(|e| EtlError::ThreadPool(e.to_string()))?
-    };
 
     let mut reader = ExportReader::open(&concepts_path, &key)?;
     if reader.export_id() != patients_export_id {
@@ -315,26 +431,25 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
             ),
         });
     }
-    let staging = Staging::create(&options.out)?;
     let store_id = StoreId::random()?;
     let codec = BlockCodec::new(protection.clone(), store_id, true);
-    let blocks_path = staging.path().join(BLOCKS_FILE_NAME);
+    let blocks_path = dir.join(BLOCKS_FILE_NAME);
     let file =
         private_fs::create_file(&blocks_path).map_err(EtlError::io("creating", &blocks_path))?;
     let mut writer = BlocksWriter::new(BufWriter::with_capacity(4 << 20, file), store_id)?;
 
-    let mut state = MigrateState::new(options.skip_inconsistent, concepts_path.clone());
+    let mut state = MigrateState::new(skip_inconsistent, concepts_path.clone());
     let mut batch: Vec<ExportedConcept> = Vec::new();
     let mut batch_observations = 0usize;
     while let Some(concept) = reader.next_concept()? {
         batch_observations += concept.observations.len();
         batch.push(concept);
         if batch_observations >= BATCH_OBSERVATIONS {
-            seal_batch(&pool, &codec, &mut batch, &mut writer, &mut state)?;
+            seal_batch(pool, &codec, &mut batch, &mut writer, &mut state)?;
             batch_observations = 0;
         }
     }
-    seal_batch(&pool, &codec, &mut batch, &mut writer, &mut state)?;
+    seal_batch(pool, &codec, &mut batch, &mut writer, &mut state)?;
     let (exported_concepts, exported_observations) = reader.trailer;
     if exported_concepts != state.records {
         return Err(EtlError::Export {
@@ -370,7 +485,7 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
         observed_patients(&blocks_path, store_id, &codec, &metas)?
     };
     let mut report = MigrateReport {
-        export: options.export.clone(),
+        export: export.to_path_buf(),
         encrypted: protection.is_encrypted(),
         store_id: store_id.to_string(),
         exported_concepts,
@@ -400,23 +515,12 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
             "metastore entries whose ColumnMeta.name differs from the key; the store uses the key"
         );
     }
-    write_index_and_csv(staging.path(), store_id, patients, metas, &protection)?;
+    write_index_and_csv(dir, store_id, patients, metas, protection)?;
     report.elapsed_seconds = started.elapsed().as_secs_f64();
-    let report_path = staging.path().join(REPORT_FILE_NAME);
+    let report_path = dir.join(REPORT_FILE_NAME);
     let json = serde_json::to_vec_pretty(&report)
         .map_err(|e| EtlError::io("encoding", &report_path)(e.into()))?;
     private_fs::write_file(&report_path, &json).map_err(EtlError::io("writing", &report_path))?;
-    staging.publish(&options.out)?;
-    tracing::info!(
-        out = %options.out.display(),
-        concepts = report.concepts,
-        observations = report.observations,
-        patients = report.patients,
-        collisions = report.collisions.len(),
-        skipped = report.skipped.len(),
-        seconds = report.elapsed_seconds,
-        "store migrated"
-    );
     Ok(report)
 }
 

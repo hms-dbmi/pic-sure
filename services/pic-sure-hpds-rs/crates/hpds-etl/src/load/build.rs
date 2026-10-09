@@ -19,8 +19,8 @@ use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
 use crate::private_fs;
 
-/// A row whose patient number Java would parse and fail on, found in new-search mode: its
-/// global record number and its line in its input file.
+/// A row whose patient number Java would parse and fail on, found in new-search or
+/// partitioned mode: its global record number and its line in its input file.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PatientFailure {
     pub seq: u64,
@@ -62,8 +62,8 @@ impl BuildContext<'_> {
 /// Builds partition `index` from `spill_file`, writing sealed blocks to `blocks_file`.
 ///
 /// Rows of one concept are put in the order the Java loader ingests them: file order in
-/// new-search mode; chunk, then raw concept path in Java string order, then file order in
-/// sequential mode. The first row in that order fixes the concept's type. The spill file is
+/// new-search and partitioned mode; chunk, then raw concept path in Java string order,
+/// then file order in sequential mode. The first row in that order fixes the concept's type. The spill file is
 /// deleted once read. The partition's spill file and its decoded rows (40 bytes each) are
 /// held in memory together while it builds.
 ///
@@ -153,7 +153,8 @@ impl Stats {
 }
 
 /// Decides one row of a concept whose type is `text`: returns true when the row is stored,
-/// counting the reason otherwise, and records the first new-search patient failure.
+/// counting the reason otherwise, and records the first patient failure outside sequential
+/// mode.
 fn accept(mode: Mode, text: bool, row: &SpillRow, built: &mut BuiltPartition) -> bool {
     if row.is_text() != text {
         built.counts.dropped_type_conflict += 1;
@@ -163,7 +164,7 @@ fn accept(mode: Mode, text: bool, row: &SpillRow, built: &mut BuiltPartition) ->
         built.counts.dropped_blank_value += 1;
         return false;
     }
-    if mode == Mode::NewSearch && row.bad_patient() {
+    if mode != Mode::Sequential && row.bad_patient() {
         if built
             .patient_failure
             .as_ref()
@@ -250,8 +251,8 @@ fn build_concept(
         }
         let width = match mode {
             Mode::Sequential => 8,
-            Mode::NewSearch if observations.is_empty() => 0,
-            Mode::NewSearch => 8,
+            Mode::NewSearch | Mode::Partitioned if observations.is_empty() => 0,
+            Mode::NewSearch | Mode::Partitioned => 8,
         };
         let payload = encode_numeric_payload(&observations)?;
         let meta = concept_meta(path, ConceptType::Numeric, &stats, width);

@@ -11,9 +11,21 @@ use hpds_etl::java::{normalize_concept_path, roll_up, rollup_text};
 use hpds_etl::load::Mode;
 use hpds_format::Block;
 
-fn thousand_genomes() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../pic-sure-hpds/service/src/test/resources/phenotypic/allConcepts.csv")
+/// Writes the 1000 Genomes fixture into `dir` as one `allConcepts.csv`: the four partition
+/// files of the harmonization branch concatenated in partition order, which is the
+/// unpartitioned fixture they were split from.
+fn thousand_genomes(dir: &std::path::Path) -> PathBuf {
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../pic-sure-hpds/service/src/test/resources/phenotypic");
+    let mut content = Vec::new();
+    for partition in 1..=4 {
+        content.extend(
+            std::fs::read(source.join(format!("partition{partition}-allConcepts.csv"))).unwrap(),
+        );
+    }
+    let path = dir.join("allConcepts.csv");
+    std::fs::write(&path, content).unwrap();
+    path
 }
 
 fn load_path(mode: Mode, path: &std::path::Path) -> Store {
@@ -209,7 +221,8 @@ fn tally(path: &std::path::Path, rollup: bool) -> BTreeMap<String, u32> {
 
 #[test]
 fn thousand_genomes_fixture_loads_in_both_modes() {
-    let path = thousand_genomes();
+    let dir = tempfile::tempdir().unwrap();
+    let path = thousand_genomes(dir.path());
     for mode in MODES {
         let store = load_path(mode, &path);
         assert_consistent(&store);

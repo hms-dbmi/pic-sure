@@ -1,17 +1,20 @@
 //! Commands that change or regenerate the metadata of an existing store:
-//! `hpds-etl remove-concepts` and `hpds-etl column-meta-csv`.
+//! `hpds-etl remove-concepts` and `hpds-etl column-meta-csv`, and the merged
+//! `columnMeta.csv` of a partitioned store.
 
+use std::collections::BTreeMap;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use hpds_format::{
-    BLOCKS_FILE_NAME, BlocksReader, BlocksWriter, ConceptMeta, INDEX_FILE_NAME, PhenoIndex,
-    Protection,
+    BLOCKS_FILE_NAME, BlockLocation, BlocksReader, BlocksWriter, ConceptMeta, INDEX_FILE_NAME,
+    PhenoIndex, Protection, java_string_cmp,
 };
 use serde::Serialize;
 
 use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
+use crate::java::{java_double_max, java_double_min};
 use crate::load::COLUMN_META_CSV_NAME;
 use crate::store::{StagedFile, read_index, replace_file, sync_parent};
 
@@ -172,6 +175,111 @@ pub fn regenerate_column_meta_csv(
     let target = out.map_or_else(|| dir.join(COLUMN_META_CSV_NAME), Path::to_path_buf);
     write_column_meta_csv_file(&index, &target)?;
     Ok(index.concepts().len() as u64)
+}
+
+/// Builds the dictionary of a partitioned store: one entry per concept path found in any
+/// partition, in Java `String.compareTo` order, from `partitions` given as (name, index) in
+/// partition name order. Java writes no such file; this follows the merge rules of the
+/// harmonization branch's `SummaryColumnMeta`, which the Java service builds in memory for
+/// `/search`:
+///
+/// - width: the largest; column offset: the first partition's;
+/// - category values: the sorted union, in Java `String.compareTo` order;
+/// - min and max: the smallest min and the largest max, absent ones skipped;
+/// - observation and patient counts: the sums, so a patient in two partitions counts twice,
+///   as `SummaryColumnMeta.patientCount` does;
+/// - timestamps: present when present in any partition, the smallest min and largest max;
+/// - block offset and length: 0, since no single block holds the concept.
+///
+/// # Errors
+/// [`EtlError::Usage`] when a concept is numeric in one partition and categorical in
+/// another, naming the concept and both partitions; the query engine refuses such a store.
+pub fn merge_column_meta(partitions: &[(String, &PhenoIndex)]) -> Result<Vec<ConceptMeta>> {
+    let mut merged: BTreeMap<&str, (ConceptMeta, &str)> = BTreeMap::new();
+    for (name, index) in partitions {
+        for concept in index.concepts() {
+            let Some((into, first)) = merged.get_mut(concept.path.as_str()) else {
+                let mut start = concept.clone();
+                start.block = BlockLocation::default();
+                merged.insert(&concept.path, (start, name));
+                continue;
+            };
+            if into.concept_type != concept.concept_type {
+                return Err(EtlError::Usage(format!(
+                    "concept {:?} is {} in partition {first} and {} in partition {name}",
+                    concept.path,
+                    type_name(into),
+                    type_name(concept)
+                )));
+            }
+            merge_into(into, concept);
+        }
+    }
+    let mut concepts: Vec<ConceptMeta> = merged.into_values().map(|(meta, _)| meta).collect();
+    concepts.sort_by(|a, b| java_string_cmp(&a.path, &b.path));
+    Ok(concepts)
+}
+
+fn type_name(meta: &ConceptMeta) -> &'static str {
+    if meta.is_categorical() {
+        "categorical"
+    } else {
+        "numeric"
+    }
+}
+
+fn merge_into(into: &mut ConceptMeta, other: &ConceptMeta) {
+    into.width_in_bytes = into.width_in_bytes.max(other.width_in_bytes);
+    if let (Some(values), Some(more)) = (&mut into.category_values, &other.category_values) {
+        values.extend(more.iter().cloned());
+        values.sort_by(|a, b| java_string_cmp(a, b));
+        values.dedup();
+    }
+    let pick = |a: Option<f64>, b: Option<f64>, f: fn(f64, f64) -> f64| match (a, b) {
+        (Some(a), Some(b)) => Some(f(a, b)),
+        (a, b) => a.or(b),
+    };
+    into.min = pick(into.min, other.min, java_double_min);
+    into.max = pick(into.max, other.max, java_double_max);
+    into.observation_count = into
+        .observation_count
+        .saturating_add(other.observation_count);
+    into.patient_count = into.patient_count.saturating_add(other.patient_count);
+    into.has_timestamp |= other.has_timestamp;
+    into.timestamp_min = match (into.timestamp_min, other.timestamp_min) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+    into.timestamp_max = match (into.timestamp_max, other.timestamp_max) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (a, b) => a.or(b),
+    };
+}
+
+/// Writes the merged `columnMeta.csv` of the partitions in `dirs`, given as (name,
+/// directory) in partition name order, to `target`, replacing it atomically. Returns the
+/// number of rows written. See [`merge_column_meta`].
+///
+/// # Errors
+/// The errors of reading each index, of [`merge_column_meta`], and of writing the file.
+pub fn write_merged_column_meta_csv(
+    dirs: &[(String, PathBuf)],
+    target: &Path,
+    protection: &Protection,
+) -> Result<u64> {
+    let indexes = dirs
+        .iter()
+        .map(|(name, dir)| Ok((name.clone(), read_index(dir, protection)?)))
+        .collect::<Result<Vec<_>>>()?;
+    let borrowed: Vec<(String, &PhenoIndex)> = indexes
+        .iter()
+        .map(|(name, index)| (name.clone(), index))
+        .collect();
+    let concepts = merge_column_meta(&borrowed)?;
+    replace_file(target, |out| {
+        write_column_meta_csv(out, &concepts).map_err(EtlError::io("writing", target))
+    })?;
+    Ok(concepts.len() as u64)
 }
 
 fn write_column_meta_csv_file(index: &PhenoIndex, target: &Path) -> Result<()> {

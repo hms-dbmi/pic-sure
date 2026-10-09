@@ -107,8 +107,8 @@ pub struct SpillRow {
     value: u64,
     pub concept: u32,
     pub patient: u32,
-    /// Sequential mode: the rank of the raw concept path in Java string order. 0 in
-    /// new-search mode, which does not order by it.
+    /// Sequential mode: the rank of the raw concept path in Java string order. 0 in the
+    /// other modes, which do not order by it.
     pub raw_path_rank: u32,
     flags: u8,
 }
@@ -225,7 +225,7 @@ pub fn read_rows(buf: &[u8], mode: Mode, raw_path_ranks: &[u32]) -> io::Result<V
                     io::Error::new(io::ErrorKind::InvalidData, "unknown raw path id")
                 })?
             }
-            Mode::NewSearch => 0,
+            Mode::NewSearch | Mode::Partitioned => 0,
         };
         let bad_patient = c.take::<1>()?[0] & FLAG_BAD_PATIENT != 0;
         let (patient, line) = if bad_patient {
