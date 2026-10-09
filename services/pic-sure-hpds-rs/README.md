@@ -55,7 +55,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Export files (files 0600). A missing directory is created with mode 0700. An existing one must be a real directory (not a symlink) owned by the service user with no group or other write bit, and is never chmodded. It must not be, or lie inside, `HPDS_DATA_DIRECTORY`. Leftover export files are removed at startup. |
 | `HPDS_RESULT_LIMIT` | `1000` | Most async results held at once. |
 | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept. `0` or unset keeps it until the count or byte cap evicts it. |
-| `HPDS_RESULT_MAX_BYTES` | 10 GiB | Cap on finished export files held at once. Past it the oldest finished result goes first; a lone result larger than the cap is kept. |
+| `HPDS_RESULT_MAX_BYTES` | 10 GiB | Cap on export files held at once, bytes of exports still being written included: each write reserves its bytes first, evicting the oldest finished results to fit. An export that cannot fit beside another running export ends in ERROR ("try again later"). A lone export larger than the cap is kept. Disk use is at most this cap, or one `HPDS_RESULT_MAX_FILE_BYTES` file when that is larger. |
 | `SMALL_JOB_LIMIT` | `100` | Exports with more `select` paths run on the large pool. |
 | `SMALL_TASK_THREADS`, `LARGE_TASK_THREADS` | `1`, `1` | Exports running at once per pool. |
 | `HPDS_RESULT_MAX_FILE_BYTES` | 4 GiB | Cap on one export file, header included, checked on the bytes written as the file grows. An export that passes it ends in ERROR ("the export is larger than the maximum result file size ...") and its partial file is deleted. |
