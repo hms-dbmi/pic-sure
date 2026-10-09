@@ -157,6 +157,32 @@ enum Payload<'a> {
     Raw(&'a str),
 }
 
+/// Builds the HTTP client, trusting the system certificate roots or, when `system_roots` is
+/// false, only the roots compiled into the binary.
+///
+/// # Errors
+///
+/// Fails when the TLS backend cannot be initialised with the chosen roots.
+fn build_http(
+    max_idle: usize,
+    timeout: Duration,
+    system_roots: bool,
+) -> Result<reqwest::Client, reqwest::Error> {
+    let builder = reqwest::Client::builder()
+        .pool_max_idle_per_host(max_idle.max(1))
+        .timeout(timeout);
+    let builder = if system_roots {
+        builder
+    } else {
+        builder.tls_certs_only(
+            webpki_root_certs::TLS_SERVER_ROOT_CERTS
+                .iter()
+                .filter_map(|der| reqwest::Certificate::from_der(der).ok()),
+        )
+    };
+    builder.build()
+}
+
 impl Client {
     /// Builds a client for a base URL such as `http://host:8080/PIC-SURE`.
     ///
@@ -165,12 +191,13 @@ impl Client {
     ///
     /// # Errors
     ///
-    /// Fails when the HTTP client cannot be constructed.
+    /// Fails when the HTTP client cannot be constructed. The system certificate roots are tried
+    /// first, and the roots bundled in the binary are used when the system has none, so plain
+    /// HTTP targets work in images without CA certificates.
     pub fn new(base: &str, poll_timeout: Duration, max_idle: usize) -> crate::Result<Self> {
-        let http = reqwest::Client::builder()
-            .pool_max_idle_per_host(max_idle.max(1))
-            .timeout(Duration::from_secs(300).max(poll_timeout))
-            .build()?;
+        let timeout = Duration::from_secs(300).max(poll_timeout);
+        let http = build_http(max_idle, timeout, true)
+            .or_else(|_| build_http(max_idle, timeout, false))?;
         Ok(Self {
             http,
             base: base.trim_end_matches('/').to_owned(),
@@ -442,6 +469,13 @@ fn empty_request() -> Value {
 mod tests {
     use super::*;
     use reqwest::header::HeaderValue;
+
+    #[test]
+    fn client_builds_with_bundled_roots_only() {
+        let timeout = Duration::from_secs(5);
+        build_http(2, timeout, false).expect("bundled roots build");
+        Client::new("http://example.invalid/PIC-SURE", timeout, 2).expect("client");
+    }
 
     #[test]
     fn picsure_id_is_a_distinct_valid_uuid_per_nonce() {

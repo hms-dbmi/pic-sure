@@ -9,7 +9,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && cp target/release/hpds-etl target/release/hpds-bench /usr/local/bin/
 
 FROM debian:bookworm-slim
-RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin hpds \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 1000 --create-home --shell /usr/sbin/nologin hpds \
     && mkdir -p /opt/local/hpds-rs && chown hpds:hpds /opt/local/hpds-rs
 COPY --from=build /usr/local/bin/hpds-etl /usr/local/bin/hpds-bench /usr/local/bin/
 USER 1000
