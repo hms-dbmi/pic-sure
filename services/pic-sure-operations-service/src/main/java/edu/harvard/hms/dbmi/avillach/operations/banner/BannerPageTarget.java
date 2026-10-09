@@ -8,8 +8,19 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record BannerPageTarget(BannerPageTargetKind kind, String path) {
+@Schema(description = "A rule selecting the pages a banner appears on. An ALL target has no path and every other kind has exactly one.")
+public record BannerPageTarget(
+    @Schema(
+        description = "How the path is matched against the page a visitor is on.", requiredMode = Schema.RequiredMode.REQUIRED
+    ) BannerPageTargetKind kind,
+    @Schema(
+        description = "The page path the rule matches, starting with a slash. Absent on an ALL target. A PARAMETERIZED path writes each variable segment as [name].",
+        example = "/explorer"
+    ) String path
+) {
 
     private static final Set<String> ALL_FIELDS = Set.of("kind");
     private static final Set<String> PATH_FIELDS = Set.of("kind", "path");
