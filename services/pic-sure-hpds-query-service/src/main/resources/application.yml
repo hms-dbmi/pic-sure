@@ -17,6 +17,7 @@ hpds:
   # In AIO both HPDS_* URL vars point at the same HPDS instance.
   open-url: ${HPDS_OPEN_URL:}
   open-token: ${HPDS_OPEN_TOKEN:}
+  api-path: ${HPDS_API_PATH:/v3}
 
 psama:
   base-url: ${PSAMA_URL:}

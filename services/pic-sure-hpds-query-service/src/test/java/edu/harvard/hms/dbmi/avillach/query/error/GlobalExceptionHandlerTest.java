@@ -43,4 +43,13 @@ class GlobalExceptionHandlerTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(resp.getBody()).containsKey("errorType").containsKey("message").containsKey("requestId");
     }
+
+    @Test
+    void mapsUnreadableBodyTo400WithAFixedMessage() {
+        ResponseEntity<Map<String, Object>> resp = handler.unreadableBody();
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(resp.getBody()).containsEntry("errorType", "bad_request").containsEntry("message", "Malformed request body")
+            .containsKey("requestId");
+    }
 }
