@@ -39,7 +39,7 @@ pub use limits::{
 };
 pub use model::{
     AuthorizationFilter, GenomicFilter, Operator, PhenotypicClause, PhenotypicFilter,
-    PhenotypicFilterType, PhenotypicSubquery, Query, ResultType, UserConsent,
+    PhenotypicFilterType, PhenotypicSubquery, Query, ResultType, UserConsent, parse_strict,
 };
 pub use partition::{
     Layout, Partition, PartitionOptions, PartitionSet, Selection, SummaryColumnMeta,

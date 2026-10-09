@@ -3,6 +3,11 @@
 //!
 //! Rules carried over from Jackson:
 //!
+//! - A JSON object with the same key twice, anywhere in the query, is rejected. Jackson keeps
+//!   the last value instead; refusing keeps a consent list from being read differently here
+//!   than by the query service that overwrote it. [`parse_strict`] applies the same rule to
+//!   a whole request body.
+//! - Field names match exactly (`userConsents`, never `UserConsents` or `user_consents`).
 //! - Unknown fields anywhere inside the query are rejected (`FAIL_ON_UNKNOWN_PROPERTIES`).
 //!   The two `@JsonIgnore` properties of `PhenotypicFilter`, `categoricalFilter` and
 //!   `numericFilter`, are accepted and ignored.
@@ -304,11 +309,11 @@ pub struct AuthorizationFilter {
 ///
 /// A `null` element of the `userConsents` array reads as a consent with no value, so it
 /// still makes the list non-empty (Java's `userConsents().isEmpty()` is false for it) but
-/// contributes no consent value. A number or boolean `value` reads as its text, as Jackson's
-/// scalar coercion into a `String` does: `{"value":1}` is the consent `"1"`. Integers keep
-/// their digits; a fractional number is written as `serde_json` formats it, which can differ
-/// from the request text (`1e2` reads as `"100.0"`, where Jackson keeps `"1e2"`). Objects
-/// and arrays are refused.
+/// contributes no consent value. An integer or boolean `value` reads as its text, as
+/// Jackson's scalar coercion into a `String` does: `{"value":1}` is the consent `"1"`. A
+/// fractional or out-of-range number is refused: Jackson keeps its request text (`1e2`),
+/// which `serde_json` does not preserve, so reading it would risk naming a different
+/// consent than Java does. Objects and arrays are refused.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UserConsent {
     /// The consent, for example `phs000007.c1`; `None` when null or absent.
@@ -340,7 +345,7 @@ fn scalar_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Stri
         type Value = Option<String>;
 
         fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.write_str("a string, number, boolean or null")
+            f.write_str("a string, integer, boolean or null")
         }
 
         fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
@@ -376,7 +381,7 @@ fn scalar_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Stri
         }
 
         fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
-            Ok(Some(Value::from(value).to_string()))
+            Err(E::invalid_type(de::Unexpected::Float(value), &self))
         }
     }
 
@@ -487,7 +492,11 @@ const FILTER_IGNORED_FIELDS: [&str; 2] = ["categoricalFilter", "numericFilter"];
 
 impl<'de> Deserialize<'de> for PhenotypicClause {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let mut fields = Map::<String, Value>::deserialize(deserializer)?;
+        let Value::Object(mut fields) = StrictValue::deserialize(deserializer)?.0 else {
+            return Err(de::Error::custom(
+                "a phenotypic clause must be a JSON object",
+            ));
+        };
         let subquery = fields
             .keys()
             .any(|k| SUBQUERY_ONLY_FIELDS.contains(&k.as_str()));
@@ -516,6 +525,110 @@ impl<'de> Deserialize<'de> for PhenotypicClause {
                  max for a filter",
             )),
         }
+    }
+}
+
+/// A JSON value read like [`serde_json::Value`], except that an object holding the same key
+/// twice, at any depth, is an error rather than keeping the last value.
+struct StrictValue(Value);
+
+impl<'de> Deserialize<'de> for StrictValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer
+            .deserialize_any(StrictValueVisitor)
+            .map(StrictValue)
+    }
+}
+
+struct StrictValueVisitor;
+
+impl<'de> Visitor<'de> for StrictValueVisitor {
+    type Value = Value;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a JSON value")
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_none<E: de::Error>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_some<D: Deserializer<'de>>(self, d: D) -> Result<Value, D::Error> {
+        d.deserialize_any(self)
+    }
+
+    fn visit_bool<E: de::Error>(self, value: bool) -> Result<Value, E> {
+        Ok(Value::Bool(value))
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<Value, E> {
+        Ok(Value::from(value))
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<Value, E> {
+        Ok(Value::from(value))
+    }
+
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<Value, E> {
+        Ok(Value::from(value))
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Value, E> {
+        Ok(Value::String(value.to_owned()))
+    }
+
+    fn visit_string<E: de::Error>(self, value: String) -> Result<Value, E> {
+        Ok(Value::String(value))
+    }
+
+    fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
+        let mut items = Vec::new();
+        while let Some(StrictValue(item)) = seq.next_element()? {
+            items.push(item);
+        }
+        Ok(Value::Array(items))
+    }
+
+    fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
+        let mut fields = Map::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if fields.contains_key(&key) {
+                return Err(de::Error::custom(format_args!("duplicate key {key:?}")));
+            }
+            let StrictValue(value) = map.next_value()?;
+            fields.insert(key, value);
+        }
+        Ok(Value::Object(fields))
+    }
+}
+
+/// Parses `json` as a [`serde_json::Value`], refusing any object that holds the same key
+/// twice at any depth (where `serde_json` and Jackson keep the last value). For reading a
+/// whole request body, envelope included, before taking the query out of it: a body parsed
+/// with plain `serde_json::from_slice` has already dropped the earlier duplicate.
+///
+/// # Errors
+/// The `serde_json` error for invalid JSON (a byte order mark, comments, trailing commas
+/// and `NaN` literals included) or a duplicate key.
+pub fn parse_strict(json: &[u8]) -> serde_json::Result<Value> {
+    let mut deserializer = serde_json::Deserializer::from_slice(json);
+    let StrictValue(value) = StrictValue::deserialize(&mut deserializer)?;
+    deserializer.end()?;
+    Ok(value)
+}
+
+impl Query {
+    /// Reads a query from JSON text with every rule of this module, duplicate keys
+    /// included. The same as `serde_json::from_slice::<Query>`.
+    ///
+    /// # Errors
+    /// The `serde_json` error for invalid JSON or a query the model refuses.
+    pub fn from_json(json: &[u8]) -> serde_json::Result<Query> {
+        serde_json::from_slice(json)
     }
 }
 
@@ -775,10 +888,15 @@ mod tests {
                 .is_err()
         );
         let q = parse(json!({"expectedResultType": "COUNT", "userConsents": [
-            {"value": 1}, {"value": true}, {"value": -7}, {"value": 2.5}
+            {"value": 1}, {"value": true}, {"value": -7}
         ]}))
         .unwrap();
-        assert_eq!(q.consent_values(), ["-7", "1", "2.5", "true"]);
+        assert_eq!(q.consent_values(), ["-7", "1", "true"]);
+        for float in ["2.5", "1e2", "1.0", "123456789012345678901234567890"] {
+            let text =
+                format!(r#"{{"expectedResultType":"COUNT","userConsents":[{{"value":{float}}}]}}"#);
+            assert!(Query::from_json(text.as_bytes()).is_err(), "{float}");
+        }
         let q: Query = serde_json::from_str(
             r#"{"expectedResultType":"COUNT","userConsents":[{"value":12345678901234567890}]}"#,
         )
@@ -805,5 +923,121 @@ mod tests {
             .map(|f| f.concept_path.as_str())
             .collect();
         assert_eq!(paths, ["\\a\\", "\\b\\", "\\c\\"]);
+    }
+
+    fn refused(text: &str) -> String {
+        match Query::from_json(text.as_bytes()) {
+            Ok(q) => panic!("accepted {text}: {q:?}"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn duplicate_keys_are_refused_at_any_depth() {
+        let filter = r#"{"phenotypicFilterType":"REQUIRED","conceptPath":"\\a\\"}"#;
+        for text in [
+            r#"{"expectedResultType":"COUNT","userConsents":[{"value":"a"}],"userConsents":[{"value":"b"}]}"#.to_owned(),
+            r#"{"expectedResultType":"COUNT","userConsents":[{"value":"a","value":"b"}]}"#.to_owned(),
+            r#"{"expectedResultType":"COUNT","expectedResultType":"COUNT"}"#.to_owned(),
+            r#"{"expectedResultType":"COUNT","authorizationFilters":[{"conceptPath":"a","conceptPath":"b","values":["x"]}]}"#.to_owned(),
+            r#"{"expectedResultType":"COUNT","phenotypicClause":{"phenotypicFilterType":"REQUIRED","conceptPath":"a","conceptPath":"b"}}"#.to_owned(),
+            format!(
+                r#"{{"expectedResultType":"COUNT","phenotypicClause":{{"operator":"AND","phenotypicClauses":[{filter},{{"operator":"OR","operator":"AND","phenotypicClauses":[{filter}]}}]}}}}"#
+            ),
+            r#"{"expectedResultType":"COUNT","phenotypicClause":{"operator":"AND","phenotypicClauses":[{"operator":"OR","phenotypicClauses":[{"phenotypicFilterType":"FILTER","conceptPath":"a","values":["x"],"values":["y"]}]}]}}"#.to_owned(),
+        ] {
+            let message = refused(&text);
+            assert!(message.contains("duplicate"), "{text}: {message}");
+        }
+        let nested = format!(
+            r#"{{"expectedResultType":"COUNT","userConsents":[{{"value":"a"}}],"phenotypicClause":{{"operator":"AND","phenotypicClauses":[{filter}]}}}}"#
+        );
+        assert_eq!(
+            Query::from_json(nested.as_bytes())
+                .unwrap()
+                .consent_values(),
+            ["a"]
+        );
+    }
+
+    #[test]
+    fn consent_field_names_match_exactly() {
+        for name in [
+            "userconsents",
+            "UserConsents",
+            "user_consents",
+            "userConsent",
+            "USERCONSENTS",
+        ] {
+            let text = format!(r#"{{"expectedResultType":"COUNT","{name}":[{{"value":"a"}}]}}"#);
+            assert!(refused(&text).contains("unknown field"), "{name}");
+        }
+        for name in ["Value", "VALUE", "consent"] {
+            let text =
+                format!(r#"{{"expectedResultType":"COUNT","userConsents":[{{"{name}":"a"}}]}}"#);
+            assert!(refused(&text).contains("unknown field"), "{name}");
+        }
+    }
+
+    #[test]
+    fn consents_nested_outside_the_top_level_are_refused() {
+        for clause in [
+            r#"{"phenotypicFilterType":"REQUIRED","conceptPath":"a","userConsents":[{"value":"a"}]}"#,
+            r#"{"operator":"AND","phenotypicClauses":[{"phenotypicFilterType":"REQUIRED","conceptPath":"a"}],"userConsents":[{"value":"a"}]}"#,
+        ] {
+            let text = format!(r#"{{"expectedResultType":"COUNT","phenotypicClause":{clause}}}"#);
+            refused(&text);
+        }
+        refused(
+            r#"{"expectedResultType":"COUNT","authorizationFilters":[{"conceptPath":"a","values":["x"],"userConsents":[{"value":"a"}]}]}"#,
+        );
+        refused(
+            r#"{"expectedResultType":"COUNT","genomicFilters":[{"key":"k","userConsents":[{"value":"a"}]}]}"#,
+        );
+    }
+
+    #[test]
+    fn non_standard_json_is_refused() {
+        for text in [
+            "\u{feff}{\"expectedResultType\":\"COUNT\"}",
+            r#"{"expectedResultType":"COUNT" /* c */}"#,
+            "{\"expectedResultType\":\"COUNT\"} // c",
+            r#"{"expectedResultType":"COUNT",}"#,
+            r#"{"expectedResultType":"COUNT","userConsents":[{"value":"a"},]}"#,
+            r#"{"expectedResultType":"COUNT","phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"a","min":NaN}}"#,
+            r#"{"expectedResultType":"COUNT","phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":"a","min":Infinity}}"#,
+            r#"{'expectedResultType':'COUNT'}"#,
+        ] {
+            refused(text);
+            assert!(parse_strict(text.as_bytes()).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn strict_parse_refuses_duplicates_in_the_envelope_and_the_string_query() {
+        let inner = r#"{"expectedResultType":"COUNT","userConsents":[{"value":"a"}]}"#;
+        assert!(
+            parse_strict(format!(r#"{{"query":{inner},"query":{inner}}}"#).as_bytes()).is_err()
+        );
+        assert!(
+            parse_strict(br#"{"query":{"userConsents":[],"userConsents":[{"value":"a"}]}}"#)
+                .is_err()
+        );
+        assert!(parse_strict(br#"{"query":{}} {}"#).is_err());
+        let as_object = parse_strict(format!(r#"{{"query":{inner}}}"#).as_bytes()).unwrap();
+        let as_string =
+            parse_strict(format!(r#"{{"query":{}}}"#, Value::String(inner.to_owned())).as_bytes())
+                .unwrap();
+        let from_object: Query = serde_json::from_value(as_object["query"].clone()).unwrap();
+        let from_string =
+            Query::from_json(as_string["query"].as_str().unwrap().as_bytes()).unwrap();
+        assert_eq!(from_object, from_string);
+        let duplicated =
+            r#"{"expectedResultType":"COUNT","userConsents":[{"value":"a"}],"userConsents":[]}"#;
+        let envelope = parse_strict(
+            format!(r#"{{"query":{}}}"#, Value::String(duplicated.to_owned())).as_bytes(),
+        )
+        .unwrap();
+        assert!(Query::from_json(envelope["query"].as_str().unwrap().as_bytes()).is_err());
     }
 }
