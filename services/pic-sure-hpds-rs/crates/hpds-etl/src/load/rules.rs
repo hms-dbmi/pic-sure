@@ -201,16 +201,6 @@ pub enum PatientProblem {
     Negative,
 }
 
-impl PatientProblem {
-    /// A phrase completing "patient number X ...".
-    pub fn describe(self) -> &'static str {
-        match self {
-            PatientProblem::NotAnInteger => "is not a Java int; Java aborts the load on it",
-            PatientProblem::Negative => "is negative; negative patient numbers are not supported",
-        }
-    }
-}
-
 /// Reads a patient number with `Integer.parseInt`, untrimmed, refusing negative values.
 pub fn parse_patient(field: &str) -> std::result::Result<u32, PatientProblem> {
     let value = parse_java_int(field).ok_or(PatientProblem::NotAnInteger)?;

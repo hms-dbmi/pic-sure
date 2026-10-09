@@ -47,7 +47,7 @@ impl KeyArgs {
         match (self.plain, &self.key_file) {
             (true, _) => KeySource::Plain,
             (false, Some(path)) => KeySource::File(path.clone()),
-            (false, None) => KeySource::OutputDirectory,
+            (false, None) => KeySource::OutputDirectoryKeyFile,
         }
     }
 }
@@ -117,7 +117,7 @@ enum ModeArg {
 #[derive(Args)]
 struct LoadArgs {
     /// Which Java loader to reproduce.
-    #[arg(long, value_enum, default_value = "new-search")]
+    #[arg(long, value_enum)]
     mode: ModeArg,
     /// Input CSV files, in load order. In sequential mode a directory loads its .csv files
     /// in directory order.
@@ -129,7 +129,8 @@ struct LoadArgs {
     /// Key file, read with Crypto.loadKey rules. Defaults to <out>/encryption_key.
     #[arg(long, conflicts_with = "plain")]
     key_file: Option<PathBuf>,
-    /// Write an unencrypted store, for local benchmarking only.
+    /// Write an unencrypted store, for local benchmarking only. Refused when <out> holds an
+    /// encryption_key.
     #[arg(long)]
     plain: bool,
     /// Turn variable-name rollup on (the sequential default; refused in new-search mode).
@@ -138,19 +139,20 @@ struct LoadArgs {
     /// Turn variable-name rollup off, as Java's NO_ROLLUP argument does.
     #[arg(long)]
     no_rollup: bool,
-    /// CSV config JSON (config.json), mapping input file names to dataset settings.
+    /// CSV config JSON, mapping input file names to dataset settings. Defaults to the first
+    /// config.json in a directory input or beside an input file.
     #[arg(long)]
     config: Option<PathBuf>,
-    /// Number of spill partitions.
+    /// Number of spill partitions. Defaults to one per 32 MiB of input, at most 128.
     #[arg(long)]
     partitions: Option<usize>,
-    /// Worker threads for the build pass.
+    /// Worker threads for the build pass. Each holds one partition in memory.
     #[arg(long)]
     threads: Option<usize>,
     /// Directory for spill files.
     #[arg(long)]
     tmp: Option<PathBuf>,
-    /// Sequential mode: chunk size in GiB, as Java's MAX_CHUNK_SIZE.
+    /// Sequential mode only: chunk size in GiB, as Java's MAX_CHUNK_SIZE.
     #[arg(long)]
     max_chunk_gib: Option<f64>,
 }
@@ -165,7 +167,7 @@ impl From<LoadArgs> for LoadOptions {
         options.key = match (args.plain, args.key_file) {
             (true, _) => KeySource::Plain,
             (false, Some(path)) => KeySource::File(path),
-            (false, None) => KeySource::OutputDirectory,
+            (false, None) => KeySource::OutputDirectoryKeyFile,
         };
         options.rollup = match (args.rollup, args.no_rollup) {
             (true, _) => Some(true),
@@ -189,7 +191,12 @@ fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
     tracing::info!("{}", hpds_etl::banner());
-    let result = match Cli::parse().command {
+    let cli = Cli::parse();
+    if let Err(e) = remove_temporary_dirs_on_interrupt() {
+        eprintln!("hpds-etl: cannot install the SIGTERM and SIGINT handler: {e}");
+        return ExitCode::FAILURE;
+    }
+    let result = match cli.command {
         Command::Load(args) => hpds_etl::load::load(&args.into()).map(|report| {
             if let Ok(json) = serde_json::to_string_pretty(&report.counts) {
                 println!("{json}");
@@ -208,6 +215,24 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Starts a thread that, on SIGTERM or SIGINT, removes every staging and spill directory
+/// this run created and exits with status 128 plus the signal number.
+///
+/// # Errors
+/// The I/O error of registering the handlers.
+fn remove_temporary_dirs_on_interrupt() -> std::io::Result<()> {
+    use signal_hook::consts::{SIGINT, SIGTERM};
+    let mut signals = signal_hook::iterator::Signals::new([SIGINT, SIGTERM])?;
+    std::thread::spawn(move || {
+        if let Some(signal) = signals.forever().next() {
+            tracing::warn!(signal, "interrupted; removing temporary directories");
+            hpds_etl::cleanup::remove_registered();
+            std::process::exit(128 + signal);
+        }
+    });
+    Ok(())
 }
 
 fn print_json<T: serde::Serialize>(value: &T) {

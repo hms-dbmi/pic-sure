@@ -31,17 +31,17 @@ pub enum EtlError {
 
     /// A row's patient number is not a Java `int`, or is negative. Java aborts the load on
     /// an unparseable patient number; negative numbers are refused because the store keeps
-    /// patients as unsigned 32-bit integers.
-    #[error("{file} record {record}: patient number {value:?} {problem}")]
+    /// patients as unsigned 32-bit integers. The message names the record, never the value.
+    #[error(
+        "{file} record {record} (line {line}): PATIENT_NUM is not an integer between 0 and 2147483647"
+    )]
     InvalidPatient {
         /// The input file.
         file: PathBuf,
         /// The 1-based data record number in that file, header excluded.
         record: u64,
-        /// The patient field as read.
-        value: String,
-        /// What is wrong with it.
-        problem: &'static str,
+        /// The 1-based line of the file the record starts on, header included.
+        line: u64,
     },
 
     /// The CSV config file is unreadable or malformed.

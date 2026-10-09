@@ -55,6 +55,9 @@ pub fn is_log4j_blank(s: &str) -> bool {
 /// more decimal digits as `Character.digit` reads them, with no surrounding whitespace.
 /// Returns `None` where Java throws `NumberFormatException`, including on overflow.
 pub fn parse_java_long(s: &str) -> Option<i64> {
+    if s.is_ascii() {
+        return parse_ascii_long(s.as_bytes());
+    }
     let (negative, digits) = match s.as_bytes().first()? {
         b'-' => (true, &s[1..]),
         b'+' => (false, &s[1..]),
@@ -66,6 +69,32 @@ pub fn parse_java_long(s: &str) -> Option<i64> {
     let mut value: i64 = 0;
     for c in digits.chars() {
         let d = i64::from(java_decimal_digit(c)?);
+        value = value.checked_mul(10)?;
+        value = if negative {
+            value.checked_sub(d)?
+        } else {
+            value.checked_add(d)?
+        };
+    }
+    Some(value)
+}
+
+/// [`parse_java_long`] for ASCII input, where the only decimal digits are `0` to `9`.
+fn parse_ascii_long(bytes: &[u8]) -> Option<i64> {
+    let (negative, digits) = match bytes.first()? {
+        b'-' => (true, &bytes[1..]),
+        b'+' => (false, &bytes[1..]),
+        _ => (false, bytes),
+    };
+    if digits.is_empty() {
+        return None;
+    }
+    let mut value: i64 = 0;
+    for &b in digits {
+        let d = i64::from(b.wrapping_sub(b'0'));
+        if d > 9 {
+            return None;
+        }
         value = value.checked_mul(10)?;
         value = if negative {
             value.checked_sub(d)?
@@ -221,13 +250,18 @@ pub fn rollup_text(text: &str) -> std::borrow::Cow<'_, str> {
 /// `\\[^\\]*\\$` replaced by `\`). `text` is the output of [`rollup_text`]. Returns `None`
 /// when the rule does not apply.
 pub fn roll_up(path: &str, text: &str) -> Option<String> {
-    let body = path.strip_suffix('\\')?;
-    let before = body.strip_suffix(text)?;
-    if !before.ends_with('\\') {
+    if !rolls_up(path, text) {
         return None;
     }
-    let cut = body.rfind('\\')?;
+    let cut = path[..path.len() - 1].rfind('\\')?;
     Some(path[..=cut].to_string())
+}
+
+/// True when [`roll_up`] applies to `path` and `text`, without building the rolled path.
+pub fn rolls_up(path: &str, text: &str) -> bool {
+    path.strip_suffix('\\')
+        .and_then(|body| body.strip_suffix(text))
+        .is_some_and(|before| before.ends_with('\\'))
 }
 
 #[cfg(test)]

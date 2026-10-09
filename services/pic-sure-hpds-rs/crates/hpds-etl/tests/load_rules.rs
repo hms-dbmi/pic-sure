@@ -220,12 +220,20 @@ fn negative_patients_are_rejected_naming_the_row() {
         let error = load_files(mode, &[("allConcepts.csv", &input)], |_| {})
             .err()
             .unwrap();
-        match error {
-            EtlError::InvalidPatient { record, value, .. } => {
-                assert_eq!((record, value.as_str()), (1, "-5"), "{mode:?}");
+        match &error {
+            EtlError::InvalidPatient { record, line, .. } => {
+                assert_eq!((*record, *line), (1, 2), "{mode:?}");
             }
             other => panic!("{mode:?}: {other}"),
         }
+        let message = error.to_string();
+        assert!(
+            message.ends_with(
+                "record 1 (line 2): PATIENT_NUM is not an integer between 0 and 2147483647"
+            ),
+            "{message}"
+        );
+        assert!(!message.contains("-5"), "{message}");
     }
 }
 
@@ -258,12 +266,13 @@ fn unparseable_patients_fail_where_java_parses_them() {
         })
         .err()
         .unwrap();
-        match error {
-            EtlError::InvalidPatient { record, value, .. } => {
-                assert_eq!((record, value.as_str()), (3, "x7"))
+        match &error {
+            EtlError::InvalidPatient { record, line, .. } => {
+                assert_eq!((*record, *line), (3, 4), "{mode:?}")
             }
             other => panic!("{mode:?}: {other}"),
         }
+        assert!(!error.to_string().contains("x7"), "{error}");
     }
 }
 

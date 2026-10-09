@@ -5,8 +5,10 @@
 //! one. [`dump`] writes a store as canonical CSV, and [`maintain`] removes concepts and
 //! regenerates `columnMeta.csv`. [`java`] holds the JDK and library behavior those rules
 //! depend on, [`column_meta_csv`] writes `columnMeta.csv` byte for byte as Java does, and
-//! [`store`] opens existing stores.
+//! [`store`] opens existing stores. [`cleanup`] removes the temporary directories of an
+//! interrupted run.
 
+pub mod cleanup;
 pub mod column_meta_csv;
 pub mod dump;
 mod error;
@@ -14,6 +16,7 @@ pub mod java;
 pub mod load;
 pub mod maintain;
 pub mod migrate;
+mod private_fs;
 pub mod store;
 
 pub use error::{EtlError, Result};

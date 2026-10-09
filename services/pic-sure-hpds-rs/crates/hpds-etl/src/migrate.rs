@@ -32,19 +32,21 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use hpds_format::{
     BLOCKS_FILE_NAME, BlockCodec, BlockLocation, BlocksWriter, CategoricalRow, ConceptMeta,
-    ConceptType, INDEX_FILE_NAME, IndexHeader, NO_TIMESTAMP, NumericObservation, PhenoIndex,
-    Protection, StoreId, encode_interned_categorical_payload, encode_numeric_payload,
-    java_string_cmp,
+    ConceptType, IndexHeader, NO_TIMESTAMP, NumericObservation, PhenoIndex, Protection, StoreId,
+    encode_interned_categorical_payload, encode_numeric_payload, java_string_cmp,
 };
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
-use crate::load::{COLUMN_META_CSV_NAME, DEFAULT_KEY_NAME, KeySource, REPORT_FILE_NAME, Staging};
+use crate::load::{
+    DEFAULT_KEY_NAME, KeySource, REPORT_FILE_NAME, Staging, check_output,
+    write_index_and_column_meta,
+};
+use crate::private_fs;
 use crate::store::resolve_protection;
 
 /// Name of the export file holding the concepts and their observations.
@@ -100,7 +102,7 @@ pub struct MigrateOptions {
     pub export: PathBuf,
     /// The store directory to create or replace.
     pub out: PathBuf,
-    /// Where the key comes from; [`KeySource::OutputDirectory`] reads `<out>/encryption_key`.
+    /// Where the key comes from; [`KeySource::OutputDirectoryKeyFile`] reads `<out>/encryption_key`.
     pub key: KeySource,
     /// Worker threads for sealing blocks; `None` uses one per core.
     pub threads: Option<usize>,
@@ -175,6 +177,7 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
             )));
         }
     }
+    check_output(&options.out, &options.key)?;
     let protection = resolve_protection(&options.key, &options.out)?;
     let patients = read_patients(&patients_path)?;
     let pool = {
@@ -190,8 +193,9 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
     let staging = Staging::create(&options.out)?;
     let store_id = StoreId::random()?;
     let codec = BlockCodec::new(protection.clone(), store_id, true);
-    let blocks_path = staging.path.join(BLOCKS_FILE_NAME);
-    let file = File::create(&blocks_path).map_err(EtlError::io("creating", &blocks_path))?;
+    let blocks_path = staging.path().join(BLOCKS_FILE_NAME);
+    let file =
+        private_fs::create_file(&blocks_path).map_err(EtlError::io("creating", &blocks_path))?;
     let mut writer = BlocksWriter::new(BufWriter::with_capacity(4 << 20, file), store_id)?;
 
     let mut reader = ExportReader::open(&concepts_path)?;
@@ -281,12 +285,12 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
             "patients with observations are missing from the exported patient ID set"
         );
     }
-    write_index_and_csv(&staging.path, store_id, patients, metas, &protection)?;
+    write_index_and_csv(staging.path(), store_id, patients, metas, &protection)?;
     report.elapsed_seconds = started.elapsed().as_secs_f64();
-    let report_path = staging.path.join(REPORT_FILE_NAME);
+    let report_path = staging.path().join(REPORT_FILE_NAME);
     let json = serde_json::to_vec_pretty(&report)
         .map_err(|e| EtlError::io("encoding", &report_path)(e.into()))?;
-    std::fs::write(&report_path, json).map_err(EtlError::io("writing", &report_path))?;
+    private_fs::write_file(&report_path, &json).map_err(EtlError::io("writing", &report_path))?;
     staging.publish(&options.out)?;
     tracing::info!(
         out = %options.out.display(),
@@ -324,13 +328,7 @@ fn write_index_and_csv(
         store_id,
     };
     let index = PhenoIndex::new(header, patients, metas)?;
-    index.write_file(dir.join(INDEX_FILE_NAME), protection)?;
-    let csv_path = dir.join(COLUMN_META_CSV_NAME);
-    let file = File::create(&csv_path).map_err(EtlError::io("creating", &csv_path))?;
-    let mut out = BufWriter::new(file);
-    write_column_meta_csv(&mut out, index.concepts())
-        .and_then(|()| out.flush())
-        .map_err(EtlError::io("writing", &csv_path))
+    write_index_and_column_meta(dir, &index, protection)
 }
 
 fn read_patients(path: &Path) -> Result<RoaringBitmap> {

@@ -442,7 +442,7 @@ fn migrate_replaces_an_existing_store_and_leaves_the_export_alone() {
         migrate(&MigrateOptions {
             export: export.clone(),
             out: out.clone(),
-            key: KeySource::OutputDirectory,
+            key: KeySource::OutputDirectoryKeyFile,
             threads: None,
         })
         .unwrap();

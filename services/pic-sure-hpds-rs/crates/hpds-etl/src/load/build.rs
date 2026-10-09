@@ -1,7 +1,6 @@
 //! The build pass: turn one partition's spilled rows into sealed concept blocks and their
 //! metadata, following one Java loader's per-concept rules.
 
-use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
@@ -18,12 +17,14 @@ use super::rules::{Mode, ValueStatus};
 use super::spill::{SpillRow, read_rows};
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
+use crate::private_fs;
 
-/// A row whose patient number Java would parse and fail on, found in new-search mode.
-#[derive(Clone, Debug)]
+/// A row whose patient number Java would parse and fail on, found in new-search mode: its
+/// global record number and its line in its input file.
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct PatientFailure {
     pub seq: u64,
-    pub value: String,
+    pub line: u64,
 }
 
 /// A concept built from one partition, with its block at `block.offset` in the
@@ -47,7 +48,15 @@ pub(crate) struct BuildContext<'a> {
     pub mode: Mode,
     pub concepts: &'a [String],
     pub raw_path_ranks: &'a [u32],
+    /// Sequential mode: the `seq` of the first record of every chunk, ascending.
+    pub chunk_starts: &'a [u64],
     pub codec: &'a BlockCodec,
+}
+
+impl BuildContext<'_> {
+    fn chunk_of(&self, seq: u64) -> usize {
+        self.chunk_starts.partition_point(|&start| start <= seq)
+    }
 }
 
 /// Builds partition `index` from `spill_file`, writing sealed blocks to `blocks_file`.
@@ -55,7 +64,8 @@ pub(crate) struct BuildContext<'a> {
 /// Rows of one concept are put in the order the Java loader ingests them: file order in
 /// new-search mode; chunk, then raw concept path in Java string order, then file order in
 /// sequential mode. The first row in that order fixes the concept's type. The spill file is
-/// deleted once read.
+/// deleted once read. The partition's spill file and its decoded rows (40 bytes each) are
+/// held in memory together while it builds.
 ///
 /// # Errors
 /// I/O errors, a corrupt spill file, and encoding or sealing errors.
@@ -65,24 +75,23 @@ pub(crate) fn build_partition(
     spill_file: &Path,
     blocks_file: PathBuf,
 ) -> Result<BuiltPartition> {
-    let ordered = ctx.mode == Mode::Sequential;
     let buf = std::fs::read(spill_file).map_err(EtlError::io("reading", spill_file))?;
     std::fs::remove_file(spill_file).map_err(EtlError::io("removing", spill_file))?;
-    let mut rows = read_rows(&buf, ordered).map_err(EtlError::io("decoding", spill_file))?;
-    if ordered {
-        rows.sort_unstable_by_key(|r| {
-            (
-                r.concept,
-                r.chunk,
-                ctx.raw_path_ranks[r.raw_path as usize],
-                r.seq,
-            )
-        });
-    } else {
-        rows.sort_unstable_by_key(|r| (r.concept, r.seq));
+    let mut rows = read_rows(&buf, ctx.mode, ctx.raw_path_ranks)
+        .map_err(EtlError::io("decoding", spill_file))?;
+    rows.sort_unstable_by_key(|r| (r.concept, r.seq));
+    if ctx.mode == Mode::Sequential {
+        for concept_rows in rows.chunk_by_mut(|a, b| a.concept == b.concept) {
+            for chunk_rows in
+                concept_rows.chunk_by_mut(|a, b| ctx.chunk_of(a.seq) == ctx.chunk_of(b.seq))
+            {
+                chunk_rows.sort_by_key(|r| r.raw_path_rank);
+            }
+        }
     }
 
-    let file = File::create(&blocks_file).map_err(EtlError::io("creating", &blocks_file))?;
+    let file =
+        private_fs::create_file(&blocks_file).map_err(EtlError::io("creating", &blocks_file))?;
     let mut out = BufWriter::with_capacity(1 << 20, file);
     let mut written = 0u64;
     let mut built = BuiltPartition {
@@ -145,7 +154,7 @@ impl Stats {
 
 /// Decides one row of a concept whose type is `text`: returns true when the row is stored,
 /// counting the reason otherwise, and records the first new-search patient failure.
-fn accept(mode: Mode, text: bool, row: &SpillRow, buf: &[u8], built: &mut BuiltPartition) -> bool {
+fn accept(mode: Mode, text: bool, row: &SpillRow, built: &mut BuiltPartition) -> bool {
     if row.is_text() != text {
         built.counts.dropped_type_conflict += 1;
         return false;
@@ -162,7 +171,7 @@ fn accept(mode: Mode, text: bool, row: &SpillRow, buf: &[u8], built: &mut BuiltP
         {
             built.patient_failure = Some(PatientFailure {
                 seq: row.seq,
-                value: row.bad_patient_text(buf).to_string(),
+                line: row.line(),
             });
         }
         return false;
@@ -193,7 +202,7 @@ fn build_concept(
         let mut observations = Vec::new();
         let mut width = 0usize;
         for row in rows {
-            if !accept(mode, text, row, buf, built) {
+            if !accept(mode, text, row, built) {
                 continue;
             }
             let value = row.text(buf);
@@ -224,20 +233,18 @@ fn build_concept(
         let mut observations = Vec::new();
         let mut range: Option<(f64, f64)> = None;
         for row in rows {
-            if !accept(mode, text, row, buf, built) {
+            if !accept(mode, text, row, built) {
                 continue;
             }
             stats.add(row.patient, row.timestamp);
+            let number = row.number();
             range = Some(match range {
-                None => (row.number, row.number),
-                Some((lo, hi)) => (
-                    java_double_min(lo, row.number),
-                    java_double_max(hi, row.number),
-                ),
+                None => (number, number),
+                Some((lo, hi)) => (java_double_min(lo, number), java_double_max(hi, number)),
             });
             observations.push(NumericObservation {
                 patient: row.patient,
-                value: row.number,
+                value: number,
                 timestamp: row.timestamp,
             });
         }

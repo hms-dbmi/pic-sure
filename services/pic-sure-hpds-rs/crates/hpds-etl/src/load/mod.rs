@@ -23,6 +23,10 @@
 //! the partitions in parallel, then writes `pheno.blocks`, `pheno.index`, `columnMeta.csv`
 //! and `etl-report.json` into a staging directory beside the output and moves them into
 //! place.
+//!
+//! Every directory the loader creates is mode `0700` and every file `0600` (see
+//! [`crate::private_fs`]). Error messages and logs name a file, a record and line number,
+//! and a field, never an observation's patient, value or timestamp.
 
 mod build;
 mod partition;
@@ -46,8 +50,10 @@ use serde::Serialize;
 use self::build::{BuildContext, BuiltConcept, BuiltPartition, build_partition};
 use self::partition::{InputFile, PartitionSettings, partition};
 pub use self::rules::{ConfigMap, CsvConfig, Mode};
+use crate::cleanup::{self, TemporaryDir};
 use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
+use crate::private_fs;
 
 /// Name of the CSV the loader writes for dictionary hydration.
 pub const COLUMN_META_CSV_NAME: &str = "columnMeta.csv";
@@ -61,6 +67,14 @@ pub const DEFAULT_KEY_FILE_NAME: &str = "encryption_key";
 /// The key name recorded in the index header of an encrypted store, `Crypto.DEFAULT_KEY_NAME`.
 pub const DEFAULT_KEY_NAME: &str = "DEFAULT";
 
+/// Name of the CSV config file looked for beside the inputs, as Java reads
+/// `/opt/local/hpds_input/config.json`.
+pub const CONFIG_FILE_NAME: &str = "config.json";
+
+/// Files whose presence marks a directory as a Java javabin store, which a Rust store must
+/// never be written into.
+pub const JAVA_STORE_FILE_NAMES: [&str; 2] = ["columnMeta.javabin", "allObservationsStore.javabin"];
+
 const DEFAULT_MAX_CHUNK_GIB: f64 = 5.0;
 const INPUT_BYTES_PER_PARTITION: u64 = 32 << 20;
 const MAX_DEFAULT_PARTITIONS: usize = 128;
@@ -70,8 +84,8 @@ const MAX_DEFAULT_PARTITIONS: usize = 128;
 pub enum KeySource {
     /// Encrypt with the key in this file, loaded by `Crypto.loadKey` rules.
     File(PathBuf),
-    /// Encrypt with the key in `<out>/encryption_key`.
-    OutputDirectory,
+    /// Encrypt with the key in the `encryption_key` file of the output directory.
+    OutputDirectoryKeyFile,
     /// Do not encrypt. For local benchmarking only.
     Plain,
 }
@@ -91,16 +105,21 @@ pub struct LoadOptions {
     /// Variable-name rollup. `None` takes the Java default: off in new-search mode (which
     /// cannot roll up), on in sequential mode (Java's `NO_ROLLUP` argument turns it off).
     pub rollup: Option<bool>,
-    /// The CSV config file. In sequential mode, `config.json` in a directory input is used
-    /// when this is `None`.
+    /// The CSV config file. When `None`, the first `config.json` found in a directory input
+    /// or in the directory of an input file is used, in input order.
     pub config: Option<PathBuf>,
-    /// Number of spill partitions; `None` picks one from the input size.
+    /// Number of spill partitions; `None` picks one per 32 MiB of input, at most 128.
+    /// Each build worker holds one partition's spill file and 40 bytes per row of it in
+    /// memory at a time, so peak build memory is about `threads` times that for the largest
+    /// partitions; more partitions lower it.
     pub partitions: Option<usize>,
-    /// Worker threads for the build pass; `None` uses one per core.
+    /// Worker threads for the build pass; `None` uses one per core. Each holds one
+    /// partition in memory while it builds it.
     pub threads: Option<usize>,
     /// Directory for the spill files; `None` uses the staging directory.
     pub tmp: Option<PathBuf>,
     /// Sequential mode: the chunk size in GiB that `MAX_CHUNK_SIZE` sets in Java (default 5).
+    /// Refused in new-search mode.
     pub max_chunk_gib: Option<f64>,
 }
 
@@ -111,7 +130,7 @@ impl LoadOptions {
             mode,
             inputs,
             out,
-            key: KeySource::OutputDirectory,
+            key: KeySource::OutputDirectoryKeyFile,
             rollup: None,
             config: None,
             partitions: None,
@@ -190,30 +209,31 @@ pub struct LoadReport {
 /// Loads the inputs into a new store at `options.out`.
 ///
 /// The store is written to a staging directory next to `out` and moved into place only
-/// once complete. When `out` does not exist the staging directory is renamed to it; when it
-/// does, its `pheno.index` is removed first and the new files are renamed in with
-/// `pheno.index` last, so `out` never holds an index that does not match its blocks.
+/// once complete; see [`Staging::publish`].
 ///
 /// # Errors
-/// [`EtlError::Usage`] for options the selected mode does not support, missing inputs or an
-/// unreadable key; [`EtlError::InvalidPatient`] for the first row whose patient number Java
-/// would fail on, or that is negative; I/O, CSV, config and format errors.
+/// [`EtlError::Usage`] for options the selected mode does not support, missing inputs, an
+/// unreadable key, or an `out` that [`check_output`] refuses; [`EtlError::InvalidPatient`]
+/// for the first row whose patient number Java would fail on, or that is negative; I/O,
+/// CSV, config and format errors.
 pub fn load(options: &LoadOptions) -> Result<LoadReport> {
     let started = Instant::now();
+    if options.mode == Mode::NewSearch && options.max_chunk_gib.is_some() {
+        return Err(EtlError::Usage(
+            "--max-chunk-gib applies to sequential mode only".into(),
+        ));
+    }
     let rollup = resolve_rollup(options)?;
     let inputs = resolve_inputs(options)?;
+    check_output(&options.out, &options.key)?;
     let configs = resolve_config(options)?;
     let protection = resolve_protection(options)?;
     let staging = Staging::create(&options.out)?;
-    let spill_dir = match &options.tmp {
-        Some(tmp) => unique_dir(tmp, "hpds-etl-spill")?,
-        None => {
-            let dir = staging.path.join("spill");
-            std::fs::create_dir(&dir).map_err(EtlError::io("creating", &dir))?;
-            dir
-        }
-    };
-    let _spill_cleanup = RemoveOnDrop(spill_dir.clone());
+    let spill = TemporaryDir::create(
+        options.tmp.as_deref().unwrap_or(staging.path()),
+        "hpds-etl-spill",
+    )?;
+    let spill_dir = spill.path().to_path_buf();
 
     let input_bytes: u64 = inputs
         .iter()
@@ -257,6 +277,7 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
         mode: options.mode,
         concepts: &partitioned.concepts,
         raw_path_ranks: &partitioned.raw_path_ranks,
+        chunk_starts: &partitioned.chunk_starts,
         codec: &codec,
     };
     let pool = {
@@ -292,15 +313,10 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
             .find(|(start, _)| *start <= failure.seq)
             .cloned()
             .unwrap_or_default();
-        let problem = match rules::parse_patient(&failure.value) {
-            Err(problem) => problem.describe(),
-            Ok(_) => "could not be read",
-        };
         return Err(EtlError::InvalidPatient {
             file,
             record: failure.seq - start + 1,
-            value: failure.value.clone(),
-            problem,
+            line: failure.line,
         });
     }
 
@@ -328,9 +344,9 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
         "built"
     );
 
-    let blocks_bytes = write_store(&staging.path, &built, store_id, patients, &protection)?;
+    let blocks_bytes = write_store(staging.path(), &built, store_id, patients, &protection)?;
     drop(built);
-    std::fs::remove_dir_all(&spill_dir).map_err(EtlError::io("removing", &spill_dir))?;
+    drop(spill);
 
     let report = LoadReport {
         mode: options.mode,
@@ -342,10 +358,10 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
         blocks_bytes,
         elapsed_seconds: started.elapsed().as_secs_f64(),
     };
-    let report_path = staging.path.join(REPORT_FILE_NAME);
+    let report_path = staging.path().join(REPORT_FILE_NAME);
     let json = serde_json::to_vec_pretty(&report)
         .map_err(|e| EtlError::io("encoding", &report_path)(e.into()))?;
-    std::fs::write(&report_path, json).map_err(EtlError::io("writing", &report_path))?;
+    private_fs::write_file(&report_path, &json).map_err(EtlError::io("writing", &report_path))?;
     staging.publish(&options.out)?;
     tracing::info!(out = %options.out.display(), blocks_bytes, seconds = report.elapsed_seconds, "store written");
     Ok(report)
@@ -366,7 +382,8 @@ fn write_store(
         .collect::<Result<Vec<_>>>()?;
 
     let blocks_path = dir.join(BLOCKS_FILE_NAME);
-    let file = File::create(&blocks_path).map_err(EtlError::io("creating", &blocks_path))?;
+    let file =
+        private_fs::create_file(&blocks_path).map_err(EtlError::io("creating", &blocks_path))?;
     let mut writer = BlocksWriter::new(BufWriter::with_capacity(4 << 20, file), store_id)?;
     let mut metas = Vec::with_capacity(concepts.len());
     let mut stored = Vec::new();
@@ -406,15 +423,54 @@ fn write_store(
         store_id,
     };
     let index = PhenoIndex::new(header, patients, metas)?;
-    index.write_file(dir.join(INDEX_FILE_NAME), protection)?;
+    write_index_and_column_meta(dir, &index, protection)?;
+    Ok(blocks_bytes)
+}
 
+/// Writes `pheno.index` and `columnMeta.csv` for `index` into `dir`, each mode `0600` and
+/// synced to disk.
+///
+/// # Errors
+/// Encoding and I/O errors.
+pub(crate) fn write_index_and_column_meta(
+    dir: &Path,
+    index: &PhenoIndex,
+    protection: &Protection,
+) -> Result<()> {
+    let index_path = dir.join(INDEX_FILE_NAME);
+    private_fs::write_file(&index_path, &index.encode(protection)?)
+        .map_err(EtlError::io("writing", &index_path))?;
     let csv_path = dir.join(COLUMN_META_CSV_NAME);
-    let file = File::create(&csv_path).map_err(EtlError::io("creating", &csv_path))?;
+    let file = private_fs::create_file(&csv_path).map_err(EtlError::io("creating", &csv_path))?;
     let mut out = BufWriter::new(file);
     write_column_meta_csv(&mut out, index.concepts())
         .and_then(|()| out.flush())
-        .map_err(EtlError::io("writing", &csv_path))?;
-    Ok(blocks_bytes)
+        .and_then(|()| out.get_ref().sync_all())
+        .map_err(EtlError::io("writing", &csv_path))
+}
+
+/// Refuses an output directory the loaders must not write into: one holding a Java store
+/// (`columnMeta.javabin` or `allObservationsStore.javabin`), and, for a plain store, one
+/// holding an `encryption_key`.
+///
+/// # Errors
+/// [`EtlError::Usage`] naming the file that makes `out` unsuitable.
+pub(crate) fn check_output(out: &Path, key: &KeySource) -> Result<()> {
+    for name in JAVA_STORE_FILE_NAMES {
+        if out.join(name).exists() {
+            return Err(EtlError::Usage(format!(
+                "{} holds a Java store ({name}); write the Rust store to another directory",
+                out.display()
+            )));
+        }
+    }
+    if matches!(key, KeySource::Plain) && out.join(DEFAULT_KEY_FILE_NAME).exists() {
+        return Err(EtlError::Usage(format!(
+            "{} holds an {DEFAULT_KEY_FILE_NAME}; plain stores are for benchmarking; use an output directory without a key",
+            out.display()
+        )));
+    }
+    Ok(())
 }
 
 fn resolve_rollup(options: &LoadOptions) -> Result<bool> {
@@ -489,25 +545,53 @@ fn resolve_inputs(options: &LoadOptions) -> Result<Vec<InputFile>> {
 }
 
 fn resolve_config(options: &LoadOptions) -> Result<ConfigMap> {
-    if let Some(path) = &options.config {
-        return ConfigMap::load(path);
-    }
-    if options.mode == Mode::Sequential {
-        for input in &options.inputs {
-            let candidate = input.join("config.json");
-            if input.is_dir() && candidate.is_file() {
-                return ConfigMap::load(&candidate);
-            }
+    let mut beside_inputs: Vec<PathBuf> = Vec::new();
+    for input in &options.inputs {
+        let dir = if input.is_dir() {
+            input.clone()
+        } else {
+            parent_dir(input)
+        };
+        let candidate = dir.join(CONFIG_FILE_NAME);
+        if candidate.is_file() && !beside_inputs.iter().any(|c| same_file(c, &candidate)) {
+            beside_inputs.push(candidate);
         }
     }
-    Ok(ConfigMap::default())
+    let applied = match &options.config {
+        Some(path) => path.clone(),
+        None => match beside_inputs.first() {
+            Some(first) => first.clone(),
+            None => {
+                tracing::info!(
+                    "no CSV config applied: no --config and no {CONFIG_FILE_NAME} beside the inputs"
+                );
+                return Ok(ConfigMap::default());
+            }
+        },
+    };
+    for unused in beside_inputs.iter().filter(|c| !same_file(c, &applied)) {
+        tracing::warn!(
+            unused = %unused.display(),
+            applied = %applied.display(),
+            "a {CONFIG_FILE_NAME} beside the inputs is not applied"
+        );
+    }
+    tracing::info!(config = %applied.display(), "applying CSV config");
+    ConfigMap::load(&applied)
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 fn resolve_protection(options: &LoadOptions) -> Result<Protection> {
     let path = match &options.key {
         KeySource::Plain => return Ok(Protection::Plain),
         KeySource::File(path) => path.clone(),
-        KeySource::OutputDirectory => options.out.join(DEFAULT_KEY_FILE_NAME),
+        KeySource::OutputDirectoryKeyFile => options.out.join(DEFAULT_KEY_FILE_NAME),
     };
     CryptoKey::load(&path)
         .map(Protection::Encrypted)
@@ -519,38 +603,20 @@ fn resolve_protection(options: &LoadOptions) -> Result<Protection> {
         })
 }
 
-fn unique_dir(parent: &Path, prefix: &str) -> Result<PathBuf> {
-    std::fs::create_dir_all(parent).map_err(EtlError::io("creating", parent))?;
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0);
-    let dir = parent.join(format!(".{prefix}-{}-{nanos}", std::process::id()));
-    std::fs::create_dir(&dir).map_err(EtlError::io("creating", &dir))?;
-    Ok(dir)
-}
-
-struct RemoveOnDrop(PathBuf);
-
-impl Drop for RemoveOnDrop {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-/// The directory a store is written into before it is moved to its final place. Removed
-/// on drop unless published.
+/// The directory a store is written into before it is moved to its final place:
+/// `.<out name>.staging-<pid>-<nanos>` beside `out`, mode `0700`. Removed on drop, and on
+/// SIGTERM or SIGINT, unless published.
 pub(crate) struct Staging {
-    pub(crate) path: PathBuf,
-    published: bool,
+    dir: TemporaryDir,
 }
 
 impl Staging {
+    /// Creates the staging directory for `out`, first removing any left beside it by a run
+    /// that was killed.
+    ///
+    /// # Errors
+    /// [`EtlError::Usage`] when `out` has no name or is not a directory; I/O errors.
     pub(crate) fn create(out: &Path) -> Result<Self> {
-        let parent = match out.parent() {
-            Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
-            _ => PathBuf::from("."),
-        };
         let name = out
             .file_name()
             .ok_or_else(|| EtlError::Usage(format!("{} has no directory name", out.display())))?
@@ -563,20 +629,35 @@ impl Staging {
             )));
         }
         Ok(Staging {
-            path: unique_dir(&parent, &format!("{name}.staging"))?,
-            published: false,
+            dir: TemporaryDir::create(&parent_dir(out), &format!("{name}.staging"))?,
         })
     }
 
+    /// The staging directory.
+    pub(crate) fn path(&self) -> &Path {
+        self.dir.path()
+    }
+
+    /// Moves the staged store to `out`. Every staged file is already synced. When `out`
+    /// does not exist the staging directory is synced and renamed to it. When it does,
+    /// `pheno.blocks`, `columnMeta.csv` and `etl-report.json` are renamed over the old
+    /// files and `pheno.index` last, so a reader that finds the new index finds the new
+    /// blocks; until then the old index refuses the new blocks by store id. The directory
+    /// that received the names is synced afterwards. An interrupt waits until the move is
+    /// done.
+    ///
+    /// # Errors
+    /// I/O errors syncing or renaming.
     pub(crate) fn publish(mut self, out: &Path) -> Result<()> {
+        let staged = self.dir.path().to_path_buf();
+        private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
+        let mut registered = cleanup::lock();
         if !out.exists() {
-            std::fs::rename(&self.path, out).map_err(EtlError::io("moving the store to", out))?;
-            self.published = true;
-            return Ok(());
-        }
-        let index = out.join(INDEX_FILE_NAME);
-        if index.exists() {
-            std::fs::remove_file(&index).map_err(EtlError::io("removing", &index))?;
+            std::fs::rename(&staged, out).map_err(EtlError::io("moving the store to", out))?;
+            self.dir.disarm(&mut registered);
+            drop(registered);
+            let parent = parent_dir(out);
+            return private_fs::sync_dir(&parent).map_err(EtlError::io("syncing", &parent));
         }
         for name in [
             BLOCKS_FILE_NAME,
@@ -585,17 +666,17 @@ impl Staging {
             INDEX_FILE_NAME,
         ] {
             let target = out.join(name);
-            std::fs::rename(self.path.join(name), &target)
+            std::fs::rename(staged.join(name), &target)
                 .map_err(EtlError::io("moving into place", &target))?;
         }
-        Ok(())
+        drop(registered);
+        private_fs::sync_dir(out).map_err(EtlError::io("syncing", out))
     }
 }
 
-impl Drop for Staging {
-    fn drop(&mut self) {
-        if !self.published {
-            let _ = std::fs::remove_dir_all(&self.path);
-        }
+fn parent_dir(path: &Path) -> PathBuf {
+    match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => PathBuf::from("."),
     }
 }

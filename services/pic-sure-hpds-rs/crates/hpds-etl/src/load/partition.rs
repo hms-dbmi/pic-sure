@@ -1,21 +1,21 @@
 //! The partition pass: stream every input once, normalize each row's concept path, read its
-//! value, and append it to one of N spill files chosen by concept.
+//! patient number, and append the row to one of N spill files chosen by concept. One thread
+//! parses the CSV while another routes the records.
 
-use std::borrow::Cow;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::Instant;
 
-use hpds_format::{NO_TIMESTAMP, java_string_cmp};
+use hpds_format::java_string_cmp;
 use rustc_hash::FxHashMap;
 
-use super::rules::{
-    ConfigMap, Mode, Timestamp, apply_dataset_root, classify_value, parse_patient, parse_timestamp,
-};
-use super::spill::{OutRow, write_row};
+use super::rules::{ConfigMap, Mode, apply_dataset_root, parse_patient};
+use super::spill::{OutRow, PatientField, write_row};
 use crate::error::{EtlError, Result};
-use crate::java::{normalize_concept_path, roll_up, rollup_text};
+use crate::java::{is_log4j_blank, normalize_concept_path, roll_up, rolls_up, rollup_text};
+use crate::private_fs;
 
 /// One input file and the name its CSV config is looked up under.
 #[derive(Clone, Debug)]
@@ -31,6 +31,8 @@ pub(crate) struct Partitioned {
     /// Raw concept path id to its rank in Java `String.compareTo` order; equal strings share
     /// a rank. Empty in new-search mode.
     pub raw_path_ranks: Vec<u32>,
+    /// Sequential mode: the `seq` of the first record of every chunk, ascending.
+    pub chunk_starts: Vec<u64>,
     /// For each input, the `seq` of its first data record and its path.
     pub file_starts: Vec<(u64, PathBuf)>,
     /// The spill files, one per partition.
@@ -146,8 +148,19 @@ fn partition_of(concept: u32, partitions: usize) -> usize {
     (mixed % partitions as u64) as usize
 }
 
-fn field(record: &csv::ByteRecord, index: usize) -> Cow<'_, str> {
-    String::from_utf8_lossy(record.get(index).unwrap_or_default())
+/// Records handed from the CSV reader thread to the routing loop at a time.
+const BATCH_RECORDS: usize = 4096;
+
+/// Batches in flight between the CSV reader thread and the routing loop.
+const BATCHES_IN_FLIGHT: usize = 4;
+
+/// Decodes `record` as UTF-8, replacing each invalid sequence in a field with U+FFFD as
+/// `String::from_utf8_lossy` does, and keeps its position.
+fn decode(record: csv::ByteRecord) -> csv::StringRecord {
+    let position = record.position().cloned();
+    let mut decoded = csv::StringRecord::from_byte_record_lossy(record);
+    decoded.set_position(position);
+    decoded
 }
 
 /// Settings for [`partition`].
@@ -160,8 +173,155 @@ pub(crate) struct PartitionSettings<'a> {
     pub max_chunk_bytes: f64,
 }
 
+/// Reads `path` as CSV on a separate thread and calls `route` on every data record in
+/// order, so CSV parsing and UTF-8 decoding overlap routing. A field that is not valid
+/// UTF-8 has each invalid sequence replaced by U+FFFD. Stops at the first error `route`
+/// returns.
+fn for_each_record(
+    path: &Path,
+    mut route: impl FnMut(&csv::StringRecord) -> Result<()>,
+) -> Result<()> {
+    let file = File::open(path).map_err(EtlError::io("opening", path))?;
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .flexible(true)
+        .from_reader(BufReader::with_capacity(1 << 20, file));
+    let (full_tx, full_rx) =
+        mpsc::sync_channel::<csv::Result<Vec<csv::StringRecord>>>(BATCHES_IN_FLIGHT);
+    let (empty_tx, empty_rx) = mpsc::channel::<Vec<csv::StringRecord>>();
+    std::thread::scope(|scope| {
+        scope.spawn(move || {
+            let mut raw = csv::ByteRecord::new();
+            loop {
+                let mut batch = empty_rx.try_recv().unwrap_or_default();
+                batch.resize_with(BATCH_RECORDS, csv::StringRecord::new);
+                let mut filled = 0;
+                let mut failure = None;
+                while filled < BATCH_RECORDS {
+                    match reader.read_byte_record(&mut raw) {
+                        Ok(true) => {
+                            let slot = std::mem::take(&mut batch[filled]);
+                            batch[filled] =
+                                decode(std::mem::replace(&mut raw, slot.into_byte_record()));
+                            filled += 1;
+                        }
+                        Ok(false) => break,
+                        Err(e) => {
+                            failure = Some(e);
+                            break;
+                        }
+                    }
+                }
+                let done = filled < BATCH_RECORDS;
+                batch.truncate(filled);
+                if !batch.is_empty() && full_tx.send(Ok(batch)).is_err() {
+                    return;
+                }
+                if let Some(e) = failure {
+                    let _ = full_tx.send(Err(e));
+                    return;
+                }
+                if done {
+                    return;
+                }
+            }
+        });
+        let result = (|| {
+            for batch in &full_rx {
+                let batch = batch.map_err(|source| EtlError::Csv {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
+                for record in &batch {
+                    route(record)?;
+                }
+                let _ = empty_tx.send(batch);
+            }
+            Ok(())
+        })();
+        drop(full_rx);
+        result
+    })
+}
+
+/// Encoded rows bound for the spill files: `bytes` holds the rows back to back, and
+/// `ends` the partition and end offset of each.
+#[derive(Default)]
+struct RoutedBatch {
+    bytes: Vec<u8>,
+    ends: Vec<(u32, u32)>,
+}
+
+/// Bytes of encoded rows the routing loop collects before handing them to the spill
+/// writer thread.
+const ROUTED_BATCH_BYTES: usize = 1 << 20;
+
+/// The routing loop's end of the spill writer thread.
+struct SpillSink {
+    full: mpsc::SyncSender<RoutedBatch>,
+    empty: mpsc::Receiver<RoutedBatch>,
+    current: RoutedBatch,
+    mode: Mode,
+}
+
+impl SpillSink {
+    /// Queues `row` for spill file `partition`. Returns false when the writer thread has
+    /// stopped.
+    fn push(&mut self, partition: usize, row: &OutRow<'_>) -> bool {
+        write_row(&mut self.current.bytes, row, self.mode).unwrap_or_default();
+        self.current
+            .ends
+            .push((partition as u32, self.current.bytes.len() as u32));
+        self.current.bytes.len() < ROUTED_BATCH_BYTES || self.flush()
+    }
+
+    /// Hands the queued rows to the writer thread. Returns false when it has stopped.
+    fn flush(&mut self) -> bool {
+        if self.current.ends.is_empty() {
+            return true;
+        }
+        let next = self.empty.try_recv().unwrap_or_default();
+        self.full
+            .send(std::mem::replace(&mut self.current, next))
+            .is_ok()
+    }
+}
+
+/// The spill writer thread: appends every batch's rows to their spill files, then flushes
+/// them.
+fn write_spills(
+    full: mpsc::Receiver<RoutedBatch>,
+    empty: mpsc::Sender<RoutedBatch>,
+    mut writers: Vec<BufWriter<File>>,
+    paths: &[PathBuf],
+) -> Result<()> {
+    for mut batch in full {
+        let mut start = 0usize;
+        for &(partition, end) in &batch.ends {
+            let (partition, end) = (partition as usize, end as usize);
+            writers[partition]
+                .write_all(&batch.bytes[start..end])
+                .map_err(EtlError::io("writing", &paths[partition]))?;
+            start = end;
+        }
+        batch.bytes.clear();
+        batch.ends.clear();
+        let _ = empty.send(batch);
+    }
+    for (writer, path) in writers.into_iter().zip(paths) {
+        writer
+            .into_inner()
+            .map_err(|e| EtlError::io("writing", path)(e.into_error()))?
+            .flush()
+            .map_err(EtlError::io("writing", path))?;
+    }
+    Ok(())
+}
+
 /// Streams `inputs` in order into `settings.partitions` spill files under
-/// `settings.spill_dir`.
+/// `settings.spill_dir`. Values and timestamps are spilled unparsed; the build pass parses
+/// them in parallel. Three threads share the work: one parses the CSV, one routes records,
+/// one writes the spill files.
 ///
 /// # Errors
 /// I/O and CSV errors, and in sequential mode [`EtlError::InvalidPatient`] for the first
@@ -171,15 +331,48 @@ pub(crate) fn partition(
     inputs: &[InputFile],
     settings: &PartitionSettings<'_>,
 ) -> Result<Partitioned> {
-    let ordered = settings.mode == Mode::Sequential;
     let mut spill_files = Vec::with_capacity(settings.partitions);
     let mut writers = Vec::with_capacity(settings.partitions);
     for i in 0..settings.partitions {
         let path = settings.spill_dir.join(format!("rows-{i:05}.bin"));
-        let file = File::create(&path).map_err(EtlError::io("creating", &path))?;
+        let file = private_fs::create_file(&path).map_err(EtlError::io("creating", &path))?;
         writers.push(BufWriter::with_capacity(256 * 1024, file));
         spill_files.push(path);
     }
+    let (full_tx, full_rx) = mpsc::sync_channel(BATCHES_IN_FLIGHT);
+    let (empty_tx, empty_rx) = mpsc::channel();
+    let paths = spill_files.clone();
+    std::thread::scope(|scope| {
+        let writer = scope.spawn(move || write_spills(full_rx, empty_tx, writers, &paths));
+        let mut sink = SpillSink {
+            full: full_tx,
+            empty: empty_rx,
+            current: RoutedBatch::default(),
+            mode: settings.mode,
+        };
+        let routed =
+            route(inputs, settings, &mut sink).map(|partitioned| (partitioned, sink.flush()));
+        drop(sink);
+        let written = writer
+            .join()
+            .unwrap_or_else(|_| Err(EtlError::ThreadPool("the spill writer panicked".into())));
+        written?;
+        let (partitioned, _) = routed?;
+        Ok(Partitioned {
+            spill_files,
+            ..partitioned
+        })
+    })
+}
+
+/// The routing loop of [`partition`]. Returns everything but the spill file paths. When
+/// the writer thread stops early, returns an error that its own error replaces.
+fn route(
+    inputs: &[InputFile],
+    settings: &PartitionSettings<'_>,
+    sink: &mut SpillSink,
+) -> Result<Partitioned> {
+    let sequential = settings.mode == Mode::Sequential;
     let mut interner = Interner {
         raw_ids: FxHashMap::default(),
         raw_paths: Vec::new(),
@@ -187,37 +380,28 @@ pub(crate) fn partition(
         concepts: Vec::new(),
     };
     let mut file_starts = Vec::with_capacity(inputs.len());
+    let mut chunk_starts = Vec::new();
     let mut seq = 0u64;
     let mut short_rows = 0u64;
     let mut chunk_base = 0u64;
     let started = Instant::now();
-    let mut record = csv::ByteRecord::new();
 
     for input in inputs {
         let path = &input.path;
         tracing::info!(file = %path.display(), "reading");
         file_starts.push((seq, path.clone()));
         let config = settings.configs.get(&input.config_key);
-        let chunking = if ordered {
+        let chunking = if sequential {
             Chunking::for_file(path, settings.max_chunk_bytes)?
         } else {
             Chunking {
                 records_per_chunk: None,
             }
         };
-        let file = File::open(path).map_err(EtlError::io("opening", path))?;
-        let mut reader = csv::ReaderBuilder::new()
-            .has_headers(true)
-            .flexible(true)
-            .from_reader(BufReader::with_capacity(1 << 20, file));
-        let csv_error = |source| EtlError::Csv {
-            path: path.clone(),
-            source,
-        };
         let mut concept_cache: FxHashMap<(u32, bool), u32> = FxHashMap::default();
         let mut record_index = 0u64;
-        let mut last_chunk = 0u64;
-        while reader.read_byte_record(&mut record).map_err(csv_error)? {
+        let mut last_chunk = None;
+        for_each_record(path, |record| {
             let this_seq = seq;
             seq += 1;
             let index_in_file = record_index;
@@ -229,22 +413,28 @@ pub(crate) fn partition(
                     "partitioning"
                 );
             }
+            let chunk = chunk_base + chunking.chunk_of(index_in_file);
+            if sequential && last_chunk != Some(chunk) {
+                chunk_starts.push(this_seq);
+                last_chunk = Some(chunk);
+            }
             if record.len() < 4 {
                 short_rows += 1;
-                continue;
+                return Ok(());
             }
-            let raw_id = interner.raw_path(record.get(1).unwrap_or_default());
-            let text_field = field(&record, 3);
-            let rolled = settings.rollup && {
-                let text = rollup_text(&text_field);
-                roll_up(&interner.raw_paths[raw_id as usize].normalized, &text).is_some()
-            };
+            let field = |i| record.get(i).unwrap_or_default();
+            let raw_id = interner.raw_path(field(1).as_bytes());
+            let rolled = settings.rollup
+                && rolls_up(
+                    &interner.raw_paths[raw_id as usize].normalized,
+                    &rollup_text(field(3)),
+                );
             let concept = match concept_cache.get(&(raw_id, rolled)) {
                 Some(&id) => id,
                 None => {
                     let normalized = &interner.raw_paths[raw_id as usize].normalized;
                     let path_value = if rolled {
-                        roll_up(normalized, &rollup_text(&text_field))
+                        roll_up(normalized, &rollup_text(field(3)))
                             .unwrap_or_else(|| normalized.clone())
                     } else {
                         normalized.clone()
@@ -254,61 +444,42 @@ pub(crate) fn partition(
                     id
                 }
             };
-            let numeric_field = field(&record, 2);
-            let value = classify_value(settings.mode, &numeric_field, &text_field);
-            let timestamp_field = if record.len() > 4 {
-                Some(field(&record, 4))
-            } else {
-                None
-            };
-            let (timestamp, bad_timestamp) = match parse_timestamp(timestamp_field.as_deref()) {
-                Timestamp::Millis(t) => (t, false),
-                Timestamp::Absent => (NO_TIMESTAMP, false),
-                Timestamp::Unparseable => (NO_TIMESTAMP, true),
-            };
-            let patient_field = field(&record, 0);
-            let patient = match parse_patient(&patient_field) {
-                Ok(p) => Ok(p),
-                Err(problem) if ordered => {
+            let line = || record.position().map_or(0, |p| p.line());
+            let patient = match parse_patient(field(0)) {
+                Ok(p) => PatientField::Parsed(p),
+                Err(_) if sequential => {
                     return Err(EtlError::InvalidPatient {
                         file: path.clone(),
                         record: index_in_file + 1,
-                        value: patient_field.into_owned(),
-                        problem: problem.describe(),
+                        line: line(),
                     });
                 }
-                Err(_) => Err(patient_field.as_ref()),
+                Err(_) => PatientField::Unparseable { line: line() },
             };
-            let chunk = chunking.chunk_of(index_in_file);
-            last_chunk = chunk;
+            let numeric = field(2);
+            let is_text = match settings.mode {
+                Mode::NewSearch => numeric.is_empty(),
+                Mode::Sequential => is_log4j_blank(numeric),
+            };
             let row = OutRow {
                 seq: this_seq,
                 concept,
-                patient,
-                text: value.text,
-                status: value.status,
-                timestamp,
-                bad_timestamp,
-                chunk: (chunk_base + chunk) as u32,
                 raw_path: raw_id,
-                number: value.number,
-                value: value.value,
+                patient,
+                numeric: numeric.as_bytes(),
+                text: if is_text { field(3).as_bytes() } else { &[] },
+                timestamp: field(4).as_bytes(),
             };
-            let target = partition_of(concept, settings.partitions);
-            write_row(&mut writers[target], &row, ordered)
-                .map_err(EtlError::io("writing", &spill_files[target]))?;
-        }
-        chunk_base += last_chunk + 1;
-    }
-    for (writer, path) in writers.into_iter().zip(&spill_files) {
-        writer
-            .into_inner()
-            .map_err(|e| EtlError::io("writing", path)(e.into_error()))?
-            .flush()
-            .map_err(EtlError::io("writing", path))?;
+            if sink.push(partition_of(concept, settings.partitions), &row) {
+                Ok(())
+            } else {
+                Err(EtlError::ThreadPool("the spill writer stopped".into()))
+            }
+        })?;
+        chunk_base = last_chunk.map_or(chunk_base, |c| c + 1);
     }
 
-    let raw_path_ranks = if ordered {
+    let raw_path_ranks = if sequential {
         rank_raw_paths(&interner.raw_paths)
     } else {
         Vec::new()
@@ -323,8 +494,9 @@ pub(crate) fn partition(
     Ok(Partitioned {
         concepts: interner.concepts,
         raw_path_ranks,
+        chunk_starts,
         file_starts,
-        spill_files,
+        spill_files: Vec::new(),
         rows_read: seq,
         short_rows,
     })

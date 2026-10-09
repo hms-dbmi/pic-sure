@@ -11,6 +11,7 @@ use hpds_format::{
 
 use crate::error::{EtlError, Result};
 use crate::load::{DEFAULT_KEY_FILE_NAME, KeySource};
+use crate::private_fs;
 
 /// Resolves the protection of the store in `dir`: the key in the named file, the key in
 /// `<dir>/encryption_key`, or plain.
@@ -21,7 +22,7 @@ pub fn resolve_protection(key: &KeySource, dir: &Path) -> Result<Protection> {
     let path = match key {
         KeySource::Plain => return Ok(Protection::Plain),
         KeySource::File(path) => path.clone(),
-        KeySource::OutputDirectory => dir.join(DEFAULT_KEY_FILE_NAME),
+        KeySource::OutputDirectoryKeyFile => dir.join(DEFAULT_KEY_FILE_NAME),
     };
     CryptoKey::load(&path)
         .map(Protection::Encrypted)
@@ -73,9 +74,9 @@ pub fn read_index(dir: &Path, protection: &Protection) -> Result<PhenoIndex> {
     )?)
 }
 
-/// Writes `target` by calling `write` on a buffered temporary file beside it, syncing it,
-/// and renaming it over `target`, so a reader sees either the old file or the complete new
-/// one. The temporary file is removed when `write` fails.
+/// Writes `target` by calling `write` on a buffered temporary file beside it, mode `0600`,
+/// syncing it, renaming it over `target` and syncing the directory, so a reader sees either
+/// the old file or the complete new one. The temporary file is removed when `write` fails.
 ///
 /// # Errors
 /// I/O errors creating, writing, syncing or renaming the file, and any error from `write`.
@@ -84,15 +85,21 @@ where
     F: FnOnce(&mut BufWriter<File>) -> Result<()>,
 {
     let tmp = temporary_sibling(target)?;
+    let _ = std::fs::remove_file(&tmp);
     let result = (|| {
-        let file = File::create(&tmp).map_err(EtlError::io("creating", &tmp))?;
+        let file = private_fs::create_file(&tmp).map_err(EtlError::io("creating", &tmp))?;
         let mut out = BufWriter::with_capacity(1 << 20, file);
         write(&mut out)?;
         out.flush().map_err(EtlError::io("writing", &tmp))?;
         out.get_ref()
             .sync_all()
             .map_err(EtlError::io("writing", &tmp))?;
-        std::fs::rename(&tmp, target).map_err(EtlError::io("moving into place", target))
+        std::fs::rename(&tmp, target).map_err(EtlError::io("moving into place", target))?;
+        let dir = match target.parent() {
+            Some(p) if !p.as_os_str().is_empty() => p,
+            _ => Path::new("."),
+        };
+        private_fs::sync_dir(dir).map_err(EtlError::io("syncing", dir))
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);

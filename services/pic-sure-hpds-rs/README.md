@@ -59,3 +59,30 @@ The server stops cleanly on SIGTERM and ctrl-c. `hpds-rs healthcheck` requests
 `http://127.0.0.1:$SERVER_PORT/actuator/health` and exits 0 on a 200 `UP`, 1 otherwise; the
 image uses it as its Docker `HEALTHCHECK`. Both images run as UID 1000 on
 `debian:bookworm-slim`.
+
+## Loading a store
+
+`hpds-etl load --mode <new-search|sequential> --input <csv>... --out <dir>` builds a store from
+phenotype CSV. `--mode` is required: `new-search` follows `CSVLoaderNewSearch`, `sequential`
+follows `SequentialLoader`. The store is encrypted with `<out>/encryption_key` unless
+`--key-file` names another key. `--plain` writes an unencrypted store for benchmarking and is
+refused when `<out>` holds an `encryption_key`. `--out` is refused when it holds a Java store
+(`columnMeta.javabin` or `allObservationsStore.javabin`).
+
+The CSV config is the file `--config` names, or else the first `config.json` in a directory
+input or beside an input file. The log names the config applied and warns about any
+`config.json` beside the inputs that is not.
+
+Every directory the ETL creates is mode `0700` and every file `0600`, so only the owning user
+can read the store or its temporary files. Both images run as UID 1000, so the `hpds-rs`
+service reads what the `hpds-rs-etl` container wrote. A different service UID needs the store
+files made readable to it by hand.
+
+The store is written to a staging directory beside `--out` and moved into place when complete.
+SIGTERM and SIGINT remove the staging and spill directories before exiting; a later run removes
+any that a killed run left behind.
+
+Memory: the partition pass holds the concept and path dictionaries. The build pass runs
+`--threads` workers (one per core by default), each holding one partition's spill file plus
+40 bytes per row of it, so peak memory is about `threads` times the largest partitions.
+`--partitions` (default one per 32 MiB of input, at most 128) lowers it.
