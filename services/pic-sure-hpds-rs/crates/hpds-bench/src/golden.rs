@@ -228,6 +228,7 @@ pub fn evaluate(expect: &Expect, outcome: &Outcome) -> Vec<String> {
     match outcome {
         Outcome::Sync(s) => evaluate_sync(expect, s),
         Outcome::Async(a) => evaluate_async(expect, a),
+        Outcome::TimedOut => vec!["request timed out".to_owned()],
         Outcome::Failed(e) => vec![format!("request failed: {e}")],
     }
 }

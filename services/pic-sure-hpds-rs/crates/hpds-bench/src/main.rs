@@ -1,11 +1,14 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use std::sync::Arc;
+
+use clap::{Parser, Subcommand, ValueEnum};
 use hpds_bench::client::Client;
 use hpds_bench::column_meta::read_column_meta;
-use hpds_bench::compare::{Mismatch, compare_corpus};
+use hpds_bench::compare::{CompareReport, Mismatch, compare_corpus};
 use hpds_bench::corpus::{generate, read_corpus, write_corpus};
+use hpds_bench::divergence::Divergences;
 use hpds_bench::duration::parse_duration;
 use hpds_bench::golden::{read_golden, run_golden};
 use hpds_bench::load::{LoadConfig, render_table, run_load};
@@ -17,6 +20,13 @@ use hpds_bench::{BenchError, Result};
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+/// Subsets of the corpus that `load` can be restricted to.
+#[derive(Clone, Copy, ValueEnum)]
+enum Only {
+    /// Skip async entries.
+    Sync,
 }
 
 #[derive(Subcommand)]
@@ -56,11 +66,22 @@ enum Command {
         /// Longest wait for an async query to finish.
         #[arg(long, default_value = "120s")]
         timeout: String,
-        /// Extra attempts for an entry that differs; entries that recover are listed as flaky.
+        /// Extra attempts for an entry that differs; entries that recover are listed as flaky,
+        /// with the side that answered differently between attempts.
         #[arg(long, default_value_t = 0)]
         retries: usize,
+        /// JSON file of accepted differences, such as bench/divergences.json. Matching entries
+        /// print as WHITELISTED with the rule's reason and do not fail the run.
+        #[arg(long)]
+        divergences: Option<PathBuf>,
     },
     /// Replay a corpus against one server and report latency and throughput.
+    ///
+    /// The load is closed loop: each worker sends its next request only after the previous one
+    /// finished, so a slow server is offered fewer requests. No coordinated omission correction
+    /// is applied, which makes tail latencies a lower bound. Async queries are polled every 2 ms.
+    /// Throughput is requests over the span from the first measured start to the last finish.
+    /// Error-path entries are never replayed.
     Load {
         /// Base URL, such as http://host:8080/PIC-SURE.
         #[arg(long)]
@@ -71,20 +92,29 @@ enum Command {
         /// Concurrent request loops.
         #[arg(long, default_value_t = 8)]
         concurrency: usize,
-        /// Measured window, such as 60s.
+        /// Measured window, such as 60s. Ignored with --passes.
         #[arg(long, default_value = "60s")]
         duration: String,
-        /// Unmeasured lead-in, such as 10s.
+        /// Unmeasured lead-in, such as 10s. Ignored with --passes.
         #[arg(long, default_value = "0s")]
         warmup: String,
-        /// Restrict the replay: `sync` skips async entries.
-        #[arg(long)]
-        only: Option<String>,
-        /// Longest wait for an async query to finish.
+        /// Run this many passes instead of a timed window. Each pass sends every entry once and
+        /// is reported separately; pass 1 is the cold pass.
+        #[arg(long, default_value_t = 0)]
+        passes: usize,
+        /// Interval between async status polls.
+        #[arg(long, default_value = "2ms")]
+        poll_interval: String,
+        /// Restrict the replay to a subset of the corpus.
+        #[arg(long, value_enum)]
+        only: Option<Only>,
+        /// Longest wait for an async query to finish. Timeouts are counted apart from errors
+        /// and appear in a second latency view at this value.
         #[arg(long, default_value = "120s")]
         timeout: String,
-        /// Result types to leave out, comma separated. The Java service hangs under concurrent
-        /// OBSERVATION_CROSS_COUNT requests, so Java baselines exclude it.
+        /// Result types to leave out, comma separated. The Java service races inside a single
+        /// OBSERVATION_CROSS_COUNT request that selects several concepts, so it can drop keys or
+        /// hang whatever the concurrency; Java baselines exclude it.
         #[arg(long, value_delimiter = ',')]
         exclude: Vec<String>,
     },
@@ -99,6 +129,33 @@ fn report(title: &str, mismatches: &[Mismatch], total: usize) -> bool {
     }
     println!("{title}: {} of {total} entries differ", mismatches.len());
     mismatches.is_empty()
+}
+
+fn side(changed: bool) -> &'static str {
+    if changed { "changed" } else { "stable" }
+}
+
+fn report_compare(found: &CompareReport, total: usize) -> bool {
+    for item in &found.whitelisted {
+        println!(
+            "WHITELISTED {} ({}): {}",
+            item.entry, item.rule, item.reason
+        );
+        for line in &item.details {
+            println!("    {line}");
+        }
+    }
+    for item in &found.flaky {
+        println!(
+            "FLAKY {} (agreed only after a retry; A {}, B {} between attempts)",
+            item.entry,
+            side(item.a_changed),
+            side(item.b_changed)
+        );
+    }
+    let ok = report("compare", &found.mismatches, total);
+    println!("compare: {} whitelisted", found.whitelisted.len());
+    ok
 }
 
 async fn run(cli: Cli) -> Result<bool> {
@@ -127,6 +184,7 @@ async fn run(cli: Cli) -> Result<bool> {
             concurrency,
             timeout,
             retries,
+            divergences,
         } => {
             if corpus.is_none() && golden.is_none() {
                 return Err(BenchError::Invalid(
@@ -147,12 +205,20 @@ async fn run(cli: Cli) -> Result<bool> {
                 let client_b = Client::new(&b, timeout, concurrency)?;
                 let entries = read_corpus(&dir)?;
                 let total = entries.len();
-                let found =
-                    compare_corpus(&client_a, &client_b, entries, concurrency, retries).await;
-                for name in &found.flaky {
-                    println!("FLAKY {name} (agreed only after a retry)");
-                }
-                ok &= report("compare", &found.mismatches, total);
+                let rules = match divergences {
+                    Some(path) => Divergences::read(&path)?,
+                    None => Divergences::default(),
+                };
+                let found = compare_corpus(
+                    &client_a,
+                    &client_b,
+                    entries,
+                    concurrency,
+                    retries,
+                    Arc::new(rules),
+                )
+                .await;
+                ok &= report_compare(&found, total);
             }
             Ok(ok)
         }
@@ -162,27 +228,24 @@ async fn run(cli: Cli) -> Result<bool> {
             concurrency,
             duration,
             warmup,
+            passes,
+            poll_interval,
             only,
             timeout,
             exclude,
         } => {
-            let only_sync = match only.as_deref() {
-                None => false,
-                Some("sync") => true,
-                Some(other) => {
-                    return Err(BenchError::Invalid(format!(
-                        "--only accepts 'sync', got '{other}'"
-                    )));
-                }
-            };
+            let timeout = parse_duration(&timeout)?;
             let config = LoadConfig {
                 concurrency,
                 duration: parse_duration(&duration)?,
                 warmup: parse_duration(&warmup)?,
-                only_sync,
+                only_sync: matches!(only, Some(Only::Sync)),
                 exclude,
+                passes,
+                poll_interval: parse_duration(&poll_interval)?,
+                timeout,
             };
-            let client = Client::new(&url, parse_duration(&timeout)?, concurrency)?;
+            let client = Client::new(&url, timeout, concurrency)?;
             let loaded = run_load(&client, read_corpus(&corpus)?, &config).await?;
             eprint!("{}", render_table(&loaded));
             println!(

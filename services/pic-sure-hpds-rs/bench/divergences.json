@@ -1,0 +1,22 @@
+{
+  "rules": [
+    {
+      "name": "invalid-request-status",
+      "entry": "error-*",
+      "statuses": [400, 500],
+      "reason": "Spec divergence, HTTP errors: Java answers a bad sync query or a validation failure with 500 (the query service then returns 502); Rust returns 400 with a JSON message."
+    },
+    {
+      "name": "unknown-async-id-status",
+      "entry": "error-unknown-async-id-*",
+      "statuses": [404, 500],
+      "reason": "Spec divergence, HTTP errors: Java answers an unknown async result id with a NullPointerException 500; Rust returns 404."
+    },
+    {
+      "name": "observation-cross-count-defect",
+      "resultType": "OBSERVATION_CROSS_COUNT",
+      "when": "strict-subset-or-timeout",
+      "reason": "Java OBSERVATION_CROSS_COUNT defect: with two or more selects it can drop keys or hang. Accepted when one side's key set is a strict subset of the other's and every shared key matches, or when a side times out."
+    }
+  ]
+}

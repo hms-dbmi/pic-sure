@@ -7,6 +7,7 @@ pub mod client;
 pub mod column_meta;
 pub mod compare;
 pub mod corpus;
+pub mod divergence;
 pub mod duration;
 pub mod error;
 pub mod golden;

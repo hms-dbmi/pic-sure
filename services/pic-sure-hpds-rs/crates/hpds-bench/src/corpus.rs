@@ -10,6 +10,18 @@ use crate::{BenchError, Result};
 /// Concept path that carries consent values.
 pub const CONSENTS_PATH: &str = "\\_consents\\";
 
+/// Concept path that carries genomic consent values.
+pub const TOPMED_CONSENTS_PATH: &str = "\\_topmed_consents\\";
+
+/// Concept path that carries harmonized dataset consent values.
+pub const HARMONIZED_CONSENT_PATH: &str = "\\_harmonized_consent\\";
+
+/// Concept path that carries study-level consent values.
+pub const STUDIES_CONSENTS_PATH: &str = "\\_studies_consents\\";
+
+/// Result type label of search entries.
+pub const SEARCH_RESULT_TYPE: &str = "SEARCH";
+
 /// Result types served on the request thread.
 pub const SYNC_RESULT_TYPES: [&str; 5] = [
     "COUNT",
@@ -22,24 +34,34 @@ pub const SYNC_RESULT_TYPES: [&str; 5] = [
 /// Result types served through submit, status and result.
 pub const ASYNC_RESULT_TYPES: [&str; 2] = ["PATIENTS", "DATAFRAME"];
 
-const SHAPES: [&str; 7] = [
+const SHAPES: [&str; 9] = [
     "categorical",
     "numeric-range",
     "required",
     "any-record-of",
     "nested",
     "conjunction",
+    "disjunction",
     "authorization",
+    "authorization-multi",
 ];
+
+const AUTH_FALLBACK_MAX_CATEGORIES: usize = 12;
 
 /// How a corpus entry is executed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum Kind {
     /// One `POST /v3/query/sync` round trip.
     Sync,
     /// Submit, poll status, fetch result.
     Async,
+    /// One `POST /v3/search` round trip.
+    Search,
+    /// `POST /v3/query/{id}/status` for an id the server never issued.
+    UnknownStatus,
+    /// `POST /v3/query/{id}/result` for an id the server never issued.
+    UnknownResult,
 }
 
 /// One request in a corpus.
@@ -54,6 +76,16 @@ pub struct CorpusEntry {
     pub result_type: String,
     /// The `{"query": ..., "resourceUUID": null}` envelope sent to the server.
     pub request: Value,
+    /// Text sent verbatim as the body instead of `request`, for payloads that are not valid JSON.
+    #[serde(default, rename = "rawBody", skip_serializing_if = "Option::is_none")]
+    pub raw_body: Option<String>,
+    /// Whether the entry probes an invalid request. Load mode skips these.
+    #[serde(default, rename = "errorPath", skip_serializing_if = "is_false")]
+    pub error_path: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// One manifest row pointing at an entry file.
@@ -86,6 +118,44 @@ struct Pools {
     numeric: Vec<ColumnMeta>,
     all: Vec<ColumnMeta>,
     consents: Option<ColumnMeta>,
+    topmed: Option<ColumnMeta>,
+    harmonized: Option<ColumnMeta>,
+    studies: Option<ColumnMeta>,
+    auth_fallback: Option<ColumnMeta>,
+}
+
+const CONSENT_PATHS: [&str; 4] = [
+    CONSENTS_PATH,
+    TOPMED_CONSENTS_PATH,
+    HARMONIZED_CONSENT_PATH,
+    STUDIES_CONSENTS_PATH,
+];
+
+fn consent_column(usable: &[ColumnMeta], path: &str) -> Option<ColumnMeta> {
+    usable
+        .iter()
+        .find(|c| c.name == path && !c.categories.is_empty())
+        .cloned()
+}
+
+fn fallback_authorization_column(categorical: &[ColumnMeta]) -> Option<ColumnMeta> {
+    let few: Vec<&ColumnMeta> = categorical
+        .iter()
+        .filter(|c| c.categories.len() <= AUTH_FALLBACK_MAX_CATEGORIES)
+        .collect();
+    let pool: Vec<&ColumnMeta> = if few.is_empty() {
+        categorical.iter().collect()
+    } else {
+        few
+    };
+    pool.into_iter()
+        .max_by(|a, b| {
+            a.patient_count
+                .cmp(&b.patient_count)
+                .then(b.categories.len().cmp(&a.categories.len()))
+                .then(b.name.cmp(&a.name))
+        })
+        .cloned()
 }
 
 impl Pools {
@@ -95,13 +165,13 @@ impl Pools {
             .filter(|c| !is_genomic_path(&c.name) && c.patient_count > 0)
             .cloned()
             .collect();
-        let consents = usable
-            .iter()
-            .find(|c| c.name == CONSENTS_PATH && !c.categories.is_empty())
-            .cloned();
+        let consents = consent_column(&usable, CONSENTS_PATH);
+        let topmed = consent_column(&usable, TOPMED_CONSENTS_PATH);
+        let harmonized = consent_column(&usable, HARMONIZED_CONSENT_PATH);
+        let studies = consent_column(&usable, STUDIES_CONSENTS_PATH);
         let regular: Vec<ColumnMeta> = usable
             .into_iter()
-            .filter(|c| !c.name.starts_with(CONSENTS_PATH))
+            .filter(|c| !CONSENT_PATHS.iter().any(|p| c.name.starts_with(p)))
             .collect();
         let categorical: Vec<ColumnMeta> = regular
             .iter()
@@ -121,11 +191,16 @@ impl Pools {
             ));
         }
         let all: Vec<ColumnMeta> = categorical.iter().chain(numeric.iter()).cloned().collect();
+        let auth_fallback = fallback_authorization_column(&categorical);
         Ok(Self {
             categorical,
             numeric,
             all,
             consents,
+            topmed,
+            harmonized,
+            studies,
+            auth_fallback,
         })
     }
 }
@@ -220,69 +295,20 @@ fn nested(rng: &mut Rng, pools: &Pools, depth: usize) -> Value {
     subquery(operator, clauses)
 }
 
-fn parent_prefix(path: &str) -> Option<String> {
-    let trimmed = path.strip_suffix('\\').unwrap_or(path);
-    trimmed
-        .rfind('\\')
-        .map(|index| trimmed[..=index].to_owned())
+fn concept_nodes(path: &str) -> Vec<&str> {
+    path.split('\\').filter(|node| !node.is_empty()).collect()
 }
 
-fn common_prefix_len(a: &str, b: &str) -> usize {
-    a.chars()
-        .zip(b.chars())
-        .take_while(|(x, y)| x == y)
-        .map(|(x, _)| x.len_utf8())
-        .sum()
-}
-
-fn any_record_of_prefix(rng: &mut Rng, pools: &Pools, partial: bool) -> String {
-    let mut prefixes: Vec<String> = pools
-        .all
-        .iter()
-        .filter_map(|c| parent_prefix(&c.name))
-        .collect();
-    prefixes.sort();
-    prefixes.dedup();
-    let with_children: Vec<String> = prefixes
-        .iter()
-        .filter(|p| {
-            pools
-                .all
-                .iter()
-                .filter(|c| c.name.starts_with(p.as_str()))
-                .count()
-                >= 2
-        })
-        .cloned()
-        .collect();
-    let candidates = if with_children.is_empty() {
-        prefixes
-    } else {
-        with_children
+fn any_record_of_prefix(rng: &mut Rng, pools: &Pools) -> String {
+    let Some(column) = rng.pick(&pools.all) else {
+        return "\\".to_owned();
     };
-    let prefix = rng
-        .pick(&candidates)
-        .cloned()
-        .unwrap_or_else(|| "\\".to_owned());
-    if !partial {
-        return prefix;
+    let nodes = concept_nodes(&column.name);
+    if nodes.is_empty() {
+        return column.name.clone();
     }
-    let children: Vec<&ColumnMeta> = pools
-        .all
-        .iter()
-        .filter(|c| c.name.starts_with(&prefix))
-        .collect();
-    if children.len() < 2 {
-        return prefix;
-    }
-    let first = children[rng.below(children.len())];
-    let second = children[rng.below(children.len())];
-    let len = common_prefix_len(&first.name, &second.name);
-    if len > prefix.len() {
-        first.name[..len].to_owned()
-    } else {
-        prefix
-    }
+    let depth = rng.between(1, nodes.len());
+    format!("\\{}\\", nodes[..depth].join("\\"))
 }
 
 fn select_list(rng: &mut Rng, pools: &Pools, max: usize, add_unknown: bool) -> Vec<String> {
@@ -323,19 +349,25 @@ fn clause_for_shape(rng: &mut Rng, pools: &Pools, shape: &str, ordinal: usize) -
             required_filter(&column)
         }
         "any-record-of" => {
-            let prefix = any_record_of_prefix(rng, pools, ordinal % 2 == 1);
+            let prefix = any_record_of_prefix(rng, pools);
             Value::Object(filter("ANY_RECORD_OF", &prefix))
         }
         "nested" => {
             let depth = rng.between(2, 3);
             nested(rng, pools, depth)
         }
+        "conjunction" => subquery("AND", leaves(rng, pools)),
+        "disjunction" => subquery("OR", leaves(rng, pools)),
         _ => {
-            let width = rng.between(2, 3);
-            let clauses = (0..width).map(|_| leaf(rng, pools)).collect();
+            let clauses = leaves(rng, pools);
             subquery(random_operator(rng), clauses)
         }
     }
+}
+
+fn leaves(rng: &mut Rng, pools: &Pools) -> Vec<Value> {
+    let width = rng.between(2, 3);
+    (0..width).map(|_| leaf(rng, pools)).collect()
 }
 
 fn envelope(
@@ -370,14 +402,215 @@ fn entry(name: String, result_type: &str, request: Value) -> CorpusEntry {
         kind: kind_of(result_type),
         result_type: result_type.to_owned(),
         request,
+        raw_body: None,
+        error_path: false,
     }
+}
+
+fn error_entry(name: &str, kind: Kind, result_type: &str, request: Value) -> CorpusEntry {
+    CorpusEntry {
+        name: format!("error-{name}"),
+        kind,
+        result_type: result_type.to_owned(),
+        request,
+        raw_body: None,
+        error_path: true,
+    }
+}
+
+fn search_entry(name: String, term: &str) -> CorpusEntry {
+    CorpusEntry {
+        name: format!("search-{name}"),
+        kind: Kind::Search,
+        result_type: SEARCH_RESULT_TYPE.to_owned(),
+        request: json!({"query": term, "resourceUUID": null}),
+        raw_body: None,
+        error_path: false,
+    }
+}
+
+fn query_envelope(query: Value) -> Value {
+    json!({"query": query, "resourceUUID": null})
+}
+
+fn error_entries(pools: &Pools) -> Vec<CorpusEntry> {
+    let concept = pools
+        .categorical
+        .first()
+        .or_else(|| pools.all.first())
+        .cloned()
+        .unwrap_or_else(|| pools.all[0].clone());
+    let value = concept.categories.first().cloned().unwrap_or_default();
+    let path = concept.name.clone();
+    let with_clause =
+        |clause: Value, result_type: &str| envelope(&[], None, Some(clause), result_type);
+    let empty_filter = Value::Object(filter("FILTER", &path));
+    let mixed_filter = {
+        let mut map = filter("FILTER", &path);
+        map.insert("values".into(), json!([value]));
+        map.insert("min".into(), json!(0.0));
+        map.insert("max".into(), json!(1.0));
+        Value::Object(map)
+    };
+    let required_with_values = {
+        let mut map = filter("REQUIRED", &path);
+        map.insert("values".into(), json!([value]));
+        Value::Object(map)
+    };
+    let empty_subquery = subquery("AND", Vec::new());
+    let mut unknown_field = with_clause(Value::Object(filter("REQUIRED", &path)), "COUNT");
+    unknown_field["query"]["bogusField"] = json!(1);
+    let mut unknown_field_async = unknown_field.clone();
+    unknown_field_async["query"]["expectedResultType"] = json!("PATIENTS");
+    let genomic = json!({
+        "genomicFilters": [{"key": "Gene_with_variant", "values": ["APOE"]}],
+        "expectedResultType": "COUNT"
+    });
+    let mut malformed_body = error_entry("malformed-body", Kind::Sync, "COUNT", Value::Null);
+    malformed_body.raw_body = Some("{\"query\": ".to_owned());
+    vec![
+        error_entry(
+            "filter-without-values-or-range",
+            Kind::Sync,
+            "COUNT",
+            with_clause(empty_filter.clone(), "COUNT"),
+        ),
+        error_entry(
+            "filter-without-values-or-range-async",
+            Kind::Async,
+            "PATIENTS",
+            with_clause(empty_filter, "PATIENTS"),
+        ),
+        error_entry(
+            "filter-values-with-range",
+            Kind::Sync,
+            "COUNT",
+            with_clause(mixed_filter, "COUNT"),
+        ),
+        error_entry(
+            "required-with-values",
+            Kind::Sync,
+            "COUNT",
+            with_clause(required_with_values, "COUNT"),
+        ),
+        error_entry(
+            "empty-subquery",
+            Kind::Sync,
+            "COUNT",
+            with_clause(empty_subquery.clone(), "COUNT"),
+        ),
+        error_entry(
+            "empty-subquery-async",
+            Kind::Async,
+            "PATIENTS",
+            with_clause(empty_subquery, "PATIENTS"),
+        ),
+        error_entry(
+            "patients-on-sync-endpoint",
+            Kind::Sync,
+            "PATIENTS",
+            envelope(&[], None, None, "PATIENTS"),
+        ),
+        error_entry(
+            "dataframe-on-sync-endpoint",
+            Kind::Sync,
+            "DATAFRAME",
+            envelope(&[], None, None, "DATAFRAME"),
+        ),
+        error_entry(
+            "unknown-async-id-status",
+            Kind::UnknownStatus,
+            "UNKNOWN_ID_STATUS",
+            query_envelope(Value::Null),
+        ),
+        error_entry(
+            "unknown-async-id-result",
+            Kind::UnknownResult,
+            "UNKNOWN_ID_RESULT",
+            query_envelope(Value::Null),
+        ),
+        error_entry(
+            "malformed-query-string",
+            Kind::Sync,
+            "COUNT",
+            query_envelope(json!("{\"expectedResultType\": ")),
+        ),
+        error_entry(
+            "malformed-query-string-async",
+            Kind::Async,
+            "PATIENTS",
+            query_envelope(json!("not json at all")),
+        ),
+        malformed_body,
+        error_entry("unknown-field", Kind::Sync, "COUNT", unknown_field),
+        error_entry(
+            "unknown-field-async",
+            Kind::Async,
+            "PATIENTS",
+            unknown_field_async,
+        ),
+        error_entry(
+            "genomic-filters-without-genotype-data",
+            Kind::Sync,
+            "COUNT",
+            query_envelope(genomic),
+        ),
+    ]
+}
+
+fn search_terms(rng: &mut Rng, pools: &Pools) -> Vec<(String, String)> {
+    let mut terms = Vec::new();
+    for index in 0..4 {
+        if let Some(column) = rng.pick(&pools.all) {
+            let nodes = concept_nodes(&column.name);
+            let tail = &nodes[nodes.len().saturating_sub(2)..];
+            if let Some(node) = rng.pick(tail) {
+                let term = if index % 2 == 1 {
+                    node.to_uppercase()
+                } else {
+                    (*node).to_owned()
+                };
+                terms.push((format!("path-{index}"), term));
+            }
+        }
+    }
+    for index in 0..4 {
+        if let Some(column) = rng.pick(&pools.categorical)
+            && let Some(category) = rng.pick(&column.categories)
+        {
+            let term = if index % 2 == 1 {
+                category.to_lowercase()
+            } else {
+                category.clone()
+            };
+            terms.push((format!("value-{index}"), term));
+        }
+    }
+    if let Some(studies) = &pools.studies {
+        terms.push((
+            "studies-consents-path".to_owned(),
+            "studies_consents".to_owned(),
+        ));
+        if let Some(category) = rng.pick(&studies.categories) {
+            terms.push(("studies-consents-value".to_owned(), category.clone()));
+        }
+    }
+    terms.push(("no-match".to_owned(), "no-such-concept-xyzzy".to_owned()));
+    terms
 }
 
 /// Generates a deterministic corpus from column metadata.
 ///
 /// `size` entries are produced by rotating over every filter shape and every result type, so the
-/// first 49 entries already cover each combination. A few fixed entries (empty query, unknown
-/// concepts) are prepended. The same inputs always give the same entries.
+/// first 63 entries already cover each combination. Fixed entries come first: an empty query,
+/// unknown concepts, a set of invalid requests flagged as error paths, and `POST /search`
+/// entries. The same inputs always give the same entries.
+///
+/// Authorization entries filter on `\_consents\` when the metadata has it, with
+/// `\_topmed_consents\` and `\_harmonized_consent\` added in the multi-filter variant when those
+/// exist. Without `\_consents\` they filter on the categorical concept with few categories that
+/// covers the most patients. ANY_RECORD_OF prefixes are cut at a uniformly chosen depth from the
+/// study node down to the leaf.
 ///
 /// # Errors
 ///
@@ -415,6 +648,11 @@ pub fn generate(columns: &[ColumnMeta], seed: u64, size: usize) -> Result<Vec<Co
         envelope(&[], None, None, "PATIENTS"),
     ));
 
+    entries.extend(error_entries(&pools));
+    for (label, term) in search_terms(&mut rng, &pools) {
+        entries.push(search_entry(label, &term));
+    }
+
     for index in 0..size {
         let shape = SHAPES[index % SHAPES.len()];
         let result_type =
@@ -442,22 +680,35 @@ pub fn generate(columns: &[ColumnMeta], seed: u64, size: usize) -> Result<Vec<Co
     Ok(entries)
 }
 
+fn authorization_filter(rng: &mut Rng, column: &ColumnMeta) -> Value {
+    let count = rng.between(1, column.categories.len().min(3));
+    let mut values = rng.sample(&column.categories, count);
+    values.sort();
+    json!({"conceptPath": column.name, "values": values})
+}
+
 fn authorization_for<'a>(rng: &mut Rng, pools: &Pools, shape: &'a str) -> (&'a str, Option<Value>) {
-    if shape != "authorization" {
+    if shape != "authorization" && shape != "authorization-multi" {
         return (shape, None);
     }
-    match &pools.consents {
-        Some(consents) => {
-            let count = rng.between(1, 3);
-            let mut values = rng.sample(&consents.categories, count);
-            values.sort();
-            (
-                "authorization",
-                Some(json!([{"conceptPath": consents.name, "values": values}])),
-            )
-        }
-        None => ("disjunction", None),
+    let primary = pools.consents.as_ref().or(pools.auth_fallback.as_ref());
+    let Some(primary) = primary else {
+        return ("subquery", None);
+    };
+    let mut columns = vec![primary];
+    if shape == "authorization-multi" && pools.consents.is_some() {
+        columns.extend(pools.topmed.iter().chain(pools.harmonized.iter()));
     }
+    let label = if columns.len() > 1 {
+        "authorization-multi"
+    } else {
+        "authorization"
+    };
+    let filters: Vec<Value> = columns
+        .into_iter()
+        .map(|column| authorization_filter(rng, column))
+        .collect();
+    (label, Some(Value::Array(filters)))
 }
 
 /// Writes entry files and `manifest.json` into `dir`, creating it when needed.
@@ -560,6 +811,9 @@ mod tests {
                 &["phs1.c1", "phs1.c2", "phs2.c1"],
                 None,
             ));
+            columns.push(column(TOPMED_CONSENTS_PATH, &["phs1.c1", "phs3.c1"], None));
+            columns.push(column(HARMONIZED_CONSENT_PATH, &["phs9.c1"], None));
+            columns.push(column(STUDIES_CONSENTS_PATH, &["phs1", "phs2"], None));
         }
         columns
     }
@@ -588,7 +842,9 @@ mod tests {
             "any-record-of",
             "nested",
             "conjunction",
+            "disjunction",
             "authorization",
+            "authorization-multi",
         ] {
             for result_type in SYNC_RESULT_TYPES.iter().chain(ASYNC_RESULT_TYPES.iter()) {
                 let suffix = result_type.to_lowercase().replace('_', "-");
@@ -620,26 +876,152 @@ mod tests {
         assert!(!serde_json::to_string(&entries).unwrap().contains("chr21"));
     }
 
+    fn auth_filters(entries: &[CorpusEntry]) -> Vec<&Vec<Value>> {
+        entries
+            .iter()
+            .filter_map(|e| e.request["query"]["authorizationFilters"].as_array())
+            .collect()
+    }
+
     #[test]
     fn authorization_values_come_from_consent_categories() {
         let entries = generate(&sample_columns(true), 2, 100).unwrap();
-        let mut seen = false;
-        for item in &entries {
-            if let Some(filters) = item.request["query"]["authorizationFilters"].as_array() {
-                seen = true;
-                assert_eq!(filters[0]["conceptPath"], CONSENTS_PATH);
-                for value in filters[0]["values"].as_array().unwrap() {
-                    assert!(["phs1.c1", "phs1.c2", "phs2.c1"].contains(&value.as_str().unwrap()));
+        let all = auth_filters(&entries);
+        assert!(!all.is_empty());
+        let allowed = |path: &str| -> Vec<&str> {
+            match path {
+                CONSENTS_PATH => vec!["phs1.c1", "phs1.c2", "phs2.c1"],
+                TOPMED_CONSENTS_PATH => vec!["phs1.c1", "phs3.c1"],
+                HARMONIZED_CONSENT_PATH => vec!["phs9.c1"],
+                other => panic!("unexpected authorization path {other}"),
+            }
+        };
+        for filters in &all {
+            assert_eq!(filters[0]["conceptPath"], CONSENTS_PATH);
+            for filter in filters.iter() {
+                let allowed = allowed(filter["conceptPath"].as_str().unwrap());
+                for value in filter["values"].as_array().unwrap() {
+                    assert!(allowed.contains(&value.as_str().unwrap()));
                 }
             }
         }
-        assert!(seen);
-        let without = generate(&sample_columns(false), 2, 100).unwrap();
+        assert!(all.iter().any(|f| f.len() == 3));
+        assert!(all.iter().any(|f| f.len() == 1));
+    }
+
+    #[test]
+    fn authorization_falls_back_to_a_wide_categorical_concept() {
+        let entries = generate(&sample_columns(false), 2, 100).unwrap();
+        let all = auth_filters(&entries);
+        assert!(!all.is_empty());
+        for filters in all {
+            assert_eq!(filters.len(), 1);
+            assert!(
+                filters[0]["conceptPath"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with('\\')
+            );
+            assert_ne!(filters[0]["conceptPath"], CONSENTS_PATH);
+        }
+    }
+
+    #[test]
+    fn fallback_prefers_few_categories_and_many_patients() {
+        let mut wide = column("\\a\\WIDE\\", &["x", "y", "z"], None);
+        wide.patient_count = 100;
+        let mut narrow = column("\\a\\NARROW\\", &["x", "y"], None);
+        narrow.patient_count = 100;
+        let mut sparse = column("\\a\\SPARSE\\", &["x"], None);
+        sparse.patient_count = 5;
+        let mut huge = column("\\a\\HUGE\\", &[], None);
+        huge.categories = (0..50).map(|i| i.to_string()).collect();
+        huge.patient_count = 1000;
+        let chosen = fallback_authorization_column(&[wide, narrow, sparse, huge]).unwrap();
+        assert_eq!(chosen.name, "\\a\\NARROW\\");
+    }
+
+    #[test]
+    fn any_record_of_prefixes_span_every_depth_including_study_nodes() {
+        let entries = generate(&sample_columns(false), 6, 400).unwrap();
+        let mut depths = BTreeSet::new();
+        for item in &entries {
+            let text = item.request.to_string();
+            if !text.contains("ANY_RECORD_OF") {
+                continue;
+            }
+            let path = item.request["query"]["phenotypicClause"]["conceptPath"]
+                .as_str()
+                .or_else(|| {
+                    item.request["query"]["phenotypicClause"]["phenotypicClauses"][0]["conceptPath"]
+                        .as_str()
+                })
+                .unwrap();
+            assert!(path.starts_with('\\') && path.ends_with('\\'));
+            depths.insert(concept_nodes(path).len());
+        }
+        assert!(depths.contains(&1), "{depths:?}");
+        assert!(depths.contains(&2), "{depths:?}");
+        assert!(depths.contains(&3), "{depths:?}");
+    }
+
+    #[test]
+    fn error_entries_cover_every_invalid_request_and_are_flagged() {
+        let entries = generate(&sample_columns(false), 1, 20).unwrap();
+        let errors: Vec<&CorpusEntry> = entries.iter().filter(|e| e.error_path).collect();
+        for needle in [
+            "filter-without-values-or-range",
+            "filter-values-with-range",
+            "empty-subquery",
+            "patients-on-sync-endpoint",
+            "unknown-async-id-status",
+            "unknown-async-id-result",
+            "malformed-query-string",
+            "malformed-body",
+            "unknown-field",
+            "genomic-filters",
+            "required-with-values",
+        ] {
+            assert!(
+                errors.iter().any(|e| e.name.contains(needle)),
+                "missing {needle}"
+            );
+        }
+        assert!(errors.iter().all(|e| e.name.starts_with("error-")));
+        assert!(errors.iter().any(|e| e.raw_body.is_some()));
         assert!(
-            !serde_json::to_string(&without)
-                .unwrap()
-                .contains("authorizationFilters")
+            errors
+                .iter()
+                .any(|e| e.kind == Kind::Sync && e.result_type == "PATIENTS")
         );
+        assert!(
+            entries
+                .iter()
+                .filter(|e| !e.error_path)
+                .all(|e| e.raw_body.is_none())
+        );
+    }
+
+    #[test]
+    fn search_entries_use_path_value_and_studies_consent_terms() {
+        let with = generate(&sample_columns(true), 1, 5).unwrap();
+        let searches: Vec<&CorpusEntry> = with.iter().filter(|e| e.kind == Kind::Search).collect();
+        assert!(searches.iter().any(|e| e.name.contains("path-")));
+        assert!(searches.iter().any(|e| e.name.contains("value-")));
+        assert!(
+            searches
+                .iter()
+                .any(|e| e.name.contains("studies-consents-path"))
+        );
+        assert!(
+            searches
+                .iter()
+                .any(|e| e.name.contains("studies-consents-value"))
+        );
+        assert!(searches.iter().all(|e| e.request["query"].is_string()));
+        let without = generate(&sample_columns(false), 1, 5).unwrap();
+        assert!(!without.iter().any(|e| e.name.contains("studies-consents")));
+        assert!(without.iter().any(|e| e.kind == Kind::Search));
     }
 
     #[test]
@@ -647,7 +1029,7 @@ mod tests {
         let entries = generate(&sample_columns(false), 4, 200).unwrap();
         let text = serde_json::to_string(&entries).unwrap();
         assert!(text.contains("\"min\""));
-        for item in &entries {
+        for item in entries.iter().filter(|e| !e.error_path) {
             fn walk(value: &Value) {
                 if let Some(object) = value.as_object() {
                     let path = object.get("conceptPath").and_then(Value::as_str);
@@ -678,7 +1060,10 @@ mod tests {
         assert!(entries.iter().any(
             |e| e.result_type == "DATAFRAME" && e.request.to_string().contains("NOT_A_CONCEPT")
         ));
-        for item in &entries {
+        for item in entries
+            .iter()
+            .filter(|e| !e.error_path && e.kind != Kind::Search)
+        {
             assert_eq!(
                 item.kind == Kind::Async,
                 ASYNC_RESULT_TYPES.contains(&item.result_type.as_str())

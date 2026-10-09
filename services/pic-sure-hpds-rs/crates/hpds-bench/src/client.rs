@@ -6,6 +6,9 @@ use serde_json::Value;
 use crate::corpus::{CorpusEntry, Kind};
 use crate::rng::Rng;
 
+/// Id used to probe how a server answers for a result it never produced.
+pub const UNKNOWN_QUERY_ID: &str = "00000000-0000-4000-8000-00000000dead";
+
 /// Header HPDS sets on every successful sync response.
 pub const QUERY_METADATA_HEADER: &str = "queryMetadata";
 
@@ -44,10 +47,12 @@ pub struct AsyncOutcome {
 /// Result of running one corpus entry against one server.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
-    /// A sync round trip.
+    /// A sync round trip, a search, or an unknown-id probe.
     Sync(SyncOutcome),
     /// An async cycle.
     Async(AsyncOutcome),
+    /// The server did not answer within the timeout.
+    TimedOut,
     /// The request failed before a response was read.
     Failed(String),
 }
@@ -60,9 +65,60 @@ impl Outcome {
             Self::Async(a) => {
                 a.resource_status.as_deref() == Some("SUCCESS") && a.result_status == Some(200)
             }
-            Self::Failed(_) => false,
+            Self::TimedOut | Self::Failed(_) => false,
         }
     }
+
+    /// Whether the server failed to answer within the timeout.
+    pub fn is_timeout(&self) -> bool {
+        match self {
+            Self::Async(a) => a.timed_out,
+            Self::TimedOut => true,
+            Self::Sync(_) | Self::Failed(_) => false,
+        }
+    }
+
+    /// The HTTP status that characterizes the outcome: the sync status, the submit status when
+    /// an async submit was refused, otherwise the result status. Zero when no response came.
+    pub fn status_code(&self) -> u16 {
+        match self {
+            Self::Sync(s) => s.status,
+            Self::Async(a) if a.submit_status != 200 => a.submit_status,
+            Self::Async(a) => a.result_status.unwrap_or(a.submit_status),
+            Self::TimedOut | Self::Failed(_) => 0,
+        }
+    }
+}
+
+/// How the async status poll is paced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PollStrategy {
+    /// Start at 5 ms and double up to 100 ms. Used by compare, which values low request volume.
+    Backoff,
+    /// Poll at a constant interval. Used by load so poll latency is the same for every request.
+    Fixed(Duration),
+}
+
+/// How a response body is consumed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BodyMode {
+    Buffer,
+    Count,
+}
+
+/// Timing and size of one request as load mode sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Measured {
+    /// Whether the server answered the way a healthy deployment does.
+    pub success: bool,
+    /// Whether the request hit the timeout.
+    pub timed_out: bool,
+    /// Submit to terminal status for async entries; request to response headers for the rest.
+    pub service: Duration,
+    /// Time spent fetching and draining the result body, when one was fetched.
+    pub download: Option<Duration>,
+    /// Response body bytes read.
+    pub bytes: u64,
 }
 
 /// HTTP driver for one server, with a shared keep-alive connection pool.
@@ -89,16 +145,31 @@ pub fn normalize_content_type(headers: &HeaderMap) -> Option<String> {
     })
 }
 
+struct Cycle<T> {
+    outcome: T,
+    service: Duration,
+    download: Option<Duration>,
+    bytes: u64,
+}
+
+enum Payload<'a> {
+    Json(&'a Value),
+    Raw(&'a str),
+}
+
 impl Client {
     /// Builds a client for a base URL such as `http://host:8080/PIC-SURE`.
+    ///
+    /// `max_idle` caps the idle keep-alive connections kept per host, and `poll_timeout` bounds
+    /// both the wait for an async query to finish and every sync request.
     ///
     /// # Errors
     ///
     /// Fails when the HTTP client cannot be constructed.
-    pub fn new(base: &str, poll_timeout: Duration, pool_size: usize) -> crate::Result<Self> {
+    pub fn new(base: &str, poll_timeout: Duration, max_idle: usize) -> crate::Result<Self> {
         let http = reqwest::Client::builder()
-            .pool_max_idle_per_host(pool_size.max(1))
-            .timeout(Duration::from_secs(300))
+            .pool_max_idle_per_host(max_idle.max(1))
+            .timeout(Duration::from_secs(300).max(poll_timeout))
             .build()?;
         Ok(Self {
             http,
@@ -112,57 +183,144 @@ impl Client {
         &self.base
     }
 
-    /// Runs one entry through its sync or async path. Transport errors become [`Outcome::Failed`].
+    fn post(&self, path: &str, payload: &Payload<'_>) -> reqwest::RequestBuilder {
+        let request = self.http.post(format!("{}/v3/{path}", self.base));
+        match payload {
+            Payload::Json(value) => request.json(value),
+            Payload::Raw(text) => request
+                .header(CONTENT_TYPE, "application/json")
+                .body((*text).to_owned()),
+        }
+    }
+
+    /// Runs one entry through its path and buffers the bodies. Timeouts become
+    /// [`Outcome::TimedOut`], other transport errors [`Outcome::Failed`].
     ///
     /// HPDS keys async results by a hash of the query text, so two in-flight submissions of the
     /// same query overwrite each other. Async requests therefore carry a `picsureId` derived from
     /// `nonce`; callers pass a value that is unique among concurrent requests to one server.
     pub async fn run(&self, entry: &CorpusEntry, nonce: u64) -> Outcome {
         let result = match entry.kind {
-            Kind::Sync => self.run_sync(&entry.request).await.map(Outcome::Sync),
-            Kind::Async => self
-                .run_async(&with_picsure_id(&entry.request, nonce))
+            Kind::Async => {
+                let request = with_picsure_id(&entry.request, nonce);
+                let payload = payload_for(entry, &request);
+                self.async_cycle(&payload, PollStrategy::Backoff, BodyMode::Buffer)
+                    .await
+                    .map(|c| Outcome::Async(c.outcome))
+            }
+            _ => self
+                .sync_cycle(entry, BodyMode::Buffer)
                 .await
-                .map(Outcome::Async),
+                .map(|c| Outcome::Sync(c.outcome)),
         };
-        result.unwrap_or_else(|e| Outcome::Failed(e.to_string()))
-    }
-
-    /// Sends a request body to `POST /v3/query/sync`.
-    pub async fn run_sync(&self, request: &Value) -> Result<SyncOutcome, reqwest::Error> {
-        let response = self
-            .http
-            .post(format!("{}/v3/query/sync", self.base))
-            .json(request)
-            .send()
-            .await?;
-        let status = response.status().as_u16();
-        let content_type = normalize_content_type(response.headers());
-        let has_query_metadata = response.headers().contains_key(QUERY_METADATA_HEADER);
-        let bytes = response.bytes().await?;
-        Ok(SyncOutcome {
-            status,
-            content_type,
-            body: String::from_utf8_lossy(&bytes).into_owned(),
-            has_query_metadata,
+        result.unwrap_or_else(|e| {
+            if e.is_timeout() {
+                Outcome::TimedOut
+            } else {
+                Outcome::Failed(e.to_string())
+            }
         })
     }
 
-    /// Submits to `POST /v3/query`, polls `/status` until terminal, then fetches `/result`.
-    pub async fn run_async(&self, request: &Value) -> Result<AsyncOutcome, reqwest::Error> {
-        let submitted = self
-            .http
-            .post(format!("{}/v3/query", self.base))
-            .json(request)
-            .send()
-            .await?;
+    /// Runs one entry for load mode: bodies are streamed and counted, not kept, and async
+    /// polling uses `poll`. Timing is split into service time and download time.
+    pub async fn run_measured(
+        &self,
+        entry: &CorpusEntry,
+        nonce: u64,
+        poll: PollStrategy,
+    ) -> Measured {
+        let began = Instant::now();
+        let result = match entry.kind {
+            Kind::Async => {
+                let request = with_picsure_id(&entry.request, nonce);
+                let payload = payload_for(entry, &request);
+                self.async_cycle(&payload, poll, BodyMode::Count)
+                    .await
+                    .map(|c| Measured {
+                        success: Outcome::Async(c.outcome.clone()).is_success(),
+                        timed_out: c.outcome.timed_out,
+                        service: c.service,
+                        download: c.download,
+                        bytes: c.bytes,
+                    })
+            }
+            _ => self
+                .sync_cycle(entry, BodyMode::Count)
+                .await
+                .map(|c| Measured {
+                    success: c.outcome.status == 200,
+                    timed_out: false,
+                    service: c.service,
+                    download: c.download,
+                    bytes: c.bytes,
+                }),
+        };
+        result.unwrap_or_else(|e| Measured {
+            timed_out: e.is_timeout(),
+            service: began.elapsed(),
+            ..Measured::default()
+        })
+    }
+
+    async fn sync_cycle(
+        &self,
+        entry: &CorpusEntry,
+        mode: BodyMode,
+    ) -> Result<Cycle<SyncOutcome>, reqwest::Error> {
+        let payload = payload_for(entry, &entry.request);
+        let empty = empty_request();
+        let started = Instant::now();
+        let request = match entry.kind {
+            Kind::Search => self.post("search", &payload),
+            Kind::UnknownStatus => self.post(
+                &format!("query/{UNKNOWN_QUERY_ID}/status"),
+                &Payload::Json(&empty),
+            ),
+            Kind::UnknownResult => self.post(
+                &format!("query/{UNKNOWN_QUERY_ID}/result"),
+                &Payload::Json(&empty),
+            ),
+            Kind::Sync | Kind::Async => self.post("query/sync", &payload),
+        };
+        let response = request.timeout(self.poll_timeout).send().await?;
+        let service = started.elapsed();
+        let status = response.status().as_u16();
+        let content_type = normalize_content_type(response.headers());
+        let has_query_metadata = response.headers().contains_key(QUERY_METADATA_HEADER);
+        let drain_started = Instant::now();
+        let (body, bytes) = read_body(response, mode).await?;
+        Ok(Cycle {
+            outcome: SyncOutcome {
+                status,
+                content_type,
+                body,
+                has_query_metadata,
+            },
+            service,
+            download: Some(drain_started.elapsed()),
+            bytes,
+        })
+    }
+
+    async fn async_cycle(
+        &self,
+        payload: &Payload<'_>,
+        poll: PollStrategy,
+        mode: BodyMode,
+    ) -> Result<Cycle<AsyncOutcome>, reqwest::Error> {
+        let started = Instant::now();
+        let submitted = self.post("query", payload).send().await?;
         let mut outcome = AsyncOutcome {
             submit_status: submitted.status().as_u16(),
             ..AsyncOutcome::default()
         };
         let mut status: Value = submitted.json().await.unwrap_or(Value::Null);
-        let started = Instant::now();
-        let mut delay = Duration::from_millis(5);
+        let mut delay = match poll {
+            PollStrategy::Backoff => Duration::from_millis(5),
+            PollStrategy::Fixed(interval) => interval,
+        };
+        let empty = empty_request();
         loop {
             let resource_status = status["resourceStatus"].as_str().map(str::to_owned);
             let terminal = matches!(resource_status.as_deref(), Some("SUCCESS" | "ERROR"))
@@ -175,43 +333,86 @@ impl Client {
             }
             if started.elapsed() > self.poll_timeout {
                 outcome.timed_out = true;
-                return Ok(outcome);
+                return Ok(Cycle {
+                    outcome,
+                    service: started.elapsed(),
+                    download: None,
+                    bytes: 0,
+                });
             }
             tokio::time::sleep(delay).await;
-            delay = (delay * 2).min(Duration::from_millis(100));
+            if poll == PollStrategy::Backoff {
+                delay = (delay * 2).min(Duration::from_millis(100));
+            }
             let id = status["resourceResultId"]
                 .as_str()
                 .unwrap_or_default()
                 .to_owned();
             let polled = self
-                .http
-                .post(format!("{}/v3/query/{id}/status", self.base))
-                .json(&empty_request())
+                .post(&format!("query/{id}/status"), &Payload::Json(&empty))
                 .send()
                 .await?;
             let poll_code = polled.status().as_u16();
             if poll_code != 200 {
                 outcome.status = None;
                 outcome.resource_status = Some(format!("status poll returned HTTP {poll_code}"));
-                return Ok(outcome);
+                return Ok(Cycle {
+                    outcome,
+                    service: started.elapsed(),
+                    download: None,
+                    bytes: 0,
+                });
             }
             status = polled.json().await.unwrap_or(Value::Null);
         }
+        let service = started.elapsed();
+        let mut download = None;
+        let mut bytes = 0;
         if outcome.resource_status.as_deref() == Some("SUCCESS") {
             let id = status["resourceResultId"].as_str().unwrap_or_default();
+            let fetch_started = Instant::now();
             let fetched = self
-                .http
-                .post(format!("{}/v3/query/{id}/result", self.base))
-                .json(&empty_request())
+                .post(&format!("query/{id}/result"), &Payload::Json(&empty))
                 .send()
                 .await?;
             outcome.result_status = Some(fetched.status().as_u16());
             outcome.result_content_type = normalize_content_type(fetched.headers());
-            let bytes = fetched.bytes().await?;
-            outcome.result_body = Some(String::from_utf8_lossy(&bytes).into_owned());
+            let (body, count) = read_body(fetched, mode).await?;
+            if mode == BodyMode::Buffer {
+                outcome.result_body = Some(body);
+            }
+            bytes = count;
+            download = Some(fetch_started.elapsed());
         }
-        Ok(outcome)
+        Ok(Cycle {
+            outcome,
+            service,
+            download,
+            bytes,
+        })
     }
+}
+
+fn payload_for<'a>(entry: &'a CorpusEntry, request: &'a Value) -> Payload<'a> {
+    match &entry.raw_body {
+        Some(text) => Payload::Raw(text),
+        None => Payload::Json(request),
+    }
+}
+
+async fn read_body(
+    mut response: reqwest::Response,
+    mode: BodyMode,
+) -> Result<(String, u64), reqwest::Error> {
+    let mut kept = Vec::new();
+    let mut total = 0u64;
+    while let Some(chunk) = response.chunk().await? {
+        total += chunk.len() as u64;
+        if mode == BodyMode::Buffer {
+            kept.extend_from_slice(&chunk);
+        }
+    }
+    Ok((String::from_utf8_lossy(&kept).into_owned(), total))
 }
 
 /// Returns a copy of an envelope whose query carries a `picsureId` UUID derived from `nonce`.
