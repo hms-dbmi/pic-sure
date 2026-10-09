@@ -200,7 +200,10 @@ suffix, so concurrent runs, also in separate containers, never share one. Moving
 a `rename`, which cannot cross filesystems, so an existing `--out` that is a mount point (on
 another filesystem than its parent) is refused before anything is built; give a directory
 inside it instead. SIGTERM and SIGINT remove the staging and spill directories before exiting;
-a later run removes any that a killed run left behind.
+a later run removes any that a killed run left behind. A live staging or spill directory holds
+an exclusive `flock` on a `.lock` file inside it, and a run removes a leftover only after taking
+that lock, so concurrent runs in other containers sharing the parent directory never lose a
+live one. The lock file is removed before a staging directory is moved into place.
 
 Memory: the spill routing pass holds the concept and path dictionaries. The build pass runs
 `--threads` workers (one per core by default), each holding one spill file plus 40 bytes per

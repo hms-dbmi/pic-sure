@@ -4,9 +4,14 @@
 //! registry that [`remove_registered`] empties, so the binary's SIGTERM and SIGINT handler
 //! can remove every one before exiting. A run killed with SIGKILL still leaves its
 //! directories behind; [`TemporaryDir::create`] removes those, recognizing them by name
-//! (`.<prefix>-<pid>-<nanos>-<sequence>-<random>`), owner, and a pid that is no longer
-//! running.
+//! (`.<prefix>-<pid>-<nanos>-<sequence>-<random>`), owner, and a lock nobody holds.
+//!
+//! While a directory is live its creator holds an exclusive `flock` on the file
+//! [`LOCK_FILE_NAME`] inside it. A sweep removes a directory only after taking that lock
+//! itself, so a run in another container, whose pid means nothing in this one, never loses
+//! a directory it is still writing. A directory without the lock file is left alone.
 
+use std::fs::{File, TryLockError};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,6 +24,14 @@ use crate::private_fs;
 static REGISTERED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// Name of the lock file inside a live temporary directory. Its creator holds an exclusive
+/// `flock` on it until the directory is removed or published.
+pub(crate) const LOCK_FILE_NAME: &str = ".lock";
+
+/// Name the lock file is created and locked under before it is renamed to
+/// [`LOCK_FILE_NAME`], so a sweep never finds an unlocked lock file in a new directory.
+const NEW_LOCK_FILE_NAME: &str = ".lock-new";
 
 /// A name tail no other temporary name shares: this process's pid, the current
 /// sub-second nanoseconds, a process-wide sequence number (two names made in the same
@@ -68,18 +81,23 @@ fn remove_all(dirs: &mut Vec<PathBuf>) {
 }
 
 /// A directory, mode `0700`, removed on drop unless [`TemporaryDir::disarm`] is called.
+/// Holds the `flock` on its [`LOCK_FILE_NAME`] until dropped or
+/// [`TemporaryDir::release_lock`] is called.
 pub(crate) struct TemporaryDir {
     path: PathBuf,
     armed: bool,
+    lock: Option<File>,
 }
 
 impl TemporaryDir {
-    /// Creates `<parent>/.<prefix>-<tail>`, `<tail>` from [`unique_name_tail`], and
-    /// registers it, after removing any directory of that shape that belongs to this user
-    /// and whose process is gone. Creates `parent` when it does not exist.
+    /// Creates `<parent>/.<prefix>-<tail>`, `<tail>` from [`unique_name_tail`], locks its
+    /// [`LOCK_FILE_NAME`] and registers it, after removing any directory of that shape that
+    /// belongs to this user and whose lock nobody holds. Creates `parent` when it does not
+    /// exist.
     ///
     /// # Errors
-    /// I/O errors creating `parent` or the directory; a failing random number generator.
+    /// I/O errors creating `parent`, the directory or its lock file, or locking it; a
+    /// failing random number generator.
     pub(crate) fn create(parent: &Path, prefix: &str) -> Result<Self> {
         std::fs::create_dir_all(parent).map_err(EtlError::io("creating", parent))?;
         sweep_stale(parent, prefix);
@@ -87,7 +105,28 @@ impl TemporaryDir {
         let mut registered = lock();
         private_fs::create_dir(&path).map_err(EtlError::io("creating", &path))?;
         registered.push(path.clone());
-        Ok(TemporaryDir { path, armed: true })
+        let mut dir = TemporaryDir {
+            path,
+            armed: true,
+            lock: None,
+        };
+        dir.lock = Some(hold_lock(&dir.path)?);
+        Ok(dir)
+    }
+
+    /// Removes the lock file and releases its lock, for a directory about to be renamed
+    /// into place, so the published directory carries no lock file. A sweep leaves a
+    /// directory without a lock file alone, so the directory stays safe until it is moved.
+    ///
+    /// # Errors
+    /// I/O errors removing the lock file.
+    pub(crate) fn release_lock(&mut self) -> Result<()> {
+        if self.lock.is_some() {
+            let file = self.path.join(LOCK_FILE_NAME);
+            std::fs::remove_file(&file).map_err(EtlError::io("removing", &file))?;
+            self.lock = None;
+        }
+        Ok(())
     }
 
     /// The directory.
@@ -113,8 +152,39 @@ impl Drop for TemporaryDir {
     }
 }
 
+/// Creates the lock file of the new directory `dir` under a temporary name, takes an
+/// exclusive lock on it, and renames it to [`LOCK_FILE_NAME`]. Returns the open file, whose
+/// lock lasts until it is closed.
+///
+/// # Errors
+/// I/O errors creating, locking or renaming the file.
+fn hold_lock(dir: &Path) -> Result<File> {
+    let new = dir.join(NEW_LOCK_FILE_NAME);
+    let file = private_fs::create_file(&new).map_err(EtlError::io("creating", &new))?;
+    file.try_lock().map_err(|e| {
+        let error = match e {
+            TryLockError::Error(error) => error,
+            TryLockError::WouldBlock => std::io::Error::from(std::io::ErrorKind::WouldBlock),
+        };
+        EtlError::io("locking", &new)(error)
+    })?;
+    let target = dir.join(LOCK_FILE_NAME);
+    std::fs::rename(&new, &target).map_err(EtlError::io("renaming", &target))?;
+    Ok(file)
+}
+
+/// Takes the lock of the temporary directory `dir`, or returns `None` when its lock file is
+/// missing or another open file holds the lock.
+fn take_abandoned_lock(dir: &Path) -> Option<File> {
+    let file = File::open(dir.join(LOCK_FILE_NAME)).ok()?;
+    file.try_lock().ok()?;
+    Some(file)
+}
+
 /// Removes the directories `<parent>/.<prefix>-<pid>-<nanos>[-<sequence>-<random>]` that
-/// this user owns, that this process has not registered, and whose pid is not running.
+/// this user owns, that this process has not registered, and whose [`LOCK_FILE_NAME`] lock
+/// this call can take. The lock is held while the directory is removed. The pid in the name
+/// is not consulted: in another container the same pid can belong to a live run.
 fn sweep_stale(parent: &Path, prefix: &str) {
     let Ok(entries) = std::fs::read_dir(parent) else {
         return;
@@ -137,14 +207,15 @@ fn sweep_stale(parent: &Path, prefix: &str) {
         if !meta.is_dir() || meta.uid() != own_uid || lock().contains(&path) {
             continue;
         }
-        if pid == std::process::id() || !process_is_running(pid) {
-            match std::fs::remove_dir_all(&path) {
-                Ok(()) => {
-                    tracing::warn!(dir = %path.display(), "removed a temporary directory left by an interrupted run")
-                }
-                Err(e) => {
-                    tracing::warn!(dir = %path.display(), error = %e, "cannot remove a temporary directory left by an interrupted run")
-                }
+        let Some(_held) = take_abandoned_lock(&path) else {
+            continue;
+        };
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => {
+                tracing::warn!(dir = %path.display(), pid, "removed a temporary directory left by an interrupted run")
+            }
+            Err(e) => {
+                tracing::warn!(dir = %path.display(), error = %e, "cannot remove a temporary directory left by an interrupted run")
             }
         }
     }
@@ -176,14 +247,6 @@ fn current_uid() -> u32 {
     unsafe { libc::geteuid() }
 }
 
-/// True when a process with this pid exists, including one owned by another user.
-/// Signal 0 makes `kill` check only that the process exists and may be signalled, so the
-/// call is sound and sends nothing.
-fn process_is_running(pid: u32) -> bool {
-    let status = unsafe { libc::kill(pid as libc::pid_t, 0) };
-    status == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
-}
-
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
@@ -203,31 +266,90 @@ mod tests {
         assert!(!lock().contains(&path));
     }
 
+    fn abandoned_dir(path: &Path) {
+        std::fs::create_dir(path).unwrap();
+        std::fs::write(path.join(LOCK_FILE_NAME), b"").unwrap();
+        std::fs::write(path.join("spill-0"), b"rows").unwrap();
+    }
+
     #[test]
-    fn stale_dirs_of_dead_processes_are_swept() {
+    fn only_dirs_whose_lock_is_free_are_swept() {
         let root = tempfile::tempdir().unwrap();
-        let mut child = std::process::Command::new("true").spawn().unwrap();
-        let dead = child.id();
-        child.wait().unwrap();
-        let stale = root.path().join(format!(".x.staging-{dead}-5"));
-        let live = root
-            .path()
-            .join(format!(".x.staging-{}-5", std::process::id()));
-        let parent_pid = root.path().join(".x.staging-1-5");
-        let other = root.path().join(format!(".y.staging-{dead}-5"));
-        let unrelated = root.path().join(format!(".x.staging-{dead}-notanumber"));
-        for dir in [&stale, &parent_pid, &other, &unrelated] {
-            std::fs::create_dir(dir).unwrap();
+        let abandoned = root.path().join(".x.staging-77777-5-0-0a1b2c3d");
+        let held_elsewhere = root.path().join(".x.staging-77778-5-0-0a1b2c3d");
+        let running_pid = root.path().join(".x.staging-1-5");
+        let without_lock = root.path().join(".x.staging-77779-5");
+        let other = root.path().join(".y.staging-77777-5");
+        let unrelated = root.path().join(".x.staging-77777-notanumber");
+        for dir in [
+            &abandoned,
+            &held_elsewhere,
+            &running_pid,
+            &other,
+            &unrelated,
+        ] {
+            abandoned_dir(dir);
         }
-        std::fs::create_dir(&live).unwrap();
-        lock().push(live.clone());
+        std::fs::create_dir(&without_lock).unwrap();
+        let holder = File::open(held_elsewhere.join(LOCK_FILE_NAME)).unwrap();
+        holder.try_lock().unwrap();
+
         let fresh = TemporaryDir::create(root.path(), "x.staging").unwrap();
-        assert!(!stale.exists());
-        assert!(live.exists(), "registered directories of this process stay");
-        assert!(parent_pid.exists(), "pid 1 is running");
+
+        assert!(!abandoned.exists());
+        assert!(
+            !running_pid.exists(),
+            "a running pid does not protect a directory whose lock is free"
+        );
+        assert!(
+            held_elsewhere.exists(),
+            "a lock held by another run protects its directory"
+        );
+        assert!(
+            without_lock.exists(),
+            "a directory without a lock file is left alone"
+        );
         assert!(other.exists() && unrelated.exists());
-        assert!(fresh.path().exists());
-        lock().retain(|p| p != &live);
+        assert!(fresh.path().join(LOCK_FILE_NAME).exists());
+
+        drop(holder);
+        let again = TemporaryDir::create(root.path(), "x.staging").unwrap();
+        assert!(!held_elsewhere.exists(), "swept once its lock is released");
+        assert!(fresh.path().exists() && again.path().exists());
+    }
+
+    #[test]
+    fn a_live_dir_holds_its_lock_against_another_sweep() {
+        let root = tempfile::tempdir().unwrap();
+        let live = TemporaryDir::create(root.path(), "x.staging").unwrap();
+        let path = live.path().to_path_buf();
+        assert!(take_abandoned_lock(&path).is_none());
+        assert!(!path.join(NEW_LOCK_FILE_NAME).exists());
+        lock().retain(|p| p != &path);
+        sweep_stale(root.path(), "x.staging");
+        assert!(path.exists(), "the creator's lock keeps the directory");
+        lock().push(path.clone());
+        drop(live);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn releasing_the_lock_removes_the_lock_file() {
+        let root = tempfile::tempdir().unwrap();
+        let mut dir = TemporaryDir::create(root.path(), "x.staging").unwrap();
+        dir.release_lock().unwrap();
+        assert!(!dir.path().join(LOCK_FILE_NAME).exists());
+        dir.release_lock().unwrap();
+        let path = dir.path().to_path_buf();
+        lock().retain(|p| p != &path);
+        sweep_stale(root.path(), "x.staging");
+        assert!(
+            path.exists(),
+            "an unlocked directory without a lock file is not swept"
+        );
+        lock().push(path.clone());
+        drop(dir);
+        assert!(!path.exists());
     }
 
     #[test]

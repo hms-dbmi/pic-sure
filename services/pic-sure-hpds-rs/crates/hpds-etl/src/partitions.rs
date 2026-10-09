@@ -375,6 +375,7 @@ impl PartitionedStaging {
             let marker = staged.join(GENERATION_FILE_NAME);
             private_fs::write_file(&marker, generation.as_bytes())
                 .map_err(EtlError::io("writing", &marker))?;
+            self.dir.release_lock()?;
             private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
             std::fs::rename(&staged, out).map_err(EtlError::io("moving the store to", out))?;
             self.dir.disarm(&mut registered);

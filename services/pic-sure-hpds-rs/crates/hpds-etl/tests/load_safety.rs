@@ -40,6 +40,10 @@ fn stores_are_written_owner_only() {
         ] {
             assert_eq!(mode_bits(&store.out.join(name)), 0o600, "{mode:?} {name}");
         }
+        assert!(
+            !store.out.join(".lock").exists(),
+            "{mode:?}: the staging lock file is not published"
+        );
     }
 }
 

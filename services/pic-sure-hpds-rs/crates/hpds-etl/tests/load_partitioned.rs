@@ -74,6 +74,10 @@ fn load(input_dir: &Path) -> (tempfile::TempDir, PathBuf) {
     options.key = KeySource::File(key);
     options.threads = Some(4);
     load_partitioned(&options).unwrap();
+    assert!(
+        !out.join(".lock").exists(),
+        "the staging lock file is not published"
+    );
     (dir, out)
 }
 

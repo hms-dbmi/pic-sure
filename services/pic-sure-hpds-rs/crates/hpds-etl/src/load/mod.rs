@@ -798,6 +798,7 @@ impl Staging {
         private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
         let mut registered = cleanup::lock();
         if !out.exists() {
+            self.dir.release_lock()?;
             std::fs::rename(&staged, out).map_err(EtlError::io("moving the store to", out))?;
             self.dir.disarm(&mut registered);
             drop(registered);
