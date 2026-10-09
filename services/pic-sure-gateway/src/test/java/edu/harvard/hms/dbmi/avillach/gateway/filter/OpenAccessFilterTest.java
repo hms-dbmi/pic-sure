@@ -14,8 +14,12 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.client.RestClientException;
@@ -23,6 +27,7 @@ import org.springframework.web.client.RestClientException;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ShippedPublicRoutes;
@@ -50,7 +55,7 @@ class OpenAccessFilterTest {
     @Test
     void enabledOpenAccessSkipsValidationForPublicSystemStatus() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(false);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(false));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
         BufferedRequestWrapper req = wrap(null, "/system/status", "GET");
         FilterChain chain = mock(FilterChain.class);
@@ -64,7 +69,7 @@ class OpenAccessFilterTest {
     @Test
     void enabledOpenAccessNoBearerSendsRealPathShapeAndGrants() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(true);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         AuditContext ctx = new AuditContext();
         OpenAccessFilter f = filter(client, ctx, true);
 
@@ -87,7 +92,7 @@ class OpenAccessFilterTest {
     @Test
     void enabledOpenAccessForwardsNonBlankApiKeyAtTopLevelValidationPayload() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(true);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
         BufferedRequestWrapper req = wrap(null, "picsure_testKeyValue123");
@@ -101,7 +106,7 @@ class OpenAccessFilterTest {
     @Test
     void enabledOpenAccessOmitsApiKeyWhenHeaderAbsent() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(true);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
         f.doFilter(wrap(null), mock(HttpServletResponse.class), mock(FilterChain.class));
@@ -114,7 +119,7 @@ class OpenAccessFilterTest {
     @Test
     void enabledOpenAccessOmitsApiKeyWhenHeaderBlank() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(true);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
         f.doFilter(wrap(null, "   "), mock(HttpServletResponse.class), mock(FilterChain.class));
@@ -130,7 +135,7 @@ class OpenAccessFilterTest {
         // fall back to inspecting X-User-Id, whose open-access value (OPEN_ACCESS:<host>) is non-blank and so reads as
         // authorized -- which is exactly how open requests ended up on the authorized HPDS backend.
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(true);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
         BufferedRequestWrapper req = wrap(null);
@@ -142,7 +147,7 @@ class OpenAccessFilterTest {
     @Test
     void denialSetsNoAccessTypeAttribute() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(false);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(false));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
         BufferedRequestWrapper req = wrap(null);
@@ -169,7 +174,7 @@ class OpenAccessFilterTest {
     @Test
     void grantSetsDedicatedOpenAccessGrantAttribute() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(true);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
         BufferedRequestWrapper req = wrap(null);
@@ -181,7 +186,7 @@ class OpenAccessFilterTest {
     @Test
     void deniedRequestDoesNotSetOpenAccessGrantAttribute() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(false);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(false));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
         HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -195,7 +200,7 @@ class OpenAccessFilterTest {
     @Test
     void enabledOpenAccessFalseValidationReturns401() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenReturn(false);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(false));
         AuditContext ctx = new AuditContext();
         OpenAccessFilter f = filter(client, ctx, true);
 
@@ -207,6 +212,93 @@ class OpenAccessFilterTest {
         verify(resp).setStatus(401);
         verify(chain, never()).doFilter(any(), any());
         assertThat(ctx.getMetadata()).containsEntry("auth_action", "open_access.denied");
+    }
+
+    @Test
+    void grantStoresValidationResultForLaterFilters() throws Exception {
+        OpenAccessValidation validation =
+            new OpenAccessValidation(true, "USER", "7c5e0618-0000-0000-0000-000000000000", "AbCd1234", null, null);
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(validation);
+        AuditContext ctx = new AuditContext();
+        OpenAccessFilter f = filter(client, ctx, true);
+
+        BufferedRequestWrapper req = wrap(null, "picsure_testKeyValue123");
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, new MockHttpServletResponse(), chain);
+
+        assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_VALIDATION)).isSameAs(validation);
+        verify(chain).doFilter(eq(req), any());
+        assertThat(ctx.getMetadata()).containsEntry("auth_result", "success").containsEntry("auth_action", "open_access.granted")
+            .doesNotContainKey("auth_failure_reason");
+    }
+
+    @Test
+    void bareBooleanGrantStoresAnonymousValidationResult() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap(null);
+        f.doFilter(req, new MockHttpServletResponse(), mock(FilterChain.class));
+
+        OpenAccessValidation stored = (OpenAccessValidation) req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_VALIDATION);
+        assertThat(stored.valid()).isTrue();
+        assertThat(stored.keyType()).isNull();
+        assertThat(stored.keyId()).isNull();
+    }
+
+    static Stream<Arguments> denialsAndErrorTypes() {
+        return Stream.of(
+            Arguments.of(
+                OpenAccessValidation.DENIAL_KEY_MISSING, OpenAccessFilter.ERROR_API_KEY_MISSING, OpenAccessFilter.ERROR_API_KEY_MISSING
+            ),
+            Arguments.of(
+                OpenAccessValidation.DENIAL_KEY_INVALID, OpenAccessFilter.ERROR_API_KEY_INVALID, OpenAccessFilter.ERROR_API_KEY_INVALID
+            ), Arguments.of(OpenAccessValidation.DENIAL_RULES, "unauthorized", "access_rules_denied"),
+            // no reason at all (a bare-boolean false from an older PSAMA) or one this gateway doesn't know: the audit claims no cause
+            Arguments.of(null, "unauthorized", "open_access_denied"),
+            Arguments.of("some_future_reason", "unauthorized", "open_access_denied")
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("denialsAndErrorTypes")
+    void eachDenialMapsToItsErrorType(String denial, String expectedErrorType, String expectedFailureReason) throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(new OpenAccessValidation(false, null, null, null, denial, null));
+        AuditContext ctx = new AuditContext();
+        OpenAccessFilter f = filter(client, ctx, true);
+
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        BufferedRequestWrapper req = wrap(null, "picsure_testKeyValue123");
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        assertThat(resp.getStatus()).isEqualTo(401);
+        assertThat(resp.getContentAsString()).contains("\"errorType\":\"" + expectedErrorType + "\"")
+            .doesNotContain("picsure_testKeyValue123");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_VALIDATION)).isNull();
+        assertThat(ctx.getMetadata()).containsEntry("auth_result", "failure").containsEntry("auth_action", "open_access.denied")
+            .containsEntry("auth_failure_reason", expectedFailureReason);
+    }
+
+    @Test
+    void nullValidationIsDeniedAsUnauthorized() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(null);
+        AuditContext ctx = new AuditContext();
+        OpenAccessFilter f = filter(client, ctx, true);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(wrap(null), resp, chain);
+
+        assertThat(resp.getStatus()).isEqualTo(401);
+        assertThat(resp.getContentAsString()).contains("\"errorType\":\"unauthorized\"");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(ctx.getMetadata()).containsEntry("auth_failure_reason", "open_access_denied");
     }
 
     @Test
