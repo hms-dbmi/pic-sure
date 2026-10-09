@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PrivilegeCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PrivilegeUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.PrivilegeService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -11,6 +13,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -70,12 +74,12 @@ public class PrivilegeController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Privilege>> addPrivilege(
-        @Parameter(required = true, description = "A list of privileges in JSON format") @RequestBody List<Privilege> privileges,
-        HttpServletRequest request
+        @Parameter(
+            required = true, description = "The privileges to create, each naming its application by UUID"
+        ) @RequestBody List<@NotNull @Valid PrivilegeCreateRequest> privileges, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
-        privileges = this.privilegeService.addPrivileges(privileges);
-        return PICSUREResponse.success(privileges);
+        return PICSUREResponse.success(this.privilegeService.createFrom(privileges));
     }
 
     @Operation(
@@ -85,15 +89,14 @@ public class PrivilegeController {
     @ApiResponse(responseCode = "200", description = "The updated privileges")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(consumes = "application/json", produces = "application/json")
+    @PatchMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Privilege>> updatePrivilege(
         @Parameter(
-            required = true, description = "A list of privilege with fields to be updated in JSON format"
-        ) @RequestBody List<Privilege> privileges, HttpServletRequest request
+            required = true, description = "The privileges to update, each named by UUID; a field left out keeps its stored value"
+        ) @RequestBody List<@NotNull @Valid PrivilegeUpdateRequest> privileges, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
-        privileges = this.privilegeService.updatePrivileges(privileges);
-        return ResponseEntity.ok(privileges);
+        return ResponseEntity.ok(this.privilegeService.updateFrom(privileges));
     }
 
     @Operation(

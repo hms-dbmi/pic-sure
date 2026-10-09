@@ -5,17 +5,24 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.validation.method.ParameterErrors;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 import java.sql.SQLIntegrityConstraintViolationException;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Global exception handler for the PICSURE Auth application, answering with this service's {@code {message, content}} body. Inherits the
@@ -127,6 +134,36 @@ public class GlobalExceptionHandler extends PicsureExceptionAdvice {
         }
 
         return PICSUREResponse.error(status, "Error communicating with external service", errorMsg);
+    }
+
+    /**
+     * Answers a request body that fails Bean Validation, such as a request record missing a required member. The response names each
+     * rejected member by its position in the body and the constraint it broke, and never echoes the rejected value.
+     *
+     * @param ex the validation failure Spring raised before the handler ran
+     * @param headers headers the base class prepared for the response
+     * @param status the status the base class chose, always 400
+     * @param request the current request
+     * @return a 400 listing the violations
+     */
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+        HandlerMethodValidationException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request
+    ) {
+        String violations = ex.getParameterValidationResults().stream().flatMap(GlobalExceptionHandler::describeViolations)
+            .collect(Collectors.joining("; "));
+        logger.warn("Rejected request body that failed validation: {}", violations);
+        return handleExceptionInternal(
+            ex, PICSUREResponse.error(HttpStatus.BAD_REQUEST, "Invalid request body", violations).getBody(), headers, status, request
+        );
+    }
+
+    private static Stream<String> describeViolations(ParameterValidationResult result) {
+        String position = result.getContainerIndex() == null ? "" : "[" + result.getContainerIndex() + "]";
+        if (result instanceof ParameterErrors errors) {
+            return errors.getFieldErrors().stream().map(error -> position + "." + error.getField() + " " + error.getDefaultMessage());
+        }
+        return result.getResolvableErrors().stream().map(error -> position + " " + error.getDefaultMessage());
     }
 
     /**

@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.ApplicationCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.ApplicationUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApplicationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -14,6 +16,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -79,12 +83,12 @@ public class ApplicationController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Application>> addApplication(
-        @Parameter(required = true, description = "A list of AccessRule in JSON format") @RequestBody List<Application> applications,
-        HttpServletRequest request
+        @Parameter(
+            required = true, description = "The applications to create; the server generates each identifier and token"
+        ) @RequestBody List<@NotNull @Valid ApplicationCreateRequest> applications, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "app_count", String.valueOf(applications.size()));
-        applications = applicationService.addNewApplications(applications);
-        return PICSUREResponse.success(applications);
+        return PICSUREResponse.success(applicationService.createFrom(applications));
     }
 
     @Operation(
@@ -94,15 +98,14 @@ public class ApplicationController {
     @ApiResponse(responseCode = "200", description = "The updated applications")
     @AuditEvent(type = "ADMIN", action = "application.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(consumes = "application/json", produces = "application/json")
+    @PatchMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Application>> updateApplication(
         @Parameter(
-            required = true, description = "A list of AccessRule with fields to be updated in JSON format"
-        ) @RequestBody List<Application> applications, HttpServletRequest request
+            required = true, description = "The applications to update, each named by UUID; a field left out keeps its stored value"
+        ) @RequestBody List<@NotNull @Valid ApplicationUpdateRequest> applications, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "app_count", String.valueOf(applications.size()));
-        applications = applicationService.updateApplications(applications);
-        return PICSUREResponse.success(applications);
+        return PICSUREResponse.success(applicationService.updateFrom(applications));
     }
 
     @Operation(

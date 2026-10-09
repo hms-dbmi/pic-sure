@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
 import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -13,6 +15,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,10 +77,12 @@ public class UserController {
     @PreAuthorize("hasAnyAuthority('ADMIN')")
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addUser(
-        @Parameter(required = true, description = "A list of user in JSON format") @RequestBody List<User> users, HttpServletRequest request
+        @Parameter(
+            required = true, description = "The users to create, each naming its connection by id and its roles by UUID"
+        ) @RequestBody List<@NotNull @Valid UserCreateRequest> users, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
-        List<User> addedUsers = this.userService.addUsers(users);
+        List<User> addedUsers = this.userService.createFrom(users);
         if (addedUsers == null) {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
@@ -96,10 +102,14 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "The updated users")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
-    @PutMapping(produces = "application/json")
-    public ResponseEntity<?> updateUser(@RequestBody List<User> users, HttpServletRequest request) {
+    @PatchMapping(produces = "application/json")
+    public ResponseEntity<?> updateUser(
+        @Parameter(
+            required = true, description = "The users to update, each named by UUID; a field left out keeps its stored value"
+        ) @RequestBody List<@NotNull @Valid UserUpdateRequest> users, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
-        List<User> updatedUsers = this.userService.updateUser(users);
+        List<User> updatedUsers = this.userService.updateFrom(users);
         if (updatedUsers == null) {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }

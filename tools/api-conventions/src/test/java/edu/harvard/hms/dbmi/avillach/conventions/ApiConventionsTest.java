@@ -165,6 +165,12 @@ class ApiConventionsTest {
         return violations;
     }
 
+    @Test
+    void noHandlerBindsAnEntity() {
+        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
+        report("no-entity-parameters", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
+    }
+
     private static List<String> overAllModules(Rule rule) {
         List<String> violations = new ArrayList<>();
         modules.forEach((module, classes) -> violations.addAll(rule.apply(module, classes)));
