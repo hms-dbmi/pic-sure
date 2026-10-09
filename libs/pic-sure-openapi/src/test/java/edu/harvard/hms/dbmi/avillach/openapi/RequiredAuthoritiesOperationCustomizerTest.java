@@ -8,7 +8,10 @@ import org.springframework.web.method.HandlerMethod;
 
 import io.swagger.v3.oas.models.Operation;
 
-/** The authorities sentence the customizer appends, for every guard form the api-conventions rules accept and some they reject. */
+/**
+ * The sentence the customizer appends, for every guard form the api-conventions rules accept, some they reject, and each
+ * {@link PublicEndpoint} level.
+ */
 class RequiredAuthoritiesOperationCustomizerTest {
 
     private final RequiredAuthoritiesOperationCustomizer customizer = new RequiredAuthoritiesOperationCustomizer();
@@ -40,6 +43,22 @@ class RequiredAuthoritiesOperationCustomizerTest {
         }
 
         public String unguarded() {
+            return "";
+        }
+
+        @PublicEndpoint(PublicEndpoint.Access.ANONYMOUS)
+        public String anonymous() {
+            return "";
+        }
+
+        @PublicEndpoint(PublicEndpoint.Access.AUTHENTICATED)
+        public String authenticated() {
+            return "";
+        }
+
+        @PreAuthorize("hasAuthority('SUPER_ADMIN')")
+        @PublicEndpoint(PublicEndpoint.Access.ANONYMOUS)
+        public String guardedAndMarked() {
             return "";
         }
     }
@@ -103,5 +122,26 @@ class RequiredAuthoritiesOperationCustomizerTest {
         Operation operation = customize(new Operation(), "unguarded");
 
         assertThat(operation.getDescription()).isNull();
+    }
+
+    @Test
+    void anonymousEndpointSaysNoTokenIsNeeded() throws Exception {
+        Operation operation = customize(new Operation().description("Read the latest terms"), "anonymous");
+
+        assertThat(operation.getDescription()).isEqualTo("Read the latest terms\n\nPublic, no token needed.");
+    }
+
+    @Test
+    void authenticatedEndpointSaysAnyAuthenticatedUser() throws Exception {
+        Operation operation = customize(new Operation(), "authenticated");
+
+        assertThat(operation.getDescription()).isEqualTo("Any authenticated user.");
+    }
+
+    @Test
+    void guardSentenceWinsWhenAHandlerCarriesBoth() throws Exception {
+        Operation operation = customize(new Operation(), "guardedAndMarked");
+
+        assertThat(operation.getDescription()).isEqualTo("Required authorities: SUPER_ADMIN.");
     }
 }

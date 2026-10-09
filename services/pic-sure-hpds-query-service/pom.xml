@@ -43,7 +43,7 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- GatewayUser/GatewayUserResolver, PicsureException, GatewayExceptionAdvice, RequestIdFilter. -->
+        <!-- GatewayUser/GatewayUserResolver, PicsureException, PicsureErrorBodyAdvice, RequestIdFilter. -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-spring-commons</artifactId>

@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.AuthenticationServiceRegistry;
@@ -57,6 +59,7 @@ public class AuthenticationController {
     )
     @AuditEvent(type = "AUTH", action = "auth.login")
     @PostMapping(path = "/authentication/{idpProvider}", consumes = "application/json", produces = "application/json")
+    @PublicEndpoint(Access.ANONYMOUS)
     public ResponseEntity<?> authentication(
         @PathVariable("idpProvider") String idpProvider,
         @Parameter(

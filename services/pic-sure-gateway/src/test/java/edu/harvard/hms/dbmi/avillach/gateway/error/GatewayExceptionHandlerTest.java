@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -14,8 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-
-import org.springframework.http.HttpMethod;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 
 /**
  * Verifies the gateway's exception response shape and ensures the catch-all does not relabel statuses already selected by Spring MVC. A
@@ -35,36 +34,52 @@ class GatewayExceptionHandlerTest {
     }
 
     @Test
-    void unmappedExceptionBecomesAShaped500ThatLeaksNoInternals() {
-        ResponseEntity<Map<String, Object>> r = handler.unknown(new IllegalArgumentException("URI with undefined scheme"));
+    void unmappedExceptionBecomesAShaped500ThatLeaksNoInternals() throws Exception {
+        ResponseEntity<Object> r = handler.handleUnexpected(new IllegalArgumentException("URI with undefined scheme"), request());
 
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(r.getBody()).containsEntry("errorType", "internal_error").containsKey("requestId");
-        // The raw cause is logged, never returned.
-        assertThat(r.getBody()).containsEntry("message", "An unexpected error occurred");
+        assertThat(r.getBody()).isInstanceOfSatisfying(
+            Map.class,
+            body -> assertThat(body).containsEntry("errorType", "internal_error").containsKey("requestId")
+                .containsEntry("message", PicsureExceptionAdvice.SERVER_ERROR)
+        );
     }
 
     @Test
-    void unroutedPathStays404RatherThanBeingFlattenedTo500() {
-        ResponseEntity<Object> r = handler.handleNoResourceFoundException(
-            new NoResourceFoundException(HttpMethod.GET, "/nope"), new HttpHeaders(), HttpStatus.NOT_FOUND,
-            new ServletWebRequest(new MockHttpServletRequest())
-        );
+    void unroutedPathStays404RatherThanBeingFlattenedTo500() throws Exception {
+        ResponseEntity<Object> r = handler.handleException(new NoResourceFoundException(HttpMethod.GET, "/nope"), request());
 
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(r.getBody()).isInstanceOfSatisfying(Map.class, body -> {
-            assertThat(body).containsEntry("errorType", "not_found");
-            assertThat(String.valueOf(body.get("message"))).contains("/nope");
+            assertThat(body).containsEntry("errorType", "not_found").containsEntry("message", PicsureExceptionAdvice.NOT_FOUND);
+            assertThat(String.valueOf(body.get("message"))).doesNotContain("/nope");
         });
     }
 
     @Test
-    void deliberateStatusExceptionKeepsItsOwnStatus() {
-        ResponseEntity<Map<String, Object>> r =
-            handler.statusException(new ResponseStatusException(HttpStatus.METHOD_NOT_ALLOWED, "GET not supported"));
+    void deliberateStatusExceptionKeepsItsOwnStatusAndReason() {
+        ResponseEntity<Object> r =
+            handler.statusException(new ResponseStatusException(HttpStatus.METHOD_NOT_ALLOWED, "GET not supported"), request());
 
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
-        assertThat(r.getBody()).containsEntry("errorType", "method_not_allowed");
-        assertThat(String.valueOf(r.getBody().get("message"))).contains("GET not supported");
+        assertThat(r.getBody()).isInstanceOfSatisfying(Map.class, body -> {
+            assertThat(body).containsEntry("errorType", "method_not_allowed");
+            assertThat(String.valueOf(body.get("message"))).contains("GET not supported");
+        });
+    }
+
+    @Test
+    void statusExceptionWithoutAReasonCarriesTheFixedTextForItsStatus() {
+        ResponseEntity<Object> r = handler.statusException(new ResponseStatusException(HttpStatus.NOT_FOUND), request());
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(r.getBody()).isInstanceOfSatisfying(
+            Map.class,
+            body -> assertThat(body).containsEntry("errorType", "not_found").containsEntry("message", PicsureExceptionAdvice.NOT_FOUND)
+        );
+    }
+
+    private static ServletWebRequest request() {
+        return new ServletWebRequest(new MockHttpServletRequest());
     }
 }

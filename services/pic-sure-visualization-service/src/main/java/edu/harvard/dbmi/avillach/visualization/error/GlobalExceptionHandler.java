@@ -2,40 +2,29 @@ package edu.harvard.dbmi.avillach.visualization.error;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.lang.Nullable;
-import org.springframework.web.HttpMediaTypeNotSupportedException;
-import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.context.request.WebRequest;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * The visualization service's exception-to-HTTP mapping, answering with an {@code {error}} body.
- *
- * <p>Extends {@link ResponseEntityExceptionHandler} so Spring MVC's own request errors keep their statuses: a wrong method answers 405 with
- * {@code Allow}, an unsupported media type 415 with {@code Accept}, a type mismatch or a missing parameter 400. Those handlers are closer
- * matches than {@link #handleGenericException}, so Spring picks them first, and {@link #handleExceptionInternal} gives their responses the
- * same body shape.
+ * The visualization service's exception-to-HTTP mapping, answering with an {@code {error}} body. Inherits the client-error and catch-all
+ * handling from {@link PicsureExceptionAdvice} and adds the visualization domain's own exceptions. A consent denial alone answers with
+ * {@code {errorType, message}}.
  */
 @RestControllerAdvice
-public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
-
-    private static final String INTERNAL_ERROR = "Internal server error";
+public class GlobalExceptionHandler extends PicsureExceptionAdvice {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
@@ -100,98 +89,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return handleExceptionInternal(e, Map.of("error", errors), headers, status, request);
     }
 
-    /**
-     * Answers an unreadable request body without echoing the parser's message.
-     *
-     * @param e the parse failure
-     * @param headers headers the base class prepared for the response
-     * @param status the status the base class chose, always 400
-     * @param request the current request
-     * @return a 400 with a fixed message
-     */
-    @Override
-    protected ResponseEntity<Object> handleHttpMessageNotReadable(
-        HttpMessageNotReadableException e, HttpHeaders headers, HttpStatusCode status, WebRequest request
-    ) {
-        logger.warn("Malformed request body: {}", e.getMessage());
-        return handleExceptionInternal(e, Map.of("error", "Malformed request body"), headers, status, request);
-    }
-
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException e) {
         logger.warn("Bad request: {}", e.getMessage());
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }
 
-    /**
-     * Answers a path no handler serves.
-     *
-     * @param e the missing resource
-     * @param headers headers the base class prepared for the response
-     * @param status the status the base class chose, always 404
-     * @param request the current request
-     * @return a 404 with a fixed message
-     */
     @Override
-    protected ResponseEntity<Object> handleNoResourceFoundException(
-        NoResourceFoundException e, HttpHeaders headers, HttpStatusCode status, WebRequest request
-    ) {
-        logger.warn("Resource not found: {}", e.getResourcePath());
-        return handleExceptionInternal(e, Map.of("error", "Not found"), headers, status, request);
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, String>> handleGenericException(Exception e) {
-        logger.error("Unexpected error", e);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", INTERNAL_ERROR));
-    }
-
-    /**
-     * Writes every response the base class produces in this service's {@code {error}} shape, keeping the status and headers it chose. A 4xx
-     * carries the text {@link #clientErrorDetail} chooses, which never quotes the request; a 5xx is logged and carries the same text as
-     * {@link #handleGenericException}. A body an override already built passes through unchanged.
-     *
-     * @param ex the exception being handled
-     * @param body the body built so far, or {@code null}
-     * @param headers response headers, such as {@code Allow} on a 405 and {@code Accept} on a 415
-     * @param statusCode the response status
-     * @param request the current request
-     * @return the response, or {@code null} when the response is already committed
-     */
-    @Override
-    protected ResponseEntity<Object> handleExceptionInternal(
-        Exception ex, @Nullable Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request
-    ) {
-        ResponseEntity<Object> framework = super.handleExceptionInternal(ex, body, headers, statusCode, request);
-        if (framework == null || !(framework.getBody() == null || framework.getBody() instanceof ProblemDetail)) {
-            return framework;
-        }
-        String message;
-        if (statusCode.is5xxServerError()) {
-            logger.error("Unexpected error", ex);
-            message = INTERNAL_ERROR;
-        } else {
-            String detail = clientErrorDetail(ex, framework.getBody());
-            message = detail == null || detail.isBlank() ? "Request could not be completed" : detail;
-        }
-        return new ResponseEntity<>(Map.of("error", message), framework.getHeaders(), framework.getStatusCode());
-    }
-
-    /**
-     * Reads Spring's detail for a client error, replacing the details that quote client input: a type mismatch names only the parameter,
-     * and a 405 or 415 gets fixed text instead of the request's method or Content-Type.
-     */
-    private static String clientErrorDetail(Exception ex, @Nullable Object body) {
-        if (ex instanceof TypeMismatchException mismatch) {
-            String name = mismatch.getPropertyName();
-            return name == null ? "Invalid value for a request parameter" : "Invalid value for '" + name + "'";
-        }
-        if (ex instanceof HttpRequestMethodNotSupportedException) {
-            return "This endpoint does not support the request method.";
-        }
-        if (ex instanceof HttpMediaTypeNotSupportedException) {
-            return "This endpoint does not accept the request's content type.";
-        }
-        return body instanceof ProblemDetail problem ? problem.getDetail() : null;
+    protected Object errorBody(HttpStatusCode status, String title, String detail) {
+        return Map.of("error", detail);
     }
 }
