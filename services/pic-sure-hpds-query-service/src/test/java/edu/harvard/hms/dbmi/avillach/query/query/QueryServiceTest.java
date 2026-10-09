@@ -439,6 +439,22 @@ class QueryServiceTest {
     }
 
     @Test
+    void legacyRowCarryingTheV3PicsureIdIs422WithoutRerunningOrPatching() {
+        UUID id = UUID.randomUUID();
+        String v3Body = "{\"query\":{\"expectedResultType\":\"COUNT\",\"picsureId\":\"" + UUID.randomUUID() + "\"}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v3Body, "rr-old", "AVAILABLE", null, null));
+
+        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token"))
+            .isInstanceOfSatisfying(PicsureException.class, e -> {
+                assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
+            });
+
+        verifyNoInteractions(hpds);
+        verify(operationsClient, never()).update(any(), any());
+    }
+
+    @Test
     void legacyRowWithAnUnrecognizableQueryObjectIs422() {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{\"query\":{\"foo\":1}}", "rr-old", "AVAILABLE", null, null));

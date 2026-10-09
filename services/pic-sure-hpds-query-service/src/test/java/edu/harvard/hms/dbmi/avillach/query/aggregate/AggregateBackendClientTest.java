@@ -21,6 +21,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
+import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 
 class AggregateBackendClientTest {
@@ -47,7 +48,7 @@ class AggregateBackendClientTest {
     }
 
     private AggregateBackendClient client() {
-        return new AggregateBackendClient(RestClient.builder().build(), properties());
+        return new AggregateBackendClient(RestClient.builder().build(), properties(), new HpdsProperties());
     }
 
     private QueryRequest req(Object query) {
@@ -91,9 +92,9 @@ class AggregateBackendClientTest {
 
     @Test
     void emptyApiPathSendsSearchAndSyncToTheBaseUrl() {
-        AggregateProperties props = properties();
-        props.setHpdsApiPath("");
-        AggregateBackendClient c = new AggregateBackendClient(RestClient.builder().build(), props);
+        HpdsProperties hpdsProps = new HpdsProperties();
+        hpdsProps.setApiPath("");
+        AggregateBackendClient c = new AggregateBackendClient(RestClient.builder().build(), properties(), hpdsProps);
         hpds.stubFor(post(urlEqualTo("/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
         hpds.stubFor(post(urlEqualTo("/query/sync")).willReturn(okJson("{}")));
 
@@ -114,7 +115,7 @@ class AggregateBackendClientTest {
     void noTokenConfiguredOmitsAuthorizationHeader() {
         AggregateProperties props = properties();
         props.setHpdsOpenToken(null);
-        AggregateBackendClient c = new AggregateBackendClient(RestClient.builder().build(), props);
+        AggregateBackendClient c = new AggregateBackendClient(RestClient.builder().build(), props, new HpdsProperties());
 
         hpds.stubFor(post(urlEqualTo("/v3/query/sync")).willReturn(okJson("1")));
         c.querySync(req("{}"));

@@ -19,8 +19,9 @@ public class HpdsProperties {
     /** HPDS_OPEN_TOKEN -- the service Bearer token for the open backend. SECRET. (May be blank if not needed.) */
     private String openToken;
     /**
-     * HPDS_API_PATH, the path HPDS serves its query API under, appended to each backend base. Defaults to {@code /v3} when the variable is
-     * unset. Set it to the empty string once HPDS serves that API at the base itself.
+     * HPDS_API_PATH, the path HPDS serves its query API under, appended to each backend base by every HPDS client in this service, the
+     * aggregate client included. Defaults to {@code /v3} when the variable is unset. Set it to the empty string once HPDS serves that API
+     * at the base itself.
      */
     private String apiPath = "/v3";
     /** Health probe path appended to each backend base. */
@@ -60,8 +61,9 @@ public class HpdsProperties {
         this.openToken = openToken;
     }
 
+    /** @return the configured API path, or the empty string when it is bound to {@code null} */
     public String getApiPath() {
-        return apiPath;
+        return apiPath == null ? "" : apiPath;
     }
 
     public void setApiPath(String apiPath) {

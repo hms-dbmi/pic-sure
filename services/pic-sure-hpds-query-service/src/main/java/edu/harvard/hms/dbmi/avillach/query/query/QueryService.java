@@ -66,12 +66,15 @@ public class QueryService {
      * JSON property names the v1 {@code Query} model deserializes, read from the model through Jackson so the set follows the class. A
      * stored pre-v3 {@code query} node that carries none of them is not a v1 query.
      */
-    private static final Set<String> V1_QUERY_PROPERTIES = V1_QUERY_MAPPER.getDeserializationConfig()
-        .introspect(V1_QUERY_MAPPER.constructType(edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class)).findProperties().stream()
-        .filter(BeanPropertyDefinition::couldDeserialize).map(BeanPropertyDefinition::getName).collect(Collectors.toUnmodifiableSet());
-    /** Property names only the v3 {@code Query} carries. A stored pre-v3 {@code query} node holding any of them is not a v1 query. */
+    private static final Set<String> V1_QUERY_PROPERTIES =
+        deserializableProperties(edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
+    /**
+     * JSON property names the v3 {@code Query} deserializes and the v1 model does not, read the same way as {@link #V1_QUERY_PROPERTIES}. A
+     * stored pre-v3 {@code query} node holding any of them is not a v1 query.
+     */
     private static final Set<String> V3_ONLY_QUERY_PROPERTIES =
-        Set.of("phenotypicClause", "select", "authorizationFilters", "genomicFilters");
+        deserializableProperties(edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query.class).stream()
+            .filter(name -> !V1_QUERY_PROPERTIES.contains(name)).collect(Collectors.toUnmodifiableSet());
 
     private final OperationsClient operationsClient;
     private final ResourceWebClient hpds;
@@ -264,7 +267,8 @@ public class QueryService {
      * read such a node as an empty query, and re-running that would overwrite the saved query with an unfiltered one.
      */
     private QueryRequest translatedRequest(StoredQuery stored) {
-        JsonNode translated = stored.query() == null || !hasV1QueryShape(stored.query()) ? null : tryTranslate(stored.query());
+        JsonNode root = parseOrNull(stored.query());
+        JsonNode translated = root != null && hasV1QueryShape(root) ? tryTranslate(root) : null;
         if (translated != null) {
             try {
                 return MAPPER.treeToValue(translated, QueryRequest.class);
@@ -280,21 +284,36 @@ public class QueryService {
 
     /**
      * Returns whether the stored body's nested {@code query} object carries at least one v1 {@code Query} property and no v3-only property.
-     * A body that does not parse, or has no object-valued {@code query}, returns {@code false}.
+     * A body with no object-valued {@code query} returns {@code false}.
+     *
+     * @param root the parsed stored {@code QueryRequest} body
      */
-    static boolean hasV1QueryShape(String json) {
-        JsonNode queryNode;
-        try {
-            queryNode = MAPPER.readTree(json).get("query");
-        } catch (JsonProcessingException e) {
-            return false;
-        }
+    static boolean hasV1QueryShape(JsonNode root) {
+        JsonNode queryNode = root.get("query");
         if (queryNode == null || !queryNode.isObject()) {
             return false;
         }
         Set<String> keys = new HashSet<>();
         queryNode.fieldNames().forEachRemaining(keys::add);
         return keys.stream().noneMatch(V3_ONLY_QUERY_PROPERTIES::contains) && keys.stream().anyMatch(V1_QUERY_PROPERTIES::contains);
+    }
+
+    /** Returns the JSON property names Jackson can deserialize into {@code type}. */
+    private static Set<String> deserializableProperties(Class<?> type) {
+        return V1_QUERY_MAPPER.getDeserializationConfig().introspect(V1_QUERY_MAPPER.constructType(type)).findProperties().stream()
+            .filter(BeanPropertyDefinition::couldDeserialize).map(BeanPropertyDefinition::getName).collect(Collectors.toUnmodifiableSet());
+    }
+
+    /** Parses a stored body, returning {@code null} for a null body or one that is not JSON. */
+    private static JsonNode parseOrNull(String json) {
+        if (json == null) {
+            return null;
+        }
+        try {
+            return MAPPER.readTree(json);
+        } catch (JsonProcessingException e) {
+            return null;
+        }
     }
 
     private StoredQuery load(UUID picsureId) {
@@ -373,7 +392,8 @@ public class QueryService {
             return null;
         }
         if (!isV3(stored)) {
-            JsonNode translated = tryTranslate(json);
+            JsonNode root = parseOrNull(json);
+            JsonNode translated = root == null ? null : tryTranslate(root);
             if (translated != null) {
                 // Normalize to the same Map shape the v3/raw path returns, so queryJson has one type regardless of stored version.
                 return MAPPER.convertValue(translated, Object.class);
@@ -383,14 +403,14 @@ public class QueryService {
     }
 
     /**
-     * Attempts to translate a stored v1 {@code QueryRequest} wrapper: parse it, deserialize its {@code query} node as a v1 {@code Query},
-     * translate to v3, and re-embed. Returns {@code null} when the body is not a wrapper object, has no object-valued {@code query} node,
-     * or cannot be translated ({@link edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException} or any
-     * Jackson error). Never throws. {@link #buildQueryJson} then falls back to the raw body; {@link #upgradeToV3} rejects the row with 422.
+     * Attempts to translate a parsed stored v1 {@code QueryRequest} wrapper: deserialize its {@code query} node as a v1 {@code Query},
+     * translate to v3, and re-embed it in {@code root}. Returns {@code null} when the body is not a wrapper object, has no object-valued
+     * {@code query} node, or cannot be translated
+     * ({@link edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException} or any Jackson error). Never throws.
+     * {@link #buildQueryJson} then falls back to the raw body; {@link #upgradeToV3} rejects the row with 422.
      */
-    JsonNode tryTranslate(String json) {
+    JsonNode tryTranslate(JsonNode root) {
         try {
-            JsonNode root = MAPPER.readTree(json);
             if (!(root instanceof ObjectNode wrapper)) {
                 return null;
             }
