@@ -12,6 +12,7 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
+import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 
@@ -43,10 +44,13 @@ public class AggregateBackendClient {
 
     private final RestClient http;
     private final AggregateProperties props;
+    private final HpdsProperties hpdsProps;
 
-    public AggregateBackendClient(@Qualifier("aggregateRestClient") RestClient http, AggregateProperties props) {
+    /** Reads only {@link HpdsProperties#getApiPath()} from {@code hpdsProps}, so the aggregate and query calls share one HPDS_API_PATH. */
+    public AggregateBackendClient(@Qualifier("aggregateRestClient") RestClient http, AggregateProperties props, HpdsProperties hpdsProps) {
         this.http = http;
         this.props = props;
+        this.hpdsProps = hpdsProps;
     }
 
     public SearchResults search(QueryRequest req) {
@@ -85,8 +89,7 @@ public class AggregateBackendClient {
     }
 
     private String openUrl(String path) {
-        String apiPath = props.getHpdsApiPath() == null ? "" : props.getHpdsApiPath();
-        return props.getHpdsOpenUrl() + apiPath + path;
+        return props.getHpdsOpenUrl() + hpdsProps.getApiPath() + path;
     }
 
     private RestClient.RequestBodySpec post(String absoluteUrl, QueryRequest body) {

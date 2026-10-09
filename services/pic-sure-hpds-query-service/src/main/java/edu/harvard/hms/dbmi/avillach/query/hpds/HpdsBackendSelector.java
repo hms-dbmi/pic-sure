@@ -56,7 +56,6 @@ public class HpdsBackendSelector {
                 "HPDS backend '" + backend + "' is not configured in this deployment"
             );
         }
-        String apiPath = props.getApiPath() == null ? "" : props.getApiPath();
-        return new HpdsTarget(base + apiPath, token);
+        return new HpdsTarget(base + props.getApiPath(), token);
     }
 }
