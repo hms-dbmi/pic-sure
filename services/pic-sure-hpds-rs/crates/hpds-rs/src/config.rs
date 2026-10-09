@@ -49,7 +49,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `LARGE_TASK_THREADS` | 1 | Exports run at once on the large pool |
 /// | `HPDS_EXPORT_CONCURRENCY` | 2 | Exports run at once across both pools; each pins its selected blocks |
 /// | `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) run at once |
-/// | `HPDS_MAX_CONNECTIONS` | 512 | Most connections served at once; further clients wait for a slot |
+/// | `HPDS_MAX_CONNECTIONS` | 512 | Most connections served at once; a connection past the cap is answered 503 and closed |
 /// | `HPDS_BLOCKING_THREADS` | 64, or the engine concurrency plus 16 when larger | Cap on tokio's blocking threads, which run every engine call; must exceed `HPDS_ENGINE_CONCURRENCY` |
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {

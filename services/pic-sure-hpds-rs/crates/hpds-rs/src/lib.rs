@@ -21,7 +21,8 @@
 //! Client errors and server errors are `text/plain` messages ([`ApiError`]). A request body
 //! that is not fully received within 30 seconds of the request starting is answered 408, however
 //! steadily it trickles, and so is a request whose headers take more than 10 seconds to arrive
-//! ([`serve`]). Open connections are capped ([`ServerTimeouts::max_connections`]).
+//! ([`serve`]). Open connections are capped ([`ServerTimeouts::max_connections`]); a connection
+//! past the cap is answered 503 and closed.
 
 use std::future::Future;
 use std::io::{self, Read, Write};
@@ -42,8 +43,10 @@ use hyper_util::server::conn::auto;
 use hyper_util::server::graceful::GracefulShutdown;
 use hyper_util::service::TowerToHyperService;
 use serde::Serialize;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::sync::Semaphore;
+use tokio::net::TcpStream as AsyncTcpStream;
+use tokio::sync::{Semaphore, TryAcquireError};
 
 pub mod config;
 pub mod envelope;
@@ -68,9 +71,10 @@ pub struct ServerTimeouts {
     pub header_read: Duration,
     /// How long open connections may take to finish after shutdown starts.
     pub shutdown_grace: Duration,
-    /// Most connections served at once. When the cap is reached the accept loop stops accepting
-    /// until one closes, and further clients wait in the kernel backlog. A connection that
-    /// sits idle between requests is closed by `header_read`, since hyper starts the header
+    /// Most connections served at once. A connection accepted while the cap is reached is
+    /// answered `503 Service Unavailable` (`text/plain`) and closed, so clients and the
+    /// container health probe fail fast instead of waiting in the kernel backlog. A connection
+    /// that sits idle between requests is closed by `header_read`, since hyper starts the header
     /// timer when it waits for the next request on a kept-alive connection.
     pub max_connections: usize,
 }
@@ -208,8 +212,9 @@ pub fn spawn_result_reaper(state: AppState, period: Duration) -> tokio::task::Jo
 /// connections finish for at most `timeouts.shutdown_grace`, and returns.
 ///
 /// A connection that has not delivered a request's headers within `timeouts.header_read` is
-/// closed. At most `timeouts.max_connections` connections are served at once; the accept loop
-/// waits for a slot rather than spawning more tasks. HTTP/1 and HTTP/2 are both served.
+/// closed. At most `timeouts.max_connections` connections are served at once; a connection
+/// accepted past that cap is answered 503 and closed (see [`OVER_CAPACITY_RESPONSE`]). HTTP/1 and
+/// HTTP/2 are both served.
 ///
 /// # Errors
 /// Never fails once the listener is bound; accept errors are logged and retried.
@@ -227,15 +232,9 @@ pub async fn serve(
     builder.http2().timer(TokioTimer::new());
     let graceful = GracefulShutdown::new();
     let slots = Arc::new(Semaphore::new(timeouts.max_connections.max(1)));
+    let refusals = Arc::new(Semaphore::new(timeouts.max_connections.max(1)));
     tokio::pin!(shutdown);
     loop {
-        let permit = tokio::select! {
-            permit = Arc::clone(&slots).acquire_owned() => match permit {
-                Ok(permit) => permit,
-                Err(_) => break,
-            },
-            () = &mut shutdown => break,
-        };
         let stream = tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok((stream, _peer)) => stream,
@@ -246,6 +245,14 @@ pub async fn serve(
                 }
             },
             () = &mut shutdown => break,
+        };
+        let permit = match Arc::clone(&slots).try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(TryAcquireError::NoPermits) => {
+                refuse_over_capacity(stream, &refusals);
+                continue;
+            }
+            Err(TryAcquireError::Closed) => break,
         };
         let connection = builder.serve_connection_with_upgrades(
             TokioIo::new(stream),
@@ -266,6 +273,43 @@ pub async fn serve(
             tracing::warn!("open connections did not finish within the shutdown grace period");
         }
     }
+    Ok(())
+}
+
+/// Raw HTTP/1.1 response written to a connection accepted while every connection slot is taken.
+pub const OVER_CAPACITY_RESPONSE: &[u8] = b"HTTP/1.1 503 Service Unavailable\r\n\
+content-type: text/plain; charset=utf-8\r\n\
+content-length: 35\r\n\
+retry-after: 1\r\n\
+connection: close\r\n\
+\r\n\
+server is at its connection limit\r\n";
+
+/// How long a refused connection may take to receive [`OVER_CAPACITY_RESPONSE`] and close.
+const REFUSAL_DEADLINE: Duration = Duration::from_secs(1);
+
+/// Answers `stream` with [`OVER_CAPACITY_RESPONSE`] on a task of its own and closes it.
+///
+/// At most as many refusals as there are connection slots run at once, each bounded by
+/// [`REFUSAL_DEADLINE`]; past that the stream is dropped, which closes it at once. The request is
+/// never read or parsed. After the response the write side is shut down and pending input is
+/// drained briefly, so the client reads the 503 instead of a connection reset.
+fn refuse_over_capacity(stream: AsyncTcpStream, refusals: &Arc<Semaphore>) {
+    let Ok(permit) = Arc::clone(refusals).try_acquire_owned() else {
+        return;
+    };
+    tracing::warn!("connection limit reached; answering 503");
+    tokio::spawn(async move {
+        let _permit = permit;
+        let _ = tokio::time::timeout(REFUSAL_DEADLINE, write_refusal(stream)).await;
+    });
+}
+
+async fn write_refusal(mut stream: AsyncTcpStream) -> io::Result<()> {
+    stream.write_all(OVER_CAPACITY_RESPONSE).await?;
+    stream.shutdown().await?;
+    let mut sink = [0u8; 1024];
+    while stream.read(&mut sink).await? > 0 {}
     Ok(())
 }
 

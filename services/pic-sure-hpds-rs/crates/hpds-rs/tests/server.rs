@@ -157,7 +157,7 @@ async fn an_oversize_body_is_answered_413() {
 }
 
 #[tokio::test]
-async fn connections_past_the_cap_wait_until_a_slot_frees() {
+async fn connections_past_the_cap_are_answered_503_at_once() {
     let f = fixture();
     let (addr, stop, handle) = start(
         &f,
@@ -181,20 +181,58 @@ async fn connections_past_the_cap_wait_until_a_slot_frees() {
         .await
         .unwrap();
     let mut buffer = Vec::new();
-    let waited =
-        tokio::time::timeout(Duration::from_millis(400), third.read_to_end(&mut buffer)).await;
+    tokio::time::timeout(Duration::from_secs(2), third.read_to_end(&mut buffer))
+        .await
+        .expect("a connection past the cap was left waiting")
+        .unwrap();
+    let refused = String::from_utf8_lossy(&buffer);
+    assert!(refused.starts_with("HTTP/1.1 503 "), "{refused}");
+    assert!(refused.contains("content-type: text/plain"), "{refused}");
     assert!(
-        waited.is_err(),
-        "a third connection was served past the cap"
+        refused.ends_with("server is at its connection limit\r\n"),
+        "{refused}"
     );
     drop(first);
-    tokio::time::timeout(Duration::from_secs(3), third.read_to_end(&mut buffer))
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let mut fourth = TcpStream::connect(addr).await.unwrap();
+    fourth
+        .write_all(b"GET /actuator/health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
         .await
-        .expect("the waiting connection was never served")
         .unwrap();
-    assert!(String::from_utf8_lossy(&buffer).starts_with("HTTP/1.1 "));
+    let mut served = Vec::new();
+    tokio::time::timeout(Duration::from_secs(3), fourth.read_to_end(&mut served))
+        .await
+        .expect("a connection after a slot freed was never served")
+        .unwrap();
+    assert!(String::from_utf8_lossy(&served).starts_with("HTTP/1.1 200 "));
     drop(stop);
     drop(second);
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn the_health_probe_fails_fast_at_the_connection_cap() {
+    let f = fixture();
+    let (addr, stop, handle) = start(
+        &f,
+        ServerTimeouts {
+            header_read: Duration::from_secs(60),
+            shutdown_grace: Duration::from_millis(300),
+            max_connections: 1,
+        },
+    )
+    .await;
+    let held = TcpStream::connect(addr).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let port = addr.port();
+    let started = std::time::Instant::now();
+    let healthy = tokio::task::spawn_blocking(move || hpds_rs::probe_health(port))
+        .await
+        .unwrap();
+    assert!(!healthy);
+    assert!(started.elapsed() < Duration::from_millis(1500));
+    drop(held);
+    drop(stop);
     handle.await.unwrap();
 }
 
