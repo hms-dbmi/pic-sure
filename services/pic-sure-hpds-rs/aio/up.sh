@@ -12,9 +12,16 @@
 #
 # The container is created, attached to both networks, then started. An existing hpds-rs is
 # replaced safely: the new one is created under a temporary name, started, and must report
-# healthy before the names are swapped and the old one is stopped and removed. If the new one
-# does not come up it is removed and the old one keeps running, so a query service pointed at
-# hpds-rs stays served. Both containers share the results directory while they overlap.
+# healthy before the names are swapped. If the new one does not come up it is removed and the
+# old one keeps running, so a query service pointed at hpds-rs stays served. Both containers
+# share the results directory while they overlap.
+#
+# After the swap the old container keeps running as hpds-rs-old for a grace period
+# (HPDS_RS_SWAP_GRACE_SECONDS, default 60) before it is stopped and removed. The rename takes
+# it out of Docker DNS but leaves its address and its network attachments alone, so a Java
+# query service that cached the old address (the JVM keeps a DNS answer for about 30 seconds)
+# keeps getting answers instead of connect timeouts until its cache expires. Interrupting the
+# grace period removes the old container at once.
 #
 # Settings come from $DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env, written on the first run from
 # the Java hpds.env: ID_BATCH_SIZE, SMALL_TASK_THREADS, LARGE_TASK_THREADS and
@@ -43,8 +50,11 @@ java_setting() {
   echo "$value"
 }
 
+SWAP_GRACE_SECONDS="${HPDS_RS_SWAP_GRACE_SECONDS:-60}"
+
 parse_args "$@"
 [[ ${#ARGS[@]} -eq 0 ]] || { usage >&2; exit 2; }
+[[ "$SWAP_GRACE_SECONDS" =~ ^[0-9]+$ ]] || fail "HPDS_RS_SWAP_GRACE_SECONDS=$SWAP_GRACE_SECONDS is not a whole number of seconds"
 require_config_dir
 require_docker
 require_networks
@@ -114,15 +124,20 @@ act docker update --restart always "$create_name"
 if [[ "$create_name" == "$new_name" ]]; then
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "+ docker rename $HPDS_RS_CONTAINER $old_name; docker rename $new_name $HPDS_RS_CONTAINER"
+    echo "+ keep $old_name serving its address for ${SWAP_GRACE_SECONDS}s"
     echo "+ docker stop $old_name; docker rm $old_name"
   else
     docker rename "$HPDS_RS_CONTAINER" "$old_name"
     docker rename "$new_name" "$HPDS_RS_CONTAINER"
     unregister_container "$new_name"
+    register_container "$old_name"
     docker update --restart no "$old_name" >/dev/null
+    log "replaced $HPDS_RS_CONTAINER; $old_name keeps serving its address for ${SWAP_GRACE_SECONDS}s"
+    sleep "$SWAP_GRACE_SECONDS"
     docker stop "$old_name" >/dev/null
     docker rm "$old_name" >/dev/null
-    log "replaced $HPDS_RS_CONTAINER"
+    unregister_container "$old_name"
+    log "removed $old_name"
   fi
 else
   unregister_container "$create_name"

@@ -17,6 +17,7 @@
 #   JAVA_ETL_IMAGE      Java ETL image holding ExportForMigration (found automatically)
 #   HEALTH_TIMEOUT      seconds to wait for a container to become healthy (180)
 #   STABILITY_SECONDS   seconds a container without a healthcheck must stay running (5)
+#   HPDS_RS_SWAP_GRACE_SECONDS  seconds up.sh keeps a replaced hpds-rs serving its old address (60)
 
 AIO_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 RS_ROOT="$(cd -P "$AIO_DIR/.." && pwd -P)"

@@ -56,10 +56,17 @@ attaches it to both networks, then starts it. It mounts `hpds-rs/` at `/opt/loca
 read-only, the results directory at `/var/lib/hpds-rs/results` and the logs at
 `/var/log/hpds-rs`, uses `--restart always`, and waits for the container healthcheck (store
 open with at least one concept). When `hpds-rs` already exists, the replacement is created as
-`hpds-rs-new`, started and proven healthy first; only then are the names swapped and the old
-container stopped and removed. If the replacement does not come up it is removed and the old
-one keeps running, which matters while the query service points at `hpds-rs`. The two
-containers share the results directory during the overlap.
+`hpds-rs-new`, started and proven healthy first; only then are the names swapped. If the
+replacement does not come up it is removed and the old one keeps running, which matters while
+the query service points at `hpds-rs`. The two containers share the results directory during
+the overlap.
+
+After the swap the old container stays up as `hpds-rs-old` for `HPDS_RS_SWAP_GRACE_SECONDS`
+(default 60) and is then stopped and removed. The query service is a JVM, and it caches the
+address `hpds-rs` resolved to for about 30 seconds. Removing the old container right away left
+that cached address pointing at nothing, and queries failed with 502 "Connect timed out" until
+the cache expired. The rename takes the old container out of Docker DNS, so new lookups reach
+the replacement, but it keeps its address and still answers anyone holding it.
 
 `hpds-rs.env` is written once from `hpds/hpds.env`: `ID_BATCH_SIZE`, `SMALL_TASK_THREADS`,
 `LARGE_TASK_THREADS` and `hpds.requireAuthorizationFilter` (which becomes

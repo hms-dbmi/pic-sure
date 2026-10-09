@@ -24,6 +24,7 @@ export QS_CONTAINER=qs-t
 export HPDS_RS_CONTAINER=hpds-rs-t
 export HPDS_JAVA_CONTAINER=hpds-java-t
 export HEALTH_TIMEOUT=60
+export HPDS_RS_SWAP_GRACE_SECONDS=1
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/aio-functional.XXXXXX")"
 export DOCKER_CONFIG_DIR="$WORK/cfg"
@@ -211,7 +212,32 @@ expect_equal "old hpds-rs still running" "$(docker container inspect -f '{{.Id}}
 expect_equal "old hpds-rs still healthy" "$(docker container inspect -f '{{.State.Health.Status}}' hpds-rs-t)" healthy
 expect_equal "no leftover hpds-rs temporary containers" "$(docker ps -a --format '{{.Names}}' | grep -c '^hpds-rs-t-' || true)" 0
 cp -p "$WORK/hpds-rs.env.good" "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env"
-"$AIO/up.sh"
+
+echo "--- a replaced hpds-rs keeps serving its old address during the grace period"
+ip_on_picsure() {
+  docker container inspect -f '{{(index .NetworkSettings.Networks "picsure-t").IPAddress}}' "$1"
+}
+probe() {
+  docker run --rm --network picsure-t alpine:3.20 sh -c "$1" 2>&1
+}
+old_rs_ip="$(ip_on_picsure hpds-rs-t)"
+HPDS_RS_SWAP_GRACE_SECONDS=30 "$AIO/up.sh" > "$WORK/up-grace.log" 2>&1 &
+up_pid=$!
+waited=0
+until [[ "$(docker container inspect -f '{{.Name}}' hpds-rs-t-old 2>/dev/null || true)" == "/hpds-rs-t-old" ]] \
+  && [[ "$(docker container inspect -f '{{.Id}}' hpds-rs-t 2>/dev/null || true)" != "$old_rs_id" ]]; do
+  [[ "$waited" -lt 90 ]] || break
+  sleep 1
+  waited=$((waited + 1))
+done
+expect_equal "old container renamed and still running" "$(docker container inspect -f '{{.Id}} {{.State.Running}}' hpds-rs-t-old 2>/dev/null || echo absent)" "$old_rs_id true"
+expect_equal "old container keeps its address" "$(ip_on_picsure hpds-rs-t-old 2>/dev/null || echo absent)" "$old_rs_ip"
+expect_equal "old address still answers health" "$(probe "wget -q -T 5 -O - http://$old_rs_ip:8080/actuator/health" | tr -d ' ')" '{"status":"UP"}'
+new_rs_ip="$(ip_on_picsure hpds-rs-t)"
+[[ -n "$new_rs_ip" && "$new_rs_ip" != "$old_rs_ip" ]] && pass "replacement has its own address" || check_failed "replacement has its own address"
+expect_equal "the name resolves to the replacement" "$(probe 'getent hosts hpds-rs-t' | awk '{print $1}')" "$new_rs_ip"
+if wait "$up_pid"; then pass "up finished after the grace period"; else check_failed "up finished after the grace period"; cat "$WORK/up-grace.log"; fi
+expect_equal "old container removed after the grace period" "$(docker container inspect hpds-rs-t-old >/dev/null 2>&1 && echo present || echo gone)" gone
 [[ "$old_rs_id" != "$(docker container inspect -f '{{.Id}}' hpds-rs-t)" ]] && pass "up swapped in a healthy replacement" || check_failed "up swapped in a healthy replacement"
 expect_equal "replacement healthy" "$(docker container inspect -f '{{.State.Health.Status}}' hpds-rs-t)" healthy
 expect_equal "replacement restarts always" "$(docker container inspect -f '{{.HostConfig.RestartPolicy.Name}}' hpds-rs-t)" always
