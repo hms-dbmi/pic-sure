@@ -7,6 +7,18 @@
 #       Runs hpds-etl load --mode new-search under /usr/bin/time -l. Records wall time, peak
 #       RSS and store size in <out-dir>.etl.txt. Without --plain the store is encrypted with
 #       <out-dir>/encryption_key, which must exist.
+#   bench/arms.sh etl-partitioned <input-dir> <out-dir>
+#       The same for hpds-etl load --mode partitioned --no-config on the host, reading every
+#       <partition>-allConcepts.csv in <input-dir>.
+#   bench/arms.sh etl-docker <harm|rust> <input-dir> <out-dir>
+#       Builds a consent-partitioned store in Docker: Java CSVLoader from JAVA_ETL_IMAGE (harm)
+#       or hpds-etl load --mode partitioned --no-config from RUST_ETL_IMAGE (rust), under
+#       ETL_MEM_LIMIT. <out-dir>/encryption_key must exist. The rust engine mounts the parent
+#       of <out-dir>, because the store is staged beside it and renamed into place. CSVLoader
+#       reads its input from the store directory, so the input files are hard-linked into it
+#       for the run and unlinked afterwards. Records wall time (container start to finish), the
+#       cgroup memory.peak (page cache included), the peak of 1 s anon samples and the store
+#       size in <out-dir>.etl.txt.
 #   bench/arms.sh compare <arm-a> <data-a> <arm-b> <data-b> <corpus> <out>
 #       Starts both arms on two ports and runs hpds-bench compare --divergences.
 #   bench/arms.sh cold <arm> <data-dir> <corpus> <out-dir>
@@ -21,7 +33,8 @@
 #       Container memory at rest: right after health UP on a fresh container, after one pass at
 #       concurrency 1, and after 30 s idle. Each point records docker stats usage, the anon
 #       bytes of the container cgroup's memory.stat and, for the Java arms, the heap in use after
-#       a full GC (jcmd GC.run, then GC.heap_info). With KEEP_RUNNING=1 the container is left
+#       a full GC (jcmd GC.run, then GC.heap_info). Also records the time to health UP and the
+#       host load. With KEEP_RUNNING=1 the container is left
 #       up for warm and exports.
 #   bench/arms.sh stop <arm> [log-file]
 #       Stops the container gracefully (the layout arm logs its block cache statistics on
@@ -32,14 +45,19 @@
 # is sampled every second as docker stats usage (which counts page cache) and as cgroup anon
 # memory (which does not); both peak and average go in summary.tsv.
 #
-# Arms: java (hms-dbmi/pic-sure-hpds:bench on javabins), layout (hms-dbmi/pic-sure-hpds:layout
-# with HPDS_STORE_FORMAT=layout on an encrypted hpds-rs store), rust (hms-dbmi/pic-sure-hpds-rs
-# on an encrypted store), rust-plain (the same on a plain store, HPDS_ALLOW_PLAIN=true).
+# Arms: java (hms-dbmi/pic-sure-hpds:bench on javabins), harm (hms-dbmi/pic-sure-hpds:harm on a
+# consent-partitioned javabin store, hpds.requireAuthorizationFilter=false), layout
+# (hms-dbmi/pic-sure-hpds:layout with HPDS_STORE_FORMAT=layout on an encrypted hpds-rs store),
+# rust (hms-dbmi/pic-sure-hpds-rs on an encrypted store, partitioned or not), rust-plain (the
+# same on a plain store, HPDS_ALLOW_PLAIN=true).
 #
 # Env: BENCH_BIN, ETL_BIN, HOST_PORT (18091), HOST_PORT_B (18092), DURATION (60s), LEAD_IN
 #      (10s), CONCURRENCIES ("1 8 32"), EXPORT_CONCURRENCIES ("1 4"), EXCLUDE (result types
 #      left out, comma separated, default none), JAVA_OPTS (-Xmx16g), CACHE_BYTES (4 GiB),
-#      MEM_LIMIT (container memory limit, default none), TIMEOUT (120s), KEEP_RUNNING (0).
+#      MEM_LIMIT (container memory limit, default none), TIMEOUT (120s), KEEP_RUNNING (0),
+#      CONTAINER_PREFIX (bench-arm; every container this script starts is named after it),
+#      JAVA_HARM_IMAGE, JAVA_ETL_IMAGE, RUST_HPDS_IMAGE, RUST_ETL_IMAGE, HEAPSIZE (Java ETL heap
+#      in MiB, 9000), ETL_MEM_LIMIT (11g), ETL_THREADS (hpds-etl --threads, default its own).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,6 +75,12 @@ CACHE_BYTES="${CACHE_BYTES:-4294967296}"
 MEM_LIMIT="${MEM_LIMIT:-}"
 TIMEOUT="${TIMEOUT:-120s}"
 KEEP_RUNNING="${KEEP_RUNNING:-0}"
+CONTAINER_PREFIX="${CONTAINER_PREFIX:-bench-arm}"
+JAVA_ETL_IMAGE="${JAVA_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-etl:harm}"
+RUST_ETL_IMAGE="${RUST_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-rs-etl:LATEST}"
+HEAPSIZE="${HEAPSIZE:-9000}"
+ETL_MEM_LIMIT="${ETL_MEM_LIMIT:-11g}"
+ETL_THREADS="${ETL_THREADS:-}"
 
 log() {
   printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >&2
@@ -67,12 +91,13 @@ now() {
 }
 
 container_of() {
-  echo "bench-arm-$1"
+  echo "$CONTAINER_PREFIX-$1"
 }
 
 image_of() {
   case "$1" in
     java) echo "${JAVA_HPDS_IMAGE:-hms-dbmi/pic-sure-hpds:bench}" ;;
+    harm) echo "${JAVA_HARM_IMAGE:-hms-dbmi/pic-sure-hpds:harm}" ;;
     layout) echo "${LAYOUT_HPDS_IMAGE:-hms-dbmi/pic-sure-hpds:layout}" ;;
     rust | rust-plain) echo "${RUST_HPDS_IMAGE:-hms-dbmi/pic-sure-hpds-rs:LATEST}" ;;
     *) echo "unknown arm $1" >&2; return 2 ;;
@@ -82,7 +107,7 @@ image_of() {
 arm_env() {
   local common=(-e SMALL_JOB_LIMIT=100 -e SMALL_TASK_THREADS=4 -e LARGE_TASK_THREADS=2 -e ID_BATCH_SIZE=1000)
   case "$1" in
-    java)
+    java | harm)
       printf '%s\n' "${common[@]}" -e CACHE_SIZE=1500 -e PICSURE_ACTUATOR_EXPOSURE=health \
         -e hpds.requireAuthorizationFilter=false -e "JAVA_OPTS=$JAVA_OPTS" ;;
     layout)
@@ -98,7 +123,7 @@ arm_env() {
 }
 
 drop_vm_page_cache() {
-  docker run --rm --name bench-drop-caches --privileged alpine:3.20 \
+  docker run --rm --name "$CONTAINER_PREFIX-drop-caches" --privileged alpine:3.20 \
     sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
 }
 
@@ -276,16 +301,21 @@ run_rest() {
   container="$(container_of "$arm")"
   docker rm -f "$container" >/dev/null 2>&1 || true
   drop_vm_page_cache
+  local t0 t1
+  t0=$(now)
   start_arm "$arm" "$data" "$HOST_PORT"
+  t1=$(now)
   sleep 2
   {
-    echo "arm=$arm java_opts=$JAVA_OPTS cache_bytes=$CACHE_BYTES mem_limit=$MEM_LIMIT"
+    echo "arm=$arm image=$(image_of "$arm") java_opts=$JAVA_OPTS cache_bytes=$CACHE_BYTES mem_limit=$MEM_LIMIT"
+    awk -v a="$t0" -v b="$t1" 'BEGIN {printf "startup_s=%.2f\n", b - a}'
+    echo "start_host_load1=$(sysctl -n vm.loadavg | awk '{print $2}')"
     echo "rest_cold $(rest_point "$container")"
   } > "$out"
   local args=(--url "http://127.0.0.1:$HOST_PORT/PIC-SURE" --corpus "$corpus" --timeout "$TIMEOUT" --only sync)
   [[ -n "$EXCLUDE" ]] && args+=(--exclude "$EXCLUDE")
   "$BENCH_BIN" load "${args[@]}" --concurrency 1 --passes 1 > "$dir/$arm-rest-pass.json"
-  echo "after_pass usage=$(mem_now "$container") anon_mib=$(anon_mib "$container")" >> "$out"
+  echo "after_pass usage=$(mem_now "$container") anon_mib=$(anon_mib "$container") host_load1=$(sysctl -n vm.loadavg | awk '{print $2}')" >> "$out"
   sleep 30
   echo "rest_warm $(rest_point "$container")" >> "$out"
   cat "$out" >&2
@@ -302,12 +332,12 @@ stop_arm() {
 
 run_compare() {
   local arm_a="$1" data_a="$2" arm_b="$3" data_b="$4" corpus="$5" out="$6"
-  start_arm "$arm_a" "$data_a" "$HOST_PORT" "bench-cmp-a"
-  start_arm "$arm_b" "$data_b" "$HOST_PORT_B" "bench-cmp-b"
+  start_arm "$arm_a" "$data_a" "$HOST_PORT" "$CONTAINER_PREFIX-cmp-a"
+  start_arm "$arm_b" "$data_b" "$HOST_PORT_B" "$CONTAINER_PREFIX-cmp-b"
   local status=0
   "$BENCH_BIN" compare --a "http://127.0.0.1:$HOST_PORT/PIC-SURE" --b "http://127.0.0.1:$HOST_PORT_B/PIC-SURE" \
     --corpus "$corpus" --divergences "$HERE/divergences.json" --retries 1 > "$out" 2>&1 || status=$?
-  docker rm -f bench-cmp-a bench-cmp-b >/dev/null 2>&1 || true
+  docker rm -f "$CONTAINER_PREFIX-cmp-a" "$CONTAINER_PREFIX-cmp-b" >/dev/null 2>&1 || true
   tail -3 "$out" >&2
   return "$status"
 }
@@ -331,8 +361,88 @@ run_etl() {
   } | tee "$out.etl.txt"
 }
 
+run_etl_partitioned() {
+  local input="$1" out="$2"
+  [[ -s "$out/encryption_key" ]] || { echo "missing $out/encryption_key" >&2; return 1; }
+  local args=(load --mode partitioned --no-config --input-dir "$input" --out "$out")
+  [[ -n "$ETL_THREADS" ]] && args+=(--threads "$ETL_THREADS")
+  local t0 t1
+  t0=$(now)
+  /usr/bin/time -l "$ETL_BIN" "${args[@]}" > "$out.etl.log" 2>&1
+  t1=$(now)
+  {
+    awk -v a="$t0" -v b="$t1" 'BEGIN {printf "wall_s=%.1f\n", b - a}'
+    awk '/maximum resident set size/ {printf "peak_rss_mib=%.0f\n", $1 / 1048576}' "$out.etl.log"
+    echo "host_load1=$(sysctl -n vm.loadavg | awk '{print $2}')"
+    echo "store_kib=$(du -sk "$out" | awk '{print $1}')"
+  } | tee "$out.etl.txt"
+}
+
+# Seconds between a finished container's start and finish, from docker inspect.
+container_run_seconds() {
+  docker inspect -f '{{.State.StartedAt}} {{.State.FinishedAt}}' "$1" | python3 -c '
+import sys
+from datetime import datetime
+def parse(t):
+    head, _, frac = t.rstrip("Z").partition(".")
+    return datetime.fromisoformat(head).timestamp() + float("0." + (frac or "0"))
+a, b = sys.stdin.read().split()
+print(f"{parse(b) - parse(a):.1f}")'
+}
+
+run_etl_docker() {
+  local engine="$1" input="$2" out="$3"
+  [[ -s "$out/encryption_key" ]] || { echo "missing $out/encryption_key" >&2; return 1; }
+  local name="$CONTAINER_PREFIX-etl-$engine" linked=() f
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  case "$engine" in
+    harm)
+      for f in "$input"/*-allConcepts.csv; do
+        ln "$f" "$out/$(basename "$f")"
+        linked+=("$out/$(basename "$f")")
+      done
+      docker run -d --name "$name" --memory "$ETL_MEM_LIMIT" --memory-swap "$ETL_MEM_LIMIT" \
+        --user "$(id -u):$(id -g)" -e LOADER_NAME=CSVLoader -e "HEAPSIZE=$HEAPSIZE" \
+        -v "$out:/opt/local/hpds" "$JAVA_ETL_IMAGE" >/dev/null ;;
+    rust)
+      local threads=()
+      [[ -n "$ETL_THREADS" ]] && threads=(--threads "$ETL_THREADS")
+      docker run -d --name "$name" --memory "$ETL_MEM_LIMIT" --memory-swap "$ETL_MEM_LIMIT" \
+        --user "$(id -u):$(id -g)" -v "$input:/input:ro" -v "$(dirname "$out"):/work" "$RUST_ETL_IMAGE" \
+        load --mode partitioned --no-config --input-dir /input --out "/work/$(basename "$out")" \
+        "${threads[@]}" >/dev/null ;;
+    *) echo "unknown ETL engine $engine" >&2; return 2 ;;
+  esac
+  local stats="$out.etl.stats" peak=0 p a
+  : > "$stats"
+  while [[ "$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" == "true" ]]; do
+    p=$(docker exec "$name" cat /sys/fs/cgroup/memory.peak 2>/dev/null || true)
+    [[ "$p" =~ ^[0-9]+$ ]] && peak="$p"
+    a=$(anon_mib "$name" || true)
+    echo "$(date +%s) ${a:--} $peak" >> "$stats"
+    sleep 1
+  done
+  local code
+  code=$(docker inspect -f '{{.State.ExitCode}} oom={{.State.OOMKilled}}' "$name")
+  docker logs "$name" > "$out.etl.log" 2>&1 || true
+  {
+    echo "engine=$engine image=$(docker inspect -f '{{.Config.Image}}' "$name") mem_limit=$ETL_MEM_LIMIT heapsize_mib=$HEAPSIZE threads=${ETL_THREADS:-default}"
+    echo "exit=$code"
+    echo "wall_s=$(container_run_seconds "$name")"
+    awk '$NF ~ /^[0-9]+$/ {printf "memory_peak_mib=%.0f\n", $NF / 1048576}' "$stats" | tail -1
+    awk '$2 ~ /^[0-9]+$/ {print $2}' "$stats" | sort -n | tail -1 | awk '{print "peak_anon_mib=" $1}'
+    echo "host_load1=$(sysctl -n vm.loadavg | awk '{print $2}')"
+  } > "$out.etl.txt"
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  [[ ${#linked[@]} -eq 0 ]] || rm -f "${linked[@]}"
+  echo "store_kib=$(du -sk "$out" | awk '{print $1}')" >> "$out.etl.txt"
+  cat "$out.etl.txt"
+}
+
 case "${1:-}" in
   etl) run_etl "$2" "$3" "${4:-}" ;;
+  etl-partitioned) run_etl_partitioned "$2" "$3" ;;
+  etl-docker) run_etl_docker "$2" "$3" "$4" ;;
   compare) run_compare "$2" "$3" "$4" "$5" "$6" "$7" ;;
   cold) run_cold "$2" "$3" "$4" "$5" ;;
   warm) run_warm "$2" "$3" "$4" "$5" ;;
