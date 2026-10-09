@@ -3,7 +3,11 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use hpds_query::{DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, StoreOptions};
+use hpds_query::{
+    DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_MAX_CLAUSE_DEPTH,
+    DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_QUERY_CONCEPTS,
+    DEFAULT_MAX_SELECT_PATHS, QueryLimits, StoreOptions,
+};
 
 /// Port used when `SERVER_PORT` is not set.
 pub const DEFAULT_PORT: u16 = 8080;
@@ -19,6 +23,9 @@ pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 
 /// Default byte cap on the finished export files held at once, 10 GiB.
 pub const DEFAULT_RESULT_MAX_BYTES: u64 = 10 << 30;
+
+/// Default byte cap on one export file while it is written, 4 GiB.
+pub const DEFAULT_RESULT_MAX_FILE_BYTES: u64 = 4 << 30;
 
 /// Default seconds a sync query may run before the request is answered 503.
 pub const DEFAULT_SYNC_TIMEOUT_SECONDS: u64 = 300;
@@ -42,6 +49,12 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_RESULT_MAX_BYTES` | 10 GiB | Byte cap on finished export files; the oldest finished result goes first |
 /// | `ID_BATCH_SIZE` | 0 | Java's export switch: 0 disables DATAFRAME exports, any larger value enables them |
 /// | `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds; a wider export ends in ERROR |
+/// | `HPDS_RESULT_MAX_FILE_BYTES` | 4 GiB | Cap on one export file, checked as it is written; a larger export ends in ERROR and its partial file is deleted |
+/// | `HPDS_MAX_SELECT_PATHS` | 5,000 | Most distinct `select` paths in a query |
+/// | `HPDS_MAX_CLAUSE_DEPTH` | 64 | Deepest nesting of phenotypic subqueries |
+/// | `HPDS_MAX_CLAUSE_NODES` | 10,000 | Most clauses and authorization filters in a query |
+/// | `HPDS_MAX_QUERY_CONCEPTS` | 20,000 | Most concepts a query touches, `ANY_RECORD_OF` expansions included |
+/// | `HPDS_MAX_CROSS_COUNT_ENTRIES` | 5,000,000 | Most entries in a categorical or continuous cross count |
 /// | `HPDS_SYNC_TIMEOUT_SECONDS` | 300 | A sync query running longer is answered 503 |
 /// | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated file there |
 /// | `SMALL_JOB_LIMIT` | 100 | An export with more `select` paths than this runs on the large pool |
@@ -73,6 +86,10 @@ pub struct Config {
     pub id_batch_size: u64,
     /// Cap on the decoded blocks one DATAFRAME export holds.
     pub export_pin_bytes: u64,
+    /// Cap on one export file while it is written.
+    pub result_max_file_bytes: u64,
+    /// Per-query bounds the engine enforces.
+    pub query_limits: QueryLimits,
     /// How long a sync query may run before the request is answered 503.
     pub sync_timeout: Duration,
     /// Directory for the rotated log file, when set.
@@ -189,6 +206,38 @@ impl Config {
                 "HPDS_EXPORT_PIN_BYTES",
                 DEFAULT_EXPORT_PIN_BYTES,
             )?,
+            result_max_file_bytes: positive_u64(
+                &lookup,
+                "HPDS_RESULT_MAX_FILE_BYTES",
+                DEFAULT_RESULT_MAX_FILE_BYTES,
+            )?,
+            query_limits: QueryLimits {
+                max_select_paths: positive(
+                    &lookup,
+                    "HPDS_MAX_SELECT_PATHS",
+                    DEFAULT_MAX_SELECT_PATHS,
+                )?,
+                max_clause_depth: positive(
+                    &lookup,
+                    "HPDS_MAX_CLAUSE_DEPTH",
+                    DEFAULT_MAX_CLAUSE_DEPTH,
+                )?,
+                max_clause_nodes: positive(
+                    &lookup,
+                    "HPDS_MAX_CLAUSE_NODES",
+                    DEFAULT_MAX_CLAUSE_NODES,
+                )?,
+                max_query_concepts: positive(
+                    &lookup,
+                    "HPDS_MAX_QUERY_CONCEPTS",
+                    DEFAULT_MAX_QUERY_CONCEPTS,
+                )?,
+                max_cross_count_entries: positive_u64(
+                    &lookup,
+                    "HPDS_MAX_CROSS_COUNT_ENTRIES",
+                    DEFAULT_MAX_CROSS_COUNT_ENTRIES,
+                )?,
+            },
             sync_timeout: Duration::from_secs(positive_u64(
                 &lookup,
                 "HPDS_SYNC_TIMEOUT_SECONDS",
@@ -307,6 +356,12 @@ mod tests {
         assert_eq!(c.result_limit, 1000);
         assert!(c.engine_concurrency < c.blocking_threads);
         assert_eq!(c.max_connections, 512);
+        assert_eq!(c.result_max_file_bytes, 4 << 30);
+        assert_eq!(c.query_limits, QueryLimits::default());
+        assert_eq!(c.query_limits.max_select_paths, 5_000);
+        assert_eq!(c.query_limits.max_clause_depth, 64);
+        assert_eq!(c.query_limits.max_clause_nodes, 10_000);
+        assert_eq!(c.query_limits.max_query_concepts, 20_000);
         assert!(config(&[("HPDS_MAX_CONNECTIONS", "0")]).is_err());
     }
 
@@ -386,5 +441,26 @@ mod tests {
         assert!(config(&[("HPDS_ALLOW_PLAIN", "maybe")]).is_err());
         assert!(config(&[("HPDS_SYNC_TIMEOUT_SECONDS", "0")]).is_err());
         assert!(config(&[("HPDS_RESULT_MAX_BYTES", "0")]).is_err());
+        for name in [
+            "HPDS_RESULT_MAX_FILE_BYTES",
+            "HPDS_MAX_SELECT_PATHS",
+            "HPDS_MAX_CLAUSE_DEPTH",
+            "HPDS_MAX_CLAUSE_NODES",
+            "HPDS_MAX_QUERY_CONCEPTS",
+            "HPDS_MAX_CROSS_COUNT_ENTRIES",
+        ] {
+            assert!(config(&[(name, "0")]).is_err(), "{name}");
+            assert!(config(&[(name, "x")]).is_err(), "{name}");
+            assert!(config(&[(name, "7")]).is_ok(), "{name}");
+        }
+        let c = config(&[
+            ("HPDS_MAX_SELECT_PATHS", "7"),
+            ("HPDS_RESULT_MAX_FILE_BYTES", "9"),
+        ])
+        .unwrap();
+        assert_eq!(
+            (c.query_limits.max_select_paths, c.result_max_file_bytes),
+            (7, 9)
+        );
     }
 }

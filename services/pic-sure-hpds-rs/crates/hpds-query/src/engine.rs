@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use hpds_format::{Block, ConceptType, java_double_cmp, java_string_cmp};
 use rayon::prelude::*;
@@ -12,6 +13,7 @@ use roaring::{MultiOps, RoaringBitmap};
 
 use crate::cohort::evaluate_selected;
 use crate::error::{QueryError, Result};
+use crate::limits::QueryLimits;
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{PartitionOptions, PartitionSet, Selection};
 use crate::results::{
@@ -30,15 +32,19 @@ pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 /// the rayon pool. From async code, call it inside `tokio::task::spawn_blocking`, or enable
 /// the `tokio` feature and use [`Engine::run_blocking`].
 ///
-/// Every computation first refuses unsupported genomic input with [`check_supported`], then
-/// selects the partitions the query's consents grant ([`PartitionSet::select`]), which fails
-/// with [`QueryError::UserConsentsRequired`] when consents are required and absent. None of
+/// Every computation first checks the query's shape against its [`QueryLimits`], refuses
+/// unsupported genomic input with [`check_supported`], selects the partitions the query's
+/// consents grant ([`PartitionSet::select`]), which fails with
+/// [`QueryError::UserConsentsRequired`] when consents are required and absent, and checks
+/// the concepts it touches in those partitions against the limits, all before any block is
+/// loaded. None of
 /// them applies [`QueryValidator`]; callers validate with [`Engine::validate`] first, where
 /// Java does.
 #[derive(Debug)]
 pub struct Engine {
     partitions: PartitionSet,
     export_pin_bytes: u64,
+    limits: QueryLimits,
 }
 
 impl Engine {
@@ -55,6 +61,7 @@ impl Engine {
         Engine {
             partitions,
             export_pin_bytes: DEFAULT_EXPORT_PIN_BYTES,
+            limits: QueryLimits::default(),
         }
     }
 
@@ -65,6 +72,33 @@ impl Engine {
     pub fn with_export_pin_bytes(mut self, bytes: u64) -> Self {
         self.export_pin_bytes = bytes;
         self
+    }
+
+    /// Sets the per-query bounds ([`QueryLimits::default`] by default). A query over a bound
+    /// fails with [`QueryError::LimitExceeded`] before any block is loaded.
+    #[must_use]
+    pub fn with_limits(mut self, limits: QueryLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    /// The per-query bounds.
+    pub fn limits(&self) -> &QueryLimits {
+        &self.limits
+    }
+
+    /// Checks `query` against the per-query bounds, counting the concepts it touches in the
+    /// partitions its consents select. Lets a caller refuse such a query before queuing work
+    /// for it.
+    ///
+    /// # Errors
+    /// [`QueryError::LimitExceeded`] naming the first bound the query breaks, and
+    /// [`QueryError::UserConsentsRequired`] when the shape is within bounds but consents are
+    /// required and absent.
+    pub fn check_limits(&self, query: &Query) -> Result<()> {
+        self.limits.check_shape(query)?;
+        let selection = self.partitions.select(query)?;
+        self.limits.check_concepts(query, &selection)
     }
 
     /// The partitions.
@@ -106,14 +140,22 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn cohort_cow(&self, query: &Query) -> Result<Cow<'_, RoaringBitmap>> {
-        check_supported(query)?;
-        let selection = self.partitions.select(query)?;
+        let selection = self.select_within_limits(query)?;
         evaluate_selected(&selection, query)
     }
 
-    fn prepare(&self, query: &Query) -> Result<(Selection<'_>, Cow<'_, RoaringBitmap>)> {
+    /// The selection `query` reads, after the shape bounds, the genomic refusal, consent
+    /// selection and the concept bound, in that order.
+    fn select_within_limits(&self, query: &Query) -> Result<Selection<'_>> {
+        self.limits.check_shape(query)?;
         check_supported(query)?;
         let selection = self.partitions.select(query)?;
+        self.limits.check_concepts(query, &selection)?;
+        Ok(selection)
+    }
+
+    fn prepare(&self, query: &Query) -> Result<(Selection<'_>, Cow<'_, RoaringBitmap>)> {
+        let selection = self.select_within_limits(query)?;
         let cohort = evaluate_selected(&selection, query)?;
         Ok((selection, cohort))
     }
@@ -173,15 +215,38 @@ impl Engine {
                 values.extend(filter.values.iter().flatten().map(String::as_str));
             }
         }
+        let entries = AtomicU64::new(0);
         let mut concepts = called_out
             .par_iter()
             .map(|(path, named)| {
                 let blocks = selection.blocks(path)?;
-                Ok(((*path).to_owned(), category_counts(&blocks, cohort, named)))
+                let counts = category_counts(&blocks, cohort, named);
+                self.reserve_entries(&entries, counts.len())?;
+                Ok(((*path).to_owned(), counts))
             })
             .collect::<Result<Vec<_>>>()?;
         concepts.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
         Ok(CategoricalCrossCounts { concepts })
+    }
+
+    fn reserve_entries(&self, total: &AtomicU64, added: usize) -> Result<()> {
+        let added = added as u64;
+        if total
+            .fetch_add(added, Ordering::Relaxed)
+            .saturating_add(added)
+            > self.limits.max_cross_count_entries
+        {
+            return Err(self.too_many_entries());
+        }
+        Ok(())
+    }
+
+    fn too_many_entries(&self) -> QueryError {
+        QueryError::LimitExceeded(format!(
+            "the cross count would hold more than {} entries (HPDS_MAX_CROSS_COUNT_ENTRIES); \
+             filter on fewer or narrower concepts",
+            self.limits.max_cross_count_entries
+        ))
     }
 
     fn is_categorical_cross_count_filter(&self, filter: &PhenotypicFilter) -> bool {
@@ -226,11 +291,16 @@ impl Engine {
             .map(|f| f.concept_path.as_str())
             .filter(|path| self.concept_type(path) == Some(ConceptType::Numeric))
             .collect();
+        let entries = AtomicU64::new(0);
+        let cap = self.limits.max_cross_count_entries;
         let mut concepts = paths
             .par_iter()
             .map(|path| {
                 let blocks = selection.blocks(path)?;
-                Ok(((*path).to_owned(), value_counts(&blocks, cohort)))
+                let counts =
+                    value_counts(&blocks, cohort, cap).ok_or_else(|| self.too_many_entries())?;
+                self.reserve_entries(&entries, counts.len())?;
+                Ok(((*path).to_owned(), counts))
             })
             .collect::<Result<Vec<_>>>()?;
         concepts.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
@@ -257,12 +327,14 @@ impl Engine {
     /// the export types (DATAFRAME, PATIENTS, DATAFRAME_TIMESERIES, DATAFRAME_PFB), and the
     /// errors of the computation, [`QueryError::UserConsentsRequired`] included.
     pub fn run_sync(&self, query: &Query) -> Result<SyncResult> {
+        self.limits.check_shape(query)?;
         check_supported(query)?;
         let result_type = query.expected_result_type;
         if !result_type.is_sync() {
             return Err(QueryError::NotSync(result_type));
         }
         let selection = self.partitions.select(query)?;
+        self.limits.check_concepts(query, &selection)?;
         let cohort = evaluate_selected(&selection, query)?;
         match result_type {
             ResultType::Count => Ok(SyncResult::Count(cohort.len())),
@@ -474,20 +546,32 @@ fn category_counts(
 }
 
 /// Per distinct value held by a cohort patient in any numeric block of `blocks`, the number
-/// of such observations over all of them, in Java `Double.compareTo` order.
-fn value_counts(blocks: &[Arc<Block>], cohort: &RoaringBitmap) -> Vec<(f64, u64)> {
+/// of such observations over all of them, in Java `Double.compareTo` order. `None` as soon
+/// as one block alone holds more than `cap` distinct values for the cohort, since the merged
+/// list is at least that long; the caller checks the merged length against the cap.
+fn value_counts(
+    blocks: &[Arc<Block>],
+    cohort: &RoaringBitmap,
+    cap: u64,
+) -> Option<Vec<(f64, u64)>> {
     let mut counts: Vec<(f64, u64)> = Vec::new();
     for block in blocks {
         let Block::Numeric(block) = block.as_ref() else {
             continue;
         };
+        let block_start = counts.len();
         for (&value, &patient) in block.values().iter().zip(block.patients()) {
             if !cohort.contains(patient) {
                 continue;
             }
-            match counts.last_mut() {
+            match counts[block_start..].last_mut() {
                 Some((last, count)) if java_double_cmp(*last, value).is_eq() => *count += 1,
-                _ => counts.push((value, 1)),
+                _ => {
+                    counts.push((value, 1));
+                    if (counts.len() - block_start) as u64 > cap {
+                        return None;
+                    }
+                }
             }
         }
     }
@@ -501,5 +585,5 @@ fn value_counts(blocks: &[Arc<Block>], cohort: &RoaringBitmap) -> Vec<(f64, u64)
             same
         });
     }
-    counts
+    Some(counts)
 }

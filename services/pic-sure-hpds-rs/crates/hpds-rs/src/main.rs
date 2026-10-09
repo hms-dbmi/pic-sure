@@ -121,7 +121,9 @@ fn main() -> ExitCode {
 async fn run(config: Config) -> ExitCode {
     let engine = match Engine::open(&config.data_dir, &config.store) {
         Ok(engine) => {
-            let engine = engine.with_export_pin_bytes(config.export_pin_bytes);
+            let engine = engine
+                .with_export_pin_bytes(config.export_pin_bytes)
+                .with_limits(config.query_limits);
             tracing::info!(store = ?engine.store(), "store opened");
             Some(Arc::new(engine))
         }
