@@ -58,10 +58,10 @@
     },
     {
       "name": "lowram-max-double-min-value",
-      "spec": "Deliberate divergences: LowRAMLoadingStore.complete initializes max to Double.MIN_VALUE (the smallest positive double), so a concept with only negative values reports a max of 4.9E-324. Rust reports the real max.",
+      "spec": "Deliberate divergences: LowRAMLoadingStore.complete and LoadingStore (CSVLoaderNewSearch) initialize max to Double.MIN_VALUE (the smallest positive double), so a concept with only negative values reports a max of 4.9E-324. Rust reports the real max.",
       "reason": "Java starts max at Double.MIN_VALUE, so a numeric concept whose real max is zero or negative reports 4.9E-324.",
       "kinds": ["columnmeta-max"],
-      "loaders": ["lowram", "migration-lowram"],
+      "loaders": ["lowram", "migration-lowram", "newsearch", "migration-newsearch"],
       "when": "java-max-is-double-min-value-and-real-max-not-positive"
     },
     {
