@@ -33,5 +33,6 @@ bytes = "1"
 
 [dev-dependencies]
 hpds-etl = { path = "../hpds-etl" }
+serde_json = { workspace = true, features = ["raw_value"] }
 tempfile.workspace = true
 tower = { version = "0.5", features = ["util"] }

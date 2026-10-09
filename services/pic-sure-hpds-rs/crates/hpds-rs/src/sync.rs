@@ -24,11 +24,20 @@ pub const QUERY_METADATA_HEADER: &str = "queryMetadata";
 /// - Any other genomic result type is a 400 text error naming it.
 /// - An export type (PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES, DATAFRAME_PFB) is a 400 with
 ///   Java's message pointing at `POST /query`.
-/// - As in Java, `QueryValidator` is not applied: a query whose authorization filter names a
-///   concept the store lacks counts 0 instead of being refused. Only genomic input is
-///   refused up front by the engine. Structural failures the engine raises while evaluating
-///   (a FILTER without criteria, an empty subquery) are 400 text errors, where Java answers
-///   500 or an empty 200.
+/// - Before any work is queued, the query's shape is checked against the limits, then its
+///   consents, then the concepts it touches in the partitions its consents select
+///   ([`hpds_query::Engine::check_limits`]). With `hpds.requireAuthorizationFilter` on, a
+///   query with no consent value (no `userConsents`, an empty list, or only null values) is a
+///   400 "User consents are required for this query". Java answers that case 200 with an
+///   empty body and no `queryMetadata` header.
+/// - The partitions read are those the query's `userConsents` select; with the flag off and
+///   no consent value, every partition. `authorizationFilters` are never applied, as on the
+///   Java branch.
+/// - As in Java, `QueryValidator` is not applied: a filter on a concept no partition holds
+///   counts 0 instead of being refused. Only genomic input is refused up front by the
+///   engine. Structural failures the engine raises while evaluating (a FILTER without
+///   criteria, an empty subquery) are 400 text errors, where Java answers 500 or an empty
+///   200.
 /// - At most `HPDS_ENGINE_CONCURRENCY` engine computations run at once; the rest wait. A query
 ///   that has not answered within `HPDS_SYNC_TIMEOUT_SECONDS`, waiting included, is a 503; its
 ///   computation finishes in the background and releases its slot then.

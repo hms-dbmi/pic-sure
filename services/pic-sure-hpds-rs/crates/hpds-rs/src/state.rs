@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use hpds_query::{Engine, QueryValidator};
+use hpds_query::Engine;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::config::Config;
@@ -11,8 +11,13 @@ use crate::error::ApiError;
 use crate::jobs::ResultRegistry;
 use crate::search::SearchIndex;
 
-/// The engine, the async result registry, the search index, and the validation settings.
-/// Cheap to clone.
+/// Health reason when the data directory could not be opened.
+pub const NOT_OPENED_REASON: &str = "the phenotype store could not be opened; see the server log";
+
+/// Health reason when the partitions were opened but hold no concept.
+pub const NO_CONCEPTS_REASON: &str = "no partition holds a concept";
+
+/// The engine, the async result registry and the search index. Cheap to clone.
 #[derive(Clone)]
 pub struct AppState {
     inner: Arc<Shared>,
@@ -24,20 +29,20 @@ struct Shared {
     results: ResultRegistry,
     search_index: Arc<SearchIndex>,
     sync_timeout: Duration,
-    async_validator: QueryValidator,
 }
 
 impl AppState {
-    /// State over `engine`, which is `None` when the store could not be opened (every query
-    /// route then answers 503 and health reports DOWN), with the registry and validation
-    /// settings of `config`. The lowercase search index is built here, once.
+    /// State over `engine`, which is `None` when the data directory could not be opened
+    /// (every query route then answers 503 and health reports DOWN), with the registry
+    /// settings of `config`. The lowercase search index over the merged dictionary is built
+    /// here, once.
     ///
     /// # Errors
     /// The I/O error of [`ResultRegistry::new`] when the results directory cannot be prepared.
     pub fn new(engine: Option<Arc<Engine>>, config: &Config) -> std::io::Result<Self> {
         let engine_slots = Arc::new(Semaphore::new(config.engine_concurrency));
         let search_index = Arc::new(engine.as_ref().map_or_else(SearchIndex::default, |e| {
-            SearchIndex::build(e.store().index().concepts())
+            SearchIndex::build(e.partitions().dictionary())
         }));
         Ok(AppState {
             inner: Arc::new(Shared {
@@ -46,9 +51,6 @@ impl AppState {
                 search_index,
                 sync_timeout: config.sync_timeout,
                 engine_slots,
-                async_validator: QueryValidator {
-                    require_authorization_filter: config.require_authorization_filter,
-                },
             }),
         })
     }
@@ -56,7 +58,7 @@ impl AppState {
     /// The engine.
     ///
     /// # Errors
-    /// A 503 [`ApiError`] when the store could not be opened.
+    /// A 503 [`ApiError`] when the data directory could not be opened.
     pub fn engine(&self) -> Result<&Arc<Engine>, ApiError> {
         self.inner
             .engine
@@ -64,13 +66,21 @@ impl AppState {
             .ok_or_else(|| ApiError::unavailable("the phenotype store is not loaded"))
     }
 
-    /// True when the store is open and its index holds at least one concept, the rule of
-    /// Java's `HpdsReadinessHealthIndicator` without genomic data.
+    /// `None` when the partitions are open and their merged dictionary holds at least one
+    /// concept, the rule of Java's `HpdsReadinessHealthIndicator` without genomic data.
+    /// Otherwise why the service is not ready: [`NOT_OPENED_REASON`] or
+    /// [`NO_CONCEPTS_REASON`].
+    pub fn down_reason(&self) -> Option<&'static str> {
+        match &self.inner.engine {
+            None => Some(NOT_OPENED_REASON),
+            Some(engine) if !engine.partitions().is_healthy() => Some(NO_CONCEPTS_REASON),
+            Some(_) => None,
+        }
+    }
+
+    /// True when [`AppState::down_reason`] is `None`.
     pub fn is_healthy(&self) -> bool {
-        self.inner
-            .engine
-            .as_ref()
-            .is_some_and(|e| e.store().is_healthy())
+        self.down_reason().is_none()
     }
 
     /// Waits for one of the `HPDS_ENGINE_CONCURRENCY` engine slots; the slot is released when
@@ -87,7 +97,7 @@ impl AppState {
         &self.inner.results
     }
 
-    /// The lowercase search index over the store's concepts.
+    /// The lowercase search index over the merged dictionary.
     pub fn search_index(&self) -> &Arc<SearchIndex> {
         &self.inner.search_index
     }
@@ -95,11 +105,5 @@ impl AppState {
     /// How long a sync query may run before the request is answered 503.
     pub fn sync_timeout(&self) -> Duration {
         self.inner.sync_timeout
-    }
-
-    /// The validator `POST /query` applies, with `hpds.requireAuthorizationFilter` from the
-    /// configuration.
-    pub fn async_validator(&self) -> &QueryValidator {
-        &self.inner.async_validator
     }
 }

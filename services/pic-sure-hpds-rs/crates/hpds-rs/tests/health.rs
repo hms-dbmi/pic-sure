@@ -1,7 +1,11 @@
 mod common;
 
+use std::sync::Arc;
+
 use axum::http::StatusCode;
 use common::{config, fixture, get};
+use hpds_query::Engine;
+use hpds_rs::state::NOT_OPENED_REASON;
 use hpds_rs::{AppState, probe_health, router};
 
 #[tokio::test]
@@ -11,6 +15,7 @@ async fn health_is_down_without_a_store() {
     let reply = get(&app, "/actuator/health").await;
     assert_eq!(reply.status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(reply.json()["status"], "DOWN");
+    assert_eq!(reply.json()["reason"], NOT_OPENED_REASON);
     let query = common::post(
         &app,
         "/PIC-SURE/v3/query/sync",
@@ -18,6 +23,49 @@ async fn health_is_down_without_a_store() {
     )
     .await;
     assert_eq!(query.status, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn a_data_directory_with_no_partitions_is_refused_and_serves_down() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(data.join("lost+found")).unwrap();
+    std::fs::write(data.join("encryption_key"), common::KEY).unwrap();
+    let settings = config(dir.path());
+    let error = Engine::open(&data, &settings.store).unwrap_err();
+    assert!(error.to_string().contains("pheno.index"), "{error}");
+    let app = router(AppState::new(None, &settings).unwrap());
+    let reply = get(&app, "/actuator/health").await;
+    assert_eq!(reply.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        reply.body,
+        format!(r#"{{"status":"DOWN","reason":"{NOT_OPENED_REASON}"}}"#)
+    );
+}
+
+#[tokio::test]
+async fn an_unpartitioned_store_is_refused_while_consents_are_required() {
+    let fixture = common::fixture();
+    let unpartitioned = fixture.store().join("partition1");
+    std::fs::copy(
+        fixture.store().join("encryption_key"),
+        unpartitioned.join("encryption_key"),
+    )
+    .unwrap();
+    let mut settings = config(fixture.dir.path());
+    settings.results_dir = fixture.dir.path().join("unpartitioned-results");
+    settings.store.require_consents = true;
+    let error = Engine::open(&unpartitioned, &settings.store).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("hpds.requireAuthorizationFilter"),
+        "{error}"
+    );
+    settings.store.require_consents = false;
+    let engine = Engine::open(&unpartitioned, &settings.store).unwrap();
+    let state = AppState::new(Some(Arc::new(engine)), &settings).unwrap();
+    assert!(state.is_healthy());
 }
 
 #[tokio::test]

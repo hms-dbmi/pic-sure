@@ -213,14 +213,17 @@ async fn a_sync_query_that_outlasts_the_timeout_is_a_503() {
 }
 
 #[tokio::test]
-async fn sync_queries_are_not_validated() {
+async fn sync_queries_are_not_validated_and_authorization_filters_are_ignored() {
     let f = fixture();
-    let missing_consents = json!({
+    let unknown_authorization = json!({
         "expectedResultType": "COUNT",
         "authorizationFilters": [{"conceptPath": "\\_consents\\", "values": ["phs000001.c1"]}]
     });
-    let reply = post(&f.app, SYNC, envelope(missing_consents)).await;
-    assert_eq!((reply.status, reply.body.as_str()), (StatusCode::OK, "0"));
+    let reply = post(&f.app, SYNC, envelope(unknown_authorization)).await;
+    assert_eq!(
+        (reply.status, reply.body.as_str()),
+        (StatusCode::OK, "4978")
+    );
 
     let required_with_values = json!({
         "expectedResultType": "COUNT",
@@ -247,7 +250,10 @@ async fn sync_queries_are_not_validated() {
         "authorizationFilters": [{"conceptPath": POPULATION, "values": []}]
     });
     let reply = post(&f.app, SYNC, envelope(empty_authorization)).await;
-    assert_eq!((reply.status, reply.body.as_str()), (StatusCode::OK, "0"));
+    assert_eq!(
+        (reply.status, reply.body.as_str()),
+        (StatusCode::OK, "4978")
+    );
 }
 
 #[tokio::test]

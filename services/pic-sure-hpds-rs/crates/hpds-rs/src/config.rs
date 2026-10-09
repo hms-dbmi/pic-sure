@@ -6,7 +6,7 @@ use std::time::Duration;
 use hpds_query::{
     DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_MAX_CLAUSE_DEPTH,
     DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_QUERY_CONCEPTS,
-    DEFAULT_MAX_SELECT_PATHS, QueryLimits, StoreOptions,
+    DEFAULT_MAX_SELECT_PATHS, PartitionOptions, QueryLimits, StoreOptions,
 };
 
 /// Port used when `SERVER_PORT` is not set.
@@ -37,12 +37,12 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 ///
 /// | Variable | Default | Meaning |
 /// |---|---|---|
-/// | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Store directory |
+/// | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store per consent subdirectory, or one unpartitioned store |
 /// | `SERVER_PORT` | 8080 | Listen port |
 /// | `HPDS_CACHE_BYTES` (or the old name `CACHE_BYTES`, with a warning) | 4 GiB | Byte bound of the decoded block cache |
 /// | `CACHE_SIZE` | ignored | Java's cache size in cubes; logged and ignored |
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
-/// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse async queries without an authorization filter |
+/// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory |
 /// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
 /// | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept; 0 or unset keeps it until evicted |
@@ -53,7 +53,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_MAX_SELECT_PATHS` | 5,000 | Most distinct `select` paths in a query |
 /// | `HPDS_MAX_CLAUSE_DEPTH` | 64 | Deepest nesting of phenotypic subqueries |
 /// | `HPDS_MAX_CLAUSE_NODES` | 10,000 | Most clauses and authorization filters in a query |
-/// | `HPDS_MAX_QUERY_CONCEPTS` | 20,000 | Most concepts a query touches, `ANY_RECORD_OF` expansions included |
+/// | `HPDS_MAX_QUERY_CONCEPTS` | 20,000 | Most concepts a query touches, `ANY_RECORD_OF` expansions included, counted over the union of the partitions its consents select |
 /// | `HPDS_MAX_CROSS_COUNT_ENTRIES` | 5,000,000 | Most entries in a categorical or continuous cross count |
 /// | `HPDS_SYNC_TIMEOUT_SECONDS` | 300 | A sync query running longer is answered 503 |
 /// | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated file there |
@@ -66,14 +66,13 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_BLOCKING_THREADS` | 64, or the engine concurrency plus 16 when larger | Cap on tokio's blocking threads, which run every engine call; must exceed `HPDS_ENGINE_CONCURRENCY` |
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
-    /// The store directory.
+    /// The data directory.
     pub data_dir: PathBuf,
     /// The listen port.
     pub port: u16,
-    /// How the store is opened.
-    pub store: StoreOptions,
-    /// Whether `POST /query` refuses a query with no authorization filter.
-    pub require_authorization_filter: bool,
+    /// How the partitions are opened, with `require_consents` from
+    /// `hpds.requireAuthorizationFilter`.
+    pub store: PartitionOptions,
     /// Directory for export result files.
     pub results_dir: PathBuf,
     /// Most async results held at once.
@@ -168,7 +167,7 @@ impl Config {
             0 => None,
             seconds => Some(Duration::from_secs(seconds)),
         };
-        let require_authorization_filter = match lookup("HPDS_REQUIRE_AUTHORIZATION_FILTER") {
+        let require_consents = match lookup("HPDS_REQUIRE_AUTHORIZATION_FILTER") {
             Some(value) => parse_bool("HPDS_REQUIRE_AUTHORIZATION_FILTER", &value)?,
             None => match lookup("hpds.requireAuthorizationFilter") {
                 Some(value) => parse_bool("hpds.requireAuthorizationFilter", &value)?,
@@ -184,11 +183,13 @@ impl Config {
                 lookup("HPDS_DATA_DIRECTORY").unwrap_or_else(|| DEFAULT_DATA_DIRECTORY.to_owned()),
             ),
             port: parse_or(&lookup, "SERVER_PORT", DEFAULT_PORT)?,
-            store: StoreOptions {
-                cache_bytes,
-                allow_plain,
+            store: PartitionOptions {
+                store: StoreOptions {
+                    cache_bytes,
+                    allow_plain,
+                },
+                require_consents,
             },
-            require_authorization_filter,
             results_dir: PathBuf::from(
                 lookup("HPDS_RESULTS_DIRECTORY")
                     .unwrap_or_else(|| DEFAULT_RESULTS_DIRECTORY.to_owned()),
@@ -336,9 +337,9 @@ mod tests {
         let c = config(&[]).unwrap();
         assert_eq!(c.data_dir, PathBuf::from("/opt/local/hpds/"));
         assert_eq!(c.port, 8080);
-        assert!(c.require_authorization_filter);
-        assert!(!c.store.allow_plain);
-        assert_eq!(c.store.cache_bytes, DEFAULT_CACHE_BYTES);
+        assert!(c.store.require_consents);
+        assert!(!c.store.store.allow_plain);
+        assert_eq!(c.store.store.cache_bytes, DEFAULT_CACHE_BYTES);
         assert_eq!(
             (
                 c.small_job_limit,
@@ -384,12 +385,12 @@ mod tests {
     #[test]
     fn cache_bytes_old_name_is_accepted_with_a_warning() {
         let old = config(&[("CACHE_BYTES", "2048")]).unwrap();
-        assert_eq!(old.store.cache_bytes, 2048);
+        assert_eq!(old.store.store.cache_bytes, 2048);
         assert_eq!(old.warnings.len(), 1);
         let both = config(&[("CACHE_BYTES", "2048"), ("HPDS_CACHE_BYTES", "4096")]).unwrap();
-        assert_eq!(both.store.cache_bytes, 4096);
+        assert_eq!(both.store.store.cache_bytes, 4096);
         let new = config(&[("HPDS_CACHE_BYTES", "4096")]).unwrap();
-        assert_eq!((new.store.cache_bytes, new.warnings.len()), (4096, 0));
+        assert_eq!((new.store.store.cache_bytes, new.warnings.len()), (4096, 0));
     }
 
     #[test]
@@ -415,7 +416,8 @@ mod tests {
         assert!(
             !config(&[("hpds.requireAuthorizationFilter", "false")])
                 .unwrap()
-                .require_authorization_filter
+                .store
+                .require_consents
         );
         assert!(
             config(&[
@@ -423,14 +425,15 @@ mod tests {
                 ("hpds.requireAuthorizationFilter", "false")
             ])
             .unwrap()
-            .require_authorization_filter
+            .store
+            .require_consents
         );
     }
 
     #[test]
     fn cache_size_is_ignored_with_a_warning() {
         let c = config(&[("CACHE_SIZE", "1500"), ("HPDS_CACHE_BYTES", "1024")]).unwrap();
-        assert_eq!(c.store.cache_bytes, 1024);
+        assert_eq!(c.store.store.cache_bytes, 1024);
         assert_eq!(c.warnings.len(), 1);
     }
 

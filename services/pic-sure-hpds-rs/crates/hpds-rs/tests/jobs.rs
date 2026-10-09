@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use common::{AGE, POPULATION, SEX, envelope, fixture, fixture_with, post, wait};
+use common::{
+    AGE, POPULATION, SEX, consents, envelope, fixture, fixture_with, post, strict_fixture, wait,
+};
 use hpds_query::{Query, ResultType};
 use serde_json::{Value, json};
 
@@ -167,16 +169,16 @@ async fn evaluation_failures_end_in_error() {
 
 #[tokio::test]
 async fn invalid_submissions_are_plain_text_400s() {
-    let f = fixture_with(|c| c.require_authorization_filter = true);
+    let f = strict_fixture();
     let required_with_values =
         json!({"phenotypicFilterType": "REQUIRED", "conceptPath": SEX, "values": ["x"]});
-    let auth = json!([{"conceptPath": SEX, "values": ["female"]}]);
+    let p1 = consents(&["partition1"]);
     for query in [
         json!({"expectedResultType": "PATIENTS"}),
-        json!({"expectedResultType": "PATIENTS", "authorizationFilters": auth, "phenotypicClause": required_with_values}),
-        json!({"expectedResultType": "COUNT", "authorizationFilters": auth}),
-        json!({"expectedResultType": "VCF_EXCERPT", "authorizationFilters": auth}),
-        json!({"expectedResultType": "PATIENTS", "bogusField": 1}),
+        json!({"expectedResultType": "PATIENTS", "userConsents": p1, "phenotypicClause": required_with_values}),
+        json!({"expectedResultType": "COUNT", "userConsents": p1}),
+        json!({"expectedResultType": "VCF_EXCERPT", "userConsents": p1}),
+        json!({"expectedResultType": "PATIENTS", "userConsents": p1, "bogusField": 1}),
         json!("not json at all"),
     ] {
         let reply = post(&f.app, QUERY, envelope(query.clone())).await;
@@ -191,7 +193,7 @@ async fn invalid_submissions_are_plain_text_400s() {
     assert!(f.state.results().is_empty());
     let ok = submit(
         &f.app,
-        json!({"expectedResultType": "PATIENTS", "authorizationFilters": auth}),
+        json!({"expectedResultType": "PATIENTS", "userConsents": p1}),
     )
     .await;
     let id = ok["resourceResultId"].as_str().unwrap().to_owned();
@@ -368,12 +370,9 @@ async fn dataframe_is_disabled_while_id_batch_size_is_zero() {
 async fn export_over_the_pin_cap_ends_in_error() {
     let f = fixture();
     let engine = Arc::new(
-        hpds_query::Engine::open(
-            &f.dir.path().join("store"),
-            &hpds_query::StoreOptions::default(),
-        )
-        .unwrap()
-        .with_export_pin_bytes(1),
+        hpds_query::Engine::open(&f.store(), &f.config.store)
+            .unwrap()
+            .with_export_pin_bytes(1),
     );
     let mut query = Query::new(ResultType::Dataframe);
     query.select = vec![SEX.to_owned(), AGE.to_owned()];

@@ -9,8 +9,8 @@ the Maven reactor and is not listed in any pom.
 |---|---|---|
 | `hpds-format` | lib | On-disk index and block format, crypto and Java parity helpers |
 | `hpds-etl` | bin + lib | Loads CSV and migrates Java javabins into the store (`hpds-etl`) |
-| `hpds-query` | lib | Query engine over the store; currently the health-state check only |
-| `hpds-rs` | bin + lib | HTTP server (`hpds-rs`) over `hpds-query`, serving the HPDS v3 contract |
+| `hpds-query` | lib | Query engine over the consent partitions: query model, validators, cohort evaluation, result computations |
+| `hpds-rs` | bin + lib | HTTP server (`hpds-rs`) over `hpds-query`, serving the harmonization branch's HPDS v3 contract |
 | `hpds-gen` | bin | Deterministic synthetic dataset generator |
 | `hpds-bench` | bin | Query corpus, compare and load harness |
 
@@ -43,19 +43,25 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Store directory. Matches the Java service; the all-in-one stack bind-mounts the hpds-rs host directory here. |
+| `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store per consent partition in its subdirectories, or one unpartitioned store (see [Partition layout](#partition-layout)). Matches the Java service; the all-in-one stack bind-mounts the hpds-rs host directory here. |
 | `SERVER_PORT` | `8080` | Listen port on `0.0.0.0`. |
 | `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. The old name `CACHE_BYTES` is still read, with a warning. |
 | `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
-| `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name. Refuse `POST /query` without an authorization filter, as Java does. The all-in-one sets it false. |
+| `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name (the Rust name wins when both are set). Despite the name it gates `userConsents`, not authorization filters: when true, every query on `/query/sync` and `POST /query` needs at least one non-null `userConsents` value and is otherwise a 400 "User consents are required for this query", and an unpartitioned data directory is refused at startup. When false, a query without consent values reads every partition. `authorizationFilters` are validated on `POST /query` but never applied, in either mode, as on the Java branch. An open (non-auth) backend must run with it false, since the query service sends that backend no consents. |
 | `ID_BATCH_SIZE` | `0` | Java's export switch. `0` ends every DATAFRAME export in ERROR with "exports are disabled (ID_BATCH_SIZE=0)"; any larger value enables exports (the batch size itself does not change the algorithm). PATIENTS is unaffected. |
-| `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds in memory. A wider export ends in ERROR with "export too wide; select fewer concepts". |
+| `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds in memory, summed over every selected partition. A wider export ends in ERROR with "export too wide; select fewer concepts". |
+| `HPDS_MAX_SELECT_PATHS` | `5000` | Most distinct `select` paths in a query. |
+| `HPDS_MAX_CLAUSE_DEPTH` | `64` | Deepest nesting of phenotypic subqueries. |
+| `HPDS_MAX_CLAUSE_NODES` | `10000` | Most clauses and authorization filters in a query. |
+| `HPDS_MAX_QUERY_CONCEPTS` | `20000` | Most concepts a query touches, `ANY_RECORD_OF` expansions included, counted over the union of the partitions its consents select. |
+| `HPDS_MAX_CROSS_COUNT_ENTRIES` | `5000000` | Most entries in a categorical or continuous cross count. |
+| `HPDS_RESULT_MAX_FILE_BYTES` | 4 GiB | Cap on one export file, checked as it is written. A larger export ends in ERROR and its partial file is deleted. |
 | `HPDS_SYNC_TIMEOUT_SECONDS` | `300` | A sync query that has not answered by then, queueing included, is a 503. Its computation still finishes and then releases its slot. |
 | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Export files (files 0600). A missing directory is created with mode 0700. An existing one must be a real directory (not a symlink) owned by the service user with no group or other write bit, and is never chmodded. It must not be, or lie inside, `HPDS_DATA_DIRECTORY`. Leftover export files are removed at startup. |
 | `HPDS_RESULT_LIMIT` | `1000` | Most async results held at once. |
 | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept. `0` or unset keeps it until the count or byte cap evicts it. |
-| `HPDS_RESULT_MAX_BYTES` | 10 GiB | Cap on finished export files held at once. Past it the oldest finished result goes first; a lone result larger than the cap is kept. |
+| `HPDS_RESULT_MAX_BYTES` | 10 GiB | Cap on export files held at once, finished ones and ones still being written. Each write reserves its bytes first, evicting the oldest finished results to fit; an export that still does not fit beside another running export ends in ERROR. A lone result larger than the cap is kept. |
 | `SMALL_JOB_LIMIT` | `100` | Exports with more `select` paths run on the large pool. |
 | `SMALL_TASK_THREADS`, `LARGE_TASK_THREADS` | `1`, `1` | Exports running at once per pool. |
 | `HPDS_EXPORT_CONCURRENCY` | `2` | Exports running at once across both pools; each pins its selected blocks in memory. |
@@ -65,26 +71,58 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `RUST_LOG` | `info` | Log filter, in `tracing` `EnvFilter` syntax. The `hpds_rs::access` target logs one line per request at info with method, path, status and latency. For benchmarks use `RUST_LOG=info,hpds_rs::access=warn` to silence it. |
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
 
-The key is read from `<HPDS_DATA_DIRECTORY>/encryption_key`. When the store cannot be opened
-the server still starts, health reports DOWN, and query routes answer 503.
+A query over a limit is a 400 naming the setting, before any block is read. Checks run in
+this order on both query routes: the query's shape (select paths, clause depth and nodes), then
+its consents, then the concepts it touches in the partitions those consents select, then (on
+`POST /query` only) `QueryValidator`.
+
+The key is read from `<HPDS_DATA_DIRECTORY>/encryption_key`. When the data directory cannot be
+opened (no partition, a partition left unmigrated, a `.generation` mismatch, a concept typed
+differently in two partitions, an unpartitioned store while consents are required) the server
+still starts, logs the open error, health reports DOWN with a reason, and query routes answer
+503.
+
+### Partition layout
+
+The service opens `HPDS_DATA_DIRECTORY` as `PartitionedPhenotypicObservationStore` does:
+
+- When the directory itself holds `pheno.index`, it is one unpartitioned store, read whatever
+  the consents. It is refused while `HPDS_REQUIRE_AUTHORIZATION_FILTER` is true, as Java
+  refuses an unpartitioned `allObservationsStore.javabin`.
+- Otherwise every immediate subdirectory holding `pheno.index` is a consent partition named
+  after the subdirectory, for example `<dir>/phs000007.c1/`. A query's `userConsents` values
+  select the partitions of the same names; values naming no partition are skipped, so a query
+  whose every consent is unknown counts 0. The rules for which subdirectories count are those
+  of [Consent-partitioned stores](#consent-partitioned-stores); a subdirectory with Java
+  javabins but no `pheno.index` refuses the open rather than dropping that consent group.
+- Every partition shares `<dir>/encryption_key` and one block cache of `HPDS_CACHE_BYTES`.
+- When `<dir>/.generation` exists (the partitioned ETL writes it last), the partitions' store
+  ids must match it exactly, or the open is refused as a load still being published.
+- A concept typed numeric in one partition and categorical in another refuses the open, naming
+  the concept and both partitions.
+
+`/search`, validation and health read the merged dictionary of every partition, whatever the
+consents, as Java's `SummaryColumnMeta` map does: category values unioned, the widest width,
+min of mins and max of maxes, and patient counts summed.
 
 ### Routes
 
-Mounted under both `/PIC-SURE/v3` and `/PIC-SURE`, because the query service calls search on the
-unversioned path. Request bodies are capped at 2 MiB, a body that stalls for 30 seconds is cut
+Mounted under `/PIC-SURE/v3` and under the unversioned `/PIC-SURE`. The Java branch serves only
+`/PIC-SURE/v3`, but its query service still posts search to `/PIC-SURE/search`, which the Java
+service answers 404, until the change that sends every HPDS call through `/v3` lands. Request bodies are capped at 2 MiB, a body that stalls for 30 seconds is cut
 off, and a connection that takes more than 10 seconds to send a request's headers is closed.
 
 | Route | Answer |
 |---|---|
-| `POST /query/sync` | COUNT (`text/plain`) and the four cross counts (`application/json`), byte for byte as Java, with a `queryMetadata` header; INFO_COLUMN_LISTING is `[]` |
-| `POST /query` | `QueryStatus` for a PATIENTS or DATAFRAME export; DATAFRAME_TIMESERIES and DATAFRAME_PFB end in ERROR |
+| `POST /query/sync` | COUNT (`text/plain`) and the four cross counts (`application/json`), byte for byte as Java, with a `queryMetadata` header, over the partitions `userConsents` selects; INFO_COLUMN_LISTING is `[]` |
+| `POST /query` | `QueryStatus` for a PATIENTS or DATAFRAME export over the partitions `userConsents` selects; DATAFRAME_TIMESERIES and DATAFRAME_PFB end in ERROR |
 | `POST /query/{id}/status` | `QueryStatus`, with Java's status mapping |
 | `POST /query/{id}/result` | The CSV export as `text/plain`; 400 `Status : <state>` before it succeeds |
 | `POST /query/{id}/signed-url` | 400, S3 upload is out of scope |
 | `POST /query/format`, `POST /write/{dataType}` | 400, not supported |
-| `POST /search` | `phenotypes` matched by path substring or category value, `info: {}`. Paths and categories are lowercased once at startup; see the locale note in `search.rs`. |
+| `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info: {}`. See the locale note in `search.rs`. |
 | `GET /search/values/` | An empty page |
-| `GET /actuator/health` | 200 `{"status":"UP"}` when the store is open with at least one concept, else 503 DOWN |
+| `GET /actuator/health` | 200 `{"status":"UP"}` when the merged dictionary of the partitions holds a concept, else 503 `{"status":"DOWN","reason":...}` |
 
 Differences from Java a caller can see:
 
@@ -104,16 +142,29 @@ Differences from Java a caller can see:
 - The query service reaches this service by two paths. Through the authorization path it passes
   a 4xx from HPDS on to the caller. The `/hpds/open` path maps any non-2xx to 502, so a 400
   from this service shows up there as a 502.
-- `/query/sync` does not validate, as Java does not, so an authorization filter on a concept
-  the store lacks counts 0. `POST /query` validates as Java does, but refuses with a 400 instead
-  of registering an ERROR result.
+- With `HPDS_REQUIRE_AUTHORIZATION_FILTER` true, a query with no consent value is a 400 "User
+  consents are required for this query" on both query routes. Java answers `/query/sync` 200
+  with an empty body and no `queryMetadata` header, and `POST /query` 200 with a status of
+  ERROR.
+- `/query/sync` does not run `QueryValidator`, as Java does not, so a filter on a concept no
+  partition holds counts 0. `POST /query` validates as Java does, but refuses with a 400
+  instead of registering an ERROR result.
+- Every route is also served without the `/v3` segment (see above); Java answers those 404.
+- Request bodies holding the same key twice in any object, the envelope, the query, a clause
+  or a `userConsents` entry included, and in a `query` sent as a string, are a 400. Jackson
+  keeps the last copy.
+- `/search` writes concepts in path order and `categoryValues` sorted. Java's order of both is
+  unspecified (an immutable map whose order changes with every start, a `HashMap`, a
+  `HashSet`). `timestampMin` and `timestampMax` are always `null`, as no Java loader sets
+  them; the Rust loaders do record them.
+- The data directory opens or refuses as a whole: a partition left in javabin form, a
+  `.generation` mismatch, or a concept typed differently in two partitions keeps the service
+  DOWN. Java has neither of the first two checks and fails the third only at query time.
 - Result ids and `queryMetadata` are random UUIDs, not Java's UUIDv5 of the query text.
 - A failed query's `resultMetadata` carries an `error` message.
 - Results are dropped oldest finished first when `HPDS_RESULT_LIMIT` or `HPDS_RESULT_MAX_BYTES`
   is reached, and after `HPDS_RESULT_MAX_AGE_SECONDS` when that is set; Java keeps them until
   restart.
-- Search leaves out `timestampMin` and `timestampMax`. No Java loader sets them, so Java never
-  writes them.
 - Genomic input (genomic result types, `genomicFilters`, variant-spec paths) is a 400 naming the
   unsupported feature.
 

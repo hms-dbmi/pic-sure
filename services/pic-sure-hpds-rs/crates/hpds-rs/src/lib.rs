@@ -1,7 +1,9 @@
-//! HTTP server in front of the `hpds-query` engine, serving the Java HPDS v3 contract.
+//! HTTP server in front of the `hpds-query` engine, serving the Java HPDS v3 contract of the
+//! consent-partitioned (harmonization) service.
 //!
-//! Every route is mounted under both `/PIC-SURE/v3` and `/PIC-SURE`, since the query service
-//! calls search on the unversioned path:
+//! Every route is mounted under `/PIC-SURE/v3`, where Java serves it, and under the
+//! unversioned `/PIC-SURE`, which Java no longer serves but the harmonization query service
+//! still calls for search:
 //!
 //! | Route | Handler |
 //! |---|---|
@@ -15,8 +17,10 @@
 //! | `POST /search` | [`search::search`] |
 //! | `GET /search/values/` (and without the slash) | [`search::search_values`] |
 //!
-//! `GET /actuator/health` is at the root. Every request is logged at info under the
-//! `hpds_rs::access` target with its method, path, status and latency, never its body.
+//! `GET /actuator/health` is at the root: 200 `{"status":"UP"}` when the merged dictionary of
+//! the partitions holds a concept, otherwise 503 `{"status":"DOWN","reason":...}`. Every
+//! request is logged at info under the `hpds_rs::access` target with its method, path, status
+//! and latency, never its body.
 //!
 //! Client errors and server errors are `text/plain` messages ([`ApiError`]). A request body
 //! that is not fully received within 30 seconds of the request starting is answered 408, however
@@ -95,18 +99,31 @@ impl Default for ServerTimeouts {
 /// Body of the `/actuator/health` response.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Health {
-    /// `UP` when the store is open and holds at least one concept, `DOWN` otherwise.
+    /// `UP` when the partitions are open and their merged dictionary holds at least one
+    /// concept, `DOWN` otherwise.
     pub status: &'static str,
+    /// Why the service is DOWN ([`AppState::down_reason`]); left out when it is UP. Never
+    /// carries a path or the open error, which go to the log.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<&'static str>,
 }
 
 async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
-    if state.is_healthy() {
-        (StatusCode::OK, Json(Health { status: "UP" }))
-    } else {
-        (
+    match state.down_reason() {
+        None => (
+            StatusCode::OK,
+            Json(Health {
+                status: "UP",
+                reason: None,
+            }),
+        ),
+        Some(reason) => (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(Health { status: "DOWN" }),
-        )
+            Json(Health {
+                status: "DOWN",
+                reason: Some(reason),
+            }),
+        ),
     }
 }
 

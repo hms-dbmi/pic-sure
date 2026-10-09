@@ -124,11 +124,18 @@ async fn run(config: Config) -> ExitCode {
             let engine = engine
                 .with_export_pin_bytes(config.export_pin_bytes)
                 .with_limits(config.query_limits);
-            tracing::info!(store = ?engine.store(), "store opened");
+            let partitions = engine.partitions();
+            tracing::info!(
+                layout = ?partitions.layout(),
+                partitions = ?partitions.partition_names().collect::<Vec<_>>(),
+                concepts = partitions.concept_count(),
+                require_consents = partitions.requires_consents(),
+                "store opened"
+            );
             Some(Arc::new(engine))
         }
         Err(error) => {
-            tracing::error!(%error, "cannot open the store; serving health DOWN");
+            tracing::error!(%error, "cannot open the data directory; serving health DOWN");
             None
         }
     };

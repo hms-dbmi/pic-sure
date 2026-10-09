@@ -1,15 +1,16 @@
-//! A router over the 1000 Genomes fixture, built in-process with the Rust ETL.
+//! A router over the four-partition 1000 Genomes fixture of the harmonization branch, built
+//! in-process with the Rust partitioned loader.
 
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};
-use hpds_etl::load::{KeySource, LoadOptions, Mode, load};
-use hpds_query::{Engine, StoreOptions};
+use hpds_etl::load::{KeySource, PartitionedLoadOptions, load_partitioned};
+use hpds_query::Engine;
 use hpds_rs::{AppState, Config, router};
 use http_body_util::BodyExt;
 use serde_json::Value;
@@ -20,6 +21,20 @@ pub const SEX: &str = r"\open_access-1000Genomes\data\SEX\";
 pub const AGE: &str = r"\open_access-1000Genomes\data\SYNTHETIC_AGE\";
 pub const POPULATION: &str = r"\open_access-1000Genomes\data\POPULATION NAME\";
 
+/// The fixture partitions, as the Java integration environment names them.
+pub const PARTITIONS: [&str; 4] = ["partition1", "partition2", "partition3", "partition4"];
+
+/// Patients per partition: 494, 1,000, 1,000 and 2,484, disjoint, 4,978 in all.
+pub const PARTITION_PATIENTS: [u64; 4] = [494, 1000, 1000, 2484];
+
+/// Patient ID range of each partition, end exclusive.
+pub const PARTITION_RANGES: [(u32, u32); 4] = [
+    (197_506, 198_000),
+    (198_000, 199_000),
+    (199_000, 200_000),
+    (200_000, 202_484),
+];
+
 /// A fixture store and a router over it. The temporary directory is removed on drop.
 pub struct Fixture {
     pub dir: tempfile::TempDir,
@@ -29,41 +44,72 @@ pub struct Fixture {
     pub app: Router,
 }
 
-fn workspace() -> PathBuf {
+impl Fixture {
+    /// The data directory holding `partition1` to `partition4` and the key.
+    pub fn store(&self) -> PathBuf {
+        self.dir.path().join("store")
+    }
+}
+
+pub fn workspace() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Settings with defaults, the results directory inside `dir`, and no authorization
-/// filter required.
-pub fn config(dir: &std::path::Path) -> Config {
+/// The directory of the Java fixture files `partition{1..4}-allConcepts.csv`.
+pub fn java_fixture_dir() -> PathBuf {
+    workspace().join("../pic-sure-hpds/service/src/test/resources/phenotypic")
+}
+
+/// Settings with defaults, the results directory inside `dir`, exports enabled, and
+/// consents not required (the Java integration profile).
+pub fn config(dir: &Path) -> Config {
     let mut config = Config::from_lookup(|_| None).unwrap();
     config.results_dir = dir.join("results");
-    config.require_authorization_filter = false;
+    config.store.require_consents = false;
     config.id_batch_size = 1000;
     config
 }
 
-/// Loads the fixture CSV, with a header line prepended, into an encrypted store.
+/// Loads the four Java fixture files with the partitioned loader into `<dir>/store`,
+/// encrypted with [`KEY`], and returns that directory.
+pub fn build_store(dir: &Path) -> PathBuf {
+    let input = dir.join("input");
+    std::fs::create_dir_all(&input).unwrap();
+    for name in PARTITIONS {
+        let file = format!("{name}-allConcepts.csv");
+        std::fs::copy(java_fixture_dir().join(&file), input.join(&file)).unwrap();
+    }
+    let key_file = dir.join("key");
+    std::fs::write(&key_file, KEY).unwrap();
+    let out = dir.join("store");
+    let mut options = PartitionedLoadOptions::new(input, out.clone());
+    options.key = KeySource::File(key_file);
+    options.no_config = true;
+    options.spill_partitions = Some(2);
+    options.threads = Some(2);
+    load_partitioned(&options).unwrap();
+    out
+}
+
+/// Opens `store` as `main` does, with the partition options, limits and export cap of
+/// `config`.
+pub fn open_engine(store: &Path, config: &Config) -> Arc<Engine> {
+    Arc::new(
+        Engine::open(store, &config.store)
+            .unwrap()
+            .with_export_pin_bytes(config.export_pin_bytes)
+            .with_limits(config.query_limits),
+    )
+}
+
+/// Builds the four-partition fixture and a router over it, with [`config`] changed by
+/// `adjust`.
 pub fn fixture_with(adjust: impl FnOnce(&mut Config)) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let source =
-        workspace().join("../pic-sure-hpds/service/src/test/resources/phenotypic/allConcepts.csv");
-    let input = dir.path().join("allConcepts.csv");
-    let mut text = String::from("PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME\n");
-    text.push_str(&std::fs::read_to_string(source).unwrap());
-    std::fs::write(&input, text).unwrap();
-    let key_file = dir.path().join("key");
-    std::fs::write(&key_file, KEY).unwrap();
-    let out = dir.path().join("store");
-    let mut options = LoadOptions::new(Mode::NewSearch, vec![input], out.clone());
-    options.key = KeySource::File(key_file.clone());
-    options.partitions = Some(2);
-    options.threads = Some(2);
-    load(&options).unwrap();
-    std::fs::copy(&key_file, out.join("encryption_key")).unwrap();
-    let engine = Arc::new(Engine::open(&out, &StoreOptions::default()).unwrap());
+    let out = build_store(dir.path());
     let mut config = config(dir.path());
     adjust(&mut config);
+    let engine = open_engine(&out, &config);
     let state = AppState::new(Some(Arc::clone(&engine)), &config).unwrap();
     let app = router(state.clone());
     Fixture {
@@ -77,6 +123,21 @@ pub fn fixture_with(adjust: impl FnOnce(&mut Config)) -> Fixture {
 
 pub fn fixture() -> Fixture {
     fixture_with(|_| {})
+}
+
+/// The fixture with `hpds.requireAuthorizationFilter=true`.
+pub fn strict_fixture() -> Fixture {
+    fixture_with(|c| c.store.require_consents = true)
+}
+
+/// `[{"value": c}...]` for `consents`.
+pub fn consents(values: &[&str]) -> Value {
+    Value::Array(
+        values
+            .iter()
+            .map(|v| serde_json::json!({ "value": v }))
+            .collect(),
+    )
 }
 
 /// A response with its body read.

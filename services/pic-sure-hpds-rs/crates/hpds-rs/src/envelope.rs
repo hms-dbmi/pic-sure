@@ -1,7 +1,7 @@
 //! The `QueryRequest` envelope every POST body arrives in, and the UUID helpers the routes
 //! share.
 
-use hpds_query::Query;
+use hpds_query::{Query, parse_strict};
 use serde_json::{Map, Value};
 
 use crate::error::ApiError;
@@ -10,11 +10,16 @@ use crate::error::ApiError;
 /// whose `resourceUUID`, when present and not null, is a UUID string. Other top-level fields
 /// are ignored, as `@JsonIgnoreProperties(ignoreUnknown = true)` ignores them.
 ///
+/// The body is read with [`parse_strict`], so an object holding the same key twice anywhere
+/// in it, the envelope and an object `query` included, is refused. A lenient parse would keep
+/// the last copy, and a caller could then smuggle a second `userConsents` past a proxy that
+/// rewrote the first.
+///
 /// # Errors
-/// A 400 [`ApiError`] when the body is not JSON, not an object, or has an invalid
-/// `resourceUUID`.
+/// A 400 [`ApiError`] when the body is not JSON, holds a duplicate key, is not an object, or
+/// has an invalid `resourceUUID`.
 pub fn read_envelope(body: &[u8]) -> Result<Map<String, Value>, ApiError> {
-    let value: Value = serde_json::from_slice(body)
+    let value = parse_strict(body)
         .map_err(|e| ApiError::bad_request(format!("the request body is not valid JSON: {e}")))?;
     let Value::Object(fields) = value else {
         return Err(ApiError::bad_request(
@@ -50,32 +55,42 @@ fn has_v1_keys(query: &Value) -> bool {
         .is_some_and(|fields| V1_QUERY_KEYS.iter().any(|key| fields.contains_key(*key)))
 }
 
+fn invalid_query(error: &serde_json::Error) -> ApiError {
+    ApiError::bad_request(format!("the query is not valid: {error}"))
+}
+
 /// Reads a request body as a `QueryRequest` and its `query` as a v3 [`Query`]. The query may
 /// be a JSON object or a string holding one, as `convertIncomingQuery` accepts both, and is
 /// read with the engine's strict model: unknown fields inside it are refused.
 ///
+/// Duplicate keys are refused at every level: in the body by [`read_envelope`], and in a
+/// string `query` by [`parse_strict`] and then [`Query::from_json`].
+///
 /// # Errors
 /// A 400 [`ApiError`] for the envelope errors of [`read_envelope`], a missing or null
 /// `query`, a `query` that is neither an object nor a string, a query with v1 keys
-/// ([`V1_QUERY_MESSAGE`]), and a query the model refuses.
+/// ([`V1_QUERY_MESSAGE`]), a duplicate key, and a query the model refuses.
 pub fn read_query(body: &[u8]) -> Result<Query, ApiError> {
     let mut fields = read_envelope(body)?;
-    let value = match fields.remove("query") {
-        None | Some(Value::Null) => return Err(ApiError::bad_request("the request has no query")),
-        Some(Value::String(text)) => serde_json::from_str::<Value>(&text)
-            .map_err(|e| ApiError::bad_request(format!("the query is not valid: {e}")))?,
-        Some(object @ Value::Object(_)) => object,
-        Some(_) => {
-            return Err(ApiError::bad_request(
-                "query must be a JSON object or a string holding one",
-            ));
+    match fields.remove("query") {
+        None | Some(Value::Null) => Err(ApiError::bad_request("the request has no query")),
+        Some(Value::String(text)) => {
+            let value = parse_strict(text.as_bytes()).map_err(|e| invalid_query(&e))?;
+            if has_v1_keys(&value) {
+                return Err(ApiError::bad_request(V1_QUERY_MESSAGE));
+            }
+            Query::from_json(text.as_bytes()).map_err(|e| invalid_query(&e))
         }
-    };
-    if has_v1_keys(&value) {
-        return Err(ApiError::bad_request(V1_QUERY_MESSAGE));
+        Some(object @ Value::Object(_)) => {
+            if has_v1_keys(&object) {
+                return Err(ApiError::bad_request(V1_QUERY_MESSAGE));
+            }
+            serde_json::from_value(object).map_err(|e| invalid_query(&e))
+        }
+        Some(_) => Err(ApiError::bad_request(
+            "query must be a JSON object or a string holding one",
+        )),
     }
-    serde_json::from_value(value)
-        .map_err(|e| ApiError::bad_request(format!("the query is not valid: {e}")))
 }
 
 /// The lowercase canonical form of `text` when it is a UUID in the `8-4-4-4-12` hexadecimal
@@ -137,6 +152,27 @@ mod tests {
             let error = read_query(body).unwrap_err();
             assert_eq!(error.status, 400, "{}", String::from_utf8_lossy(body));
         }
+    }
+
+    #[test]
+    fn duplicate_keys_are_refused_at_every_level() {
+        for body in [
+            r#"{"query":{"expectedResultType":"COUNT"},"query":{"expectedResultType":"COUNT"}}"#,
+            r#"{"query":{"expectedResultType":"COUNT","userConsents":[{"value":"a"}],"userConsents":[]}}"#,
+            r#"{"query":{"expectedResultType":"COUNT","phenotypicClause":{"phenotypicFilterType":"REQUIRED","conceptPath":"\\a\\","conceptPath":"\\b\\"}}}"#,
+            r#"{"query":"{\"expectedResultType\":\"COUNT\",\"userConsents\":[{\"value\":\"a\"}],\"userConsents\":[]}"}"#,
+            r#"{"query":"{\"expectedResultType\":\"COUNT\",\"userConsents\":[{\"value\":\"a\",\"value\":\"b\"}]}"}"#,
+            r#"{"resourceUUID":null,"resourceUUID":null,"query":{"expectedResultType":"COUNT"}}"#,
+        ] {
+            let error = read_query(body.as_bytes()).unwrap_err();
+            assert_eq!(error.status, 400, "{body}");
+            assert!(
+                error.message.contains("duplicate"),
+                "{body}: {}",
+                error.message
+            );
+        }
+        assert!(read_envelope(br#"{"query":"a","query":"b"}"#).is_err());
     }
 
     #[test]

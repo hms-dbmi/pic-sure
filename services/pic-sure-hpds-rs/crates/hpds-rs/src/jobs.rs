@@ -830,10 +830,18 @@ fn not_ready_response(name: &str) -> Response {
 ///
 /// PATIENTS and DATAFRAME are exported; DATAFRAME_TIMESERIES and DATAFRAME_PFB are accepted
 /// and end in ERROR, as does DATAFRAME while `ID_BATCH_SIZE` is 0. Any other result type, a
-/// validation failure (with `hpds.requireAuthorizationFilter` from the configuration), or a
-/// malformed request is a 400 text error, where Java answers 200 with an ERROR status or 500.
-/// Java accepts COUNT, CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT here and COUNT then
-/// ends in ERROR; this service refuses all sync types up front.
+/// validation failure, or a malformed request is a 400 text error, where Java answers 200 with
+/// an ERROR status or 500. Java accepts COUNT, CATEGORICAL_CROSS_COUNT and
+/// CONTINUOUS_CROSS_COUNT here and COUNT then ends in ERROR; this service refuses all sync
+/// types up front.
+///
+/// Checks run in this order: the query's shape against the limits, then its consents
+/// ([`Engine::check_limits`], which fails with "User consents are required for this query"
+/// when `hpds.requireAuthorizationFilter` is on and no consent value is given), then the
+/// concepts it touches in the selected partitions, then `QueryValidator` against the merged
+/// dictionary ([`Engine::validate`], whose consent rule follows the same flag). The query,
+/// `userConsents` included, travels with the job, so the export reads exactly the partitions
+/// those consents select.
 pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
     let query = read_query(&body)?;
     match query.expected_result_type {
@@ -851,16 +859,8 @@ pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Respon
         }
     }
     let engine = Arc::clone(state.engine()?);
-    if state.async_validator().require_authorization_filter
-        && query.authorization_filters.is_empty()
-    {
-        tracing::warn!(
-            "Authorization filter is required for this query. To disable this requirement, \
-             set hpds.requireAuthorizationFilter=false"
-        );
-    }
     engine.check_limits(&query)?;
-    engine.validate(&query, state.async_validator())?;
+    engine.validate(&query)?;
     let status = state.results().submit(engine, query)?;
     Ok(axum::Json(status).into_response())
 }

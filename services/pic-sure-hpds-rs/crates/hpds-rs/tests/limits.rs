@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 use common::{AGE, SEX, config, envelope, fixture, fixture_with, post, wait};
-use hpds_query::{Engine, QueryLimits, StoreOptions};
+use hpds_query::{Engine, QueryLimits};
 use hpds_rs::{AppState, router};
 use serde_json::{Value, json};
 
@@ -24,7 +24,7 @@ fn nested(depth: usize) -> Value {
 }
 
 fn limited_app(f: &common::Fixture, limits: QueryLimits) -> axum::Router {
-    let engine = Engine::open(&f.dir.path().join("store"), &StoreOptions::default())
+    let engine = Engine::open(&f.store(), &f.config.store)
         .unwrap()
         .with_limits(limits);
     let mut settings = config(f.dir.path());

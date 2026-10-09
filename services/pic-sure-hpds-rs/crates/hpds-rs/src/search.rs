@@ -1,14 +1,14 @@
 //! `POST /search` and `GET /search/values/`.
 
 use std::collections::HashMap;
-use std::fmt::Write as _;
 use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{Query as QueryParams, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
-use hpds_format::{ConceptMeta, ConceptType, java_double_to_string};
+use hpds_format::java_double_to_string;
+use hpds_query::SummaryColumnMeta;
 use serde_json::Value;
 
 use crate::envelope::read_envelope;
@@ -17,16 +17,17 @@ use crate::state::AppState;
 
 const JSON: &str = "application/json";
 
-/// Lowercase copies of every concept path and categorical value, made once at startup so a
-/// search compares against them without allocating.
+/// The merged dictionary prepared for search once at startup: lowercase copies of every
+/// concept path and categorical value, so a search compares without allocating, and each
+/// concept's rendered `"<path>":<SummaryColumnMeta>` member, so a search only concatenates.
 ///
-/// Java lowercases with `String.toLowerCase()`, which uses the JVM's default locale, and this
-/// uses Rust's `str::to_lowercase`, which applies the Unicode default case mapping (including
-/// the final-sigma rule, as Java does) regardless of locale. The two agree for every locale
-/// except locales with their own rules for `I` and `i`: under a Turkish or Azerbaijani default
-/// locale Java maps `I` to the dotless `ı` and Rust always maps it to `i`, and Lithuanian
-/// adds combining dots. A JVM with an English or root default locale, which is what a
-/// container normally has, matches Rust.
+/// Java lowercases the path and the term with `Locale.ENGLISH` and the category values with
+/// `String.toLowerCase()`, which uses the JVM's default locale. This uses Rust's
+/// `str::to_lowercase`, the Unicode default case mapping (including the final-sigma rule, as
+/// Java does) regardless of locale, which is what `Locale.ENGLISH` does. The category values
+/// therefore agree with Java except under a default locale with its own rules for `I` and
+/// `i`: Turkish or Azerbaijani map `I` to the dotless `ı`, and Lithuanian adds combining
+/// dots. A container normally runs with an English or root default locale.
 #[derive(Debug, Default)]
 pub struct SearchIndex {
     entries: Vec<SearchEntry>,
@@ -36,109 +37,127 @@ pub struct SearchIndex {
 struct SearchEntry {
     path: String,
     categories: Vec<String>,
+    member: String,
 }
 
 impl SearchIndex {
-    /// The index over `concepts`, in the same order.
-    pub fn build(concepts: &[ConceptMeta]) -> Self {
-        let entries = concepts
+    /// The index over `dictionary`, in the same order.
+    ///
+    /// Each concept is rendered by [`SummaryColumnMeta::write_json`] with `timestampMin` and
+    /// `timestampMax` written as `null`. No Java loader sets a concept's timestamps, so the
+    /// Java service always writes them as `null`; the Rust loaders record them, and writing
+    /// them would make every concept with a `DATETIME` column differ from Java.
+    pub fn build(dictionary: &[SummaryColumnMeta]) -> Self {
+        let entries = dictionary
             .iter()
-            .map(|concept| SearchEntry {
-                path: concept.path.to_lowercase(),
-                categories: if concept.concept_type == ConceptType::Categorical {
-                    concept
-                        .category_values
-                        .iter()
-                        .flatten()
-                        .map(|value| value.to_lowercase())
-                        .collect()
-                } else {
-                    Vec::new()
-                },
+            .map(|concept| {
+                let mut member = String::new();
+                push_string(&mut member, &concept.name);
+                member.push(':');
+                SummaryColumnMeta {
+                    timestamp_min: None,
+                    timestamp_max: None,
+                    ..concept.clone()
+                }
+                .write_json(&mut member);
+                SearchEntry {
+                    path: concept.name.to_lowercase(),
+                    categories: if concept.categorical {
+                        concept
+                            .category_values
+                            .iter()
+                            .map(|value| value.to_lowercase())
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
+                    member,
+                }
             })
             .collect();
         SearchIndex { entries }
     }
 
-    fn matches(&self, position: usize, needle: &str) -> bool {
-        self.entries.get(position).is_some_and(|entry| {
-            entry.path.contains(needle) || entry.categories.iter().any(|value| value == needle)
-        })
+    fn matches(entry: &SearchEntry, needle: &str) -> bool {
+        entry.path.contains(needle) || entry.categories.iter().any(|value| value == needle)
+    }
+
+    /// The `SearchResults` body of [`search`] for `term`, `None` for a null or missing
+    /// `query`.
+    pub fn render(&self, term: Option<String>) -> String {
+        let mut out = String::from(r#"{"results":{"phenotypes":"#);
+        let search_query = match term {
+            None => {
+                out.push('[');
+                for (i, entry) in self.entries.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    out.push('{');
+                    out.push_str(&entry.member);
+                    out.push('}');
+                }
+                out.push(']');
+                String::new()
+            }
+            Some(term) => {
+                let needle = term.to_lowercase();
+                out.push('{');
+                let matching = self
+                    .entries
+                    .iter()
+                    .filter(|entry| Self::matches(entry, &needle));
+                for (i, entry) in matching.enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    out.push_str(&entry.member);
+                }
+                out.push('}');
+                term
+            }
+        };
+        out.push_str(r#","info":{}},"searchQuery":"#);
+        push_string(&mut out, &search_query);
+        out.push('}');
+        out
     }
 }
 
-/// `POST /search`: the concepts matching the request's `query`, as `SearchResults`.
+/// `POST /search`: the concepts of the merged dictionary matching the request's `query`, as
+/// `SearchResults`. Not scoped by consent, as in Java: a caller sees concepts and category
+/// values of every partition.
 ///
 /// The term is `query` as Java's `toString` writes it, lowercased. A concept matches when its
 /// lowercased path contains the term, or when it is categorical and one of its lowercased
-/// category values equals the term. The body is
-/// `{"results":{"phenotypes":{<path>:<ColumnMeta>...},"info":{}},"searchQuery":<term as sent>}`.
-/// The scan and the rendering run on tokio's blocking pool.
+/// category values equals the term; the empty string therefore matches every concept. The
+/// body is `{"results":{"phenotypes":{<path>:<SummaryColumnMeta>...},"info":{}},
+/// "searchQuery":<term as sent>}`, each concept as [`SearchIndex::build`] renders it. The
+/// scan and the rendering run on tokio's blocking pool.
 ///
 /// With a null or missing `query`, Java serializes its whole dictionary's entry set, so
-/// `phenotypes` is an array of one-entry objects `{<path>:<ColumnMeta>}` for every concept and
-/// `searchQuery` is empty. That shape is reproduced.
+/// `phenotypes` is an array of one-entry objects `{<path>:<SummaryColumnMeta>}` for every
+/// concept and `searchQuery` is empty. That shape is reproduced.
+///
+/// Concepts come out in Java string order of their paths and category values in Java string
+/// order. Java's order of both is unspecified: the dictionary is an immutable map whose
+/// iteration order changes with every JVM start, the matches are collected into a `HashMap`,
+/// and the category values are a `HashSet`.
 pub async fn search(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
     let mut fields = read_envelope(&body)?;
-    let engine = Arc::clone(state.engine()?);
+    state.engine()?;
     let index = Arc::clone(state.search_index());
     let term = match fields.remove("query") {
         None | Some(Value::Null) => None,
         Some(term) => Some(java_to_string(&term)),
     };
-    let out = tokio::task::spawn_blocking(move || {
-        render_search(engine.store().index().concepts(), &index, term)
-    })
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, "search task failed");
-        ApiError::internal()
-    })?;
+    let out = tokio::task::spawn_blocking(move || index.render(term))
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "search task failed");
+            ApiError::internal()
+        })?;
     Ok(([(CONTENT_TYPE, JSON)], out).into_response())
-}
-
-fn render_search(concepts: &[ConceptMeta], index: &SearchIndex, term: Option<String>) -> String {
-    let mut out = String::from(r#"{"results":{"phenotypes":"#);
-    let search_query = match term {
-        None => {
-            out.push('[');
-            for (i, concept) in concepts.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                out.push('{');
-                push_string(&mut out, &concept.path);
-                out.push(':');
-                push_column_meta(&mut out, concept);
-                out.push('}');
-            }
-            out.push(']');
-            String::new()
-        }
-        Some(term) => {
-            let needle = term.to_lowercase();
-            out.push('{');
-            let mut first = true;
-            for (position, concept) in concepts.iter().enumerate() {
-                if !index.matches(position, &needle) {
-                    continue;
-                }
-                if !first {
-                    out.push(',');
-                }
-                first = false;
-                push_string(&mut out, &concept.path);
-                out.push(':');
-                push_column_meta(&mut out, concept);
-            }
-            out.push('}');
-            term
-        }
-    };
-    out.push_str(r#","info":{}},"searchQuery":"#);
-    push_string(&mut out, &search_query);
-    out.push('}');
-    out
 }
 
 /// `GET /search/values/`: genomic concept values. This engine holds no genomic data, so the
@@ -180,56 +199,6 @@ fn positive_param(
         )));
     }
     Ok(number)
-}
-
-/// Writes `concept` as Jackson writes `ColumnMeta`: fields in declaration order, `null`
-/// fields omitted (`@JsonInclude(NON_NULL)`), and the `@JsonIgnore` and non-bean fields
-/// (`widthInBytes`, `columnOffset`, the observation offsets, `hasTimestamp`) left out.
-///
-/// `timestampMin` and `timestampMax` are left out too. Java writes them only when set, and
-/// no Java loader sets them, so Java's search never carries them; this store does record
-/// them, and writing them would make every timestamped concept differ from Java.
-/// Doubles are written as Java's `Double.toString` writes them, with NaN and the infinities
-/// as strings, as Jackson writes them by default.
-pub fn push_column_meta(out: &mut String, concept: &ConceptMeta) {
-    out.push_str(r#"{"name":"#);
-    push_string(out, &concept.path);
-    let _ = write!(
-        out,
-        r#","categorical":{}"#,
-        concept.concept_type == ConceptType::Categorical
-    );
-    if let Some(values) = &concept.category_values {
-        out.push_str(r#","categoryValues":["#);
-        for (i, value) in values.iter().enumerate() {
-            if i > 0 {
-                out.push(',');
-            }
-            push_string(out, value);
-        }
-        out.push(']');
-    }
-    for (name, value) in [("min", concept.min), ("max", concept.max)] {
-        if let Some(value) = value {
-            let _ = write!(out, r#","{name}":"#);
-            push_double(out, value);
-        }
-    }
-    let _ = write!(
-        out,
-        r#","observationCount":{},"patientCount":{}"#,
-        concept.observation_count, concept.patient_count
-    );
-    out.push('}');
-}
-
-fn push_double(out: &mut String, value: f64) {
-    let text = java_double_to_string(value);
-    if value.is_finite() {
-        out.push_str(&text);
-    } else {
-        push_string(out, &text);
-    }
 }
 
 fn push_string(out: &mut String, value: &str) {
