@@ -47,7 +47,7 @@ public class CrossCountTool {
         for none of the three. At most 100 cells are returned, and cellsOmitted says how many were dropped. These cells are never the \
         authorized answer: for exact counts filtered by the user's consents, use get_adapter_code with resultType cross_count, where \
         select does choose the concept paths counted. The query takes the same \
-        shape as in count_participants, with no result type and no not field. Example arguments: \
+        shape as in count_participants, with no result type and no not field. The phs999999 paths in the example are placeholders only: never use them, use real conceptPath values from search_concepts. Example arguments: \
         {"resultType":"CATEGORICAL_CROSS_COUNT","query":{"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
         {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female","Male"]},\
         {"operator":"OR","phenotypicClauses":[\
