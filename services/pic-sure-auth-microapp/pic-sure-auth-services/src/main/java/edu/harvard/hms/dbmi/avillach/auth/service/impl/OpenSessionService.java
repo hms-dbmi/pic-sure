@@ -26,8 +26,8 @@ import java.util.UUID;
 import static edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService.OPEN_SESSION_KEY_PREFIX;
 
 /**
- * Issues, verifies, and refreshes open-access session tokens: stateless HS256 JWTs, sent as {@code picsure_s_<jwt>} in the
- * {@code X-PICSURE-API-Key} header. Nothing is stored. {@code sub} is the open-access session id, a random UUID kept across refreshes, and
+ * Issues, verifies, and refreshes open-access session tokens: stateless HS256 JWTs, sent as {@code Authorization: Bearer picsure_s_<jwt>}.
+ * Nothing is stored. {@code sub} is the open-access session id, a random UUID kept across refreshes, and
  * {@code ses} is the session start, so no refresh reaches past {@code api.key.session.max.lifetime.hours}. A single session can't be
  * revoked; rotating {@code api.key.session.signing.secret} ends every session at once, and browsers silently start new ones.
  */

@@ -96,7 +96,7 @@ class OpenAccessFilterTest {
         when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
-        BufferedRequestWrapper req = wrap(null, "picsure_testKeyValue123");
+        BufferedRequestWrapper req = wrap("Bearer " + "picsure_testKeyValue123");
         f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
 
         ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
@@ -105,7 +105,7 @@ class OpenAccessFilterTest {
     }
 
     @Test
-    void enabledOpenAccessOmitsApiKeyWhenHeaderAbsent() throws Exception {
+    void enabledOpenAccessOmitsApiKeyWithoutAuthorization() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
@@ -118,16 +118,60 @@ class OpenAccessFilterTest {
     }
 
     @Test
-    void enabledOpenAccessOmitsApiKeyWhenHeaderBlank() throws Exception {
+    void enabledOpenAccessOmitsApiKeyWhenBearerEmpty() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
         OpenAccessFilter f = filter(client, new AuditContext(), true);
 
-        f.doFilter(wrap(null, "   "), mock(HttpServletResponse.class), mock(FilterChain.class));
+        f.doFilter(wrap("Bearer "), mock(HttpServletResponse.class), mock(FilterChain.class));
 
         ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
         verify(client).validateOpenAccess(cap.capture());
         assertThat(cap.getValue()).doesNotContainKey("apiKey");
+    }
+
+    @Test
+    void bearerSchemeIsMatchedWithoutRegardToCase() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(OpenAccessValidation.fromBoolean(true));
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        f.doFilter(wrap("bearer  picsure_testKeyValue123 "), mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        ArgumentCaptor<Map<String, Object>> cap = ArgumentCaptor.forClass(Map.class);
+        verify(client).validateOpenAccess(cap.capture());
+        assertThat(cap.getValue()).containsEntry("apiKey", "picsure_testKeyValue123");
+    }
+
+    @Test
+    void keyWithOpenAccessDisabledIsDeniedInsteadOfIntrospected() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        AuditContext ctx = new AuditContext();
+        OpenAccessFilter f = filter(client, ctx, false);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(wrap("Bearer " + "picsure_testKeyValue123"), resp, chain);
+
+        assertThat(resp.getStatus()).isEqualTo(401);
+        assertThat(resp.getContentAsString()).contains("\"errorType\":\"unauthorized\"").contains("Open access is not enabled.");
+        verify(chain, never()).doFilter(any(), any());
+        verifyNoInteractions(client);
+        assertThat(ctx.getMetadata()).containsEntry("auth_action", "open_access.denied")
+            .containsEntry("auth_failure_reason", "open_access_disabled");
+    }
+
+    @Test
+    void disabledOpenAccessPassesLoginBearerThroughToIntrospection() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        OpenAccessFilter f = filter(client, new AuditContext(), false);
+        BufferedRequestWrapper req = wrap("Bearer real-token");
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        verify(chain).doFilter(eq(req), any());
+        verifyNoInteractions(client);
     }
 
     @Test
@@ -224,7 +268,7 @@ class OpenAccessFilterTest {
         AuditContext ctx = new AuditContext();
         OpenAccessFilter f = filter(client, ctx, true);
 
-        BufferedRequestWrapper req = wrap(null, "picsure_testKeyValue123");
+        BufferedRequestWrapper req = wrap("Bearer " + "picsure_testKeyValue123");
         FilterChain chain = mock(FilterChain.class);
         f.doFilter(req, new MockHttpServletResponse(), chain);
 
@@ -245,7 +289,7 @@ class OpenAccessFilterTest {
         AtomicReference<String> seenByChain = new AtomicReference<>();
 
         f.doFilter(
-            wrap(null, "picsure_s_current"), resp,
+            wrap("Bearer " + "picsure_s_current"), resp,
             (request, response) -> seenByChain.set(((HttpServletResponse) response).getHeader(OpenAccessFilter.SESSION_REFRESH_HEADER))
         );
 
@@ -262,7 +306,7 @@ class OpenAccessFilterTest {
         OpenAccessFilter f = filter(client, new AuditContext(), true);
         MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        f.doFilter(wrap(null, "picsure_s_current"), resp, mock(FilterChain.class));
+        f.doFilter(wrap("Bearer " + "picsure_s_current"), resp, mock(FilterChain.class));
 
         assertThat(resp.containsHeader(OpenAccessFilter.SESSION_REFRESH_HEADER)).isFalse();
     }
@@ -276,7 +320,7 @@ class OpenAccessFilterTest {
         OpenAccessFilter f = filter(client, new AuditContext(), true);
         MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        f.doFilter(wrap(null, "picsure_s_current"), resp, mock(FilterChain.class));
+        f.doFilter(wrap("Bearer " + "picsure_s_current"), resp, mock(FilterChain.class));
 
         assertThat(resp.getStatus()).isEqualTo(401);
         assertThat(resp.containsHeader(OpenAccessFilter.SESSION_REFRESH_HEADER)).isFalse();
@@ -320,7 +364,7 @@ class OpenAccessFilterTest {
         OpenAccessFilter f = filter(client, ctx, true);
 
         MockHttpServletResponse resp = new MockHttpServletResponse();
-        BufferedRequestWrapper req = wrap(null, "picsure_testKeyValue123");
+        BufferedRequestWrapper req = wrap("Bearer " + "picsure_testKeyValue123");
         FilterChain chain = mock(FilterChain.class);
         f.doFilter(req, resp, chain);
 
@@ -369,24 +413,16 @@ class OpenAccessFilterTest {
     }
 
     private static BufferedRequestWrapper wrap(String authHeader) {
-        return wrap(authHeader, null);
+        return wrap(authHeader, "/v3/search/abc", "POST");
     }
 
-    private static BufferedRequestWrapper wrap(String authHeader, String apiKeyHeader) {
-        return wrap(authHeader, "/v3/search/abc", "POST", apiKeyHeader);
-    }
 
     private static BufferedRequestWrapper wrap(String authHeader, String uri, String method) {
-        return wrap(authHeader, uri, method, null);
-    }
-
-    private static BufferedRequestWrapper wrap(String authHeader, String uri, String method, String apiKeyHeader) {
         HttpServletRequest base = mock(HttpServletRequest.class);
         when(base.getRequestURI()).thenReturn(uri);
         when(base.getContextPath()).thenReturn("");
         lenient().when(base.getMethod()).thenReturn(method);
         if (authHeader != null) when(base.getHeader("Authorization")).thenReturn(authHeader);
-        if (apiKeyHeader != null) when(base.getHeader(OpenAccessFilter.API_KEY_HEADER)).thenReturn(apiKeyHeader);
         lenient().when(base.getServerName()).thenReturn("aio.local");
         // Bare Mockito mocks don't retain state across calls; BufferedRequestWrapper delegates
         // setAttribute/getAttribute to the wrapped request (HttpServletRequestWrapper default), so back

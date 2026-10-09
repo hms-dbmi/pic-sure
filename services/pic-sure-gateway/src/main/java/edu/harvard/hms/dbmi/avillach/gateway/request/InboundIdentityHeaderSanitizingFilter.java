@@ -9,7 +9,7 @@ import java.util.Set;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
-import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,15 +26,16 @@ import jakarta.servlet.http.HttpServletResponse;
  * ({@code AuditLoggingFilter}) take the RIGHTMOST entry -- the nearest trusted hop -- rather than the client-forgeable leftmost one.
  * {@code X-Session-Id}, {@code request-source}, and ordinary {@code X-Client-Type} values are deliberately left unstripped as client
  * telemetry. The reserved {@code X-Client-Type: service} value is stripped because downstream services use it to identify internal calls.
+ * An {@code Authorization} header carrying a PSAMA key ({@link ApiKeyBearer}) is stripped too; a login token passes through.
  * <p> {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides the identity headers from the client,
  * but this filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed or misconfigured, a client's
  * own {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that would be an identity/privilege-spoofing
  * hole. This filter closes that hole unconditionally, independent of anything the auth chain does. <p> Runs at order 25: after
- * {@code OpenAccessFilter} (order 20) has extracted the optional API key for PSAMA, and before the remaining DB-free auth chain
- * (introspection order 30+). This ensures the secret never reaches downstream services while still allowing open-access validation to
- * consume it. {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward and sets the
- * gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these names -- so
- * normal propagation of resolved identity is unaffected by this filter running first.
+ * {@code OpenAccessFilter} (order 20) has read the optional API key from {@code Authorization} for PSAMA, and before the remaining
+ * DB-free auth chain (introspection order 30+). This ensures the key never reaches introspection or downstream services while still
+ * allowing open-access validation to consume it. {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order
+ * 50) still runs afterward and sets the gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized)
+ * client request for these names -- so normal propagation of resolved identity is unaffected by this filter running first.
  */
 public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter {
 
@@ -48,6 +49,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
 
         private static final String CLIENT_TYPE_HEADER = "X-Client-Type";
         private static final String SERVICE_CLIENT_TYPE = "service";
+        private static final String AUTHORIZATION_HEADER = "Authorization";
 
         /**
          * Gateway-owned identity headers, spoofable source-address headers, and the internal service token: always hidden from the raw
@@ -56,7 +58,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         private static final Set<String> STRIPPED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
             GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, "X-Real-IP", "Forwarded",
-            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, OpenAccessFilter.API_KEY_HEADER
+            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE
         );
 
         SanitizedIdentityHeadersRequest(HttpServletRequest request) {
@@ -72,7 +74,15 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
 
         private boolean isStripped(String name) {
             return isAlwaysStripped(name)
-                || (CLIENT_TYPE_HEADER.equalsIgnoreCase(name) && SERVICE_CLIENT_TYPE.equalsIgnoreCase(super.getHeader(name)));
+                || (CLIENT_TYPE_HEADER.equalsIgnoreCase(name) && SERVICE_CLIENT_TYPE.equalsIgnoreCase(super.getHeader(name)))
+                || (AUTHORIZATION_HEADER.equalsIgnoreCase(name) && carriesApiKey(super.getHeaders(name)));
+        }
+
+        private static boolean carriesApiKey(Enumeration<String> values) {
+            while (values != null && values.hasMoreElements()) {
+                if (ApiKeyBearer.extract(values.nextElement()) != null) return true;
+            }
+            return false;
         }
 
         @Override

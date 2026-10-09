@@ -59,8 +59,8 @@ public class OpenAccessController {
      */
     @Operation(
         summary = "Start an open-access session",
-        description = "Issue a short-lived open-access session token for an anonymous browser. Public endpoint. Send the token as the "
-            + "X-PICSURE-API-Key header; the gateway returns a replacement in X-PICSURE-Session-Refresh once it is half used."
+        description = "Issue a short-lived open-access session token for an anonymous browser. Public endpoint. Send the token as an "
+            + "Authorization bearer token; the gateway returns a replacement in X-PICSURE-Session-Refresh once it is half used."
     )
     @ApiResponse(
         responseCode = "200", description = "The session token and when it expires",
