@@ -11,9 +11,15 @@ environment = "poc"
 # documented for Converse API tool use. See ../INFRA_PLAN.md Phase 4 for why
 # Anthropic models weren't picked — every Anthropic entry in the real catalog
 # output requires an inference profile; none are ON_DEMAND.
-allowed_model_ids = [
-  "amazon.nova-lite-v1:0", # lower tier
-  "amazon.nova-pro-v1:0",  # middle tier
+allowed_model_ids = [ # cost per 1m tokens in/out
+# "amazon.nova-lite-v1:0",                 # lower tier, $0.30/$2.50
+# "amazon.nova-pro-v1:0",                  # middle tier, $1.25/$10.00
+  "openai.gpt-oss-20b-1:0",                # lower tier, $0.07/$0.30
+  "openai.gpt-oss-120b-1:0",               # middle tier, $0.15/$0.60
+  "mistral.voxtral-mini-3b-2507",          # mini tier, $0.04/$0.04
+  "mistral.voxtral-small-24b-2507",        # small tier, $0.10/$0.30
+  "mistral.ministral-3-8b-instruct",       # middle tier, $0.15/$0.15
+  "mistral.mistral-large-3-675b-instruct", # high tier, $0.50/$1.50
 ]
 
 # EC2 path: not SSO-managed, so a direct attachment works fine.
