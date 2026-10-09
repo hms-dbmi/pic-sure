@@ -879,6 +879,7 @@ mod tests {
             "missing-consents-async-error",
             "search-category-values-order",
             "search-concept-order",
+            "search-concept-and-category-values-order",
             "search-order-and-double-min-value",
             "dataframe-tie-order-across-partitions",
             "range-min-above-partition-values-async-error",

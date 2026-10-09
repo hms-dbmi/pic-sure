@@ -12,6 +12,7 @@ contract; the ETL parity harness compares the stores the two ETLs build.
 | `baseline.sh`, `docker-compose.yml` | Java baseline stack and profiling matrix |
 | `arms.sh` | Java as-is, Java on the new layout and `hpds-rs` (encrypted or plain), measured one at a time: ETL, cold and warm load, exports, memory at rest |
 | `etl-parity.sh`, `etl-parity-compare.py` | Java ETL vs `hpds-etl` on the same inputs, see [ETL parity](#etl-parity) |
+| `etl-parity-partitioned.sh` | Java `CSVLoader` vs `hpds-etl load --mode partitioned`, partition by partition, see [Partitioned ETL parity](#partitioned-etl-parity) |
 | `etl-divergences.json` | Accepted differences between the Java and Rust stores, each citing the spec |
 
 ## Java fixture
@@ -45,6 +46,28 @@ The corpus holds fixed entries, error-path entries, search entries and generated
   service does. Without `\_consents\` they filter on the categorical concept with few categories
   that covers the most patients.
 - ANY_RECORD_OF prefixes are cut at a uniformly chosen depth from the study node to the leaf.
+- A search entry with a null term asks for every concept, which the service answers as an
+  array of one-entry objects.
+
+For a consent-partitioned store, pass one `--column-meta` per partition (they are merged as the
+service merges its dictionary) and `--consents`:
+
+```bash
+hpds-bench corpus --column-meta store/p1/columnMeta.csv --column-meta store/p2/columnMeta.csv \
+  --consents auto --seed 1 --out /tmp/corpus
+hpds-bench corpus --column-meta ... --consents auto --partition-dir store \
+  --consent-variants all,one,two,subset,unknown --out /tmp/corpus-required
+```
+
+`--consents` takes a comma-separated partition list, or `auto` for the subdirectories of
+`--partition-dir` (holding `pheno.index`, `columnMeta.javabin` or `columnMeta.csv`), or else the
+directory names of the `--column-meta` files. Each query is then emitted with `userConsents`
+variants, named `<entry>-c-<variant>`: `all`, `one`, `two`, `subset` (a random subset, half of the
+time with an unknown consent mixed in), `unknown`, `empty` (`[]`) and `none` (no field). Fixed
+entries get every variant, generated entries `--variants-per-entry` (3) of them in rotation.
+Leave out `empty` and `none` for a service that requires consents when every query should
+carry some. Error-path entries carry every partition, and three error-path entries with a
+repeated key (`userConsents` twice, `value` twice) are added.
 
 ## Compare
 
@@ -129,6 +152,23 @@ stores and dumps go to `WORK_DIR`. The `aio` case copies the AIO's `hpds_input` 
 javabin store into `WORK_DIR` with `cp` (nothing in `AIO_DIR` is mounted or written), writes
 counts-only reports, keeps the migrated store at `AIO_MIGRATED_OUT` and deletes every other
 AIO-derived file when it ends. Java containers are named `parity-<case>-<step>`.
+
+## Partitioned ETL parity
+
+```bash
+bench/etl-parity-partitioned.sh                         # harm-fixture, edge, edge-config
+bench/etl-parity-partitioned.sh dir=/path/to/partition-files
+DEV_INPUT_DIR=... DEV_JAVA_STORE=... DEV_RUST_STORE=... bench/etl-parity-partitioned.sh dev
+```
+
+Each case loads a directory of headerless `<partition>-allConcepts.csv` files with the
+harmonization `CSVLoader` (`hms-dbmi/pic-sure-hpds-etl:harm`) and with
+`hpds-etl load --mode partitioned`, checks that both wrote the same partitions, and compares
+each partition as the unpartitioned harness does (dumps, `columnMeta.csv`, patient sets, and
+the migrated Java partition against the Java dump), with loaders `partitioned` and
+`migration-partitioned`. `DumpSourceCSV` runs on a copy of each Java partition, so a prebuilt
+store given for `dev` is only read. Java containers are named `v2-par-etl-<case>-<step>` and
+capped at `JAVA_MEMORY` (6g).
 
 ## Container
 

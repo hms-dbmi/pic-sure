@@ -506,7 +506,7 @@ def main():
         "--loader",
         required=True,
         help="the Java loader the case reproduces; migration-<loader> compares a migrated store with the Java store that loader built",
-         choices=["newsearch", "lowram", "migration-newsearch", "migration-lowram"],
+         choices=["newsearch", "lowram", "partitioned", "migration-newsearch", "migration-lowram", "migration-partitioned"],
     )
     parser.add_argument("--divergences", required=True)
     parser.add_argument("--java-dump")
