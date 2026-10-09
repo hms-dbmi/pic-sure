@@ -276,7 +276,7 @@ public class AuthorizationService {
     public OpenAccessValidationResponse validateOpenAccessRequest(Map<String, Object> inputMap) {
         Object presentedKey = inputMap == null ? null : inputMap.get("apiKey");
         String plaintext = presentedKey instanceof String presented ? presented : null;
-        boolean isSession = plaintext != null && plaintext.startsWith(ApiKeyService.SESSION_KEY_PREFIX);
+        boolean isSession = plaintext != null && plaintext.startsWith(ApiKeyService.OPEN_SESSION_KEY_PREFIX);
         // the prefix picks the verifier; anything that is neither a session nor a typed API key fails verifyKey
         Optional<VerifiedSession> session = isSession ? openSessionService.verify(plaintext) : Optional.empty();
         Optional<ApiKey> apiKey = plaintext != null && !isSession ? apiKeyService.verifyKey(plaintext) : Optional.empty();

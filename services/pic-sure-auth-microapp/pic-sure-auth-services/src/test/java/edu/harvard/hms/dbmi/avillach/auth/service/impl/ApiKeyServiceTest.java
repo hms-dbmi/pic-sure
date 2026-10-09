@@ -166,7 +166,7 @@ public class ApiKeyServiceTest {
 
     @Test
     public void testVerifyKey_sessionTokenNeverLooksUpTheTable() {
-        assertTrue(apiKeyService.verifyKey(ApiKeyService.SESSION_KEY_PREFIX + "eyJhbGciOiJIUzI1NiJ9.e30.x").isEmpty());
+        assertTrue(apiKeyService.verifyKey(ApiKeyService.OPEN_SESSION_KEY_PREFIX + "eyJhbGciOiJIUzI1NiJ9.e30.x").isEmpty());
         verify(apiKeyRepository, never()).findByKeyHash(anyString());
     }
 

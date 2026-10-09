@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService.SESSION_KEY_PREFIX;
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService.OPEN_SESSION_KEY_PREFIX;
 import static edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures.APPLICATION_SECRET;
 import static edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures.SESSION_KEY;
 import static edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionFixtures.SESSION_SECRET;
@@ -86,11 +86,11 @@ public class OpenSessionServiceTest {
         MacAlgorithm algorithm = Jwts.SIG.HS256;
 
         String sign() {
-            return SESSION_KEY_PREFIX + claims(Jwts.builder()).signWith(key, algorithm).compact();
+            return OPEN_SESSION_KEY_PREFIX + claims(Jwts.builder()).signWith(key, algorithm).compact();
         }
 
         String unsigned() {
-            return SESSION_KEY_PREFIX + claims(Jwts.builder()).compact();
+            return OPEN_SESSION_KEY_PREFIX + claims(Jwts.builder()).compact();
         }
 
         private JwtBuilder claims(JwtBuilder builder) {
@@ -132,7 +132,7 @@ public class OpenSessionServiceTest {
     public void testIssuedTokenVerifiesWithItsSessionIdAndLifetime() {
         IssuedSession issued = service.issue();
 
-        assertTrue(issued.token().startsWith(SESSION_KEY_PREFIX));
+        assertTrue(issued.token().startsWith(OPEN_SESSION_KEY_PREFIX));
         assertEquals(UUID.fromString(issued.sessionId()).toString(), issued.sessionId());
         assertEquals(START.plus(TTL), issued.expiresAt());
         VerifiedSession session = verified(issued.token());
@@ -330,15 +330,15 @@ public class OpenSessionServiceTest {
 
     @Test
     public void testNonJwtWithTheSessionPrefixIsRejected() {
-        assertRejected(SESSION_KEY_PREFIX + "not-a-jwt");
-        assertRejected(SESSION_KEY_PREFIX);
+        assertRejected(OPEN_SESSION_KEY_PREFIX + "not-a-jwt");
+        assertRejected(OPEN_SESSION_KEY_PREFIX);
     }
 
     @Test
     public void testJwtWithoutTheSessionPrefixIsRejected() {
         String token = service.issue().token();
 
-        assertRejected(token.substring(SESSION_KEY_PREFIX.length()));
+        assertRejected(token.substring(OPEN_SESSION_KEY_PREFIX.length()));
         assertRejected(null);
     }
 
@@ -346,12 +346,12 @@ public class OpenSessionServiceTest {
     public void testUserTokenPresentedAsASessionIsRejected() {
         String userToken = applicationJwtUtil().createJwtToken(null, "edu.harvard.hms.dbmi.psama", Map.of(), "user-subject", 60_000);
 
-        assertRejected(SESSION_KEY_PREFIX + userToken);
+        assertRejected(OPEN_SESSION_KEY_PREFIX + userToken);
     }
 
     @Test
     public void testSessionTokenFailsApplicationTokenParsing() {
-        String jwt = service.issue().token().substring(SESSION_KEY_PREFIX.length());
+        String jwt = service.issue().token().substring(OPEN_SESSION_KEY_PREFIX.length());
 
         assertThrows(NotAuthorizedException.class, () -> applicationJwtUtil().parseToken(jwt));
     }
@@ -471,7 +471,7 @@ public class OpenSessionServiceTest {
         tokens.add(wrongAudience.sign());
         Forged unsignedToken = new Forged();
         tokens.add(unsignedToken.unsigned());
-        tokens.add(SESSION_KEY_PREFIX + "not-a-jwt");
+        tokens.add(OPEN_SESSION_KEY_PREFIX + "not-a-jwt");
         tokens.add(valid.substring(0, valid.length() - 4) + "AAAA");
 
         clock.advance(TTL.plusSeconds(1));
@@ -481,7 +481,7 @@ public class OpenSessionServiceTest {
         for (ILoggingEvent event : logs.list) {
             for (String token : tokens) {
                 // the whole token, or its signature segment on its own
-                String jwt = token.substring(SESSION_KEY_PREFIX.length());
+                String jwt = token.substring(OPEN_SESSION_KEY_PREFIX.length());
                 String signature = jwt.substring(jwt.lastIndexOf('.') + 1);
                 assertFalse(event.getFormattedMessage().contains(jwt), "a log line contains a token: " + event.getFormattedMessage());
                 if (!signature.isEmpty()) {
@@ -497,7 +497,7 @@ public class OpenSessionServiceTest {
     public void testIssuedSessionToStringRedactsTheToken() {
         IssuedSession issued = service.issue();
 
-        assertFalse(issued.toString().contains(issued.token().substring(SESSION_KEY_PREFIX.length())));
+        assertFalse(issued.toString().contains(issued.token().substring(OPEN_SESSION_KEY_PREFIX.length())));
         assertTrue(issued.toString().contains(issued.sessionId()));
     }
 }

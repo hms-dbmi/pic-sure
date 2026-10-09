@@ -23,7 +23,7 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 
-import static edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService.SESSION_KEY_PREFIX;
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService.OPEN_SESSION_KEY_PREFIX;
 
 /**
  * Issues, verifies, and refreshes open-access session tokens: stateless HS256 JWTs, sent as {@code picsure_s_<jwt>} in the
@@ -160,12 +160,12 @@ public class OpenSessionService {
      * @throws java.time.DateTimeException if the signed session start or its maximum lifetime exceeds the supported instant range
      */
     public Optional<VerifiedSession> verify(String presented) {
-        if (!enabled || presented == null || !presented.startsWith(SESSION_KEY_PREFIX)) {
+        if (!enabled || presented == null || !presented.startsWith(OPEN_SESSION_KEY_PREFIX)) {
             return Optional.empty();
         }
         Jws<Claims> jws;
         try {
-            jws = parser.parseSignedClaims(presented.substring(SESSION_KEY_PREFIX.length()));
+            jws = parser.parseSignedClaims(presented.substring(OPEN_SESSION_KEY_PREFIX.length()));
         } catch (JwtException | IllegalArgumentException e) {
             // the exception message can quote token content, so only its type is logged
             logger.debug("Rejected open-access session token: {}", e.getClass().getSimpleName());
@@ -220,7 +220,7 @@ public class OpenSessionService {
         String jwt = Jwts.builder().issuer(ISSUER).audience().add(AUDIENCE).and().subject(sessionId).issuedAt(Date.from(now))
             .expiration(Date.from(expiresAt)).claim(SESSION_START_CLAIM, sessionStart.getEpochSecond()).signWith(signingKey, Jwts.SIG.HS256)
             .compact();
-        return new IssuedSession(sessionId, SESSION_KEY_PREFIX + jwt, expiresAt);
+        return new IssuedSession(sessionId, OPEN_SESSION_KEY_PREFIX + jwt, expiresAt);
     }
 
     /** Returns the earlier of the token TTL measured from {@code now} and the maximum lifetime measured from {@code sessionStart}. */

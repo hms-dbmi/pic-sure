@@ -44,8 +44,7 @@ public class ApiKeyService {
     public static final String KEY_PREFIX = "picsure_";
     public static final String USER_KEY_PREFIX = KEY_PREFIX + "u_";
     public static final String PLATFORM_KEY_PREFIX = KEY_PREFIX + "p_";
-    /** Marks an open-access session token. Never stored here; {@code OpenSessionService} verifies it. */
-    public static final String SESSION_KEY_PREFIX = KEY_PREFIX + "s_";
+    public static final String OPEN_SESSION_KEY_PREFIX = KEY_PREFIX + "s_";
     public static final String SCHEME_SHA256 = "SHA256";
     public static final String SCHEME_HMAC_SHA256 = "HMAC_SHA256";
 

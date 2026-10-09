@@ -211,7 +211,7 @@ public class TokenServiceTest {
     @Test
     public void testInspectToken_sessionTokenIsRejectedAndNeverLogged() {
         String sessionToken = OpenSessionFixtures.enabledService(Clock.systemUTC()).issue().token();
-        String jwt = sessionToken.substring(ApiKeyService.SESSION_KEY_PREFIX.length());
+        String jwt = sessionToken.substring(ApiKeyService.OPEN_SESSION_KEY_PREFIX.length());
         Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
         Level previousLevel = root.getLevel();
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
