@@ -604,7 +604,8 @@ fn search_terms(rng: &mut Rng, pools: &Pools) -> Vec<(String, String)> {
 /// `size` entries are produced by rotating over every filter shape and every result type, so the
 /// first 63 entries already cover each combination. Fixed entries come first: an empty query,
 /// unknown concepts, a set of invalid requests flagged as error paths, and `POST /search`
-/// entries. The same inputs always give the same entries.
+/// entries, one of them with a null term (every concept, as an array). The same inputs always
+/// give the same entries.
 ///
 /// Authorization entries filter on `\_consents\` when the metadata has it, with
 /// `\_topmed_consents\` and `\_harmonized_consent\` added in the multi-filter variant when those
@@ -652,6 +653,10 @@ pub fn generate(columns: &[ColumnMeta], seed: u64, size: usize) -> Result<Vec<Co
     for (label, term) in search_terms(&mut rng, &pools) {
         entries.push(search_entry(label, &term));
     }
+    entries.push(CorpusEntry {
+        request: json!({"query": null, "resourceUUID": null}),
+        ..search_entry("null-term".into(), "")
+    });
 
     for index in 0..size {
         let shape = SHAPES[index % SHAPES.len()];
@@ -1018,7 +1023,16 @@ mod tests {
                 .iter()
                 .any(|e| e.name.contains("studies-consents-value"))
         );
-        assert!(searches.iter().all(|e| e.request["query"].is_string()));
+        assert!(
+            searches
+                .iter()
+                .all(|e| e.request["query"].is_string() || e.name == "search-null-term")
+        );
+        assert!(
+            searches
+                .iter()
+                .any(|e| e.name == "search-null-term" && e.request["query"].is_null())
+        );
         let without = generate(&sample_columns(false), 1, 5).unwrap();
         assert!(!without.iter().any(|e| e.name.contains("studies-consents")));
         assert!(without.iter().any(|e| e.kind == Kind::Search));

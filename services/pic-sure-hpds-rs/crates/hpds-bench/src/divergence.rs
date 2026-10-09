@@ -3,8 +3,9 @@ use std::path::Path;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::client::{Outcome, SyncOutcome};
-use crate::compare::json_diff_with;
+use crate::client::{AsyncOutcome, Outcome, SyncOutcome};
+use crate::compare::{csv_diff, json_diff_with};
+use crate::consents::has_consent_values;
 use crate::corpus::CorpusEntry;
 use crate::{BenchError, Result};
 
@@ -24,6 +25,38 @@ pub enum Condition {
     /// Both sides answered a sync request with 200, exactly one of them with an empty body,
     /// and the entry's phenotypic clause holds a `FILTER` with a numeric `min`.
     RangeMinSuccessBodyEmpty,
+    /// Both sides answered 200 with JSON that differs, and is equal once every
+    /// `categoryValues` array is sorted on both sides.
+    CategoryValuesOrder,
+    /// Both sides answered 200 with JSON that differs, and is equal once every array whose
+    /// elements are all one-key objects (the null-term `/search` answer) is sorted by key.
+    SearchConceptOrder,
+    /// The entry's query carries no `userConsents` value, one side answered the sync request
+    /// 200 with an empty body and the other 400.
+    #[serde(rename = "missing-consents-empty-200")]
+    MissingConsentsEmpty200,
+    /// The entry's query carries no `userConsents` value, one side accepted the async submit
+    /// (200) and ended in ERROR, and the other refused the submit with 400.
+    MissingConsentsAsyncError,
+    /// Both async results succeeded with CSV bodies that differ, and are equal once the
+    /// tab-separated values inside every cell are sorted.
+    DataframeCellOrder,
+    /// Both sides accepted an async submit, one ended in ERROR and the other in SUCCESS, and
+    /// the entry's phenotypic clause holds a `FILTER` with a numeric `min`.
+    RangeMinAsyncError,
+}
+
+/// When a rule applies: one condition, or a list of body normalizations
+/// ([`Condition::NumericMaxDoubleMinValue`], [`Condition::CategoryValuesOrder`],
+/// [`Condition::SearchConceptOrder`]) that together must make two differing 200 JSON bodies
+/// equal.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum When {
+    /// A single condition.
+    One(Condition),
+    /// Normalizations applied together.
+    All(Vec<Condition>),
 }
 
 /// Java's `Double.MIN_VALUE`, the smallest positive double, printed as `4.9E-324`.
@@ -49,7 +82,7 @@ pub struct Rule {
     pub statuses: Option<[u16; 2]>,
     /// Extra condition on the outcomes.
     #[serde(default)]
-    pub when: Option<Condition>,
+    pub when: Option<When>,
     /// Why the difference is accepted, citing the spec's divergence list.
     pub reason: String,
 }
@@ -175,7 +208,62 @@ fn align_min_value_max(a: &mut Value, b: &mut Value) -> usize {
     }
 }
 
-fn differs_only_in_min_value_max(a: &Outcome, b: &Outcome) -> bool {
+/// Sorts, on one side, every array stored under `categoryValues`.
+fn sort_category_values(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map.iter_mut() {
+                if key == "categoryValues"
+                    && let Value::Array(items) = child
+                {
+                    items.sort_by_key(Value::to_string);
+                } else {
+                    sort_category_values(child);
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(sort_category_values),
+        _ => {}
+    }
+}
+
+fn single_key(value: &Value) -> Option<&str> {
+    match value {
+        Value::Object(map) if map.len() == 1 => map.keys().next().map(String::as_str),
+        _ => None,
+    }
+}
+
+/// Sorts, on one side, every non-empty array whose elements are all one-key objects, by key.
+fn sort_one_key_object_arrays(value: &mut Value) {
+    match value {
+        Value::Object(map) => map.values_mut().for_each(sort_one_key_object_arrays),
+        Value::Array(items) => {
+            items.iter_mut().for_each(sort_one_key_object_arrays);
+            if !items.is_empty() && items.iter().all(|item| single_key(item).is_some()) {
+                items.sort_by(|x, y| single_key(x).cmp(&single_key(y)));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_normalization(condition: Condition) -> bool {
+    matches!(
+        condition,
+        Condition::NumericMaxDoubleMinValue
+            | Condition::CategoryValuesOrder
+            | Condition::SearchConceptOrder
+    )
+}
+
+/// Whether two 200 JSON bodies differ and become equal once every normalization in
+/// `conditions` is applied to both. Orders are normalized before the max is aligned, because
+/// the alignment pairs array elements by position.
+fn equal_after(a: &Outcome, b: &Outcome, conditions: &[Condition]) -> bool {
+    if conditions.is_empty() || !conditions.iter().all(|c| is_normalization(*c)) {
+        return false;
+    }
     let (Outcome::Sync(x), Outcome::Sync(y)) = (a, b) else {
         return false;
     };
@@ -188,8 +276,100 @@ fn differs_only_in_min_value_max(a: &Outcome, b: &Outcome) -> bool {
     ) else {
         return false;
     };
-    align_min_value_max(&mut left, &mut right) > 0
-        && json_diff_with(&left, &right, false).is_empty()
+    if json_diff_with(&left, &right, false).is_empty() {
+        return false;
+    }
+    if conditions.contains(&Condition::SearchConceptOrder) {
+        sort_one_key_object_arrays(&mut left);
+        sort_one_key_object_arrays(&mut right);
+    }
+    if conditions.contains(&Condition::CategoryValuesOrder) {
+        sort_category_values(&mut left);
+        sort_category_values(&mut right);
+    }
+    if conditions.contains(&Condition::NumericMaxDoubleMinValue) {
+        align_min_value_max(&mut left, &mut right);
+    }
+    json_diff_with(&left, &right, false).is_empty()
+}
+
+fn missing_consents_empty_200(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    let (Outcome::Sync(x), Outcome::Sync(y)) = (a, b) else {
+        return false;
+    };
+    let empty_200 = |s: &SyncOutcome| s.status == 200 && s.body.is_empty();
+    !has_consent_values(&entry.request)
+        && ((empty_200(x) && y.status == 400) || (empty_200(y) && x.status == 400))
+}
+
+fn ended_in_error(outcome: &AsyncOutcome) -> bool {
+    outcome.submit_status == 200
+        && (outcome.resource_status.as_deref() == Some("ERROR")
+            || outcome.status.as_deref() == Some("ERROR"))
+}
+
+fn ended_in_success(outcome: &AsyncOutcome) -> bool {
+    outcome.submit_status == 200 && outcome.resource_status.as_deref() == Some("SUCCESS")
+}
+
+fn missing_consents_async_error(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    let (Outcome::Async(x), Outcome::Async(y)) = (a, b) else {
+        return false;
+    };
+    !has_consent_values(&entry.request)
+        && ((ended_in_error(x) && y.submit_status == 400)
+            || (ended_in_error(y) && x.submit_status == 400))
+}
+
+/// Rewrites a CSV body with the tab-separated values inside every cell sorted.
+fn sort_cell_values(text: &str) -> Option<String> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(text.as_bytes());
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    for record in reader.records() {
+        let record = record.ok()?;
+        let cells: Vec<String> = record
+            .iter()
+            .map(|cell| {
+                let mut values: Vec<&str> = cell.split('\t').collect();
+                values.sort_unstable();
+                values.join("\t")
+            })
+            .collect();
+        writer.write_record(&cells).ok()?;
+    }
+    String::from_utf8(writer.into_inner().ok()?).ok()
+}
+
+fn dataframe_cell_order(a: &Outcome, b: &Outcome) -> bool {
+    let (Outcome::Async(x), Outcome::Async(y)) = (a, b) else {
+        return false;
+    };
+    if !ended_in_success(x) || !ended_in_success(y) {
+        return false;
+    }
+    let (Some(left), Some(right)) = (&x.result_body, &y.result_body) else {
+        return false;
+    };
+    if csv_diff(left, right).is_empty() {
+        return false;
+    }
+    match (sort_cell_values(left), sort_cell_values(right)) {
+        (Some(l), Some(r)) => csv_diff(&l, &r).is_empty(),
+        _ => false,
+    }
+}
+
+fn range_min_async_error(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    let (Outcome::Async(x), Outcome::Async(y)) = (a, b) else {
+        return false;
+    };
+    ((ended_in_error(x) && ended_in_success(y)) || (ended_in_error(y) && ended_in_success(x)))
+        && query_object(&entry.request)
+            .and_then(|query| query.get("phenotypicClause").cloned())
+            .is_some_and(|clause| holds_range_min_filter(&clause))
 }
 
 fn query_object(request: &Value) -> Option<Value> {
@@ -219,6 +399,23 @@ fn range_min_with_one_empty_body(entry: &CorpusEntry, a: &Outcome, b: &Outcome) 
             .is_some_and(|clause| holds_range_min_filter(&clause))
 }
 
+impl Condition {
+    fn holds(self, entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+        match self {
+            Condition::StrictSubsetOrTimeout => subset_or_timeout(a, b),
+            Condition::SuccessBodyEmpty => empty_success_body(a, b),
+            Condition::NumericMaxDoubleMinValue
+            | Condition::CategoryValuesOrder
+            | Condition::SearchConceptOrder => equal_after(a, b, &[self]),
+            Condition::RangeMinSuccessBodyEmpty => range_min_with_one_empty_body(entry, a, b),
+            Condition::MissingConsentsEmpty200 => missing_consents_empty_200(entry, a, b),
+            Condition::MissingConsentsAsyncError => missing_consents_async_error(entry, a, b),
+            Condition::DataframeCellOrder => dataframe_cell_order(a, b),
+            Condition::RangeMinAsyncError => range_min_async_error(entry, a, b),
+        }
+    }
+}
+
 impl Rule {
     fn matches(&self, entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
         if let Some(pattern) = &self.entry
@@ -242,11 +439,9 @@ impl Rule {
                 return false;
             }
         }
-        match self.when {
-            Some(Condition::StrictSubsetOrTimeout) => subset_or_timeout(a, b),
-            Some(Condition::SuccessBodyEmpty) => empty_success_body(a, b),
-            Some(Condition::NumericMaxDoubleMinValue) => differs_only_in_min_value_max(a, b),
-            Some(Condition::RangeMinSuccessBodyEmpty) => range_min_with_one_empty_body(entry, a, b),
+        match &self.when {
+            Some(When::One(condition)) => condition.holds(entry, a, b),
+            Some(When::All(conditions)) => equal_after(a, b, conditions),
             None => true,
         }
     }
@@ -257,7 +452,8 @@ impl Divergences {
     ///
     /// # Errors
     ///
-    /// Fails when the file is missing, malformed, or holds a rule with no constraint.
+    /// Fails when the file is missing, malformed, or holds a rule with no constraint, or a
+    /// condition list holding an empty list or a condition that is not a body normalization.
     pub fn read(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path).map_err(|e| BenchError::io(path, e))?;
         let parsed: Self = serde_json::from_str(&text)
@@ -271,6 +467,14 @@ impl Divergences {
             {
                 return Err(BenchError::Invalid(format!(
                     "divergence rule '{}' has no entry, entries, resultType, statuses or when",
+                    rule.name
+                )));
+            }
+            if let Some(When::All(conditions)) = &rule.when
+                && (conditions.is_empty() || !conditions.iter().all(|c| is_normalization(*c)))
+            {
+                return Err(BenchError::Invalid(format!(
+                    "divergence rule '{}' lists conditions that are not all body normalizations",
                     rule.name
                 )));
             }
@@ -486,6 +690,213 @@ mod tests {
             .unwrap();
         assert_eq!(rule.name, "range-min-above-every-value-empty-200");
         assert!(rule.reason.contains("seekForMinIndex"));
+    }
+
+    fn async_outcome(submit: u16, resource: Option<&str>, body: Option<&str>) -> Outcome {
+        Outcome::Async(AsyncOutcome {
+            submit_status: submit,
+            status: resource.map(|r| if r == "SUCCESS" { "AVAILABLE" } else { r }.to_owned()),
+            resource_status: resource.map(str::to_owned),
+            result_status: body.map(|_| 200),
+            result_content_type: body.map(|_| "text/plain".to_owned()),
+            result_body: body.map(str::to_owned),
+            timed_out: false,
+        })
+    }
+
+    fn consent_entry(name: &str, kind: Kind, consents: Option<Value>) -> CorpusEntry {
+        let mut query = json!({"select": [], "expectedResultType": "COUNT"});
+        if let Some(values) = consents {
+            query["userConsents"] = values;
+        }
+        CorpusEntry {
+            kind,
+            request: json!({"query": query, "resourceUUID": null}),
+            ..entry(name, "COUNT")
+        }
+    }
+
+    #[test]
+    fn missing_consents_accept_an_empty_200_against_a_400_only_without_values() {
+        let set = rules(json!([
+            {"name": "m", "statuses": [200, 400], "when": "missing-consents-empty-200", "reason": "why"}
+        ]));
+        for consents in [None, Some(json!([])), Some(json!([{"value": null}]))] {
+            let e = consent_entry("0001-x-count-c-none", Kind::Sync, consents);
+            assert!(set.find(&e, &sync(200, ""), &sync(400, "msg")).is_some());
+            assert!(set.find(&e, &sync(400, "msg"), &sync(200, "")).is_some());
+            assert!(set.find(&e, &sync(200, "12"), &sync(400, "msg")).is_none());
+        }
+        let with = consent_entry(
+            "0001-x-count-c-one",
+            Kind::Sync,
+            Some(json!([{"value": "p1"}])),
+        );
+        assert!(set.find(&with, &sync(200, ""), &sync(400, "msg")).is_none());
+    }
+
+    #[test]
+    fn missing_consents_accept_an_async_error_against_a_refused_submit() {
+        let set = rules(json!([
+            {"name": "m", "when": "missing-consents-async-error", "reason": "why"}
+        ]));
+        let e = consent_entry("0005-x-patients-c-empty", Kind::Async, Some(json!([])));
+        let java = async_outcome(200, Some("ERROR"), None);
+        let rust = async_outcome(400, None, None);
+        assert!(set.find(&e, &java, &rust).is_some());
+        assert!(set.find(&e, &rust, &java).is_some());
+        let success = async_outcome(200, Some("SUCCESS"), Some("patient_id\n1\n"));
+        assert!(set.find(&e, &success, &rust).is_none());
+        let with = consent_entry(
+            "0005-x-patients-c-all",
+            Kind::Async,
+            Some(json!([{"value": "p"}])),
+        );
+        assert!(set.find(&with, &java, &rust).is_none());
+    }
+
+    #[test]
+    fn category_values_and_concept_order_are_accepted_only_when_order_is_the_difference() {
+        let set = rules(json!([
+            {"name": "cat", "entry": "search-*", "when": "category-values-order", "reason": "why"},
+            {"name": "concepts", "entry": "search-*", "when": "search-concept-order", "reason": "why"},
+            {"name": "both", "entry": "search-*", "when": ["search-concept-order", "category-values-order", "numeric-max-double-min-value"], "reason": "why"}
+        ]));
+        let e = entry("search-value-0", "SEARCH");
+        let java =
+            r#"{"results":{"phenotypes":{"p":{"categoryValues":["b","a"],"patientCount":3}}}}"#;
+        let rust =
+            r#"{"results":{"phenotypes":{"p":{"categoryValues":["a","b"],"patientCount":3}}}}"#;
+        assert_eq!(
+            set.find(&e, &sync(200, java), &sync(200, rust))
+                .unwrap()
+                .name,
+            "cat"
+        );
+        let other =
+            r#"{"results":{"phenotypes":{"p":{"categoryValues":["a","c"],"patientCount":3}}}}"#;
+        assert!(set.find(&e, &sync(200, java), &sync(200, other)).is_none());
+
+        let java = r#"{"results":{"phenotypes":[{"\\b\\":{"max":1}},{"\\a\\":{"max":2}}]}}"#;
+        let rust = r#"{"results":{"phenotypes":[{"\\a\\":{"max":2}},{"\\b\\":{"max":1}}]}}"#;
+        assert_eq!(
+            set.find(&e, &sync(200, java), &sync(200, rust))
+                .unwrap()
+                .name,
+            "concepts"
+        );
+        let changed = r#"{"results":{"phenotypes":[{"\\a\\":{"max":3}},{"\\b\\":{"max":1}}]}}"#;
+        assert!(
+            set.find(&e, &sync(200, java), &sync(200, changed))
+                .is_none()
+        );
+
+        let java = r#"{"r":[{"\\b\\":{"categoryValues":["y","x"]}},{"\\a\\":{"max":4.9E-324}}]}"#;
+        let rust = r#"{"r":[{"\\a\\":{"max":-2.0}},{"\\b\\":{"categoryValues":["x","y"]}}]}"#;
+        assert_eq!(
+            set.find(&e, &sync(200, java), &sync(200, rust))
+                .unwrap()
+                .name,
+            "both"
+        );
+        assert!(set.find(&e, &sync(200, rust), &sync(200, rust)).is_none());
+    }
+
+    #[test]
+    fn dataframe_cell_order_accepts_reordered_values_inside_a_cell_only() {
+        let set = rules(json!([
+            {"name": "df", "resultType": "DATAFRAME", "when": "dataframe-cell-order", "reason": "why"}
+        ]));
+        let e = entry("0006-x-dataframe-c-all", "DATAFRAME");
+        let java = async_outcome(
+            200,
+            Some("SUCCESS"),
+            Some("patient_id,\\a\\\n1,x\ty\n2,z\n"),
+        );
+        let rust = async_outcome(
+            200,
+            Some("SUCCESS"),
+            Some("patient_id,\\a\\\n1,y\tx\n2,z\n"),
+        );
+        assert!(set.find(&e, &java, &rust).is_some());
+        let lost = async_outcome(200, Some("SUCCESS"), Some("patient_id,\\a\\\n1,y\n2,z\n"));
+        assert!(set.find(&e, &java, &lost).is_none());
+        assert!(set.find(&e, &java, &java).is_none());
+        let failed = async_outcome(200, Some("ERROR"), None);
+        assert!(set.find(&e, &java, &failed).is_none());
+    }
+
+    #[test]
+    fn async_error_is_accepted_only_for_a_range_filter_with_a_min() {
+        let set = rules(json!([
+            {"name": "range", "when": "range-min-async-error", "reason": "why"}
+        ]));
+        let with_min = CorpusEntry {
+            kind: Kind::Async,
+            ..with_clause(
+                "0008-numeric-range-patients",
+                json!({"conceptPath": "\\a\\", "min": 5.0, "phenotypicFilterType": "FILTER"}),
+            )
+        };
+        let java = async_outcome(200, Some("ERROR"), None);
+        let rust = async_outcome(200, Some("SUCCESS"), Some("patient_id\n"));
+        assert!(set.find(&with_min, &java, &rust).is_some());
+        assert!(set.find(&with_min, &rust, &java).is_some());
+        assert!(
+            set.find(&with_min, &java, &async_outcome(400, None, None))
+                .is_none()
+        );
+        let categorical = CorpusEntry {
+            kind: Kind::Async,
+            ..with_clause(
+                "0000-categorical-patients",
+                json!({"conceptPath": "\\a\\", "values": ["x"], "phenotypicFilterType": "FILTER"}),
+            )
+        };
+        assert!(set.find(&categorical, &java, &rust).is_none());
+    }
+
+    #[test]
+    fn condition_lists_must_hold_only_normalizations() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("d.json");
+        std::fs::write(
+            &file,
+            r#"{"rules":[{"name":"x","when":["category-values-order","success-body-empty"],"reason":"y"}]}"#,
+        )
+        .unwrap();
+        assert!(Divergences::read(&file).is_err());
+        std::fs::write(&file, r#"{"rules":[{"name":"x","when":[],"reason":"y"}]}"#).unwrap();
+        assert!(Divergences::read(&file).is_err());
+    }
+
+    #[test]
+    fn harmonization_rules_are_checked_in_and_cite_a_source() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/divergences.json");
+        let set = Divergences::read(&file).unwrap();
+        let harmonization = [
+            "missing-consents-sync-empty-200",
+            "missing-consents-async-error",
+            "search-category-values-order",
+            "search-concept-order",
+            "search-order-and-double-min-value",
+            "dataframe-tie-order-across-partitions",
+            "range-min-above-partition-values-async-error",
+            "duplicate-key-last-wins",
+        ];
+        for name in harmonization {
+            let rule = set
+                .rules
+                .iter()
+                .find(|r| r.name == name)
+                .unwrap_or_else(|| panic!("missing rule {name}"));
+            assert!(
+                rule.reason.contains("README")
+                    || rule.reason.contains("Decision")
+                    || rule.reason.contains("Spec"),
+                "rule {name} cites no source"
+            );
+        }
     }
 
     #[test]

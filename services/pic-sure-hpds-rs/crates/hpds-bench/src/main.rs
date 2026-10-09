@@ -5,8 +5,11 @@ use std::sync::Arc;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use hpds_bench::client::Client;
-use hpds_bench::column_meta::read_column_meta;
+use hpds_bench::column_meta::{merge_column_meta, read_column_meta};
 use hpds_bench::compare::{CompareReport, Mismatch, compare_corpus};
+use hpds_bench::consents::{
+    ConsentPlan, expand, parse_variants, partitions_in_dir, partitions_of_files,
+};
 use hpds_bench::corpus::{generate, read_corpus, write_corpus};
 use hpds_bench::divergence::Divergences;
 use hpds_bench::duration::parse_duration;
@@ -33,9 +36,26 @@ enum Only {
 enum Command {
     /// Generate a deterministic query corpus from a columnMeta.csv.
     Corpus {
-        /// Path to columnMeta.csv.
+        /// Path to columnMeta.csv. Repeat it for a partitioned store, one file per partition;
+        /// the files are merged as the service merges its dictionary.
+        #[arg(long, required = true)]
+        column_meta: Vec<PathBuf>,
+        /// Emit each query with `userConsents`: a comma-separated list of partition names, or
+        /// `auto` for the subdirectories of --partition-dir, or else the directory names of the
+        /// --column-meta files. Without it queries carry no `userConsents`.
         #[arg(long)]
-        column_meta: PathBuf,
+        consents: Option<String>,
+        /// Partitioned store directory that `--consents auto` reads partition names from.
+        #[arg(long)]
+        partition_dir: Option<PathBuf>,
+        /// Consent variants to cycle through, comma separated, from all, one, two, subset,
+        /// unknown, empty and none. Leave out empty and none for a service that requires
+        /// consents when every query should carry some.
+        #[arg(long, default_value = "all,one,two,subset,unknown,empty,none")]
+        consent_variants: String,
+        /// Consent variants per generated entry; fixed entries get every variant.
+        #[arg(long, default_value_t = 3)]
+        variants_per_entry: usize,
         /// Seed; the same seed and metadata give the same corpus.
         #[arg(long, default_value_t = 1)]
         seed: u64,
@@ -162,12 +182,43 @@ async fn run(cli: Cli) -> Result<bool> {
     match cli.command {
         Command::Corpus {
             column_meta,
+            consents,
+            partition_dir,
+            consent_variants,
+            variants_per_entry,
             seed,
             out,
             size,
         } => {
-            let columns = read_column_meta(&column_meta)?;
-            let entries = generate(&columns, seed, size)?;
+            let sets = column_meta
+                .iter()
+                .map(|path| read_column_meta(path))
+                .collect::<Result<Vec<_>>>()?;
+            let columns = if sets.len() == 1 {
+                sets.into_iter().next().unwrap_or_default()
+            } else {
+                merge_column_meta(sets)
+            };
+            let mut entries = generate(&columns, seed, size)?;
+            if let Some(spec) = consents {
+                let partitions = match (spec.as_str(), &partition_dir) {
+                    ("auto", Some(dir)) => partitions_in_dir(dir)?,
+                    ("auto", None) => partitions_of_files(&column_meta)?,
+                    (list, _) => list
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                };
+                let plan = ConsentPlan {
+                    partitions,
+                    variants: parse_variants(&consent_variants)?,
+                    per_entry: variants_per_entry,
+                };
+                println!("consent partitions: {}", plan.partitions.join(","));
+                entries = expand(entries, &plan, seed)?;
+            }
             let manifest = write_corpus(&out, seed, size, &entries)?;
             println!(
                 "wrote {} entries to {}",

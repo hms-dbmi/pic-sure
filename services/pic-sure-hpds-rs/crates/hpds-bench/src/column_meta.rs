@@ -92,6 +92,46 @@ pub fn read_column_meta(path: &Path) -> Result<Vec<ColumnMeta>> {
     Ok(out)
 }
 
+/// Merges per-partition column metadata into one row per concept, as the Java service's
+/// `SummaryColumnMeta` does: the first partition's type, category values unioned (sorted),
+/// the smallest min and largest max, and observation and patient counts summed. Rows come
+/// out in path order.
+pub fn merge_column_meta(sets: Vec<Vec<ColumnMeta>>) -> Vec<ColumnMeta> {
+    let mut merged: std::collections::BTreeMap<String, ColumnMeta> =
+        std::collections::BTreeMap::new();
+    for column in sets.into_iter().flatten() {
+        match merged.get_mut(&column.name) {
+            None => {
+                merged.insert(column.name.clone(), column);
+            }
+            Some(into) => {
+                for category in column.categories {
+                    if !into.categories.contains(&category) {
+                        into.categories.push(category);
+                    }
+                }
+                into.min = match (into.min, column.min) {
+                    (Some(a), Some(b)) => Some(a.min(b)),
+                    (a, b) => a.or(b),
+                };
+                into.max = match (into.max, column.max) {
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                    (a, b) => a.or(b),
+                };
+                into.observation_count += column.observation_count;
+                into.patient_count += column.patient_count;
+            }
+        }
+    }
+    merged
+        .into_values()
+        .map(|mut column| {
+            column.categories.sort();
+            column
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,6 +156,37 @@ mod tests {
         assert_eq!(columns[1].patient_count, 6);
         assert_eq!(columns[2].categories, vec!["x, y", "z"]);
         assert_eq!(columns[3].min, None);
+    }
+
+    #[test]
+    fn partitions_merge_like_summary_column_meta() {
+        let column =
+            |name: &str, categories: &[&str], range: Option<(f64, f64)>, patients| ColumnMeta {
+                name: name.into(),
+                categorical: range.is_none(),
+                categories: categories.iter().map(|s| (*s).to_owned()).collect(),
+                min: range.map(|r| r.0),
+                max: range.map(|r| r.1),
+                observation_count: patients,
+                patient_count: patients,
+            };
+        let merged = merge_column_meta(vec![
+            vec![
+                column("\\b\\", &["y", "x"], None, 2),
+                column("\\a\\", &[], Some((1.0, 5.0)), 3),
+            ],
+            vec![
+                column("\\b\\", &["z", "x"], None, 4),
+                column("\\a\\", &[], Some((-2.0, 4.0)), 1),
+                column("\\c\\", &["q"], None, 1),
+            ],
+        ]);
+        let names: Vec<&str> = merged.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["\\a\\", "\\b\\", "\\c\\"]);
+        assert_eq!((merged[0].min, merged[0].max), (Some(-2.0), Some(5.0)));
+        assert_eq!(merged[0].patient_count, 4);
+        assert_eq!(merged[1].categories, ["x", "y", "z"]);
+        assert_eq!(merged[1].patient_count, 6);
     }
 
     #[test]

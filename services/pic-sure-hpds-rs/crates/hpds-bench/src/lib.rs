@@ -6,6 +6,7 @@
 pub mod client;
 pub mod column_meta;
 pub mod compare;
+pub mod consents;
 pub mod corpus;
 pub mod divergence;
 pub mod duration;

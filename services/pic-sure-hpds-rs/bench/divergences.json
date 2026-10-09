@@ -3,13 +3,19 @@
     {
       "name": "invalid-request-status",
       "entry": "error-*",
-      "statuses": [400, 500],
+      "statuses": [
+        400,
+        500
+      ],
       "reason": "Spec divergence, HTTP errors: Java answers a bad sync query or a validation failure with 500 (the query service then returns 502); Rust returns 400 with a text message."
     },
     {
       "name": "unknown-async-id-status",
       "entry": "error-unknown-async-id-*",
-      "statuses": [404, 500],
+      "statuses": [
+        404,
+        500
+      ],
       "reason": "Spec divergence, HTTP errors: Java answers an unknown async result id with a NullPointerException 500; Rust returns 404."
     },
     {
@@ -19,14 +25,20 @@
         "error-empty-subquery",
         "error-genomic-filters-without-genotype-data"
       ],
-      "statuses": [200, 400],
+      "statuses": [
+        200,
+        400
+      ],
       "when": "success-body-empty",
       "reason": "Spec divergence, HTTP errors: Java answers a FILTER with neither values nor a range, an empty subquery, or non-empty genomicFilters with 200 and an empty body; Rust returns 400 with a text message. The rule covers only these entries and only when the 200 side's body is empty."
     },
     {
       "name": "unknown-async-id-status-empty-200",
       "entry": "error-unknown-async-id-*",
-      "statuses": [200, 404],
+      "statuses": [
+        200,
+        404
+      ],
       "reason": "Spec divergence, HTTP errors: Java answers /status for an unknown async id with 200 and an empty body; Rust returns 404."
     },
     {
@@ -43,9 +55,68 @@
     },
     {
       "name": "range-min-above-every-value-empty-200",
-      "statuses": [200, 200],
+      "statuses": [
+        200,
+        200
+      ],
       "when": "range-min-success-body-empty",
-      "reason": "Spec divergence, Range filters: Java's seekForMinIndex throws when min is above every value, and copyOfRange throws when max is below min; Java then answers 200 with an empty body, where Rust answers 200 with the result for an empty cohort. Accepted only for sync entries whose phenotypic clause holds a FILTER with a min, and only when exactly one side's 200 body is empty."
+      "reason": "Spec divergence, Range filters: Java's seekForMinIndex throws when min is above every value (on the harmonization branch, every value of any one selected partition holding the concept), and copyOfRange throws when max is below min; Java then answers 200 with an empty body, where Rust answers 200 with the result for an empty cohort. Accepted only for sync entries whose phenotypic clause holds a FILTER with a min, and only when exactly one side's 200 body is empty."
+    },
+    {
+      "name": "missing-consents-sync-empty-200",
+      "statuses": [
+        200,
+        400
+      ],
+      "when": "missing-consents-empty-200",
+      "reason": "Decision 7 (plan-v2.md) and README, Differences from Java: 'With HPDS_REQUIRE_AUTHORIZATION_FILTER true, a query with no consent value is a 400 \"User consents are required for this query\" on both query routes. Java answers /query/sync 200 with an empty body and no queryMetadata header'. Accepted only when the entry's query carries no userConsents value and the 200 side's body is empty."
+    },
+    {
+      "name": "missing-consents-async-error",
+      "when": "missing-consents-async-error",
+      "reason": "Decision 7 (plan-v2.md) and README, Differences from Java: with the flag on and no consent value Rust refuses POST /query with 400, where Java answers 'POST /query 200 with a status of ERROR'. Accepted only when the entry's query carries no userConsents value."
+    },
+    {
+      "name": "search-category-values-order",
+      "entry": "search-*",
+      "when": "category-values-order",
+      "reason": "Decision 9 (plan-v2.md) and README, Differences from Java: '/search writes concepts in path order and categoryValues sorted. Java's order of both is unspecified'. Accepted only when sorting every categoryValues array makes the bodies equal."
+    },
+    {
+      "name": "search-concept-order",
+      "entry": "search-*",
+      "when": "search-concept-order",
+      "reason": "README, Differences from Java: '/search writes concepts in path order ... Java's order of both is unspecified (an immutable map whose order changes with every start, a HashMap, a HashSet)'. Applies to the null-term answer, an array of one-entry objects. Accepted only when sorting those arrays by path makes the bodies equal."
+    },
+    {
+      "name": "search-order-and-double-min-value",
+      "entry": "search-*",
+      "when": [
+        "search-concept-order",
+        "category-values-order",
+        "numeric-max-double-min-value"
+      ],
+      "reason": "README, Differences from Java ('/search writes concepts in path order and categoryValues sorted') together with the Spec divergence that LoadingStore starts max at Double.MIN_VALUE, which CSVLoader also uses per partition (harmonization-delta.md section 1, 'The Double.MIN_VALUE max quirk ... apply per partition'). Accepted only when the three normalizations together make the bodies equal."
+    },
+    {
+      "name": "dataframe-tie-order-across-partitions",
+      "resultType": "DATAFRAME",
+      "when": "dataframe-cell-order",
+      "reason": "Decision 4 (plan-v2.md): 'Exports and per-value cross counts merge per-partition by_key data with a k-way merge on patient, with a fixed tie order (partition name order). Java's order across partitions is unspecified, so the order is whitelisted.' A patient in several partitions gets the same values in a cell in another order. Accepted only when sorting the tab-separated values inside every cell makes the exports equal."
+    },
+    {
+      "name": "range-min-above-partition-values-async-error",
+      "when": "range-min-async-error",
+      "reason": "Spec divergence, Range filters ('Java's seekForMinIndex throws when min is above every value'), which on the harmonization branch applies per partition: a min above every value of one selected partition holding the concept throws, so the Java async query ends in ERROR where Rust answers the cohort. Accepted only for entries whose phenotypic clause holds a FILTER with a min."
+    },
+    {
+      "name": "duplicate-key-last-wins",
+      "entry": "error-duplicate-key-*",
+      "statuses": [
+        200,
+        400
+      ],
+      "reason": "README, Differences from Java: 'Request bodies holding the same key twice in any object, the envelope, the query, a clause or a userConsents entry included ... are a 400. Jackson keeps the last copy.' Accepted only for the duplicate-key entries."
     }
   ]
 }
