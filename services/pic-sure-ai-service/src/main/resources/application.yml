@@ -11,7 +11,7 @@ spring:
       converse:
         chat:
           options:
-            model: ${BEDROCK_MODEL_ID:amazon.nova-lite-v1:0}
+            model: ${BEDROCK_MODEL_ID:openai.gpt-oss-20b-1:0}
             max-tokens: ${BEDROCK_MAX_TOKENS:1024}
             # The tool-use loop (iteration cap, MCP dispatch, error shaping) is hand-written in
             # ai.chat/ai.model -- Spring AI must never auto-execute tool calls on its own, or that
