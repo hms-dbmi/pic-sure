@@ -1,5 +1,6 @@
 //! The phenotype store: `pheno.index` held in memory, `pheno.blocks` read on demand into a
-//! byte-bounded cache of decoded blocks.
+//! byte-bounded cache of decoded blocks. Stores opened together by a
+//! [`crate::PartitionSet`] share one cache and so one byte budget.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -18,6 +19,20 @@ pub const KEY_FILE_NAME: &str = "encryption_key";
 
 /// Default capacity of the decoded block cache: 4 GiB.
 pub const DEFAULT_CACHE_BYTES: u64 = 4 << 30;
+
+/// Decoded blocks keyed by the owning store's slot and the concept's position in that
+/// store's index, so a lookup never allocates.
+pub(crate) type BlockCache = Cache<(u32, u32), Arc<Block>>;
+
+/// A block cache bounded by the summed [`Block::heap_size`] of its entries.
+pub(crate) fn block_cache(cache_bytes: u64) -> BlockCache {
+    Cache::builder()
+        .max_capacity(cache_bytes)
+        .weigher(|_: &(u32, u32), block: &Arc<Block>| {
+            u32::try_from(block.heap_size()).unwrap_or(u32::MAX)
+        })
+        .build()
+}
 
 /// How a [`Store`] is opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,7 +65,8 @@ pub struct Store {
     index: PhenoIndex,
     reader: BlocksReader,
     codec: BlockCodec,
-    cache: Cache<String, Arc<Block>>,
+    cache: BlockCache,
+    slot: u32,
 }
 
 impl std::fmt::Debug for Store {
@@ -97,6 +113,17 @@ impl Store {
     /// # Errors
     /// [`QueryError::Open`] as for [`Store::open`].
     pub fn open_with(dir: &Path, protection: Protection, cache_bytes: u64) -> Result<Self> {
+        Self::open_shared(dir, protection, block_cache(cache_bytes), 0)
+    }
+
+    /// Opens the store in `dir` with blocks cached in `cache` under `slot`, which must be
+    /// unique among the stores sharing that cache.
+    pub(crate) fn open_shared(
+        dir: &Path,
+        protection: Protection,
+        cache: BlockCache,
+        slot: u32,
+    ) -> Result<Self> {
         let index = PhenoIndex::read_file(dir.join(INDEX_FILE_NAME), &protection)
             .map_err(|e| open_error(dir, e))?;
         let reader = BlocksReader::open(dir.join(BLOCKS_FILE_NAME), index.store_id())
@@ -104,18 +131,13 @@ impl Store {
         let codec = index
             .block_codec(protection)
             .map_err(|e| open_error(dir, e))?;
-        let cache = Cache::builder()
-            .max_capacity(cache_bytes)
-            .weigher(|path: &String, block: &Arc<Block>| {
-                u32::try_from(block.heap_size().saturating_add(path.len())).unwrap_or(u32::MAX)
-            })
-            .build();
         Ok(Store {
             dir: dir.to_path_buf(),
             index,
             reader,
             codec,
             cache,
+            slot,
         })
     }
 
@@ -149,11 +171,12 @@ impl Store {
     /// # Errors
     /// [`QueryError::Block`] when the block cannot be read, authenticated or decoded.
     pub fn block(&self, path: &str) -> Result<Option<Arc<Block>>> {
-        let Some(concept) = self.index.get(path) else {
+        let Some(position) = self.index.position(path) else {
             return Ok(None);
         };
+        let concept = &self.index.concepts()[position];
         self.cache
-            .try_get_with_by_ref(path, || {
+            .try_get_with(self.cache_key(position), || {
                 self.reader.read_block(&self.codec, concept).map(Arc::new)
             })
             .map(Some)
@@ -163,23 +186,30 @@ impl Store {
             })
     }
 
-    /// The block of `path` if it is cached, without loading it.
-    pub fn cached_block(&self, path: &str) -> Option<Arc<Block>> {
-        self.cache.get(path)
+    fn cache_key(&self, position: usize) -> (u32, u32) {
+        (self.slot, position as u32)
     }
 
-    /// Number of cached blocks. Eventually consistent: pending evictions may not show yet.
+    /// The block of `path` if it is cached, without loading it.
+    pub fn cached_block(&self, path: &str) -> Option<Arc<Block>> {
+        let position = self.index.position(path)?;
+        self.cache.get(&self.cache_key(position))
+    }
+
+    /// Number of blocks in this store's cache, which a [`crate::PartitionSet`] shares
+    /// between its partitions. Eventually consistent: pending evictions may not show yet.
     pub fn cached_block_count(&self) -> u64 {
         self.cache.entry_count()
     }
 
-    /// Summed weight of the cached blocks in bytes. Eventually consistent, like
-    /// [`Store::cached_block_count`].
+    /// Summed weight in bytes of the blocks in this store's cache, shared as for
+    /// [`Store::cached_block_count`]. Eventually consistent.
     pub fn cached_bytes(&self) -> u64 {
         self.cache.weighted_size()
     }
 
-    /// Drops every cached block.
+    /// Drops every block in this store's cache, including those of the other partitions
+    /// sharing it.
     pub fn clear_cache(&self) {
         self.cache.invalidate_all();
         self.cache.run_pending_tasks();

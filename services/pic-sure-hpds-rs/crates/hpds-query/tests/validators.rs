@@ -9,7 +9,7 @@ use hpds_format::ConceptType;
 use hpds_query::validate::{validate_authorization_filter, validate_filter};
 use hpds_query::{
     AuthorizationFilter, Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType,
-    QueryError, QueryValidator, ResultType,
+    QueryError, QueryValidator, ResultType, UserConsent,
 };
 
 const SEX: &str = "\\study123\\demographics\\sex\\";
@@ -193,7 +193,7 @@ fn query_validator_rejects_invalid_filters_at_any_depth() {
 }
 
 #[test]
-fn query_validator_requires_authorization_filter_by_default() {
+fn query_validator_requires_user_consents_by_default() {
     let m = meta();
     let strict = QueryValidator::default();
     assert!(strict.require_authorization_filter);
@@ -201,12 +201,49 @@ fn query_validator_requires_authorization_filter_by_default() {
     let mut q = query(ResultType::Count, Some(sex));
     assert_eq!(
         invalid(strict.validate(&q, &m)),
-        "Authorization filter is required for this query"
+        "User consents are required for this query"
     );
     q.authorization_filters = vec![auth(SEX, Some(&["studyABC"]))];
+    assert_eq!(
+        invalid(strict.validate(&q, &m)),
+        "User consents are required for this query"
+    );
+    q.authorization_filters.clear();
+    q.user_consents = vec![UserConsent {
+        value: Some("studyABC".into()),
+    }];
     strict.validate(&q, &m).unwrap();
+    LENIENT.validate(&q, &m).unwrap();
+}
+
+#[test]
+fn query_validator_counts_null_consents_as_present() {
+    let m = meta();
+    let mut q = query(ResultType::Count, None);
+    q.user_consents = vec![UserConsent { value: None }];
+    QueryValidator::default().validate(&q, &m).unwrap();
+    assert!(q.consent_values().is_empty());
+}
+
+#[test]
+fn query_validator_still_validates_authorization_filters() {
+    let m = meta();
+    let mut q = query(ResultType::Count, None);
+    q.user_consents = vec![UserConsent {
+        value: Some("studyABC".into()),
+    }];
     q.authorization_filters = vec![auth("\\_consent\\", Some(&["studyABC"]))];
-    assert!(strict.validate(&q, &m).is_err());
+    assert_eq!(
+        invalid(QueryValidator::default().validate(&q, &m)),
+        "\\_consent\\ is not a valid concept path"
+    );
+    q.authorization_filters = vec![auth(AGE, Some(&["x"]))];
+    assert!(LENIENT.validate(&q, &m).is_err());
+    q.authorization_filters = vec![auth("rs123", Some(&["x"]))];
+    assert_eq!(
+        invalid(LENIENT.validate(&q, &m)),
+        "rs123 is not a valid concept path"
+    );
 }
 
 #[test]

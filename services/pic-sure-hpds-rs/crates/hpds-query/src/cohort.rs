@@ -1,9 +1,14 @@
-//! Cohort evaluation: `PhenotypicQueryExecutor.getPatientSet` over roaring bitmaps.
+//! Cohort evaluation: `PhenotypicQueryExecutor.getPatientSet` over roaring bitmaps, across
+//! the partitions a query selects.
+//!
+//! Every filter is evaluated in each selected partition and the per-partition patient sets
+//! are ORed, before filters combine. So a patient present in two partitions can satisfy one
+//! filter from each, as in Java, where every store call unions over partitions.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use hpds_format::Block;
+use hpds_format::{Block, ConceptType};
 use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 
@@ -11,48 +16,52 @@ use crate::error::{QueryError, Result};
 use crate::model::{
     Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery, Query,
 };
-use crate::store::Store;
+use crate::partition::{PartitionSet, Selection};
 
-/// The patients matching `query`'s authorization filters and phenotypic clause.
-///
-/// Every authorization filter becomes a `FILTER` on its concept path and values. Those
-/// filters and the phenotypic clause, when present, are ANDed together. With neither, the
-/// cohort is every patient in the store.
+/// The patients matching `query`'s phenotypic clause within the partitions its consents
+/// select. With no clause, the cohort is every patient of those partitions. Authorization
+/// filters are never applied.
 ///
 /// Genomic filters are ignored here; [`crate::Engine`] refuses them before evaluating.
 ///
 /// # Errors
+/// [`QueryError::UserConsentsRequired`] when consents are required and the query has none,
 /// [`QueryError::FilterWithoutCriteria`], [`QueryError::EmptySubquery`],
 /// [`QueryError::MissingOperator`] and [`QueryError::TypeMismatch`] where Java's executor
 /// throws, [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index,
 /// and [`QueryError::Block`] when a block cannot be loaded.
-pub fn evaluate_cohort(store: &Store, query: &Query) -> Result<RoaringBitmap> {
-    evaluate_cohort_cow(store, query).map(Cow::into_owned)
+pub fn evaluate_cohort(set: &PartitionSet, query: &Query) -> Result<RoaringBitmap> {
+    evaluate_cohort_cow(set, query).map(Cow::into_owned)
 }
 
-/// [`evaluate_cohort`] without copying the store's patient set when the query has no
-/// authorization filters and no phenotypic clause: the result then borrows the index.
+/// [`evaluate_cohort`] that borrows the partitions' patient set instead of copying it when
+/// the query has no phenotypic clause and selects one partition or all of them.
 ///
 /// # Errors
 /// As for [`evaluate_cohort`].
-pub fn evaluate_cohort_cow<'a>(store: &'a Store, query: &Query) -> Result<Cow<'a, RoaringBitmap>> {
-    let authorization: Vec<PhenotypicClause> = query
-        .authorization_filters
-        .iter()
-        .map(|filter| {
-            PhenotypicClause::Filter(PhenotypicFilter {
-                values: filter.values.clone(),
-                ..PhenotypicFilter::new(PhenotypicFilterType::Filter, filter.concept_path.clone())
-            })
-        })
-        .collect();
-    let mut clauses: Vec<&PhenotypicClause> = authorization.iter().collect();
-    clauses.extend(query.phenotypic_clause.as_ref());
-    if clauses.is_empty() {
-        return Ok(Cow::Borrowed(store.index().patients()));
+pub fn evaluate_cohort_cow<'a>(
+    set: &'a PartitionSet,
+    query: &Query,
+) -> Result<Cow<'a, RoaringBitmap>> {
+    let selection = set.select(query)?;
+    evaluate_selected(&selection, query)
+}
+
+/// The cohort of `query` within an explicit `selection`, consents aside.
+///
+/// # Errors
+/// As for [`evaluate_cohort`], except [`QueryError::UserConsentsRequired`].
+pub fn evaluate_selected<'a>(
+    selection: &Selection<'a>,
+    query: &Query,
+) -> Result<Cow<'a, RoaringBitmap>> {
+    match &query.phenotypic_clause {
+        None => Ok(selection.patients()),
+        Some(clause) => {
+            check_structure(selection.set(), clause)?;
+            evaluate_checked(selection, clause).map(|patients| Cow::Owned(patients.into_owned()))
+        }
     }
-    check_structure_all(store, &clauses)?;
-    combine(store, &clauses, Operator::And).map(|patients| Cow::Owned(patients.into_owned()))
 }
 
 /// A patient set that either borrows a cached block's patients or was computed for this
@@ -64,11 +73,6 @@ enum Patients {
 }
 
 impl Patients {
-    /// The patients of `block`, or the empty set when there is no block.
-    fn of_block(block: Option<Arc<Block>>) -> Self {
-        block.map_or_else(|| Self::Computed(RoaringBitmap::new()), Self::Block)
-    }
-
     /// The patient bitmap, borrowed.
     fn bitmap(&self) -> &RoaringBitmap {
         match self {
@@ -84,24 +88,35 @@ impl Patients {
             Self::Computed(bitmap) => bitmap,
         }
     }
+
+    /// The union of `sets`: the empty set for none, the one set as it is, and one
+    /// multi-way union otherwise.
+    fn union(mut sets: Vec<Patients>) -> Patients {
+        if sets.len() <= 1 {
+            return sets
+                .pop()
+                .unwrap_or_else(|| Patients::Computed(RoaringBitmap::new()));
+        }
+        Patients::Computed(sets.iter().map(Patients::bitmap).union())
+    }
 }
 
-/// Patients matching one clause.
+/// Patients matching one clause within `selection`.
 ///
 /// # Errors
-/// As for [`evaluate_cohort`].
-pub fn evaluate_clause(store: &Store, clause: &PhenotypicClause) -> Result<RoaringBitmap> {
-    check_structure(store, clause)?;
-    evaluate_checked(store, clause).map(Patients::into_owned)
-}
-
-fn check_structure_all(store: &Store, clauses: &[&PhenotypicClause]) -> Result<()> {
-    clauses.iter().try_for_each(|c| check_structure(store, c))
+/// As for [`evaluate_selected`].
+pub fn evaluate_clause(
+    selection: &Selection<'_>,
+    clause: &PhenotypicClause,
+) -> Result<RoaringBitmap> {
+    check_structure(selection.set(), clause)?;
+    evaluate_checked(selection, clause).map(Patients::into_owned)
 }
 
 /// Finds, before any block is loaded, every condition under which Java's executor throws
-/// on the request itself, so a bad request fails before it costs any I/O.
-fn check_structure(store: &Store, clause: &PhenotypicClause) -> Result<()> {
+/// on the request itself, so a bad request fails before it costs any I/O. Types come from
+/// the merged dictionary.
+fn check_structure(set: &PartitionSet, clause: &PhenotypicClause) -> Result<()> {
     match clause {
         PhenotypicClause::Subquery(PhenotypicSubquery {
             phenotypic_clauses,
@@ -116,20 +131,20 @@ fn check_structure(store: &Store, clause: &PhenotypicClause) -> Result<()> {
             }
             phenotypic_clauses
                 .iter()
-                .try_for_each(|c| check_structure(store, c))
+                .try_for_each(|c| check_structure(set, c))
         }
-        PhenotypicClause::Filter(filter) => check_filter(store, filter),
+        PhenotypicClause::Filter(filter) => check_filter(set, filter),
     }
 }
 
-fn check_filter(store: &Store, filter: &PhenotypicFilter) -> Result<()> {
+fn check_filter(set: &PartitionSet, filter: &PhenotypicFilter) -> Result<()> {
     if filter.phenotypic_filter_type != PhenotypicFilterType::Filter {
         return Ok(());
     }
-    let concept = store.concept(&filter.concept_path);
+    let concept_type = set.summary(&filter.concept_path).map(|c| c.concept_type());
     match &filter.values {
         Some(values) => {
-            if !values.is_empty() && concept.is_some_and(|c| !c.is_categorical()) {
+            if !values.is_empty() && concept_type == Some(ConceptType::Numeric) {
                 return Err(QueryError::TypeMismatch {
                     concept_path: filter.concept_path.clone(),
                     expected: "categorical",
@@ -137,7 +152,7 @@ fn check_filter(store: &Store, filter: &PhenotypicFilter) -> Result<()> {
             }
         }
         None if filter.min.is_some() || filter.max.is_some() => {
-            if concept.is_some_and(|c| c.is_categorical()) {
+            if concept_type == Some(ConceptType::Categorical) {
                 return Err(QueryError::TypeMismatch {
                     concept_path: filter.concept_path.clone(),
                     expected: "numeric",
@@ -153,13 +168,12 @@ fn check_filter(store: &Store, filter: &PhenotypicFilter) -> Result<()> {
     Ok(())
 }
 
-fn evaluate_checked(store: &Store, clause: &PhenotypicClause) -> Result<Patients> {
+fn evaluate_checked(selection: &Selection<'_>, clause: &PhenotypicClause) -> Result<Patients> {
     match clause {
-        PhenotypicClause::Filter(filter) => evaluate_filter(store, filter),
+        PhenotypicClause::Filter(filter) => evaluate_filter(selection, filter),
         PhenotypicClause::Subquery(subquery) => {
             let operator = subquery.operator.ok_or(QueryError::MissingOperator)?;
-            let children: Vec<&PhenotypicClause> = subquery.phenotypic_clauses.iter().collect();
-            combine(store, &children, operator)
+            combine(selection, &subquery.phenotypic_clauses, operator)
         }
     }
 }
@@ -168,10 +182,14 @@ fn evaluate_checked(store: &Store, clause: &PhenotypicClause) -> Result<Patients
 /// for OR, and for AND one multi-way intersection over the sets ordered smallest first,
 /// which stops once the result is empty. Borrowed block bitmaps are read in place (an AND
 /// copies only its starting operand), and a single clause is returned as it is.
-fn combine(store: &Store, clauses: &[&PhenotypicClause], operator: Operator) -> Result<Patients> {
+fn combine(
+    selection: &Selection<'_>,
+    clauses: &[PhenotypicClause],
+    operator: Operator,
+) -> Result<Patients> {
     let mut sets = clauses
         .par_iter()
-        .map(|clause| evaluate_checked(store, clause))
+        .map(|clause| evaluate_checked(selection, clause))
         .collect::<Result<Vec<_>>>()?;
     if sets.len() <= 1 {
         return sets.pop().ok_or(QueryError::EmptySubquery);
@@ -186,15 +204,15 @@ fn combine(store: &Store, clauses: &[&PhenotypicClause], operator: Operator) -> 
     }))
 }
 
-fn evaluate_filter(store: &Store, filter: &PhenotypicFilter) -> Result<Patients> {
+fn evaluate_filter(selection: &Selection<'_>, filter: &PhenotypicFilter) -> Result<Patients> {
     let path = filter.concept_path.as_str();
     match filter.phenotypic_filter_type {
-        PhenotypicFilterType::Required => store.block(path).map(Patients::of_block),
-        PhenotypicFilterType::AnyRecordOf => any_record_of(store, path).map(Patients::Computed),
+        PhenotypicFilterType::Required => required_patients(selection, path),
+        PhenotypicFilterType::AnyRecordOf => any_record_of(selection, path).map(Patients::Computed),
         PhenotypicFilterType::Filter => match &filter.values {
-            Some(values) => patients_with_values(store, path, values).map(Patients::Computed),
+            Some(values) => patients_with_values(selection, path, values).map(Patients::Computed),
             None if filter.min.is_some() || filter.max.is_some() => {
-                range_patients(store, path, filter.min, filter.max)
+                range_patients(selection, path, filter.min, filter.max)
             }
             None => Err(QueryError::FilterWithoutCriteria {
                 concept_path: path.to_owned(),
@@ -203,32 +221,47 @@ fn evaluate_filter(store: &Store, filter: &PhenotypicFilter) -> Result<Patients>
     }
 }
 
-/// Every patient with a value for `path`, empty for an unknown path
-/// (`PhenotypicObservationStore.getAllKeys`).
-///
-/// # Errors
-/// [`QueryError::Block`] when the block cannot be loaded.
-pub fn all_patients(store: &Store, path: &str) -> Result<RoaringBitmap> {
-    Ok(store
-        .block(path)?
-        .map(|block| block.all_patients().clone())
-        .unwrap_or_default())
+fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Patients> {
+    let blocks = selection.blocks(path)?;
+    Ok(Patients::union(
+        blocks.into_iter().map(Patients::Block).collect(),
+    ))
 }
 
-/// Patients with any value for any concept whose path starts with `prefix`, the concept at
-/// `prefix` included (`PhenotypeMetaStore.getChildConceptPaths`, a `String.startsWith`
-/// test over every concept path). Concepts with no observations are skipped without
-/// loading their blocks.
+/// Every patient with a value for `path` in any selected partition, empty for an unknown
+/// path (`PartitionedPhenotypicObservationStore.getAllKeys`).
 ///
 /// # Errors
 /// [`QueryError::Block`] when a block cannot be loaded.
-pub fn any_record_of(store: &Store, prefix: &str) -> Result<RoaringBitmap> {
-    let blocks = store
-        .index()
-        .with_prefix(prefix)
+pub fn all_patients(selection: &Selection<'_>, path: &str) -> Result<RoaringBitmap> {
+    required_patients(selection, path).map(Patients::into_owned)
+}
+
+/// Patients with any value for any concept whose path starts with `prefix`, the concept at
+/// `prefix` included, in any selected partition (`getChildConceptPaths` over the merged
+/// dictionary, a `String.startsWith` test, then `getAllKeys` for each). Each partition reads
+/// its own concepts under the prefix, which together are the merged dictionary's. Concepts
+/// with no observations are skipped without loading their blocks.
+///
+/// # Errors
+/// [`QueryError::Block`] when a block cannot be loaded.
+pub fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<RoaringBitmap> {
+    let wanted: Vec<_> = selection
+        .partitions()
+        .iter()
+        .flat_map(|partition| {
+            partition
+                .store()
+                .index()
+                .with_prefix(prefix)
+                .iter()
+                .filter(|concept| concept.observation_count > 0)
+                .map(move |concept| (partition, concept.path.as_str()))
+        })
+        .collect();
+    let blocks = wanted
         .par_iter()
-        .filter(|concept| concept.observation_count > 0)
-        .map(|concept| store.block(&concept.path))
+        .map(|(partition, path)| partition.store().block(path))
         .collect::<Result<Vec<_>>>()?;
     Ok(blocks
         .iter()
@@ -237,63 +270,88 @@ pub fn any_record_of(store: &Store, prefix: &str) -> Result<RoaringBitmap> {
         .union())
 }
 
-/// Patients with at least one of `values` for the categorical concept at `path`
-/// (`PhenoCube.getKeysForValue`, exact match in Java string equality). Values the concept
-/// does not hold contribute nothing; an unknown path or an empty `values` gives the empty
-/// set.
+/// Patients with at least one of `values` for the categorical concept at `path` in any
+/// selected partition (`PhenoCube.getKeysForValue`, exact match in Java string equality).
+/// Values a partition does not hold contribute nothing; an unknown path or an empty
+/// `values` gives the empty set.
 ///
 /// # Errors
-/// [`QueryError::StoreInconsistent`] when the block is numeric, which the structure check
-/// has already ruled out through the index, [`QueryError::Block`] when the block cannot be
-/// loaded.
-pub fn patients_with_values(store: &Store, path: &str, values: &[String]) -> Result<RoaringBitmap> {
+/// [`QueryError::StoreInconsistent`] when a block is numeric, which the structure check
+/// has already ruled out through the dictionary, [`QueryError::Block`] when a block cannot
+/// be loaded.
+pub fn patients_with_values(
+    selection: &Selection<'_>,
+    path: &str,
+    values: &[String],
+) -> Result<RoaringBitmap> {
     if values.is_empty() {
         return Ok(RoaringBitmap::new());
     }
-    match store.block(path)?.as_deref() {
-        None => Ok(RoaringBitmap::new()),
-        Some(Block::Categorical(block)) => Ok(values
-            .iter()
-            .filter_map(|value| block.find_value(value))
-            .fold(RoaringBitmap::new(), |acc, i| acc | block.bitmap(i))),
-        Some(Block::Numeric(_)) => Err(QueryError::StoreInconsistent {
-            concept_path: path.to_owned(),
-            detail: "the index says categorical but the block is numeric",
-        }),
+    let blocks = selection.blocks(path)?;
+    let mut matched: Vec<&RoaringBitmap> = Vec::new();
+    for block in &blocks {
+        match block.as_ref() {
+            Block::Categorical(block) => matched.extend(
+                values
+                    .iter()
+                    .filter_map(|value| block.find_value(value))
+                    .map(|i| block.bitmap(i)),
+            ),
+            Block::Numeric(_) => {
+                return Err(QueryError::StoreInconsistent {
+                    concept_path: path.to_owned(),
+                    detail: "the index says categorical but the block is numeric",
+                });
+            }
+        }
     }
+    Ok(matched.union())
 }
 
-/// Patients with at least one value `v` of the numeric concept at `path` such that
-/// `min <= v <= max` in Java `Double.compareTo` order (`PhenoCube.getKeysForRange`). A
-/// `None` bound is open. An unknown path gives the empty set.
+/// Patients with at least one value `v` of the numeric concept at `path`, in any selected
+/// partition, such that `min <= v <= max` in Java `Double.compareTo` order
+/// (`PhenoCube.getKeysForRange`). A `None` bound is open. An unknown path gives the empty
+/// set.
 ///
 /// Java's seek logic yields the same inclusive bounds, except that it throws where this
 /// returns the empty set: when `min` exceeds every value (or the concept is empty), and
 /// when some value lies strictly between `max` and a larger `min`.
 ///
 /// # Errors
-/// [`QueryError::StoreInconsistent`] when the block is categorical, which the structure
-/// check has already ruled out through the index, [`QueryError::Block`] when the block
-/// cannot be loaded.
+/// [`QueryError::StoreInconsistent`] when a block is categorical, which the structure check
+/// has already ruled out through the dictionary, [`QueryError::Block`] when a block cannot
+/// be loaded.
 pub fn patients_in_range(
-    store: &Store,
+    selection: &Selection<'_>,
     path: &str,
     min: Option<f64>,
     max: Option<f64>,
 ) -> Result<RoaringBitmap> {
-    range_patients(store, path, min, max).map(Patients::into_owned)
+    range_patients(selection, path, min, max).map(Patients::into_owned)
 }
 
-/// [`patients_in_range`], borrowing the block's patients when the range covers every value.
+/// [`patients_in_range`], borrowing a block's patients when one partition holds the concept
+/// and the range covers every value.
 fn range_patients(
-    store: &Store,
+    selection: &Selection<'_>,
     path: &str,
     min: Option<f64>,
     max: Option<f64>,
 ) -> Result<Patients> {
-    let Some(block) = store.block(path)? else {
-        return Ok(Patients::Computed(RoaringBitmap::new()));
-    };
+    let parts = selection
+        .blocks(path)?
+        .into_iter()
+        .map(|block| block_range(path, block, min, max))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Patients::union(parts))
+}
+
+fn block_range(
+    path: &str,
+    block: Arc<Block>,
+    min: Option<f64>,
+    max: Option<f64>,
+) -> Result<Patients> {
     match block.as_ref() {
         Block::Numeric(numeric) => {
             let range = numeric.value_range(min, max);

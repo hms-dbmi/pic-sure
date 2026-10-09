@@ -22,9 +22,14 @@ pub enum QueryError {
     #[error("{0} is not supported by this phenotype-only HPDS")]
     Unsupported(String),
 
+    /// The store requires consents (`hpds.requireAuthorizationFilter` is on) and the query
+    /// carries no consent value. Java throws `MissingConsentsException` from the store, which
+    /// its sync endpoint answers with 500; this is a client error here.
+    #[error("User consents are required for this query")]
+    UserConsentsRequired,
+
     /// A `FILTER` with neither `values` nor `min`/`max`, which Java's executor refuses with
-    /// "Either values or one of min/max must be set for a filter". Also raised for an
-    /// authorization filter whose `values` is null, since Java turns it into such a filter.
+    /// "Either values or one of min/max must be set for a filter".
     #[error("Either values or one of min/max must be set for a filter on {concept_path}")]
     FilterWithoutCriteria {
         /// Concept path of the offending filter.
@@ -80,6 +85,25 @@ pub enum QueryError {
         detail: String,
     },
 
+    /// Two partitions hold the same concept with different types. Java would merge the two
+    /// cubes and fail on the first sort; the partition set refuses to open instead.
+    #[error(
+        "concept {concept_path} is {first_type} in partition {first_partition} but \
+         {second_type} in partition {second_partition}"
+    )]
+    TypeConflict {
+        /// The concept path.
+        concept_path: String,
+        /// The first partition holding the concept, in partition name order.
+        first_partition: String,
+        /// `categorical` or `numeric`: the type in `first_partition`.
+        first_type: &'static str,
+        /// The first later partition whose type differs.
+        second_partition: String,
+        /// The type in `second_partition`.
+        second_type: &'static str,
+    },
+
     /// A concept's block could not be read, authenticated, or decoded.
     #[error("cannot load the block of {concept_path}: {source}")]
     Block {
@@ -97,12 +121,13 @@ pub enum QueryError {
 
 impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
-    /// variant except [`QueryError::Open`], [`QueryError::Block`],
-    /// [`QueryError::StoreInconsistent`] and [`QueryError::Task`].
+    /// variant except [`QueryError::Open`], [`QueryError::TypeConflict`],
+    /// [`QueryError::Block`], [`QueryError::StoreInconsistent`] and [`QueryError::Task`].
     pub fn is_client_error(&self) -> bool {
         !matches!(
             self,
             QueryError::Open { .. }
+                | QueryError::TypeConflict { .. }
                 | QueryError::Block { .. }
                 | QueryError::StoreInconsistent { .. }
                 | QueryError::Task(_)

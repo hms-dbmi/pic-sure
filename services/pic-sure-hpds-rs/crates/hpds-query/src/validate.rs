@@ -2,10 +2,9 @@
 //! genomic features this engine does not implement.
 //!
 //! Java runs `QueryValidator` only when an asynchronous query is submitted (`POST /query`).
-//! `/query/sync` validates nothing, so in Java a sync query without authorization filters
-//! is answered even when `hpds.requireAuthorizationFilter` is true. A caller that validates
-//! sync queries should use a validator with `require_authorization_filter` off to keep that
-//! behavior.
+//! `/query/sync` validates nothing, but the store still refuses a query without consent
+//! values when `hpds.requireAuthorizationFilter` is true; [`crate::Engine::check_consents`]
+//! is that check on its own.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -83,8 +82,8 @@ fn comma_spec(key: &str, with_annotations: bool) -> bool {
 }
 
 /// Refuses what a phenotype-only engine cannot answer: a genomic result type, a non-empty
-/// `genomicFilters`, or a variant-spec path ([`path_is_variant_spec`]) in `select`, in a
-/// filter, or in an authorization filter.
+/// `genomicFilters`, or a variant-spec path ([`path_is_variant_spec`]) in `select` or in a
+/// filter. Authorization filters are never applied, so their paths are not checked here.
 ///
 /// # Errors
 /// [`QueryError::Unsupported`] naming the first unsupported feature found.
@@ -98,22 +97,12 @@ pub fn check_supported(query: &Query) -> Result<()> {
     if !query.genomic_filters.is_empty() {
         return Err(QueryError::Unsupported("genomicFilters".into()));
     }
-    let paths = query
-        .select
-        .iter()
-        .map(String::as_str)
-        .chain(
-            query
-                .all_filters()
-                .into_iter()
-                .map(|f| f.concept_path.as_str()),
-        )
-        .chain(
-            query
-                .authorization_filters
-                .iter()
-                .map(|f| f.concept_path.as_str()),
-        );
+    let paths = query.select.iter().map(String::as_str).chain(
+        query
+            .all_filters()
+            .into_iter()
+            .map(|f| f.concept_path.as_str()),
+    );
     for path in paths {
         if path_is_variant_spec(path) {
             return Err(QueryError::Unsupported(format!(
@@ -127,12 +116,12 @@ pub fn check_supported(query: &Query) -> Result<()> {
 /// `QueryValidator` with `PhenotypicFilterValidator`, plus [`check_supported`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QueryValidator {
-    /// `hpds.requireAuthorizationFilter`: refuse a query with no authorization filter.
+    /// `hpds.requireAuthorizationFilter`: refuse a query whose `userConsents` is empty.
     pub require_authorization_filter: bool,
 }
 
 impl Default for QueryValidator {
-    /// Requires an authorization filter, the Java default.
+    /// Requires user consents, the Java default.
     fn default() -> Self {
         QueryValidator {
             require_authorization_filter: true,
@@ -142,18 +131,22 @@ impl Default for QueryValidator {
 
 impl QueryValidator {
     /// Validates `query` against `concepts` in Java's order: unsupported features first,
-    /// then the authorization-filter requirement, then every filter of the phenotypic
-    /// clause, then every authorization filter. Unknown `select` paths are allowed (Java
-    /// only logs them).
+    /// then the consent requirement, then every filter of the phenotypic clause, then every
+    /// (deprecated, never applied) authorization filter. Unknown `select` paths are allowed
+    /// (Java only logs them).
+    ///
+    /// The consent requirement is Java's `userConsents().isEmpty()`: a list holding only
+    /// null values passes here and is refused when the query runs
+    /// ([`QueryError::UserConsentsRequired`]).
     ///
     /// # Errors
     /// [`QueryError::Unsupported`] from [`check_supported`], and [`QueryError::Invalid`]
     /// with Java's message for the first rule broken.
     pub fn validate(&self, query: &Query, concepts: &impl ConceptLookup) -> Result<()> {
         check_supported(query)?;
-        if self.require_authorization_filter && query.authorization_filters.is_empty() {
+        if self.require_authorization_filter && query.user_consents.is_empty() {
             return Err(QueryError::Invalid(
-                "Authorization filter is required for this query".into(),
+                "User consents are required for this query".into(),
             ));
         }
         for filter in query.all_filters() {

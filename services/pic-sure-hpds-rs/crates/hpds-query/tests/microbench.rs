@@ -9,9 +9,9 @@ mod common;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use common::{any_record_of, filter_range, filter_values, query, required, subquery};
+use common::{any_record_of, filter_range, filter_values, lenient, query, required, subquery};
 use hpds_format::ConceptMeta;
-use hpds_query::{Engine, Operator, ResultType, StoreOptions};
+use hpds_query::{Engine, Operator, ResultType};
 
 fn bench_store() -> Option<PathBuf> {
     let Some(dir) = std::env::var_os("HPDS_BENCH_STORE").map(PathBuf::from) else {
@@ -41,9 +41,12 @@ fn count_with_three_filters_cold_and_warm() {
         return;
     };
     let opened = Instant::now();
-    let engine = Engine::open(&dir, &StoreOptions::default()).unwrap();
+    let engine = Engine::open(&dir, &lenient()).unwrap();
     let open_time = opened.elapsed();
-    let concepts = engine.store().index().concepts();
+    let concepts = engine.partitions().partitions()[0]
+        .store()
+        .index()
+        .concepts();
     let category = widest(concepts, true, 0);
     let number = widest(concepts, false, 0);
     let other = widest(concepts, true, 1);
@@ -78,7 +81,7 @@ fn count_with_three_filters_cold_and_warm() {
         "store {} ({} concepts, {} patients), open {open_time:?}",
         dir.display(),
         concepts.len(),
-        engine.store().index().patients().len()
+        engine.partitions().all_patients().len()
     );
     eprintln!(
         "filters: {} = {value:?} ({} patients); {} in [{min}, {}] ({} patients, {} observations); REQUIRED {} ({} patients)",
@@ -97,8 +100,8 @@ fn count_with_three_filters_cold_and_warm() {
         pct(95),
         warm[0],
         warm.len(),
-        engine.store().cached_block_count(),
-        engine.store().cached_bytes()
+        engine.partitions().cached_block_count(),
+        engine.partitions().cached_bytes()
     );
 }
 
@@ -108,8 +111,8 @@ fn cross_count_over_300_concepts_warm() {
     let Some(dir) = bench_store() else {
         return;
     };
-    let engine = Engine::open(&dir, &StoreOptions::default()).unwrap();
-    let mut concepts: Vec<&ConceptMeta> = engine
+    let engine = Engine::open(&dir, &lenient()).unwrap();
+    let mut concepts: Vec<&ConceptMeta> = engine.partitions().partitions()[0]
         .store()
         .index()
         .concepts()
@@ -118,7 +121,14 @@ fn cross_count_over_300_concepts_warm() {
         .collect();
     concepts.sort_by_key(|c| std::cmp::Reverse(c.patient_count));
     let selected: Vec<&str> = concepts.iter().take(300).map(|c| c.path.as_str()).collect();
-    let filter_concept = widest(engine.store().index().concepts(), true, 0);
+    let filter_concept = widest(
+        engine.partitions().partitions()[0]
+            .store()
+            .index()
+            .concepts(),
+        true,
+        0,
+    );
     let value = filter_concept.category_values.as_ref().unwrap()[0].clone();
     let mut q = query(
         ResultType::CrossCount,
@@ -143,8 +153,8 @@ fn cross_count_over_300_concepts_warm() {
         warm[warm.len() / 2],
         warm[0],
         warm.len(),
-        engine.store().cached_block_count(),
-        engine.store().cached_bytes()
+        engine.partitions().cached_block_count(),
+        engine.partitions().cached_bytes()
     );
 }
 
@@ -155,8 +165,8 @@ fn study_level_any_record_of_count_warm() {
         return;
     };
     let prefix = std::env::var("HPDS_BENCH_PREFIX").unwrap_or_else(|_| "\\study_4\\".to_owned());
-    let engine = Engine::open(&dir, &StoreOptions::default()).unwrap();
-    let children = engine.store().index().with_prefix(&prefix).len();
+    let engine = Engine::open(&dir, &lenient()).unwrap();
+    let children = engine.partitions().dictionary_with_prefix(&prefix).len();
     let q = query(ResultType::Count, Some(any_record_of(&prefix)));
 
     let cold = Instant::now();

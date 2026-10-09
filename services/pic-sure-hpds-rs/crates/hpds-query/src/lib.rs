@@ -4,7 +4,11 @@
 //!
 //! - The [`model`] module holds [`Query`] and its parts, deserialized as Jackson reads them.
 //! - A [`Store`] keeps `pheno.index` in memory and a byte-bounded cache of decoded blocks.
-//! - [`evaluate_cohort`] is `PhenotypicQueryExecutor.getPatientSet`.
+//! - A [`PartitionSet`] is `PartitionedPhenotypicObservationStore`: one store per consent
+//!   partition sharing one key and one cache, the merged [`SummaryColumnMeta`] dictionary,
+//!   and the choice of partitions a query's `userConsents` grant.
+//! - [`evaluate_cohort`] is `PhenotypicQueryExecutor.getPatientSet`, each filter evaluated
+//!   per selected partition and the results ORed.
 //! - [`QueryValidator`] and [`check_supported`] are `QueryValidator`,
 //!   `PhenotypicFilterValidator`, and the refusal of genomic input.
 //! - The [`Engine`] runs the result computations, each returning a typed value that carries
@@ -18,16 +22,21 @@ pub mod cohort;
 mod engine;
 mod error;
 pub mod model;
+mod partition;
 mod results;
 mod store;
 pub mod validate;
 
-pub use cohort::{evaluate_cohort, evaluate_cohort_cow};
+pub use cohort::{evaluate_cohort, evaluate_cohort_cow, evaluate_selected};
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine};
 pub use error::{QueryError, Result};
 pub use model::{
     AuthorizationFilter, GenomicFilter, Operator, PhenotypicClause, PhenotypicFilter,
-    PhenotypicFilterType, PhenotypicSubquery, Query, ResultType,
+    PhenotypicFilterType, PhenotypicSubquery, Query, ResultType, UserConsent,
+};
+pub use partition::{
+    Layout, Partition, PartitionOptions, PartitionSet, Selection, SummaryColumnMeta,
+    UNPARTITIONED_NAME,
 };
 pub use results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,

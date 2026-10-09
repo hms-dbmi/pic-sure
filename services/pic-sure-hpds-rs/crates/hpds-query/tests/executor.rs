@@ -175,21 +175,22 @@ fn not_found_required_filter_returns_no_patients() {
 }
 
 #[test]
-fn authorization_filters_are_anded_with_the_clause() {
+fn authorization_filters_are_never_applied() {
     let s = genomes();
     let mut q = query(ResultType::Count, Some(required(AGE)));
+    let unfiltered = s.engine.cohort(&q).unwrap();
     q.authorization_filters = vec![AuthorizationFilter {
         concept_path: POPULATION.into(),
         values: Some(vec!["Finnish".into(), "Yoruba".into()]),
     }];
-    assert_eq!(ids(&s.engine.cohort(&q).unwrap()), [2, 3, 5, 8, 13, 21]);
+    assert_eq!(s.engine.cohort(&q).unwrap(), unfiltered);
     q.phenotypic_clause = None;
-    assert_eq!(ids(&s.engine.cohort(&q).unwrap()), [2, 3, 5, 8, 13, 21]);
+    assert_eq!(
+        s.engine.cohort(&q).unwrap(),
+        s.engine.cohort(&query(ResultType::Count, None)).unwrap()
+    );
     q.authorization_filters[0].values = None;
-    assert!(matches!(
-        s.engine.cohort(&q),
-        Err(QueryError::FilterWithoutCriteria { .. })
-    ));
+    assert!(s.engine.cohort(&q).is_ok());
 }
 
 #[test]

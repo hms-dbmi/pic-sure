@@ -175,30 +175,42 @@ pub struct Dataframe {
 /// Rows of a DATAFRAME export, produced one patient at a time from blocks loaded up front.
 ///
 /// Each row is `[patient id, cell...]` with one cell per `select` path. A cell holds every
-/// value the patient has for that concept, in `by_key` order (Java's `sortedByKey`: input
-/// order within a patient), joined with a tab, as `CsvWriter.writeMultiValueEntity` joins
-/// them. Numeric values are written with [`java_double_to_string`], the `toString` Java
-/// applies. A patient with no value, or a path with no concept, gives an empty cell. CSV
-/// quoting is left to the writer.
+/// value the patient has for that concept, joined with a tab, as
+/// `CsvWriter.writeMultiValueEntity` joins them. The values come partition by partition in
+/// partition name order, and within one partition in `by_key` order (Java's `sortedByKey`:
+/// input order within a patient), which is a k-way merge of the partitions on patient with
+/// ties broken by partition name. Numeric values are written with
+/// [`java_double_to_string`], the `toString` Java applies. A patient with no value, or a
+/// path no selected partition holds, gives an empty cell. CSV quoting is left to the writer.
 pub struct DataframeRows {
     patients: roaring::bitmap::IntoIter,
     columns: Vec<Column>,
 }
 
 struct Column {
-    block: Option<Arc<Block>>,
+    parts: Vec<Part>,
+}
+
+struct Part {
+    block: Arc<Block>,
     cursor: usize,
 }
 
 impl DataframeRows {
-    /// Rows for `cohort`, one column per entry of `blocks` (`None` for a path with no
-    /// concept).
-    pub(crate) fn new(cohort: RoaringBitmap, blocks: Vec<Option<Arc<Block>>>) -> Self {
+    /// Rows for `cohort`, one column per entry of `columns`: the blocks of that path in each
+    /// selected partition holding it, in partition name order (empty for a path no
+    /// partition holds).
+    pub(crate) fn new(cohort: RoaringBitmap, columns: Vec<Vec<Arc<Block>>>) -> Self {
         DataframeRows {
             patients: cohort.into_iter(),
-            columns: blocks
+            columns: columns
                 .into_iter()
-                .map(|block| Column { block, cursor: 0 })
+                .map(|blocks| Column {
+                    parts: blocks
+                        .into_iter()
+                        .map(|block| Part { block, cursor: 0 })
+                        .collect(),
+                })
                 .collect(),
         }
     }
@@ -206,16 +218,21 @@ impl DataframeRows {
 
 impl Column {
     fn write_cell(&mut self, patient: u32, out: &mut String) {
-        let Some(block) = self.block.as_deref() else {
-            return;
-        };
         let mut first = true;
+        for part in &mut self.parts {
+            part.write_values(patient, &mut first, out);
+        }
+    }
+}
+
+impl Part {
+    fn write_values(&mut self, patient: u32, first: &mut bool, out: &mut String) {
         let mut separator = |out: &mut String| {
-            if !std::mem::take(&mut first) {
+            if !std::mem::take(first) {
                 out.push('\t');
             }
         };
-        match block {
+        match self.block.as_ref() {
             Block::Categorical(b) => {
                 let patients = b.patients();
                 self.cursor += patients[self.cursor..].partition_point(|&p| p < patient);

@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 
 use hpds_etl::load::{KeySource, LoadOptions, Mode, load};
 use hpds_query::{
-    Engine, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, Query, ResultType,
-    StoreOptions,
+    Engine, PartitionOptions, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, Query,
+    ResultType,
 };
 use hpds_query::{Operator, PhenotypicSubquery};
 
@@ -51,19 +51,79 @@ pub fn load_csv(csv_text: &str) -> TestStore {
     load_file(dir, &input)
 }
 
-/// Loads `input` with the new-search loader into a store under `dir` and opens it.
+/// Options for an unpartitioned test store: consents not required.
+pub fn lenient() -> PartitionOptions {
+    PartitionOptions {
+        require_authorization_filter: false,
+        ..PartitionOptions::default()
+    }
+}
+
+/// Options requiring consents, as `hpds.requireAuthorizationFilter=true` does.
+pub fn strict() -> PartitionOptions {
+    PartitionOptions::default()
+}
+
+/// Loads `input` with the new-search loader into the encrypted store directory `out`,
+/// keyed with [`KEY`] from `key_file`.
+pub fn load_into(input: &Path, key_file: &Path, out: &Path) {
+    let mut options = LoadOptions::new(Mode::NewSearch, vec![input.to_path_buf()], out.into());
+    options.key = KeySource::File(key_file.to_path_buf());
+    options.partitions = Some(2);
+    options.threads = Some(2);
+    load(&options).unwrap();
+}
+
+/// Loads `input` with the new-search loader into an unpartitioned store under `dir` and
+/// opens it with consents not required.
 pub fn load_file(dir: tempfile::TempDir, input: &Path) -> TestStore {
     let key_file = dir.path().join("key");
     std::fs::write(&key_file, KEY).unwrap();
     let out = dir.path().join("store");
-    let mut options = LoadOptions::new(Mode::NewSearch, vec![input.to_path_buf()], out.clone());
-    options.key = KeySource::File(key_file.clone());
-    options.partitions = Some(2);
-    options.threads = Some(2);
-    load(&options).unwrap();
+    load_into(input, &key_file, &out);
     std::fs::copy(&key_file, out.join("encryption_key")).unwrap();
-    let engine = Engine::open(&out, &StoreOptions::default()).unwrap();
+    let engine = Engine::open(&out, &lenient()).unwrap();
     TestStore { dir, out, engine }
+}
+
+/// A partitioned data directory: one store per `(name, csv text)` under `<out>/<name>`, and
+/// the shared key at `<out>/encryption_key`. Not opened.
+pub struct PartitionedDir {
+    pub dir: tempfile::TempDir,
+    pub out: PathBuf,
+}
+
+impl PartitionedDir {
+    /// Opens the directory with `options`.
+    pub fn open(&self, options: &PartitionOptions) -> hpds_query::Result<Engine> {
+        Engine::open(&self.out, options)
+    }
+}
+
+/// Builds a partitioned data directory from `(name, csv text)` pairs, each text with a
+/// header line.
+pub fn partitioned(partitions: &[(&str, String)]) -> PartitionedDir {
+    let dir = tempfile::tempdir().unwrap();
+    let key_file = dir.path().join("key");
+    std::fs::write(&key_file, KEY).unwrap();
+    let out = dir.path().join("data");
+    std::fs::create_dir_all(&out).unwrap();
+    for (name, text) in partitions {
+        let input = dir.path().join(format!("{name}-allConcepts.csv"));
+        std::fs::write(&input, text).unwrap();
+        load_into(&input, &key_file, &out.join(name));
+    }
+    std::fs::copy(&key_file, out.join("encryption_key")).unwrap();
+    PartitionedDir { dir, out }
+}
+
+/// [`partitioned`] from rows.
+pub fn partitioned_rows(partitions: &[(&str, Vec<Row<'_>>)]) -> PartitionedDir {
+    let texts: Vec<(&str, String)> = partitions
+        .iter()
+        .map(|(name, rows)| (*name, csv(rows)))
+        .collect();
+    partitioned(&texts)
 }
 
 /// Loads `rows` into a fresh store.

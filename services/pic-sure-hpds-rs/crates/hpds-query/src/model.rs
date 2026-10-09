@@ -11,8 +11,9 @@
 //!   subquery, `phenotypicFilterType`, `conceptPath`, `values`, `min` or `max` make it a
 //!   filter. An object with fields of both kinds, or with neither (`{}` or only `not`), is
 //!   rejected, as Jackson rejects it either while deducing or while binding.
-//! - `null` or missing lists (`select`, `authorizationFilters`, `genomicFilters`,
-//!   `phenotypicClauses`) are empty lists, as the record accessors return them.
+//! - `null` or missing lists (`select`, `authorizationFilters`, `userConsents`,
+//!   `genomicFilters`, `phenotypicClauses`) are empty lists, as the record accessors return
+//!   them.
 //! - Doubles accept JSON numbers and strings (`"5"`, `"NaN"`, `"Infinity"`), and an empty
 //!   string is `null`, as Jackson's scalar coercion does. Booleans accept `true`, `false`
 //!   and the strings `"true"` and `"false"`.
@@ -198,9 +199,14 @@ pub struct Query {
     /// Concept paths to return, for the result types that return fields.
     #[serde(default, deserialize_with = "null_as_default")]
     pub select: Vec<String>,
-    /// Consent filters, each ANDed with the phenotypic clause.
+    /// Deprecated consent filters. Parsed and checked by [`crate::QueryValidator`], but never
+    /// applied to a cohort: consents select partitions through `user_consents` instead.
     #[serde(default, deserialize_with = "null_as_default")]
     pub authorization_filters: Vec<AuthorizationFilter>,
+    /// The caller's consents, in request order. Each names a partition to read; see
+    /// [`Query::consent_values`].
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub user_consents: Vec<UserConsent>,
     /// The filter tree, or `None` for no filter.
     #[serde(default)]
     pub phenotypic_clause: Option<PhenotypicClause>,
@@ -223,12 +229,43 @@ impl Query {
         Query {
             select: Vec::new(),
             authorization_filters: Vec::new(),
+            user_consents: Vec::new(),
             phenotypic_clause: None,
             genomic_filters: Vec::new(),
             expected_result_type: result_type,
             picsure_id: None,
             id: None,
         }
+    }
+
+    /// A query of `result_type` with no select and no filters, carrying `consents` as its
+    /// user consents.
+    pub fn with_consents<S: Into<String>>(
+        result_type: ResultType,
+        consents: impl IntoIterator<Item = S>,
+    ) -> Self {
+        Query {
+            user_consents: consents
+                .into_iter()
+                .map(|value| UserConsent {
+                    value: Some(value.into()),
+                })
+                .collect(),
+            ..Query::new(result_type)
+        }
+    }
+
+    /// `Query.consentValues()`: the distinct non-null consent values, sorted. A `null`
+    /// element of `userConsents` and a `null` value are both dropped.
+    pub fn consent_values(&self) -> Vec<&str> {
+        let mut values: Vec<&str> = self
+            .user_consents
+            .iter()
+            .filter_map(|consent| consent.value.as_deref())
+            .collect();
+        values.sort_unstable();
+        values.dedup();
+        values
     }
 
     /// Every [`PhenotypicFilter`] in the phenotypic clause, depth first in clause order,
@@ -261,6 +298,33 @@ pub struct AuthorizationFilter {
     /// Accepted values; `None` when the JSON held `null` or omitted it.
     #[serde(default)]
     pub values: Option<Vec<String>>,
+}
+
+/// `v3.UserConsent`: one consent the caller holds, naming a partition.
+///
+/// A `null` element of the `userConsents` array reads as a consent with no value, so it
+/// still makes the list non-empty (Java's `userConsents().isEmpty()` is false for it) but
+/// contributes no consent value.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UserConsent {
+    /// The consent, for example `phs000007.c1`; `None` when null or absent.
+    pub value: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for UserConsent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            #[serde(default)]
+            value: Option<String>,
+        }
+        Ok(Option::<Fields>::deserialize(deserializer)?
+            .map(|fields| UserConsent {
+                value: fields.value,
+            })
+            .unwrap_or_default())
+    }
 }
 
 /// `v3.GenomicFilter`. Parsed so that the query is accepted as Java accepts it, then
@@ -638,6 +702,27 @@ mod tests {
             Some("8694e3d4-5cb4-410f-8431-993445e6d3f6")
         );
         assert!(parse(json!({"expectedResultType": "COUNT", "id": "1-2-3-4-5"})).is_err());
+    }
+
+    #[test]
+    fn user_consents_parse_as_java_reads_them() {
+        let q = parse(json!({"expectedResultType": "COUNT", "userConsents": null})).unwrap();
+        assert!(q.user_consents.is_empty());
+        let q = parse(json!({"expectedResultType": "COUNT", "userConsents": [
+            {"value": "p2"}, {"value": null}, null, {}, {"value": "p1"}, {"value": "p2"}
+        ]}))
+        .unwrap();
+        assert_eq!(q.user_consents.len(), 6);
+        assert_eq!(q.consent_values(), ["p1", "p2"]);
+        assert!(
+            parse(json!({"expectedResultType": "COUNT", "userConsents": [{"value": "a", "x": 1}]}))
+                .is_err()
+        );
+        assert!(
+            parse(json!({"expectedResultType": "COUNT", "userConsents": [{"value": 1}]})).is_err()
+        );
+        let q = Query::with_consents(ResultType::Count, ["b", "a"]);
+        assert_eq!(q.consent_values(), ["a", "b"]);
     }
 
     #[test]

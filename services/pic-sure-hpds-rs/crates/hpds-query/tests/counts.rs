@@ -7,9 +7,7 @@ use std::os::unix::fs::FileExt;
 
 use common::*;
 use hpds_format::BLOCKS_FILE_NAME;
-use hpds_query::{
-    Engine, GenomicFilter, Operator, QueryError, ResultType, StoreOptions, SyncResult,
-};
+use hpds_query::{Engine, GenomicFilter, Operator, QueryError, ResultType, SyncResult};
 
 const CONSENT_A: &str = "\\_studies_consents\\phs001194\\HMB\\";
 const CONSENT_B: &str = "\\_studies_consents\\phs000007\\HMB-IRB-MDS\\";
@@ -81,7 +79,11 @@ fn cross_counts_with_no_matching_patients_return_zeros() {
 #[test]
 fn cross_counts_with_unreadable_block_return_negative_one() {
     let s = consents();
-    let location = s.engine.store().concept(CONSENT_B).unwrap().block;
+    let location = s.engine.partitions().partitions()[0]
+        .store()
+        .concept(CONSENT_B)
+        .unwrap()
+        .block;
     let blocks = std::fs::OpenOptions::new()
         .write(true)
         .open(s.out.join(BLOCKS_FILE_NAME))
@@ -89,7 +91,7 @@ fn cross_counts_with_unreadable_block_return_negative_one() {
     blocks
         .write_all_at(&[0xAA; 4], location.offset + location.length - 8)
         .unwrap();
-    let engine = Engine::open(&s.out, &StoreOptions::default()).unwrap();
+    let engine = Engine::open(&s.out, &lenient()).unwrap();
     let q = base(
         &["base"],
         &[CONSENT_A, CONSENT_B, CONSENT_A],
@@ -344,7 +346,7 @@ fn row_buffer_matches_the_iterator_and_is_reused() {
 #[test]
 fn a_dataframe_over_the_pin_cap_is_a_client_error() {
     let s = demographics();
-    let engine = Engine::open(&s.out, &StoreOptions::default())
+    let engine = Engine::open(&s.out, &lenient())
         .unwrap()
         .with_export_pin_bytes(1);
     let mut q = query(ResultType::Dataframe, None);
@@ -359,11 +361,12 @@ fn a_dataframe_over_the_pin_cap_is_a_client_error() {
 #[tokio::test]
 async fn blocking_wrappers_run_on_the_blocking_pool() {
     let s = demographics();
-    let engine = std::sync::Arc::new(Engine::open(&s.out, &StoreOptions::default()).unwrap());
+    let engine = std::sync::Arc::new(Engine::open(&s.out, &lenient()).unwrap());
     let q = query(ResultType::Count, Some(required(AGE)));
     assert_eq!(engine.run_blocking(move |e| e.count(&q)).await.unwrap(), 4);
-    let store =
-        std::sync::Arc::new(hpds_query::Store::open(&s.out, &StoreOptions::default()).unwrap());
+    let store = std::sync::Arc::new(
+        hpds_query::Store::open(&s.out, &hpds_query::StoreOptions::default()).unwrap(),
+    );
     assert!(store.block_async(AGE).await.unwrap().is_some());
     assert!(store.block_async("\\nope\\").await.unwrap().is_none());
 }
