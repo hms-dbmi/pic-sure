@@ -57,7 +57,8 @@ public class PicSureV3Service {
 
     /**
      * Builds the controller. When {@code layoutCountProcessor} is present ({@code HPDS_STORE_FORMAT=layout}), the phenotypic sync count
-     * types are answered from the layout store and {@code POST /query} refuses every result type, since the layout store serves no exports.
+     * types are answered from the layout store, {@code POST /query} refuses every result type, since the layout store serves no exports,
+     * and the variant result types and genomic filters are refused with 400, since it holds no genomic data.
      */
     @Autowired
     public PicSureV3Service(
@@ -346,6 +347,12 @@ public class PicSureV3Service {
         incomingQuery = convertIncomingQuery(resultRequest);
         AuditAttributes.putMetadata(httpRequest, "result_type", String.valueOf(incomingQuery.expectedResultType()));
         log.info("Query Converted");
+        if (layoutStore) {
+            String refusal = layoutStoreRefusal(incomingQuery);
+            if (refusal != null) {
+                return ResponseEntity.status(400).contentType(MediaType.TEXT_PLAIN).body(refusal);
+            }
+        }
         switch (incomingQuery.expectedResultType()) {
 
             case INFO_COLUMN_LISTING:
@@ -387,6 +394,27 @@ public class PicSureV3Service {
                         + "/query/{resourceQueryId}/status, then collect it from /query/{resourceQueryId}/result."
                 );
         }
+    }
+
+    private static final Set<ResultType> VARIANT_RESULT_TYPES = EnumSet.of(
+        ResultType.VARIANT_COUNT_FOR_QUERY, ResultType.VARIANT_LIST_FOR_QUERY, ResultType.VCF_EXCERPT, ResultType.AGGREGATE_VCF_EXCERPT
+    );
+
+    /**
+     * Why the layout store cannot answer a sync query, or null when it can. The layout store holds phenotypes only, so a variant result
+     * type or a genomic filter is refused here rather than reaching the javabin genomic processors.
+     *
+     * @param query the converted query
+     * @return the refusal message, or null
+     */
+    private static String layoutStoreRefusal(Query query) {
+        if (VARIANT_RESULT_TYPES.contains(query.expectedResultType())) {
+            return "Result type " + query.expectedResultType() + " needs genomic data, which the layout phenotype store does not hold.";
+        }
+        if (query.genomicFilters() != null && !query.genomicFilters().isEmpty()) {
+            return "Genomic filters are not supported by the layout phenotype store.";
+        }
+        return null;
     }
 
     private ResponseEntity queryOkResponse(Object obj, Query incomingQuery, MediaType mediaType) {

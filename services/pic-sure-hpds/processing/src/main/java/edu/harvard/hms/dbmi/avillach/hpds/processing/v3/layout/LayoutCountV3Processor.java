@@ -25,6 +25,9 @@ import java.util.stream.Collectors;
  * {@code PicSureV3Service} serializes them identically. Cohorts and per-concept patient sets are roaring bitmaps, counts are bitmap
  * intersections, and the continuous and observation counts walk the decoded arrays directly.
  *
+ * <p>The per-concept work of every cross count runs on a parallel stream, as the Rust engine runs it with {@code par_iter}. Results are
+ * gathered in a fixed order afterwards, so the output does not depend on scheduling.
+ *
  * <p>Genomic filters are refused with {@link UnsupportedOperationException}; the layout store holds no genomic data.
  */
 @Component
@@ -71,15 +74,21 @@ public class LayoutCountV3Processor implements PhenotypicCountProcessor {
     @Override
     public Map<String, Integer> runCrossCounts(Query query) {
         RoaringBitmap cohort = cohort(query);
+        List<String> concepts = query.select();
+        List<Integer> perConcept = concepts.parallelStream().map(concept -> crossCount(concept, cohort)).toList();
         Map<String, Integer> counts = new LinkedHashMap<>();
-        for (String concept : query.select()) {
-            try {
-                counts.put(concept, RoaringBitmap.andCardinality(store.getAllKeys(concept), cohort));
-            } catch (RuntimeException e) {
-                counts.put(concept, -1);
-            }
+        for (int i = 0; i < concepts.size(); i++) {
+            counts.putIfAbsent(concepts.get(i), perConcept.get(i));
         }
         return counts;
+    }
+
+    private int crossCount(String concept, RoaringBitmap cohort) {
+        try {
+            return RoaringBitmap.andCardinality(store.getAllKeys(concept), cohort);
+        } catch (RuntimeException e) {
+            return -1;
+        }
     }
 
     /**
@@ -96,23 +105,26 @@ public class LayoutCountV3Processor implements PhenotypicCountProcessor {
         Map<String, List<PhenotypicFilter>> filtersByConcept = query.allFilters().stream().filter(this::isCategoryCrossCountFilter)
             .collect(Collectors.groupingBy(PhenotypicFilter::conceptPath));
 
-        Map<String, Map<String, Integer>> categoryCounts = new TreeMap<>();
-        for (Map.Entry<String, List<PhenotypicFilter>> entry : filtersByConcept.entrySet()) {
-            Set<String> calledOutValues = entry.getValue().stream().filter(PhenotypicFilter::isCategoricalFilter)
-                .flatMap(filter -> filter.values().stream()).collect(Collectors.toSet());
-            Map<String, Integer> varCount = new TreeMap<>();
-            if (store.getBlock(entry.getKey()).orElse(null) instanceof CategoricalLayoutBlock block) {
-                for (int i = 0; i < block.dictionarySize(); i++) {
-                    int count = RoaringBitmap.andCardinality(block.bitmap(i), cohort);
-                    String category = block.value(i);
-                    if (count > 0 || calledOutValues.contains(category)) {
-                        varCount.put(category, count);
-                    }
+        return filtersByConcept.entrySet().parallelStream().collect(
+            Collectors
+                .toMap(Map.Entry::getKey, entry -> categoryCounts(entry.getKey(), entry.getValue(), cohort), (a, b) -> a, TreeMap::new)
+        );
+    }
+
+    private Map<String, Integer> categoryCounts(String conceptPath, List<PhenotypicFilter> filters, RoaringBitmap cohort) {
+        Set<String> calledOutValues = filters.stream().filter(PhenotypicFilter::isCategoricalFilter)
+            .flatMap(filter -> filter.values().stream()).collect(Collectors.toSet());
+        Map<String, Integer> varCount = new TreeMap<>();
+        if (store.getBlock(conceptPath).orElse(null) instanceof CategoricalLayoutBlock block) {
+            for (int i = 0; i < block.dictionarySize(); i++) {
+                int count = RoaringBitmap.andCardinality(block.bitmap(i), cohort);
+                String category = block.value(i);
+                if (count > 0 || calledOutValues.contains(category)) {
+                    varCount.put(category, count);
                 }
             }
-            categoryCounts.put(entry.getKey(), varCount);
         }
-        return categoryCounts;
+        return varCount;
     }
 
     private boolean isCategoryCrossCountFilter(PhenotypicFilter filter) {
@@ -140,39 +152,40 @@ public class LayoutCountV3Processor implements PhenotypicCountProcessor {
             .filter(path -> store.concept(path).map(concept -> !concept.categorical()).orElse(false))
             .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        Map<String, Map<Double, Integer>> conceptMap = new TreeMap<>();
-        for (String conceptPath : conceptPaths) {
-            Map<Double, Integer> countMap = new LinkedHashMap<>();
-            if (store.getBlock(conceptPath).orElse(null) instanceof NumericLayoutBlock block) {
-                DoubleBuffer values = block.values();
-                IntBuffer patients = block.patients();
-                int size = block.size();
-                int i = 0;
-                while (i < size) {
-                    double value = values.get(i);
-                    int count = 0;
-                    int j = i;
-                    while (j < size && Double.compare(values.get(j), value) == 0) {
-                        if (cohort.contains(patients.get(j))) {
-                            count++;
-                        }
-                        j++;
+        return conceptPaths.parallelStream()
+            .collect(Collectors.toMap(path -> path, path -> continuousCounts(path, cohort), (a, b) -> a, TreeMap::new));
+    }
+
+    private Map<Double, Integer> continuousCounts(String conceptPath, RoaringBitmap cohort) {
+        Map<Double, Integer> countMap = new LinkedHashMap<>();
+        if (store.getBlock(conceptPath).orElse(null) instanceof NumericLayoutBlock block) {
+            DoubleBuffer values = block.values();
+            IntBuffer patients = block.patients();
+            int size = block.size();
+            int i = 0;
+            while (i < size) {
+                double value = values.get(i);
+                int count = 0;
+                int j = i;
+                while (j < size && Double.compare(values.get(j), value) == 0) {
+                    if (cohort.contains(patients.get(j))) {
+                        count++;
                     }
-                    if (count > 0) {
-                        countMap.put(value, count);
-                    }
-                    i = j;
+                    j++;
                 }
+                if (count > 0) {
+                    countMap.put(value, count);
+                }
+                i = j;
             }
-            conceptMap.put(conceptPath, countMap);
         }
-        return conceptMap;
+        return countMap;
     }
 
     /**
      * For each {@code select} path the store holds, the number of its observations whose patient is in the cohort; -1 when its block cannot
-     * be loaded. Unknown paths are omitted. Computed with a plain loop, without the javabin processor's unsynchronized parallel writes into
-     * a {@code TreeMap}.
+     * be loaded. Unknown paths are omitted. Each concept is counted on a parallel stream and the results are gathered into a
+     * {@link TreeMap} afterwards, without the javabin processor's unsynchronized parallel writes into one.
      *
      * @param query the query
      * @return path to count, in Java string order
@@ -180,14 +193,15 @@ public class LayoutCountV3Processor implements PhenotypicCountProcessor {
     @Override
     public Map<String, Integer> runObservationCrossCounts(Query query) {
         RoaringBitmap cohort = cohort(query);
-        Map<String, Integer> counts = new TreeMap<>();
-        for (String concept : query.select()) {
-            try {
-                store.getBlock(concept).ifPresent(block -> counts.put(concept, (int) block.observationsIn(cohort)));
-            } catch (RuntimeException e) {
-                counts.put(concept, -1);
-            }
+        return query.select().parallelStream().filter(concept -> store.concept(concept).isPresent())
+            .collect(Collectors.toMap(concept -> concept, concept -> observationCount(concept, cohort), (a, b) -> a, TreeMap::new));
+    }
+
+    private int observationCount(String concept, RoaringBitmap cohort) {
+        try {
+            return store.getBlock(concept).map(block -> (int) block.observationsIn(cohort)).orElse(-1);
+        } catch (RuntimeException e) {
+            return -1;
         }
-        return counts;
     }
 }

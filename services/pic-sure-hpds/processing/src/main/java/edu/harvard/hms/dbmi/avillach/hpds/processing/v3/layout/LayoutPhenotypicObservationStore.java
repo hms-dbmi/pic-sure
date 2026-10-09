@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.v3.layout;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheStats;
 import com.google.common.util.concurrent.ExecutionError;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import org.roaringbitmap.RoaringBitmap;
@@ -106,7 +107,7 @@ public class LayoutPhenotypicObservationStore implements AutoCloseable {
             throw new LayoutFormatException("cannot open " + blocksFile, e);
         }
         this.cache = CacheBuilder.newBuilder().maximumWeight(cacheBytes)
-            .weigher((String path, LayoutBlock block) -> (int) Math.min(block.heapBytes(), Integer.MAX_VALUE)).build();
+            .weigher((String path, LayoutBlock block) -> (int) Math.min(block.heapBytes(), Integer.MAX_VALUE)).recordStats().build();
         log.info(
             "Opened layout store {}: {} concepts, {} patients, cache bound {} bytes", dataDirectory, index.concepts().size(),
             index.patients().getLongCardinality(), cacheBytes
@@ -242,9 +243,22 @@ public class LayoutPhenotypicObservationStore implements AutoCloseable {
         return buffer.array();
     }
 
-    /** Closes the block file. */
+    /**
+     * @return hit, miss, load and eviction counts of the block cache since the store opened
+     */
+    public CacheStats cacheStats() {
+        return cache.stats();
+    }
+
+    /** Logs the block cache statistics, then closes the block file. Spring calls it at shutdown. */
     @Override
     public void close() throws IOException {
+        CacheStats stats = cache.stats();
+        log.info(
+            "Layout block cache at close: {} hits, {} misses, hit rate {}, {} loads, {} ms loading, {} evictions, {} blocks held",
+            stats.hitCount(), stats.missCount(), String.format("%.4f", stats.hitRate()), stats.loadCount(),
+            stats.totalLoadTime() / 1_000_000, stats.evictionCount(), cache.size()
+        );
         blocks.close();
     }
 }
