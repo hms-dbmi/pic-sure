@@ -51,9 +51,20 @@ impl Source {
     }
 
     /// Returns a standard normal sample using the Box-Muller transform.
+    ///
+    /// The transcendental functions come from `libm`, so the result is the same on every
+    /// platform rather than depending on the system math library.
     pub fn normal(&mut self) -> f64 {
         let u1 = 1.0 - self.unit();
         let u2 = self.unit();
-        (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+        libm::sqrt(-2.0 * libm::log(u1)) * libm::cos(std::f64::consts::TAU * u2)
+    }
+
+    /// Returns how many trials to skip before the next success of a Bernoulli process whose
+    /// per-trial miss probability has natural log `log_miss`, or `None` when no success can
+    /// occur (a zero probability).
+    pub fn geometric_skip(&mut self, log_miss: f64) -> Option<f64> {
+        let skip = libm::floor(libm::log(1.0 - self.unit()) / log_miss);
+        skip.is_finite().then_some(skip)
     }
 }
