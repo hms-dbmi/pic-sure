@@ -21,6 +21,9 @@ pub enum Condition {
     /// `4.9E-324` (Java's `Double.MIN_VALUE`) on one side, against a value of zero or below on
     /// the other, takes the other side's value. At least one such field must differ.
     NumericMaxDoubleMinValue,
+    /// Both sides answered a sync request with 200, exactly one of them with an empty body,
+    /// and the entry's phenotypic clause holds a `FILTER` with a numeric `min`.
+    RangeMinSuccessBodyEmpty,
 }
 
 /// Java's `Double.MIN_VALUE`, the smallest positive double, printed as `4.9E-324`.
@@ -189,6 +192,33 @@ fn differs_only_in_min_value_max(a: &Outcome, b: &Outcome) -> bool {
         && json_diff_with(&left, &right, false).is_empty()
 }
 
+fn query_object(request: &Value) -> Option<Value> {
+    match request.get("query")? {
+        Value::String(text) => serde_json::from_str(text).ok(),
+        query => Some(query.clone()),
+    }
+}
+
+fn holds_range_min_filter(clause: &Value) -> bool {
+    if let Some(children) = clause.get("phenotypicClauses").and_then(Value::as_array) {
+        return children.iter().any(holds_range_min_filter);
+    }
+    clause.get("phenotypicFilterType").and_then(Value::as_str) == Some("FILTER")
+        && clause.get("min").is_some_and(Value::is_number)
+}
+
+fn range_min_with_one_empty_body(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    let (Outcome::Sync(x), Outcome::Sync(y)) = (a, b) else {
+        return false;
+    };
+    x.status == 200
+        && y.status == 200
+        && x.body.is_empty() != y.body.is_empty()
+        && query_object(&entry.request)
+            .and_then(|query| query.get("phenotypicClause").cloned())
+            .is_some_and(|clause| holds_range_min_filter(&clause))
+}
+
 impl Rule {
     fn matches(&self, entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
         if let Some(pattern) = &self.entry
@@ -216,6 +246,7 @@ impl Rule {
             Some(Condition::StrictSubsetOrTimeout) => subset_or_timeout(a, b),
             Some(Condition::SuccessBodyEmpty) => empty_success_body(a, b),
             Some(Condition::NumericMaxDoubleMinValue) => differs_only_in_min_value_max(a, b),
+            Some(Condition::RangeMinSuccessBodyEmpty) => range_min_with_one_empty_body(entry, a, b),
             None => true,
         }
     }
@@ -384,6 +415,77 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    fn with_clause(name: &str, clause: Value) -> CorpusEntry {
+        CorpusEntry {
+            request: json!({"query": {"phenotypicClause": clause, "select": []}, "resourceUUID": null}),
+            ..entry(name, "CONTINUOUS_CROSS_COUNT")
+        }
+    }
+
+    #[test]
+    fn an_empty_200_is_accepted_only_for_a_range_filter_with_a_min() {
+        let set = rules(json!([
+            {"name": "range", "statuses": [200, 200], "when": "range-min-success-body-empty", "reason": "why"}
+        ]));
+        let above_every_value = json!({"operator": "AND", "phenotypicClauses": [
+            {"conceptPath": "\\a\\", "max": -37.31, "phenotypicFilterType": "FILTER"},
+            {"conceptPath": "\\b\\", "min": -33.37, "phenotypicFilterType": "FILTER"}
+        ]});
+        let e = with_clause(
+            "0113-conjunction-continuous-cross-count",
+            above_every_value.clone(),
+        );
+        let rust = sync(200, r#"{"\\a\\":{}}"#);
+        assert!(set.find(&e, &sync(200, ""), &rust).is_some());
+        assert!(set.find(&e, &rust, &sync(200, "")).is_some());
+        assert!(set.find(&e, &sync(200, ""), &sync(200, "")).is_none());
+        assert!(set.find(&e, &sync(200, "{}"), &rust).is_none());
+        assert!(set.find(&e, &sync(200, ""), &sync(400, "msg")).is_none());
+        assert!(set.find(&e, &sync(500, ""), &rust).is_none());
+
+        let as_string = CorpusEntry {
+            request: json!({"query": json!({"phenotypicClause": above_every_value}).to_string()}),
+            ..e.clone()
+        };
+        assert!(set.find(&as_string, &sync(200, ""), &rust).is_some());
+
+        let max_only = with_clause(
+            "0001-numeric-range-cross-count",
+            json!({"conceptPath": "\\a\\", "max": 3.0, "phenotypicFilterType": "FILTER"}),
+        );
+        assert!(set.find(&max_only, &sync(200, ""), &rust).is_none());
+        let categorical = with_clause(
+            "0000-categorical-count",
+            json!({"conceptPath": "\\a\\", "values": ["x"], "phenotypicFilterType": "FILTER"}),
+        );
+        assert!(set.find(&categorical, &sync(200, ""), &rust).is_none());
+        let required_with_min = with_clause(
+            "0002-required-count",
+            json!({"conceptPath": "\\a\\", "min": 1.0, "phenotypicFilterType": "REQUIRED"}),
+        );
+        assert!(
+            set.find(&required_with_min, &sync(200, ""), &rust)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn the_checked_in_file_accepts_an_empty_200_for_a_min_above_every_value() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/divergences.json");
+        let set = Divergences::read(&file).unwrap();
+        let e = with_clause(
+            "0113-conjunction-continuous-cross-count",
+            json!({"operator": "AND", "phenotypicClauses": [
+                {"conceptPath": "\\b\\", "min": -33.37, "phenotypicFilterType": "FILTER"}
+            ]}),
+        );
+        let rule = set
+            .find(&e, &sync(200, ""), &sync(200, r#"{"\\b\\":{}}"#))
+            .unwrap();
+        assert_eq!(rule.name, "range-min-above-every-value-empty-200");
+        assert!(rule.reason.contains("seekForMinIndex"));
     }
 
     #[test]

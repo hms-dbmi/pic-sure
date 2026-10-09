@@ -63,8 +63,10 @@ or has the wrong field count is a difference.
 A difference matching a rule in the divergence file prints as `WHITELISTED` with the rule's
 reason and does not fail the run. A rule names an entry glob, a list of exact entry names, a result type, an unordered status
 pair, or a condition: `strict-subset-or-timeout`, `success-body-empty` (every side that
-answered 200 sent an empty body), or `numeric-max-double-min-value` (the JSON bodies are equal once
-every `max` of `4.9E-324` on one side, against zero or below on the other, is aligned). `--retries N` retries other differences; an
+answered 200 sent an empty body), `numeric-max-double-min-value` (the JSON bodies are equal once
+every `max` of `4.9E-324` on one side, against zero or below on the other, is aligned), or
+`range-min-success-body-empty` (both sides answered a sync request with 200, exactly one with an
+empty body, and the entry's phenotypic clause holds a `FILTER` with a `min`). `--retries N` retries other differences; an
 entry that recovers is listed as `FLAKY` with the side that answered differently between
 attempts.
 

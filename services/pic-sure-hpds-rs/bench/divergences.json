@@ -40,6 +40,12 @@
       "entry": "search-*",
       "when": "numeric-max-double-min-value",
       "reason": "Spec divergence, LowRAMLoadingStore.complete and LoadingStore initialize max to Double.MIN_VALUE, so a numeric concept with no value above zero reports a max of 4.9E-324; /search returns that stored max, where Rust returns the real one. Accepted only when every other field of the search body is equal and the real max is zero or below."
+    },
+    {
+      "name": "range-min-above-every-value-empty-200",
+      "statuses": [200, 200],
+      "when": "range-min-success-body-empty",
+      "reason": "Spec divergence, Range filters: Java's seekForMinIndex throws when min is above every value, and copyOfRange throws when max is below min; Java then answers 200 with an empty body, where Rust answers 200 with the result for an empty cohort. Accepted only for sync entries whose phenotypic clause holds a FILTER with a min, and only when exactly one side's 200 body is empty."
     }
   ]
 }
