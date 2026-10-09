@@ -39,7 +39,7 @@ public class CountTool {
             conceptPath, plus values for a categorical FILTER or min and max for a numeric FILTER; REQUIRED and ANY_RECORD_OF take \
             neither) or a subquery (operator AND or OR, and phenotypicClauses, each a filter or another subquery). genomicFilters are \
             allowed; to pass the same query to get_adapter_code later, give genomic filters values only, with no min or max. The query \
-            has no result type and no not field: this tool always runs a COUNT and ignores select. Omit phenotypicClause to count every participant. Example arguments: \
+            has no result type and no not field: this tool always runs a COUNT and ignores select. Omit phenotypicClause to count every participant. The phs999999 paths in the example are placeholders only: never use them, use real conceptPath values from search_concepts. Example arguments: \
             {"query":{"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
             {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female"]},\
             {"operator":"OR","phenotypicClauses":[\

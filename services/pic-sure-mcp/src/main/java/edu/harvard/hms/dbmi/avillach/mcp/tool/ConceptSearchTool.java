@@ -45,8 +45,9 @@ public class ConceptSearchTool {
     @McpTool(
         name = "search_concepts", description = """
             Search the PIC-SURE data dictionary for variables (concepts) by free text, for example \
-            "systolic blood pressure" or "sex". Returns open-access dictionary metadata only, never participant data. \
-            Each result has a conceptPath and a dataset. The conceptPath is the identifier get_concept, the count tools, and \
+            "systolic blood pressure" or "sex". Matching is on the text, so an abbreviation such as "BMI" can return no \
+            results while "body mass index" matches: if total is 0, retry with the spelled-out term or a synonym. Returns \
+            open-access dictionary metadata only, never participant data. Each result has a conceptPath and a dataset. The conceptPath is the identifier get_concept, the count tools, and \
             get_adapter_code take. Categorical concepts list up to 20 values and report valuesOmitted when there are more, and \
             continuous concepts give min and max. Results are paged, 10 per page by default and at most 25, so request the next \
             page when total exceeds what you have.""", generateOutputSchema = true,

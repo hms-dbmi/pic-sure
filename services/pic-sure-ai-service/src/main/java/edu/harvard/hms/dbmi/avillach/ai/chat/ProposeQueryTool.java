@@ -30,10 +30,16 @@ public class ProposeQueryTool {
 
     private static final String DESCRIPTION = """
         Propose an updated query, facet selection, or search for the researcher to review -- call this when the conversation should \
-        update what the user sees, not just answer in prose. query is the same shape search_concepts/count_participants use (select, \
-        phenotypicClause, genomicFilters); build it from conceptPath values that search_concepts returns. facets is a list of \
-        {category, name} pairs. search is free-form dictionary-search state. All three fields are optional -- include only what \
-        actually changed this turn.""";
+        update what the user sees, not just answer in prose. This is the only way to hand over a query; never write query JSON in a reply. All three fields are optional -- include only what actually changed this \
+        turn. query has select (concept paths to show), phenotypicClause, and genomicFilters. A phenotypicClause is either a filter or \
+        a subquery. A filter has phenotypicFilterType, conceptPath, and, for FILTER, either values (categorical) or min and max \
+        (numeric); REQUIRED and ANY_RECORD_OF take neither. A subquery has operator (AND or OR) and phenotypicClauses, each a filter \
+        or another subquery. Build every conceptPath from search_concepts results, exactly as returned; there is no not field. facets \
+        is a list of {category, name} pairs taken from list_facets. search is free-form dictionary-search state. Example arguments (the \
+        phs999999 paths are placeholders only; never use them, use real conceptPath values from search_concepts): \
+        {"query":{"select":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
+        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female"]},\
+        {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65}]}}}""";
 
     private static final String SCHEMA = """
         {"type":"object","properties":{"query":{"type":"object"},"facets":{"type":"array"},"search":{"type":"object"}}}""";
