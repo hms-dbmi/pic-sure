@@ -25,9 +25,7 @@ use common::{PartitionedDir, lenient, partitioned, strict};
 use hpds_bench::client::{AsyncOutcome, Outcome, SyncOutcome};
 use hpds_bench::corpus::Kind;
 use hpds_bench::golden::{GoldenFile, evaluate, read_golden};
-use hpds_query::{
-    Engine, PATIENTS_HEADER, Query, QueryError, QueryValidator, ResultType, SummaryColumnMeta,
-};
+use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType, SummaryColumnMeta};
 use serde_json::Value;
 
 fn workspace() -> PathBuf {
@@ -92,9 +90,9 @@ fn run_sync(engine: &Engine, query: &Query) -> Outcome {
     }
 }
 
-fn run_async(engine: &Engine, query: &Query, validator: &QueryValidator) -> Outcome {
+fn run_async(engine: &Engine, query: &Query) -> Outcome {
     let body = engine
-        .validate(query, validator)
+        .validate(query)
         .and_then(|()| match query.expected_result_type {
             ResultType::Patients => {
                 let mut out = csv_line([PATIENTS_HEADER]);
@@ -181,18 +179,17 @@ fn run_search(engine: &Engine, request: &Value) -> Outcome {
     sync_outcome(200, out)
 }
 
-/// Runs every case of `golden` and returns the failures. With `require_consents`, a sync
-/// case Java answers with an empty body is one Rust refuses: the engine must fail with
-/// [`QueryError::UserConsentsRequired`], and [`Engine::check_consents`] must agree.
-fn run_golden(engine: &Engine, golden: &GoldenFile, require_consents: bool) -> Vec<String> {
-    let validator = QueryValidator {
-        require_authorization_filter: require_consents,
-    };
+/// Runs every case of `golden` and returns the failures. When the engine requires
+/// consents, a sync case Java answers with an empty body is one Rust refuses: the engine
+/// must fail with [`QueryError::UserConsentsRequired`], and [`Engine::check_consents`] must
+/// agree.
+fn run_golden(engine: &Engine, golden: &GoldenFile) -> Vec<String> {
+    let require_consents = engine.partitions().requires_consents();
     let mut failures = Vec::new();
     for case in &golden.cases {
         let outcome = match case.entry.kind {
             Kind::Search => run_search(engine, &case.entry.request),
-            Kind::Async => run_async(engine, &parse_query(&case.entry.request), &validator),
+            Kind::Async => run_async(engine, &parse_query(&case.entry.request)),
             Kind::UnknownStatus | Kind::UnknownResult => {
                 panic!("{}: no in-process support", case.entry.name)
             }
@@ -235,7 +232,8 @@ fn assert_golden(file: &str, require_consents: bool, cases: usize) {
     let engine = dir.open(&options).unwrap();
     let golden = read_golden(&workspace().join("bench/golden").join(file)).unwrap();
     assert_eq!(golden.cases.len(), cases);
-    let failures = run_golden(&engine, &golden, require_consents);
+    assert_eq!(engine.partitions().requires_consents(), require_consents);
+    let failures = run_golden(&engine, &golden);
     assert!(
         failures.is_empty(),
         "{} of {} golden cases failed:\n{}",
@@ -261,17 +259,21 @@ fn fixture_partitions_and_patient_counts() {
     let dir = fixture();
     let engine = dir.open(&lenient()).unwrap();
     let set = engine.partitions();
-    let names: Vec<&str> = set.partitions().iter().map(|p| p.name()).collect();
+    let names: Vec<&str> = set.partition_names().collect();
     assert_eq!(
         names,
         ["partition1", "partition2", "partition3", "partition4"]
     );
-    let sizes: Vec<u64> = set
-        .partitions()
+    let sizes: Vec<u64> = names
         .iter()
-        .map(|p| p.store().index().patients().len())
+        .map(|name| {
+            engine
+                .count(&Query::with_consents(ResultType::Count, [*name]))
+                .unwrap()
+        })
         .collect();
     assert_eq!(sizes, [494, 1000, 1000, 2484]);
-    assert_eq!(set.all_patients().len(), 4978);
+    assert_eq!(engine.count(&Query::new(ResultType::Count)).unwrap(), 4978);
+    assert_eq!(set.concept_count(), 29);
     assert_eq!(set.dictionary().len(), 29);
 }

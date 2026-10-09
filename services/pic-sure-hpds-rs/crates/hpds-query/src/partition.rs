@@ -33,9 +33,10 @@ pub const UNPARTITIONED_NAME: &str = "__unpartitioned__";
 pub struct PartitionOptions {
     /// Cache budget and key rules. `cache_bytes` bounds the one cache all partitions share.
     pub store: StoreOptions,
-    /// `hpds.requireAuthorizationFilter`. When set, an unpartitioned data directory is
-    /// refused at open, and every query must carry at least one consent value.
-    pub require_authorization_filter: bool,
+    /// The Java property `hpds.requireAuthorizationFilter`. When set, an unpartitioned data
+    /// directory is refused at open, and every query must carry at least one consent value.
+    /// The [`PartitionSet`] keeps it, and [`crate::Engine::validate`] reads it from there.
+    pub require_consents: bool,
 }
 
 impl Default for PartitionOptions {
@@ -43,7 +44,7 @@ impl Default for PartitionOptions {
     fn default() -> Self {
         PartitionOptions {
             store: StoreOptions::default(),
-            require_authorization_filter: true,
+            require_consents: true,
         }
     }
 }
@@ -58,7 +59,11 @@ pub enum Layout {
     Unpartitioned,
 }
 
-/// One consent's store.
+/// File names of a Java javabin store. A partition directory holding one of them but no
+/// [`INDEX_FILE_NAME`] has not been migrated.
+const JAVABIN_FILE_NAMES: [&str; 2] = ["allObservationsStore.javabin", "columnMeta.javabin"];
+
+/// One consent's store. Only its name is public; its data is read through the engine.
 #[derive(Debug)]
 pub struct Partition {
     name: String,
@@ -72,7 +77,7 @@ impl Partition {
     }
 
     /// The partition's store.
-    pub fn store(&self) -> &Store {
+    pub(crate) fn store(&self) -> &Store {
         &self.store
     }
 }
@@ -243,6 +248,30 @@ fn java_max(a: f64, b: f64) -> f64 {
 
 /// Every partition of a data directory, opened with one key and one block cache. Share it
 /// behind an `Arc`; every method takes `&self`.
+///
+/// Its public methods read only the merged dictionary, the partition names and the cache
+/// counters, for search and health checks. Patient data is read only by the
+/// [`crate::Engine`], through a [`Selection`] that [`PartitionSet::select`] builds from the
+/// query's consents, so every read is scoped by consent. Neither a selection's blocks nor
+/// a partition's store can be reached from outside the crate:
+///
+/// ```compile_fail
+/// fn blocks(selection: &hpds_query::Selection<'_>) {
+///     let _ = selection.blocks("\\a\\");
+/// }
+/// ```
+///
+/// ```compile_fail
+/// fn store(set: &hpds_query::PartitionSet) {
+///     let _ = set.partition("p1").unwrap().store();
+/// }
+/// ```
+///
+/// ```compile_fail
+/// fn patients(set: &hpds_query::PartitionSet) {
+///     let _ = set.select_consents(&[]).unwrap().patients();
+/// }
+/// ```
 pub struct PartitionSet {
     dir: PathBuf,
     layout: Layout,
@@ -274,10 +303,22 @@ impl PartitionSet {
     ///
     /// - When `dir` itself holds `pheno.index`, it is one unpartitioned store, read as the
     ///   partition [`UNPARTITIONED_NAME`]. Its subdirectories are ignored.
-    /// - Otherwise every immediate subdirectory holding `pheno.index` is a partition named
-    ///   after the subdirectory. Other subdirectories (a genomic `all` directory,
-    ///   `lost+found`) are skipped; Java would load each as an empty partition, which reads
-    ///   the same.
+    /// - Otherwise the immediate subdirectories are read, and nothing deeper. One whose name
+    ///   starts with `.` is ignored. One holding `pheno.index` is a partition named after the
+    ///   subdirectory. One holding a Java javabin file (`allObservationsStore.javabin`,
+    ///   `columnMeta.javabin`, or both) but no `pheno.index` is a partition that was never
+    ///   migrated, and refuses the open, naming it, rather than silently dropping that
+    ///   consent group. Any other subdirectory (a genomic `all` directory, `lost+found`) is
+    ///   ignored. Java loads each of those as an empty partition and lists it; here it is
+    ///   not a partition at all, so a consent naming it selects nothing.
+    ///
+    /// When `<dir>/.generation` exists, the ETL wrote it last, after every partition of a
+    /// load was in place. It lists the store id of each partition of that load, one per
+    /// line as 32 lowercase hex digits ([`hpds_format::StoreId`]'s display form); only the
+    /// first whitespace-separated token of a line is read, and blank lines are skipped.
+    /// Every opened store's id must be listed and every listed id must belong to an opened
+    /// store, or the open is refused as a partially published load. Without the file the
+    /// stores open as found.
     ///
     /// The key is `<dir>/encryption_key`, shared by every partition. A partition may carry
     /// its own `encryption_key` only if it holds the same key. With no root key the
@@ -285,9 +326,12 @@ impl PartitionSet {
     /// Partitions are kept in Java string order of their names.
     ///
     /// # Errors
-    /// [`QueryError::Open`] when the directory cannot be listed, holds no store, is
-    /// unpartitioned while `options.require_authorization_filter` is set, a partition's key
-    /// file differs from the shared key, or a store cannot be opened (see [`Store::open`]).
+    /// [`QueryError::Open`] when the directory cannot be listed, holds no store (Java starts
+    /// empty instead), holds a subdirectory with a javabin file but no `pheno.index`, holds a
+    /// `.generation` file that cannot be read or does not match the opened stores' ids, is
+    /// unpartitioned while `options.require_consents` is set, a partition's key file
+    /// differs from the shared key, or a store cannot be opened (its index or blocks file is
+    /// missing, corrupt, from another store, or protected differently from the key).
     /// [`QueryError::TypeConflict`] when two partitions type one concept differently.
     pub fn open(dir: &Path, options: &PartitionOptions) -> Result<Self> {
         let cache = block_cache(options.store.cache_bytes);
@@ -308,7 +352,7 @@ impl PartitionSet {
             }
         };
         let (layout, partitions) = if dir.join(INDEX_FILE_NAME).exists() {
-            if options.require_authorization_filter {
+            if options.require_consents {
                 return Err(open_error(
                     dir,
                     format!(
@@ -347,6 +391,7 @@ impl PartitionSet {
                 .collect::<Result<Vec<_>>>()?;
             (Layout::Partitioned, partitions)
         };
+        check_generation(dir, &partitions)?;
         let dictionary = merge_dictionaries(&partitions)?;
         let all_patients = partitions
             .iter()
@@ -355,7 +400,7 @@ impl PartitionSet {
         Ok(PartitionSet {
             dir: dir.to_path_buf(),
             layout,
-            require_consents: options.require_authorization_filter,
+            require_consents: options.require_consents,
             partitions,
             dictionary,
             all_patients,
@@ -373,14 +418,20 @@ impl PartitionSet {
         self.layout
     }
 
-    /// True when every query must carry a consent value (`hpds.requireAuthorizationFilter`).
+    /// True when every query must carry a consent value (the Java property
+    /// `hpds.requireAuthorizationFilter`).
     pub fn requires_consents(&self) -> bool {
         self.require_consents
     }
 
-    /// Every partition, in Java string order of their names.
-    pub fn partitions(&self) -> &[Partition] {
-        &self.partitions
+    /// The partition names, in Java string order.
+    pub fn partition_names(&self) -> impl ExactSizeIterator<Item = &str> + '_ {
+        self.partitions.iter().map(|p| p.name.as_str())
+    }
+
+    /// The number of distinct concepts over every partition.
+    pub fn concept_count(&self) -> usize {
+        self.dictionary.len()
     }
 
     /// The partition named `name`.
@@ -416,11 +467,6 @@ impl PartitionSet {
             .take_while(|c| c.name.starts_with(prefix))
             .count();
         &self.dictionary[start..start + len]
-    }
-
-    /// Every patient of every partition.
-    pub fn all_patients(&self) -> &RoaringBitmap {
-        &self.all_patients
     }
 
     /// True when some partition holds at least one concept, the readiness rule for health
@@ -477,14 +523,17 @@ impl PartitionSet {
         Ok(())
     }
 
-    /// Number of cached blocks across all partitions. Eventually consistent.
+    /// Number of cached blocks across all partitions, after applying the cache's pending
+    /// inserts and evictions.
     pub fn cached_block_count(&self) -> u64 {
+        self.cache.run_pending_tasks();
         self.cache.entry_count()
     }
 
-    /// Summed weight in bytes of the cached blocks across all partitions. Eventually
-    /// consistent.
+    /// Summed weight in bytes of the cached blocks across all partitions, after applying
+    /// the cache's pending inserts and evictions.
     pub fn cached_bytes(&self) -> u64 {
+        self.cache.run_pending_tasks();
         self.cache.weighted_size()
     }
 
@@ -501,7 +550,9 @@ impl ConceptLookup for PartitionSet {
     }
 }
 
-/// The partitions one query reads, in partition name order.
+/// The partitions one query reads, in partition name order. Built only by
+/// [`PartitionSet::select`] and [`PartitionSet::select_consents`]. Publicly it only names
+/// the partitions; the engine reads patient data through it.
 #[derive(Debug, Clone)]
 pub struct Selection<'a> {
     set: &'a PartitionSet,
@@ -515,7 +566,7 @@ impl<'a> Selection<'a> {
     }
 
     /// The selected partitions, in partition name order.
-    pub fn partitions(&self) -> &[&'a Partition] {
+    pub(crate) fn partitions(&self) -> &[&'a Partition] {
         &self.members
     }
 
@@ -532,7 +583,7 @@ impl<'a> Selection<'a> {
     /// The union of the selected partitions' patients
     /// (`PartitionedPhenotypicObservationStore.getPatientIds`). Borrowed when one partition
     /// or every partition is selected.
-    pub fn patients(&self) -> Cow<'a, RoaringBitmap> {
+    pub(crate) fn patients(&self) -> Cow<'a, RoaringBitmap> {
         match self.members.as_slice() {
             [] => Cow::Owned(RoaringBitmap::new()),
             [one] => Cow::Borrowed(one.store.index().patients()),
@@ -541,12 +592,21 @@ impl<'a> Selection<'a> {
         }
     }
 
+    /// The type of the concept at exactly `path`, or `None` when no selected partition holds
+    /// it. Partitions never disagree on a type: [`PartitionSet::open`] refuses that.
+    pub fn concept_type(&self, path: &str) -> Option<ConceptType> {
+        self.members
+            .iter()
+            .find_map(|p| p.store.index().get(path))
+            .map(|concept| concept.concept_type)
+    }
+
     /// The block of `path` in each selected partition that holds the concept, in partition
     /// name order. Loads in parallel. Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be loaded.
-    pub fn blocks(&self, path: &str) -> Result<Vec<Arc<Block>>> {
+    pub(crate) fn blocks(&self, path: &str) -> Result<Vec<Arc<Block>>> {
         let loaded = self
             .members
             .par_iter()
@@ -598,12 +658,36 @@ fn check_partition_key(partition_dir: &Path, root_key: Option<&str>) -> Result<(
 }
 
 /// Every immediate subdirectory of `dir` holding a store, as (name, path).
+///
+/// # Errors
+/// [`QueryError::Open`] when `dir` cannot be listed, a partition name is not UTF-8, or a
+/// subdirectory holds a javabin store but no `pheno.index`.
 fn partition_dirs(dir: &Path) -> Result<Vec<(String, PathBuf)>> {
     let entries = std::fs::read_dir(dir).map_err(|e| open_error(dir, e))?;
     let mut found = Vec::new();
     for entry in entries {
-        let path = entry.map_err(|e| open_error(dir, e))?.path();
-        if !path.is_dir() || !path.join(INDEX_FILE_NAME).exists() {
+        let entry = entry.map_err(|e| open_error(dir, e))?;
+        if entry.file_name().as_encoded_bytes().starts_with(b".") {
+            continue;
+        }
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if !path.join(INDEX_FILE_NAME).exists() {
+            if let Some(javabin) = JAVABIN_FILE_NAMES
+                .iter()
+                .find(|name| path.join(name).exists())
+            {
+                return Err(open_error(
+                    &path,
+                    format!(
+                        "it holds {javabin} but no {INDEX_FILE_NAME}, so it is a half-migrated \
+                         partition. Migrate it with hpds-etl migrate, or move it out of the \
+                         data directory"
+                    ),
+                ));
+            }
             continue;
         }
         let name = path
@@ -614,6 +698,60 @@ fn partition_dirs(dir: &Path) -> Result<Vec<(String, PathBuf)>> {
         found.push((name, path));
     }
     Ok(found)
+}
+
+/// Name of the file the ETL writes last into a data directory, listing the store ids of the
+/// load it completed.
+const GENERATION_FILE_NAME: &str = ".generation";
+
+/// Refuses a data directory whose `.generation` file names a different set of stores than
+/// `partitions` hold. Passes when there is no such file.
+///
+/// # Errors
+/// [`QueryError::Open`] when the file cannot be read, a line's first token is not a store
+/// id, or the listed ids and the opened stores' ids differ.
+fn check_generation(dir: &Path, partitions: &[Partition]) -> Result<()> {
+    let path = dir.join(GENERATION_FILE_NAME);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(open_error(&path, e)),
+    };
+    let mut listed = std::collections::BTreeSet::new();
+    for token in text
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+    {
+        if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(open_error(
+                &path,
+                format!("{token:?} is not a store id of 32 hex digits"),
+            ));
+        }
+        listed.insert(token.to_ascii_lowercase());
+    }
+    let opened: std::collections::BTreeMap<String, &str> = partitions
+        .iter()
+        .map(|p| (p.store.index().store_id().to_string(), p.name.as_str()))
+        .collect();
+    let unlisted: Vec<&str> = opened
+        .iter()
+        .filter(|(id, _)| !listed.contains(*id))
+        .map(|(_, name)| *name)
+        .collect();
+    let missing = listed.iter().filter(|id| !opened.contains_key(*id)).count();
+    if unlisted.is_empty() && missing == 0 {
+        return Ok(());
+    }
+    Err(open_error(
+        dir,
+        format!(
+            "a partially published load: {GENERATION_FILE_NAME} lists {} store ids, {missing} \
+             of them not found among the partitions, and the partitions {unlisted:?} are not \
+             listed. Wait for the load to finish, or republish it",
+            listed.len()
+        ),
+    ))
 }
 
 fn type_name(concept_type: ConceptType) -> &'static str {

@@ -17,7 +17,7 @@ use crate::limits::CheckedQuery;
 use crate::model::{
     Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery,
 };
-use crate::partition::{PartitionSet, Selection};
+use crate::partition::Selection;
 
 /// The patients matching `checked`'s phenotypic clause within the partitions its consents
 /// select, borrowing the partitions' patient set instead of copying it when there is no
@@ -38,7 +38,7 @@ pub(crate) fn evaluate_cohort_cow<'s>(
     match &checked.query().phenotypic_clause {
         None => Ok(selection.patients()),
         Some(clause) => {
-            check_structure(selection.set(), clause)?;
+            check_structure(selection, clause)?;
             evaluate_checked(selection, clause).map(|patients| Cow::Owned(patients.into_owned()))
         }
     }
@@ -82,9 +82,11 @@ impl Patients {
 }
 
 /// Finds, before any block is loaded, every condition under which Java's executor throws
-/// on the request itself, so a bad request fails before it costs any I/O. Types come from
-/// the merged dictionary.
-fn check_structure(set: &PartitionSet, clause: &PhenotypicClause) -> Result<()> {
+/// on the request itself, so a bad request fails before it costs any I/O. A filter's type
+/// is checked only when a selected partition holds its concept: Java asks each selected
+/// partition for the cube, so a concept held only by unselected partitions matches no one
+/// rather than failing.
+fn check_structure(selection: &Selection<'_>, clause: &PhenotypicClause) -> Result<()> {
     match clause {
         PhenotypicClause::Subquery(PhenotypicSubquery {
             phenotypic_clauses,
@@ -99,17 +101,17 @@ fn check_structure(set: &PartitionSet, clause: &PhenotypicClause) -> Result<()> 
             }
             phenotypic_clauses
                 .iter()
-                .try_for_each(|c| check_structure(set, c))
+                .try_for_each(|c| check_structure(selection, c))
         }
-        PhenotypicClause::Filter(filter) => check_filter(set, filter),
+        PhenotypicClause::Filter(filter) => check_filter(selection, filter),
     }
 }
 
-fn check_filter(set: &PartitionSet, filter: &PhenotypicFilter) -> Result<()> {
+fn check_filter(selection: &Selection<'_>, filter: &PhenotypicFilter) -> Result<()> {
     if filter.phenotypic_filter_type != PhenotypicFilterType::Filter {
         return Ok(());
     }
-    let concept_type = set.summary(&filter.concept_path).map(|c| c.concept_type());
+    let concept_type = selection.concept_type(&filter.concept_path);
     match &filter.values {
         Some(values) => {
             if !values.is_empty() && concept_type == Some(ConceptType::Numeric) {

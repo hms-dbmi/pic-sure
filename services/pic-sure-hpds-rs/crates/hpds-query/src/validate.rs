@@ -114,17 +114,20 @@ pub fn check_supported(query: &Query) -> Result<()> {
 }
 
 /// `QueryValidator` with `PhenotypicFilterValidator`, plus [`check_supported`].
+/// [`crate::Engine::validate`] builds one from its partition set's flag; build one directly
+/// only to validate against another [`ConceptLookup`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QueryValidator {
-    /// `hpds.requireAuthorizationFilter`: refuse a query whose `userConsents` is empty.
-    pub require_authorization_filter: bool,
+    /// The Java property `hpds.requireAuthorizationFilter`: refuse a query whose
+    /// `userConsents` is empty.
+    pub require_consents: bool,
 }
 
 impl Default for QueryValidator {
     /// Requires user consents, the Java default.
     fn default() -> Self {
         QueryValidator {
-            require_authorization_filter: true,
+            require_consents: true,
         }
     }
 }
@@ -144,7 +147,7 @@ impl QueryValidator {
     /// with Java's message for the first rule broken.
     pub fn validate(&self, query: &Query, concepts: &impl ConceptLookup) -> Result<()> {
         check_supported(query)?;
-        if self.require_authorization_filter && query.user_consents.is_empty() {
+        if self.require_consents && query.user_consents.is_empty() {
             return Err(QueryError::Invalid(
                 "User consents are required for this query".into(),
             ));

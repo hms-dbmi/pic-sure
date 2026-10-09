@@ -54,7 +54,7 @@ pub fn load_csv(csv_text: &str) -> TestStore {
 /// Options for an unpartitioned test store: consents not required.
 pub fn lenient() -> PartitionOptions {
     PartitionOptions {
-        require_authorization_filter: false,
+        require_consents: false,
         ..PartitionOptions::default()
     }
 }

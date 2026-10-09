@@ -10,8 +10,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use common::{any_record_of, filter_range, filter_values, lenient, query, required, subquery};
-use hpds_format::ConceptMeta;
-use hpds_query::{Engine, Operator, ResultType};
+use hpds_query::{Engine, Operator, Query, ResultType, SummaryColumnMeta};
 
 fn bench_store() -> Option<PathBuf> {
     let Some(dir) = std::env::var_os("HPDS_BENCH_STORE").map(PathBuf::from) else {
@@ -25,10 +24,10 @@ fn bench_store() -> Option<PathBuf> {
     Some(dir)
 }
 
-fn widest(concepts: &[ConceptMeta], categorical: bool, skip: usize) -> &ConceptMeta {
-    let mut candidates: Vec<&ConceptMeta> = concepts
+fn widest(concepts: &[SummaryColumnMeta], categorical: bool, skip: usize) -> &SummaryColumnMeta {
+    let mut candidates: Vec<&SummaryColumnMeta> = concepts
         .iter()
-        .filter(|c| c.is_categorical() == categorical && c.observation_count > 0)
+        .filter(|c| c.categorical == categorical && c.patient_count > 0)
         .collect();
     candidates.sort_by_key(|c| std::cmp::Reverse(c.patient_count));
     candidates[skip]
@@ -43,23 +42,20 @@ fn count_with_three_filters_cold_and_warm() {
     let opened = Instant::now();
     let engine = Engine::open(&dir, &lenient()).unwrap();
     let open_time = opened.elapsed();
-    let concepts = engine.partitions().partitions()[0]
-        .store()
-        .index()
-        .concepts();
+    let concepts = engine.partitions().dictionary();
     let category = widest(concepts, true, 0);
     let number = widest(concepts, false, 0);
     let other = widest(concepts, true, 1);
-    let value = category.category_values.as_ref().unwrap()[0].clone();
+    let value = category.category_values[0].clone();
     let (min, max) = (number.min.unwrap(), number.max.unwrap());
     let q = query(
         ResultType::Count,
         Some(subquery(
             Operator::And,
             vec![
-                filter_values(&category.path, &[value.as_str()]),
-                filter_range(&number.path, Some(min), Some((min + max) / 2.0)),
-                required(&other.path),
+                filter_values(&category.name, &[value.as_str()]),
+                filter_range(&number.name, Some(min), Some((min + max) / 2.0)),
+                required(&other.name),
             ],
         )),
     );
@@ -81,17 +77,16 @@ fn count_with_three_filters_cold_and_warm() {
         "store {} ({} concepts, {} patients), open {open_time:?}",
         dir.display(),
         concepts.len(),
-        engine.partitions().all_patients().len()
+        engine.count(&Query::new(ResultType::Count)).unwrap()
     );
     eprintln!(
-        "filters: {} = {value:?} ({} patients); {} in [{min}, {}] ({} patients, {} observations); REQUIRED {} ({} patients)",
-        category.path,
+        "filters: {} = {value:?} ({} patients); {} in [{min}, {}] ({} patients); REQUIRED {} ({} patients)",
+        category.name,
         category.patient_count,
-        number.path,
+        number.name,
         (min + max) / 2.0,
         number.patient_count,
-        number.observation_count,
-        other.path,
+        other.name,
         other.patient_count
     );
     eprintln!(
@@ -112,27 +107,19 @@ fn cross_count_over_300_concepts_warm() {
         return;
     };
     let engine = Engine::open(&dir, &lenient()).unwrap();
-    let mut concepts: Vec<&ConceptMeta> = engine.partitions().partitions()[0]
-        .store()
-        .index()
-        .concepts()
+    let mut concepts: Vec<&SummaryColumnMeta> = engine
+        .partitions()
+        .dictionary()
         .iter()
-        .filter(|c| c.observation_count > 0)
+        .filter(|c| c.patient_count > 0)
         .collect();
     concepts.sort_by_key(|c| std::cmp::Reverse(c.patient_count));
-    let selected: Vec<&str> = concepts.iter().take(300).map(|c| c.path.as_str()).collect();
-    let filter_concept = widest(
-        engine.partitions().partitions()[0]
-            .store()
-            .index()
-            .concepts(),
-        true,
-        0,
-    );
-    let value = filter_concept.category_values.as_ref().unwrap()[0].clone();
+    let selected: Vec<&str> = concepts.iter().take(300).map(|c| c.name.as_str()).collect();
+    let filter_concept = widest(engine.partitions().dictionary(), true, 0);
+    let value = filter_concept.category_values[0].clone();
     let mut q = query(
         ResultType::CrossCount,
-        Some(filter_values(&filter_concept.path, &[value.as_str()])),
+        Some(filter_values(&filter_concept.name, &[value.as_str()])),
     );
     q.select = selected.iter().map(|p| (*p).to_owned()).collect();
 

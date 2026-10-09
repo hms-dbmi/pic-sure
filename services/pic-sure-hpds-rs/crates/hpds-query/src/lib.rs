@@ -3,10 +3,12 @@
 //! computations. No HTTP: the `hpds-rs` crate serves this.
 //!
 //! - The [`model`] module holds [`Query`] and its parts, deserialized as Jackson reads them.
-//! - A [`Store`] keeps `pheno.index` in memory and a byte-bounded cache of decoded blocks.
 //! - A [`PartitionSet`] is `PartitionedPhenotypicObservationStore`: one store per consent
-//!   partition sharing one key and one cache, the merged [`SummaryColumnMeta`] dictionary,
-//!   and the choice of partitions a query's `userConsents` grant.
+//!   partition (`pheno.index` in memory, blocks read on demand) sharing one key and one
+//!   byte-bounded cache of decoded blocks, the merged [`SummaryColumnMeta`] dictionary, and
+//!   the choice of partitions a query's `userConsents` grant ([`Selection`]). Its public
+//!   surface is that dictionary and the partition names; patient data is read only by the
+//!   [`Engine`], within a query's consents.
 //! - Cohort evaluation, `PhenotypicQueryExecutor.getPatientSet`, runs only inside the
 //!   [`Engine`], after the query passes its [`QueryLimits`] and its consents select the
 //!   partitions; each filter is evaluated per selected partition and the results ORed.
@@ -16,8 +18,8 @@
 //!   Java's response form ([`SyncResult::body`], [`DataframeRows`]).
 //!
 //! Everything that reads blocks is blocking. Async callers wrap it in
-//! `tokio::task::spawn_blocking`; the `tokio` feature adds [`Engine::run_blocking`] and
-//! [`Store::block_async`] for that.
+//! `tokio::task::spawn_blocking`; the `tokio` feature adds [`Engine::run_blocking`] for
+//! that.
 
 mod cohort;
 mod engine;
@@ -47,7 +49,7 @@ pub use results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,
     PATIENT_ID_FIELD_NAME, PATIENTS_HEADER, RowBuffer, SyncResult,
 };
-pub use store::{DEFAULT_CACHE_BYTES, KEY_FILE_NAME, Store, StoreOptions};
+pub use store::{DEFAULT_CACHE_BYTES, KEY_FILE_NAME, StoreOptions};
 pub use validate::{ConceptLookup, QueryValidator, check_supported, path_is_variant_spec};
 
 /// Directory used when `HPDS_DATA_DIRECTORY` is not set. Matches the Java service, so the

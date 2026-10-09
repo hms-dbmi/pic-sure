@@ -6,7 +6,7 @@ mod common;
 use std::os::unix::fs::FileExt;
 
 use common::*;
-use hpds_format::BLOCKS_FILE_NAME;
+use hpds_format::{BLOCKS_FILE_NAME, CryptoKey, INDEX_FILE_NAME, PhenoIndex, Protection};
 use hpds_query::{Engine, GenomicFilter, Operator, QueryError, ResultType, SyncResult};
 
 const CONSENT_A: &str = "\\_studies_consents\\phs001194\\HMB\\";
@@ -79,11 +79,9 @@ fn cross_counts_with_no_matching_patients_return_zeros() {
 #[test]
 fn cross_counts_with_unreadable_block_return_negative_one() {
     let s = consents();
-    let location = s.engine.partitions().partitions()[0]
-        .store()
-        .concept(CONSENT_B)
-        .unwrap()
-        .block;
+    let protection = Protection::Encrypted(CryptoKey::load(s.out.join("encryption_key")).unwrap());
+    let index = PhenoIndex::read_file(s.out.join(INDEX_FILE_NAME), &protection).unwrap();
+    let location = index.get(CONSENT_B).unwrap().block;
     let blocks = std::fs::OpenOptions::new()
         .write(true)
         .open(s.out.join(BLOCKS_FILE_NAME))
@@ -364,9 +362,4 @@ async fn blocking_wrappers_run_on_the_blocking_pool() {
     let engine = std::sync::Arc::new(Engine::open(&s.out, &lenient()).unwrap());
     let q = query(ResultType::Count, Some(required(AGE)));
     assert_eq!(engine.run_blocking(move |e| e.count(&q)).await.unwrap(), 4);
-    let store = std::sync::Arc::new(
-        hpds_query::Store::open(&s.out, &hpds_query::StoreOptions::default()).unwrap(),
-    );
-    assert!(store.block_async(AGE).await.unwrap().is_some());
-    assert!(store.block_async("\\nope\\").await.unwrap().is_none());
 }

@@ -152,7 +152,7 @@ fn clause(f: PhenotypicFilter) -> PhenotypicClause {
 }
 
 const LENIENT: QueryValidator = QueryValidator {
-    require_authorization_filter: false,
+    require_consents: false,
 };
 
 #[test]
@@ -196,7 +196,7 @@ fn query_validator_rejects_invalid_filters_at_any_depth() {
 fn query_validator_requires_user_consents_by_default() {
     let m = meta();
     let strict = QueryValidator::default();
-    assert!(strict.require_authorization_filter);
+    assert!(strict.require_consents);
     let sex = clause(filter(Filter, SEX, Some(&["male"]), None, None));
     let mut q = query(ResultType::Count, Some(sex));
     assert_eq!(

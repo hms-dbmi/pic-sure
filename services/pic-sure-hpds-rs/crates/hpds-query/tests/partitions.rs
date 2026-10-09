@@ -22,6 +22,13 @@ fn ids_of(bitmap: &roaring::RoaringBitmap) -> Vec<u32> {
     bitmap.iter().collect()
 }
 
+/// The cohort of a query with no clause in the partitions `consents` select: every patient
+/// of those partitions.
+fn consented_patients(engine: &Engine, consents: &[&str]) -> Vec<u32> {
+    let q = Query::with_consents(ResultType::Count, consents.iter().copied());
+    ids_of(&engine.cohort(&q).unwrap())
+}
+
 /// The patients with a value for [`CONCEPT`] in the partitions `consents` select
 /// (`getAllKeys`), through the engine.
 fn holding_concept(engine: &Engine, consents: &[&str]) -> Vec<u32> {
@@ -37,10 +44,12 @@ fn serves_an_unpartitioned_directory_when_consents_are_not_required() {
     let s = store(&numeric_rows(&[1, 2, 3]));
     let set = s.engine.partitions();
     assert_eq!(set.layout(), Layout::Unpartitioned);
-    assert_eq!(set.partitions()[0].name(), UNPARTITIONED_NAME);
+    assert_eq!(
+        set.partition_names().collect::<Vec<_>>(),
+        [UNPARTITIONED_NAME]
+    );
     assert!(set.summary(CONCEPT).is_some());
-    let one = set.select_consents(&["phs000001.c1"]).unwrap();
-    assert_eq!(ids_of(&one.patients()), [1, 2, 3]);
+    assert_eq!(consented_patients(&s.engine, &["phs000001.c1"]), [1, 2, 3]);
     assert_eq!(
         holding_concept(&s.engine, &["some.consent.matching.no.partition"]),
         [1, 2, 3]
@@ -49,10 +58,8 @@ fn serves_an_unpartitioned_directory_when_consents_are_not_required() {
         holding_concept(&s.engine, &["phs000001.c1", "phs000002.c2", "phs000003.c3"]),
         [1, 2, 3]
     );
-    assert_eq!(
-        ids_of(&set.select_consents(&[]).unwrap().patients()),
-        [1, 2, 3]
-    );
+    assert_eq!(consented_patients(&s.engine, &[]), [1, 2, 3]);
+    assert!(set.select_consents(&[]).unwrap().is_all());
 }
 
 #[test]
@@ -75,9 +82,8 @@ fn a_partitioned_directory_scopes_by_consent() {
         ("phs000002.c2", numeric_rows(&[3, 4])),
     ]);
     let engine = d.open(&strict()).unwrap();
-    let set = engine.partitions();
-    assert_eq!(set.layout(), Layout::Partitioned);
-    let patients = |consents: &[&str]| ids_of(&set.select_consents(consents).unwrap().patients());
+    assert_eq!(engine.partitions().layout(), Layout::Partitioned);
+    let patients = |consents: &[&str]| consented_patients(&engine, consents);
     assert_eq!(patients(&["phs000001.c1"]), [1, 2]);
     assert_eq!(patients(&["phs000002.c2"]), [3, 4]);
     assert_eq!(patients(&["phs000001.c1", "phs000002.c2"]), [1, 2, 3, 4]);
@@ -159,7 +165,7 @@ fn selection_skips_unknown_consents_and_keeps_name_order() {
     ]);
     let engine = d.open(&strict()).unwrap();
     let set = engine.partitions();
-    let names: Vec<&str> = set.partitions().iter().map(|p| p.name()).collect();
+    let names: Vec<&str> = set.partition_names().collect();
     assert_eq!(names, ["partition1", "partition2", "partition3"]);
     let q = hpds_query::Query::with_consents(
         ResultType::Count,
@@ -434,7 +440,7 @@ fn a_missing_shared_key_or_store_refuses_to_open() {
             allow_plain: true,
             ..StoreOptions::default()
         },
-        require_authorization_filter: false,
+        require_consents: false,
     };
     assert!(d.open(&plain).is_err());
 
@@ -451,12 +457,7 @@ fn subdirectories_without_a_store_are_not_partitions() {
     std::fs::create_dir(d.out.join("all")).unwrap();
     std::fs::create_dir(d.out.join("lost+found")).unwrap();
     let engine = d.open(&strict()).unwrap();
-    let names: Vec<&str> = engine
-        .partitions()
-        .partitions()
-        .iter()
-        .map(|p| p.name())
-        .collect();
+    let names: Vec<&str> = engine.partitions().partition_names().collect();
     assert_eq!(names, ["p1"]);
     let all = hpds_query::Query::with_consents(ResultType::Count, ["all"]);
     assert_eq!(engine.count(&all).unwrap(), 0);
@@ -470,10 +471,130 @@ fn partitions_share_one_cache_budget() {
     engine
         .count(&query(ResultType::Count, Some(required(CONCEPT))))
         .unwrap();
-    for partition in set.partitions() {
-        assert!(partition.store().cached_block(CONCEPT).is_some());
-    }
+    assert_eq!(set.cached_block_count(), 2);
+    assert!(set.cached_bytes() > 0);
     set.clear_cache();
     assert_eq!(set.cached_block_count(), 0);
-    assert!(set.partitions()[0].store().cached_block(CONCEPT).is_none());
+    let only_p1 = Query {
+        phenotypic_clause: Some(required(CONCEPT)),
+        ..Query::with_consents(ResultType::Count, ["p1"])
+    };
+    engine.count(&only_p1).unwrap();
+    assert_eq!(set.cached_block_count(), 1);
+}
+
+#[test]
+fn a_type_mismatch_is_raised_only_when_a_selected_partition_holds_the_concept() {
+    let d = partitioned_rows(&[
+        ("p1", vec![(1, SEX, None, Some("male"))]),
+        ("p2", numeric_rows(&[2])),
+    ]);
+    let engine = d.open(&strict()).unwrap();
+    let consented = |clause, consents: &[&str]| Query {
+        phenotypic_clause: Some(clause),
+        ..Query::with_consents(ResultType::Count, consents.iter().copied())
+    };
+    let numeric_on_sex = || filter_range(SEX, Some(0.0), None);
+    let values_on_age = || filter_values(CONCEPT, &["40"]);
+    assert_eq!(
+        engine.count(&consented(numeric_on_sex(), &["p2"])).unwrap(),
+        0
+    );
+    assert_eq!(
+        engine.count(&consented(values_on_age(), &["p1"])).unwrap(),
+        0
+    );
+    assert_eq!(
+        engine
+            .count(&consented(numeric_on_sex(), &["nope"]))
+            .unwrap(),
+        0
+    );
+    for (clause, consents) in [
+        (numeric_on_sex(), ["p1", "p2"]),
+        (values_on_age(), ["p2", "p1"]),
+    ] {
+        assert!(matches!(
+            engine.count(&consented(clause, &consents)),
+            Err(QueryError::TypeMismatch { .. })
+        ));
+    }
+    assert!(matches!(
+        engine.count(&consented(values_on_age(), &["p2"])),
+        Err(QueryError::TypeMismatch { .. })
+    ));
+}
+
+#[test]
+fn a_half_migrated_partition_refuses_to_open() {
+    for javabin in ["allObservationsStore.javabin", "columnMeta.javabin"] {
+        let d = partitioned_rows(&[("p1", numeric_rows(&[1]))]);
+        let half = d.out.join("phs000002.c1");
+        std::fs::create_dir(&half).unwrap();
+        std::fs::write(half.join(javabin), b"java").unwrap();
+        let error = d.open(&lenient()).unwrap_err();
+        let message = error.to_string();
+        assert!(matches!(error, QueryError::Open { .. }), "{message}");
+        assert!(message.contains("phs000002.c1"), "{message}");
+        assert!(message.contains(javabin), "{message}");
+        assert!(message.contains("half-migrated"), "{message}");
+    }
+}
+
+#[test]
+fn partition_discovery_ignores_dot_directories_and_reads_one_level() {
+    let d = partitioned_rows(&[("p1", numeric_rows(&[1]))]);
+    let hidden = d.out.join(".staging");
+    std::fs::create_dir(&hidden).unwrap();
+    std::fs::write(hidden.join("columnMeta.javabin"), b"java").unwrap();
+    let nested = d.out.join("group").join("p2");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(nested.join("columnMeta.javabin"), b"java").unwrap();
+    std::fs::write(d.out.join("p1").join("columnMeta.javabin"), b"java").unwrap();
+    let engine = d.open(&lenient()).unwrap();
+    assert_eq!(
+        engine.partitions().partition_names().collect::<Vec<_>>(),
+        ["p1"]
+    );
+}
+
+fn store_id(d: &PartitionedDir, name: &str) -> String {
+    let key = hpds_format::CryptoKey::load(d.out.join("encryption_key")).unwrap();
+    let index = hpds_format::PhenoIndex::read_file(
+        d.out.join(name).join(hpds_format::INDEX_FILE_NAME),
+        &hpds_format::Protection::Encrypted(key),
+    )
+    .unwrap();
+    index.store_id().to_string()
+}
+
+#[test]
+fn a_generation_file_must_list_exactly_the_opened_stores() {
+    let d = partitioned_rows(&[("p1", numeric_rows(&[1])), ("p2", numeric_rows(&[2]))]);
+    let (p1, p2) = (store_id(&d, "p1"), store_id(&d, "p2"));
+    let generation = d.out.join(".generation");
+    std::fs::write(&generation, format!("{p1}\n\n{} p2\n", p2.to_uppercase())).unwrap();
+    assert_eq!(
+        d.open(&lenient())
+            .unwrap()
+            .count(&Query::new(ResultType::Count))
+            .unwrap(),
+        2
+    );
+
+    std::fs::write(&generation, format!("{p1}\n")).unwrap();
+    let message = d.open(&lenient()).unwrap_err().to_string();
+    assert!(message.contains("partially published"), "{message}");
+    assert!(message.contains("p2"), "{message}");
+
+    std::fs::write(&generation, format!("{p1}\n{p2}\n{}\n", "0".repeat(32))).unwrap();
+    let message = d.open(&lenient()).unwrap_err().to_string();
+    assert!(message.contains("partially published"), "{message}");
+
+    std::fs::write(&generation, "not-an-id\n").unwrap();
+    let message = d.open(&lenient()).unwrap_err().to_string();
+    assert!(message.contains("not a store id"), "{message}");
+
+    std::fs::remove_file(&generation).unwrap();
+    d.open(&lenient()).unwrap();
 }

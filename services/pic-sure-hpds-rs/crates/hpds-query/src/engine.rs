@@ -123,12 +123,18 @@ impl Engine {
         &self.partitions
     }
 
-    /// Validates `query` with `validator` against the merged dictionary.
+    /// Validates `query` against the merged dictionary with the [`QueryValidator`] the
+    /// partition set's flag gives: consents are required exactly when
+    /// [`PartitionSet::requires_consents`] (the Java property
+    /// `hpds.requireAuthorizationFilter`) says so.
     ///
     /// # Errors
     /// The errors of [`QueryValidator::validate`].
-    pub fn validate(&self, query: &Query, validator: &QueryValidator) -> Result<()> {
-        validator.validate(query, &self.partitions)
+    pub fn validate(&self, query: &Query) -> Result<()> {
+        QueryValidator {
+            require_consents: self.partitions.requires_consents(),
+        }
+        .validate(query, &self.partitions)
     }
 
     /// Fails when consents are required and `query` carries no consent value, the check

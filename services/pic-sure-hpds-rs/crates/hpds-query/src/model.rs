@@ -304,7 +304,11 @@ pub struct AuthorizationFilter {
 ///
 /// A `null` element of the `userConsents` array reads as a consent with no value, so it
 /// still makes the list non-empty (Java's `userConsents().isEmpty()` is false for it) but
-/// contributes no consent value.
+/// contributes no consent value. A number or boolean `value` reads as its text, as Jackson's
+/// scalar coercion into a `String` does: `{"value":1}` is the consent `"1"`. Integers keep
+/// their digits; a fractional number is written as `serde_json` formats it, which can differ
+/// from the request text (`1e2` reads as `"100.0"`, where Jackson keeps `"1e2"`). Objects
+/// and arrays are refused.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UserConsent {
     /// The consent, for example `phs000007.c1`; `None` when null or absent.
@@ -316,7 +320,7 @@ impl<'de> Deserialize<'de> for UserConsent {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            #[serde(default)]
+            #[serde(default, deserialize_with = "scalar_text")]
             value: Option<String>,
         }
         Ok(Option::<Fields>::deserialize(deserializer)?
@@ -325,6 +329,58 @@ impl<'de> Deserialize<'de> for UserConsent {
             })
             .unwrap_or_default())
     }
+}
+
+/// A JSON string, number or boolean as text, `null` as `None`: Jackson's coercion of a
+/// scalar into a `String` field.
+fn scalar_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+    struct ScalarText;
+
+    impl<'de> Visitor<'de> for ScalarText {
+        type Value = Option<String>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("a string, number, boolean or null")
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+            d.deserialize_any(self)
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+            Ok(Some(value.to_owned()))
+        }
+
+        fn visit_string<E: de::Error>(self, value: String) -> Result<Self::Value, E> {
+            Ok(Some(value))
+        }
+
+        fn visit_bool<E: de::Error>(self, value: bool) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
+            Ok(Some(Value::from(value).to_string()))
+        }
+    }
+
+    deserializer.deserialize_any(ScalarText)
 }
 
 /// `v3.GenomicFilter`. Parsed so that the query is accepted as Java accepts it, then
@@ -718,9 +774,19 @@ mod tests {
             parse(json!({"expectedResultType": "COUNT", "userConsents": [{"value": "a", "x": 1}]}))
                 .is_err()
         );
-        assert!(
-            parse(json!({"expectedResultType": "COUNT", "userConsents": [{"value": 1}]})).is_err()
-        );
+        let q = parse(json!({"expectedResultType": "COUNT", "userConsents": [
+            {"value": 1}, {"value": true}, {"value": -7}, {"value": 2.5}
+        ]}))
+        .unwrap();
+        assert_eq!(q.consent_values(), ["-7", "1", "2.5", "true"]);
+        let q: Query = serde_json::from_str(
+            r#"{"expectedResultType":"COUNT","userConsents":[{"value":12345678901234567890}]}"#,
+        )
+        .unwrap();
+        assert_eq!(q.consent_values(), ["12345678901234567890"]);
+        for bad in [json!({"value": [1]}), json!({"value": {"a": 1}})] {
+            assert!(parse(json!({"expectedResultType": "COUNT", "userConsents": [bad]})).is_err());
+        }
         let q = Query::with_consents(ResultType::Count, ["b", "a"]);
         assert_eq!(q.consent_values(), ["a", "b"]);
     }
