@@ -1,4 +1,4 @@
-//! The partition pass: stream every input once, normalize each row's concept path, read its
+//! The spill routing pass: stream every input once, normalize each row's concept path, read its
 //! patient number, and append the row to one of N spill files chosen by concept. One thread
 //! parses the CSV while another routes the records.
 
@@ -15,7 +15,8 @@ use super::rules::{ConfigMap, Mode, apply_dataset_root, parse_patient};
 use super::spill::{OutRow, PatientField, write_row};
 use crate::error::{EtlError, Result};
 use crate::java::{
-    is_log4j_blank, normalize_concept_path, resplit_concept_path, roll_up, rolls_up, rollup_text,
+    is_log4j_blank, normalize_concept_path, normalized_text_value, resplit_concept_path, roll_up,
+    rolls_up,
 };
 use crate::private_fs;
 
@@ -26,8 +27,8 @@ pub(crate) struct InputFile {
     pub config_key: String,
 }
 
-/// What the partition pass hands to the build pass.
-pub(crate) struct Partitioned {
+/// What the spill routing pass hands to the build pass.
+pub(crate) struct SpillRouted {
     /// Concept id to concept path.
     pub concepts: Vec<String>,
     /// Raw concept path id to its rank in Java `String.compareTo` order; equal strings share
@@ -43,6 +44,10 @@ pub(crate) struct Partitioned {
     pub rows_read: u64,
     /// Records with fewer than four fields, skipped.
     pub short_rows: u64,
+    /// Input files that start with a UTF-8 byte order mark.
+    pub inputs_with_byte_order_mark: u64,
+    /// Records with text after a quoted field's closing quote.
+    pub records_with_text_after_closing_quote: u64,
 }
 
 /// How a sequential-mode file is cut into chunks, as `LowRAMCSVProcessor` does: a file of
@@ -145,7 +150,7 @@ impl Interner {
     }
 }
 
-fn partition_of(concept: u32, partitions: usize) -> usize {
+fn spill_file_of(concept: u32, partitions: usize) -> usize {
     let mixed = u64::from(concept).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32;
     (mixed % partitions as u64) as usize
 }
@@ -165,8 +170,8 @@ fn decode(record: csv::ByteRecord) -> csv::StringRecord {
     decoded
 }
 
-/// Settings for [`partition`].
-pub(crate) struct PartitionSettings<'a> {
+/// Settings for [`route_to_spills`].
+pub(crate) struct SpillRouteSettings<'a> {
     pub mode: Mode,
     pub rollup: bool,
     pub configs: &'a ConfigMap,
@@ -175,25 +180,139 @@ pub(crate) struct PartitionSettings<'a> {
     pub max_chunk_bytes: f64,
 }
 
+/// What a CSV input held that the loader reads leniently and Java's Commons CSV parser
+/// does not: counted in `etl-report.json` and logged once per file.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct InputQuirks {
+    /// The file starts with a UTF-8 byte order mark, which the CSV reader skips. Commons
+    /// CSV keeps it as part of the first field.
+    pub byte_order_mark: bool,
+    /// Records in which a quoted field's closing quote is followed by something other than
+    /// a comma, a line end or another quote. The CSV reader appends those characters to the
+    /// field; Commons CSV fails with "invalid char between encapsulated token and
+    /// delimiter".
+    pub records_with_text_after_closing_quote: u64,
+}
+
+const UTF8_BYTE_ORDER_MARK: [u8; 3] = [0xEF, 0xBB, 0xBF];
+
+/// Where [`QuirkScan`] is in the CSV grammar, tracked as the `csv` crate's reader moves
+/// through it with the default dialect (comma, double quote, doubled quotes as escapes).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum QuoteState {
+    StartField,
+    Unquoted,
+    Quoted,
+    QuoteInQuoted,
+}
+
+/// A reader that passes its input through unchanged while recording its
+/// [`InputQuirks`].
+struct QuirkScan<R> {
+    inner: R,
+    state: QuoteState,
+    bom_matched: usize,
+    bom_done: bool,
+    record_flagged: bool,
+    quirks: InputQuirks,
+}
+
+impl<R> QuirkScan<R> {
+    fn new(inner: R) -> Self {
+        QuirkScan {
+            inner,
+            state: QuoteState::StartField,
+            bom_matched: 0,
+            bom_done: false,
+            record_flagged: false,
+            quirks: InputQuirks::default(),
+        }
+    }
+
+    fn scan(&mut self, mut bytes: &[u8]) {
+        while !self.bom_done {
+            let Some((&byte, rest)) = bytes.split_first() else {
+                return;
+            };
+            if byte == UTF8_BYTE_ORDER_MARK[self.bom_matched] {
+                self.bom_matched += 1;
+                bytes = rest;
+                if self.bom_matched == UTF8_BYTE_ORDER_MARK.len() {
+                    self.bom_done = true;
+                    self.quirks.byte_order_mark = true;
+                }
+            } else {
+                self.bom_done = true;
+                if self.bom_matched > 0 {
+                    self.step(UTF8_BYTE_ORDER_MARK[0]);
+                }
+            }
+        }
+        for &byte in bytes {
+            self.step(byte);
+        }
+    }
+
+    fn step(&mut self, byte: u8) {
+        use QuoteState::{QuoteInQuoted, Quoted, StartField, Unquoted};
+        self.state = match (self.state, byte) {
+            (StartField, b'"') => Quoted,
+            (StartField | Unquoted | QuoteInQuoted, b',') => StartField,
+            (StartField | Unquoted | QuoteInQuoted, b'\n' | b'\r') => {
+                self.end_record();
+                StartField
+            }
+            (StartField | Unquoted, _) => Unquoted,
+            (Quoted, b'"') => QuoteInQuoted,
+            (Quoted, _) => Quoted,
+            (QuoteInQuoted, b'"') => Quoted,
+            (QuoteInQuoted, _) => {
+                self.record_flagged = true;
+                Unquoted
+            }
+        };
+    }
+
+    fn end_record(&mut self) {
+        if self.record_flagged {
+            self.quirks.records_with_text_after_closing_quote += 1;
+            self.record_flagged = false;
+        }
+    }
+}
+
+impl<R: Read> Read for QuirkScan<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n == 0 {
+            self.end_record();
+        } else {
+            self.scan(&buf[..n]);
+        }
+        Ok(n)
+    }
+}
+
 /// Reads `path` as CSV on a separate thread and calls `route` on every data record in
 /// order, so CSV parsing and UTF-8 decoding overlap routing. With `header`, the first
 /// record is a header and skipped. A field that is not valid UTF-8 has each invalid
-/// sequence replaced by U+FFFD. Stops at the first error `route` returns.
+/// sequence replaced by U+FFFD. Stops at the first error `route` returns. Returns what the
+/// file held that Java's CSV parser would not have accepted.
 fn for_each_record(
     path: &Path,
     header: bool,
     mut route: impl FnMut(&csv::StringRecord) -> Result<()>,
-) -> Result<()> {
+) -> Result<InputQuirks> {
     let file = File::open(path).map_err(EtlError::io("opening", path))?;
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(header)
         .flexible(true)
-        .from_reader(BufReader::with_capacity(1 << 20, file));
+        .from_reader(QuirkScan::new(BufReader::with_capacity(1 << 20, file)));
     let (full_tx, full_rx) =
         mpsc::sync_channel::<csv::Result<Vec<csv::StringRecord>>>(BATCHES_IN_FLIGHT);
     let (empty_tx, empty_rx) = mpsc::channel::<Vec<csv::StringRecord>>();
     std::thread::scope(|scope| {
-        scope.spawn(move || {
+        let reader_thread = scope.spawn(move || {
             let mut raw = csv::ByteRecord::new();
             loop {
                 let mut batch = empty_rx.try_recv().unwrap_or_default();
@@ -218,16 +337,17 @@ fn for_each_record(
                 let done = filled < BATCH_RECORDS;
                 batch.truncate(filled);
                 if !batch.is_empty() && full_tx.send(Ok(batch)).is_err() {
-                    return;
+                    break;
                 }
                 if let Some(e) = failure {
                     let _ = full_tx.send(Err(e));
-                    return;
+                    break;
                 }
                 if done {
-                    return;
+                    break;
                 }
             }
+            reader.get_ref().quirks
         });
         let result = (|| {
             for batch in &full_rx {
@@ -243,8 +363,28 @@ fn for_each_record(
             Ok(())
         })();
         drop(full_rx);
-        result
+        let quirks = reader_thread
+            .join()
+            .map_err(|_| EtlError::ThreadPool("the CSV reader panicked".into()))?;
+        result.map(|()| quirks)
     })
+}
+
+/// Logs, once for the file `path`, what it held that Java's CSV parser would not accept.
+fn warn_about_quirks(path: &Path, quirks: InputQuirks) {
+    if quirks.byte_order_mark {
+        tracing::warn!(
+            file = %path.display(),
+            "the file starts with a UTF-8 byte order mark, which is skipped; Java's CSV parser keeps it in the first field"
+        );
+    }
+    if quirks.records_with_text_after_closing_quote > 0 {
+        tracing::warn!(
+            file = %path.display(),
+            records = quirks.records_with_text_after_closing_quote,
+            "records have text after a closing quote, which is kept as part of the field; Java's CSV parser fails on them"
+        );
+    }
 }
 
 /// Encoded rows bound for the spill files: `bytes` holds the rows back to back, and
@@ -330,10 +470,10 @@ fn write_spills(
 /// I/O and CSV errors, and in sequential mode [`EtlError::InvalidPatient`] for the first
 /// record (in file order) whose patient number is not a non-negative Java `int`, because
 /// `LowRAMCSVProcessor` parses the patient of every record with at least four fields.
-pub(crate) fn partition(
+pub(crate) fn route_to_spills(
     inputs: &[InputFile],
-    settings: &PartitionSettings<'_>,
-) -> Result<Partitioned> {
+    settings: &SpillRouteSettings<'_>,
+) -> Result<SpillRouted> {
     let mut spill_files = Vec::with_capacity(settings.partitions);
     let mut writers = Vec::with_capacity(settings.partitions);
     for i in 0..settings.partitions {
@@ -361,20 +501,20 @@ pub(crate) fn partition(
             .unwrap_or_else(|_| Err(EtlError::ThreadPool("the spill writer panicked".into())));
         written?;
         let (partitioned, _) = routed?;
-        Ok(Partitioned {
+        Ok(SpillRouted {
             spill_files,
             ..partitioned
         })
     })
 }
 
-/// The routing loop of [`partition`]. Returns everything but the spill file paths. When
+/// The routing loop of [`route_to_spills`]. Returns everything but the spill file paths. When
 /// the writer thread stops early, returns an error that its own error replaces.
 fn route(
     inputs: &[InputFile],
-    settings: &PartitionSettings<'_>,
+    settings: &SpillRouteSettings<'_>,
     sink: &mut SpillSink,
-) -> Result<Partitioned> {
+) -> Result<SpillRouted> {
     let sequential = settings.mode == Mode::Sequential;
     let csv_loader = settings.mode == Mode::Partitioned;
     let mut interner = Interner {
@@ -387,6 +527,8 @@ fn route(
     let mut chunk_starts = Vec::new();
     let mut seq = 0u64;
     let mut short_rows = 0u64;
+    let mut inputs_with_byte_order_mark = 0u64;
+    let mut records_with_text_after_closing_quote = 0u64;
     let mut chunk_base = 0u64;
     let started = Instant::now();
 
@@ -406,7 +548,7 @@ fn route(
         let mut csv_loader_bases: FxHashMap<u32, String> = FxHashMap::default();
         let mut record_index = 0u64;
         let mut last_chunk = None;
-        for_each_record(path, !csv_loader, |record| {
+        let quirks = for_each_record(path, !csv_loader, |record| {
             let this_seq = seq;
             seq += 1;
             let index_in_file = record_index;
@@ -436,12 +578,13 @@ fn route(
                         config,
                     ))
                 });
-                let rolled = rolls_up(base, &rollup_text(field(3)));
+                let rolled = rolls_up(base, &normalized_text_value(field(3)));
                 let concept = match concept_cache.get(&(raw_id, rolled)) {
                     Some(&id) => id,
                     None => {
                         let path_value = if rolled {
-                            roll_up(base, &rollup_text(field(3))).unwrap_or_else(|| base.clone())
+                            roll_up(base, &normalized_text_value(field(3)))
+                                .unwrap_or_else(|| base.clone())
                         } else {
                             base.clone()
                         };
@@ -455,14 +598,14 @@ fn route(
             let rolled = settings.rollup
                 && rolls_up(
                     &interner.raw_paths[raw_id as usize].normalized,
-                    &rollup_text(field(3)),
+                    &normalized_text_value(field(3)),
                 );
             let concept = match concept_cache.get(&(raw_id, rolled)) {
                 Some(&id) => id,
                 None => {
                     let normalized = &interner.raw_paths[raw_id as usize].normalized;
                     let path_value = if rolled {
-                        roll_up(normalized, &rollup_text(field(3)))
+                        roll_up(normalized, &normalized_text_value(field(3)))
                             .unwrap_or_else(|| normalized.clone())
                     } else {
                         normalized.clone()
@@ -481,6 +624,9 @@ fn route(
             }
             route_row(record, this_seq, concept, raw_id, settings, sink)
         })?;
+        warn_about_quirks(path, quirks);
+        inputs_with_byte_order_mark += u64::from(quirks.byte_order_mark);
+        records_with_text_after_closing_quote += quirks.records_with_text_after_closing_quote;
         chunk_base = last_chunk.map_or(chunk_base, |c| c + 1);
     }
 
@@ -496,7 +642,7 @@ fn route(
         seconds = started.elapsed().as_secs_f64(),
         "partitioned"
     );
-    Ok(Partitioned {
+    Ok(SpillRouted {
         concepts: interner.concepts,
         raw_path_ranks,
         chunk_starts,
@@ -504,6 +650,8 @@ fn route(
         spill_files: Vec::new(),
         rows_read: seq,
         short_rows,
+        inputs_with_byte_order_mark,
+        records_with_text_after_closing_quote,
     })
 }
 
@@ -519,7 +667,7 @@ fn route_row(
     seq: u64,
     concept: u32,
     raw_path: u32,
-    settings: &PartitionSettings<'_>,
+    settings: &SpillRouteSettings<'_>,
     sink: &mut SpillSink,
 ) -> Result<()> {
     let field = |i| record.get(i).unwrap_or_default();
@@ -543,7 +691,7 @@ fn route_row(
         text: if maybe_text { field(3).as_bytes() } else { &[] },
         timestamp: field(4).as_bytes(),
     };
-    if sink.push(partition_of(concept, settings.partitions), &row) {
+    if sink.push(spill_file_of(concept, settings.partitions), &row) {
         Ok(())
     } else {
         Err(EtlError::ThreadPool("the spill writer stopped".into()))
@@ -590,6 +738,43 @@ mod tests {
             std::fs::write(&path, content).unwrap();
             assert_eq!(count_java_lines(&path).unwrap(), expected, "{content:?}");
         }
+    }
+
+    fn quirks(input: &[u8]) -> InputQuirks {
+        let mut whole = QuirkScan::new(input);
+        std::io::copy(&mut whole, &mut std::io::sink()).unwrap();
+        let mut bytewise = QuirkScan::new(input);
+        let mut one = [0u8; 1];
+        while bytewise.read(&mut one).unwrap() == 1 {}
+        assert_eq!(whole.quirks, bytewise.quirks, "{input:?}");
+        whole.quirks
+    }
+
+    #[test]
+    fn a_byte_order_mark_is_noticed_only_at_the_start() {
+        assert!(quirks(b"\xEF\xBB\xBF1,a,,x\n").byte_order_mark);
+        assert!(!quirks(b"1,a,,\xEF\xBB\xBF\n").byte_order_mark);
+        assert!(!quirks(b"\xEF\xBB1,a\n").byte_order_mark);
+        assert!(!quirks(b"").byte_order_mark);
+        assert_eq!(
+            quirks(b"\xEF\xBB\xBF\"a\"x,b\n").records_with_text_after_closing_quote,
+            1,
+            "a quoted first field after the mark is still a quoted field"
+        );
+    }
+
+    #[test]
+    fn text_after_a_closing_quote_is_counted_once_per_record() {
+        let count = |input: &[u8]| quirks(input).records_with_text_after_closing_quote;
+        assert_eq!(count(b"1,\"a\",\"b\"\r\n2,\"c\"\"d\",e\n"), 0);
+        assert_eq!(count(b"1,\"a\"x,\"b\"y\n2,\"c\" ,d\n3,e,f"), 2);
+        assert_eq!(count(b"1,\"a\nb\"x"), 1, "the last record has no line end");
+        assert_eq!(
+            count(b"1,a\"b\"c,d\n"),
+            0,
+            "a quote inside an unquoted field is literal"
+        );
+        assert_eq!(count(b"1,\"a,\"\"x\"\"\",y\n"), 0);
     }
 
     #[test]

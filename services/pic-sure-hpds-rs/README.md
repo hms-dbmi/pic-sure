@@ -133,8 +133,10 @@ refused when `<out>` holds an `encryption_key`. `--out` is refused when it holds
 (`columnMeta.javabin` or `allObservationsStore.javabin`).
 
 The CSV config is the file `--config` names, or else the first `config.json` in a directory
-input or beside an input file. The log names the config applied and warns about any
-`config.json` beside the inputs that is not.
+input or beside an input file; `--no-config` applies none. The log names the config applied and
+warns about any `config.json` beside the inputs that is not. Java's loaders read
+`/opt/local/hpds_input/config.json` whatever their inputs, which in the all-in-one is
+`hpds_input/config.json` on the host. To reproduce a Java load, pass that file with `--config`.
 
 Every directory the ETL creates is mode `0700` and every file `0600`, so only the owning user
 can read the store or its temporary files. Both images run as UID 1000, so the `hpds-rs`
@@ -142,38 +144,102 @@ service reads what the `hpds-rs-etl` container wrote. A different service UID ne
 files made readable to it by hand.
 
 The store is written to a staging directory beside `--out` and moved into place when complete.
-SIGTERM and SIGINT remove the staging and spill directories before exiting; a later run removes
-any that a killed run left behind.
+The staging directory's name carries the pid, a per-process sequence number and a random
+suffix, so concurrent runs, also in separate containers, never share one. Moving into place is
+a `rename`, which cannot cross filesystems, so an existing `--out` that is a mount point (on
+another filesystem than its parent) is refused before anything is built; give a directory
+inside it instead. SIGTERM and SIGINT remove the staging and spill directories before exiting;
+a later run removes any that a killed run left behind.
 
-Memory: the partition pass holds the concept and path dictionaries. The build pass runs
-`--threads` workers (one per core by default), each holding one partition's spill file plus
-40 bytes per row of it, so peak memory is about `threads` times the largest partitions.
-`--partitions` (default one per 32 MiB of input, at most 128) lowers it. These are spill
-partitions, unrelated to consent partitions.
+Memory: the spill routing pass holds the concept and path dictionaries. The build pass runs
+`--threads` workers (one per core by default), each holding one spill file plus 40 bytes per
+row of it, so peak memory is about `threads` times the largest spill files.
+`--spill-partitions` (default one per 32 MiB of input, at most 128) lowers it. These spill
+files are unrelated to consent partitions; `--partitions` is still accepted as a deprecated
+name for the flag.
+
+Where the Rust loader reads input Java would refuse, it keeps going and counts what it did in
+`etl-report.json`:
+
+- An unparseable number drops its row (`dropped_unparseable_number`). An unparseable timestamp
+  keeps the row and drops only the timestamp (`unparseable_timestamps`). `CSVLoaderNewSearch`
+  and `CSVLoader` abort the load on either.
+- A UTF-8 byte order mark at the start of a file is skipped (`inputs_with_byte_order_mark`).
+  Commons CSV keeps it in the first field: harmless in a header line, but in headerless
+  partitioned input it makes the first patient number unparseable and `CSVLoader` aborts.
+- Text after a quoted field's closing quote, as in `"a"b`, is kept as part of the field
+  (`records_with_text_after_closing_quote`). Commons CSV fails with "invalid char between
+  encapsulated token and delimiter".
+
+Both of the last two are also logged once per file at warn. One difference concerns the
+config rather than the input: Java's `ConfigLoader` strips `.csv` from the config's keys while
+iterating the map, so a `config.json` with two or more `.csv` keys throws
+`ConcurrentModificationException` after the first. The exception is logged and the rest keep
+their suffix, so lookups under those names find nothing. The Rust loader strips the suffix from
+every key.
 
 ### Consent-partitioned stores
 
-`hpds-etl load --mode partitioned --input-dir <dir> --out <dir>` follows the harmonization
-branch's `CSVLoader`: every `<partition>-allConcepts.csv` in `--input-dir` becomes its own
-store in `<out>/<partition>/`, all encrypted with `<out>/encryption_key` (`--key-file` installs
-a copy there). The partition name is the file name up to its first `-`. Input is headerless,
-rollup is always on and comes after the dataset root prefix, and a `TEXT_VALUE` that parses as
-a Java double makes the row numeric. The `allConcepts` entry of the CSV config applies to every
-partition. Partitions build in parallel and are published together once all are complete.
+`hpds-etl load --mode partitioned --input-dir <dir> --out <dir> (--config <file> | --no-config)`
+follows the harmonization branch's `CSVLoader`: every `<partition>-allConcepts.csv` in
+`--input-dir` becomes its own store in `<out>/<partition>/`, all encrypted with
+`<out>/encryption_key` (`--key-file` installs a copy there). The partition name is the file name
+up to its first `-`. Input is headerless, rollup is always on and comes after the dataset root
+prefix, and a `TEXT_VALUE` that parses as a Java double makes the row numeric. The
+`allConcepts` entry of the CSV config applies to every partition, and a config without one is
+loaded with a warning. Partitioned mode needs `--config` or `--no-config` and does not look
+beside the inputs, because `CSVLoader` reads `/opt/local/hpds_input/config.json` and not its
+input directory: give `--config <hpds_input>/config.json` to match a Java load that had one.
+
+Partitions build in parallel and nothing is published until every one is complete; a failure
+in any partition publishes none. Into a new `--out` the whole set appears at once. Into an
+existing one the publish is not atomic across partitions: the partitions are replaced one after
+another (each partition's `pheno.index` last), so a reader can briefly see old and new
+partitions side by side. The last step writes `<out>/.generation` (mode `0600`, through a
+temporary file renamed into place): one line per partition, in partition name order, holding
+the store id of its `pheno.index` as 32 lowercase hex digits. The query service reads the first
+token of each non-blank line and refuses to open the store while those ids differ from the
+partitions' indexes, so a publish under way or interrupted is never served.
 
 Where `CSVLoader` would crash, overwrite or hide a partition, the load is refused before
 anything is written: a file without a partition prefix (a bare `allConcepts.csv`), two files
 with the same prefix, a partition file in a subdirectory, and an `--out` that holds an
-unpartitioned store or partitions this load does not write. Unparseable numbers and timestamps
-are dropped and counted, as in the other modes; Java aborts on them.
+unpartitioned store, partitions this load does not write, or a subdirectory the partition rule
+below refuses.
 
-`migrate` takes a directory of per-partition exports and writes `<out>/<partition>/`;
-`bin/migrate-javabins` detects a partitioned javabin directory and exports each partition.
+Every command that reads a partitioned directory finds its partitions by one rule, which the
+query service applies too:
+
+- only immediate subdirectories count, and names starting with `.` are ignored;
+- a subdirectory holding `pheno.index` is a partition;
+- one holding `allObservationsStore.javabin` and `columnMeta.javabin` but no `pheno.index` is
+  an error naming it, so an unconverted Java partition is never silently left out;
+- one holding only one of the two javabin files is an error naming it;
+- any other subdirectory is ignored.
+
+`migrate` applies the same rule to a directory of per-partition exports, with `concepts.bin` in
+place of `pheno.index`, and writes `<out>/<partition>/` and `.generation`.
+`bin/migrate-javabins` detects a partitioned javabin directory and exports each partition: a
+subdirectory with both javabin files is a partition, one with only one of them fails the run.
+
 `dump`, `remove-concepts` and `column-meta-csv` act on every partition of a partitioned store.
-`dump --out <dir>` writes `<dir>/<partition>.csv`, and `dump --merged` writes one file, the
-partitions in name order under one header (with `--patients`, the union of the patient sets).
-`column-meta-csv --merged` writes one `columnMeta.csv` across partitions for dictionary
-hydration, merged as the Java service's `SummaryColumnMeta` merges in memory: summed counts,
-unioned category values, widest width, block offsets 0. Java writes no such file. A concept
-typed differently in two partitions loads into both, but `--merged` refuses it, as the query
-engine refuses to open such a store.
+`remove-concepts` changes the partitions one at a time; when one fails, the error names it and
+the partitions already changed. Rerunning is safe: the changed partitions report the concepts
+as not found and the rest have them removed.
+
+`dump --out <dir>` writes `<dir>/<partition>.csv`, and `dump --concat` (formerly `--merged`,
+still accepted) writes one file, the partitions' rows concatenated in name order under one
+header (with `--patients`, the union of the patient sets). Dumps hold observation data in the
+clear, so output files are created mode `0600` without following a symbolic link, and an
+existing file is refused unless `--force`, which replaces it through a temporary file renamed
+over it. A new `--out` directory is created mode `0700`; an existing one must be a real
+directory that grants group and others nothing. No `--out` may lie in the store or in any of
+its partition directories, wherever a symbolic link takes them. The same applies to a
+single-store dump.
+
+`column-meta-csv --merged` is a different operation from `dump --concat`: it writes one
+`columnMeta.csv` with one row per concept, its metadata combined across partitions for
+dictionary hydration, as the Java service's `SummaryColumnMeta` merges in memory: summed
+counts, unioned category values, widest width, block offsets 0. Java writes no such file. A
+concept typed differently in two partitions loads into both, but `--merged` refuses it, as the
+query engine refuses to open such a store.

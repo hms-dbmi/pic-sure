@@ -1,6 +1,4 @@
-use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -8,6 +6,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use hpds_etl::load::COLUMN_META_CSV_NAME;
 use hpds_etl::load::{KeySource, LoadOptions, Mode, PartitionedLoadOptions};
 use hpds_etl::migrate::{EXPORT_CONCEPTS_FILE, MigrateOptions};
+use hpds_etl::output;
 use hpds_etl::partitions::StoreLayout;
 use hpds_etl::store::{OpenStore, resolve_protection};
 use hpds_etl::{EtlError, Result};
@@ -105,8 +104,10 @@ struct ColumnMetaCsvArgs {
     /// store, only with --merged.
     #[arg(long)]
     out: Option<PathBuf>,
-    /// Partitioned stores only: write one columnMeta.csv merging every partition, for
-    /// dictionary hydration. Java produces no such file.
+    /// Partitioned stores only: write one columnMeta.csv with one row per concept, its
+    /// metadata combined across partitions (counts summed, category values unioned), for
+    /// dictionary hydration. Java produces no such file. Unlike dump --concat, which only
+    /// concatenates the partitions' rows.
     #[arg(long)]
     merged: bool,
     #[command(flatten)]
@@ -118,18 +119,25 @@ struct DumpArgs {
     /// Store directory to read.
     #[arg(long)]
     store: PathBuf,
-    /// File to write. Defaults to standard output. For a partitioned store without
-    /// --merged, a directory that receives one <partition>.csv per partition.
+    /// File to write, mode 0600. Defaults to standard output. For a partitioned store
+    /// without --concat, a directory that receives one <partition>.csv per partition: a new
+    /// one is created mode 0700, an existing one must grant group and others nothing. Never
+    /// inside the store or any of its partition directories.
     #[arg(long)]
     out: Option<PathBuf>,
+    /// Replace output files that already exist, through a temporary file renamed over each.
+    /// Without it an existing output file is refused.
+    #[arg(long)]
+    force: bool,
     /// Write the patient ID set, one per line, instead of the observations.
     #[arg(long)]
     patients: bool,
-    /// Partitioned stores only: write one file, the partitions' dumps concatenated in
-    /// partition name order under one header, or with --patients the union of their
-    /// patient ID sets.
-    #[arg(long)]
-    merged: bool,
+    /// Partitioned stores only: write one file, the partitions' observation dumps
+    /// concatenated in partition name order under one header (every row kept, nothing
+    /// combined), or with --patients the union of their patient ID sets. Unlike
+    /// column-meta-csv --merged, which combines each concept's metadata across partitions.
+    #[arg(long, alias = "merged")]
+    concat: bool,
     #[command(flatten)]
     key: KeyArgs,
 }
@@ -175,12 +183,19 @@ struct LoadArgs {
     #[arg(long)]
     no_rollup: bool,
     /// CSV config JSON, mapping input file names to dataset settings. Defaults to the first
-    /// config.json in a directory input or beside an input file.
-    #[arg(long)]
+    /// config.json in a directory input or beside an input file. Partitioned mode needs
+    /// this or --no-config: Java's CSVLoader reads /opt/local/hpds_input/config.json, so
+    /// pass the file mounted there.
+    #[arg(long, conflicts_with = "no_config")]
     config: Option<PathBuf>,
-    /// Number of spill partitions. Defaults to one per 32 MiB of input, at most 128.
+    /// Apply no CSV config, not even a config.json beside the inputs.
     #[arg(long)]
-    partitions: Option<usize>,
+    no_config: bool,
+    /// Number of spill files the rows are routed into by concept (unrelated to consent
+    /// partitions). Defaults to one per 32 MiB of input, at most 128. --partitions is a
+    /// deprecated name for it.
+    #[arg(long = "spill-partitions", alias = "partitions")]
+    spill_partitions: Option<usize>,
     /// Worker threads for the build pass. Each holds one partition in memory.
     #[arg(long)]
     threads: Option<usize>,
@@ -221,7 +236,8 @@ impl LoadArgs {
             (false, None) => KeySource::OutputDirectoryKeyFile,
         };
         options.config = self.config;
-        options.spill_partitions = self.partitions;
+        options.no_config = self.no_config;
+        options.spill_partitions = self.spill_partitions;
         options.threads = self.threads;
         options.tmp = self.tmp;
         Ok(options)
@@ -247,7 +263,8 @@ impl From<LoadArgs> for LoadOptions {
             _ => None,
         };
         options.config = args.config;
-        options.partitions = args.partitions;
+        options.no_config = args.no_config;
+        options.partitions = args.spill_partitions;
         options.threads = args.threads;
         options.tmp = args.tmp;
         options.max_chunk_gib = args.max_chunk_gib;
@@ -264,6 +281,12 @@ fn main() -> ExitCode {
         .init();
     tracing::info!("{}", hpds_etl::banner());
     let cli = Cli::parse();
+    if std::env::args_os().any(|arg| {
+        arg.to_str()
+            .is_some_and(|a| a == "--partitions" || a.starts_with("--partitions="))
+    }) {
+        tracing::warn!("--partitions is deprecated; use --spill-partitions");
+    }
     if let Err(e) = remove_temporary_dirs_on_interrupt() {
         eprintln!("hpds-etl: cannot install the SIGTERM and SIGINT handler: {e}");
         return ExitCode::FAILURE;
@@ -368,18 +391,12 @@ fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
             !args.no_compact,
         )?),
         StoreLayout::Partitioned(partitions) => {
-            let mut reports = BTreeMap::new();
-            for partition in partitions {
-                let report = hpds_etl::store_maintenance::remove_concepts(
-                    &partition.dir,
-                    &args.concepts,
-                    &protection,
-                    !args.no_compact,
-                )?;
-                tracing::info!(partition = %partition.name, removed = report.removed, "concepts removed");
-                reports.insert(partition.name, report);
-            }
-            print_json(&reports);
+            print_json(&hpds_etl::store_maintenance::remove_concepts_partitioned(
+                &partitions,
+                &args.concepts,
+                &protection,
+                !args.no_compact,
+            )?)
         }
     }
     Ok(())
@@ -437,54 +454,63 @@ fn run_column_meta_csv(args: ColumnMetaCsvArgs) -> Result<()> {
 fn run_dump(args: DumpArgs) -> Result<()> {
     let (layout, protection) = open_layout(&args.store, &args.key)?;
     let partitions = match layout {
-        StoreLayout::Root if args.merged => {
+        StoreLayout::Root if args.concat => {
             return Err(EtlError::Usage(format!(
-                "--merged needs a partitioned store; {} is not partitioned",
+                "--concat needs a partitioned store; {} is not partitioned",
                 args.store.display()
             )));
         }
         StoreLayout::Root => {
+            if let Some(out) = &args.out {
+                output::check_outside_stores(out, &[&args.store])?;
+            }
             let store = OpenStore::open(&args.store, protection)?;
-            return write_to(args.out.as_deref(), |out| {
+            return write_to(args.out.as_deref(), args.force, |out| {
                 write_dump(std::slice::from_ref(&store), args.patients, out)
             });
         }
         StoreLayout::Partitioned(partitions) => partitions,
     };
-    if args.merged {
+    let protected: Vec<&Path> = std::iter::once(args.store.as_path())
+        .chain(partitions.iter().map(|p| p.dir.as_path()))
+        .collect();
+    if let Some(out) = &args.out {
+        output::check_outside_stores(out, &protected)?;
+    }
+    if args.concat {
         let stores = partitions
             .iter()
             .map(|p| OpenStore::open(&p.dir, protection.clone()))
             .collect::<Result<Vec<_>>>()?;
-        return write_to(args.out.as_deref(), |out| {
+        return write_to(args.out.as_deref(), args.force, |out| {
             write_dump(&stores, args.patients, out)
         });
     }
     let Some(dir) = args.out else {
         return Err(EtlError::Usage(
-            "a partitioned store dumps one file per partition: give --out <directory>, or --merged for one file".into(),
+            "a partitioned store dumps one file per partition: give --out <directory>, or --concat for one file".into(),
         ));
     };
-    std::fs::create_dir_all(&dir).map_err(|e| io_error("creating", &dir, e))?;
+    output::prepare_output_dir(&dir)?;
     for partition in partitions {
         let store = OpenStore::open(&partition.dir, protection.clone())?;
         let path = dir.join(format!("{}.csv", partition.name));
-        write_to(Some(&path), |out| {
+        write_to(Some(&path), args.force, |out| {
             write_dump(std::slice::from_ref(&store), args.patients, out)
         })?;
     }
     Ok(())
 }
 
-/// Calls `write` on a buffered writer to `path`, or to standard output when `None`.
-fn write_to(path: Option<&Path>, write: impl FnOnce(&mut dyn Write) -> Result<()>) -> Result<()> {
+/// Calls `write` on a writer to the output file `path` (see
+/// [`output::write_output_file`]), or to standard output when `None`.
+fn write_to(
+    path: Option<&Path>,
+    force: bool,
+    write: impl FnOnce(&mut dyn Write) -> Result<()>,
+) -> Result<()> {
     match path {
-        Some(path) => {
-            let file = File::create(path).map_err(|e| io_error("creating", path, e))?;
-            let mut out = BufWriter::with_capacity(1 << 20, file);
-            write(&mut out)?;
-            out.flush().map_err(|e| io_error("writing", path, e))
-        }
+        Some(path) => output::write_output_file(path, force, write),
         None => write(&mut std::io::stdout().lock()),
     }
 }
@@ -502,12 +528,4 @@ fn write_dump(stores: &[OpenStore], patients: bool, out: &mut dyn Write) -> Resu
         );
     }
     Ok(())
-}
-
-fn io_error(action: &'static str, path: &Path, source: std::io::Error) -> EtlError {
-    EtlError::Io {
-        action,
-        path: path.to_path_buf(),
-        source,
-    }
 }

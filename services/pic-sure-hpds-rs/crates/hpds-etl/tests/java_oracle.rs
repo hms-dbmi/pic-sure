@@ -5,7 +5,7 @@ mod common;
 
 use hpds_etl::column_meta_csv::write_commons_csv_record;
 use hpds_etl::java::{
-    java_double_to_string, normalize_concept_path, parse_java_int, roll_up, rollup_text,
+    java_double_to_string, normalize_concept_path, normalized_text_value, parse_java_int, roll_up,
 };
 
 fn base64(input: &str) -> Vec<u8> {
@@ -57,7 +57,8 @@ fn concept_paths_match_csv_parser_util() {
         };
         let normalized = normalize_concept_path(raw);
         assert_eq!(&normalized, without_rollup, "raw {raw:?}");
-        let rolled = roll_up(&normalized, &rollup_text(text)).unwrap_or_else(|| normalized.clone());
+        let rolled = roll_up(&normalized, &normalized_text_value(text))
+            .unwrap_or_else(|| normalized.clone());
         assert_eq!(&rolled, with_rollup, "raw {raw:?} text {text:?}");
     }
 }

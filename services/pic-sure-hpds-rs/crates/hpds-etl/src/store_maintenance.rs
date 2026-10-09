@@ -16,6 +16,7 @@ use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
 use crate::load::COLUMN_META_CSV_NAME;
+use crate::partitions::Partition;
 use crate::store::{StagedFile, read_index, replace_file, sync_parent};
 
 /// What `remove-concepts` did.
@@ -158,6 +159,41 @@ pub fn remove_concepts(
     sync_parent(&index_path)?;
     write_column_meta_csv_file(&rewritten, &dir.join(COLUMN_META_CSV_NAME))?;
     Ok(report)
+}
+
+/// Removes the concepts named in `concepts_file` from every partition in `partitions`, in
+/// order, as [`remove_concepts`] does for one store, and returns each partition's report
+/// by name.
+///
+/// The partitions are changed one at a time, so a failure leaves the ones before it
+/// changed and the rest untouched. The command is idempotent: run again, it finds the
+/// concepts already gone from the changed partitions (they appear in `not_found`) and
+/// removes them from the rest.
+///
+/// # Errors
+/// [`EtlError::PartitionFailed`] naming the partition that failed, the partitions
+/// already changed, and the error of [`remove_concepts`].
+pub fn remove_concepts_partitioned(
+    partitions: &[Partition],
+    concepts_file: &Path,
+    protection: &Protection,
+    compact: bool,
+) -> Result<BTreeMap<String, RemoveReport>> {
+    let mut reports = BTreeMap::new();
+    let mut changed = Vec::new();
+    for partition in partitions {
+        let report = remove_concepts(&partition.dir, concepts_file, protection, compact).map_err(
+            |source| EtlError::PartitionFailed {
+                partition: partition.name.clone(),
+                changed: changed.clone(),
+                source: Box::new(source),
+            },
+        )?;
+        tracing::info!(partition = %partition.name, removed = report.removed, "concepts removed");
+        changed.push(partition.name.clone());
+        reports.insert(partition.name.clone(), report);
+    }
+    Ok(reports)
 }
 
 /// Regenerates `columnMeta.csv` for the store in `dir` from its index, byte for byte as

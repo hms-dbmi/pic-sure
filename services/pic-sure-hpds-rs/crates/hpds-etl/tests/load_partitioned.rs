@@ -51,17 +51,58 @@ fn write_key(path: &Path) {
     std::fs::write(path, common::KEY).unwrap();
 }
 
+/// Partitioned load options for `input_dir`, applying its `config.json` as `--config`
+/// when it has one and `--no-config` otherwise.
+fn options(input_dir: PathBuf, out: PathBuf) -> PartitionedLoadOptions {
+    let config = input_dir.join("config.json");
+    let mut options = PartitionedLoadOptions::new(input_dir, out);
+    if config.is_file() {
+        options.config = Some(config);
+    } else {
+        options.no_config = true;
+    }
+    options
+}
+
 /// Loads `input_dir` into `<tmp>/out` with the test key given as `--key-file`.
 fn load(input_dir: &Path) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let key = dir.path().join("key");
     write_key(&key);
     let out = dir.path().join("out");
-    let mut options = PartitionedLoadOptions::new(input_dir.to_path_buf(), out.clone());
+    let mut options = options(input_dir.to_path_buf(), out.clone());
     options.key = KeySource::File(key);
     options.threads = Some(4);
     load_partitioned(&options).unwrap();
     (dir, out)
+}
+
+/// The `.generation` marker of the partitioned store `out`, one store id per line.
+fn read_generation(out: &Path) -> Vec<String> {
+    std::fs::read_to_string(out.join(".generation"))
+        .unwrap()
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+/// The store id of each partition of `out`, in partition name order, as 32 lowercase hex
+/// digits.
+fn store_ids(out: &Path) -> Vec<String> {
+    hpds_etl::partitions::partition_dirs(out)
+        .unwrap()
+        .into_iter()
+        .map(|p| {
+            let id = open(&p.dir).index.store_id().to_string();
+            assert!(
+                id.len() == 32
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            );
+            id
+        })
+        .collect()
 }
 
 fn open(dir: &Path) -> OpenStore {
@@ -190,6 +231,7 @@ fn harmonization_fixture_matches_java_csv_loader() {
     assert_eq!(
         names,
         [
+            ".generation",
             "encryption_key",
             "partition1",
             "partition2",
@@ -197,6 +239,7 @@ fn harmonization_fixture_matches_java_csv_loader() {
             "partition4"
         ]
     );
+    assert_eq!(read_generation(&out), store_ids(&out));
     assert_eq!(
         std::fs::read_to_string(out.join("encryption_key")).unwrap(),
         common::KEY
@@ -261,7 +304,7 @@ fn edge_load_counts_drops_instead_of_aborting() {
     .unwrap();
     let key = dir.path().join("key");
     write_key(&key);
-    let mut options = PartitionedLoadOptions::new(input, dir.path().join("out"));
+    let mut options = options(input, dir.path().join("out"));
     options.key = KeySource::File(key);
     let report = load_partitioned(&options).unwrap();
     let counts = &report.partitions["p1"].counts;
@@ -348,7 +391,7 @@ fn load_error(files: &[&str]) -> (String, PathBuf, tempfile::TempDir) {
     let key = dir.path().join("key");
     write_key(&key);
     let out = dir.path().join("out");
-    let mut options = PartitionedLoadOptions::new(input, out.clone());
+    let mut options = options(input, out.clone());
     options.key = KeySource::File(key);
     let error = load_partitioned(&options).unwrap_err();
     assert!(matches!(error, EtlError::Usage(_)), "{error}");
@@ -386,7 +429,7 @@ fn a_failing_partition_publishes_none() {
     let out = dir.path().join("out");
     std::fs::create_dir(&out).unwrap();
     write_key(&out.join("encryption_key"));
-    let error = load_partitioned(&PartitionedLoadOptions::new(input, out.clone())).unwrap_err();
+    let error = load_partitioned(&options(input, out.clone())).unwrap_err();
     assert!(
         matches!(
             &error,
@@ -416,7 +459,7 @@ fn reloading_replaces_partitions_and_refuses_stale_ones() {
     let out = dir.path().join("out");
     std::fs::create_dir(&out).unwrap();
     write_key(&out.join("encryption_key"));
-    let options = PartitionedLoadOptions::new(input.clone(), out.clone());
+    let options = options(input.clone(), out.clone());
     load_partitioned(&options).unwrap();
     let first_id = open(&out.join("p1")).index.store_id();
 
@@ -452,7 +495,7 @@ fn a_key_file_that_differs_from_the_installed_key_is_refused() {
     .unwrap();
     let key = dir.path().join("key");
     write_key(&key);
-    let mut options = PartitionedLoadOptions::new(fixture("input"), out);
+    let mut options = options(fixture("input"), out);
     options.key = KeySource::File(key);
     let error = load_partitioned(&options).unwrap_err().to_string();
     assert!(
@@ -495,6 +538,7 @@ fn migrate_edge_export() -> (tempfile::TempDir, PathBuf) {
 #[test]
 fn migrating_the_java_partitioned_store_reproduces_its_dumps() {
     let (_dir, out) = migrate_edge_export();
+    assert_eq!(read_generation(&out), store_ids(&out));
     assert_eq!(
         std::fs::read(out.join("encryption_key")).unwrap(),
         std::fs::read(fixture("java-export/encryption_key")).unwrap()
@@ -540,6 +584,8 @@ fn cli_loads_migrates_and_dumps_per_partition() {
         "partitioned",
         "--input-dir",
         path_str(&fixture("input")),
+        "--config",
+        path_str(&fixture("input/config.json")),
         "--out",
         path_str(&out),
     ]);
@@ -558,7 +604,7 @@ fn cli_loads_migrates_and_dumps_per_partition() {
             std::fs::read_to_string(fixture(&format!("java/{partition}.dump.csv"))).unwrap()
         );
     }
-    let merged = hpds_etl(&["dump", "--store", path_str(&out), "--merged"]);
+    let merged = hpds_etl(&["dump", "--store", path_str(&out), "--concat"]);
     assert!(merged.status.success(), "{merged:?}");
     let mut expected =
         String::from("PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,TIMESTAMP\r\n");
@@ -654,4 +700,331 @@ fn cli_migrate_detects_a_partitioned_export() {
             .unwrap()
             .contains("\\ds\\e\\shared\\,8,0,false,,4.0,9.0,0,0,4,4\r\n")
     );
+}
+
+fn mode_bits(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+fn set_mode(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+}
+
+fn stderr(output: &std::process::Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+#[test]
+fn partitioned_mode_needs_a_config_or_no_config() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("out");
+    let key = dir.path().join("key");
+    write_key(&key);
+    let mut options = PartitionedLoadOptions::new(fixture("input"), out.clone());
+    options.key = KeySource::File(key.clone());
+    let error = load_partitioned(&options).unwrap_err().to_string();
+    assert!(error.contains("--config <file> or --no-config"), "{error}");
+    assert!(
+        error.contains("/opt/local/hpds_input/config.json"),
+        "{error}"
+    );
+    assert!(!out.exists());
+
+    let inputs = harmonization_inputs();
+    let args = |extra: &[&str]| {
+        let mut args = vec![
+            "load",
+            "--mode",
+            "partitioned",
+            "--input-dir",
+            path_str(&inputs),
+        ];
+        args.extend_from_slice(extra);
+        args.iter().map(|a| a.to_string()).collect::<Vec<_>>()
+    };
+    let run = |args: Vec<String>| {
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        hpds_etl(&refs)
+    };
+    let refused = run(args(&[
+        "--out",
+        path_str(&out),
+        "--key-file",
+        path_str(&key),
+    ]));
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("/opt/local/hpds_input/config.json"));
+    let both = run(args(&[
+        "--out",
+        path_str(&out),
+        "--config",
+        path_str(&fixture("input/config.json")),
+        "--no-config",
+    ]));
+    assert!(!both.status.success());
+    let loaded = run(args(&[
+        "--out",
+        path_str(&out),
+        "--key-file",
+        path_str(&key),
+        "--no-config",
+    ]));
+    assert!(loaded.status.success(), "{loaded:?}");
+
+    let other = dir.path().join("config.json");
+    std::fs::write(&other, r#"{"other.csv": {"dataset_name": "x"}}"#).unwrap();
+    let out2 = dir.path().join("out2");
+    let warned = run(args(&[
+        "--out",
+        path_str(&out2),
+        "--key-file",
+        path_str(&key),
+        "--config",
+        path_str(&other),
+    ]));
+    assert!(warned.status.success(), "{warned:?}");
+    assert!(
+        stderr(&warned).contains("no allConcepts entry"),
+        "{}",
+        stderr(&warned)
+    );
+}
+
+#[test]
+fn the_generation_marker_follows_every_publish() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input");
+    std::fs::create_dir(&input).unwrap();
+    std::fs::write(input.join("p1-allConcepts.csv"), "1,\\a\\,1,,\n").unwrap();
+    std::fs::write(input.join("p2-allConcepts.csv"), "2,\\a\\,1,,\n").unwrap();
+    let key = dir.path().join("key");
+    write_key(&key);
+    let out = dir.path().join("out");
+    let mut options = options(input, out.clone());
+    options.key = KeySource::File(key);
+    load_partitioned(&options).unwrap();
+    let first = read_generation(&out);
+    assert_eq!(first, store_ids(&out));
+    assert_eq!(mode_bits(&out.join(".generation")), 0o600);
+    load_partitioned(&options).unwrap();
+    let second = read_generation(&out);
+    assert_eq!(second, store_ids(&out));
+    assert_ne!(first, second);
+    assert_eq!(second.len(), 2);
+    let leftovers: Vec<String> = std::fs::read_dir(&out)
+        .unwrap()
+        .chain(std::fs::read_dir(dir.path()).unwrap())
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("tmp") || n.contains("staging"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn a_byte_order_mark_and_text_after_a_closing_quote_are_counted() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input");
+    std::fs::create_dir(&input).unwrap();
+    std::fs::write(
+        input.join("p1-allConcepts.csv"),
+        b"\xEF\xBB\xBF1,\\a\\,1,,\n2,\"\\b\\\"x,,t,\n3,\"\\b\\\",,\"u\" ,\n4,\\a\\,2,,\n",
+    )
+    .unwrap();
+    std::fs::write(input.join("p2-allConcepts.csv"), "5,\\a\\,1,,\n").unwrap();
+    let key = dir.path().join("key");
+    write_key(&key);
+    let out = dir.path().join("out");
+    let mut options = options(input, out.clone());
+    options.key = KeySource::File(key);
+    let report = load_partitioned(&options).unwrap();
+    let p1 = &report.partitions["p1"].counts;
+    assert_eq!(p1.inputs_with_byte_order_mark, 1);
+    assert_eq!(p1.records_with_text_after_closing_quote, 2);
+    assert_eq!(p1.rows_read, 4);
+    assert_eq!(p1.accepted, 4, "the row after the mark keeps its patient");
+    let p2 = &report.partitions["p2"].counts;
+    assert_eq!(
+        (
+            p2.inputs_with_byte_order_mark,
+            p2.records_with_text_after_closing_quote
+        ),
+        (0, 0)
+    );
+    let written: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(out.join("p1").join("etl-report.json")).unwrap())
+            .unwrap();
+    assert_eq!(written["counts"]["inputs_with_byte_order_mark"], 1);
+    assert_eq!(
+        written["counts"]["records_with_text_after_closing_quote"],
+        2
+    );
+    assert_eq!(patients(&open(&out.join("p1"))), [1, 2, 3, 4]);
+}
+
+#[test]
+fn unconverted_or_broken_java_partitions_are_refused_and_others_ignored() {
+    let (_dir, out) = load(&fixture("input"));
+    let concepts = out.join("concepts.txt");
+    std::fs::write(&concepts, "\\nothing\\\n").unwrap();
+    let commands: [Vec<&str>; 3] = [
+        vec!["dump", "--store", path_str(&out), "--concat"],
+        vec![
+            "remove-concepts",
+            "--store",
+            path_str(&out),
+            "--concepts",
+            path_str(&concepts),
+        ],
+        vec!["column-meta-csv", "--store", path_str(&out)],
+    ];
+    for (name, content) in [(".hidden", "x"), ("notes", "x")] {
+        std::fs::create_dir(out.join(name)).unwrap();
+        std::fs::write(out.join(name).join("columnMeta.javabin"), content).unwrap();
+        if name == "notes" {
+            std::fs::remove_file(out.join(name).join("columnMeta.javabin")).unwrap();
+            std::fs::write(out.join(name).join("readme.txt"), content).unwrap();
+        }
+    }
+    for command in &commands[..1] {
+        let ran = hpds_etl(command);
+        assert!(ran.status.success(), "{ran:?}");
+    }
+    let java = out.join("unconverted");
+    std::fs::create_dir(&java).unwrap();
+    std::fs::write(java.join("columnMeta.javabin"), "x").unwrap();
+    for command in &commands {
+        let ran = hpds_etl(command);
+        assert!(!ran.status.success(), "{command:?}");
+        assert!(
+            stderr(&ran).contains("unconverted holds columnMeta.javabin but not the other"),
+            "{}",
+            stderr(&ran)
+        );
+    }
+    std::fs::write(java.join("allObservationsStore.javabin"), "x").unwrap();
+    for command in &commands {
+        let ran = hpds_etl(command);
+        assert!(!ran.status.success(), "{command:?}");
+        assert!(
+            stderr(&ran).contains("holds a Java partition (javabin files) but no pheno.index"),
+            "{}",
+            stderr(&ran)
+        );
+    }
+    let mut options = options(fixture("input"), out.clone());
+    options.key = KeySource::OutputDirectoryKeyFile;
+    let error = load_partitioned(&options).unwrap_err().to_string();
+    assert!(error.contains("unconverted"), "{error}");
+}
+
+#[test]
+fn remove_concepts_names_the_partitions_changed_before_a_failure_and_reruns_cleanly() {
+    let (_dir, out) = load(&fixture("input"));
+    let concepts = out.join("conceptsToRemove.txt");
+    std::fs::write(&concepts, "\\ds\\e\\shared\\\n").unwrap();
+    let edge_c_index = out.join("edgeC").join("pheno.index");
+    let saved = std::fs::read(&edge_c_index).unwrap();
+    std::fs::write(&edge_c_index, b"not an index").unwrap();
+    let partitions = hpds_etl::partitions::partition_dirs(&out).unwrap();
+    let error = hpds_etl::store_maintenance::remove_concepts_partitioned(
+        &partitions,
+        &concepts,
+        &test_protection(),
+        true,
+    )
+    .unwrap_err();
+    let EtlError::PartitionFailed {
+        partition, changed, ..
+    } = &error
+    else {
+        panic!("{error}");
+    };
+    assert_eq!(partition, "edgeC");
+    assert_eq!(changed, &["edgeA", "edgeB"]);
+    let message = error.to_string();
+    assert!(
+        message.contains("partitions already changed: edgeA, edgeB"),
+        "{message}"
+    );
+    assert!(
+        open(&out.join("edgeB"))
+            .index
+            .get("\\ds\\e\\shared\\")
+            .is_none()
+    );
+
+    std::fs::write(&edge_c_index, saved).unwrap();
+    let reports = hpds_etl::store_maintenance::remove_concepts_partitioned(
+        &partitions,
+        &concepts,
+        &test_protection(),
+        true,
+    )
+    .unwrap();
+    assert_eq!(reports["edgeB"].removed, 0);
+    assert_eq!(reports["edgeB"].not_found, ["\\ds\\e\\shared\\"]);
+    assert_eq!(reports["edgeC"].removed, 1);
+}
+
+#[test]
+fn dump_outputs_are_private_new_and_outside_the_store() {
+    let (dir, out) = load(&fixture("input"));
+    let dumps = dir.path().join("dumps");
+    let dump = |extra: &[&str]| {
+        let mut args = vec!["dump", "--store", path_str(&out)];
+        args.extend_from_slice(extra);
+        hpds_etl(&args)
+    };
+    let written = dump(&["--out", path_str(&dumps)]);
+    assert!(written.status.success(), "{written:?}");
+    assert_eq!(mode_bits(&dumps), 0o700);
+    for partition in EDGE_PARTITIONS {
+        assert_eq!(mode_bits(&dumps.join(format!("{partition}.csv"))), 0o600);
+    }
+
+    let again = dump(&["--out", path_str(&dumps)]);
+    assert!(!again.status.success());
+    assert!(
+        stderr(&again).contains("pass --force"),
+        "{}",
+        stderr(&again)
+    );
+    let forced = dump(&["--out", path_str(&dumps), "--force"]);
+    assert!(forced.status.success(), "{forced:?}");
+
+    set_mode(&dumps, 0o755);
+    let open_dir = dump(&["--out", path_str(&dumps), "--force"]);
+    assert!(!open_dir.status.success());
+    assert!(stderr(&open_dir).contains("group or others"));
+    set_mode(&dumps, 0o700);
+
+    let concat = dir.path().join("all.csv");
+    for flag in ["--concat", "--merged"] {
+        let ran = dump(&[flag, "--patients", "--out", path_str(&concat), "--force"]);
+        assert!(ran.status.success(), "{flag}: {ran:?}");
+        assert_eq!(mode_bits(&concat), 0o600);
+    }
+
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir(&elsewhere).unwrap();
+    std::fs::rename(out.join("edgeC"), elsewhere.join("edgeC")).unwrap();
+    std::os::unix::fs::symlink(elsewhere.join("edgeC"), out.join("edgeC")).unwrap();
+    for target in [
+        out.join("dumps"),
+        out.join("edgeA").join("x.csv"),
+        elsewhere.join("edgeC").join("x.csv"),
+    ] {
+        let concat = dump(&["--concat", "--out", path_str(&target)]);
+        assert!(!concat.status.success(), "{}", target.display());
+        assert!(
+            stderr(&concat).contains("lies inside"),
+            "{}",
+            stderr(&concat)
+        );
+        let split = dump(&["--out", path_str(&target)]);
+        assert!(!split.status.success(), "{}", target.display());
+        assert!(!target.exists(), "{}", target.display());
+    }
 }

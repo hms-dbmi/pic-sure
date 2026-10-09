@@ -243,7 +243,7 @@ pub fn resplit_concept_path(path: &str) -> String {
 
 /// The text value as the rollup rule compares it: trimmed with `String.trim`, then with
 /// every U+FFFD removed.
-pub fn rollup_text(text: &str) -> std::borrow::Cow<'_, str> {
+pub fn normalized_text_value(text: &str) -> std::borrow::Cow<'_, str> {
     let trimmed = java_trim(text);
     if trimmed.contains('\u{FFFD}') {
         std::borrow::Cow::Owned(trimmed.replace('\u{FFFD}', ""))
@@ -254,7 +254,7 @@ pub fn rollup_text(text: &str) -> std::borrow::Cow<'_, str> {
 
 /// Applies the variable-name rollup to a normalized path: when `path` ends with
 /// `\<text>\`, returns `path` with its last node removed (the regex
-/// `\\[^\\]*\\$` replaced by `\`). `text` is the output of [`rollup_text`]. Returns `None`
+/// `\\[^\\]*\\$` replaced by `\`). `text` is the output of [`normalized_text_value`]. Returns `None`
 /// when the rule does not apply.
 pub fn roll_up(path: &str, text: &str) -> Option<String> {
     if !rolls_up(path, text) {
@@ -385,11 +385,11 @@ mod tests {
     #[test]
     fn rollup_examples() {
         assert_eq!(
-            roll_up("\\a\\Yes\\", &rollup_text("  Yes  ")).as_deref(),
+            roll_up("\\a\\Yes\\", &normalized_text_value("  Yes  ")).as_deref(),
             Some("\\a\\")
         );
         assert_eq!(
-            roll_up("\\a\\Maybe\\", &rollup_text("May\u{FFFD}be")).as_deref(),
+            roll_up("\\a\\Maybe\\", &normalized_text_value("May\u{FFFD}be")).as_deref(),
             Some("\\a\\")
         );
         assert_eq!(roll_up("\\a\\b\\", "B"), None);

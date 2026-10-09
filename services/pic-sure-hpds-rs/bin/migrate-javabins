@@ -8,8 +8,13 @@
 # and allObservationsStore.javabin), is migrated partition by partition into
 # <out-dir>/<partition>/, sharing <out-dir>/encryption_key. ExportForMigration runs once
 # per partition, with the partition's two javabin files and the root key mounted read-only
-# as its store directory. Subdirectories without both javabin files, and hidden ones, are
-# not partitions.
+# as its store directory. Only immediate subdirectories count and hidden ones are ignored.
+# One holding both javabin files is a partition; one holding only one of them is a broken
+# partition and fails the run rather than being skipped; any other is ignored. In
+# <out-dir>, a subdirectory holding pheno.index is a Rust partition, and one holding
+# javabin files but no pheno.index fails the run, the rule hpds-etl and hpds-rs apply.
+# A partitioned migration ends by moving <out-dir>/.generation, the list of partition
+# store ids, into place after every partition.
 #
 # Usage: bin/migrate-javabins [--dry-run] <javabin-dir> <out-dir>
 #
@@ -130,6 +135,8 @@ else
         [[ -r "$dir/$name" ]] || fail "$dir/$name is unreadable"
       done
       partitions+=("${dir##*/}")
+    elif [[ -e "$dir/columnMeta.javabin" || -e "$dir/allObservationsStore.javabin" ]]; then
+      fail "$dir holds only one of columnMeta.javabin and allObservationsStore.javabin, a broken Java partition; repair it or move it out of $source_dir"
     fi
   done
   [[ ${#partitions[@]} -gt 0 ]] || fail "$source_dir holds neither a javabin store nor partition subdirectories holding one"
@@ -151,6 +158,14 @@ if [[ -e "$out_dir" ]]; then
   if [[ -e "$out_dir/encryption_key" ]] && ! cmp -s "$source_dir/encryption_key" "$out_dir/encryption_key"; then
     fail "$out_dir/encryption_key exists and differs from the javabin store's key"
   fi
+  for dir in "$out_dir"/*/; do
+    [[ -d "$dir" ]] || continue
+    dir="${dir%/}"
+    [[ -f "$dir/pheno.index" ]] && continue
+    if [[ -e "$dir/columnMeta.javabin" || -e "$dir/allObservationsStore.javabin" ]]; then
+      fail "$dir holds javabin files but no pheno.index, a Java partition the Rust service would refuse to open; move it out of $out_dir"
+    fi
+  done
   if [[ ${#partitions[@]} -gt 0 ]]; then
     [[ -e "$out_dir/pheno.index" ]] && fail "$out_dir holds an unpartitioned store; migrate the partitions into another directory"
     for dir in "$out_dir"/*/; do
@@ -225,7 +240,7 @@ if [[ "$dry_run" == "1" ]]; then
   fi
   echo "key: install -m 600 $source_dir/encryption_key $next_dir/store/encryption_key"
   if [[ ${#partitions[@]} -gt 0 ]]; then
-    echo "then each partition moves from $next_dir/store into $out_dir (the store files of an existing partition, pheno.index last), and the key last"
+    echo "then each partition moves from $next_dir/store into $out_dir (the store files of an existing partition, pheno.index last), then the key, and .generation last"
   else
     echo "then the store files move from $next_dir/store into $out_dir, pheno.index last"
   fi
@@ -265,7 +280,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ ! -e "$out_dir" ]]; then
-  mkdir -p "$out_dir"
+  mkdir -p -m 700 "$out_dir"
   created_out=1
 fi
 rm -rf "$next_dir"
@@ -329,6 +344,7 @@ if [[ ${#partitions[@]} -gt 0 ]]; then
       [[ -f "$next_dir/store/$name/$file" ]] || fail "hpds-etl migrate did not write $name/$file"
     done
   done
+  [[ -f "$next_dir/store/.generation" ]] || fail "hpds-etl migrate did not write .generation"
   staged=1
   for name in "${partitions[@]}"; do
     if [[ -d "$out_dir/$name" ]]; then
@@ -340,6 +356,7 @@ if [[ ${#partitions[@]} -gt 0 ]]; then
     fi
   done
   mv -f "$next_dir/store/encryption_key" "$out_dir/encryption_key"
+  mv -f "$next_dir/store/.generation" "$out_dir/.generation"
   echo "migrated ${#partitions[@]} partitions in $out_dir"
 else
   for name in "${store_files[@]}" encryption_key; do

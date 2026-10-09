@@ -15,8 +15,12 @@
 //! - Numeric min and max are the real extremes, `null` for a concept with no values. Java
 //!   starts max at `Double.MIN_VALUE` and min at `Double.MAX_VALUE`.
 //! - `has_timestamp` and the timestamp range are set. Java never sets them.
-//! - An unparseable number or timestamp drops the row or its timestamp in new-search and
-//!   partitioned mode. `CSVLoaderNewSearch` and `CSVLoader` abort the load.
+//! - In new-search and partitioned mode an unparseable number drops its row, and an
+//!   unparseable timestamp keeps the row and drops only the timestamp; both are counted.
+//!   `CSVLoaderNewSearch` and `CSVLoader` abort the load on either.
+//! - A UTF-8 byte order mark at the start of a file is skipped, and text after a quoted
+//!   field's closing quote is kept as part of the field; both are counted. Commons CSV
+//!   keeps the mark in the first field and fails on the text.
 //! - Every record is ingested in sequential mode. `LowRAMCSVProcessor` never ingests its
 //!   last chunk when the file holds more lines than records (an embedded newline or a blank
 //!   line), and fails on a record with a single field.
@@ -31,10 +35,10 @@
 //! and a field, never an observation's patient, value or timestamp.
 
 mod build;
-mod partition;
 mod partitioned;
 pub mod rules;
 mod spill;
+mod spill_route;
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -51,12 +55,13 @@ use roaring::RoaringBitmap;
 use serde::Serialize;
 
 use self::build::{BuildContext, BuiltConcept, BuiltPartition, build_partition};
-pub(crate) use self::partition::InputFile;
-use self::partition::{PartitionSettings, partition};
+use self::partitioned::PARTITION_CONFIG_KEY;
 pub use self::partitioned::{
     PartitionedLoadOptions, PartitionedLoadReport, discover_partition_inputs, load_partitioned,
 };
 pub use self::rules::{ConfigMap, CsvConfig, Mode};
+pub(crate) use self::spill_route::InputFile;
+use self::spill_route::{SpillRouteSettings, route_to_spills};
 use crate::cleanup::{self, TemporaryDir};
 use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
@@ -116,8 +121,10 @@ pub struct LoadOptions {
     /// cannot roll up), on in sequential mode (Java's `NO_ROLLUP` argument turns it off).
     pub rollup: Option<bool>,
     /// The CSV config file. When `None`, the first `config.json` found in a directory input
-    /// or in the directory of an input file is used, in input order.
+    /// or in the directory of an input file is used, in input order, unless `no_config`.
     pub config: Option<PathBuf>,
+    /// Apply no CSV config, not even a `config.json` beside the inputs.
+    pub no_config: bool,
     /// Number of spill partitions; `None` picks one per 32 MiB of input, at most 128.
     /// Each build worker holds one partition's spill file and 40 bytes per row of it in
     /// memory at a time, so peak build memory is about `threads` times that for the largest
@@ -143,6 +150,7 @@ impl LoadOptions {
             key: KeySource::OutputDirectoryKeyFile,
             rollup: None,
             config: None,
+            no_config: false,
             partitions: None,
             threads: None,
             tmp: None,
@@ -167,8 +175,14 @@ pub struct LoadCounts {
     /// Numeric rows whose value `Double.parseDouble` rejects.
     pub dropped_unparseable_number: u64,
     /// Stored observations whose timestamp field did not parse and that therefore have
-    /// no timestamp.
+    /// no timestamp. The row itself is kept.
     pub unparseable_timestamps: u64,
+    /// Input files that start with a UTF-8 byte order mark, which is skipped. Java's CSV
+    /// parser keeps it in the first field.
+    pub inputs_with_byte_order_mark: u64,
+    /// Records with text after a quoted field's closing quote, which is kept as part of
+    /// the field. Java's CSV parser fails on them.
+    pub records_with_text_after_closing_quote: u64,
     /// Concepts in the store, including concepts with no stored observations.
     pub concepts: u64,
     /// Numeric concepts.
@@ -241,11 +255,14 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
     let inputs = resolve_inputs(options)?;
     check_output(&options.out, &options.key)?;
     let configs = resolve_config(options)?;
+    if options.mode == Mode::NewSearch {
+        warn_without_all_concepts_entry(&configs);
+    }
     let protection = resolve_protection(options)?;
     let settings = StoreSettings::new(
         options.mode,
         rollup,
-        &configs,
+        &configs.map,
         &protection,
         options.tmp.as_deref(),
         options.partitions,
@@ -351,9 +368,9 @@ pub(crate) fn build_store(
         "loading"
     );
 
-    let partitioned = partition(
+    let partitioned = route_to_spills(
         inputs,
-        &PartitionSettings {
+        &SpillRouteSettings {
             mode: settings.mode,
             rollup: settings.rollup,
             configs: settings.configs,
@@ -404,6 +421,8 @@ pub(crate) fn build_store(
     let mut counts = LoadCounts {
         rows_read: partitioned.rows_read,
         dropped_short_row: partitioned.short_rows,
+        inputs_with_byte_order_mark: partitioned.inputs_with_byte_order_mark,
+        records_with_text_after_closing_quote: partitioned.records_with_text_after_closing_quote,
         ..LoadCounts::default()
     };
     let mut patients = RoaringBitmap::new();
@@ -627,7 +646,26 @@ fn resolve_inputs(options: &LoadOptions) -> Result<Vec<InputFile>> {
     }
 }
 
-fn resolve_config(options: &LoadOptions) -> Result<ConfigMap> {
+/// The CSV config a load applies, and the file it came from (`None` when none applies).
+pub(crate) struct ResolvedConfig {
+    pub(crate) map: ConfigMap,
+    pub(crate) path: Option<PathBuf>,
+}
+
+/// Warns when a CSV config file applies but has no entry for `allConcepts`, the only name
+/// new-search and partitioned mode look a config up under, so it changes nothing.
+pub(crate) fn warn_without_all_concepts_entry(config: &ResolvedConfig) {
+    if let Some(path) = &config.path
+        && config.map.get(PARTITION_CONFIG_KEY).is_none()
+    {
+        tracing::warn!(
+            config = %path.display(),
+            "the CSV config has no allConcepts entry, the only one this mode reads, so no dataset settings apply"
+        );
+    }
+}
+
+fn resolve_config(options: &LoadOptions) -> Result<ResolvedConfig> {
     let mut beside_inputs: Vec<PathBuf> = Vec::new();
     for input in &options.inputs {
         let dir = if input.is_dir() {
@@ -640,6 +678,19 @@ fn resolve_config(options: &LoadOptions) -> Result<ConfigMap> {
             beside_inputs.push(candidate);
         }
     }
+    if options.no_config {
+        for unused in &beside_inputs {
+            tracing::warn!(
+                unused = %unused.display(),
+                "a {CONFIG_FILE_NAME} beside the inputs is not applied (--no-config)"
+            );
+        }
+        tracing::info!("no CSV config applied (--no-config)");
+        return Ok(ResolvedConfig {
+            map: ConfigMap::default(),
+            path: None,
+        });
+    }
     let applied = match &options.config {
         Some(path) => path.clone(),
         None => match beside_inputs.first() {
@@ -648,7 +699,10 @@ fn resolve_config(options: &LoadOptions) -> Result<ConfigMap> {
                 tracing::info!(
                     "no CSV config applied: no --config and no {CONFIG_FILE_NAME} beside the inputs"
                 );
-                return Ok(ConfigMap::default());
+                return Ok(ResolvedConfig {
+                    map: ConfigMap::default(),
+                    path: None,
+                });
             }
         },
     };
@@ -660,7 +714,10 @@ fn resolve_config(options: &LoadOptions) -> Result<ConfigMap> {
         );
     }
     tracing::info!(config = %applied.display(), "applying CSV config");
-    ConfigMap::load(&applied)
+    Ok(ResolvedConfig {
+        map: ConfigMap::load(&applied)?,
+        path: Some(applied),
+    })
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
@@ -689,7 +746,7 @@ fn resolve_protection(options: &LoadOptions) -> Result<Protection> {
 }
 
 /// The directory a store is written into before it is moved to its final place:
-/// `.<out name>.staging-<pid>-<nanos>` beside `out`, mode `0700`. Removed on drop, and on
+/// `.<out name>.staging-<unique>` beside `out`, mode `0700`. Removed on drop, and on
 /// SIGTERM or SIGINT, unless published.
 pub(crate) struct Staging {
     dir: TemporaryDir,
@@ -700,7 +757,8 @@ impl Staging {
     /// that was killed.
     ///
     /// # Errors
-    /// [`EtlError::Usage`] when `out` has no name or is not a directory; I/O errors.
+    /// [`EtlError::Usage`] when `out` has no name, is not a directory, or is on another
+    /// filesystem than its parent, where the staging directory goes; I/O errors.
     pub(crate) fn create(out: &Path) -> Result<Self> {
         let name = out
             .file_name()
@@ -713,8 +771,10 @@ impl Staging {
                 out.display()
             )));
         }
+        let parent = parent_dir(out);
+        crate::partitions::check_same_filesystem(&parent, &[out.to_path_buf()])?;
         Ok(Staging {
-            dir: TemporaryDir::create(&parent_dir(out), &format!("{name}.staging"))?,
+            dir: TemporaryDir::create(&parent, &format!("{name}.staging"))?,
         })
     }
 

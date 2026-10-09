@@ -18,8 +18,10 @@
 //! - A matching file in a subdirectory is refused. Java writes its partition beside it,
 //!   nested where the service, which lists only immediate subdirectories, never reads it.
 //!
-//! Every partition is staged beside `out` and published only once all are complete (see
-//! [`PartitionedStaging::publish`]); a failure in any partition publishes none.
+//! Every partition is staged beside `out` and nothing is published until all are complete;
+//! a failure in any partition publishes none. Into a new `out` the set appears at once;
+//! into an existing one the partitions are replaced one after another and the
+//! `.generation` marker is written last (see [`PartitionedStaging::publish`]).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -29,8 +31,8 @@ use rayon::prelude::*;
 use serde::Serialize;
 
 use super::{
-    InputFile, KeySource, LoadOptions, LoadReport, Mode, StoreSettings, build_store,
-    resolve_config, thread_pool,
+    CONFIG_FILE_NAME, InputFile, KeySource, LoadOptions, LoadReport, Mode, StoreSettings,
+    build_store, resolve_config, thread_pool, warn_without_all_concepts_entry,
 };
 use crate::error::{EtlError, Result};
 use crate::partitions::{
@@ -53,9 +55,13 @@ pub struct PartitionedLoadOptions {
     /// Where the key comes from. [`KeySource::File`] also installs a copy as
     /// `<out>/encryption_key`; [`KeySource::OutputDirectoryKeyFile`] reads that file.
     pub key: KeySource,
-    /// The CSV config file; `None` uses `config.json` in `input_dir` when there is one.
-    /// Its `allConcepts` entry applies to every partition.
+    /// The CSV config file, whose `allConcepts` entry applies to every partition. Either
+    /// this or `no_config` is required: `CSVLoader` reads
+    /// `/opt/local/hpds_input/config.json` whatever its input directory, so there is no
+    /// place beside the inputs to look for it.
     pub config: Option<PathBuf>,
+    /// Load without a CSV config.
+    pub no_config: bool,
     /// Spill files per partition store; `None` picks one per 32 MiB of that partition's
     /// input, at most 128.
     pub spill_partitions: Option<usize>,
@@ -73,6 +79,7 @@ impl PartitionedLoadOptions {
             out,
             key: KeySource::OutputDirectoryKeyFile,
             config: None,
+            no_config: false,
             spill_partitions: None,
             threads: None,
             tmp: None,
@@ -196,34 +203,42 @@ fn walk(dir: &Path, found: &mut Vec<PathBuf>) -> Result<()> {
 /// Loads every partition file in `options.input_dir` into `<options.out>/<partition>/`
 /// with `CSVLoader`'s rules ([`Mode::Partitioned`]), all under one key.
 ///
-/// Inputs, output and key are checked before anything is written. The partitions build in
-/// parallel on one thread pool into a staging directory beside `out`, and are moved into
-/// place together once every one is complete.
+/// Inputs, output, key and config are checked before anything is written. The partitions
+/// build in parallel on one thread pool into a staging directory beside `out`, and are
+/// published once every one is complete, as [`PartitionedStaging::publish`] describes.
 ///
 /// # Errors
-/// Everything [`discover_partition_inputs`] and [`check_partitioned_output`] refuse; a key
+/// [`EtlError::Usage`] when neither `config` nor `no_config` is set; everything
+/// [`discover_partition_inputs`] and [`check_partitioned_output`] refuse; a key
 /// that cannot be read, a missing `<out>/encryption_key`, or an `--key-file` that differs
 /// from an existing `<out>/encryption_key`; [`EtlError::InvalidPatient`] for the first row
 /// of a partition whose patient number Java would fail on, or that is negative; I/O, CSV,
 /// config and format errors.
 pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedLoadReport> {
     let started = Instant::now();
+    if options.config.is_none() && !options.no_config {
+        return Err(EtlError::Usage(format!(
+            "partitioned mode needs --config <file> or --no-config. Java's CSVLoader reads /opt/local/hpds_input/config.json whatever its input directory, so pass that file (in the all-in-one, hpds_input/config.json on the host) with --config, or --no-config when the Java load ran without one; {CONFIG_FILE_NAME} beside the inputs is not looked for"
+        )));
+    }
     let inputs = discover_partition_inputs(&options.input_dir)?;
     let names: Vec<String> = inputs.iter().map(|i| i.name.clone()).collect();
     check_partitioned_output(&options.out, &names)?;
     let (protection, install_key) = resolve_shared_key(&options.key, &options.out)?;
     let configs = resolve_config(&LoadOptions {
         config: options.config.clone(),
+        no_config: options.no_config,
         ..LoadOptions::new(
             Mode::Partitioned,
             vec![options.input_dir.clone()],
             options.out.clone(),
         )
     })?;
+    warn_without_all_concepts_entry(&configs);
     let settings = StoreSettings::new(
         Mode::Partitioned,
         true,
-        &configs,
+        &configs.map,
         &protection,
         options.tmp.as_deref(),
         options.spill_partitions,
@@ -261,9 +276,14 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
     if let Some(key) = install_key {
         staging.stage_key(&key)?;
     }
-    staging.publish(&options.out)?;
+    let partitions: BTreeMap<String, LoadReport> = names.into_iter().zip(reports).collect();
+    let store_ids = partitions
+        .iter()
+        .map(|(name, report)| (name.clone(), report.store_id.clone()))
+        .collect();
+    staging.publish(&options.out, &store_ids)?;
     let report = PartitionedLoadReport {
-        partitions: names.into_iter().zip(reports).collect(),
+        partitions,
         elapsed_seconds: started.elapsed().as_secs_f64(),
     };
     tracing::info!(

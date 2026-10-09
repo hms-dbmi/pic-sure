@@ -166,6 +166,40 @@ fn load_requires_a_mode() {
 }
 
 #[test]
+fn spill_partitions_keep_their_deprecated_flag_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("allConcepts.csv");
+    std::fs::write(&input, format!("{HEADER}1,\\a\\,1,,\n2,\\b\\,2,,\n")).unwrap();
+    for (flag, warns) in [("--spill-partitions", false), ("--partitions", true)] {
+        let out = dir.path().join(flag.trim_start_matches('-'));
+        let output = Command::new(env!("CARGO_BIN_EXE_hpds-etl"))
+            .args([
+                "load",
+                "--mode",
+                "new-search",
+                "--plain",
+                flag,
+                "2",
+                "--input",
+            ])
+            .arg(&input)
+            .arg("--out")
+            .arg(&out)
+            .env("RUST_LOG", "warn")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{flag}: {output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(
+            stderr.contains("--partitions is deprecated"),
+            warns,
+            "{stderr}"
+        );
+        assert!(out.join("pheno.index").exists());
+    }
+}
+
+#[test]
 fn sigterm_removes_the_staging_and_spill_directories() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("big.csv");

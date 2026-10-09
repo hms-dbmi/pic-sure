@@ -110,7 +110,6 @@ impl StagedFile {
         F: FnOnce(&mut BufWriter<File>) -> Result<()>,
     {
         let tmp = temporary_sibling(target)?;
-        let _ = std::fs::remove_file(&tmp);
         let staged = StagedFile {
             tmp,
             target: target.to_path_buf(),
@@ -164,5 +163,8 @@ fn temporary_sibling(target: &Path) -> Result<PathBuf> {
         .file_name()
         .ok_or_else(|| EtlError::Usage(format!("{} has no file name", target.display())))?
         .to_string_lossy();
-    Ok(target.with_file_name(format!(".{name}.tmp-{}", std::process::id())))
+    Ok(target.with_file_name(format!(
+        ".{name}.tmp-{}",
+        crate::cleanup::unique_name_tail()?
+    )))
 }

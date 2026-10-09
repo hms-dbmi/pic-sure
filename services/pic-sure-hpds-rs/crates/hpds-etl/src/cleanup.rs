@@ -4,10 +4,12 @@
 //! registry that [`remove_registered`] empties, so the binary's SIGTERM and SIGINT handler
 //! can remove every one before exiting. A run killed with SIGKILL still leaves its
 //! directories behind; [`TemporaryDir::create`] removes those, recognizing them by name
-//! (`.<prefix>-<pid>-<nanos>`), owner, and a pid that is no longer running.
+//! (`.<prefix>-<pid>-<nanos>-<sequence>-<random>`), owner, and a pid that is no longer
+//! running.
 
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -15,6 +17,29 @@ use crate::error::{EtlError, Result};
 use crate::private_fs;
 
 static REGISTERED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// A name tail no other temporary name shares: this process's pid, the current
+/// sub-second nanoseconds, a process-wide sequence number (two names made in the same
+/// nanosecond differ), and eight random hex digits (two containers whose processes share a
+/// pid differ). Shaped `<pid>-<nanos>-<sequence>-<random>`.
+///
+/// # Errors
+/// [`EtlError::Format`] when the system random number generator fails.
+pub(crate) fn unique_name_tail() -> Result<String> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let random = hpds_format::StoreId::random()?.to_string();
+    Ok(format!(
+        "{}-{nanos}-{sequence}-{}",
+        std::process::id(),
+        &random[..8]
+    ))
+}
 
 /// Locks the registry. The binary's signal handler waits on this lock, so holding it keeps
 /// an interrupt from removing directories while a store is being moved into place.
@@ -49,20 +74,16 @@ pub(crate) struct TemporaryDir {
 }
 
 impl TemporaryDir {
-    /// Creates `<parent>/.<prefix>-<pid>-<nanos>` and registers it, after removing any
-    /// directory of that shape that belongs to this user and whose process is gone.
-    /// Creates `parent` when it does not exist.
+    /// Creates `<parent>/.<prefix>-<tail>`, `<tail>` from [`unique_name_tail`], and
+    /// registers it, after removing any directory of that shape that belongs to this user
+    /// and whose process is gone. Creates `parent` when it does not exist.
     ///
     /// # Errors
-    /// I/O errors creating `parent` or the directory.
+    /// I/O errors creating `parent` or the directory; a failing random number generator.
     pub(crate) fn create(parent: &Path, prefix: &str) -> Result<Self> {
         std::fs::create_dir_all(parent).map_err(EtlError::io("creating", parent))?;
         sweep_stale(parent, prefix);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0);
-        let path = parent.join(format!(".{prefix}-{}-{nanos}", std::process::id()));
+        let path = parent.join(format!(".{prefix}-{}", unique_name_tail()?));
         let mut registered = lock();
         private_fs::create_dir(&path).map_err(EtlError::io("creating", &path))?;
         registered.push(path.clone());
@@ -92,8 +113,8 @@ impl Drop for TemporaryDir {
     }
 }
 
-/// Removes the directories `<parent>/.<prefix>-<pid>-<nanos>` that this user owns, that
-/// this process has not registered, and whose pid is not running.
+/// Removes the directories `<parent>/.<prefix>-<pid>-<nanos>[-<sequence>-<random>]` that
+/// this user owns, that this process has not registered, and whose pid is not running.
 fn sweep_stale(parent: &Path, prefix: &str) {
     let Ok(entries) = std::fs::read_dir(parent) else {
         return;
@@ -129,11 +150,23 @@ fn sweep_stale(parent: &Path, prefix: &str) {
     }
 }
 
-/// The pid in a temporary directory name's `<pid>-<nanos>` tail, or `None` when the tail
-/// has another shape.
+/// The pid in a temporary directory name's tail, `<pid>-<nanos>-<sequence>-<random>` or
+/// the older `<pid>-<nanos>`, or `None` when the tail has another shape.
 fn stale_name_pid(tail: &str) -> Option<u32> {
-    let (pid, nanos) = tail.split_once('-')?;
-    nanos.parse::<u32>().ok()?;
+    let (pid, rest) = tail.split_once('-')?;
+    let well_formed = match rest.split('-').collect::<Vec<_>>()[..] {
+        [nanos] => nanos.parse::<u32>().is_ok(),
+        [nanos, sequence, random] => {
+            nanos.parse::<u32>().is_ok()
+                && sequence.parse::<u64>().is_ok()
+                && random.len() == 8
+                && random.bytes().all(|b| b.is_ascii_hexdigit())
+        }
+        _ => false,
+    };
+    if !well_formed {
+        return None;
+    }
     pid.parse().ok().filter(|&p| p > 0 && p <= i32::MAX as u32)
 }
 
@@ -216,5 +249,26 @@ mod tests {
         assert_eq!(stale_name_pid("123"), None);
         assert_eq!(stale_name_pid("abc-1"), None);
         assert_eq!(stale_name_pid("123-x"), None);
+        assert_eq!(stale_name_pid("123-456-7-0a1b2c3d"), Some(123));
+        assert_eq!(stale_name_pid("123-456-7-0a1b2c3"), None);
+        assert_eq!(stale_name_pid("123-456-x-0a1b2c3d"), None);
+        assert_eq!(stale_name_pid("123-456-7"), None);
+    }
+
+    #[test]
+    fn names_made_back_to_back_differ_and_parse_as_temporary_names() {
+        let tails: Vec<String> = (0..64).map(|_| unique_name_tail().unwrap()).collect();
+        let mut unique = tails.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), tails.len());
+        for tail in &tails {
+            assert_eq!(stale_name_pid(tail), Some(std::process::id()), "{tail}");
+        }
+        let root = tempfile::tempdir().unwrap();
+        let a = TemporaryDir::create(root.path(), "x.staging").unwrap();
+        let b = TemporaryDir::create(root.path(), "x.staging").unwrap();
+        assert_ne!(a.path(), b.path());
+        assert!(a.path().exists() && b.path().exists());
     }
 }

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use common::{MODES, Store, load_files};
 use hpds_etl::column_meta_csv::write_commons_csv_record;
-use hpds_etl::java::{normalize_concept_path, roll_up, rollup_text};
+use hpds_etl::java::{normalize_concept_path, normalized_text_value, roll_up};
 use hpds_etl::load::Mode;
 use hpds_format::Block;
 
@@ -204,7 +204,7 @@ fn tally(path: &std::path::Path, rollup: bool) -> BTreeMap<String, u32> {
     for record in reader.records() {
         let record = record.unwrap();
         let mut concept = normalize_concept_path(&record[1]);
-        if rollup && let Some(rolled) = roll_up(&concept, &rollup_text(&record[3])) {
+        if rollup && let Some(rolled) = roll_up(&concept, &normalized_text_value(&record[3])) {
             concept = rolled;
         }
         let value = if record[2].trim().is_empty() {

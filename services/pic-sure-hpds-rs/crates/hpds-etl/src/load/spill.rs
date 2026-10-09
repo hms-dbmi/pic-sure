@@ -1,6 +1,6 @@
-//! The temporary row format the partition pass writes and the build pass reads back.
+//! The temporary row format the spill routing pass writes and the build pass reads back.
 //!
-//! The partition pass only routes rows: values and timestamps are spilled as the raw field
+//! The spill routing pass only routes rows: values and timestamps are spilled as the raw field
 //! text and parsed by the build pass, which runs in parallel. A spilled row, little-endian:
 //!
 //! ```text
@@ -32,7 +32,7 @@ const ROW_STATUS_MASK: u8 = 0b11 << ROW_STATUS_SHIFT;
 const ROW_BAD_PATIENT: u8 = 1 << 3;
 const ROW_BAD_TIMESTAMP: u8 = 1 << 4;
 
-/// One row as the partition pass hands it to [`write_row`].
+/// One row as the spill routing pass hands it to [`write_row`].
 #[derive(Clone, Copy, Debug)]
 pub struct OutRow<'a> {
     pub seq: u64,

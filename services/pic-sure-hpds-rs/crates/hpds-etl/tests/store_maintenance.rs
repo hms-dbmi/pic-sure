@@ -25,16 +25,20 @@ fn edge_store() -> Store {
 }
 
 fn hpds_etl(args: &[&str]) -> std::process::Output {
-    let output = Command::new(env!("CARGO_BIN_EXE_hpds-etl"))
-        .args(args)
-        .output()
-        .unwrap();
+    let output = run_hpds_etl(args);
     assert!(
         output.status.success(),
         "hpds-etl {args:?}: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     output
+}
+
+fn run_hpds_etl(args: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_hpds-etl"))
+        .args(args)
+        .output()
+        .unwrap()
 }
 
 /// The rows of `path` read from an opened store, in the shape of [`Store::rows`].
@@ -343,6 +347,57 @@ fn dump_and_patients_through_the_binary() {
         dump_patients(&opened, &mut patients).unwrap(),
         store.patients().len() as u64
     );
+}
+
+#[test]
+fn a_single_store_dump_is_private_new_and_outside_the_store() {
+    use std::os::unix::fs::PermissionsExt;
+    let store = edge_store();
+    let key = key_file(&store);
+    let dump = |out: &Path, extra: &[&str]| {
+        let mut args = vec![
+            "dump",
+            "--store",
+            store.out.to_str().unwrap(),
+            "--key-file",
+            &key,
+            "--out",
+            out.to_str().unwrap(),
+        ];
+        args.extend_from_slice(extra);
+        run_hpds_etl(&args)
+    };
+    let out = store.dir.path().join("dump.csv");
+    assert!(dump(&out, &[]).status.success());
+    let mode = std::fs::metadata(&out).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+    std::fs::write(&out, "old").unwrap();
+    let refused = dump(&out, &["--patients"]);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("pass --force"));
+    assert_eq!(std::fs::read_to_string(&out).unwrap(), "old");
+    assert!(dump(&out, &["--patients", "--force"]).status.success());
+    assert_ne!(std::fs::read_to_string(&out).unwrap(), "old");
+    for inside in [store.out.join("dump.csv"), store.out.join("pheno.index")] {
+        let before = std::fs::read(&inside).ok();
+        let refused = dump(&inside, &["--force"]);
+        assert!(!refused.status.success(), "{}", inside.display());
+        assert!(
+            String::from_utf8_lossy(&refused.stderr).contains("lies inside"),
+            "{}",
+            String::from_utf8_lossy(&refused.stderr)
+        );
+        assert_eq!(std::fs::read(&inside).ok(), before);
+    }
+    let concat = run_hpds_etl(&[
+        "dump",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--key-file",
+        &key,
+        "--concat",
+    ]);
+    assert!(!concat.status.success());
 }
 
 #[test]

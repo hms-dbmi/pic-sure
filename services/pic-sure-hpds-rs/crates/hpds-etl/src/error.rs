@@ -67,6 +67,21 @@ pub enum EtlError {
     #[error("{0}")]
     Usage(String),
 
+    /// A command that changes every partition of a store in turn failed on one of them,
+    /// after it had already changed the partitions in `changed`.
+    #[error(
+        "partition {partition}: {source}; partitions already changed: {}. Rerunning the command is safe: it changes the remaining partitions and leaves the changed ones as they are",
+        changed_list(.changed)
+    )]
+    PartitionFailed {
+        /// The partition that failed.
+        partition: String,
+        /// The partitions changed before it, in the order they were changed.
+        changed: Vec<String>,
+        /// The failure.
+        source: Box<EtlError>,
+    },
+
     /// The worker thread pool could not be started.
     #[error("thread pool: {0}")]
     ThreadPool(String),
@@ -83,6 +98,14 @@ impl EtlError {
             path,
             source,
         }
+    }
+}
+
+fn changed_list(changed: &[String]) -> String {
+    if changed.is_empty() {
+        "none".to_string()
+    } else {
+        changed.join(", ")
     }
 }
 

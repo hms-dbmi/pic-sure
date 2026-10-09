@@ -9,8 +9,8 @@ use serde::Deserialize;
 
 use crate::error::{EtlError, Result};
 use crate::java::{
-    is_log4j_blank, normalize_concept_path, parse_java_int, parse_java_long, resplit_concept_path,
-    roll_up, rollup_text,
+    is_log4j_blank, normalize_concept_path, normalized_text_value, parse_java_int, parse_java_long,
+    resplit_concept_path, roll_up,
 };
 
 /// Which Java loader `hpds-etl load` reproduces.
@@ -127,7 +127,7 @@ pub fn apply_dataset_root(path: String, config: Option<&CsvConfig>) -> String {
 /// up, which `parseConceptPath` with rollup on never does.
 pub fn csv_loader_concept_path(raw: &str, text: &str, config: Option<&CsvConfig>) -> String {
     let base = csv_loader_base_path(raw, config);
-    roll_up(&base, &rollup_text(text)).unwrap_or(base)
+    roll_up(&base, &normalized_text_value(text)).unwrap_or(base)
 }
 
 /// The path `CSVLoader` rolls up: [`csv_loader_concept_path`] before its rollup step.
@@ -176,7 +176,7 @@ pub struct ClassifiedValue<'a> {
 pub fn classify_value<'a>(mode: Mode, numeric: &'a str, text: &'a str) -> ClassifiedValue<'a> {
     if mode == Mode::Partitioned
         && numeric.is_empty()
-        && let Some(number) = parse_java_double(&rollup_text(text))
+        && let Some(number) = parse_java_double(&normalized_text_value(text))
     {
         return ClassifiedValue {
             text: false,
@@ -222,8 +222,8 @@ pub enum Timestamp {
     /// Epoch milliseconds.
     Millis(i64),
     /// The field does not parse. `LowRAMCSVProcessor` treats it as no timestamp;
-    /// `CSVLoaderNewSearch` aborts the load. The Rust loader treats it as no timestamp in
-    /// both modes and counts it.
+    /// `CSVLoaderNewSearch` and `CSVLoader` abort the load. The Rust loader keeps the row
+    /// without a timestamp in every mode and counts it.
     Unparseable,
 }
 
@@ -563,9 +563,16 @@ mod tests {
             "the root node itself rolls up when the text names it"
         );
         assert_eq!(
-            csv_loader_concept_path("\\a\\ \\", "", None),
+            csv_loader_base_path("\\a\\ \\", None),
             "\\a\\",
-            "a blank last node rolls up on an empty text"
+            "the split trims a blank last node to empty and drops it before any rollup"
         );
+        for text in ["", "x", "a"] {
+            assert_eq!(
+                csv_loader_concept_path("\\a\\ \\", text, None),
+                if text == "a" { "\\" } else { "\\a\\" },
+                "{text:?}: the path without its blank node rolls up only on its own last node"
+            );
+        }
     }
 }

@@ -13,10 +13,15 @@
 //! This is the layout the harmonization branch's `CSVLoader` writes with javabin files and
 //! `PartitionedPhenotypicObservationStore` reads: each immediate subdirectory is a store,
 //! and the service picks the ones whose names match the caller's consents. Every partition
-//! has its own store id. [`StoreLayout::detect`] tells a partitioned directory from an
-//! ordinary one, and [`PartitionedStaging`] writes a set of partitions and moves them into
-//! place together.
+//! has its own store id, and `<dir>/.generation` lists them once a publish is complete (see
+//! [`GENERATION_FILE_NAME`]). [`partition_dirs`] holds the partition-directory rule,
+//! [`StoreLayout::detect`] tells a partitioned directory from an ordinary one, and
+//! [`PartitionedStaging`] writes a set of partitions and moves them into place.
 
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use hpds_format::{BLOCKS_FILE_NAME, CryptoKey, INDEX_FILE_NAME, Protection};
@@ -27,6 +32,7 @@ use crate::load::{
     COLUMN_META_CSV_NAME, DEFAULT_KEY_FILE_NAME, JAVA_STORE_FILE_NAMES, KeySource, REPORT_FILE_NAME,
 };
 use crate::private_fs;
+use crate::store::replace_file;
 
 /// One partition of a partitioned store or export: its name and its directory.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,17 +56,16 @@ pub enum StoreLayout {
 impl StoreLayout {
     /// Detects the layout of `dir` by the file that marks a store (or an export):
     /// [`StoreLayout::Root`] when `<dir>/<marker>` is a file, else
-    /// [`StoreLayout::Partitioned`] with every immediate subdirectory holding `marker`.
-    /// Subdirectories without `marker` and hidden entries are not partitions.
+    /// [`StoreLayout::Partitioned`] with the partitions [`partition_dirs_marked_by`] finds.
     ///
     /// # Errors
-    /// [`EtlError::Usage`] when `dir` holds `marker` neither itself nor in any immediate
-    /// subdirectory, or a subdirectory name is not UTF-8; I/O errors listing `dir`.
+    /// [`EtlError::Usage`] when `dir` holds `marker` neither itself nor in any partition
+    /// subdirectory, and every error of [`partition_dirs_marked_by`].
     pub fn detect(dir: &Path, marker: &str) -> Result<Self> {
         if dir.join(marker).is_file() {
             return Ok(StoreLayout::Root);
         }
-        let partitions = partition_dirs(dir, marker)?;
+        let partitions = partition_dirs_marked_by(dir, marker)?;
         if partitions.is_empty() {
             return Err(EtlError::Usage(format!(
                 "{} holds no {marker}, neither itself nor in a partition subdirectory",
@@ -71,33 +76,75 @@ impl StoreLayout {
     }
 }
 
-/// The immediate, non-hidden subdirectories of `dir` that hold the file `marker`, in byte
-/// order of their names. Empty when `dir` does not exist.
+/// The partitions of the store directory `dir`, in byte order of their names: the
+/// partition-directory rule of [`partition_dirs_marked_by`] with `pheno.index` as the
+/// marker. The query engine applies the same rule when it opens a partitioned store.
 ///
 /// # Errors
-/// [`EtlError::Usage`] for a subdirectory name that is not UTF-8; I/O errors listing `dir`.
-pub fn partition_dirs(dir: &Path, marker: &str) -> Result<Vec<Partition>> {
+/// As [`partition_dirs_marked_by`].
+pub fn partition_dirs(dir: &Path) -> Result<Vec<Partition>> {
+    partition_dirs_marked_by(dir, INDEX_FILE_NAME)
+}
+
+/// The partitions of `dir` by the partition-directory rule, in byte order of their names.
+/// Empty when `dir` does not exist.
+///
+/// Only immediate subdirectories are considered, and names starting with `.` are ignored.
+/// A subdirectory holding the file `marker` is a partition. One holding both
+/// `allObservationsStore.javabin` and `columnMeta.javabin` but no `marker` is a Java
+/// partition that was never converted, and one holding only one of the two javabin files
+/// is a broken Java partition; both are errors, so a consent group is never silently
+/// left out. Any other subdirectory is ignored.
+///
+/// # Errors
+/// [`EtlError::Usage`] naming every subdirectory that breaks the rule, or a partition
+/// whose name is not UTF-8; I/O errors listing `dir`.
+pub fn partition_dirs_marked_by(dir: &Path, marker: &str) -> Result<Vec<Partition>> {
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
     let mut partitions = Vec::new();
+    let mut problems = Vec::new();
     for entry in std::fs::read_dir(dir).map_err(EtlError::io("listing", dir))? {
         let entry = entry.map_err(EtlError::io("listing", dir))?;
-        let path = entry.path();
-        if !path.is_dir() || !path.join(marker).is_file() {
+        if entry.file_name().as_bytes().first() == Some(&b'.') {
             continue;
         }
-        let name = entry.file_name().into_string().map_err(|name| {
-            EtlError::Usage(format!(
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let java_files: Vec<&str> = JAVA_STORE_FILE_NAMES
+            .into_iter()
+            .filter(|name| path.join(name).exists())
+            .collect();
+        if !path.join(marker).is_file() {
+            match java_files.as_slice() {
+                [] => {}
+                [only] => problems.push(format!(
+                    "{} holds {only} but not the other javabin file, a broken Java partition",
+                    path.display()
+                )),
+                _ => problems.push(format!(
+                    "{} holds a Java partition (javabin files) but no {marker}; convert it or move it out of {}",
+                    path.display(),
+                    dir.display()
+                )),
+            }
+            continue;
+        }
+        match entry.file_name().into_string() {
+            Ok(name) => partitions.push(Partition { name, dir: path }),
+            Err(name) => problems.push(format!(
                 "partition directory {:?} in {} has a name that is not UTF-8",
                 name,
                 dir.display()
-            ))
-        })?;
-        if name.starts_with('.') {
-            continue;
+            )),
         }
-        partitions.push(Partition { name, dir: path });
+    }
+    if !problems.is_empty() {
+        problems.sort();
+        return Err(EtlError::Usage(problems.join("; ")));
     }
     partitions.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(partitions)
@@ -126,9 +173,10 @@ pub fn check_partition_name(name: &str) -> Result<()> {
 }
 
 /// Refuses an output directory that a set of partitions must not be written into: one that
-/// is not a directory, holds an unpartitioned Rust or Java store at its root, or holds
-/// partitions this write would not replace (they would be served beside the new ones), and
-/// a partition subdirectory that holds a Java store or is not a directory.
+/// is not a directory, holds an unpartitioned Rust or Java store at its root, breaks the
+/// partition-directory rule (see [`partition_dirs_marked_by`]), or holds partitions this
+/// write would not replace (they would be served beside the new ones), and a partition
+/// subdirectory that holds a Java store or is not a directory.
 ///
 /// # Errors
 /// [`EtlError::Usage`] naming what makes `out` unsuitable.
@@ -150,19 +198,17 @@ pub fn check_partitioned_output(out: &Path, names: &[String]) -> Result<()> {
             )));
         }
     }
-    for marker in [INDEX_FILE_NAME].into_iter().chain(JAVA_STORE_FILE_NAMES) {
-        let stale: Vec<String> = partition_dirs(out, marker)?
-            .into_iter()
-            .map(|p| p.name)
-            .filter(|name| !names.contains(name))
-            .collect();
-        if !stale.is_empty() {
-            return Err(EtlError::Usage(format!(
-                "{} holds partitions this run does not write ({}), which would be served beside the new ones; remove them or write to another directory",
-                out.display(),
-                stale.join(", ")
-            )));
-        }
+    let stale: Vec<String> = partition_dirs(out)?
+        .into_iter()
+        .map(|p| p.name)
+        .filter(|name| !names.contains(name))
+        .collect();
+    if !stale.is_empty() {
+        return Err(EtlError::Usage(format!(
+            "{} holds partitions this run does not write ({}), which would be served beside the new ones; remove them or write to another directory",
+            out.display(),
+            stale.join(", ")
+        )));
     }
     for name in names {
         let dir = out.join(name);
@@ -235,9 +281,15 @@ pub fn resolve_shared_key(key: &KeySource, out: &Path) -> Result<(Protection, Op
     Ok((Protection::Encrypted(loaded), install))
 }
 
-/// A directory beside the output in which every partition is built, moved into place only
-/// once all of them are complete. Removed on drop, and on SIGTERM or SIGINT, unless
-/// published.
+/// Name of the generation marker of a partitioned store: one line per partition, in byte
+/// order of the partition names, holding the store id of its `pheno.index` as 32 lowercase
+/// hex digits. It is written last, atomically and mode `0600`, so its ids match the
+/// partitions' indexes only once a publish is complete; the query engine refuses to open a
+/// store where they differ.
+pub const GENERATION_FILE_NAME: &str = ".generation";
+
+/// A directory beside the output in which every partition is built and from which the set
+/// is published. Removed on drop, and on SIGTERM or SIGINT, unless published.
 pub struct PartitionedStaging {
     dir: TemporaryDir,
     names: Vec<String>,
@@ -245,13 +297,14 @@ pub struct PartitionedStaging {
 }
 
 impl PartitionedStaging {
-    /// Creates the staging directory for `out` (`.<out name>.staging-<pid>-<nanos>` beside
-    /// it, mode `0700`) with one empty subdirectory per name, first removing any staging
+    /// Creates the staging directory for `out` (`.<out name>.staging-<unique>` beside it,
+    /// mode `0700`) with one empty subdirectory per name, first removing any staging
     /// directory a killed run left beside `out`.
     ///
     /// # Errors
-    /// [`EtlError::Usage`] when `out` has no name or a name is not a valid partition name;
-    /// I/O errors.
+    /// [`EtlError::Usage`] when `out` has no name, a name is not a valid partition name, or
+    /// `out` or one of its partition directories is on another filesystem than the
+    /// staging directory (see [`check_same_filesystem`]); I/O errors.
     pub fn create(out: &Path, names: &[String]) -> Result<Self> {
         let name = out
             .file_name()
@@ -261,7 +314,12 @@ impl PartitionedStaging {
         for partition in names {
             check_partition_name(partition)?;
         }
-        let dir = TemporaryDir::create(&parent_dir(out), &format!("{name}.staging"))?;
+        let parent = parent_dir(out);
+        let targets: Vec<PathBuf> = std::iter::once(out.to_path_buf())
+            .chain(names.iter().map(|n| out.join(n)))
+            .collect();
+        check_same_filesystem(&parent, &targets)?;
+        let dir = TemporaryDir::create(&parent, &format!("{name}.staging"))?;
         for partition in names {
             let path = dir.path().join(partition);
             private_fs::create_dir(&path).map_err(EtlError::io("creating", &path))?;
@@ -291,31 +349,40 @@ impl PartitionedStaging {
         Ok(())
     }
 
-    /// Moves every staged partition, and the staged key, into `out`.
+    /// Moves every staged partition, and the staged key, into `out`, and writes the
+    /// [`GENERATION_FILE_NAME`] marker from `store_ids` (partition name to store id).
     ///
-    /// When `out` does not exist the staging directory is synced and renamed to it, so the
-    /// whole set appears at once. When it does, each partition directory that `out` lacks is
-    /// renamed into it, and each that `out` already has gets its files renamed over the old
-    /// ones with `pheno.index` last, as [`crate::load`] replaces a single store; the key is
-    /// renamed last. An interrupt waits until the moves are done.
+    /// When `out` does not exist the marker is staged too, and the staging directory is
+    /// synced and renamed to `out`, so the whole set appears at once. When it does, the
+    /// publish is not atomic across partitions: each partition directory that `out` lacks
+    /// is renamed into it, and each that `out` already has gets its files renamed over the
+    /// old ones with `pheno.index` last, as [`crate::load`] replaces a single store, one
+    /// partition after another; then the key, and the marker last, replacing the old one.
+    /// Until then a reader can see old and new partitions side by side, which the marker's
+    /// ids reveal. An interrupt waits until the moves are done.
     ///
     /// # Errors
-    /// I/O errors syncing or renaming.
-    pub fn publish(mut self, out: &Path) -> Result<()> {
+    /// I/O errors syncing, renaming or writing the marker.
+    pub fn publish(mut self, out: &Path, store_ids: &BTreeMap<String, String>) -> Result<()> {
         let staged = self.dir.path().to_path_buf();
         for name in &self.names {
             let dir = staged.join(name);
             private_fs::sync_dir(&dir).map_err(EtlError::io("syncing", &dir))?;
         }
-        private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
+        let generation = generation_text(&self.names, store_ids)?;
         let mut registered = cleanup::lock();
         if !out.exists() {
+            let marker = staged.join(GENERATION_FILE_NAME);
+            private_fs::write_file(&marker, generation.as_bytes())
+                .map_err(EtlError::io("writing", &marker))?;
+            private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
             std::fs::rename(&staged, out).map_err(EtlError::io("moving the store to", out))?;
             self.dir.disarm(&mut registered);
             drop(registered);
             let parent = parent_dir(out);
             return private_fs::sync_dir(&parent).map_err(EtlError::io("syncing", &parent));
         }
+        private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
         for name in &self.names {
             let target = out.join(name);
             if target.exists() {
@@ -330,9 +397,63 @@ impl PartitionedStaging {
             std::fs::rename(staged.join(DEFAULT_KEY_FILE_NAME), &target)
                 .map_err(EtlError::io("moving into place", &target))?;
         }
+        private_fs::sync_dir(out).map_err(EtlError::io("syncing", out))?;
+        let marker = out.join(GENERATION_FILE_NAME);
+        let written = replace_file(&marker, |file| {
+            file.write_all(generation.as_bytes())
+                .map_err(EtlError::io("writing", &marker))
+        });
         drop(registered);
-        private_fs::sync_dir(out).map_err(EtlError::io("syncing", out))
+        written
     }
+}
+
+/// The content of the [`GENERATION_FILE_NAME`] marker for the partitions `names`.
+///
+/// # Errors
+/// [`EtlError::Usage`] when `store_ids` lacks one of `names`.
+fn generation_text(names: &[String], store_ids: &BTreeMap<String, String>) -> Result<String> {
+    let mut sorted: Vec<&String> = names.iter().collect();
+    sorted.sort();
+    sorted
+        .into_iter()
+        .map(|name| {
+            store_ids
+                .get(name)
+                .map(|id| format!("{id}\n"))
+                .ok_or_else(|| EtlError::Usage(format!("partition {name} has no store id")))
+        })
+        .collect()
+}
+
+/// Refuses to stage a store in `staging_parent` when any existing path in `targets` (the
+/// output directory, and the partition directories in it) is on another filesystem: the
+/// staged files are moved into place by `rename`, which cannot cross filesystems
+/// (`EXDEV`). Checked before anything is built, so a load does not fail at its very end.
+///
+/// # Errors
+/// [`EtlError::Usage`] naming the target and the staging directory's parent; I/O errors
+/// reading their metadata.
+pub(crate) fn check_same_filesystem(staging_parent: &Path, targets: &[PathBuf]) -> Result<()> {
+    let device = |path: &Path| {
+        std::fs::metadata(path)
+            .map(|m| m.dev())
+            .map_err(EtlError::io("reading metadata of", path))
+    };
+    if !staging_parent.exists() {
+        return Ok(());
+    }
+    let staging_device = device(staging_parent)?;
+    for target in targets {
+        if target.exists() && device(target)? != staging_device {
+            return Err(EtlError::Usage(format!(
+                "{} is on another filesystem than {}, where the new store is staged; moving it into place would fail with EXDEV (a rename cannot cross filesystems). Give an output directory that is not a mount point, such as a new directory inside it",
+                target.display(),
+                staging_parent.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Renames the store files of the staged store in `staged` over those in the existing
@@ -398,6 +519,86 @@ mod tests {
             StoreLayout::detect(dir.path(), INDEX_FILE_NAME).unwrap(),
             StoreLayout::Root
         );
+    }
+
+    #[test]
+    fn the_partition_directory_rule() {
+        let dir = tempfile::tempdir().unwrap();
+        let make = |name: &str, files: &[&str]| {
+            let path = dir.path().join(name);
+            std::fs::create_dir(&path).unwrap();
+            for file in files {
+                std::fs::write(path.join(file), b"x").unwrap();
+            }
+        };
+        make("p1", &[INDEX_FILE_NAME]);
+        make("p2", &[INDEX_FILE_NAME, "columnMeta.javabin"]);
+        make(
+            ".hidden",
+            &["columnMeta.javabin", "allObservationsStore.javabin"],
+        );
+        make(".old", &["allObservationsStore.javabin"]);
+        make("notes", &["readme.txt"]);
+        make("empty", &[]);
+        std::fs::write(dir.path().join("loose.javabin"), b"x").unwrap();
+        let names: Vec<String> = partition_dirs(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(names, ["p1", "p2"]);
+
+        make(
+            "java",
+            &["columnMeta.javabin", "allObservationsStore.javabin"],
+        );
+        make("half", &["allObservationsStore.javabin"]);
+        let message = partition_dirs(dir.path()).unwrap_err().to_string();
+        assert!(
+            message.contains("java holds a Java partition (javabin files) but no pheno.index"),
+            "{message}"
+        );
+        assert!(
+            message.contains("half holds allObservationsStore.javabin but not the other"),
+            "{message}"
+        );
+        assert!(StoreLayout::detect(dir.path(), INDEX_FILE_NAME).is_err());
+        assert!(check_partitioned_output(dir.path(), &["p1".into(), "p2".into()]).is_err());
+
+        let export = partition_dirs_marked_by(dir.path(), "concepts.bin")
+            .unwrap_err()
+            .to_string();
+        assert!(export.contains("but no concepts.bin"), "{export}");
+    }
+
+    #[test]
+    fn staging_on_another_filesystem_is_refused_up_front() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        check_same_filesystem(dir.path(), std::slice::from_ref(&out)).unwrap();
+        std::fs::create_dir(&out).unwrap();
+        check_same_filesystem(dir.path(), std::slice::from_ref(&out)).unwrap();
+        let message = check_same_filesystem(dir.path(), &[PathBuf::from("/dev")])
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("EXDEV"), "{message}");
+        assert!(
+            message.contains("/dev is on another filesystem"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn the_generation_marker_lists_every_partition_in_name_order() {
+        let ids: BTreeMap<String, String> = [("b", "22"), ("a", "11")]
+            .into_iter()
+            .map(|(n, i)| (n.to_string(), i.to_string()))
+            .collect();
+        assert_eq!(
+            generation_text(&["b".into(), "a".into()], &ids).unwrap(),
+            "11\n22\n"
+        );
+        assert!(generation_text(&["c".into()], &ids).is_err());
     }
 
     #[test]

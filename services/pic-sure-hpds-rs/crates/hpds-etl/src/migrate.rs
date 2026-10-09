@@ -318,8 +318,8 @@ pub struct PartitionedMigrateReport {
 /// after its partition (`bin/migrate-javabins` runs `ExportForMigration` once for each
 /// partition of a partitioned javabin directory). [`KeySource::File`] also installs a copy
 /// of the key as `<out>/encryption_key`. Every partition is staged beside `out` and the set
-/// is moved into place together once all are migrated, as
-/// [`crate::load::load_partitioned`] does.
+/// is published once all are migrated, as [`crate::load::load_partitioned`] does (see
+/// [`PartitionedStaging::publish`]).
 ///
 /// # Errors
 /// [`EtlError::Usage`] when the export is not partitioned, for a partition name that
@@ -360,7 +360,11 @@ pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrat
     if let Some(key) = install_key {
         staging.stage_key(&key)?;
     }
-    staging.publish(&options.out)?;
+    let store_ids = reports
+        .iter()
+        .map(|(name, report): (&String, &MigrateReport)| (name.clone(), report.store_id.clone()))
+        .collect();
+    staging.publish(&options.out, &store_ids)?;
     let report = PartitionedMigrateReport {
         partitions: reports,
         elapsed_seconds: started.elapsed().as_secs_f64(),
