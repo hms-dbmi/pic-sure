@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.UUID;
 import java.util.Map;
 
 class ControllerAuditEventTest {
@@ -90,8 +91,8 @@ class ControllerAuditEventTest {
     @Test
     void accessRuleController() throws Exception {
         Class<?> c = AccessRuleController.class;
-        // getAccessRuleById(String accessRuleId)
-        assertAuditEvent(c, "getAccessRuleById", new Class[] {String.class}, "OTHER", "access_rule.read");
+        // getAccessRuleById(UUID accessRuleId)
+        assertAuditEvent(c, "getAccessRuleById", new Class[] {UUID.class}, "OTHER", "access_rule.read");
         // getAccessRuleAll()
         assertAuditEvent(c, "getAccessRuleAll", new Class[] {}, "OTHER", "access_rule.list");
         // addAccessRule(List<AccessRuleCreateRequest> accessRuleRequests, HttpServletRequest request)

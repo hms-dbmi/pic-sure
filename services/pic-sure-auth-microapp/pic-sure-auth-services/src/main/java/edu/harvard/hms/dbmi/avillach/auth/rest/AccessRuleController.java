@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 
 /**
@@ -54,7 +55,7 @@ public class AccessRuleController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{accessRuleId}")
     public ResponseEntity<?> getAccessRuleById(
-        @Parameter(description = "The UUID of the accessRule to fetch information about") @PathVariable("accessRuleId") String accessRuleId
+        @Parameter(description = "The UUID of the accessRule to fetch information about") @PathVariable("accessRuleId") UUID accessRuleId
     ) {
         Optional<AccessRule> entityById = this.accessRuleService.getAccessRuleById(accessRuleId);
 

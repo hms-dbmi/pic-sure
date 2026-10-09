@@ -144,7 +144,7 @@ public class PrivilegeService {
         Set<AccessRule> accessRules = new HashSet<>();
         for (EntityIdRef ref : accessRuleRefs) {
             accessRules.add(
-                this.accessRuleService.getAccessRuleById(ref.uuid().toString())
+                this.accessRuleService.getAccessRuleById(ref.uuid())
                     .orElseThrow(() -> new IllegalArgumentException("Cannot find access rule by input UUID: " + ref.uuid()))
             );
         }
