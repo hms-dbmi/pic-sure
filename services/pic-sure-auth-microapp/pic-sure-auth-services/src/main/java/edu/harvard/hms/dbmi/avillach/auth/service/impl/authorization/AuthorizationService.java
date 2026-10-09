@@ -8,6 +8,9 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenController;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService.IssuedSession;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService.VerifiedSession;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import io.micrometer.common.util.StringUtils;
@@ -65,15 +68,20 @@ public class AuthorizationService {
     private boolean enablePublicAccess;
 
     private final ApiKeyService apiKeyService;
+    private final OpenSessionService openSessionService;
     private final boolean apiKeyEnforcementEnabled;
 
+    /**
+     * Configures authorization rules and credential verifiers. {@code apiKeyEnforcementEnabled} requires a verified stored key or session
+     * for open access; disabling it still evaluates open-access rules.
+     */
     @Autowired
     public AuthorizationService(
         AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
         @Value("${strict.authorization.applications.connections}") String strictConnections, UserConsentsRepository userConsentsRepository,
         @Value("${consent.based.authorization.enabled:true}") boolean consentBasedAuthorizationEnabled,
         @Value("${enable.public.access:false}") boolean enablePublicAccess, ApiKeyService apiKeyService,
-        @Value("${api.key.enforcement.enabled}") boolean apiKeyEnforcementEnabled
+        OpenSessionService openSessionService, @Value("${api.key.enforcement.enabled}") boolean apiKeyEnforcementEnabled
     ) {
         this.accessRuleService = accessRuleService;
         this.sessionService = sessionService;
@@ -86,6 +94,7 @@ public class AuthorizationService {
         this.enablePublicAccess = enablePublicAccess;
         logger.info("Consent-based authorization enabled: {}", consentBasedAuthorizationEnabled);
         this.apiKeyService = apiKeyService;
+        this.openSessionService = openSessionService;
         this.apiKeyEnforcementEnabled = apiKeyEnforcementEnabled;
     }
 
@@ -257,22 +266,39 @@ public class AuthorizationService {
 
     /**
      * Decides an open-access request. A presented key is verified whatever {@code api.key.enforcement.enabled} says, so a grant reports a
-     * valid key either way. Enforcement decides only whether a missing or invalid key denies; with it off, such a request is evaluated
-     * against the open-access rules as an anonymous one.
+     * valid key either way. Session credentials are also accepted, and a granted session includes a replacement token when due for refresh.
+     * Enforcement decides only whether a missing or invalid key denies; with it off, such a request is evaluated against the open-access
+     * rules as an anonymous one. Stored-key verification may update its last-used time even if the access rules later deny the request.
+     *
+     * @param inputMap optional input containing {@code apiKey} and {@code request}; a missing request body passes the rules check
+     * @throws java.time.DateTimeException if a signed session's start or maximum lifetime exceeds the supported instant range
      */
     public OpenAccessValidationResponse validateOpenAccessRequest(Map<String, Object> inputMap) {
         Object presentedKey = inputMap == null ? null : inputMap.get("apiKey");
-        ApiKey verifiedKey = presentedKey == null ? null : openAccessApiKey(presentedKey);
+        String plaintext = presentedKey instanceof String presented ? presented : null;
+        boolean isSession = plaintext != null && plaintext.startsWith(ApiKeyService.OPEN_SESSION_KEY_PREFIX);
+        // the prefix picks the verifier; anything that is neither a session nor a typed API key fails verifyKey
+        Optional<VerifiedSession> session = isSession ? openSessionService.verify(plaintext) : Optional.empty();
+        Optional<ApiKey> apiKey = plaintext != null && !isSession ? apiKeyService.verifyKey(plaintext) : Optional.empty();
+        boolean verified = session.isPresent() || apiKey.isPresent();
 
-        if (apiKeyEnforcementEnabled && verifiedKey == null) {
+        if (apiKeyEnforcementEnabled && !verified) {
             logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ MISSING OR INVALID API KEY");
             return OpenAccessValidationResponse.denied(presentedKey == null ? Denial.KEY_MISSING : Denial.KEY_INVALID);
+        }
+        if (presentedKey != null && !verified) {
+            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ presented an invalid API key ___ EVALUATING AS ANONYMOUS");
         }
 
         if (!openAccessRulesGrant(inputMap)) {
             return OpenAccessValidationResponse.denied(Denial.RULES);
         }
-        return OpenAccessValidationResponse.granted(verifiedKey);
+        // refreshed only on a grant: a denied request gets no new credential
+        if (session.isPresent()) {
+            String refreshedToken = openSessionService.refreshIfDue(session.get()).map(IssuedSession::token).orElse(null);
+            return OpenAccessValidationResponse.grantedSession(session.get().sessionId(), refreshedToken);
+        }
+        return OpenAccessValidationResponse.granted(apiKey.orElse(null));
     }
 
     private boolean openAccessRulesGrant(Map<String, Object> inputMap) {
@@ -336,14 +362,5 @@ public class AuthorizationService {
         }
 
         return result;
-    }
-
-    /** Returns the verified key, or null when {@code presentedKey} is not a key PSAMA can verify. Never logs the key itself. */
-    private ApiKey openAccessApiKey(Object presentedKey) {
-        ApiKey verified = presentedKey instanceof String plaintext ? apiKeyService.verifyKey(plaintext).orElse(null) : null;
-        if (verified == null && !apiKeyEnforcementEnabled) {
-            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ presented an invalid API key ___ EVALUATING AS ANONYMOUS");
-        }
-        return verified;
     }
 }

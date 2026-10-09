@@ -26,12 +26,19 @@ import jakarta.servlet.http.HttpServletResponse;
  * access is enabled and {@code Authorization} is blank or at most 7 characters. The open-access payload contains the decoded path Spring
  * resolved as {@code "Target Service"} plus {@code ipAddress}; it does not contain a token or request body. A denial whose reason is the
  * API key gets its own 401 error type ({@code api_key_missing} / {@code api_key_invalid}); every other denial is {@code unauthorized}. On a
- * grant the {@link OpenAccessValidation} is stored as {@link #ATTR_OPEN_ACCESS_VALIDATION}. Routes selected by the shared
- * {@link PublicEndpointPolicy}, a real bearer token, or disabled open access pass through untouched.
+ * grant the {@link OpenAccessValidation} is stored as {@link #ATTR_OPEN_ACCESS_VALIDATION}, and a refreshed open-access session token is
+ * returned in {@value #SESSION_REFRESH_HEADER}. Routes selected by the shared {@link PublicEndpointPolicy}, a real bearer token, or
+ * disabled open access pass through untouched.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
     public static final String API_KEY_HEADER = "X-PICSURE-API-Key";
+
+    /**
+     * Response header carrying a replacement open-access session token once the presented one is half used. Part of the frontend contract.
+     * Not {@code Authorization}, which the frontend treats as a login.
+     */
+    public static final String SESSION_REFRESH_HEADER = "X-PICSURE-Session-Refresh";
 
     /**
      * Set to {@link Boolean#TRUE} only by this filter, only after PSAMA grants the open-access validate. This — not the user-id attribute,
@@ -74,6 +81,13 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         this.publicEndpoints = publicEndpoints;
     }
 
+    /**
+     * Applies open-access validation to eligible requests. Denials produce HTTP 401; exceptions from PSAMA validation produce HTTP 502.
+     * On a grant, sets the open-access identity and validation attributes and any session refresh header before continuing the chain.
+     *
+     * @throws ServletException if the downstream filter chain fails
+     * @throws IOException if writing an error response or executing the downstream filter chain fails
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
@@ -124,6 +138,10 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         req.setAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN);
         audit.put("auth_result", "success");
         audit.put("auth_action", "open_access.granted");
+        // before the chain: a proxied response is already committed when the chain returns, so a header set afterwards is dropped
+        if (validation.refreshedToken() != null) {
+            resp.setHeader(SESSION_REFRESH_HEADER, validation.refreshedToken());
+        }
         chain.doFilter(req, resp);
     }
 

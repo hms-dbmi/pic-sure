@@ -165,6 +165,12 @@ public class ApiKeyServiceTest {
     }
 
     @Test
+    public void testVerifyKey_sessionTokenNeverLooksUpTheTable() {
+        assertTrue(apiKeyService.verifyKey(ApiKeyService.OPEN_SESSION_KEY_PREFIX + "eyJhbGciOiJIUzI1NiJ9.e30.x").isEmpty());
+        verify(apiKeyRepository, never()).findByKeyHash(anyString());
+    }
+
+    @Test
     public void testVerifyKey_revokedKey() {
         ApiKeyCreationResponse response = apiKeyService.generateUserKey(null, null);
         ApiKey stored = storedKeyFor(response).setRevokedAt(Instant.now());

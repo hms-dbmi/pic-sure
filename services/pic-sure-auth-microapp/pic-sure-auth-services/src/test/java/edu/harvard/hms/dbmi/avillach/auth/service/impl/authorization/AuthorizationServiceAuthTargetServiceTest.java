@@ -13,6 +13,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import java.util.Map;
@@ -134,8 +135,8 @@ class AuthorizationServiceAuthTargetServiceTest {
         when(roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME)).thenReturn(openAccessRole);
 
         return new AuthorizationService(
-            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false, enablePublicAccess, mock(ApiKeyService.class),
-            false
+            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false, enablePublicAccess,
+            mock(ApiKeyService.class), mock(OpenSessionService.class), false
         );
     }
 

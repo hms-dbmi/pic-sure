@@ -122,6 +122,14 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertSchemaDocumented(document, "OpenAccessValidationResponse");
     }
 
+    @Test
+    void openSessionDocumentsItsResponse() throws Exception {
+        JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/open/session", "200", "OpenSessionResponse");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "OpenSessionResponse");
+    }
+
     private static String description(JsonNode paths, String path, String method) {
         return paths.path(path).path(method).path("description").asText();
     }

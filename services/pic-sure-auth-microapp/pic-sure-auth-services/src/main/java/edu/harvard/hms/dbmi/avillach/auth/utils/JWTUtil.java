@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
@@ -51,11 +52,26 @@ public class JWTUtil {
     }
 
     /**
-     * @param id      - id
-     * @param issuer  - issuer
-     * @param claims  - claims
-     * @param subject - subject
-     * @return JWT token
+     * Whether {@code candidate} is the HMAC key every token here is signed and verified with, derived from
+     * {@code application.client.secret} exactly as signing does. Other signers call this to prove they use a key of their own; the key
+     * bytes themselves never leave this class.
+     */
+    public boolean signsWith(byte[] candidate) {
+        return MessageDigest.isEqual(candidate, signingKeyBytes());
+    }
+
+    /** Returns the decoded application secret encoded as UTF-8, matching the key used for signing and verification. */
+    private byte[] signingKeyBytes() {
+        return getDecodedClientSecret().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Creates a compact JWT signed with the application secret. The supplied id, issuer, subject, current issuance time, and computed
+     * expiration override the corresponding entries in {@code claims}.
+     *
+     * @param ttlMillis lifetime in milliseconds; negative values use seven days, and zero uses 999 days
+     * @return the signed JWT without a bearer or API key prefix
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
      */
     public String createJwtToken(String id, String issuer, Map<String, Object> claims, String subject, long ttlMillis) {
         logger.debug("createJwtToken() starting...");
@@ -72,8 +88,7 @@ public class JWTUtil {
         long nowMillis = System.currentTimeMillis();
         Date now = new Date(nowMillis);
 
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
         //Builds the JWT and serializes it to a compact, URL-safe string
         JwtBuilder builder = Jwts.builder()
@@ -93,9 +108,15 @@ public class JWTUtil {
         return jwt_token;
     }
 
+    /**
+     * Verifies a compact JWT with the application signing key and returns its signed claims, enforcing expiration and not-before claims
+     * when present.
+     *
+     * @throws NotAuthorizedException if parsing or verification fails, including an expired, null, or empty token
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
+     */
     public Jws<Claims> parseToken(String token) {
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
         Jws<Claims> jws;
         try {
@@ -119,10 +140,10 @@ public class JWTUtil {
      * its subject just as reliably as a live one.
      *
      * @return the claims, or empty if the signature or structure could not be verified
+     * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
      */
     public Optional<Claims> parseTokenAllowingExpiration(String token) {
-        String clientSecret = getDecodedClientSecret();
-        SecretKey signingKey = Keys.hmacShaKeyFor(clientSecret.getBytes(StandardCharsets.UTF_8));
+        SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
         try {
             return Optional.of(Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload());
