@@ -30,8 +30,9 @@ import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
  * {@code McpProtocolIT}), and the caller's identity changes on every chat request, which doesn't fit a singleton SDK session cleanly. A
  * plain {@code RestClient} POST per call, with the caller's headers attached per call, is simpler and gives full control.
  *
- * <p>The {@code initialize}/{@code notifications/initialized} handshake carries no caller identity, so it is done once, lazily, and never
- * repeated -- {@code tools/list} and {@code tools/call} are then independent, per-call, caller-scoped requests.
+ * <p>The {@code initialize}/{@code notifications/initialized} handshake is done once, lazily, and not repeated after it succeeds --
+ * {@code tools/list} and {@code tools/call} are then independent, per-call, caller-scoped requests. The server holds no per-caller state,
+ * but the gateway introspects every {@code /mcp} request, so the handshake replays the triggering caller's token like any other call.
  */
 @Component
 @ConditionalOnProperty(prefix = "picsure.ai.mcp", name = "mode", havingValue = "gateway", matchIfMissing = true)
@@ -57,9 +58,9 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     }
 
     @Override
-    public List<ToolDefinition> listTools() {
-        ensureInitialized();
-        JsonNode result = send(rpcRequest(1, "tools/list", objectMapper.createObjectNode()), null);
+    public List<ToolDefinition> listTools(CallerContext caller) {
+        ensureInitialized(caller);
+        JsonNode result = send(rpcRequest(1, "tools/list", objectMapper.createObjectNode()), caller);
         List<ToolDefinition> tools = new ArrayList<>();
         for (JsonNode tool : result.path("tools")) {
             tools.add(
@@ -71,7 +72,7 @@ public class GatewayMcpToolGateway implements McpToolGateway {
 
     @Override
     public ToolResult callTool(String name, String argumentsJson, CallerContext caller) {
-        ensureInitialized();
+        ensureInitialized(caller);
         ObjectNode params = objectMapper.createObjectNode();
         params.put("name", name);
         params.set("arguments", parseOrEmptyObject(argumentsJson));
@@ -95,22 +96,30 @@ public class GatewayMcpToolGateway implements McpToolGateway {
         return ToolResult.success(result.path("structuredContent").toString());
     }
 
-    /** Sends {@code initialize} then {@code notifications/initialized} once; a no-op on every call after the first. */
-    private void ensureInitialized() {
+    /**
+     * Sends {@code initialize} then {@code notifications/initialized} once; a no-op on every call after the first success. A failed
+     * handshake releases the flag so the next request retries it.
+     */
+    private void ensureInitialized(CallerContext caller) {
         if (initialized.compareAndSet(false, true)) {
-            ObjectNode params = objectMapper.createObjectNode();
-            params.put("protocolVersion", PROTOCOL_VERSION);
-            params.set("capabilities", objectMapper.createObjectNode());
-            ObjectNode clientInfo = objectMapper.createObjectNode();
-            clientInfo.put("name", "pic-sure-ai-service");
-            clientInfo.put("version", "1.0.0");
-            params.set("clientInfo", clientInfo);
-            post(rpcRequest(0, "initialize", params), null);
+            try {
+                ObjectNode params = objectMapper.createObjectNode();
+                params.put("protocolVersion", PROTOCOL_VERSION);
+                params.set("capabilities", objectMapper.createObjectNode());
+                ObjectNode clientInfo = objectMapper.createObjectNode();
+                clientInfo.put("name", "pic-sure-ai-service");
+                clientInfo.put("version", "1.0.0");
+                params.set("clientInfo", clientInfo);
+                post(rpcRequest(0, "initialize", params), caller);
 
-            ObjectNode notification = objectMapper.createObjectNode();
-            notification.put("jsonrpc", "2.0");
-            notification.put("method", "notifications/initialized");
-            post(notification, null);
+                ObjectNode notification = objectMapper.createObjectNode();
+                notification.put("jsonrpc", "2.0");
+                notification.put("method", "notifications/initialized");
+                post(notification, caller);
+            } catch (RuntimeException e) {
+                initialized.set(false);
+                throw e;
+            }
         }
     }
 

@@ -73,7 +73,7 @@ class ChatControllerCallerIdentityTest {
         private static final class CallerEchoingToolGateway implements McpToolGateway {
 
             @Override
-            public List<ToolDefinition> listTools() {
+            public List<ToolDefinition> listTools(CallerContext caller) {
                 return List.of();
             }
 

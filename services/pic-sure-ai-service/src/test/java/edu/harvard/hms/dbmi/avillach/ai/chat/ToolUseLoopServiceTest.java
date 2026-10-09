@@ -180,7 +180,7 @@ class ToolUseLoopServiceTest {
         }
 
         @Override
-        public List<ToolDefinition> listTools() {
+        public List<ToolDefinition> listTools(CallerContext caller) {
             return List.of();
         }
 

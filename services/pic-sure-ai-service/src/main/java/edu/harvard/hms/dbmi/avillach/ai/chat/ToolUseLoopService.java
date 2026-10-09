@@ -62,7 +62,7 @@ class ToolUseLoopService implements ChatOrchestrator {
 
     @Override
     public ChatResponse handle(ChatRequest request, CallerContext caller) {
-        List<ToolDefinition> tools = new ArrayList<>(toolGateway.listTools());
+        List<ToolDefinition> tools = new ArrayList<>(toolGateway.listTools(caller));
         tools.add(proposeQueryTool.definition());
         List<ConversationEntry> history = new ArrayList<>();
         history.add(new UserEntry(request.message()));

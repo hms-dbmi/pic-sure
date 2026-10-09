@@ -19,9 +19,10 @@ public interface McpToolGateway {
     /**
      * The tools available to advertise to the model this turn.
      *
+     * @param caller the caller's identity, replayed on the outbound gateway call (the gateway introspects every {@code /mcp} request)
      * @return the tool definitions
      */
-    List<ToolDefinition> listTools();
+    List<ToolDefinition> listTools(CallerContext caller);
 
     /**
      * Calls one tool by name, replaying the caller's identity exactly as a real MCP call would.
