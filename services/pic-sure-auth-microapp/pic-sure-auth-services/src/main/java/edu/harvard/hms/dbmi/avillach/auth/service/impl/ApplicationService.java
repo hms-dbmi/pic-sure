@@ -2,6 +2,9 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.ApplicationCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.ApplicationUpdateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
@@ -78,6 +81,80 @@ public class ApplicationService implements UserDetailsService {
         }
 
         return this.applicationRepo.saveAll(appEntities);
+    }
+
+    /**
+     * Creates applications from request records. The identifier is generated on persist and the bearer token is minted afterwards, so a
+     * request body can choose neither.
+     *
+     * @param requests the applications to create
+     * @return the persisted applications, each with a freshly minted token
+     * @throws IllegalArgumentException if a request names a privilege that does not exist
+     */
+    @Transactional
+    public List<Application> createFrom(List<ApplicationCreateRequest> requests) {
+        List<Application> applications = new ArrayList<>(requests.size());
+        for (ApplicationCreateRequest request : requests) {
+            Application application = new Application();
+            application.setName(request.name());
+            application.setDescription(request.description());
+            application.setUrl(request.url());
+            application.setEnable(request.enable() == null || request.enable());
+            attachPrivileges(application, request.privileges());
+            applications.add(application);
+        }
+
+        List<Application> saved = this.applicationRepo.saveAll(applications);
+        for (Application application : saved) {
+            application.setToken(generateApplicationToken(application));
+        }
+        return this.applicationRepo.saveAll(saved);
+    }
+
+    /**
+     * Applies request records to existing applications. A member left out of a request keeps its stored value, and the bearer token is not
+     * a member at all; {@link #refreshApplicationToken} is the only way to replace it.
+     *
+     * @param requests the applications to update, each named by UUID
+     * @return the persisted applications
+     * @throws IllegalArgumentException if a request names an application or a privilege that does not exist
+     */
+    @Transactional
+    public List<Application> updateFrom(List<ApplicationUpdateRequest> requests) {
+        List<Application> applications = new ArrayList<>(requests.size());
+        for (ApplicationUpdateRequest request : requests) {
+            Application application = this.applicationRepo.findById(request.uuid())
+                .orElseThrow(() -> new IllegalArgumentException("Cannot find application by the given applicationId: " + request.uuid()));
+            if (request.name() != null) {
+                application.setName(request.name());
+            }
+            if (request.description() != null) {
+                application.setDescription(request.description());
+            }
+            if (request.url() != null) {
+                application.setUrl(request.url());
+            }
+            if (request.enable() != null) {
+                application.setEnable(request.enable());
+            }
+            attachPrivileges(application, request.privileges());
+            applications.add(application);
+        }
+        return this.applicationRepo.saveAll(applications);
+    }
+
+    private void attachPrivileges(Application application, Set<EntityIdRef> privilegeRefs) {
+        if (privilegeRefs == null) {
+            return;
+        }
+        Set<Privilege> privileges = new HashSet<>();
+        for (EntityIdRef ref : privilegeRefs) {
+            Privilege privilege = this.privilegeRepo.findById(ref.uuid())
+                .orElseThrow(() -> new IllegalArgumentException("Cannot find privilege by input UUID: " + ref.uuid()));
+            privilege.setApplication(application);
+            privileges.add(privilege);
+        }
+        application.setPrivileges(privileges);
     }
 
     @Transactional

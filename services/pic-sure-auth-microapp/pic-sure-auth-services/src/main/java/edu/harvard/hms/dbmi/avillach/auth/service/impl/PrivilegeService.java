@@ -1,7 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
+import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PrivilegeCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.PrivilegeUpdateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,11 +29,15 @@ public class PrivilegeService {
 
     private final PrivilegeRepository privilegeRepository;
     private final AccessRuleService accessRuleService;
+    private final ApplicationRepository applicationRepository;
 
     @Autowired
-    protected PrivilegeService(PrivilegeRepository privilegeRepository, AccessRuleService accessRuleService) {
+    protected PrivilegeService(
+        PrivilegeRepository privilegeRepository, AccessRuleService accessRuleService, ApplicationRepository applicationRepository
+    ) {
         this.privilegeRepository = privilegeRepository;
         this.accessRuleService = accessRuleService;
+        this.applicationRepository = applicationRepository;
     }
 
     @Transactional
@@ -65,6 +74,81 @@ public class PrivilegeService {
 
     public List<Privilege> addPrivileges(List<Privilege> privileges) {
         return this.privilegeRepository.saveAll(privileges);
+    }
+
+    /**
+     * Creates privileges from request records. The owning application and any access rules are resolved from storage by UUID, so a request
+     * body cannot attach its own copy of either; the identifier is generated on persist.
+     *
+     * @param requests the privileges to create
+     * @return the persisted privileges
+     * @throws IllegalArgumentException if a referenced application or access rule does not exist
+     */
+    @Transactional
+    public List<Privilege> createFrom(List<PrivilegeCreateRequest> requests) {
+        List<Privilege> privileges = new ArrayList<>(requests.size());
+        for (PrivilegeCreateRequest request : requests) {
+            Privilege privilege = new Privilege();
+            privilege.setName(request.name());
+            privilege.setDescription(request.description());
+            privilege.setApplication(resolveApplication(request.application()));
+            privilege.setAccessRules(resolveAccessRules(request.accessRules()));
+            privileges.add(privilege);
+        }
+        return this.privilegeRepository.saveAll(privileges);
+    }
+
+    /**
+     * Applies request records to existing privileges. A member left out of a request keeps its stored value.
+     *
+     * @param requests the privileges to update, each named by UUID
+     * @return every privilege after the update, as the update endpoint has always returned
+     * @throws IllegalArgumentException if a privilege, a referenced application, or a referenced access rule does not exist
+     */
+    @Transactional
+    public List<Privilege> updateFrom(List<PrivilegeUpdateRequest> requests) {
+        List<Privilege> privileges = new ArrayList<>(requests.size());
+        for (PrivilegeUpdateRequest request : requests) {
+            Privilege privilege = this.privilegeRepository.findById(request.uuid())
+                .orElseThrow(() -> new IllegalArgumentException("Cannot find privilege by input UUID: " + request.uuid()));
+            if (request.name() != null) {
+                privilege.setName(request.name());
+            }
+            if (request.description() != null) {
+                privilege.setDescription(request.description());
+            }
+            if (request.application() != null) {
+                privilege.setApplication(resolveApplication(request.application()));
+            }
+            if (request.accessRules() != null) {
+                privilege.setAccessRules(resolveAccessRules(request.accessRules()));
+            }
+            privileges.add(privilege);
+        }
+        this.privilegeRepository.saveAll(privileges);
+        return this.getPrivilegesAll();
+    }
+
+    private Application resolveApplication(EntityIdRef applicationRef) {
+        if (applicationRef == null) {
+            return null;
+        }
+        return this.applicationRepository.findById(applicationRef.uuid())
+            .orElseThrow(() -> new IllegalArgumentException("Cannot find application by input UUID: " + applicationRef.uuid()));
+    }
+
+    private Set<AccessRule> resolveAccessRules(Set<EntityIdRef> accessRuleRefs) {
+        if (accessRuleRefs == null) {
+            return null;
+        }
+        Set<AccessRule> accessRules = new HashSet<>();
+        for (EntityIdRef ref : accessRuleRefs) {
+            accessRules.add(
+                this.accessRuleService.getAccessRuleById(ref.uuid())
+                    .orElseThrow(() -> new IllegalArgumentException("Cannot find access rule by input UUID: " + ref.uuid()))
+            );
+        }
+        return accessRules;
     }
 
     public List<Privilege> getPrivilegesAll() {

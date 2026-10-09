@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AccessRuleCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AccessRuleUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
@@ -10,6 +12,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -20,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 
 /**
@@ -50,7 +55,7 @@ public class AccessRuleController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{accessRuleId}")
     public ResponseEntity<?> getAccessRuleById(
-        @Parameter(description = "The UUID of the accessRule to fetch information about") @PathVariable("accessRuleId") String accessRuleId
+        @Parameter(description = "The UUID of the accessRule to fetch information about") @PathVariable("accessRuleId") UUID accessRuleId
     ) {
         Optional<AccessRule> entityById = this.accessRuleService.getAccessRuleById(accessRuleId);
 
@@ -78,11 +83,12 @@ public class AccessRuleController {
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> addAccessRule(
-        @Parameter(required = true, description = "A list of AccessRule in JSON format") @RequestBody List<AccessRule> accessRules,
-        HttpServletRequest request
+        @Parameter(
+            required = true, description = "The access rules to create; the server generates each identifier"
+        ) @RequestBody List<@NotNull @Valid AccessRuleCreateRequest> accessRuleRequests, HttpServletRequest request
     ) {
-        AuditAttributes.putMetadata(request, "access_rule_count", String.valueOf(accessRules.size()));
-        accessRules = this.accessRuleService.addAccessRule(accessRules);
+        AuditAttributes.putMetadata(request, "access_rule_count", String.valueOf(accessRuleRequests.size()));
+        List<AccessRule> accessRules = this.accessRuleService.createFrom(accessRuleRequests);
 
         if (accessRules.isEmpty()) {
             return PICSUREResponse.protocolError("No access rules added", 400);
@@ -98,15 +104,14 @@ public class AccessRuleController {
     @ApiResponse(responseCode = "200", description = "The updated access rules")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @PatchMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<AccessRule>> updateAccessRule(
         @Parameter(
-            required = true, description = "A list of AccessRule with fields to be updated in JSON format"
-        ) @RequestBody List<AccessRule> accessRules, HttpServletRequest request
+            required = true, description = "The access rules to update, each named by UUID; a field left out keeps its stored value"
+        ) @RequestBody List<@NotNull @Valid AccessRuleUpdateRequest> accessRules, HttpServletRequest request
     ) {
         AuditAttributes.putMetadata(request, "access_rule_count", String.valueOf(accessRules.size()));
-        accessRules = this.accessRuleService.updateAccessRules(accessRules);
-        return PICSUREResponse.success(accessRules);
+        return PICSUREResponse.success(this.accessRuleService.updateFrom(accessRules));
     }
 
     @Operation(

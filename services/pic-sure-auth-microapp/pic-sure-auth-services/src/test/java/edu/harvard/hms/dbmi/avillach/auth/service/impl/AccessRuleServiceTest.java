@@ -62,7 +62,7 @@ public class AccessRuleServiceTest {
         AccessRule accessRule = new AccessRule();
         when(accessRuleRepo.findById(id)).thenReturn(Optional.of(accessRule));
 
-        Optional<AccessRule> result = accessRuleService.getAccessRuleById(id.toString());
+        Optional<AccessRule> result = accessRuleService.getAccessRuleById(id);
         assertTrue(result.isPresent());
         assertSame(accessRule, result.get());
     }
@@ -72,7 +72,7 @@ public class AccessRuleServiceTest {
         UUID id = UUID.randomUUID();
         when(accessRuleRepo.findById(id)).thenReturn(Optional.empty());
 
-        Optional<AccessRule> result = accessRuleService.getAccessRuleById(id.toString());
+        Optional<AccessRule> result = accessRuleService.getAccessRuleById(id);
         assertFalse(result.isPresent());
     }
 

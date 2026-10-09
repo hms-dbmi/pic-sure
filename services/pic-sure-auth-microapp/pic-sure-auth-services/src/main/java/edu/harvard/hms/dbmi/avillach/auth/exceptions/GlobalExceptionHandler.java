@@ -1,29 +1,37 @@
 package edu.harvard.hms.dbmi.avillach.auth.exceptions;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.method.ParameterErrors;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 import java.sql.SQLIntegrityConstraintViolationException;
-import java.util.Arrays;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
- * Global exception handler for the PICSURE Auth application. Provides centralized exception handling for various types of exceptions.
+ * Global exception handler for the PICSURE Auth application, answering with this service's {@code {message, content}} body. Inherits the
+ * client-error and catch-all handling from {@link PicsureExceptionAdvice}, which renders through {@link #errorBody} with the status's
+ * reason phrase as {@code message} and the shared fixed text as {@code content}, and adds the handlers below for this service's own
+ * exceptions.
  */
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends PicsureExceptionAdvice {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
@@ -65,24 +73,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<?> handleNotAuthorized(NotAuthorizedException ex) {
         logger.warn("Not authorized: {}", ex.getMessage());
         return PICSUREResponse.error(HttpStatus.UNAUTHORIZED, "Authorization failed", ex.getMessage());
-    }
-
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<?> handleUnreadableBody(HttpMessageNotReadableException ex) {
-        logger.warn("Rejected unreadable request body");
-        return PICSUREResponse.error(HttpStatus.BAD_REQUEST, "Malformed request body", "The request body could not be parsed.");
-    }
-
-    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<?> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        Class<?> requiredType = ex.getRequiredType();
-        String expected = requiredType == null ? "a different type"
-            : requiredType.isEnum()
-                ? "one of " + Arrays.stream(requiredType.getEnumConstants()).map(Object::toString).collect(Collectors.joining(", "))
-                : "a " + requiredType.getSimpleName();
-        logger.warn("Type mismatch for request parameter '{}': expected {}", ex.getName(), expected);
-        return PICSUREResponse
-            .error(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + ex.getName() + "'", "Expected " + expected + ".");
     }
 
     /**
@@ -147,7 +137,38 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handles RuntimeException, which includes many business logic errors.
+     * Answers a request body that fails Bean Validation, such as a request record missing a required member. The response names each
+     * rejected member by its position in the body and the constraint it broke, and never echoes the rejected value.
+     *
+     * @param ex the validation failure Spring raised before the handler ran
+     * @param headers headers the base class prepared for the response
+     * @param status the status the base class chose, always 400
+     * @param request the current request
+     * @return a 400 listing the violations
+     */
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+        HandlerMethodValidationException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request
+    ) {
+        String violations = ex.getParameterValidationResults().stream().flatMap(GlobalExceptionHandler::describeViolations)
+            .collect(Collectors.joining("; "));
+        logger.warn("Rejected request body that failed validation: {}", violations);
+        return handleExceptionInternal(
+            ex, PICSUREResponse.error(HttpStatus.BAD_REQUEST, "Invalid request body", violations).getBody(), headers, status, request
+        );
+    }
+
+    private static Stream<String> describeViolations(ParameterValidationResult result) {
+        String position = result.getContainerIndex() == null ? "" : "[" + result.getContainerIndex() + "]";
+        if (result instanceof ParameterErrors errors) {
+            return errors.getFieldErrors().stream().map(error -> position + "." + error.getField() + " " + error.getDefaultMessage());
+        }
+        return result.getResolvableErrors().stream().map(error -> position + " " + error.getDefaultMessage());
+    }
+
+    /**
+     * Handles RuntimeException, which includes many business logic errors. Logs the exception and answers with the shared server-error text
+     * rather than the exception's message.
      * 
      * @param ex The runtime exception
      * @return A response with HTTP 500 Internal Server Error status
@@ -155,21 +176,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<?> handleRuntime(RuntimeException ex) {
         logger.error("Runtime exception: ", ex);
-        return PICSUREResponse.error(HttpStatus.INTERNAL_SERVER_ERROR, "An error occurred while processing your request", ex.getMessage());
+        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+        return ResponseEntity.status(status).body(errorBody(status, status.getReasonPhrase(), SERVER_ERROR));
     }
 
-    /**
-     * Fallback handler for all other exceptions that aren't specifically handled.
-     * 
-     * @param ex The exception
-     * @return A response with HTTP 500 Internal Server Error status
-     */
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<?> handleGenericException(Exception ex) {
-        logger.error("Unhandled exception: ", ex);
-        return PICSUREResponse.error(
-            HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred",
-            "Please contact the system administrator with the time this error occurred."
-        );
+    @Override
+    protected Object errorBody(HttpStatusCode status, String title, String detail) {
+        return PICSUREResponse.error(title, detail).getBody();
     }
 }

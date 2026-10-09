@@ -8,6 +8,8 @@ The OpenAPI document publishes each guard's authorities as "Required authorities
 
 `handler-declares-authorization` covers PSAMA only (`services/pic-sure-auth-microapp/pic-sure-auth-services`), the one module whose authorization lives in its own handlers. Every PSAMA handler must carry exactly one authorization decision on the method: `@PreAuthorize` in the form `preauthorize-uses-standard-form` requires, or `@PublicEndpoint(ANONYMOUS)` or `@PublicEndpoint(AUTHENTICATED)` from `libs/pic-sure-openapi`. A handler with neither fails, a handler with both fails, and `@PublicEndpoint` on a class fails. `@PublicEndpoint` grants nothing: PSAMA's filter chain enforces access, and the annotation records the decision where a reviewer reads the handler. Use `ANONYMOUS` only for a route listed in `security.public-routes.shipped`, which PSAMA's `PublicEndpointRoutesTest` holds in step with the annotations, and `AUTHENTICATED` for a handler any logged-in caller may reach. The OpenAPI document prints "Public, no token needed." or "Any authenticated user." for them, the way it prints required authorities for a guard.
 
+`catch-all-advice-extends-base` covers every module, libraries included. A `@ControllerAdvice` or `@RestControllerAdvice` class that declares an `@ExceptionHandler` for `Exception`, `RuntimeException` or `Throwable` must extend Spring's `ResponseEntityExceptionHandler`. The handled types are read from the annotation, or from the method's exception parameter when the annotation names none. Spring consults every advice before its own client-error mapping, so a catch-all that does not extend the base class turns an unreadable body, an unsupported media type, a wrong method or a missing parameter into a 500. To satisfy it, extend the base class and override `handleExceptionInternal` to write the service's own error body. A handler the service already declares for an exception the base class also handles must move into the matching base-class override, or Spring refuses to start with an ambiguous mapping.
+
 `handler-has-audit-event` covers audit labels. The audit log reads each request's event type and action from `@AuditEvent` on the handler that served it, and a request that reaches the audit filter without a handler label is logged with event type `UNLABELED`. That covers a handler missing the annotation and a request turned away before any handler ran, such as a 401 or a 404, so an alert on `UNLABELED` with a status below 400 finds the missing annotations. The gateway is the exception: it logs `OTHER` when no entry in its route table matches. In every compiled module, `handler-has-audit-event` fails each handler that does not carry `@AuditEvent`. There is no exemption: a module where no handler carries it fails once per handler. The rule keys on the annotation rather than on an interceptor in the same module, because hpds declares its handlers in `services/pic-sure-hpds/service` and reads the annotation from an interceptor in `services/pic-sure-hpds/processing`. To satisfy it, give the new handler an `@AuditEvent(type = ..., action = ...)` that names what it does. `handler-has-audit-event` checks presence only. Tests such as PSAMA's `ControllerAuditEventTest` still pin the values.
 
 `path-variables-in-template` checks request routing in every module with a controller. Each `@PathVariable` that names its variable, as `@PathVariable("userId")` or `@PathVariable(name = "userId")`, must appear as `{userId}` or `{userId:regex}` in at least one path the handler maps, counting every combination of the class-level `@RequestMapping` paths with the method's mapping paths. A variable no path declares is never bound, and Spring answers every request to that handler with a 500. Fix it by adding the segment to the mapping or by binding the value some other way. A `@PathVariable` with no explicit name is skipped, because its name comes from the compiled parameter name, which the checker cannot read; the reactor's `-parameters` flag and `DashboardDrawerControllerParameterNameTest` cover those.
@@ -21,6 +23,8 @@ The configuration rules read every `@Value` in every module, on fields, methods,
 `request-mapping-names-method` checks every module for a handler method that carries `@RequestMapping` itself with no `method`. Such a mapping answers every HTTP verb, so an endpoint meant for POST also answers GET, PUT, PATCH, DELETE, HEAD and OPTIONS, and the published document lists all seven. Use a composed annotation (`@GetMapping`, `@PostMapping` and the rest), or set `method` to the verbs the endpoint serves, for example `method = {RequestMethod.GET, RequestMethod.POST}`. A class-level `@RequestMapping` only sets a path prefix and is out of scope.
 
 `get-has-no-consumes` covers every module. A handler that answers GET, through `@GetMapping` or a `@RequestMapping` whose `method` includes GET or is left empty, sets no `consumes` other than `*/*`. A GET carries no body, so clients send no `Content-Type`, and Spring never matches such a request to the handler. It answers 415, or hands the request to another mapping that fits the path: PSAMA's `GET /accessRule/allTypes` fell through to `GET /accessRule/{accessRuleId}` and answered 400 `Invalid UUID string: allTypes`. A `consumes` on the class's `@RequestMapping` counts too, since Spring applies it to every handler that does not declare its own. To satisfy the rule, drop `consumes` from the GET handler, or set `consumes = "*/*"` when a class level value would otherwise reach it.
+
+`no-entity-parameters` covers every module. No controller handler parameter may be, or contain, a class annotated `@Entity`. The check follows generic arguments at any depth, array component types and `Optional`, so `List<Role>`, `Map<String, List<User>>`, `User[]` and `Optional<User>` all fail, and it applies to every parameter, not only `@RequestBody`. A class counts as an entity by its annotation, not its package, so `User.UserForDisplay` passes. Fields are not followed: a request record with an entity-typed field passes. A bound entity lets a caller set any column Jackson can reach. To satisfy it, bind a request record that lists only the fields the endpoint accepts, and map it onto the entity in the service.
 
 ## Rules
 
@@ -51,6 +55,10 @@ Authorization, over PSAMA only:
 
 - `handler-declares-authorization`: every handler carries exactly one of `@PreAuthorize` or `@PublicEndpoint` on the method, and no class carries `@PublicEndpoint`.
 
+Error handling, over every compiled module:
+
+- `catch-all-advice-extends-base`: a `@ControllerAdvice` or `@RestControllerAdvice` that handles `Exception`, `RuntimeException` or `Throwable` extends `ResponseEntityExceptionHandler`.
+
 Audit labels, over every compiled module:
 
 - `handler-has-audit-event`: every handler carries `@AuditEvent`.
@@ -75,9 +83,13 @@ Docker images, over every git-tracked Dockerfile:
 
 - `base-images-pinned`: every `FROM` that names an external image pins it by an `@sha256:` digest.
 
+Persistence, over every compiled module:
+
+- `no-entity-parameters`: no controller handler parameter is, or contains, a class annotated `@Entity`.
+
 It is not listed in the root pom's `<modules>` because it has to run after the reactor has compiled. With `-T1C`, Maven schedules modules by dependency graph rather than by declaration order, so a plain module entry gives no guarantee it runs last.
 
-It reads compiled classes from each module's `target/classes` instead of declaring Maven dependencies on the services it checks. Every service repackages into a fat Spring Boot jar with its classes under `BOOT-INF/classes`, which is invisible to a dependent module.
+It reads compiled classes from each module's `target/classes` instead of declaring Maven dependencies on the services it checks. Every service repackages into a fat Spring Boot jar with its classes under `BOOT-INF/classes`, which is invisible to a dependent module. Each module is imported on its own, with every module's `target/classes` available to resolve a supertype declared elsewhere in the reactor, so a service advice that extends a library's base class is checked against the whole hierarchy.
 
 `make verify` does not rebuild the reactor. If you edit a controller and run `make verify` without a fresh build, it checks the stale `target/classes` and can report green on code that no longer matches. Run `make build` first.
 

@@ -7,6 +7,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.ConnectionRef;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.UserUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
@@ -170,45 +174,36 @@ public class UserService {
      * @return true if the user could perform the action, false otherwise
      */
     private boolean allowUpdateSuperAdminRole(@NotNull User currentUser, @NotNull User inputUser, User originalUser) {
+        return allowSuperAdminRoleChange(currentUser, inputUser.getRoles(), originalUser == null ? null : originalUser.getRoles());
+    }
 
-        // if current user is a super admin, this check will return true
-        for (Role role : currentUser.getRoles()) {
-            for (Privilege privilege : role.getPrivileges()) {
-                if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)) {
-                    return true;
-                }
-            }
+    /**
+     * Role-set form of {@link #allowUpdateSuperAdminRole}. The request-record update path needs it because it changes the managed entity in
+     * place, so re-reading the "original" row would return the already-changed instance and the comparison would always pass.
+     *
+     * @param currentUser the caller
+     * @param inputRoles the roles the operation would leave on the target user
+     * @param originalRoles the roles the target user holds now, or {@code null} when the user is being created
+     * @return true if the caller may make this change
+     */
+    private boolean allowSuperAdminRoleChange(@NotNull User currentUser, Set<Role> inputRoles, Set<Role> originalRoles) {
+        if (grantsSuperAdmin(currentUser.getRoles())) {
+            return true;
         }
 
-        boolean inputUserHasSuperAdmin = false;
-        boolean originalUserHasSuperAdmin = false;
-
-        for (Role role : inputUser.getRoles()) {
-            for (Privilege privilege : role.getPrivileges()) {
-                if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)) {
-                    inputUserHasSuperAdmin = true;
-                    break;
-                }
-            }
+        boolean inputHasSuperAdmin = grantsSuperAdmin(inputRoles);
+        if (originalRoles == null) {
+            return !inputHasSuperAdmin;
         }
+        return inputHasSuperAdmin == grantsSuperAdmin(originalRoles);
+    }
 
-        if (originalUser != null) {
-            for (Role role : originalUser.getRoles()) {
-                for (Privilege privilege : role.getPrivileges()) {
-                    if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)) {
-                        originalUserHasSuperAdmin = true;
-                        break;
-                    }
-                }
-            }
-
-            // when they equals, nothing has changed, a non super admin user could perform the action
-            return inputUserHasSuperAdmin == originalUserHasSuperAdmin;
-        } else {
-            // if inputUser has super admin, it should return false
-            return !inputUserHasSuperAdmin;
+    private static boolean grantsSuperAdmin(Set<Role> roles) {
+        if (roles == null) {
+            return false;
         }
-
+        return roles.stream().filter(role -> role.getPrivileges() != null).flatMap(role -> role.getPrivileges().stream())
+            .anyMatch(privilege -> AuthNaming.AuthRoleNaming.SUPER_ADMIN.equals(privilege.getName()));
     }
 
     @Transactional
@@ -318,6 +313,148 @@ public class UserService {
                 "Not allowed to update a user with changes associated to " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege."
             );
         }
+    }
+
+    /**
+     * Creates users from request records. Only the email, active flag, general metadata, connection and roles come from the caller; the
+     * identifier, {@code subject}, long-term {@code token}, {@code passport}, {@code acceptedTOS}, {@code matched} and
+     * {@code auth0metadata} are never read from the request.
+     *
+     * @param requests the users to create
+     * @return the persisted users, or {@code null} when the security context holds no user
+     * @throws IllegalArgumentException if a request names no role, an unknown role or an unknown connection, or grants {@code SUPER_ADMIN}
+     *         without the caller holding it
+     */
+    @Transactional
+    public List<User> createFrom(List<UserCreateRequest> requests) {
+        User currentUser = currentUserOrNull();
+        if (currentUser == null) {
+            return null;
+        }
+
+        List<User> users = new ArrayList<>(requests.size());
+        for (UserCreateRequest request : requests) {
+            Set<Role> roles = resolveRoles(request.roles());
+            if (!allowSuperAdminRoleChange(currentUser, roles, null)) {
+                logger.error(
+                    "createFrom() user - {} - with roles [{}] - is not allowed to grant " + AuthNaming.AuthRoleNaming.SUPER_ADMIN
+                        + " role when adding a user.",
+                    currentUser.getUuid(), currentUser.getRoleString()
+                );
+                throw new IllegalArgumentException(
+                    "Not allowed to add a user with a " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege associated."
+                );
+            }
+
+            User user = new User();
+            user.setEmail(request.email());
+            user.setGeneralMetadata(request.generalMetadata());
+            user.setActive(request.active() == null || request.active());
+            user.setRoles(roles);
+            user.setConnection(resolveConnection(request.connection(), null));
+            if (user.getEmail() == null) {
+                user.setEmail(emailFromMetadata(user.getGeneralMetadata()));
+            }
+            users.add(user);
+        }
+
+        return this.userRepository.saveAll(users);
+    }
+
+    /**
+     * Applies request records to existing users. Each request is matched to a stored row by UUID; a member left out of a request keeps its
+     * stored value, and no member reaches a field a login flow owns.
+     *
+     * @param requests the users to update, each named by UUID
+     * @return the persisted users, or {@code null} when the security context holds no user
+     * @throws IllegalArgumentException if a request names a user, role or connection that does not exist, or changes whether the user holds
+     *         {@code SUPER_ADMIN} without the caller holding it
+     */
+    @Transactional
+    public List<User> updateFrom(List<UserUpdateRequest> requests) {
+        User currentUser = currentUserOrNull();
+        if (currentUser == null) {
+            return null;
+        }
+
+        List<User> users = new ArrayList<>(requests.size());
+        for (UserUpdateRequest request : requests) {
+            User user = this.userRepository.findById(request.uuid())
+                .orElseThrow(() -> new IllegalArgumentException("Cannot find user by input UUID: " + request.uuid()));
+
+            Set<Role> originalRoles = user.getRoles() == null ? Set.of() : Set.copyOf(user.getRoles());
+            Set<Role> roles = request.roles() == null ? originalRoles : resolveRoles(request.roles());
+            if (!allowSuperAdminRoleChange(currentUser, roles, originalRoles)) {
+                logger.error(
+                    "updateFrom() user - {} - with roles [{}] - is not allowed to grant or remove " + AuthNaming.AuthRoleNaming.SUPER_ADMIN
+                        + " privilege.",
+                    currentUser.getUuid(), currentUser.getRoleString()
+                );
+                throw new IllegalArgumentException(
+                    "Not allowed to update a user with changes associated to " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege."
+                );
+            }
+
+            if (request.email() != null) {
+                user.setEmail(request.email());
+            }
+            if (request.generalMetadata() != null) {
+                user.setGeneralMetadata(request.generalMetadata());
+            }
+            if (request.active() != null) {
+                user.setActive(request.active());
+            }
+            user.setRoles(new HashSet<>(roles));
+            user.setConnection(resolveConnection(request.connection(), user.getConnection()));
+            users.add(user);
+        }
+
+        return this.userRepository.saveAll(users);
+    }
+
+    private User currentUserOrNull() {
+        SecurityContext securityContext = SecurityContextHolder.getContext();
+        CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
+        if (customUserDetails == null || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null) {
+            logger.error("Security context didn't have a user stored.");
+            return null;
+        }
+        return customUserDetails.getUser();
+    }
+
+    private String emailFromMetadata(String generalMetadata) {
+        try {
+            logger.info("Parsing metadata for email address");
+            Map<String, String> metadata = new HashMap<String, String>(new ObjectMapper().readValue(generalMetadata, Map.class));
+            List<String> emailKeys = metadata.keySet().stream().filter(key -> key.toLowerCase().contains("email")).toList();
+            return emailKeys.isEmpty() ? null : metadata.get(emailKeys.getFirst());
+        } catch (IOException | IllegalArgumentException e) {
+            logger.error("Failed to parse metadata for email address", e);
+            return null;
+        }
+    }
+
+    private Set<Role> resolveRoles(Set<EntityIdRef> roleRefs) {
+        if (roleRefs == null || roleRefs.isEmpty()) {
+            throw new IllegalArgumentException("User must have at least one role.");
+        }
+        Set<UUID> roleUuids = roleRefs.stream().map(EntityIdRef::uuid).collect(Collectors.toSet());
+        Set<Role> rolesFromDb = this.roleService.getRolesByIds(roleUuids);
+        if (rolesFromDb.size() != roleUuids.size()) {
+            logger.error("resolveRoles() cannot find all roles by UUIDs: {}", roleUuids);
+            throw new IllegalArgumentException("Cannot find all roles by input UUIDs: " + roleUuids);
+        }
+        return rolesFromDb;
+    }
+
+    private Connection resolveConnection(ConnectionRef connectionRef, Connection current) {
+        if (connectionRef == null) {
+            return current;
+        }
+        return this.connectionRepository.findById(connectionRef.id()).orElseThrow(() -> {
+            logger.error("resolveConnection() cannot find connection by id: {}", connectionRef.id());
+            return new IllegalArgumentException("Cannot find connection by input id: " + connectionRef.id());
+        });
     }
 
     public String sendUserUpdateEmailsFromResponse(List<User> addedUsers) {

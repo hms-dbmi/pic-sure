@@ -5,6 +5,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -143,7 +144,7 @@ class VisualizationIntegrationTest {
         MvcResult result = mockMvc.perform(post("/open/distributions").contentType(MediaType.APPLICATION_JSON).content("not valid json"))
             .andExpect(status().isBadRequest()).andReturn();
 
-        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+        assertTrue(result.getResponse().getContentAsString().contains(PicsureExceptionAdvice.BODY_UNREADABLE));
     }
 
     @Test
@@ -177,7 +178,7 @@ class VisualizationIntegrationTest {
             mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": \"not a map\"}"))
                 .andExpect(status().isBadRequest()).andReturn();
 
-        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+        assertTrue(result.getResponse().getContentAsString().contains(PicsureExceptionAdvice.BODY_UNREADABLE));
     }
 
     @Test

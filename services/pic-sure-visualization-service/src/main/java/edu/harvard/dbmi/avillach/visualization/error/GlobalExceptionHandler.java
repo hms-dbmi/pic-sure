@@ -2,21 +2,29 @@ package edu.harvard.dbmi.avillach.visualization.error;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.context.request.WebRequest;
+
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * The visualization service's exception-to-HTTP mapping, answering with an {@code {error}} body. Inherits the client-error and catch-all
+ * handling from {@link PicsureExceptionAdvice} and adds the visualization domain's own exceptions. A consent denial alone answers with
+ * {@code {errorType, message}}.
+ */
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends PicsureExceptionAdvice {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
@@ -62,18 +70,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidationException(MethodArgumentNotValidException e) {
+    /**
+     * Answers a request body that fails bean validation with each field's message.
+     *
+     * @param e the validation failure
+     * @param headers headers the base class prepared for the response
+     * @param status the status the base class chose, always 400
+     * @param request the current request
+     * @return a 400 listing the invalid fields
+     */
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
+        MethodArgumentNotValidException e, HttpHeaders headers, HttpStatusCode status, WebRequest request
+    ) {
         String errors = e.getBindingResult().getFieldErrors().stream().map(f -> f.getField() + ": " + f.getDefaultMessage())
             .collect(Collectors.joining(", "));
         logger.warn("Validation error: {}", errors);
-        return ResponseEntity.badRequest().body(Map.of("error", errors));
-    }
-
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<Map<String, String>> handleUnreadableMessage(HttpMessageNotReadableException e) {
-        logger.warn("Malformed request body: {}", e.getMessage());
-        return ResponseEntity.badRequest().body(Map.of("error", "Malformed request body"));
+        return handleExceptionInternal(e, Map.of("error", errors), headers, status, request);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -82,15 +95,8 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }
 
-    @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<Map<String, String>> handleNoResourceFound(NoResourceFoundException e) {
-        logger.warn("Resource not found: {}", e.getResourcePath());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Not found"));
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, String>> handleGenericException(Exception e) {
-        logger.error("Unexpected error", e);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Internal server error"));
+    @Override
+    protected Object errorBody(HttpStatusCode status, String title, String detail) {
+        return Map.of("error", detail);
     }
 }

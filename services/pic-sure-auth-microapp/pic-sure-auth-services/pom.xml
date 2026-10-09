@@ -27,6 +27,10 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <!-- Local development only. runtime keeps it off the compile classpath, optional
@@ -160,6 +164,10 @@
         <dependency>
             <groupId>edu.harvard.dbmi.avillach</groupId>
             <artifactId>pic-sure-logging-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-spring-commons</artifactId>
         </dependency>
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
