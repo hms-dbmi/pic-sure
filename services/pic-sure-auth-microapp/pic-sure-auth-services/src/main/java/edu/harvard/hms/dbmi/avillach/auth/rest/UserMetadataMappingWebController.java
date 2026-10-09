@@ -87,7 +87,7 @@ public class UserMetadataMappingWebController {
     @ApiResponse(responseCode = "200", description = "The updated mappings")
     @AuditEvent(type = "ADMIN", action = "mapping.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(consumes = "application/json", produces = "application/json")
+    @PatchMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> updateMapping(
         @Parameter(
             required = true, description = "The mappings to update, each named by UUID; a field left out keeps its stored value"

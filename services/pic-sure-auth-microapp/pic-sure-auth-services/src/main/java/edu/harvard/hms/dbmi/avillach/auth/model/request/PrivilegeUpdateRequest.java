@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * One privilege in the body of {@code PUT /privilege}. A member left out leaves the stored value unchanged, so an update that does not name
+ * One privilege in the body of {@code PATCH /privilege}. A member left out leaves the stored value unchanged, so an update that does not name
  * access rules keeps the ones the privilege holds.
  *
  * @param uuid the UUID of the privilege to update

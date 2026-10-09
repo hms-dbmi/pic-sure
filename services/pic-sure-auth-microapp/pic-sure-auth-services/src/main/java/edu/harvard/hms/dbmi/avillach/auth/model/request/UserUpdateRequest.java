@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * One user in the body of {@code PUT /user}. A member left out leaves the stored value unchanged. As on create, {@code subject},
+ * One user in the body of {@code PATCH /user}. A member left out leaves the stored value unchanged. As on create, {@code subject},
  * {@code passport}, {@code token}, {@code acceptedTOS}, {@code matched} and {@code auth0metadata} are not members.
  *
  * @param uuid the UUID of the user to update

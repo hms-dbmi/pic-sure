@@ -102,7 +102,7 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "The updated users")
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @PreAuthorize("hasAnyAuthority('ADMIN')")
-    @PutMapping(produces = "application/json")
+    @PatchMapping(produces = "application/json")
     public ResponseEntity<?> updateUser(
         @Parameter(
             required = true, description = "The users to update, each named by UUID; a field left out keeps its stored value"

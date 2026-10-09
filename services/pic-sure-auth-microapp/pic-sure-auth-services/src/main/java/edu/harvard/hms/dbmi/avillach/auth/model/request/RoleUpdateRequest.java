@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * One role in the body of {@code PUT /role}. A member left out leaves the stored value unchanged.
+ * One role in the body of {@code PATCH /role}. A member left out leaves the stored value unchanged.
  *
  * @param uuid the UUID of the role to update
  * @param name the new name

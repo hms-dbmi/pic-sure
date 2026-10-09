@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * One application in the body of {@code PUT /application}. {@code token} is absent, so an update cannot overwrite the application's bearer
+ * One application in the body of {@code PATCH /application}. {@code token} is absent, so an update cannot overwrite the application's bearer
  * token. A member left out leaves the stored value unchanged.
  *
  * @param uuid the UUID of the application to update

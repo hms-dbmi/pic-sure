@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 /**
- * One connection in the body of {@code PUT /connection}. A member left out leaves the stored value unchanged.
+ * One connection in the body of {@code PATCH /connection}. A member left out leaves the stored value unchanged.
  *
  * @param uuid the UUID of the connection to update
  * @param id the new business identifier

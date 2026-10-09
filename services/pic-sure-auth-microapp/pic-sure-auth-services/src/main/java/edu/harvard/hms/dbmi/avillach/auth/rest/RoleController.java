@@ -90,7 +90,7 @@ public class RoleController {
     @ApiResponse(responseCode = "200", description = "The updated roles")
     @AuditEvent(type = "ADMIN", action = "role.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(produces = "application/json")
+    @PatchMapping(produces = "application/json")
     public ResponseEntity<?> updateRole(
         @Parameter(
             required = true, description = "The roles to update, each named by UUID; a field left out keeps its stored value"

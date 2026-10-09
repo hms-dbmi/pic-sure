@@ -98,7 +98,7 @@ public class ApplicationController {
     @ApiResponse(responseCode = "200", description = "The updated applications")
     @AuditEvent(type = "ADMIN", action = "application.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(consumes = "application/json", produces = "application/json")
+    @PatchMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Application>> updateApplication(
         @Parameter(
             required = true, description = "The applications to update, each named by UUID; a field left out keeps its stored value"

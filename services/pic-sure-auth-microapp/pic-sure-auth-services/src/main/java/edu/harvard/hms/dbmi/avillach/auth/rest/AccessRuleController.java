@@ -103,7 +103,7 @@ public class AccessRuleController {
     @ApiResponse(responseCode = "200", description = "The updated access rules")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @PatchMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<AccessRule>> updateAccessRule(
         @Parameter(
             required = true, description = "The access rules to update, each named by UUID; a field left out keeps its stored value"

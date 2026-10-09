@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * One access rule in the body of {@code PUT /accessRule}. Every member except {@code uuid} is optional, and a member left out leaves the
+ * One access rule in the body of {@code PATCH /accessRule}. Every member except {@code uuid} is optional, and a member left out leaves the
  * stored value unchanged. As on create, {@code mergedValues} and {@code mergedName} are not members.
  *
  * @param uuid the UUID of the rule to update

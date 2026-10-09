@@ -99,7 +99,7 @@ public class ConnectionWebController {
     @ApiResponse(responseCode = "200", description = "The updated connections")
     @AuditEvent(type = "ADMIN", action = "connection.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(produces = "application/json", consumes = "application/json")
+    @PatchMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<List<Connection>> updateConnection(
         @Parameter(
             required = true, description = "The connections to update, each named by UUID; a field left out keeps its stored value"

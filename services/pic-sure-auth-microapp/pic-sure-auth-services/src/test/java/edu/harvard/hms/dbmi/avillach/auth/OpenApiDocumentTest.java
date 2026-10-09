@@ -94,13 +94,13 @@ class OpenApiDocumentTest {
     void adminWritesDocumentTheirRequestRecords() throws Exception {
         JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
         Map<String, String> records = Map.ofEntries(
-            Map.entry("/user post", "UserCreateRequest"), Map.entry("/user put", "UserUpdateRequest"),
-            Map.entry("/role post", "RoleCreateRequest"), Map.entry("/role put", "RoleUpdateRequest"),
-            Map.entry("/privilege post", "PrivilegeCreateRequest"), Map.entry("/privilege put", "PrivilegeUpdateRequest"),
-            Map.entry("/connection post", "ConnectionCreateRequest"), Map.entry("/connection put", "ConnectionUpdateRequest"),
-            Map.entry("/mapping post", "UserMetadataMappingCreateRequest"), Map.entry("/mapping put", "UserMetadataMappingUpdateRequest"),
-            Map.entry("/accessRule post", "AccessRuleCreateRequest"), Map.entry("/accessRule put", "AccessRuleUpdateRequest"),
-            Map.entry("/application post", "ApplicationCreateRequest"), Map.entry("/application put", "ApplicationUpdateRequest")
+            Map.entry("/user post", "UserCreateRequest"), Map.entry("/user patch", "UserUpdateRequest"),
+            Map.entry("/role post", "RoleCreateRequest"), Map.entry("/role patch", "RoleUpdateRequest"),
+            Map.entry("/privilege post", "PrivilegeCreateRequest"), Map.entry("/privilege patch", "PrivilegeUpdateRequest"),
+            Map.entry("/connection post", "ConnectionCreateRequest"), Map.entry("/connection patch", "ConnectionUpdateRequest"),
+            Map.entry("/mapping post", "UserMetadataMappingCreateRequest"), Map.entry("/mapping patch", "UserMetadataMappingUpdateRequest"),
+            Map.entry("/accessRule post", "AccessRuleCreateRequest"), Map.entry("/accessRule patch", "AccessRuleUpdateRequest"),
+            Map.entry("/application post", "ApplicationCreateRequest"), Map.entry("/application patch", "ApplicationUpdateRequest")
         );
 
         records.forEach((operation, record) -> {
@@ -108,6 +108,7 @@ class OpenApiDocumentTest {
             JsonNode body = document.path("paths").path(pathAndMethod[0]).path(pathAndMethod[1]).path("requestBody").path("content")
                 .path(MediaType.APPLICATION_JSON_VALUE).path("schema");
             assertThat(body.path("items").path("$ref").asText()).as(operation).isEqualTo("#/components/schemas/" + record);
+            assertThat(document.path("paths").path(pathAndMethod[0]).has("put")).as("%s must not also answer PUT", pathAndMethod[0]).isFalse();
         });
         JsonNode userUpdate = document.path("components").path("schemas").path("UserUpdateRequest").path("properties");
         assertThat(userUpdate.has("email")).isTrue();
