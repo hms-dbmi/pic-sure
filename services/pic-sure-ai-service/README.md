@@ -119,8 +119,6 @@ Mount your AWS config into the container instead of exporting keys, and select t
   not the shared compose file.
 - The profile must be one the SDK can refresh on its own: `role_arn` plus `source_profile`, or SSO. When the
   underlying login expires, run `aws sso login` on the host; no container restart is needed.
-- SSO profiles need the AWS SDK's SSO modules on the classpath. This has not been verified for this service; if
-  SSO profiles fail, use `role_arn` plus `source_profile` instead.
 - An IAM Identity Center identity cannot have the invoke policy attached directly. Use the dedicated `invoke` role
   from `bedrock-infra/` (`invocation_role_enabled = true`) and reference it via `role_arn` in the profile.
 - If mounting is not enough (for example `credential_process` profiles), run a credentials sidecar such as

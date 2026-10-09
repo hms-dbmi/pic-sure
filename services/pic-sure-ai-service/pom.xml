@@ -23,7 +23,21 @@
 
     <properties>
         <archunit.version>1.4.1</archunit.version>
+        <!-- Keep in step with the AWS SDK that spring-ai-starter-model-bedrock-converse resolves. -->
+        <awssdk.version>2.36.3</awssdk.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${awssdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -52,6 +66,24 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-bedrock-converse</artifactId>
+        </dependency>
+
+        <!--
+            Not pulled in by the Bedrock starter, but the default credential chain needs them for profile-based credentials:
+            sso + ssooidc read an SSO source_profile's cached token, sts assumes a role_arn profile. Without them the chain
+            fails with "the 'sso' service module must be on the class path". Inert when the instance role / IMDS is used.
+        -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sso</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ssooidc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sts</artifactId>
         </dependency>
 
         <!-- GatewayUserResolver/GatewayUser, PicsureException, GatewayExceptionAdvice, RequestIdFilter. -->
