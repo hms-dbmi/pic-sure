@@ -1,0 +1,12 @@
+{
+ "query": {
+  "select": [],
+  "expectedResultType": "COUNT",
+  "userConsents": [
+   {
+    "value": "phs999999.c1"
+   }
+  ]
+ },
+ "resourceUUID": null
+}

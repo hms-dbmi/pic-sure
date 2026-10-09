@@ -1,0 +1,12 @@
+{
+ "query": {
+  "select": [],
+  "expectedResultType": "COUNT",
+  "userConsents": [
+   {
+    "value": "partition3452345"
+   }
+  ]
+ },
+ "resourceUUID": null
+}

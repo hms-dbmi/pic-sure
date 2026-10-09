@@ -1,0 +1,8 @@
+{
+ "query": {
+  "select": [],
+  "expectedResultType": "COUNT",
+  "userConsents": []
+ },
+ "resourceUUID": null
+}

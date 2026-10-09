@@ -1,0 +1,7 @@
+{
+ "query": {
+  "select": [],
+  "expectedResultType": "COUNT"
+ },
+ "resourceUUID": null
+}

@@ -1,0 +1,14 @@
+{
+ "query": {
+  "select": [],
+  "expectedResultType": "COUNT",
+  "userConsents": [],
+  "phenotypicClause": {
+   "phenotypicFilterType": "FILTER",
+   "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+   "min": 35.0,
+   "max": 45.0
+  }
+ },
+ "resourceUUID": null
+}
