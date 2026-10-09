@@ -51,9 +51,6 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         private static final String SERVICE_CLIENT_TYPE = "service";
         private static final String AUTHORIZATION_HEADER = "Authorization";
 
-        /** Older frontends still send the platform key in this header. */
-        private static final String LEGACY_API_KEY_HEADER = "X-PICSURE-API-Key";
-
         /**
          * Gateway-owned identity headers, spoofable source-address headers, and the internal service token: always hidden from the raw
          * client request, regardless of name casing.
@@ -61,7 +58,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         private static final Set<String> STRIPPED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
             GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, "X-Real-IP", "Forwarded",
-            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE, LEGACY_API_KEY_HEADER
+            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE
         );
 
         SanitizedIdentityHeadersRequest(HttpServletRequest request) {
