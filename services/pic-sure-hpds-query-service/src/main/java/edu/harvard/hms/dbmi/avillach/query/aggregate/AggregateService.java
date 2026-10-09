@@ -71,28 +71,27 @@ public class AggregateService {
 
     /**
      * Validates an async open-channel submission. A {@code CROSS_COUNT} request is rewritten through {@link #changeQueryToOpenCrossCount}
-     * before persistence and dispatch, forcing {@code CROSS_COUNT} and injecting the full study-consents allow-list under the variant's
-     * consent field. Other result types pass through unchanged; the allow-list applies only to {@code querySync}.
+     * before persistence and dispatch, forcing {@code CROSS_COUNT} and injecting the full study-consents allow-list under the query's
+     * {@code select} field. Other result types pass through unchanged; the allow-list applies only to {@code querySync}.
      *
      * <p>Persistence and HPDS dispatch are delegated to {@link QueryService}, so the rewritten query is the one stored. Later status,
-     * result, signed-url, and metadata calls through {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller} therefore
+     * result, signed-url, and metadata calls through {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryController} therefore
      * operate on the consent-scoped query.
      */
-    public QueryStatus query(QueryRequest req, AggregateVariant variant) {
+    public QueryStatus query(QueryRequest req) {
         checkQuery(req);
         JsonNode node = objectMapper.valueToTree(req.getQuery());
         req.setQuery(node);
         requireExpectedResultType(node);
         if ("CROSS_COUNT".equalsIgnoreCase(node.get("expectedResultType").asText())) {
-            changeQueryToOpenCrossCount(req, variant);
+            changeQueryToOpenCrossCount(req);
         }
-        return variant == AggregateVariant.V3 ? queryService.queryV3(HpdsBackendSelector.OPEN, req)
-            : queryService.query(HpdsBackendSelector.OPEN, req);
+        return queryService.query(HpdsBackendSelector.OPEN, req);
     }
 
     // ---- the obfuscation core ----
 
-    public ResponseEntity<String> querySync(QueryRequest req, AggregateVariant variant) {
+    public ResponseEntity<String> querySync(QueryRequest req) {
         checkQuery(req);
         JsonNode node = objectMapper.valueToTree(req.getQuery());
         req.setQuery(node);
@@ -105,12 +104,12 @@ public class AggregateService {
         }
 
         if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
-            changeQueryToOpenCrossCount(req, variant);
+            changeQueryToOpenCrossCount(req);
         }
 
-        ResponseEntity<String> backendResp = backend.querySync(req, variant);
+        ResponseEntity<String> backendResp = backend.querySync(req);
         String entityString = backendResp.getBody();
-        String responseString = getExpectedResponse(expectedResultType, entityString, req, variant);
+        String responseString = getExpectedResponse(expectedResultType, entityString, req);
 
         ResponseEntity.BodyBuilder out = ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON);
         String metadata = backendResp.getHeaders().getFirst(AggregateBackendClient.QUERY_METADATA_FIELD);
@@ -125,7 +124,7 @@ public class AggregateService {
      * (INFO_COLUMN_LISTING, OBSERVATION_COUNT, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, VCF_EXCERPT) fall
      * through unmodified.
      */
-    private String getExpectedResponse(String expectedResultType, String entityString, QueryRequest req, AggregateVariant variant) {
+    private String getExpectedResponse(String expectedResultType, String entityString, QueryRequest req) {
         try {
             switch (expectedResultType) {
                 case "COUNT":
@@ -133,9 +132,9 @@ public class AggregateService {
                 case "CROSS_COUNT":
                     return objectMapper.writeValueAsString(obfuscation.processCrossCounts(entityString));
                 case "CATEGORICAL_CROSS_COUNT":
-                    return obfuscation.processCategoricalCrossCounts(entityString, getCrossCountForQuery(req, variant));
+                    return obfuscation.processCategoricalCrossCounts(entityString, getCrossCountForQuery(req));
                 case "CONTINUOUS_CROSS_COUNT":
-                    return processContinuousCrossCounts(entityString, getCrossCountForQuery(req, variant), req, variant);
+                    return processContinuousCrossCounts(entityString, getCrossCountForQuery(req), req);
                 default:
                     return entityString;
             }
@@ -145,13 +144,12 @@ public class AggregateService {
     }
 
     /** No matter the type, fetch the CROSS_COUNT incl. ALL study consents (used for variance + suppression). */
-    private String getCrossCountForQuery(QueryRequest req, AggregateVariant variant) {
-        changeQueryToOpenCrossCount(req, variant);
-        return backend.querySync(req, variant).getBody();
+    private String getCrossCountForQuery(QueryRequest req) {
+        changeQueryToOpenCrossCount(req);
+        return backend.querySync(req).getBody();
     }
 
-    private String processContinuousCrossCounts(String continuousJson, String crossCountJson, QueryRequest req, AggregateVariant variant)
-        throws IOException {
+    private String processContinuousCrossCounts(String continuousJson, String crossCountJson, QueryRequest req) throws IOException {
         if (continuousJson == null || crossCountJson == null) {
             return null;
         }
@@ -164,7 +162,7 @@ public class AggregateService {
 
         if (props.hasVisualization()) {
             Map<String, Map<String, Integer>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
-            Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(continuous, variant);
+            Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(continuous);
             return objectMapper.writeValueAsString(obfuscation.obfuscateCrossCount(generatedVariance, binned));
         } else {
             Map<String, Map<String, Object>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
@@ -173,22 +171,21 @@ public class AggregateService {
     }
 
     /** Sends continuous results to the configured visualization URL for binning. */
-    private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(
-        Map<String, Map<String, Integer>> continuous, AggregateVariant variant
-    ) throws IOException {
+    private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(Map<String, Map<String, Integer>> continuous)
+        throws IOException {
         QueryRequest vizRequest = new GeneralQueryRequest();
         vizRequest.setQuery(continuous);
-        String binResponse = backend.binContinuous(vizRequest, variant);
+        String binResponse = backend.binContinuous(vizRequest);
         return objectMapper.readValue(binResponse, new TypeReference<>() {});
     }
 
-    // ---- query mutation (variant-aware) ----
+    // ---- query mutation ----
 
-    /** Sets expectedResultType to CROSS_COUNT and injects the full study-consents allow-list under the variant's consents field. */
-    private QueryRequest changeQueryToOpenCrossCount(QueryRequest req, AggregateVariant variant) {
+    /** Sets expectedResultType to CROSS_COUNT and injects the full study-consents allow-list under the {@code select} field. */
+    private QueryRequest changeQueryToOpenCrossCount(QueryRequest req) {
         JsonNode node = objectMapper.valueToTree(req.getQuery());
         JsonNode withCrossCount = setExpectedResultTypeToCrossCount(node);
-        JsonNode withConsents = addStudyConsentsToQuery(withCrossCount, variant);
+        JsonNode withConsents = addStudyConsentsToQuery(withCrossCount);
         req.setQuery(withConsents);
         return req;
     }
@@ -200,7 +197,7 @@ public class AggregateService {
         return jsonNode;
     }
 
-    private JsonNode addStudyConsentsToQuery(JsonNode jsonNode, AggregateVariant variant) {
+    private JsonNode addStudyConsentsToQuery(JsonNode jsonNode) {
         SearchResults consentResults = getAllStudyConsents();
         LinkedHashMap<String, Object> resultsMap = objectMapper.convertValue(consentResults.getResults(), new TypeReference<>() {});
         LinkedHashMap<String, Object> phenotypes = objectMapper.convertValue(resultsMap.get("phenotypes"), new TypeReference<>() {});
@@ -209,14 +206,14 @@ public class AggregateService {
         for (String key : phenotypes.keySet()) {
             arrayNode.add(key);
         }
-        ((ObjectNode) jsonNode).set(variant.consentsField, arrayNode); // v1: crossCountFields, v3: select
+        ((ObjectNode) jsonNode).set("select", arrayNode);
         return jsonNode;
     }
 
     private SearchResults getAllStudyConsents() {
         QueryRequest studiesConsents = new GeneralQueryRequest();
         studiesConsents.setQuery(STUDIES_CONSENTS_PATH);
-        return backend.search(studiesConsents); // /search -- NO /v3 prefix in either variant
+        return backend.search(studiesConsents);
     }
 
     // ---- guards ----

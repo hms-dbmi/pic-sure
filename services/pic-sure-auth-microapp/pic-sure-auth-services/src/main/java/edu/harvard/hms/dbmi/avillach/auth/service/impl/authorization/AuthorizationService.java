@@ -37,11 +37,10 @@ public class AuthorizationService {
     private final Logger logger = LoggerFactory.getLogger(AuthorizationService.class);
 
     /**
-     * Matches clean HPDS-v3 (auth-backend) target service paths, e.g. {@code /hpds/auth/v3}, {@code /hpds/auth/v3/query},
-     * {@code /hpds/auth/v3/query/abc/result}. Only the {@code auth} backend reaches this method — open-access requests are authorized via a
-     * separate endpoint — so the {@code open} backend is intentionally not matched. Segment-aware so it does NOT match things like
-     * {@code /hpds/auth/v30/query}, {@code /hpds/auth/v3ish/query}, {@code /hpds/v3/query}, {@code /foo/hpds/auth/v3/query}, or
-     * {@code /hpds/auth/v3-query}.
+     * Matches auth-backend target service paths, e.g. {@code /hpds/auth}, {@code /hpds/auth/query}, {@code /hpds/auth/query/abc/result}.
+     * Only the {@code auth} backend reaches this method. Open-access requests are authorized through a separate endpoint, so the
+     * {@code open} backend is intentionally not matched. Segment-aware so it does NOT match things like {@code /hpds/authorization},
+     * {@code /hpds/v3/query}, or {@code /foo/hpds/auth/query}.
      */
     private static final Pattern AUTH_TARGET_SERVICE_PATTERN = Pattern.compile("^/(hpds|visualization)/auth(/.*)?$");
     static final String NO_CONSENTS_MESSAGE = "User has no consents on file.";
@@ -243,11 +242,11 @@ public class AuthorizationService {
     }
 
     /**
-     * Returns true only when {@code targetService} is a clean HPDS-v3 (auth-backend) target service path, i.e. exactly
-     * {@code /hpds/auth/v3} or {@code /hpds/auth/v3/**}. Open-access requests never reach this method (they are authorized via a separate
-     * endpoint), so the {@code open} backend is not matched. <p> This is intentionally segment/prefix-aware (not a loose
-     * {@code contains("hpds") && contains("v3")} check) so that consent-rule evaluation is skipped only for genuine HPDS-v3 calls, not for
-     * unrelated paths that happen to contain those substrings.
+     * Returns true only when {@code targetService} is a target service path on the auth backend, i.e. exactly {@code /hpds/auth} or
+     * {@code /hpds/auth/**}. Open-access requests never reach this method (they are authorized via a separate endpoint), so the
+     * {@code open} backend is not matched. <p> This is intentionally segment/prefix-aware (not a loose {@code contains("hpds")} check) so
+     * that consent-rule evaluation is skipped only for genuine auth-backend calls, not for unrelated paths that happen to contain that
+     * substring.
      */
     static boolean isAuthTargetService(String targetService) {
         return targetService != null && AUTH_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
