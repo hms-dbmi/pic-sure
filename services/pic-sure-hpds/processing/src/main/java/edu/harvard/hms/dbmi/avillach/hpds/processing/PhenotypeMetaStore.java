@@ -4,10 +4,12 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.layout.StoreFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.FileInputStream;
@@ -18,7 +20,13 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
+/**
+ * The phenotype dictionary: every concept's {@link ColumnMeta} and every patient id. As a component it reads {@code columnMeta.javabin} and
+ * exists only for the javabin store format; with {@code HPDS_STORE_FORMAT=layout} the layout configuration builds it from
+ * {@code pheno.index} instead.
+ */
 @Component
+@ConditionalOnProperty(name = StoreFormat.PROPERTY, havingValue = StoreFormat.JAVABIN, matchIfMissing = true)
 public class PhenotypeMetaStore {
 
     private static final Logger log = LoggerFactory.getLogger(PhenotypeMetaStore.class);

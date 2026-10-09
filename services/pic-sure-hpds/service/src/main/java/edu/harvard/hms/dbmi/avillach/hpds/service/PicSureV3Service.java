@@ -14,8 +14,10 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.PhenotypicCountProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.QueryExecutor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.layout.LayoutCountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingV3Service;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
@@ -39,14 +41,34 @@ import java.util.stream.Collectors;
 @RestController
 public class PicSureV3Service {
 
-    @Autowired
+    /**
+     * Builds the controller over the javabin store.
+     */
     public PicSureV3Service(
         QueryV3Service queryService, CountV3Processor countProcessor, VariantListV3Processor variantListProcessor,
         QueryExecutor queryExecutor, Paginator paginator, SignUrlService signUrlService, FileSharingV3Service fileSharingService,
         TestDataService testDataService
     ) {
+        this(
+            queryService, countProcessor, variantListProcessor, queryExecutor, paginator, signUrlService, fileSharingService,
+            testDataService, Optional.empty()
+        );
+    }
+
+    /**
+     * Builds the controller. When {@code layoutCountProcessor} is present ({@code HPDS_STORE_FORMAT=layout}), the phenotypic sync count
+     * types are answered from the layout store and {@code POST /query} refuses every result type, since the layout store serves no exports.
+     */
+    @Autowired
+    public PicSureV3Service(
+        QueryV3Service queryService, CountV3Processor countProcessor, VariantListV3Processor variantListProcessor,
+        QueryExecutor queryExecutor, Paginator paginator, SignUrlService signUrlService, FileSharingV3Service fileSharingService,
+        TestDataService testDataService, Optional<LayoutCountV3Processor> layoutCountProcessor
+    ) {
         this.queryService = queryService;
         this.countProcessor = countProcessor;
+        this.layoutStore = layoutCountProcessor.isPresent();
+        this.phenotypicCounts = layoutStore ? layoutCountProcessor.get() : countProcessor;
         this.variantListProcessor = variantListProcessor;
         this.queryExecutor = queryExecutor;
         this.paginator = paginator;
@@ -63,6 +85,10 @@ public class PicSureV3Service {
     private static final Logger log = LoggerFactory.getLogger(PicSureV3Service.class);
 
     private final CountV3Processor countProcessor;
+
+    private final PhenotypicCountProcessor phenotypicCounts;
+
+    private final boolean layoutStore;
 
     private final VariantListV3Processor variantListProcessor;
 
@@ -126,6 +152,11 @@ public class PicSureV3Service {
     @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
     public ResponseEntity<QueryStatus> query(@RequestBody QueryRequest queryJson) {
+        if (layoutStore) {
+            QueryStatus status = new QueryStatus();
+            status.setResourceStatus("Asynchronous queries are not supported by the layout phenotype store.");
+            return ResponseEntity.status(400).body(status);
+        }
         if (Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
             try {
                 Query query = convertIncomingQuery(queryJson);
@@ -322,16 +353,18 @@ public class PicSureV3Service {
                 return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(infoColumnMeta);
 
             case CROSS_COUNT:
-                return queryOkResponse(countProcessor.runCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
+                return queryOkResponse(phenotypicCounts.runCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
             case CATEGORICAL_CROSS_COUNT:
-                return queryOkResponse(countProcessor.runCategoryCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
+                return queryOkResponse(phenotypicCounts.runCategoryCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
             case CONTINUOUS_CROSS_COUNT:
-                return queryOkResponse(countProcessor.runContinuousCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
+                return queryOkResponse(phenotypicCounts.runContinuousCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
             case OBSERVATION_CROSS_COUNT:
-                return queryOkResponse(countProcessor.runObservationCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
+                return queryOkResponse(
+                    phenotypicCounts.runObservationCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON
+                );
 
             case VARIANT_COUNT_FOR_QUERY:
                 return queryOkResponse(countProcessor.runVariantCount(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
@@ -346,7 +379,7 @@ public class PicSureV3Service {
                 return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, false), incomingQuery, MediaType.TEXT_PLAIN);
 
             case COUNT:
-                return queryOkResponse(String.valueOf(countProcessor.runCounts(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN);
+                return queryOkResponse(String.valueOf(phenotypicCounts.runCounts(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN);
 
             default:
                 return ResponseEntity.status(400).contentType(MediaType.TEXT_PLAIN).body(

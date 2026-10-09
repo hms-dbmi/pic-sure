@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
  * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor} and updated to use new Query entity
  */
 @Component
-public class CountV3Processor implements HpdsV3Processor {
+public class CountV3Processor implements HpdsV3Processor, PhenotypicCountProcessor {
 
     private final static Logger log = LoggerFactory.getLogger(CountV3Processor.class);
 
