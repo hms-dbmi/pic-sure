@@ -212,7 +212,8 @@ pub fn spawn_result_reaper(state: AppState, period: Duration) -> tokio::task::Jo
 /// connections finish for at most `timeouts.shutdown_grace`, and returns.
 ///
 /// A connection that has not delivered a request's headers within `timeouts.header_read` is
-/// closed. At most `timeouts.max_connections` connections are served at once; a connection
+/// closed. Every accepted connection has Nagle's algorithm turned off ([`disable_nagle`]).
+/// At most `timeouts.max_connections` connections are served at once; a connection
 /// accepted past that cap is answered 503 and closed (see [`OVER_CAPACITY_RESPONSE`]). HTTP/1 and
 /// HTTP/2 are both served.
 ///
@@ -246,6 +247,7 @@ pub async fn serve(
             },
             () = &mut shutdown => break,
         };
+        disable_nagle(&stream);
         let permit = match Arc::clone(&slots).try_acquire_owned() {
             Ok(permit) => permit,
             Err(TryAcquireError::NoPermits) => {
@@ -274,6 +276,18 @@ pub async fn serve(
         }
     }
     Ok(())
+}
+
+/// Turns off Nagle's algorithm (sets `TCP_NODELAY`) on an accepted connection.
+///
+/// A response leaves in several small writes (headers, then body frames). With Nagle on, each
+/// write after the first waits until the client acknowledges the previous one, and a client
+/// that delays its ACKs holds every streamed response for about 40 ms. A failure is logged and
+/// the connection is served anyway.
+fn disable_nagle(stream: &AsyncTcpStream) {
+    if let Err(error) = stream.set_nodelay(true) {
+        tracing::debug!(%error, "could not set TCP_NODELAY on an accepted connection");
+    }
 }
 
 /// Raw HTTP/1.1 response written to a connection accepted while every connection slot is taken.
@@ -341,4 +355,21 @@ pub fn probe_health(port: u16) -> bool {
         .next()
         .is_some_and(|line| line.split_whitespace().nth(1) == Some("200"));
     ok && response.contains("\"UP\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn accepted_connections_have_nagle_turned_off() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = AsyncTcpStream::connect(address).await.unwrap();
+        let (stream, _) = listener.accept().await.unwrap();
+        assert!(!stream.nodelay().unwrap());
+        disable_nagle(&stream);
+        assert!(stream.nodelay().unwrap());
+        drop(client);
+    }
 }
