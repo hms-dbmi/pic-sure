@@ -24,7 +24,7 @@ fn nested(depth: usize) -> Value {
 }
 
 fn limited_app(f: &common::Fixture, limits: QueryLimits) -> axum::Router {
-    let engine = Engine::open(&f.store(), &f.config.store)
+    let engine = Engine::open(&f.store(), &f.config.partitions)
         .unwrap()
         .with_limits(limits);
     let mut settings = config(f.dir.path());

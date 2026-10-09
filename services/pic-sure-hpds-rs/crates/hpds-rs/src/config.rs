@@ -72,7 +72,7 @@ pub struct Config {
     pub port: u16,
     /// How the partitions are opened, with `require_consents` from
     /// `hpds.requireAuthorizationFilter`.
-    pub store: PartitionOptions,
+    pub partitions: PartitionOptions,
     /// Directory for export result files.
     pub results_dir: PathBuf,
     /// Most async results held at once.
@@ -183,7 +183,7 @@ impl Config {
                 lookup("HPDS_DATA_DIRECTORY").unwrap_or_else(|| DEFAULT_DATA_DIRECTORY.to_owned()),
             ),
             port: parse_or(&lookup, "SERVER_PORT", DEFAULT_PORT)?,
-            store: PartitionOptions {
+            partitions: PartitionOptions {
                 store: StoreOptions {
                     cache_bytes,
                     allow_plain,
@@ -337,9 +337,9 @@ mod tests {
         let c = config(&[]).unwrap();
         assert_eq!(c.data_dir, PathBuf::from("/opt/local/hpds/"));
         assert_eq!(c.port, 8080);
-        assert!(c.store.require_consents);
-        assert!(!c.store.store.allow_plain);
-        assert_eq!(c.store.store.cache_bytes, DEFAULT_CACHE_BYTES);
+        assert!(c.partitions.require_consents);
+        assert!(!c.partitions.store.allow_plain);
+        assert_eq!(c.partitions.store.cache_bytes, DEFAULT_CACHE_BYTES);
         assert_eq!(
             (
                 c.small_job_limit,
@@ -385,12 +385,15 @@ mod tests {
     #[test]
     fn cache_bytes_old_name_is_accepted_with_a_warning() {
         let old = config(&[("CACHE_BYTES", "2048")]).unwrap();
-        assert_eq!(old.store.store.cache_bytes, 2048);
+        assert_eq!(old.partitions.store.cache_bytes, 2048);
         assert_eq!(old.warnings.len(), 1);
         let both = config(&[("CACHE_BYTES", "2048"), ("HPDS_CACHE_BYTES", "4096")]).unwrap();
-        assert_eq!(both.store.store.cache_bytes, 4096);
+        assert_eq!(both.partitions.store.cache_bytes, 4096);
         let new = config(&[("HPDS_CACHE_BYTES", "4096")]).unwrap();
-        assert_eq!((new.store.store.cache_bytes, new.warnings.len()), (4096, 0));
+        assert_eq!(
+            (new.partitions.store.cache_bytes, new.warnings.len()),
+            (4096, 0)
+        );
     }
 
     #[test]
@@ -416,7 +419,7 @@ mod tests {
         assert!(
             !config(&[("hpds.requireAuthorizationFilter", "false")])
                 .unwrap()
-                .store
+                .partitions
                 .require_consents
         );
         assert!(
@@ -425,7 +428,7 @@ mod tests {
                 ("hpds.requireAuthorizationFilter", "false")
             ])
             .unwrap()
-            .store
+            .partitions
             .require_consents
         );
     }
@@ -433,7 +436,7 @@ mod tests {
     #[test]
     fn cache_size_is_ignored_with_a_warning() {
         let c = config(&[("CACHE_SIZE", "1500"), ("HPDS_CACHE_BYTES", "1024")]).unwrap();
-        assert_eq!(c.store.store.cache_bytes, 1024);
+        assert_eq!(c.partitions.store.cache_bytes, 1024);
         assert_eq!(c.warnings.len(), 1);
     }
 

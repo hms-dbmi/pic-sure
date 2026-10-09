@@ -59,12 +59,20 @@ fn invalid_query(error: &serde_json::Error) -> ApiError {
     ApiError::bad_request(format!("the query is not valid: {error}"))
 }
 
+fn query_from_value(value: Value) -> Result<Query, ApiError> {
+    if has_v1_keys(&value) {
+        return Err(ApiError::bad_request(V1_QUERY_MESSAGE));
+    }
+    serde_json::from_value(value).map_err(|e| invalid_query(&e))
+}
+
 /// Reads a request body as a `QueryRequest` and its `query` as a v3 [`Query`]. The query may
 /// be a JSON object or a string holding one, as `convertIncomingQuery` accepts both, and is
 /// read with the engine's strict model: unknown fields inside it are refused.
 ///
 /// Duplicate keys are refused at every level: in the body by [`read_envelope`], and in a
-/// string `query` by [`parse_strict`] and then [`Query::from_json`].
+/// string `query` by one [`parse_strict`] of the string's contents, whose value then builds
+/// the model.
 ///
 /// # Errors
 /// A 400 [`ApiError`] for the envelope errors of [`read_envelope`], a missing or null
@@ -76,17 +84,9 @@ pub fn read_query(body: &[u8]) -> Result<Query, ApiError> {
         None | Some(Value::Null) => Err(ApiError::bad_request("the request has no query")),
         Some(Value::String(text)) => {
             let value = parse_strict(text.as_bytes()).map_err(|e| invalid_query(&e))?;
-            if has_v1_keys(&value) {
-                return Err(ApiError::bad_request(V1_QUERY_MESSAGE));
-            }
-            Query::from_json(text.as_bytes()).map_err(|e| invalid_query(&e))
+            query_from_value(value)
         }
-        Some(object @ Value::Object(_)) => {
-            if has_v1_keys(&object) {
-                return Err(ApiError::bad_request(V1_QUERY_MESSAGE));
-            }
-            serde_json::from_value(object).map_err(|e| invalid_query(&e))
-        }
+        Some(object @ Value::Object(_)) => query_from_value(object),
         Some(_) => Err(ApiError::bad_request(
             "query must be a JSON object or a string holding one",
         )),

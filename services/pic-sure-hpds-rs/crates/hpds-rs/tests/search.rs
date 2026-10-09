@@ -207,6 +207,18 @@ async fn search_terms_are_java_to_string() {
 }
 
 #[tokio::test]
+async fn object_terms_keep_the_order_they_were_sent_in() {
+    let f = fixture();
+    let reply = post(
+        &f.app,
+        "/PIC-SURE/v3/search",
+        r#"{"query":{"z":1,"b":{"y":2,"c":3},"a":[4]}}"#,
+    )
+    .await;
+    assert_eq!(reply.json()["searchQuery"], "{z=1, b={y=2, c=3}, a=[4]}");
+}
+
+#[tokio::test]
 async fn search_bodies_with_duplicate_keys_are_refused() {
     let f = fixture();
     for body in [

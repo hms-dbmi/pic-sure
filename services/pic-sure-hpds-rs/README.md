@@ -66,7 +66,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `SMALL_TASK_THREADS`, `LARGE_TASK_THREADS` | `1`, `1` | Exports running at once per pool. |
 | `HPDS_EXPORT_CONCURRENCY` | `2` | Exports running at once across both pools; each pins its selected blocks in memory. |
 | `HPDS_MAX_CONNECTIONS` | `512` | Most connections served at once. A connection accepted at the cap is answered `503` (`text/plain`, `Retry-After: 1`) and closed, so clients and the health probe fail fast instead of waiting in the kernel backlog. A request body must arrive in full within 30 seconds of the request starting (408 otherwise), and a connection idle between requests is closed after 10 seconds. |
-| `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) running at once. |
+| `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) running at once. One slot may use several cores, since a computation fans out across partitions with rayon. |
 | `HPDS_BLOCKING_THREADS` | `64`, or the engine concurrency plus 16 when that is larger | Cap on tokio's blocking threads. Startup fails unless `HPDS_ENGINE_CONCURRENCY` is below it, so file reads keep some blocking threads. |
 | `RUST_LOG` | `info` | Log filter, in `tracing` `EnvFilter` syntax. The `hpds_rs::access` target logs one line per request at info with method, path, status and latency. For benchmarks use `RUST_LOG=info,hpds_rs::access=warn` to silence it. |
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
@@ -162,6 +162,19 @@ Differences from Java a caller can see:
   DOWN. Java has neither of the first two checks and fails the third only at query time.
 - Result ids and `queryMetadata` are random UUIDs, not Java's UUIDv5 of the query text.
 - A failed query's `resultMetadata` carries an `error` message.
+- With the consent flag on and an unpartitioned data directory, Java fails to start; this
+  service starts and reports DOWN on `/actuator/health`.
+- Neither service binds an async result to the consents it was submitted with. The query
+  service enforces read access (`verifyReadAccess`) before it hands out a result, as it does
+  for Java.
+- Java seeks the minimum index per partition (`seekForMinIndex`), so a range filter whose
+  `min` is above every value of some selected partition answers an empty 200 there. This
+  service answers normally.
+- `VARIANT_COUNT_FOR_QUERY` with no `genomicFilters` is a 200 `{"count":"0","message":"No
+  variant filters were supplied, so no query was run."}` with a `queryMetadata` header, as in
+  Java. Java runs no consent check for it; this service applies its own, so with the flag on
+  and no consent value it is the 400 "User consents are required for this query". With
+  `genomicFilters` it is a 400 unsupported.
 - Results are dropped oldest finished first when `HPDS_RESULT_LIMIT` or `HPDS_RESULT_MAX_BYTES`
   is reached, and after `HPDS_RESULT_MAX_AGE_SECONDS` when that is set; Java keeps them until
   restart.

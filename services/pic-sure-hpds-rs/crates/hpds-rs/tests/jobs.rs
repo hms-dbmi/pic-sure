@@ -370,7 +370,7 @@ async fn dataframe_is_disabled_while_id_batch_size_is_zero() {
 async fn export_over_the_pin_cap_ends_in_error() {
     let f = fixture();
     let engine = Arc::new(
-        hpds_query::Engine::open(&f.store(), &f.config.store)
+        hpds_query::Engine::open(&f.store(), &f.config.partitions)
             .unwrap()
             .with_export_pin_bytes(1),
     );

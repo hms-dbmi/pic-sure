@@ -65,7 +65,7 @@ pub fn java_fixture_dir() -> PathBuf {
 pub fn config(dir: &Path) -> Config {
     let mut config = Config::from_lookup(|_| None).unwrap();
     config.results_dir = dir.join("results");
-    config.store.require_consents = false;
+    config.partitions.require_consents = false;
     config.id_batch_size = 1000;
     config
 }
@@ -95,7 +95,7 @@ pub fn build_store(dir: &Path) -> PathBuf {
 /// `config`.
 pub fn open_engine(store: &Path, config: &Config) -> Arc<Engine> {
     Arc::new(
-        Engine::open(store, &config.store)
+        Engine::open(store, &config.partitions)
             .unwrap()
             .with_export_pin_bytes(config.export_pin_bytes)
             .with_limits(config.query_limits),
@@ -127,7 +127,7 @@ pub fn fixture() -> Fixture {
 
 /// The fixture with `hpds.requireAuthorizationFilter=true`.
 pub fn strict_fixture() -> Fixture {
-    fixture_with(|c| c.store.require_consents = true)
+    fixture_with(|c| c.partitions.require_consents = true)
 }
 
 /// `[{"value": c}...]` for `consents`.

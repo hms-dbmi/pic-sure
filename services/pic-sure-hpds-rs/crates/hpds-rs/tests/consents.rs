@@ -138,7 +138,7 @@ async fn strict_sync_queries_need_a_consent_value() {
 #[tokio::test]
 async fn the_limit_shape_is_checked_before_the_consents() {
     let f = fixture_with(|c| {
-        c.store.require_consents = true;
+        c.partitions.require_consents = true;
         c.query_limits.max_select_paths = 1;
     });
     let wide = json!({"expectedResultType": "CROSS_COUNT", "select": [SEX, AGE]});
@@ -183,7 +183,7 @@ async fn strict_async_queries_need_a_consent_value() {
 #[tokio::test]
 async fn async_patients_are_scoped_by_consent() {
     for strict in [false, true] {
-        let f = fixture_with(|c| c.store.require_consents = strict);
+        let f = fixture_with(|c| c.partitions.require_consents = strict);
         for (names, partitions) in [
             (vec!["partition1"], vec![0]),
             (vec!["partition2", "partition3"], vec![1, 2]),

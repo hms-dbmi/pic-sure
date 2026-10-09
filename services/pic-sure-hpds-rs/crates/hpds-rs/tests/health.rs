@@ -32,7 +32,7 @@ async fn a_data_directory_with_no_partitions_is_refused_and_serves_down() {
     std::fs::create_dir_all(data.join("lost+found")).unwrap();
     std::fs::write(data.join("encryption_key"), common::KEY).unwrap();
     let settings = config(dir.path());
-    let error = Engine::open(&data, &settings.store).unwrap_err();
+    let error = Engine::open(&data, &settings.partitions).unwrap_err();
     assert!(error.to_string().contains("pheno.index"), "{error}");
     let app = router(AppState::new(None, &settings).unwrap());
     let reply = get(&app, "/actuator/health").await;
@@ -54,16 +54,16 @@ async fn an_unpartitioned_store_is_refused_while_consents_are_required() {
     .unwrap();
     let mut settings = config(fixture.dir.path());
     settings.results_dir = fixture.dir.path().join("unpartitioned-results");
-    settings.store.require_consents = true;
-    let error = Engine::open(&unpartitioned, &settings.store).unwrap_err();
+    settings.partitions.require_consents = true;
+    let error = Engine::open(&unpartitioned, &settings.partitions).unwrap_err();
     assert!(
         error
             .to_string()
             .contains("hpds.requireAuthorizationFilter"),
         "{error}"
     );
-    settings.store.require_consents = false;
-    let engine = Engine::open(&unpartitioned, &settings.store).unwrap();
+    settings.partitions.require_consents = false;
+    let engine = Engine::open(&unpartitioned, &settings.partitions).unwrap();
     let state = AppState::new(Some(Arc::new(engine)), &settings).unwrap();
     assert!(state.is_healthy());
 }

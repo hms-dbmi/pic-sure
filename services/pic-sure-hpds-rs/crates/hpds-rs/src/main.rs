@@ -119,7 +119,7 @@ fn main() -> ExitCode {
 }
 
 async fn run(config: Config) -> ExitCode {
-    let engine = match Engine::open(&config.data_dir, &config.store) {
+    let engine = match Engine::open(&config.data_dir, &config.partitions) {
         Ok(engine) => {
             let engine = engine
                 .with_export_pin_bytes(config.export_pin_bytes)

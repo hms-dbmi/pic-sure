@@ -188,6 +188,57 @@ async fn other_genomic_types_name_the_unsupported_feature() {
 }
 
 #[tokio::test]
+async fn variant_count_without_genomic_filters_is_javas_empty_answer() {
+    let f = fixture();
+    let reply = post(
+        &f.app,
+        SYNC,
+        envelope(json!({"expectedResultType": "VARIANT_COUNT_FOR_QUERY"})),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::OK);
+    assert_eq!(reply.content_type(), Some("application/json"));
+    assert_eq!(
+        reply.body,
+        r#"{"count":"0","message":"No variant filters were supplied, so no query was run."}"#
+    );
+    assert!(reply.headers.get("queryMetadata").is_some());
+}
+
+#[tokio::test]
+async fn variant_count_with_genomic_filters_is_unsupported() {
+    let f = fixture();
+    let reply = post(
+        &f.app,
+        SYNC,
+        envelope(json!({
+            "expectedResultType": "VARIANT_COUNT_FOR_QUERY",
+            "genomicFilters": [{"key": "k", "values": ["v"]}]
+        })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+    assert!(reply.body.contains("not supported"), "{}", reply.body);
+}
+
+#[tokio::test]
+async fn variant_count_still_requires_consents_when_the_flag_is_on() {
+    let f = fixture_with(|c| c.partitions.require_consents = true);
+    let reply = post(
+        &f.app,
+        SYNC,
+        envelope(json!({"expectedResultType": "VARIANT_COUNT_FOR_QUERY"})),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+    assert!(
+        reply.body.contains("consents are required"),
+        "{}",
+        reply.body
+    );
+}
+
+#[tokio::test]
 async fn a_sync_query_that_outlasts_the_timeout_is_a_503() {
     let f = fixture_with(|c| c.sync_timeout = std::time::Duration::from_millis(100));
     let mut held = Vec::new();

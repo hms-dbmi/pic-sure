@@ -12,6 +12,11 @@ use crate::state::AppState;
 /// Response header that carries an id for the answered query.
 pub const QUERY_METADATA_HEADER: &str = "queryMetadata";
 
+/// Body Java answers for VARIANT_COUNT_FOR_QUERY when `genomicFilters` is empty, keys in the
+/// sorted order of the `TreeMap` Java serializes.
+const NO_VARIANT_FILTERS_BODY: &str =
+    r#"{"count":"0","message":"No variant filters were supplied, so no query was run."}"#;
+
 /// `POST /query/sync`: COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and
 /// OBSERVATION_CROSS_COUNT.
 ///
@@ -21,6 +26,10 @@ pub const QUERY_METADATA_HEADER: &str = "queryMetadata";
 ///
 /// - INFO_COLUMN_LISTING is `[]` as `application/json`: with no genomic data the list of
 ///   variant info columns is empty, as in Java.
+/// - VARIANT_COUNT_FOR_QUERY with no `genomicFilters` is a 200 `application/json`
+///   `{"count":"0","message":"No variant filters were supplied, so no query was run."}`, as in
+///   Java, after the limits and consent checks. Java runs no consent check for this case; this
+///   service keeps its own. With `genomicFilters` it is a 400 like the other genomic types.
 /// - Any other genomic result type is a 400 text error naming it.
 /// - An export type (PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES, DATAFRAME_PFB) is a 400 with
 ///   Java's message pointing at `POST /query`.
@@ -55,6 +64,18 @@ pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Re
     }
     let engine = state.engine()?;
     engine.check_limits(&query)?;
+    if result_type == hpds_query::ResultType::VariantCountForQuery
+        && query.genomic_filters.is_empty()
+    {
+        return Ok((
+            [
+                (CONTENT_TYPE.as_str(), "application/json".to_owned()),
+                (QUERY_METADATA_HEADER, random_uuid()),
+            ],
+            NO_VARIANT_FILTERS_BODY,
+        )
+            .into_response());
+    }
     let timeout = state.sync_timeout();
     let computation = async {
         let slot = state.engine_slot().await;
