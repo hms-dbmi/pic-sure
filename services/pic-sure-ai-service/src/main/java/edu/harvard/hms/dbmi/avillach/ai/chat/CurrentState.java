@@ -28,7 +28,8 @@ final class CurrentState {
     static String appendedTo(ChatRequest request) {
         StringBuilder state = new StringBuilder();
         ProposeQueryInput query = ChatStateValidator.query(request.query());
-        if (query != null) {
+        // Shown, an empty query reads to the model as one on screen for it to change, which pushes lookups toward propose_query.
+        if (query != null && !query.isEmpty()) {
             state.append("\nquery: ").append(ChatStateValidator.toJson(query));
         }
         List<FacetSelection> facets = request.facets();

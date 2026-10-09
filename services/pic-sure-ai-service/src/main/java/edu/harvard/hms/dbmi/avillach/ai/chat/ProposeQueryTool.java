@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,11 +31,14 @@ public class ProposeQueryTool {
     private static final String DESCRIPTION = """
         Propose an updated query, facet selection, or search for the researcher to review -- call this when the conversation should \
         update what the user sees, not just answer in prose. This is the only way to hand over a query; never write query JSON in a reply. All three fields are optional -- include only what actually changed this \
-        turn. query has select (concept paths to show), phenotypicClause, and genomicFilters. A phenotypicClause is either a filter or \
+        turn. query has select (every concept path to show: keep the researcher's current ones unless they ask to remove one), phenotypicClause, and genomicFilters. A phenotypicClause is either a filter or \
         a subquery. A filter has phenotypicFilterType, conceptPath, and, for FILTER, either values (categorical) or min and max \
         (numeric); REQUIRED and ANY_RECORD_OF take neither. A subquery has operator (AND or OR) and phenotypicClauses, each a filter \
         or another subquery. Build every conceptPath from search_concepts results, exactly as returned; there is no not field. facets \
-        is a list of {category, name} pairs taken from list_facets. search is the dictionary search text, a plain string; an empty string clears it. Example arguments (the \
+        is a list of {category, name} pairs taken from list_facets; it narrows the researcher's table of variables to those facets. search \
+        is the dictionary search text, a plain string, and the researcher's screen shows the variables it matches as a table they can page \
+        through: send the text that found the variables in search_concepts (several terms joined by |), or an empty string to clear it. \
+        For a lookup (show, find, or list variables), send only search, never a query. Example arguments (the \
         phs999999 paths are placeholders only; never use them, use real conceptPath values from search_concepts): \
         {"query":{"select":["\\\\phs999999\\\\bmi\\\\"],"phenotypicClause":{"operator":"AND","phenotypicClauses":[\
         {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\sex\\\\","values":["Female"]},\
@@ -66,6 +70,18 @@ public class ProposeQueryTool {
      * @param search the proposed search text
      */
     record Proposal(ProposeQueryInput query, List<FacetSelection> facets, String search) {
+
+        Proposal withQuery(ProposeQueryInput replacement) {
+            return new Proposal(replacement, facets, search);
+        }
+
+        Proposal withSearch(String replacement) {
+            return new Proposal(query, facets, replacement);
+        }
+
+        Proposal withFacets(List<FacetSelection> replacement) {
+            return new Proposal(query, replacement, search);
+        }
     }
 
     /**
@@ -93,7 +109,12 @@ public class ProposeQueryTool {
     Outcome propose(String argumentsJson, KnownFacets knownFacets) {
         try {
             Map<String, Object> arguments = parseArguments(argumentsJson);
+            dropEmptyPlaceholders(arguments);
+            liftQueryFields(arguments);
             Arguments bound = ProposeQueryBinder.bind(arguments, Arguments.class);
+            if (bound.query() == null && bound.facets() == null && bound.search() == null) {
+                return Outcome.rejected("The proposal is empty. Send at least one of query, facets, or search.");
+            }
             if (bound.query() != null) {
                 bound.query().validate();
             }
@@ -102,11 +123,7 @@ public class ProposeQueryTool {
             if (bound.facets() != null) {
                 FacetSelection unknown = knownFacets.firstUnknownIn(bound.facets());
                 if (unknown != null) {
-                    return Outcome.rejected(
-                        "Unknown facet: category '" + clip(unknown.category()) + "', name '" + clip(unknown.name())
-                            + "'. A facet must come from a list_facets result in this conversation, exactly as returned. Call "
-                            + "list_facets first, wait for its results, then use a category and name from them."
-                    );
+                    return Outcome.rejected(unknownFacetMessage(unknown));
                 }
             }
             return new Outcome(
@@ -119,7 +136,43 @@ public class ProposeQueryTool {
         }
     }
 
-    private static String clip(String value) {
+    /**
+     * Small models send {@code {}} for a field they mean to leave out (no filter, no search). An empty object is never a valid clause or
+     * search text, so it is read as "not sent" rather than failing the call and costing an iteration.
+     */
+    @SuppressWarnings("unchecked")
+    private static void dropEmptyPlaceholders(Map<String, Object> arguments) {
+        arguments.remove("search", Map.of());
+        if (arguments.get("query") instanceof Map<?, ?> query) {
+            ((Map<String, Object>) query).remove("phenotypicClause", Map.of());
+        }
+    }
+
+    /** The query's own fields, which gpt-oss sometimes sends at the top level instead of inside {@code query} (T10 in round 17). */
+    private static final List<String> QUERY_FIELDS = List.of("select", "phenotypicClause", "genomicFilters");
+
+    /** Moves query fields sent at the top level into {@code query}, when the model sent no {@code query} of its own. */
+    private static void liftQueryFields(Map<String, Object> arguments) {
+        if (arguments.containsKey("query") || QUERY_FIELDS.stream().noneMatch(arguments::containsKey)) {
+            return;
+        }
+        Map<String, Object> query = new LinkedHashMap<>();
+        QUERY_FIELDS.forEach(field -> {
+            if (arguments.containsKey(field)) {
+                query.put(field, arguments.remove(field));
+            }
+        });
+        arguments.put("query", query);
+    }
+
+    /** The model-facing refusal for a facet it was never shown, shared by the proposal and by a facet-narrowed search. */
+    static String unknownFacetMessage(FacetSelection unknown) {
+        return "Unknown facet: category '" + clip(unknown.category()) + "', name '" + clip(unknown.name())
+            + "'. A facet must come from a list_facets result in this conversation, exactly as returned. Call "
+            + "list_facets first, wait for its results, then use a category and name from them.";
+    }
+
+    static String clip(String value) {
         String printable = value.codePoints().filter(c -> !Character.isISOControl(c))
             .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
         return printable.length() > ProposeQueryBinder.MAX_FIELD_NAME_LENGTH ? printable.substring(0, ProposeQueryBinder.MAX_FIELD_NAME_LENGTH)

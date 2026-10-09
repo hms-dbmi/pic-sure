@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.ai.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.ai.bedrock.converse.BedrockChatOptions;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -33,6 +35,8 @@ import edu.harvard.hms.dbmi.avillach.ai.model.ConversationEntry.UserEntry;
 @ConditionalOnProperty(prefix = "picsure.ai.model", name = "provider", havingValue = "aws-sdk", matchIfMissing = true)
 class ConverseSdkModelClient implements ConverseModelClient {
 
+    static final String UNKNOWN_TOOL = "unknown_tool";
+
     private final ChatModel chatModel;
 
     ConverseSdkModelClient(ChatModel chatModel) {
@@ -51,6 +55,7 @@ class ConverseSdkModelClient implements ConverseModelClient {
             throw new ModelUnavailableException("Bedrock Converse call failed: " + e.getMessage(), e);
         }
 
+        Set<String> knownTools = tools.stream().map(ToolDefinition::name).collect(Collectors.toSet());
         Usage usage = response.getMetadata() == null ? null : response.getMetadata().getUsage();
 
         // Spring AI emits one Generation per Converse content block, with tool calls in their own Generation -- often not the first
@@ -60,7 +65,7 @@ class ConverseSdkModelClient implements ConverseModelClient {
         for (Generation generation : response.getResults()) {
             AssistantMessage output = generation.getOutput();
             if (output.hasToolCalls()) {
-                output.getToolCalls().forEach(tc -> toolCalls.add(new RequestedToolCall(tc.id(), tc.name(), tc.arguments())));
+                output.getToolCalls().forEach(tc -> toolCalls.add(new RequestedToolCall(tc.id(), toolName(tc.name(), knownTools), tc.arguments())));
             }
             if (output.getText() != null && !output.getText().isEmpty()) {
                 text.append(output.getText());
@@ -71,6 +76,71 @@ class ConverseSdkModelClient implements ConverseModelClient {
             toolCalls.isEmpty(), text.isEmpty() ? null : text.toString(), List.copyOf(toolCalls),
             tokenCount(usage == null ? null : usage.getPromptTokens()), tokenCount(usage == null ? null : usage.getCompletionTokens())
         );
+    }
+
+    /**
+     * Some models (gpt-oss) leak their chat-template tokens into a tool name, e.g. {@code search_concepts<|channel|>commentary}. Bedrock
+     * rejects any name outside {@code [a-zA-Z0-9_-]+} when it is replayed in history, which fails the whole conversation. Keep a known
+     * tool's name when the junk follows it; otherwise keep the valid leading characters, so the loop refuses it as an unknown tool and
+     * the model can retry.
+     */
+    static String toolName(String name, Set<String> knownTools) {
+        if (name == null) {
+            return UNKNOWN_TOOL;
+        }
+        if (knownTools.contains(name)) {
+            return name;
+        }
+        String known = knownTools.stream().filter(name::startsWith).max(java.util.Comparator.comparingInt(String::length)).orElse(null);
+        if (known != null && !name.substring(known.length()).matches("[a-zA-Z0-9_-]+")) {
+            return known;
+        }
+        int end = 0;
+        while (end < name.length() && (Character.isLetterOrDigit(name.charAt(end)) && name.charAt(end) < 128 || name.charAt(end) == '_' || name.charAt(end) == '-')) {
+            end++;
+        }
+        return end == 0 ? UNKNOWN_TOOL : nearestKnown(name.substring(0, end), knownTools);
+    }
+
+    /**
+     * gpt-oss also garbles the name itself (e.g. {@code search_concret}, {@code search_conconcepts}), which would burn an iteration on
+     * an unknown-tool error. Snap to the one known tool the name is clearly closest to; anything ambiguous or far stays as it is.
+     */
+    private static String nearestKnown(String name, Set<String> knownTools) {
+        if (knownTools.contains(name)) {
+            return name;
+        }
+        String best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        boolean tie = false;
+        for (String known : knownTools) {
+            int distance = editDistance(name, known);
+            if (distance < bestDistance) {
+                best = known;
+                bestDistance = distance;
+                tie = false;
+            } else if (distance == bestDistance) {
+                tie = true;
+            }
+        }
+        return best != null && !tie && bestDistance <= best.length() / 3 ? best : name;
+    }
+
+    private static int editDistance(String a, String b) {
+        int[] previous = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) {
+            previous[j] = j;
+        }
+        for (int i = 1; i <= a.length(); i++) {
+            int[] current = new int[b.length() + 1];
+            current[0] = i;
+            for (int j = 1; j <= b.length(); j++) {
+                int substitution = previous[j - 1] + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1);
+                current[j] = Math.min(substitution, Math.min(previous[j], current[j - 1]) + 1);
+            }
+            previous = current;
+        }
+        return previous[b.length()];
     }
 
     private static int tokenCount(Integer value) {
