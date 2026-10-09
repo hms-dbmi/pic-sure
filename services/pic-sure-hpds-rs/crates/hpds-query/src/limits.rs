@@ -7,7 +7,8 @@ use hpds_format::java_string_cmp;
 
 use crate::error::{QueryError, Result};
 use crate::model::{PhenotypicClause, PhenotypicFilterType, Query, ResultType};
-use crate::partition::Selection;
+use crate::partition::{PartitionSet, Selection};
+use crate::validate::check_supported;
 
 /// Default most `select` paths one query may name, counted without repeats: 5,000.
 pub const DEFAULT_MAX_SELECT_PATHS: usize = 5_000;
@@ -36,9 +37,11 @@ pub struct QueryLimits {
     /// Most clauses in the phenotypic clause, plus the authorization filters.
     pub max_clause_nodes: usize,
     /// Most concepts the query touches: the distinct concept paths of `select`, the filters
-    /// and the authorization filters, plus, for each distinct `ANY_RECORD_OF` prefix, the
-    /// number of distinct concepts under it in the union of the selected partitions'
-    /// dictionaries. A concept held by several selected partitions counts once.
+    /// and the authorization filters, plus, for each `ANY_RECORD_OF` filter, the number of
+    /// distinct concepts under its prefix in the union of the selected partitions'
+    /// dictionaries. A concept held by several selected partitions counts once, but a prefix
+    /// named by several filters counts once per filter, since each filter evaluates its
+    /// prefix again.
     pub max_query_concepts: usize,
     /// Most entries, summed over every concept, in a categorical or continuous cross count.
     pub max_cross_count_entries: u64,
@@ -70,11 +73,40 @@ impl QueryLimits {
 
     /// Checks the bounds that need no dictionary: the clause tree's depth and node count,
     /// then `select`. Walks the tree without recursing, so a deep clause tree cannot
-    /// overflow the stack. Messages carry counts and limits, never concept paths or values.
+    /// overflow the stack. Repeated `select` paths count once, except for a DATAFRAME, whose
+    /// rows widen with every repeat. Messages carry counts and limits, never concept paths
+    /// or values.
     ///
     /// # Errors
     /// [`QueryError::LimitExceeded`] naming the first bound the query breaks.
     pub fn check_shape(&self, query: &Query) -> Result<()> {
+        self.check_shape_for(query, SelectUse::of(query.expected_result_type))
+    }
+
+    /// The single admission step every engine evaluation goes through: the shape bounds for
+    /// an evaluation that reads `select` as `select_use` says, the refusal of unsupported
+    /// genomic input ([`check_supported`]), the consent selection
+    /// ([`PartitionSet::select`]), and the concept bound over that selection, in that order.
+    /// Returns the receipt every evaluation requires, carrying the selection.
+    ///
+    /// # Errors
+    /// [`QueryError::LimitExceeded`] naming the first bound the query breaks, the errors of
+    /// [`check_supported`], and [`QueryError::UserConsentsRequired`] when consents are
+    /// required and absent.
+    pub(crate) fn admit<'q, 's>(
+        &self,
+        query: &'q Query,
+        set: &'s PartitionSet,
+        select_use: SelectUse,
+    ) -> Result<CheckedQuery<'q, 's>> {
+        self.check_shape_for(query, select_use)?;
+        check_supported(query)?;
+        let selection = set.select(query)?;
+        self.check_concepts(query, &selection)?;
+        Ok(CheckedQuery { query, selection })
+    }
+
+    fn check_shape_for(&self, query: &Query, select_use: SelectUse) -> Result<()> {
         let mut nodes = query.authorization_filters.len();
         let mut stack: Vec<(&PhenotypicClause, usize)> = Vec::new();
         stack.extend(query.phenotypic_clause.as_ref().map(|clause| (clause, 1)));
@@ -96,12 +128,13 @@ impl QueryLimits {
                 stack.extend(subquery.phenotypic_clauses.iter().map(|c| (c, depth + 1)));
             }
         }
-        self.check_select(query)
+        self.check_select(query, select_use)
     }
 
     /// Checks the number of concepts `query` touches in `selection`: its distinct concept
-    /// paths, plus the distinct concepts under each distinct `ANY_RECORD_OF` prefix in the
-    /// union of the selected partitions' dictionaries. Stops counting a prefix past the
+    /// paths, plus, for each `ANY_RECORD_OF` filter, the distinct concepts under its prefix
+    /// in the union of the selected partitions' dictionaries. A prefix named by several
+    /// filters counts once per filter. The sum saturates, and counting stops past the
     /// bound. Expects a query that passed [`QueryLimits::check_shape`], whose clause count
     /// bounds the walk.
     ///
@@ -110,10 +143,10 @@ impl QueryLimits {
     /// `max_query_concepts` concepts.
     pub fn check_concepts(&self, query: &Query, selection: &Selection<'_>) -> Result<()> {
         let mut concepts: HashSet<&str> = HashSet::new();
-        let mut prefixes: HashSet<&str> = HashSet::new();
+        let mut prefixes: Vec<&str> = Vec::new();
         for filter in query.all_filters() {
             if filter.phenotypic_filter_type == PhenotypicFilterType::AnyRecordOf {
-                prefixes.insert(filter.concept_path.as_str());
+                prefixes.push(filter.concept_path.as_str());
             } else {
                 concepts.insert(filter.concept_path.as_str());
             }
@@ -130,7 +163,11 @@ impl QueryLimits {
             if touched > self.max_query_concepts {
                 break;
             }
-            touched += count_with_prefix(selection, prefix, self.max_query_concepts);
+            touched = touched.saturating_add(count_with_prefix(
+                selection,
+                prefix,
+                self.max_query_concepts,
+            ));
         }
         if touched > self.max_query_concepts {
             return Err(QueryError::LimitExceeded(format!(
@@ -141,16 +178,14 @@ impl QueryLimits {
         Ok(())
     }
 
-    fn check_select(&self, query: &Query) -> Result<()> {
+    fn check_select(&self, query: &Query, select_use: SelectUse) -> Result<()> {
         let too_many = || {
             QueryError::LimitExceeded(format!(
                 "the query selects more than {} concept paths (HPDS_MAX_SELECT_PATHS)",
                 self.max_select_paths
             ))
         };
-        if query.expected_result_type == ResultType::Dataframe
-            && query.select.len() > self.max_select_paths
-        {
+        if select_use == SelectUse::EveryEntry && query.select.len() > self.max_select_paths {
             return Err(too_many());
         }
         let mut seen = HashSet::new();
@@ -160,6 +195,49 @@ impl QueryLimits {
             }
         }
         Ok(())
+    }
+}
+
+/// How an evaluation reads `select`, which decides whether repeated paths count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelectUse {
+    /// Each distinct path is read once: the cohort and the cross counts.
+    Distinct,
+    /// Every entry becomes an output column, repeats included: DATAFRAME rows.
+    EveryEntry,
+}
+
+impl SelectUse {
+    /// The use a query declaring `result_type` makes of `select`.
+    fn of(result_type: ResultType) -> Self {
+        if result_type == ResultType::Dataframe {
+            SelectUse::EveryEntry
+        } else {
+            SelectUse::Distinct
+        }
+    }
+}
+
+/// A query that passed [`QueryLimits`] and [`check_supported`], with the partitions its
+/// consents select. Its fields are private to this module, so [`QueryLimits::admit`] is the
+/// only way to build one, and every evaluation in [`crate::Engine`] and the cohort module
+/// takes one. An evaluation that skips the checks or the consent selection therefore does
+/// not compile.
+#[derive(Debug)]
+pub(crate) struct CheckedQuery<'q, 's> {
+    query: &'q Query,
+    selection: Selection<'s>,
+}
+
+impl<'q, 's> CheckedQuery<'q, 's> {
+    /// The query that passed the checks.
+    pub(crate) fn query(&self) -> &'q Query {
+        self.query
+    }
+
+    /// The partitions the query's consents select.
+    pub(crate) fn selection(&self) -> &Selection<'s> {
+        &self.selection
     }
 }
 

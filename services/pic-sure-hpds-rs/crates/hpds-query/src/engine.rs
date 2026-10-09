@@ -11,16 +11,16 @@ use hpds_format::{Block, ConceptType, java_double_cmp, java_string_cmp};
 use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 
-use crate::cohort::evaluate_selected;
+use crate::cohort::evaluate_cohort_cow;
 use crate::error::{QueryError, Result};
-use crate::limits::QueryLimits;
+use crate::limits::{CheckedQuery, QueryLimits, SelectUse};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{PartitionOptions, PartitionSet, Selection};
 use crate::results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,
     PATIENT_ID_FIELD_NAME, SyncResult,
 };
-use crate::validate::{QueryValidator, check_supported, path_is_variant_spec};
+use crate::validate::{QueryValidator, path_is_variant_spec};
 
 /// Default cap on the summed decoded size of the blocks one DATAFRAME export may hold at
 /// once: 2 GiB.
@@ -32,14 +32,29 @@ pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 /// the rayon pool. From async code, call it inside `tokio::task::spawn_blocking`, or enable
 /// the `tokio` feature and use [`Engine::run_blocking`].
 ///
-/// Every computation first checks the query's shape against its [`QueryLimits`], refuses
-/// unsupported genomic input with [`check_supported`], selects the partitions the query's
-/// consents grant ([`PartitionSet::select`]), which fails with
+/// Every computation goes through one admission step whose receipt every evaluation
+/// requires: it checks the query's shape against the engine's [`QueryLimits`], refuses
+/// unsupported genomic input with [`crate::check_supported`], selects the partitions the
+/// query's consents grant ([`PartitionSet::select`]), which fails with
 /// [`QueryError::UserConsentsRequired`] when consents are required and absent, and checks
 /// the concepts it touches in those partitions against the limits, all before any block is
-/// loaded. None of
-/// them applies [`QueryValidator`]; callers validate with [`Engine::validate`] first, where
-/// Java does.
+/// loaded. None of them applies [`QueryValidator`]; callers validate with
+/// [`Engine::validate`] first, where Java does.
+///
+/// The engine is the only way to evaluate a query. The cohort evaluator is not public, so a
+/// caller cannot evaluate a query without the checks or outside its consents:
+///
+/// ```compile_fail
+/// fn unchecked(set: &hpds_query::PartitionSet, query: &hpds_query::Query) {
+///     let _ = hpds_query::evaluate_cohort(set, query);
+/// }
+/// ```
+///
+/// ```compile_fail
+/// fn unbounded_prefix(selection: &hpds_query::Selection<'_>) {
+///     let _ = hpds_query::cohort::any_record_of(selection, "\\");
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Engine {
     partitions: PartitionSet,
@@ -75,7 +90,8 @@ impl Engine {
     }
 
     /// Sets the per-query bounds ([`QueryLimits::default`] by default). A query over a bound
-    /// fails with [`QueryError::LimitExceeded`] before any block is loaded.
+    /// fails with [`QueryError::LimitExceeded`] before any block is loaded, whichever
+    /// computation it reaches.
     #[must_use]
     pub fn with_limits(mut self, limits: QueryLimits) -> Self {
         self.limits = limits;
@@ -87,9 +103,10 @@ impl Engine {
         &self.limits
     }
 
-    /// Checks `query` against the per-query bounds, counting the concepts it touches in the
-    /// partitions its consents select. Lets a caller refuse such a query before queuing work
-    /// for it.
+    /// Checks `query` against the per-query bounds as its declared result type uses them,
+    /// counting the concepts it touches in the partitions its consents select. Every
+    /// computation repeats this check itself; callers use it to refuse a query before
+    /// queuing work for it.
     ///
     /// # Errors
     /// [`QueryError::LimitExceeded`] naming the first bound the query breaks, and
@@ -128,8 +145,13 @@ impl Engine {
     /// consents select (`QueryExecutor.getPatientSubsetForQuery` without genomic filters).
     ///
     /// # Errors
-    /// [`QueryError::Unsupported`] for genomic input, and the errors of
-    /// [`crate::evaluate_cohort`].
+    /// [`QueryError::LimitExceeded`] when the query breaks a bound,
+    /// [`QueryError::Unsupported`] for genomic input, [`QueryError::UserConsentsRequired`]
+    /// when consents are required and absent, [`QueryError::FilterWithoutCriteria`],
+    /// [`QueryError::EmptySubquery`], [`QueryError::MissingOperator`] and
+    /// [`QueryError::TypeMismatch`] where Java's executor throws,
+    /// [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index, and
+    /// [`QueryError::Block`] when a block cannot be loaded.
     pub fn cohort(&self, query: &Query) -> Result<RoaringBitmap> {
         self.cohort_cow(query).map(Cow::into_owned)
     }
@@ -140,24 +162,24 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn cohort_cow(&self, query: &Query) -> Result<Cow<'_, RoaringBitmap>> {
-        let selection = self.select_within_limits(query)?;
-        evaluate_selected(&selection, query)
+        evaluate_cohort_cow(&self.admit(query, SelectUse::Distinct)?)
     }
 
-    /// The selection `query` reads, after the shape bounds, the genomic refusal, consent
-    /// selection and the concept bound, in that order.
-    fn select_within_limits(&self, query: &Query) -> Result<Selection<'_>> {
-        self.limits.check_shape(query)?;
-        check_supported(query)?;
-        let selection = self.partitions.select(query)?;
-        self.limits.check_concepts(query, &selection)?;
-        Ok(selection)
+    /// The single admission step every computation goes through (see
+    /// [`QueryLimits::admit`]). The receipt it returns is the only way to reach the cohort
+    /// evaluator and the result computations.
+    fn admit<'q>(&self, query: &'q Query, select_use: SelectUse) -> Result<CheckedQuery<'q, '_>> {
+        self.limits.admit(query, &self.partitions, select_use)
     }
 
-    fn prepare(&self, query: &Query) -> Result<(Selection<'_>, Cow<'_, RoaringBitmap>)> {
-        let selection = self.select_within_limits(query)?;
-        let cohort = evaluate_selected(&selection, query)?;
-        Ok((selection, cohort))
+    fn prepare<'q>(
+        &self,
+        query: &'q Query,
+        select_use: SelectUse,
+    ) -> Result<(CheckedQuery<'q, '_>, Cow<'_, RoaringBitmap>)> {
+        let checked = self.admit(query, select_use)?;
+        let cohort = evaluate_cohort_cow(&checked)?;
+        Ok((checked, cohort))
     }
 
     /// COUNT: the cohort size (`CountV3Processor.runCounts`).
@@ -177,8 +199,8 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn cross_count(&self, query: &Query) -> Result<ConceptCounts> {
-        let (selection, cohort) = self.prepare(query)?;
-        Ok(cross_count_in(&selection, query, &cohort))
+        let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
+        Ok(cross_count_in(&checked, &cohort))
     }
 
     /// CATEGORICAL_CROSS_COUNT (`CountV3Processor.runCategoryCrossCounts`).
@@ -195,18 +217,18 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`], and [`QueryError::Block`] when a block cannot be loaded.
     pub fn categorical_cross_count(&self, query: &Query) -> Result<CategoricalCrossCounts> {
-        let (selection, cohort) = self.prepare(query)?;
-        self.categorical_cross_count_in(&selection, query, &cohort)
+        let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
+        self.categorical_cross_count_in(&checked, &cohort)
     }
 
     fn categorical_cross_count_in(
         &self,
-        selection: &Selection<'_>,
-        query: &Query,
+        checked: &CheckedQuery<'_, '_>,
         cohort: &RoaringBitmap,
     ) -> Result<CategoricalCrossCounts> {
+        let selection = checked.selection();
         let mut called_out: HashMap<&str, HashSet<&str>> = HashMap::new();
-        for filter in query.all_filters() {
+        for filter in checked.query().all_filters() {
             if !self.is_categorical_cross_count_filter(filter) {
                 continue;
             }
@@ -215,38 +237,19 @@ impl Engine {
                 values.extend(filter.values.iter().flatten().map(String::as_str));
             }
         }
-        let entries = AtomicU64::new(0);
+        let budget = EntryBudget::new(self.limits.max_cross_count_entries);
         let mut concepts = called_out
             .par_iter()
             .map(|(path, named)| {
                 let blocks = selection.blocks(path)?;
-                let counts = category_counts(&blocks, cohort, named);
-                self.reserve_entries(&entries, counts.len())?;
+                let mut tally = budget.tally();
+                let counts = category_counts(&blocks, cohort, named, &mut tally)?;
+                tally.settle()?;
                 Ok(((*path).to_owned(), counts))
             })
             .collect::<Result<Vec<_>>>()?;
         concepts.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
         Ok(CategoricalCrossCounts { concepts })
-    }
-
-    fn reserve_entries(&self, total: &AtomicU64, added: usize) -> Result<()> {
-        let added = added as u64;
-        if total
-            .fetch_add(added, Ordering::Relaxed)
-            .saturating_add(added)
-            > self.limits.max_cross_count_entries
-        {
-            return Err(self.too_many_entries());
-        }
-        Ok(())
-    }
-
-    fn too_many_entries(&self) -> QueryError {
-        QueryError::LimitExceeded(format!(
-            "the cross count would hold more than {} entries (HPDS_MAX_CROSS_COUNT_ENTRIES); \
-             filter on fewer or narrower concepts",
-            self.limits.max_cross_count_entries
-        ))
     }
 
     fn is_categorical_cross_count_filter(&self, filter: &PhenotypicFilter) -> bool {
@@ -275,31 +278,31 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`], and [`QueryError::Block`] when a block cannot be loaded.
     pub fn continuous_cross_count(&self, query: &Query) -> Result<ContinuousCrossCounts> {
-        let (selection, cohort) = self.prepare(query)?;
-        self.continuous_cross_count_in(&selection, query, &cohort)
+        let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
+        self.continuous_cross_count_in(&checked, &cohort)
     }
 
     fn continuous_cross_count_in(
         &self,
-        selection: &Selection<'_>,
-        query: &Query,
+        checked: &CheckedQuery<'_, '_>,
         cohort: &RoaringBitmap,
     ) -> Result<ContinuousCrossCounts> {
-        let paths: BTreeSet<&str> = query
+        let selection = checked.selection();
+        let paths: BTreeSet<&str> = checked
+            .query()
             .all_filters()
             .into_iter()
             .map(|f| f.concept_path.as_str())
             .filter(|path| self.concept_type(path) == Some(ConceptType::Numeric))
             .collect();
-        let entries = AtomicU64::new(0);
-        let cap = self.limits.max_cross_count_entries;
+        let budget = EntryBudget::new(self.limits.max_cross_count_entries);
         let mut concepts = paths
             .par_iter()
             .map(|path| {
                 let blocks = selection.blocks(path)?;
-                let counts =
-                    value_counts(&blocks, cohort, cap).ok_or_else(|| self.too_many_entries())?;
-                self.reserve_entries(&entries, counts.len())?;
+                let mut tally = budget.tally();
+                let counts = value_counts(&blocks, cohort, &mut tally)?;
+                tally.settle()?;
                 Ok(((*path).to_owned(), counts))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -316,8 +319,8 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn observation_cross_count(&self, query: &Query) -> Result<ConceptCounts> {
-        let (selection, cohort) = self.prepare(query)?;
-        Ok(observation_cross_count_in(&selection, query, &cohort))
+        let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
+        Ok(observation_cross_count_in(&checked, &cohort))
     }
 
     /// The answer to a sync result type, dispatched on `query.expected_result_type`.
@@ -327,28 +330,24 @@ impl Engine {
     /// the export types (DATAFRAME, PATIENTS, DATAFRAME_TIMESERIES, DATAFRAME_PFB), and the
     /// errors of the computation, [`QueryError::UserConsentsRequired`] included.
     pub fn run_sync(&self, query: &Query) -> Result<SyncResult> {
-        self.limits.check_shape(query)?;
-        check_supported(query)?;
         let result_type = query.expected_result_type;
         if !result_type.is_sync() {
+            self.limits.check_shape(query)?;
+            crate::validate::check_supported(query)?;
             return Err(QueryError::NotSync(result_type));
         }
-        let selection = self.partitions.select(query)?;
-        self.limits.check_concepts(query, &selection)?;
-        let cohort = evaluate_selected(&selection, query)?;
+        let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
         match result_type {
             ResultType::Count => Ok(SyncResult::Count(cohort.len())),
-            ResultType::CrossCount => Ok(SyncResult::CrossCount(cross_count_in(
-                &selection, query, &cohort,
-            ))),
+            ResultType::CrossCount => Ok(SyncResult::CrossCount(cross_count_in(&checked, &cohort))),
             ResultType::CategoricalCrossCount => self
-                .categorical_cross_count_in(&selection, query, &cohort)
+                .categorical_cross_count_in(&checked, &cohort)
                 .map(SyncResult::CategoricalCrossCount),
             ResultType::ContinuousCrossCount => self
-                .continuous_cross_count_in(&selection, query, &cohort)
+                .continuous_cross_count_in(&checked, &cohort)
                 .map(SyncResult::ContinuousCrossCount),
             ResultType::ObservationCrossCount => Ok(SyncResult::ObservationCrossCount(
-                observation_cross_count_in(&selection, query, &cohort),
+                observation_cross_count_in(&checked, &cohort),
             )),
             other => Err(QueryError::NotSync(other)),
         }
@@ -371,7 +370,8 @@ impl Engine {
     /// selected partition are loaded before this returns and held by the iterator, so
     /// iteration does no I/O. They are loaded in chunks of paths and the load stops as soon
     /// as their summed decoded size passes the export cap
-    /// ([`Engine::with_export_pin_bytes`]).
+    /// ([`Engine::with_export_pin_bytes`]). Every `select` entry is a column, so repeated
+    /// paths count toward `max_select_paths` whatever result type the query declares.
     ///
     /// A cell merges the patient's values from every selected partition holding the
     /// concept, partition by partition in name order and in input order within one. Java
@@ -381,7 +381,8 @@ impl Engine {
     /// As for [`Engine::cohort`], [`QueryError::Block`] when a block cannot be loaded, and
     /// [`QueryError::ExportTooWide`] when the blocks exceed the cap.
     pub fn dataframe(&self, query: &Query) -> Result<Dataframe> {
-        let (selection, cohort) = self.prepare(query)?;
+        let (checked, cohort) = self.prepare(query, SelectUse::EveryEntry)?;
+        let selection = checked.selection();
         let cohort = cohort.into_owned();
         let paths = distinct(&query.select);
         let mut loaded: HashMap<&str, Vec<Arc<Block>>> = HashMap::with_capacity(paths.len());
@@ -460,12 +461,9 @@ fn blocks_or_log(selection: &Selection<'_>, path: &str, what: &str) -> Option<Ve
         .ok()
 }
 
-fn cross_count_in(
-    selection: &Selection<'_>,
-    query: &Query,
-    cohort: &RoaringBitmap,
-) -> ConceptCounts {
-    let paths = distinct(&query.select);
+fn cross_count_in(checked: &CheckedQuery<'_, '_>, cohort: &RoaringBitmap) -> ConceptCounts {
+    let selection = checked.selection();
+    let paths = distinct(&checked.query().select);
     let entries = paths
         .par_iter()
         .map(|path| {
@@ -485,11 +483,11 @@ fn cross_count_in(
 }
 
 fn observation_cross_count_in(
-    selection: &Selection<'_>,
-    query: &Query,
+    checked: &CheckedQuery<'_, '_>,
     cohort: &RoaringBitmap,
 ) -> ConceptCounts {
-    let mut entries: Vec<(String, i64)> = distinct(&query.select)
+    let selection = checked.selection();
+    let mut entries: Vec<(String, i64)> = distinct(&checked.query().select)
         .par_iter()
         .filter_map(|path| {
             let count = match blocks_or_log(selection, path, "observation cross count") {
@@ -513,12 +511,17 @@ fn observation_cross_count_in(
 }
 
 /// Per category held by any of `blocks`, the cohort patients holding it in any of them,
-/// listed when above 0 or `named`, in Java string order.
+/// listed when above 0 or `named`, in Java string order. Each listed category is drawn from
+/// `tally` as it is listed, after the partitions' categories are merged.
+///
+/// # Errors
+/// [`QueryError::LimitExceeded`] when the shared entry cap is exceeded.
 fn category_counts(
     blocks: &[Arc<Block>],
     cohort: &RoaringBitmap,
     named: &HashSet<&str>,
-) -> Vec<(String, u64)> {
+    tally: &mut EntryTally<'_>,
+) -> Result<Vec<(String, u64)>> {
     let mut categories: Vec<(&str, &RoaringBitmap)> = blocks
         .iter()
         .filter_map(|block| match block.as_ref() {
@@ -528,32 +531,41 @@ fn category_counts(
         .flatten()
         .collect();
     categories.sort_by(|a, b| java_string_cmp(a.0, b.0));
-    categories
-        .chunk_by(|a, b| a.0 == b.0)
-        .filter_map(|group| {
-            let category = group[0].0;
-            let count = match group {
-                [(_, one)] => one.intersection_len(cohort),
-                many => many
-                    .iter()
-                    .map(|(_, bitmap)| *bitmap)
-                    .union()
-                    .intersection_len(cohort),
-            };
-            (count > 0 || named.contains(category)).then(|| (category.to_owned(), count))
-        })
-        .collect()
+    let mut counts = Vec::new();
+    for group in categories.chunk_by(|a, b| a.0 == b.0) {
+        let category = group[0].0;
+        let count = match group {
+            [(_, one)] => one.intersection_len(cohort),
+            many => many
+                .iter()
+                .map(|(_, bitmap)| *bitmap)
+                .union()
+                .intersection_len(cohort),
+        };
+        if count > 0 || named.contains(category) {
+            tally.take()?;
+            counts.push((category.to_owned(), count));
+        }
+    }
+    Ok(counts)
 }
 
 /// Per distinct value held by a cohort patient in any numeric block of `blocks`, the number
-/// of such observations over all of them, in Java `Double.compareTo` order. `None` as soon
-/// as one block alone holds more than `cap` distinct values for the cohort, since the merged
-/// list is at least that long; the caller checks the merged length against the cap.
+/// of such observations over all of them, in Java `Double.compareTo` order. Every distinct
+/// value is drawn from `tally`: as it is found when one block holds the concept, and after
+/// the merge otherwise. With several blocks, the build also stops as soon as one block alone
+/// holds more distinct values for the cohort than the cap, since the merged list is at least
+/// that long.
+///
+/// # Errors
+/// [`QueryError::LimitExceeded`] when the shared entry cap is exceeded.
 fn value_counts(
     blocks: &[Arc<Block>],
     cohort: &RoaringBitmap,
-    cap: u64,
-) -> Option<Vec<(f64, u64)>> {
+    tally: &mut EntryTally<'_>,
+) -> Result<Vec<(f64, u64)>> {
+    let single = blocks.len() <= 1;
+    let cap = tally.limit();
     let mut counts: Vec<(f64, u64)> = Vec::new();
     for block in blocks {
         let Block::Numeric(block) = block.as_ref() else {
@@ -567,15 +579,17 @@ fn value_counts(
             match counts[block_start..].last_mut() {
                 Some((last, count)) if java_double_cmp(*last, value).is_eq() => *count += 1,
                 _ => {
-                    counts.push((value, 1));
-                    if (counts.len() - block_start) as u64 > cap {
-                        return None;
+                    if single {
+                        tally.take()?;
+                    } else if (counts.len() - block_start) as u64 >= cap {
+                        return Err(tally.exceeded());
                     }
+                    counts.push((value, 1));
                 }
             }
         }
     }
-    if blocks.len() > 1 {
+    if !single {
         counts.sort_by(|a, b| java_double_cmp(a.0, b.0));
         counts.dedup_by(|later, earlier| {
             let same = java_double_cmp(later.0, earlier.0).is_eq();
@@ -584,6 +598,137 @@ fn value_counts(
             }
             same
         });
+        for _ in &counts {
+            tally.take()?;
+        }
     }
-    Some(counts)
+    Ok(counts)
+}
+
+/// Entries a worker adds before it settles them against the shared cross count total.
+const ENTRY_SETTLE_BATCH: u64 = 1024;
+
+/// The cross count entry cap, shared by the workers that build one cross count. Workers
+/// draw entries through an [`EntryTally`], so the cap stops a count while it is being built
+/// rather than after every concept's list is complete.
+struct EntryBudget {
+    used: AtomicU64,
+    limit: u64,
+}
+
+impl EntryBudget {
+    fn new(limit: u64) -> Self {
+        EntryBudget {
+            used: AtomicU64::new(0),
+            limit,
+        }
+    }
+
+    /// A worker's view of the budget, settling into the shared total in batches.
+    fn tally(&self) -> EntryTally<'_> {
+        EntryTally {
+            budget: self,
+            pending: 0,
+        }
+    }
+
+    fn exceeded(&self) -> QueryError {
+        QueryError::LimitExceeded(format!(
+            "the cross count would hold more than {} entries (HPDS_MAX_CROSS_COUNT_ENTRIES); \
+             filter on fewer or narrower concepts",
+            self.limit
+        ))
+    }
+}
+
+/// One worker's entries not yet added to its [`EntryBudget`].
+struct EntryTally<'b> {
+    budget: &'b EntryBudget,
+    pending: u64,
+}
+
+impl EntryTally<'_> {
+    /// The cap of the shared budget.
+    fn limit(&self) -> u64 {
+        self.budget.limit
+    }
+
+    /// The error a count over the cap fails with.
+    fn exceeded(&self) -> QueryError {
+        self.budget.exceeded()
+    }
+
+    /// Accounts for one more entry. Settles with the shared total every
+    /// [`ENTRY_SETTLE_BATCH`] entries, and at once when this worker alone is over the cap.
+    ///
+    /// # Errors
+    /// [`QueryError::LimitExceeded`] when the entries settled so far exceed the cap.
+    fn take(&mut self) -> Result<()> {
+        self.pending += 1;
+        if self.pending >= ENTRY_SETTLE_BATCH || self.pending > self.budget.limit {
+            self.settle()
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Adds the pending entries to the shared total.
+    ///
+    /// # Errors
+    /// [`QueryError::LimitExceeded`] when the shared total exceeds the cap.
+    fn settle(&mut self) -> Result<()> {
+        let added = std::mem::take(&mut self.pending);
+        let total = self
+            .budget
+            .used
+            .fetch_add(added, Ordering::Relaxed)
+            .saturating_add(added);
+        if total > self.budget.limit {
+            Err(self.budget.exceeded())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn is_limit(result: Result<()>) -> bool {
+        matches!(result, Err(QueryError::LimitExceeded(_)))
+    }
+
+    #[test]
+    fn a_tally_stops_at_the_cap_before_its_concept_is_complete() {
+        let budget = EntryBudget::new(3);
+        let mut tally = budget.tally();
+        for _ in 0..3 {
+            assert!(tally.take().is_ok());
+        }
+        assert!(is_limit(tally.take()));
+    }
+
+    #[test]
+    fn a_large_cap_still_stops_one_batch_past_it() {
+        let budget = EntryBudget::new(ENTRY_SETTLE_BATCH * 2);
+        let mut tally = budget.tally();
+        let taken = (0..ENTRY_SETTLE_BATCH * 10)
+            .take_while(|_| tally.take().is_ok())
+            .count() as u64;
+        assert!(taken < ENTRY_SETTLE_BATCH * 3);
+    }
+
+    #[test]
+    fn tallies_share_one_total() {
+        let budget = EntryBudget::new(10);
+        let mut first = budget.tally();
+        let mut second = budget.tally();
+        for _ in 0..6 {
+            assert!(first.take().is_ok());
+            assert!(second.take().is_ok());
+        }
+        assert!(first.settle().is_ok());
+        assert!(is_limit(second.settle()));
+    }
 }

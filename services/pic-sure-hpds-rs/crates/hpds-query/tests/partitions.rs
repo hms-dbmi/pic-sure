@@ -5,10 +5,8 @@
 mod common;
 
 use common::*;
-use hpds_query::cohort::all_patients;
 use hpds_query::{
-    Engine, Layout, Operator, QueryError, ResultType, StoreOptions, UNPARTITIONED_NAME,
-    evaluate_cohort,
+    Engine, Layout, Operator, Query, QueryError, ResultType, StoreOptions, UNPARTITIONED_NAME,
 };
 
 const CONCEPT: &str = "\\demographics\\AGE\\";
@@ -24,6 +22,16 @@ fn ids_of(bitmap: &roaring::RoaringBitmap) -> Vec<u32> {
     bitmap.iter().collect()
 }
 
+/// The patients with a value for [`CONCEPT`] in the partitions `consents` select
+/// (`getAllKeys`), through the engine.
+fn holding_concept(engine: &Engine, consents: &[&str]) -> Vec<u32> {
+    let q = Query {
+        phenotypic_clause: Some(required(CONCEPT)),
+        ..Query::with_consents(ResultType::Count, consents.iter().copied())
+    };
+    ids_of(&engine.cohort(&q).unwrap())
+}
+
 #[test]
 fn serves_an_unpartitioned_directory_when_consents_are_not_required() {
     let s = store(&numeric_rows(&[1, 2, 3]));
@@ -33,17 +41,14 @@ fn serves_an_unpartitioned_directory_when_consents_are_not_required() {
     assert!(set.summary(CONCEPT).is_some());
     let one = set.select_consents(&["phs000001.c1"]).unwrap();
     assert_eq!(ids_of(&one.patients()), [1, 2, 3]);
-    let none_match = set
-        .select_consents(&["some.consent.matching.no.partition"])
-        .unwrap();
     assert_eq!(
-        ids_of(&all_patients(&none_match, CONCEPT).unwrap()),
+        holding_concept(&s.engine, &["some.consent.matching.no.partition"]),
         [1, 2, 3]
     );
-    let three = set
-        .select_consents(&["phs000001.c1", "phs000002.c2", "phs000003.c3"])
-        .unwrap();
-    assert_eq!(ids_of(&all_patients(&three, CONCEPT).unwrap()), [1, 2, 3]);
+    assert_eq!(
+        holding_concept(&s.engine, &["phs000001.c1", "phs000002.c2", "phs000003.c3"]),
+        [1, 2, 3]
+    );
     assert_eq!(
         ids_of(&set.select_consents(&[]).unwrap().patients()),
         [1, 2, 3]
@@ -77,10 +82,10 @@ fn a_partitioned_directory_scopes_by_consent() {
     assert_eq!(patients(&["phs000002.c2"]), [3, 4]);
     assert_eq!(patients(&["phs000001.c1", "phs000002.c2"]), [1, 2, 3, 4]);
     assert!(patients(&["phs000003.c3"]).is_empty());
-    let both = set
-        .select_consents(&["phs000001.c1", "phs000002.c2"])
-        .unwrap();
-    assert_eq!(ids_of(&all_patients(&both, CONCEPT).unwrap()), [1, 2, 3, 4]);
+    assert_eq!(
+        holding_concept(&engine, &["phs000001.c1", "phs000002.c2"]),
+        [1, 2, 3, 4]
+    );
 }
 
 #[test]
@@ -90,12 +95,10 @@ fn patients_in_several_partitions_are_returned_once() {
         ("phs000002.c2", numeric_rows(&[2, 3, 4])),
     ]);
     let engine = d.open(&strict()).unwrap();
-    let both = engine
-        .partitions()
-        .select_consents(&["phs000001.c1", "phs000002.c2"])
-        .unwrap();
-    assert_eq!(ids_of(&all_patients(&both, CONCEPT).unwrap()), [1, 2, 3, 4]);
-    assert_eq!(ids_of(&both.patients()), [1, 2, 3, 4]);
+    let both = ["phs000001.c1", "phs000002.c2"];
+    assert_eq!(holding_concept(&engine, &both), [1, 2, 3, 4]);
+    let all = Query::with_consents(ResultType::Count, both);
+    assert_eq!(ids_of(&engine.cohort(&all).unwrap()), [1, 2, 3, 4]);
 }
 
 #[test]
@@ -113,7 +116,7 @@ fn consents_are_required_when_the_flag_is_on() {
         engine.run_sync(&q).map(|_| ()),
         engine.patients(&q).map(|_| ()),
         engine.dataframe(&q).map(|_| ()),
-        evaluate_cohort(engine.partitions(), &q).map(|_| ()),
+        engine.cohort(&q).map(|_| ()),
     ] {
         assert!(matches!(result, Err(QueryError::UserConsentsRequired)));
     }

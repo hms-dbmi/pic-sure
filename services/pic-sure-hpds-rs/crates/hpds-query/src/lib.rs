@@ -7,8 +7,9 @@
 //! - A [`PartitionSet`] is `PartitionedPhenotypicObservationStore`: one store per consent
 //!   partition sharing one key and one cache, the merged [`SummaryColumnMeta`] dictionary,
 //!   and the choice of partitions a query's `userConsents` grant.
-//! - [`evaluate_cohort`] is `PhenotypicQueryExecutor.getPatientSet`, each filter evaluated
-//!   per selected partition and the results ORed.
+//! - Cohort evaluation, `PhenotypicQueryExecutor.getPatientSet`, runs only inside the
+//!   [`Engine`], after the query passes its [`QueryLimits`] and its consents select the
+//!   partitions; each filter is evaluated per selected partition and the results ORed.
 //! - [`QueryValidator`] and [`check_supported`] are `QueryValidator`,
 //!   `PhenotypicFilterValidator`, and the refusal of genomic input.
 //! - The [`Engine`] runs the result computations, each returning a typed value that carries
@@ -18,7 +19,7 @@
 //! `tokio::task::spawn_blocking`; the `tokio` feature adds [`Engine::run_blocking`] and
 //! [`Store::block_async`] for that.
 
-pub mod cohort;
+mod cohort;
 mod engine;
 mod error;
 mod limits;
@@ -28,7 +29,6 @@ mod results;
 mod store;
 pub mod validate;
 
-pub use cohort::{evaluate_cohort, evaluate_cohort_cow, evaluate_selected};
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine};
 pub use error::{QueryError, Result};
 pub use limits::{

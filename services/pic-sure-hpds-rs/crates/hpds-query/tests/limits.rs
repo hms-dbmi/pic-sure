@@ -388,3 +388,62 @@ fn cross_count_entries_are_counted_after_merging_partitions() {
     assert!(continuous(&one, &[C1]).is_ok());
     limit_message(continuous(&one, &[C1, C2]).map(|_| ()));
 }
+
+#[test]
+fn every_any_record_of_counts_its_concepts_even_when_the_prefix_repeats() {
+    let s = data();
+    let engine = limited(
+        &s,
+        QueryLimits {
+            max_query_concepts: 6,
+            ..QueryLimits::default()
+        },
+    );
+    let once = query(ResultType::Count, Some(any_record_of(LABS)));
+    assert_eq!(engine.count(&once).unwrap(), 5);
+    let twice = query(
+        ResultType::Count,
+        Some(subquery(
+            Operator::Or,
+            vec![any_record_of(LABS), any_record_of(LABS)],
+        )),
+    );
+    let message = limit_message(engine.count(&twice));
+    assert!(message.contains("HPDS_MAX_QUERY_CONCEPTS"));
+    limit_message(engine.check_limits(&twice));
+}
+
+#[test]
+fn a_repeated_prefix_counts_once_per_filter_over_the_selected_partitions() {
+    let d = partitions();
+    let engine = d.open(&strict()).unwrap().with_limits(QueryLimits {
+        max_query_concepts: 7,
+        ..QueryLimits::default()
+    });
+    let twice = || subquery(Operator::Or, vec![any_record_of(LABS), any_record_of(LABS)]);
+    assert_eq!(
+        engine
+            .count(&consented(ResultType::Count, twice(), &[C1]))
+            .unwrap(),
+        1
+    );
+    let message = limit_message(engine.count(&consented(ResultType::Count, twice(), &[C1, C2])));
+    assert!(message.contains("HPDS_MAX_QUERY_CONCEPTS"));
+}
+
+#[test]
+fn a_dataframe_counts_repeated_select_paths_whatever_the_declared_result_type() {
+    let s = data();
+    let engine = limited(
+        &s,
+        QueryLimits {
+            max_select_paths: 3,
+            ..QueryLimits::default()
+        },
+    );
+    let mut q = query(ResultType::Count, None);
+    q.select = vec![SEX.into(), AGE.into(), SEX.into(), SEX.into()];
+    assert!(engine.count(&q).is_ok());
+    let message = limit_message(engine.dataframe(&q).map(|_| ()));
+    assert!(message.contains("HPDS_MAX_SELECT_PATHS"));
+}

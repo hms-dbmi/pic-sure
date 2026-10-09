@@ -13,49 +13,29 @@ use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 
 use crate::error::{QueryError, Result};
+use crate::limits::CheckedQuery;
 use crate::model::{
-    Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery, Query,
+    Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery,
 };
 use crate::partition::{PartitionSet, Selection};
 
-/// The patients matching `query`'s phenotypic clause within the partitions its consents
-/// select. With no clause, the cohort is every patient of those partitions. Authorization
-/// filters are never applied.
+/// The patients matching `checked`'s phenotypic clause within the partitions its consents
+/// select, borrowing the partitions' patient set instead of copying it when there is no
+/// clause and one partition or all of them are selected. With no clause, the cohort is
+/// every patient of those partitions. Authorization filters are never applied.
 ///
-/// Genomic filters are ignored here; [`crate::Engine`] refuses them before evaluating.
+/// Genomic filters are ignored here; admission into a [`CheckedQuery`] has refused them.
 ///
 /// # Errors
-/// [`QueryError::UserConsentsRequired`] when consents are required and the query has none,
 /// [`QueryError::FilterWithoutCriteria`], [`QueryError::EmptySubquery`],
 /// [`QueryError::MissingOperator`] and [`QueryError::TypeMismatch`] where Java's executor
 /// throws, [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index,
 /// and [`QueryError::Block`] when a block cannot be loaded.
-pub fn evaluate_cohort(set: &PartitionSet, query: &Query) -> Result<RoaringBitmap> {
-    evaluate_cohort_cow(set, query).map(Cow::into_owned)
-}
-
-/// [`evaluate_cohort`] that borrows the partitions' patient set instead of copying it when
-/// the query has no phenotypic clause and selects one partition or all of them.
-///
-/// # Errors
-/// As for [`evaluate_cohort`].
-pub fn evaluate_cohort_cow<'a>(
-    set: &'a PartitionSet,
-    query: &Query,
-) -> Result<Cow<'a, RoaringBitmap>> {
-    let selection = set.select(query)?;
-    evaluate_selected(&selection, query)
-}
-
-/// The cohort of `query` within an explicit `selection`, consents aside.
-///
-/// # Errors
-/// As for [`evaluate_cohort`], except [`QueryError::UserConsentsRequired`].
-pub fn evaluate_selected<'a>(
-    selection: &Selection<'a>,
-    query: &Query,
-) -> Result<Cow<'a, RoaringBitmap>> {
-    match &query.phenotypic_clause {
+pub(crate) fn evaluate_cohort_cow<'s>(
+    checked: &CheckedQuery<'_, 's>,
+) -> Result<Cow<'s, RoaringBitmap>> {
+    let selection = checked.selection();
+    match &checked.query().phenotypic_clause {
         None => Ok(selection.patients()),
         Some(clause) => {
             check_structure(selection.set(), clause)?;
@@ -99,18 +79,6 @@ impl Patients {
         }
         Patients::Computed(sets.iter().map(Patients::bitmap).union())
     }
-}
-
-/// Patients matching one clause within `selection`.
-///
-/// # Errors
-/// As for [`evaluate_selected`].
-pub fn evaluate_clause(
-    selection: &Selection<'_>,
-    clause: &PhenotypicClause,
-) -> Result<RoaringBitmap> {
-    check_structure(selection.set(), clause)?;
-    evaluate_checked(selection, clause).map(Patients::into_owned)
 }
 
 /// Finds, before any block is loaded, every condition under which Java's executor throws
@@ -228,15 +196,6 @@ fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Patients> 
     ))
 }
 
-/// Every patient with a value for `path` in any selected partition, empty for an unknown
-/// path (`PartitionedPhenotypicObservationStore.getAllKeys`).
-///
-/// # Errors
-/// [`QueryError::Block`] when a block cannot be loaded.
-pub fn all_patients(selection: &Selection<'_>, path: &str) -> Result<RoaringBitmap> {
-    required_patients(selection, path).map(Patients::into_owned)
-}
-
 /// Patients with any value for any concept whose path starts with `prefix`, the concept at
 /// `prefix` included, in any selected partition (`getChildConceptPaths` over the merged
 /// dictionary, a `String.startsWith` test, then `getAllKeys` for each). Each partition reads
@@ -245,7 +204,7 @@ pub fn all_patients(selection: &Selection<'_>, path: &str) -> Result<RoaringBitm
 ///
 /// # Errors
 /// [`QueryError::Block`] when a block cannot be loaded.
-pub fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<RoaringBitmap> {
+fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<RoaringBitmap> {
     let wanted: Vec<_> = selection
         .partitions()
         .iter()
@@ -279,7 +238,7 @@ pub fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<RoaringB
 /// [`QueryError::StoreInconsistent`] when a block is numeric, which the structure check
 /// has already ruled out through the dictionary, [`QueryError::Block`] when a block cannot
 /// be loaded.
-pub fn patients_with_values(
+fn patients_with_values(
     selection: &Selection<'_>,
     path: &str,
     values: &[String],
@@ -311,7 +270,8 @@ pub fn patients_with_values(
 /// Patients with at least one value `v` of the numeric concept at `path`, in any selected
 /// partition, such that `min <= v <= max` in Java `Double.compareTo` order
 /// (`PhenoCube.getKeysForRange`). A `None` bound is open. An unknown path gives the empty
-/// set.
+/// set. Borrows a block's patients when one partition holds the concept and the range
+/// covers every value.
 ///
 /// Java's seek logic yields the same inclusive bounds, except that it throws where this
 /// returns the empty set: when `min` exceeds every value (or the concept is empty), and
@@ -321,17 +281,6 @@ pub fn patients_with_values(
 /// [`QueryError::StoreInconsistent`] when a block is categorical, which the structure check
 /// has already ruled out through the dictionary, [`QueryError::Block`] when a block cannot
 /// be loaded.
-pub fn patients_in_range(
-    selection: &Selection<'_>,
-    path: &str,
-    min: Option<f64>,
-    max: Option<f64>,
-) -> Result<RoaringBitmap> {
-    range_patients(selection, path, min, max).map(Patients::into_owned)
-}
-
-/// [`patients_in_range`], borrowing a block's patients when one partition holds the concept
-/// and the range covers every value.
 fn range_patients(
     selection: &Selection<'_>,
     path: &str,
