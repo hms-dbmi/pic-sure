@@ -256,3 +256,86 @@ fn ranges_follow_java_double_order() {
     assert!(cohort(&s, filter_range(V, Some(2.0), Some(1.0))).is_empty());
     assert!(cohort(&s, filter_range(V, Some(1e301), Some(1e302))).is_empty());
 }
+
+/// Patient `p` has a value for concept `c` when `p * 7 + c * 13` is a multiple of `c + 3`,
+/// a pattern that gives every concept a different, overlapping set.
+fn holds(patient: u32, concept: u32) -> bool {
+    (patient * 7 + concept * 13).is_multiple_of(concept + 3)
+}
+
+fn wide_tree() -> (TestStore, Vec<String>) {
+    let paths: Vec<String> = (0..60)
+        .map(|c| format!("\\study\\group_{}\\variable_{c}\\", c % 4))
+        .collect();
+    let mut rows: Vec<Row<'_>> = Vec::new();
+    for (c, path) in paths.iter().enumerate() {
+        for patient in 1..400 {
+            if holds(patient, c as u32) {
+                if c.is_multiple_of(2) {
+                    rows.push((patient, path, Some(f64::from(patient % 50)), None));
+                } else {
+                    rows.push((patient, path, None, Some("yes")));
+                }
+            }
+        }
+    }
+    (store(&rows), paths)
+}
+
+fn expected(concepts: impl Iterator<Item = usize>, combine: fn(bool, bool) -> bool) -> Vec<u32> {
+    let concepts: Vec<u32> = concepts.map(|c| c as u32).collect();
+    (1..400)
+        .filter(|&p| {
+            let mut found = concepts.iter().map(|&c| holds(p, c));
+            let first = found.next().unwrap();
+            found.fold(first, combine)
+        })
+        .collect()
+}
+
+#[test]
+fn many_way_unions_and_intersections_match_set_semantics() {
+    let (s, paths) = wide_tree();
+    assert_eq!(
+        cohort(&s, any_record_of("\\study\\")),
+        expected(0..60, |a, b| a || b)
+    );
+    assert_eq!(
+        cohort(&s, any_record_of("\\study\\group_1\\")),
+        expected((1..60).step_by(4), |a, b| a || b)
+    );
+    let required_all = |range: std::ops::Range<usize>| -> Vec<PhenotypicClause> {
+        paths[range].iter().map(|p| required(p)).collect()
+    };
+    assert_eq!(
+        cohort(&s, subquery(Operator::Or, required_all(0..60))),
+        expected(0..60, |a, b| a || b)
+    );
+    assert_eq!(
+        cohort(&s, subquery(Operator::And, required_all(0..3))),
+        expected(0..3, |a, b| a && b)
+    );
+    assert!(cohort(&s, subquery(Operator::And, required_all(0..60))).is_empty());
+    assert_eq!(
+        cohort(&s, subquery(Operator::Or, required_all(5..6))),
+        expected(5..6, |a, b| a || b)
+    );
+    assert_eq!(
+        cohort(
+            &s,
+            subquery(
+                Operator::And,
+                vec![
+                    subquery(Operator::Or, required_all(0..2)),
+                    any_record_of("\\study\\group_2\\"),
+                    filter_range(&paths[0], Some(0.0), None),
+                ]
+            )
+        ),
+        (1..400)
+            .filter(|&p| (holds(p, 0) || holds(p, 1))
+                && (2..60).step_by(4).any(|c| holds(p, c))
+                && holds(p, 0))
+            .collect::<Vec<_>>()
+    );
+}

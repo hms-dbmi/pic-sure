@@ -1,5 +1,5 @@
-//! Times a COUNT with three filters on a generated store, cold and warm. Ignored by default;
-//! run with
+//! Times a COUNT with three filters, a study-level ANY_RECORD_OF COUNT and a CROSS_COUNT on
+//! a generated store. Ignored by default; run with
 //! `cargo test --release -p hpds-query --test microbench -- --ignored --nocapture`.
 //! The store directory comes from `HPDS_BENCH_STORE`; the tests skip with a message when it
 //! is unset or missing.
@@ -9,7 +9,7 @@ mod common;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use common::{filter_range, filter_values, query, required, subquery};
+use common::{any_record_of, filter_range, filter_values, query, required, subquery};
 use hpds_format::ConceptMeta;
 use hpds_query::{Engine, Operator, ResultType, StoreOptions};
 
@@ -145,5 +145,37 @@ fn cross_count_over_300_concepts_warm() {
         warm.len(),
         engine.store().cached_block_count(),
         engine.store().cached_bytes()
+    );
+}
+
+#[test]
+#[ignore = "needs a generated store; run explicitly for timings"]
+fn study_level_any_record_of_count_warm() {
+    let Some(dir) = bench_store() else {
+        return;
+    };
+    let prefix = std::env::var("HPDS_BENCH_PREFIX").unwrap_or_else(|_| "\\study_4\\".to_owned());
+    let engine = Engine::open(&dir, &StoreOptions::default()).unwrap();
+    let children = engine.store().index().with_prefix(&prefix).len();
+    let q = query(ResultType::Count, Some(any_record_of(&prefix)));
+
+    let cold = Instant::now();
+    let count = engine.count(&q).unwrap();
+    let cold = cold.elapsed();
+    let mut warm: Vec<Duration> = (0..200)
+        .map(|_| {
+            let t = Instant::now();
+            assert_eq!(engine.count(&q).unwrap(), count);
+            t.elapsed()
+        })
+        .collect();
+    warm.sort();
+    let pct = |p: usize| warm[(warm.len() * p / 100).min(warm.len() - 1)];
+    eprintln!(
+        "ANY_RECORD_OF {prefix} over {children} concepts, count {count}: cold {cold:?}; warm p50 {:?} p95 {:?} min {:?} over {} runs",
+        pct(50),
+        pct(95),
+        warm[0],
+        warm.len()
     );
 }

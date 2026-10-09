@@ -1,10 +1,11 @@
 //! Cohort evaluation: `PhenotypicQueryExecutor.getPatientSet` over roaring bitmaps.
 
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use hpds_format::Block;
 use rayon::prelude::*;
-use roaring::RoaringBitmap;
+use roaring::{MultiOps, RoaringBitmap};
 
 use crate::error::{QueryError, Result};
 use crate::model::{
@@ -51,7 +52,38 @@ pub fn evaluate_cohort_cow<'a>(store: &'a Store, query: &Query) -> Result<Cow<'a
         return Ok(Cow::Borrowed(store.index().patients()));
     }
     check_structure_all(store, &clauses)?;
-    combine(store, &clauses, Operator::And).map(Cow::Owned)
+    combine(store, &clauses, Operator::And).map(|patients| Cow::Owned(patients.into_owned()))
+}
+
+/// A patient set that either borrows a cached block's patients or was computed for this
+/// query, so unions and intersections over whole concepts read the cached bitmaps instead
+/// of copying them first.
+enum Patients {
+    Block(Arc<Block>),
+    Computed(RoaringBitmap),
+}
+
+impl Patients {
+    /// The patients of `block`, or the empty set when there is no block.
+    fn of_block(block: Option<Arc<Block>>) -> Self {
+        block.map_or_else(|| Self::Computed(RoaringBitmap::new()), Self::Block)
+    }
+
+    /// The patient bitmap, borrowed.
+    fn bitmap(&self) -> &RoaringBitmap {
+        match self {
+            Self::Block(block) => block.all_patients(),
+            Self::Computed(bitmap) => bitmap,
+        }
+    }
+
+    /// The patient bitmap, copied out of the block when it is borrowed.
+    fn into_owned(self) -> RoaringBitmap {
+        match self {
+            Self::Block(block) => block.all_patients().clone(),
+            Self::Computed(bitmap) => bitmap,
+        }
+    }
 }
 
 /// Patients matching one clause.
@@ -60,7 +92,7 @@ pub fn evaluate_cohort_cow<'a>(store: &'a Store, query: &Query) -> Result<Cow<'a
 /// As for [`evaluate_cohort`].
 pub fn evaluate_clause(store: &Store, clause: &PhenotypicClause) -> Result<RoaringBitmap> {
     check_structure(store, clause)?;
-    evaluate_checked(store, clause)
+    evaluate_checked(store, clause).map(Patients::into_owned)
 }
 
 fn check_structure_all(store: &Store, clauses: &[&PhenotypicClause]) -> Result<()> {
@@ -121,7 +153,7 @@ fn check_filter(store: &Store, filter: &PhenotypicFilter) -> Result<()> {
     Ok(())
 }
 
-fn evaluate_checked(store: &Store, clause: &PhenotypicClause) -> Result<RoaringBitmap> {
+fn evaluate_checked(store: &Store, clause: &PhenotypicClause) -> Result<Patients> {
     match clause {
         PhenotypicClause::Filter(filter) => evaluate_filter(store, filter),
         PhenotypicClause::Subquery(subquery) => {
@@ -132,32 +164,37 @@ fn evaluate_checked(store: &Store, clause: &PhenotypicClause) -> Result<RoaringB
     }
 }
 
-fn combine(
-    store: &Store,
-    clauses: &[&PhenotypicClause],
-    operator: Operator,
-) -> Result<RoaringBitmap> {
-    let sets = clauses
+/// Evaluates `clauses` in parallel and combines them with `operator`: one multi-way union
+/// for OR, and for AND one multi-way intersection over the sets ordered smallest first,
+/// which stops once the result is empty. Borrowed block bitmaps are read in place (an AND
+/// copies only its starting operand), and a single clause is returned as it is.
+fn combine(store: &Store, clauses: &[&PhenotypicClause], operator: Operator) -> Result<Patients> {
+    let mut sets = clauses
         .par_iter()
         .map(|clause| evaluate_checked(store, clause))
         .collect::<Result<Vec<_>>>()?;
-    let mut sets = sets.into_iter();
-    let first = sets.next().ok_or(QueryError::EmptySubquery)?;
-    Ok(match operator {
-        Operator::And => sets.fold(first, |acc, set| acc & set),
-        Operator::Or => sets.fold(first, |acc, set| acc | set),
-    })
+    if sets.len() <= 1 {
+        return sets.pop().ok_or(QueryError::EmptySubquery);
+    }
+    let mut bitmaps: Vec<&RoaringBitmap> = sets.iter().map(Patients::bitmap).collect();
+    Ok(Patients::Computed(match operator {
+        Operator::Or => bitmaps.union(),
+        Operator::And => {
+            bitmaps.sort_unstable_by_key(|bitmap| bitmap.len());
+            bitmaps.intersection()
+        }
+    }))
 }
 
-fn evaluate_filter(store: &Store, filter: &PhenotypicFilter) -> Result<RoaringBitmap> {
+fn evaluate_filter(store: &Store, filter: &PhenotypicFilter) -> Result<Patients> {
     let path = filter.concept_path.as_str();
     match filter.phenotypic_filter_type {
-        PhenotypicFilterType::Required => all_patients(store, path),
-        PhenotypicFilterType::AnyRecordOf => any_record_of(store, path),
+        PhenotypicFilterType::Required => store.block(path).map(Patients::of_block),
+        PhenotypicFilterType::AnyRecordOf => any_record_of(store, path).map(Patients::Computed),
         PhenotypicFilterType::Filter => match &filter.values {
-            Some(values) => patients_with_values(store, path, values),
+            Some(values) => patients_with_values(store, path, values).map(Patients::Computed),
             None if filter.min.is_some() || filter.max.is_some() => {
-                patients_in_range(store, path, filter.min, filter.max)
+                range_patients(store, path, filter.min, filter.max)
             }
             None => Err(QueryError::FilterWithoutCriteria {
                 concept_path: path.to_owned(),
@@ -186,16 +223,18 @@ pub fn all_patients(store: &Store, path: &str) -> Result<RoaringBitmap> {
 /// # Errors
 /// [`QueryError::Block`] when a block cannot be loaded.
 pub fn any_record_of(store: &Store, prefix: &str) -> Result<RoaringBitmap> {
-    let sets = store
+    let blocks = store
         .index()
         .with_prefix(prefix)
         .par_iter()
         .filter(|concept| concept.observation_count > 0)
-        .map(|concept| all_patients(store, &concept.path))
+        .map(|concept| store.block(&concept.path))
         .collect::<Result<Vec<_>>>()?;
-    Ok(sets
-        .into_iter()
-        .fold(RoaringBitmap::new(), |acc, set| acc | set))
+    Ok(blocks
+        .iter()
+        .flatten()
+        .map(|block| block.all_patients())
+        .union())
 }
 
 /// Patients with at least one of `values` for the categorical concept at `path`
@@ -242,19 +281,33 @@ pub fn patients_in_range(
     min: Option<f64>,
     max: Option<f64>,
 ) -> Result<RoaringBitmap> {
-    match store.block(path)?.as_deref() {
-        None => Ok(RoaringBitmap::new()),
-        Some(Block::Numeric(block)) => {
-            let range = block.value_range(min, max);
-            if range.len() == block.len() {
-                return Ok(block.all_patients().clone());
+    range_patients(store, path, min, max).map(Patients::into_owned)
+}
+
+/// [`patients_in_range`], borrowing the block's patients when the range covers every value.
+fn range_patients(
+    store: &Store,
+    path: &str,
+    min: Option<f64>,
+    max: Option<f64>,
+) -> Result<Patients> {
+    let Some(block) = store.block(path)? else {
+        return Ok(Patients::Computed(RoaringBitmap::new()));
+    };
+    match block.as_ref() {
+        Block::Numeric(numeric) => {
+            let range = numeric.value_range(min, max);
+            if range.len() == numeric.len() {
+                return Ok(Patients::Block(block));
             }
-            let mut patients = block.patients()[range].to_vec();
+            let mut patients = numeric.patients()[range].to_vec();
             patients.sort_unstable();
             patients.dedup();
-            Ok(RoaringBitmap::from_sorted_iter(patients).unwrap_or_default())
+            Ok(Patients::Computed(
+                RoaringBitmap::from_sorted_iter(patients).unwrap_or_default(),
+            ))
         }
-        Some(Block::Categorical(_)) => Err(QueryError::StoreInconsistent {
+        Block::Categorical(_) => Err(QueryError::StoreInconsistent {
             concept_path: path.to_owned(),
             detail: "the index says numeric but the block is categorical",
         }),
