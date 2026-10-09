@@ -1,0 +1,18 @@
+[package]
+name = "hpds-etl"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "hpds_etl"
+
+[[bin]]
+name = "hpds-etl"
+path = "src/main.rs"
+
+[dependencies]
+hpds-format.workspace = true
+

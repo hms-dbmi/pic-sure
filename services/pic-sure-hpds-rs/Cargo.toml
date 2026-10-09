@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/hpds-format", "crates/hpds-etl", "crates/hpds-query", "crates/hpds-gen", "crates/hpds-bench"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+axum = "0.8.9"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+hpds-format = { path = "crates/hpds-format" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
