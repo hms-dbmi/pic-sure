@@ -16,6 +16,17 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+clap = { version = "4.6.7", features = ["derive"] }
+csv = "1.4.0"
+rand_chacha = "0.10.0"
+roaring = "0.11.5"
+aes-gcm = "0.11.1"
+zstd = "0.14.0"
+xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
+bytemuck = { version = "1.25.2", features = ["extern_crate_alloc"] }
+thiserror = "2.0.21"
+getrandom = "0.4.3"
+proptest = "1.11.0"
 hpds-format = { path = "crates/hpds-format" }
 hpds-query = { path = "crates/hpds-query" }
 tempfile = "3.27.0"

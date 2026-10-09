@@ -7,4 +7,6 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-
+clap.workspace = true
+csv.workspace = true
+rand_chacha.workspace = true
