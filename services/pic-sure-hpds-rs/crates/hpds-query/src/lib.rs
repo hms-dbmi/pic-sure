@@ -4,7 +4,8 @@
 //!
 //! - The [`model`] module holds [`Query`] and its parts, deserialized as Jackson reads them.
 //! - A [`Store`] keeps `pheno.index` in memory and a byte-bounded cache of decoded blocks.
-//! - [`evaluate_cohort`] is `PhenotypicQueryExecutor.getPatientSet`.
+//! - Cohort evaluation, `PhenotypicQueryExecutor.getPatientSet`, runs only inside the
+//!   [`Engine`], after the query passes its [`QueryLimits`].
 //! - [`QueryValidator`] and [`check_supported`] are `QueryValidator`,
 //!   `PhenotypicFilterValidator`, and the refusal of genomic input.
 //! - The [`Engine`] runs the result computations, each returning a typed value that carries
@@ -14,7 +15,7 @@
 //! `tokio::task::spawn_blocking`; the `tokio` feature adds [`Engine::run_blocking`] and
 //! [`Store::block_async`] for that.
 
-pub mod cohort;
+mod cohort;
 mod engine;
 mod error;
 mod limits;
@@ -23,7 +24,6 @@ mod results;
 mod store;
 pub mod validate;
 
-pub use cohort::{evaluate_cohort, evaluate_cohort_cow};
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine};
 pub use error::{QueryError, Result};
 pub use limits::{

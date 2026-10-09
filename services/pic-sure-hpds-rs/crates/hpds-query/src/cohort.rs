@@ -8,34 +8,31 @@ use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 
 use crate::error::{QueryError, Result};
+use crate::limits::CheckedQuery;
 use crate::model::{
-    Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery, Query,
+    Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery,
 };
 use crate::store::Store;
 
-/// The patients matching `query`'s authorization filters and phenotypic clause.
+/// The patients matching `checked`'s authorization filters and phenotypic clause, borrowing
+/// the store's patient set instead of copying it when the query has neither.
 ///
 /// Every authorization filter becomes a `FILTER` on its concept path and values. Those
 /// filters and the phenotypic clause, when present, are ANDed together. With neither, the
 /// cohort is every patient in the store.
 ///
-/// Genomic filters are ignored here; [`crate::Engine`] refuses them before evaluating.
+/// Genomic filters are ignored here; admission into a [`CheckedQuery`] has refused them.
 ///
 /// # Errors
 /// [`QueryError::FilterWithoutCriteria`], [`QueryError::EmptySubquery`],
 /// [`QueryError::MissingOperator`] and [`QueryError::TypeMismatch`] where Java's executor
 /// throws, [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index,
 /// and [`QueryError::Block`] when a block cannot be loaded.
-pub fn evaluate_cohort(store: &Store, query: &Query) -> Result<RoaringBitmap> {
-    evaluate_cohort_cow(store, query).map(Cow::into_owned)
-}
-
-/// [`evaluate_cohort`] without copying the store's patient set when the query has no
-/// authorization filters and no phenotypic clause: the result then borrows the index.
-///
-/// # Errors
-/// As for [`evaluate_cohort`].
-pub fn evaluate_cohort_cow<'a>(store: &'a Store, query: &Query) -> Result<Cow<'a, RoaringBitmap>> {
+pub(crate) fn evaluate_cohort_cow<'a>(
+    store: &'a Store,
+    checked: CheckedQuery<'_>,
+) -> Result<Cow<'a, RoaringBitmap>> {
+    let query = checked.query();
     let authorization: Vec<PhenotypicClause> = query
         .authorization_filters
         .iter()
@@ -84,15 +81,6 @@ impl Patients {
             Self::Computed(bitmap) => bitmap,
         }
     }
-}
-
-/// Patients matching one clause.
-///
-/// # Errors
-/// As for [`evaluate_cohort`].
-pub fn evaluate_clause(store: &Store, clause: &PhenotypicClause) -> Result<RoaringBitmap> {
-    check_structure(store, clause)?;
-    evaluate_checked(store, clause).map(Patients::into_owned)
 }
 
 fn check_structure_all(store: &Store, clauses: &[&PhenotypicClause]) -> Result<()> {
@@ -203,18 +191,6 @@ fn evaluate_filter(store: &Store, filter: &PhenotypicFilter) -> Result<Patients>
     }
 }
 
-/// Every patient with a value for `path`, empty for an unknown path
-/// (`PhenotypicObservationStore.getAllKeys`).
-///
-/// # Errors
-/// [`QueryError::Block`] when the block cannot be loaded.
-pub fn all_patients(store: &Store, path: &str) -> Result<RoaringBitmap> {
-    Ok(store
-        .block(path)?
-        .map(|block| block.all_patients().clone())
-        .unwrap_or_default())
-}
-
 /// Patients with any value for any concept whose path starts with `prefix`, the concept at
 /// `prefix` included (`PhenotypeMetaStore.getChildConceptPaths`, a `String.startsWith`
 /// test over every concept path). Concepts with no observations are skipped without
@@ -222,7 +198,7 @@ pub fn all_patients(store: &Store, path: &str) -> Result<RoaringBitmap> {
 ///
 /// # Errors
 /// [`QueryError::Block`] when a block cannot be loaded.
-pub fn any_record_of(store: &Store, prefix: &str) -> Result<RoaringBitmap> {
+pub(crate) fn any_record_of(store: &Store, prefix: &str) -> Result<RoaringBitmap> {
     let blocks = store
         .index()
         .with_prefix(prefix)
@@ -246,7 +222,11 @@ pub fn any_record_of(store: &Store, prefix: &str) -> Result<RoaringBitmap> {
 /// [`QueryError::StoreInconsistent`] when the block is numeric, which the structure check
 /// has already ruled out through the index, [`QueryError::Block`] when the block cannot be
 /// loaded.
-pub fn patients_with_values(store: &Store, path: &str, values: &[String]) -> Result<RoaringBitmap> {
+pub(crate) fn patients_with_values(
+    store: &Store,
+    path: &str,
+    values: &[String],
+) -> Result<RoaringBitmap> {
     if values.is_empty() {
         return Ok(RoaringBitmap::new());
     }
@@ -274,17 +254,7 @@ pub fn patients_with_values(store: &Store, path: &str, values: &[String]) -> Res
 /// # Errors
 /// [`QueryError::StoreInconsistent`] when the block is categorical, which the structure
 /// check has already ruled out through the index, [`QueryError::Block`] when the block
-/// cannot be loaded.
-pub fn patients_in_range(
-    store: &Store,
-    path: &str,
-    min: Option<f64>,
-    max: Option<f64>,
-) -> Result<RoaringBitmap> {
-    range_patients(store, path, min, max).map(Patients::into_owned)
-}
-
-/// [`patients_in_range`], borrowing the block's patients when the range covers every value.
+/// cannot be loaded. Borrows the block's patients when the range covers every value.
 fn range_patients(
     store: &Store,
     path: &str,
