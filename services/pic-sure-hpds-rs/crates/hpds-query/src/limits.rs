@@ -3,8 +3,6 @@
 
 use std::collections::HashSet;
 
-use hpds_format::java_string_cmp;
-
 use crate::error::{QueryError, Result};
 use crate::model::{PhenotypicClause, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{PartitionSet, Selection};
@@ -242,34 +240,7 @@ impl<'q, 's> CheckedQuery<'q, 's> {
 }
 
 /// The number of distinct concepts whose path starts with `prefix` in the union of the
-/// selected partitions' dictionaries, counting no further than `ceiling + 1`. Every
-/// partition's concepts are sorted in Java string order, so each one's run under the prefix
-/// is contiguous.
+/// selected partitions' dictionaries, counting no further than `ceiling + 1`.
 fn count_with_prefix(selection: &Selection<'_>, prefix: &str, ceiling: usize) -> usize {
-    let limit = ceiling.saturating_add(1);
-    if selection.is_all() {
-        let dictionary = selection.set().dictionary();
-        let start = dictionary.partition_point(|c| java_string_cmp(&c.name, prefix).is_lt());
-        return dictionary[start..]
-            .iter()
-            .take(limit)
-            .take_while(|c| c.name.starts_with(prefix))
-            .count();
-    }
-    let mut distinct: HashSet<&str> = HashSet::new();
-    for partition in selection.partitions() {
-        let concepts = partition.store().index().concepts();
-        let start = concepts.partition_point(|c| java_string_cmp(&c.path, prefix).is_lt());
-        for concept in concepts[start..]
-            .iter()
-            .take(limit)
-            .take_while(|c| c.path.starts_with(prefix))
-        {
-            distinct.insert(concept.path.as_str());
-            if distinct.len() >= limit {
-                return limit;
-            }
-        }
-    }
-    distinct.len()
+    selection.count_with_prefix(prefix, ceiling.saturating_add(1))
 }

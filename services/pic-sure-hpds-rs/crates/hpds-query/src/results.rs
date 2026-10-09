@@ -191,9 +191,13 @@ struct Column {
     parts: Vec<Part>,
 }
 
+/// One block's place in a column: `cursor` indexes its observations in patient order, and
+/// `next` is the patient there (`u32::MAX` past the end), so a patient the block does not
+/// hold costs one comparison.
 struct Part {
     block: Arc<Block>,
     cursor: usize,
+    next: u32,
 }
 
 impl DataframeRows {
@@ -206,10 +210,7 @@ impl DataframeRows {
             columns: columns
                 .into_iter()
                 .map(|blocks| Column {
-                    parts: blocks
-                        .into_iter()
-                        .map(|block| Part { block, cursor: 0 })
-                        .collect(),
+                    parts: blocks.into_iter().map(Part::new).collect(),
                 })
                 .collect(),
         }
@@ -226,7 +227,47 @@ impl Column {
 }
 
 impl Part {
+    fn new(block: Arc<Block>) -> Self {
+        let mut part = Part {
+            block,
+            cursor: 0,
+            next: 0,
+        };
+        part.next = part.patient_at(0);
+        part
+    }
+
+    /// The patient of the observation at `cursor` in patient order, `u32::MAX` past the end.
+    fn patient_at(&self, cursor: usize) -> u32 {
+        match self.block.as_ref() {
+            Block::Categorical(b) => b.patients().get(cursor).copied(),
+            Block::Numeric(b) => b.by_key().get(cursor).map(|&i| b.patients()[i as usize]),
+        }
+        .unwrap_or(u32::MAX)
+    }
+
+    /// Moves the cursor to the first observation of a patient at or after `patient`.
+    fn seek(&mut self, patient: u32) {
+        self.cursor += match self.block.as_ref() {
+            Block::Categorical(b) => b.patients()[self.cursor..].partition_point(|&p| p < patient),
+            Block::Numeric(b) => {
+                let patients = b.patients();
+                b.by_key()[self.cursor..].partition_point(|&i| patients[i as usize] < patient)
+            }
+        };
+        self.next = self.patient_at(self.cursor);
+    }
+
     fn write_values(&mut self, patient: u32, first: &mut bool, out: &mut String) {
+        if self.next > patient {
+            return;
+        }
+        if self.next < patient {
+            self.seek(patient);
+            if self.next != patient {
+                return;
+            }
+        }
         let mut separator = |out: &mut String| {
             if !std::mem::take(first) {
                 out.push('\t');
@@ -235,7 +276,6 @@ impl Part {
         match self.block.as_ref() {
             Block::Categorical(b) => {
                 let patients = b.patients();
-                self.cursor += patients[self.cursor..].partition_point(|&p| p < patient);
                 while patients.get(self.cursor) == Some(&patient) {
                     let index = b.value_indices()[self.cursor] as usize;
                     separator(out);
@@ -245,10 +285,9 @@ impl Part {
             }
             Block::Numeric(b) => {
                 let (by_key, patients) = (b.by_key(), b.patients());
-                let at = |k: usize| patients[by_key[k] as usize];
-                self.cursor +=
-                    by_key[self.cursor..].partition_point(|&i| patients[i as usize] < patient);
-                while self.cursor < by_key.len() && at(self.cursor) == patient {
+                while self.cursor < by_key.len()
+                    && patients[by_key[self.cursor] as usize] == patient
+                {
                     separator(out);
                     out.push_str(&java_double_to_string(
                         b.values()[by_key[self.cursor] as usize],
@@ -257,6 +296,7 @@ impl Part {
                 }
             }
         }
+        self.next = self.patient_at(self.cursor);
     }
 }
 

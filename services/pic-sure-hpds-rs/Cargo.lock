@@ -801,9 +801,11 @@ dependencies = [
 name = "hpds-query"
 version = "0.1.0"
 dependencies = [
+ "csv",
  "hpds-bench",
  "hpds-etl",
  "hpds-format",
+ "hpds-gen",
  "moka",
  "rayon",
  "roaring",

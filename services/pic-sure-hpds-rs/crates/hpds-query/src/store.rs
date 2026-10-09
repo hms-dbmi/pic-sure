@@ -109,26 +109,20 @@ impl Store {
         &self.index
     }
 
-    /// The decoded block of the concept at `path`, from the cache or loaded from disk, or
-    /// `None` when there is no such concept (Java's `getCube` returning `Optional.empty()`).
-    ///
-    /// Concurrent calls for the same uncached path load it once; the others wait for that
-    /// load. Blocking.
+    /// The decoded block of the concept at `position` in the index, from the cache or
+    /// loaded from disk. Concurrent calls for the same uncached block load it once; the
+    /// others wait for that load. Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when the block cannot be read, authenticated or decoded.
-    pub(crate) fn block(&self, path: &str) -> Result<Option<Arc<Block>>> {
-        let Some(position) = self.index.position(path) else {
-            return Ok(None);
-        };
+    pub(crate) fn block_at(&self, position: usize) -> Result<Arc<Block>> {
         let concept = &self.index.concepts()[position];
         self.cache
             .try_get_with(self.cache_key(position), || {
                 self.reader.read_block(&self.codec, concept).map(Arc::new)
             })
-            .map(Some)
             .map_err(|source| QueryError::Block {
-                concept_path: path.to_owned(),
+                concept_path: concept.path.clone(),
                 source,
             })
     }

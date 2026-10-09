@@ -207,28 +207,8 @@ fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Patients> 
 /// # Errors
 /// [`QueryError::Block`] when a block cannot be loaded.
 fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<RoaringBitmap> {
-    let wanted: Vec<_> = selection
-        .partitions()
-        .iter()
-        .flat_map(|partition| {
-            partition
-                .store()
-                .index()
-                .with_prefix(prefix)
-                .iter()
-                .filter(|concept| concept.observation_count > 0)
-                .map(move |concept| (partition, concept.path.as_str()))
-        })
-        .collect();
-    let blocks = wanted
-        .par_iter()
-        .map(|(partition, path)| partition.store().block(path))
-        .collect::<Result<Vec<_>>>()?;
-    Ok(blocks
-        .iter()
-        .flatten()
-        .map(|block| block.all_patients())
-        .union())
+    let blocks = selection.blocks_with_prefix(prefix)?;
+    Ok(blocks.iter().map(|block| block.all_patients()).union())
 }
 
 /// Patients with at least one of `values` for the categorical concept at `path` in any

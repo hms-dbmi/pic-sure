@@ -598,3 +598,21 @@ fn a_generation_file_must_list_exactly_the_opened_stores() {
     std::fs::remove_file(&generation).unwrap();
     d.open(&lenient()).unwrap();
 }
+
+#[test]
+fn cross_counts_agree_for_narrow_and_broad_cohorts_over_shared_patients() {
+    let wide: Vec<u32> = (1..=60).collect();
+    let shifted: Vec<u32> = (41..=100).collect();
+    let d = partitioned_rows(&[("p1", numeric_rows(&wide)), ("p2", numeric_rows(&shifted))]);
+    let engine = d.open(&lenient()).unwrap();
+    let mut q = query(
+        ResultType::CrossCount,
+        Some(filter_range(CONCEPT, Some(45.0), Some(46.0))),
+    );
+    q.select = vec![CONCEPT.into()];
+    assert_eq!(engine.cross_count(&q).unwrap().get(CONCEPT), Some(2));
+    q.phenotypic_clause = Some(filter_range(CONCEPT, Some(1.0), Some(100.0)));
+    assert_eq!(engine.cross_count(&q).unwrap().get(CONCEPT), Some(100));
+    q.phenotypic_clause = Some(filter_range(CONCEPT, Some(95.0), None));
+    assert_eq!(engine.cross_count(&q).unwrap().get(CONCEPT), Some(6));
+}

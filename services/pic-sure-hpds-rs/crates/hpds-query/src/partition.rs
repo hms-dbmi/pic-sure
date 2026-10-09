@@ -75,11 +75,15 @@ impl Partition {
     pub fn name(&self) -> &str {
         &self.name
     }
+}
 
-    /// The partition's store.
-    pub(crate) fn store(&self) -> &Store {
-        &self.store
-    }
+/// Where one partition keeps one concept: the partition's slot in [`PartitionSet`] order and
+/// the concept's position in that partition's index, which together are the block's cache
+/// key.
+#[derive(Debug, Clone, Copy)]
+struct Holder {
+    slot: u32,
+    position: u32,
 }
 
 /// `SummaryColumnMeta`: a concept's metadata merged over every partition that holds it, the
@@ -278,6 +282,8 @@ pub struct PartitionSet {
     require_consents: bool,
     partitions: Vec<Partition>,
     dictionary: Vec<SummaryColumnMeta>,
+    holder_ends: Vec<u32>,
+    holders: Vec<Holder>,
     all_patients: RoaringBitmap,
     cache: BlockCache,
 }
@@ -392,7 +398,7 @@ impl PartitionSet {
             (Layout::Partitioned, partitions)
         };
         check_generation(dir, &partitions)?;
-        let dictionary = merge_dictionaries(&partitions)?;
+        let (dictionary, holder_ends, holders) = merge_dictionaries(&partitions)?;
         let all_patients = partitions
             .iter()
             .map(|p| p.store.index().patients())
@@ -403,6 +409,8 @@ impl PartitionSet {
             require_consents: options.require_consents,
             partitions,
             dictionary,
+            holder_ends,
+            holders,
             all_patients,
             cache,
         })
@@ -450,15 +458,25 @@ impl PartitionSet {
 
     /// The merged metadata of the concept at exactly `path`.
     pub fn summary(&self, path: &str) -> Option<&SummaryColumnMeta> {
+        self.concept_index(path).map(|i| &self.dictionary[i])
+    }
+
+    /// The position of the concept at exactly `path` in the merged dictionary.
+    fn concept_index(&self, path: &str) -> Option<usize> {
         self.dictionary
             .binary_search_by(|c| java_string_cmp(&c.name, path))
             .ok()
-            .map(|i| &self.dictionary[i])
     }
 
     /// Every merged concept whose path starts with `prefix` (`String.startsWith`), the
     /// concept at `prefix` included.
     pub fn dictionary_with_prefix(&self, prefix: &str) -> &[SummaryColumnMeta] {
+        &self.dictionary[self.prefix_range(prefix)]
+    }
+
+    /// The positions in the merged dictionary of the concepts whose path starts with
+    /// `prefix`, which are contiguous in Java string order.
+    fn prefix_range(&self, prefix: &str) -> std::ops::Range<usize> {
         let start = self
             .dictionary
             .partition_point(|c| java_string_cmp(&c.name, prefix).is_lt());
@@ -466,7 +484,19 @@ impl PartitionSet {
             .iter()
             .take_while(|c| c.name.starts_with(prefix))
             .count();
-        &self.dictionary[start..start + len]
+        start..start + len
+    }
+
+    /// The start in `holders` of the holders of the concept at dictionary position `index`.
+    fn holders_start(&self, index: usize) -> usize {
+        index
+            .checked_sub(1)
+            .map_or(0, |previous| self.holder_ends[previous] as usize)
+    }
+
+    /// The partitions holding the concept at dictionary position `index`, in slot order.
+    fn holders_of(&self, index: usize) -> &[Holder] {
+        &self.holders[self.holders_start(index)..self.holder_ends[index] as usize]
     }
 
     /// True when some partition holds at least one concept, the readiness rule for health
@@ -495,20 +525,32 @@ impl PartitionSet {
     /// # Errors
     /// As for [`PartitionSet::select`].
     pub fn select_consents(&self, consents: &[&str]) -> Result<Selection<'_>> {
-        let members: Vec<&Partition> = if consents.is_empty() {
+        let mask: Vec<bool> = if consents.is_empty() {
             if self.require_consents {
                 return Err(QueryError::UserConsentsRequired);
             }
-            self.partitions.iter().collect()
+            vec![true; self.partitions.len()]
         } else if self.layout == Layout::Unpartitioned {
-            self.partitions.iter().collect()
+            vec![true; self.partitions.len()]
         } else {
+            let mut sorted = consents.to_vec();
+            sorted.sort_unstable();
             self.partitions
                 .iter()
-                .filter(|p| consents.contains(&p.name.as_str()))
+                .map(|p| sorted.binary_search(&p.name.as_str()).is_ok())
                 .collect()
         };
-        Ok(Selection { set: self, members })
+        let members = self
+            .partitions
+            .iter()
+            .zip(&mask)
+            .filter_map(|(partition, &selected)| selected.then_some(partition))
+            .collect();
+        Ok(Selection {
+            set: self,
+            members,
+            mask,
+        })
     }
 
     /// Fails exactly when [`PartitionSet::select`] would: consents are required and `query`
@@ -557,17 +599,13 @@ impl ConceptLookup for PartitionSet {
 pub struct Selection<'a> {
     set: &'a PartitionSet,
     members: Vec<&'a Partition>,
+    mask: Vec<bool>,
 }
 
 impl<'a> Selection<'a> {
     /// The partition set selected from.
     pub fn set(&self) -> &'a PartitionSet {
         self.set
-    }
-
-    /// The selected partitions, in partition name order.
-    pub(crate) fn partitions(&self) -> &[&'a Partition] {
-        &self.members
     }
 
     /// The selected partition names, in order.
@@ -595,24 +633,106 @@ impl<'a> Selection<'a> {
     /// The type of the concept at exactly `path`, or `None` when no selected partition holds
     /// it. Partitions never disagree on a type: [`PartitionSet::open`] refuses that.
     pub fn concept_type(&self, path: &str) -> Option<ConceptType> {
-        self.members
+        let index = self.set.concept_index(path)?;
+        self.selected_holders(index)
+            .next()
+            .map(|_| self.set.dictionary[index].concept_type())
+    }
+
+    /// The holders of the concept at dictionary position `index` whose partition is
+    /// selected, in slot order.
+    fn selected_holders(&self, index: usize) -> impl Iterator<Item = Holder> + Clone + '_ {
+        self.set
+            .holders_of(index)
             .iter()
-            .find_map(|p| p.store.index().get(path))
-            .map(|concept| concept.concept_type)
+            .copied()
+            .filter(|h| self.mask[h.slot as usize])
+    }
+
+    fn concept(&self, holder: Holder) -> &'a ConceptMeta {
+        &self.set.partitions[holder.slot as usize]
+            .store
+            .index()
+            .concepts()[holder.position as usize]
     }
 
     /// The block of `path` in each selected partition that holds the concept, in partition
-    /// name order. Loads in parallel. Blocking.
+    /// name order. Only the partitions holding the concept are visited. When every block
+    /// is cached they are returned without spawning work; otherwise all of them load on the
+    /// rayon pool, where the cached ones return at once. Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be loaded.
     pub(crate) fn blocks(&self, path: &str) -> Result<Vec<Arc<Block>>> {
-        let loaded = self
-            .members
+        match self.set.concept_index(path) {
+            Some(index) => self.load(
+                self.selected_holders(index),
+                self.set.holders_of(index).len(),
+            ),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// The blocks of every concept whose path starts with `prefix` and that has at least one
+    /// observation in a selected partition, the concept at `prefix` included, from every
+    /// selected partition holding it with observations. Other blocks are never loaded.
+    /// Blocking.
+    ///
+    /// # Errors
+    /// [`QueryError::Block`] when a block cannot be loaded.
+    pub(crate) fn blocks_with_prefix(&self, prefix: &str) -> Result<Vec<Arc<Block>>> {
+        let range = self.set.prefix_range(prefix);
+        let capacity = if range.is_empty() {
+            0
+        } else {
+            self.set.holder_ends[range.end - 1] as usize - self.set.holders_start(range.start)
+        };
+        let holders = range
+            .flat_map(|index| self.selected_holders(index))
+            .filter(|&h| self.concept(h).observation_count > 0);
+        self.load(holders, capacity)
+    }
+
+    /// The number of concepts whose path starts with `prefix` that a selected partition
+    /// holds, counting no further than `limit`.
+    pub(crate) fn count_with_prefix(&self, prefix: &str, limit: usize) -> usize {
+        let range = self.set.prefix_range(prefix);
+        if self.is_all() {
+            return range.len().min(limit);
+        }
+        range
+            .filter(|&index| self.selected_holders(index).next().is_some())
+            .take(limit)
+            .count()
+    }
+
+    /// The blocks at `holders`, in order. Reads the shared cache first, and on the first
+    /// miss loads every holder on the rayon pool instead.
+    fn load(
+        &self,
+        holders: impl Iterator<Item = Holder> + Clone,
+        capacity: usize,
+    ) -> Result<Vec<Arc<Block>>> {
+        let mut blocks = Vec::with_capacity(capacity);
+        for holder in holders.clone() {
+            match self.set.cache.get(&(holder.slot, holder.position)) {
+                Some(block) => blocks.push(block),
+                None => return self.load_all(holders),
+            }
+        }
+        Ok(blocks)
+    }
+
+    fn load_all(&self, holders: impl Iterator<Item = Holder>) -> Result<Vec<Arc<Block>>> {
+        let holders: Vec<Holder> = holders.collect();
+        holders
             .par_iter()
-            .map(|p| p.store.block(path))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(loaded.into_iter().flatten().collect())
+            .map(|h| {
+                self.set.partitions[h.slot as usize]
+                    .store
+                    .block_at(h.position as usize)
+            })
+            .collect()
     }
 }
 
@@ -761,16 +881,25 @@ fn type_name(concept_type: ConceptType) -> &'static str {
     }
 }
 
+/// A merged dictionary and its concepts' holders, flattened: the holders of the concept at
+/// position `i` are `holders[ends[i - 1]..ends[i]]` (from 0 for the first), in slot order.
+type MergedDictionary = (Vec<SummaryColumnMeta>, Vec<u32>, Vec<Holder>);
+
 /// The merged dictionary of `partitions` (`createAllPartitionMetaStore`), in Java string
-/// order, refusing a concept typed differently in two partitions.
-fn merge_dictionaries(partitions: &[Partition]) -> Result<Vec<SummaryColumnMeta>> {
-    let mut merged: Vec<(SummaryColumnMeta, &str)> = Vec::new();
+/// order, with each concept's holders, refusing a concept typed differently in two
+/// partitions.
+fn merge_dictionaries(partitions: &[Partition]) -> Result<MergedDictionary> {
+    let mut merged: Vec<(SummaryColumnMeta, &str, Vec<Holder>)> = Vec::new();
     let mut positions: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for partition in partitions {
-        for concept in partition.store.index().concepts() {
+    for (slot, partition) in partitions.iter().enumerate() {
+        for (position, concept) in partition.store.index().concepts().iter().enumerate() {
+            let holder = Holder {
+                slot: slot as u32,
+                position: position as u32,
+            };
             match positions.get(concept.path.as_str()) {
                 Some(&i) => {
-                    let (summary, first_partition) = &mut merged[i];
+                    let (summary, first_partition, holders) = &mut merged[i];
                     if summary.concept_type() != concept.concept_type {
                         return Err(QueryError::TypeConflict {
                             concept_path: concept.path.clone(),
@@ -781,26 +910,30 @@ fn merge_dictionaries(partitions: &[Partition]) -> Result<Vec<SummaryColumnMeta>
                         });
                     }
                     summary.absorb(concept);
+                    holders.push(holder);
                 }
                 None => {
                     positions.insert(&concept.path, merged.len());
                     merged.push((
                         SummaryColumnMeta::from_concept(concept),
                         partition.name.as_str(),
+                        vec![holder],
                     ));
                 }
             }
         }
     }
-    let mut dictionary: Vec<SummaryColumnMeta> = merged
-        .into_iter()
-        .map(|(mut summary, _)| {
-            summary.finish();
-            summary
-        })
-        .collect();
-    dictionary.sort_by(|a, b| java_string_cmp(&a.name, &b.name));
-    Ok(dictionary)
+    merged.sort_by(|a, b| java_string_cmp(&a.0.name, &b.0.name));
+    let mut dictionary = Vec::with_capacity(merged.len());
+    let mut ends = Vec::with_capacity(merged.len());
+    let mut holders = Vec::new();
+    for (mut summary, _, concept_holders) in merged {
+        summary.finish();
+        dictionary.push(summary);
+        holders.extend(concept_holders);
+        ends.push(holders.len() as u32);
+    }
+    Ok((dictionary, ends, holders))
 }
 
 #[cfg(test)]

@@ -477,15 +477,33 @@ fn cross_count_in(checked: &CheckedQuery<'_, '_>, cohort: &RoaringBitmap) -> Con
                 None => -1,
                 Some([]) => 0,
                 Some([one]) => one.all_patients().intersection_len(cohort) as i64,
-                Some(many) => {
-                    let patients = many.iter().map(|b| b.all_patients()).union();
-                    patients.intersection_len(cohort) as i64
-                }
+                Some(many) => cohort_patients_in(many, cohort) as i64,
             };
             ((*path).to_owned(), count)
         })
         .collect();
     ConceptCounts { entries }
+}
+
+/// The number of `cohort` patients in any of `blocks`. When the cohort is smaller than the
+/// average block, each block is intersected with it first and the small intersections are
+/// unioned; otherwise the blocks are unioned once and the union counted against the cohort,
+/// which allocates one bitmap instead of one per block.
+fn cohort_patients_in(blocks: &[Arc<Block>], cohort: &RoaringBitmap) -> u64 {
+    let observed: u64 = blocks.iter().map(|b| b.all_patients().len()).sum();
+    if cohort.len().saturating_mul(blocks.len() as u64) < observed {
+        blocks
+            .iter()
+            .map(|b| b.all_patients() & cohort)
+            .union()
+            .len()
+    } else {
+        blocks
+            .iter()
+            .map(|b| b.all_patients())
+            .union()
+            .intersection_len(cohort)
+    }
 }
 
 fn observation_cross_count_in(

@@ -26,5 +26,7 @@ tracing.workspace = true
 [dev-dependencies]
 hpds-bench = { path = "../hpds-bench" }
 hpds-etl = { path = "../hpds-etl" }
+hpds-gen = { path = "../hpds-gen" }
+csv.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
