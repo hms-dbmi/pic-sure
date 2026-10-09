@@ -6,10 +6,13 @@ use std::path::Path;
 use roaring::RoaringBitmap;
 use xxhash_rust::xxh3::xxh3_64;
 
-use crate::block::{BlockCodec, zstd_decompress_aligned};
-use crate::crypto::{CryptoKey, decrypt_java_block_with_aad, encrypt_java_block_with_aad};
+use crate::block::{
+    BlockCodec, categorical_payload_bound, numeric_payload_bound, zstd_decompress_aligned,
+};
+use crate::crypto::{open_framed, seal_framed};
 use crate::error::{FormatError, Result};
 use crate::parity::java_string_cmp;
+use crate::protection::{Protection, STORE_ID_LEN, StoreId};
 use crate::{FORMAT_VERSION, INDEX_MAGIC};
 
 const FLAG_ENCRYPTED: u16 = 1;
@@ -23,6 +26,12 @@ const META_TIMESTAMP_MIN: u8 = 1 << 3;
 const META_TIMESTAMP_MAX: u8 = 1 << 4;
 const META_CATEGORY_VALUES: u8 = 1 << 5;
 const KNOWN_META: u8 = (1 << 6) - 1;
+
+/// Largest decompressed index body accepted, checked against the zstd frame header before
+/// anything is allocated.
+pub const MAX_INDEX_BODY_LEN: u64 = 1 << 32;
+
+const INDEX_FILE: &str = "pheno.index";
 
 /// Whether a concept holds numbers or category strings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -45,8 +54,8 @@ pub struct BlockLocation {
 /// Per-concept metadata: every `ColumnMeta` field the service and `columnMeta.csv` use.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ConceptMeta {
-    /// Concept path, the key of the concept table. `ColumnMeta.name`.
-    pub name: String,
+    /// Concept path, the key of the concept table. Java calls it `ColumnMeta.name`.
+    pub path: String,
     /// Numeric or categorical. `ColumnMeta.categorical`.
     pub concept_type: ConceptType,
     /// Distinct values in Java string order; `None` where Java holds `null`, which is
@@ -80,6 +89,24 @@ impl ConceptMeta {
     pub fn is_categorical(&self) -> bool {
         self.concept_type == ConceptType::Categorical
     }
+
+    /// Upper bound on this concept's decoded block payload, for
+    /// [`BlockCodec::open_payload`]. Derived from the observation count, the timestamp
+    /// arrays (assumed present), and for categorical concepts the number and UTF-8 length
+    /// of the category values, plus a quarter and 4 KiB of slack. A block whose frame
+    /// declares more than this does not match its metadata and is refused.
+    pub fn max_payload_len(&self) -> u64 {
+        let n = u64::from(self.observation_count);
+        let exact = match self.concept_type {
+            ConceptType::Numeric => numeric_payload_bound(n),
+            ConceptType::Categorical => {
+                let values = self.category_values.as_deref().unwrap_or_default();
+                let string_bytes = values.iter().map(|v| v.len() as u64).sum();
+                categorical_payload_bound(n, values.len() as u64, string_bytes)
+            }
+        };
+        exact.saturating_add(exact / 4).saturating_add(4096)
+    }
 }
 
 /// The plain header at the start of `pheno.index`.
@@ -87,7 +114,8 @@ impl ConceptMeta {
 pub struct IndexHeader {
     /// Format version the file was written with.
     pub format_version: u16,
-    /// True when the index body and every block are AES-GCM encrypted.
+    /// True when the index body and every block are AES-GCM encrypted. Informational: a
+    /// reader decides what it accepts with [`Protection`], and a mismatch is an error.
     pub encrypted: bool,
     /// True when the index body and every block are zstd-compressed.
     pub compressed: bool,
@@ -97,24 +125,10 @@ pub struct IndexHeader {
     pub created_at_millis: i64,
     /// Version string of the ETL that wrote the store.
     pub etl_version: String,
-}
-
-impl IndexHeader {
-    /// The block codec this header describes.
-    ///
-    /// # Errors
-    /// [`FormatError::KeyMismatch`] when the store is encrypted and `key` is `None`.
-    pub fn block_codec(&self, key: Option<CryptoKey>) -> Result<BlockCodec> {
-        if self.encrypted && key.is_none() {
-            return Err(FormatError::KeyMismatch(
-                "the store is encrypted and no key was supplied",
-            ));
-        }
-        Ok(BlockCodec::new(
-            if self.encrypted { key } else { None },
-            self.compressed,
-        ))
-    }
+    /// Random id of the store, bound into every block. Generate one per store with
+    /// [`StoreId::random`] and use the same id for the index, the blocks file and the
+    /// block codec.
+    pub store_id: StoreId,
 }
 
 /// The in-memory form of `pheno.index`: header, all patient IDs, and the concept table
@@ -138,11 +152,11 @@ impl PhenoIndex {
         mut concepts: Vec<ConceptMeta>,
     ) -> Result<Self> {
         header.format_version = FORMAT_VERSION;
-        concepts.sort_by(|a, b| java_string_cmp(&a.name, &b.name));
-        if let Some(w) = concepts.windows(2).find(|w| w[0].name == w[1].name) {
+        concepts.sort_by(|a, b| java_string_cmp(&a.path, &b.path));
+        if let Some(w) = concepts.windows(2).find(|w| w[0].path == w[1].path) {
             return Err(FormatError::InvalidInput(format!(
                 "duplicate concept path {:?}",
-                w[0].name
+                w[0].path
             )));
         }
         Ok(PhenoIndex {
@@ -155,6 +169,26 @@ impl PhenoIndex {
     /// The file header.
     pub fn header(&self) -> &IndexHeader {
         &self.header
+    }
+
+    /// The store id from the header.
+    pub fn store_id(&self) -> StoreId {
+        self.header.store_id
+    }
+
+    /// The codec for this store's blocks under `protection`, which should be the
+    /// protection the index was decoded with.
+    ///
+    /// # Errors
+    /// [`FormatError::MissingKey`] or [`FormatError::UnexpectedKey`] when `protection`
+    /// disagrees with the header.
+    pub fn block_codec(&self, protection: Protection) -> Result<BlockCodec> {
+        protection.require(self.header.encrypted, INDEX_FILE)?;
+        Ok(BlockCodec::new(
+            protection,
+            self.header.store_id,
+            self.header.compressed,
+        ))
     }
 
     /// Every patient ID in the store.
@@ -170,7 +204,7 @@ impl PhenoIndex {
     /// Position of `path` in [`PhenoIndex::concepts`], by binary search.
     pub fn position(&self, path: &str) -> Option<usize> {
         self.concepts
-            .binary_search_by(|c| java_string_cmp(&c.name, path))
+            .binary_search_by(|c| java_string_cmp(&c.path, path))
             .ok()
     }
 
@@ -186,34 +220,22 @@ impl PhenoIndex {
     pub fn with_prefix(&self, prefix: &str) -> &[ConceptMeta] {
         let start = self
             .concepts
-            .partition_point(|c| java_string_cmp(&c.name, prefix) == Ordering::Less);
+            .partition_point(|c| java_string_cmp(&c.path, prefix) == Ordering::Less);
         let len = self.concepts[start..]
             .iter()
-            .take_while(|c| c.name.starts_with(prefix))
+            .take_while(|c| c.path.starts_with(prefix))
             .count();
         &self.concepts[start..start + len]
     }
 
-    /// Serializes the index. `key` must be set exactly when the header says encrypted.
+    /// Serializes the index. `protection` must agree with the header's encrypted flag.
     ///
     /// # Errors
-    /// [`FormatError::KeyMismatch`] when `key` disagrees with the header,
-    /// [`FormatError::InvalidInput`] when a string or count exceeds its field, and
-    /// compression or encryption errors.
-    pub fn encode(&self, key: Option<&CryptoKey>) -> Result<Vec<u8>> {
-        match (self.header.encrypted, key) {
-            (true, None) => {
-                return Err(FormatError::KeyMismatch(
-                    "the index is encrypted and no key was supplied",
-                ));
-            }
-            (false, Some(_)) => {
-                return Err(FormatError::KeyMismatch(
-                    "the index is plain but a key was supplied",
-                ));
-            }
-            _ => {}
-        }
+    /// [`FormatError::MissingKey`] or [`FormatError::UnexpectedKey`] when `protection`
+    /// disagrees with the header, [`FormatError::InvalidInput`] when a string or count
+    /// exceeds its field, and compression or encryption errors.
+    pub fn encode(&self, protection: &Protection) -> Result<Vec<u8>> {
+        protection.require(self.header.encrypted, INDEX_FILE)?;
         let body = self.encode_body()?;
         let body = if self.header.compressed {
             zstd::bulk::compress(&body, zstd::DEFAULT_COMPRESSION_LEVEL)
@@ -222,9 +244,9 @@ impl PhenoIndex {
             body
         };
         let mut out = encode_preamble(&self.header)?;
-        match key {
+        match protection.key() {
             Some(key) => {
-                let sealed = encrypt_java_block_with_aad(key, &body, &out)?;
+                let sealed = seal_framed(key, &body, &out)?;
                 out.extend_from_slice(&(sealed.len() as u64).to_le_bytes());
                 out.extend_from_slice(&sealed);
             }
@@ -244,7 +266,7 @@ impl PhenoIndex {
         self.patients.serialize_into(&mut out)?;
         put_u32(&mut out, self.concepts.len(), "concept count")?;
         for c in &self.concepts {
-            put_str(&mut out, &c.name)?;
+            put_str(&mut out, &c.path)?;
             out.push(match c.concept_type {
                 ConceptType::Numeric => 0,
                 ConceptType::Categorical => 1,
@@ -292,27 +314,30 @@ impl PhenoIndex {
         Ok(decode_preamble(bytes)?.0)
     }
 
-    /// Parses and verifies a serialized index.
+    /// Parses and verifies a serialized index under the protection the caller requires.
+    /// The header's encrypted flag never decides on its own: a plain index with a valid
+    /// checksum is refused when `protection` holds a key.
     ///
     /// # Errors
-    /// [`FormatError::KeyMismatch`] when the index is encrypted and `key` is `None`;
+    /// [`FormatError::MissingKey`] when the index is encrypted and `protection` is plain;
+    /// [`FormatError::UnexpectedKey`] when `protection` holds a key and the index is plain;
     /// [`FormatError::Authentication`] or [`FormatError::Checksum`] when the bytes were
-    /// altered or the key is wrong; [`FormatError::Truncated`] or [`FormatError::Corrupt`]
-    /// for structural damage, including a concept table that is not strictly sorted.
-    pub fn decode(bytes: &[u8], key: Option<&CryptoKey>) -> Result<Self> {
+    /// altered or the key is wrong; [`FormatError::PayloadTooLarge`] when the compressed
+    /// body declares more than [`MAX_INDEX_BODY_LEN`]; [`FormatError::Truncated`] or
+    /// [`FormatError::Corrupt`] for structural damage, including a concept table that is
+    /// not strictly sorted.
+    pub fn decode(bytes: &[u8], protection: &Protection) -> Result<Self> {
         let (header, preamble_len) = decode_preamble(bytes)?;
+        protection.require(header.encrypted, INDEX_FILE)?;
         let mut r = Reader::new(&bytes[preamble_len..], "index");
         let stored_len = r.u64()?;
         let stored_len = r.len(stored_len)?;
         let stored = r.bytes(stored_len)?;
         let body_start = preamble_len + 8;
         let opened;
-        let body: &[u8] = if header.encrypted {
+        let body: &[u8] = if let Some(key) = protection.key() {
             r.finish()?;
-            let key = key.ok_or(FormatError::KeyMismatch(
-                "the index is encrypted and no key was supplied",
-            ))?;
-            opened = decrypt_java_block_with_aad(key, stored, &bytes[..preamble_len])?;
+            opened = open_framed(key, stored, &bytes[..preamble_len])?;
             &opened
         } else {
             let checksum = r.u64()?;
@@ -324,7 +349,7 @@ impl PhenoIndex {
         };
         let decompressed;
         let body: &[u8] = if header.compressed {
-            decompressed = zstd_decompress_aligned(body)?;
+            decompressed = zstd_decompress_aligned(body, MAX_INDEX_BODY_LEN, "index body")?;
             decompressed.as_bytes()
         } else {
             body
@@ -341,8 +366,8 @@ impl PhenoIndex {
     ///
     /// # Errors
     /// The errors of [`PhenoIndex::encode`] and [`FormatError::Io`].
-    pub fn write_file(&self, path: impl AsRef<Path>, key: Option<&CryptoKey>) -> Result<()> {
-        std::fs::write(path, self.encode(key)?)?;
+    pub fn write_file(&self, path: impl AsRef<Path>, protection: &Protection) -> Result<()> {
+        std::fs::write(path, self.encode(protection)?)?;
         Ok(())
     }
 
@@ -350,8 +375,8 @@ impl PhenoIndex {
     ///
     /// # Errors
     /// The errors of [`PhenoIndex::decode`] and [`FormatError::Io`].
-    pub fn read_file(path: impl AsRef<Path>, key: Option<&CryptoKey>) -> Result<Self> {
-        Self::decode(&std::fs::read(path)?, key)
+    pub fn read_file(path: impl AsRef<Path>, protection: &Protection) -> Result<Self> {
+        Self::decode(&std::fs::read(path)?, protection)
     }
 }
 
@@ -380,6 +405,7 @@ fn encode_preamble(header: &IndexHeader) -> Result<Vec<u8>> {
         flags |= FLAG_COMPRESSED;
     }
     out.extend_from_slice(&flags.to_le_bytes());
+    out.extend_from_slice(header.store_id.as_bytes());
     put_str(&mut out, &header.key_name)?;
     out.extend_from_slice(&header.created_at_millis.to_le_bytes());
     put_str(&mut out, &header.etl_version)?;
@@ -389,9 +415,7 @@ fn encode_preamble(header: &IndexHeader) -> Result<Vec<u8>> {
 fn decode_preamble(bytes: &[u8]) -> Result<(IndexHeader, usize)> {
     let mut r = Reader::new(bytes, "index header");
     if r.bytes(INDEX_MAGIC.len())? != INDEX_MAGIC {
-        return Err(FormatError::BadMagic {
-            file: "pheno.index",
-        });
+        return Err(FormatError::BadMagic { file: INDEX_FILE });
     }
     let format_version = r.u16()?;
     if format_version != FORMAT_VERSION {
@@ -404,6 +428,7 @@ fn decode_preamble(bytes: &[u8]) -> Result<(IndexHeader, usize)> {
             format!("unknown flags {flags:#06x}"),
         ));
     }
+    let store_id = StoreId::from_bytes(r.array::<STORE_ID_LEN>()?);
     let key_name = r.string()?;
     let created_at_millis = r.i64()?;
     let etl_version = r.string()?;
@@ -414,6 +439,7 @@ fn decode_preamble(bytes: &[u8]) -> Result<(IndexHeader, usize)> {
         key_name,
         created_at_millis,
         etl_version,
+        store_id,
     };
     Ok((header, r.pos))
 }
@@ -427,7 +453,7 @@ fn decode_body(body: &[u8]) -> Result<(RoaringBitmap, Vec<ConceptMeta>)> {
     let count = r.u32()? as usize;
     let mut concepts: Vec<ConceptMeta> = Vec::with_capacity(count.min(body.len() / 64));
     for _ in 0..count {
-        let name = r.string()?;
+        let path = r.string()?;
         let concept_type = match r.u8()? {
             0 => ConceptType::Numeric,
             1 => ConceptType::Categorical,
@@ -466,7 +492,7 @@ fn decode_body(body: &[u8]) -> Result<(RoaringBitmap, Vec<ConceptMeta>)> {
         if !has(META_CATEGORY_VALUES) && !values.is_empty() {
             return Err(FormatError::corrupt(
                 "concept table",
-                format!("{name:?} has values but no value list"),
+                format!("{path:?} has values but no value list"),
             ));
         }
         let meta = ConceptMeta {
@@ -482,14 +508,14 @@ fn decode_body(body: &[u8]) -> Result<(RoaringBitmap, Vec<ConceptMeta>)> {
             width_in_bytes,
             column_offset,
             block,
-            name,
+            path,
         };
         if let Some(prev) = concepts.last()
-            && java_string_cmp(&prev.name, &meta.name) != Ordering::Less
+            && java_string_cmp(&prev.path, &meta.path) != Ordering::Less
         {
             return Err(FormatError::corrupt(
                 "concept table",
-                format!("{:?} is not sorted after {:?}", meta.name, prev.name),
+                format!("{:?} is not sorted after {:?}", meta.path, prev.path),
             ));
         }
         concepts.push(meta);

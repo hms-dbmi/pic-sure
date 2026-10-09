@@ -40,6 +40,12 @@ impl AlignedBuf {
         self.len == 0
     }
 
+    /// Heap bytes the buffer holds, which can exceed [`AlignedBuf::len`] by the padding
+    /// to a whole word.
+    pub fn heap_size(&self) -> usize {
+        self.words.capacity() * size_of::<u64>()
+    }
+
     /// The buffer contents.
     pub fn as_bytes(&self) -> &[u8] {
         &bytemuck::cast_slice::<u64, u8>(&self.words)[..self.len]

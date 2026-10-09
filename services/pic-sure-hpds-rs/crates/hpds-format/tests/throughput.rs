@@ -1,6 +1,9 @@
 use std::time::Instant;
 
-use hpds_format::{Block, BlockCodec, CryptoKey, NumericObservation, encode_numeric_payload};
+use hpds_format::{
+    Block, BlockCodec, BlockLocation, ConceptMeta, ConceptType, CryptoKey, NumericObservation,
+    Protection, StoreId, encode_numeric_payload,
+};
 
 /// Encodes, seals, opens and decodes a 10M-observation numeric block and prints the
 /// timings. Run with `cargo test --release -p hpds-format --test throughput -- --ignored
@@ -24,20 +27,46 @@ fn ten_million_observation_numeric_block() {
         })
         .collect();
     let key = CryptoKey::from_bytes(b"0123456789abcdef0123456789abcdef").unwrap();
+    let store = StoreId::random().unwrap();
+    let meta = ConceptMeta {
+        path: "\\bench\\".into(),
+        concept_type: ConceptType::Numeric,
+        category_values: None,
+        min: None,
+        max: None,
+        observation_count: N,
+        patient_count: N / 4,
+        has_timestamp: true,
+        timestamp_min: None,
+        timestamp_max: None,
+        width_in_bytes: 0,
+        column_offset: 0,
+        block: BlockLocation::default(),
+    };
     for (label, codec) in [
-        ("plain+zstd", BlockCodec::new(None, true)),
-        ("aes256+zstd", BlockCodec::new(Some(key.clone()), true)),
-        ("aes256 raw", BlockCodec::new(Some(key), false)),
+        (
+            "plain+zstd",
+            BlockCodec::new(Protection::Plain, store, true),
+        ),
+        (
+            "aes256+zstd",
+            BlockCodec::new(Protection::Encrypted(key.clone()), store, true),
+        ),
+        (
+            "aes256 raw",
+            BlockCodec::new(Protection::Encrypted(key), store, false),
+        ),
     ] {
-        let mut obs = source.clone();
         let t = Instant::now();
-        let payload = encode_numeric_payload(&mut obs).unwrap();
+        let payload = encode_numeric_payload(&source).unwrap();
         let encode = t.elapsed();
         let t = Instant::now();
         let stored = codec.seal("\\bench\\", &payload).unwrap();
         let seal = t.elapsed();
         let t = Instant::now();
-        let block = codec.open("\\bench\\", &stored).unwrap();
+        let block = codec
+            .open("\\bench\\", &stored, meta.max_payload_len())
+            .unwrap();
         let open = t.elapsed();
         let Block::Numeric(b) = block else { panic!() };
         assert_eq!(b.len(), N as usize);

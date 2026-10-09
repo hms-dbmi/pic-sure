@@ -1,4 +1,5 @@
-//! The `pheno.blocks` file: an 8-byte magic followed by stored blocks back to back.
+//! The `pheno.blocks` file: an 8-byte magic and the 16-byte store id, followed by stored
+//! blocks back to back.
 
 use std::fs::File;
 use std::io::Write;
@@ -8,7 +9,11 @@ use std::path::Path;
 use crate::BLOCKS_MAGIC;
 use crate::block::{Block, BlockCodec};
 use crate::error::{FormatError, Result};
-use crate::index::BlockLocation;
+use crate::index::{BlockLocation, ConceptMeta};
+use crate::protection::{STORE_ID_LEN, StoreId};
+
+/// Bytes before the first block: the magic and the store id.
+pub const BLOCKS_HEADER_LEN: u64 = (BLOCKS_MAGIC.len() + STORE_ID_LEN) as u64;
 
 /// Appends stored blocks to a `pheno.blocks` stream and reports where each one landed.
 #[derive(Debug)]
@@ -18,15 +23,17 @@ pub struct BlocksWriter<W: Write> {
 }
 
 impl<W: Write> BlocksWriter<W> {
-    /// Writes the file magic to `inner` and returns a writer positioned after it.
+    /// Writes the file magic and `store_id` to `inner` and returns a writer positioned
+    /// after them. Use the store id of the index and codec the blocks belong to.
     ///
     /// # Errors
     /// [`FormatError::Io`] when the write fails.
-    pub fn new(mut inner: W) -> Result<Self> {
+    pub fn new(mut inner: W, store_id: StoreId) -> Result<Self> {
         inner.write_all(BLOCKS_MAGIC)?;
+        inner.write_all(store_id.as_bytes())?;
         Ok(BlocksWriter {
             inner,
-            offset: BLOCKS_MAGIC.len() as u64,
+            offset: BLOCKS_HEADER_LEN,
         })
     }
 
@@ -58,14 +65,14 @@ impl<W: Write> BlocksWriter<W> {
         self.append_stored(&stored)
     }
 
-    /// Bytes written so far, including the magic.
+    /// Bytes written so far, including the header.
     pub fn len(&self) -> u64 {
         self.offset
     }
 
     /// True when no block has been appended yet.
     pub fn is_empty(&self) -> bool {
-        self.offset == BLOCKS_MAGIC.len() as u64
+        self.offset == BLOCKS_HEADER_LEN
     }
 
     /// Flushes and returns the underlying writer.
@@ -80,34 +87,53 @@ impl<W: Write> BlocksWriter<W> {
 
 /// Reads stored blocks from `pheno.blocks` by location, with positioned reads that can run
 /// concurrently from many threads.
+///
+/// Every read is a blocking `pread`. From async code, call [`BlocksReader::read_block`] and
+/// [`BlocksReader::read_stored`] inside `spawn_blocking` or on a dedicated thread pool.
 #[derive(Debug)]
 pub struct BlocksReader {
     file: File,
     len: u64,
+    store_id: StoreId,
 }
 
 impl BlocksReader {
-    /// Opens `path` and checks its magic.
+    /// Opens `path`, checks its magic, and checks that it belongs to the store
+    /// `store_id` (the index's [`crate::PhenoIndex::store_id`]).
     ///
     /// # Errors
     /// [`FormatError::Io`] when the file cannot be opened or read,
-    /// [`FormatError::BadMagic`] when it is not a blocks file.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+    /// [`FormatError::BadMagic`] when it is not a blocks file,
+    /// [`FormatError::StoreMismatch`] when it belongs to another store.
+    pub fn open(path: impl AsRef<Path>, store_id: StoreId) -> Result<Self> {
         let file = File::open(path)?;
         let len = file.metadata()?.len();
-        let mut magic = [0u8; 8];
-        if len < magic.len() as u64 {
+        let mut header = [0u8; BLOCKS_HEADER_LEN as usize];
+        if len < BLOCKS_HEADER_LEN {
             return Err(FormatError::BadMagic {
                 file: "pheno.blocks",
             });
         }
-        file.read_exact_at(&mut magic, 0)?;
-        if &magic != BLOCKS_MAGIC {
+        file.read_exact_at(&mut header, 0)?;
+        let (magic, id) = header.split_at(BLOCKS_MAGIC.len());
+        if magic != BLOCKS_MAGIC {
             return Err(FormatError::BadMagic {
                 file: "pheno.blocks",
             });
         }
-        Ok(BlocksReader { file, len })
+        if id != store_id.as_bytes() {
+            return Err(FormatError::StoreMismatch);
+        }
+        Ok(BlocksReader {
+            file,
+            len,
+            store_id,
+        })
+    }
+
+    /// The store the file belongs to.
+    pub fn store_id(&self) -> StoreId {
+        self.store_id
     }
 
     /// File length in bytes.
@@ -115,19 +141,19 @@ impl BlocksReader {
         self.len
     }
 
-    /// True when the file holds only its magic.
+    /// True when the file holds only its header.
     pub fn is_empty(&self) -> bool {
-        self.len <= BLOCKS_MAGIC.len() as u64
+        self.len <= BLOCKS_HEADER_LEN
     }
 
-    /// Reads the stored bytes at `location` without verifying them.
+    /// Reads the stored bytes at `location` without verifying them. Blocking.
     ///
     /// # Errors
     /// [`FormatError::Corrupt`] when the location lies outside the file,
     /// [`FormatError::Io`] when the read fails.
     pub fn read_stored(&self, location: BlockLocation) -> Result<Vec<u8>> {
         let end = location.offset.checked_add(location.length);
-        if location.offset < BLOCKS_MAGIC.len() as u64 || end.is_none_or(|end| end > self.len) {
+        if location.offset < BLOCKS_HEADER_LEN || end.is_none_or(|end| end > self.len) {
             return Err(FormatError::corrupt(
                 "block location",
                 format!("{location:?} outside a {}-byte file", self.len),
@@ -140,16 +166,21 @@ impl BlocksReader {
         Ok(stored)
     }
 
-    /// Reads, verifies and decodes the block for `concept_path` at `location`.
+    /// Reads, verifies and decodes the block of `concept`, bounding its decoded size by
+    /// [`ConceptMeta::max_payload_len`]. Blocking: this does a positioned read and then
+    /// decrypts and decompresses on the calling thread.
     ///
     /// # Errors
-    /// The errors of [`BlocksReader::read_stored`] and [`BlockCodec::open`].
-    pub fn read_block(
-        &self,
-        codec: &BlockCodec,
-        concept_path: &str,
-        location: BlockLocation,
-    ) -> Result<Block> {
-        codec.open(concept_path, &self.read_stored(location)?)
+    /// [`FormatError::StoreMismatch`] when `codec` is for another store, and the errors of
+    /// [`BlocksReader::read_stored`] and [`BlockCodec::open`].
+    pub fn read_block(&self, codec: &BlockCodec, concept: &ConceptMeta) -> Result<Block> {
+        if codec.store_id() != self.store_id {
+            return Err(FormatError::StoreMismatch);
+        }
+        codec.open(
+            &concept.path,
+            &self.read_stored(concept.block)?,
+            concept.max_payload_len(),
+        )
     }
 }

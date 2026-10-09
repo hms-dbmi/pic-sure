@@ -10,8 +10,9 @@
 //! ciphertext plaintext length, followed by a 16-byte GCM tag
 //! ```
 //!
-//! Java javabins carry no associated data. Blocks and indexes written by this crate bind
-//! associated data so a block cannot be replayed under another concept.
+//! Java javabins carry no associated data: read them with [`decrypt_java_block`]. Blocks
+//! and indexes written by this crate go through [`seal_framed`] and [`open_framed`], which
+//! bind associated data so a block cannot be replayed under another concept or store.
 
 use std::fmt;
 use std::path::Path;
@@ -158,19 +159,16 @@ fn random_nonce() -> Result<[u8; IV_LENGTH]> {
 /// [`FormatError::Random`] when the OS RNG fails, [`FormatError::InvalidInput`] when the
 /// plaintext exceeds the AES-GCM limit.
 pub fn encrypt_java_block(key: &CryptoKey, plaintext: &[u8]) -> Result<Vec<u8>> {
-    encrypt_java_block_with_aad(key, plaintext, &[])
+    seal_framed(key, plaintext, &[])
 }
 
 /// Encrypts `plaintext` with a fresh random nonce, binding `aad` as associated data, in
-/// the `Crypto.encryptData` framing.
+/// the `Crypto.encryptData` framing. Only [`open_framed`] with the same `aad` opens the
+/// result; Java cannot, because it never passes associated data.
 ///
 /// # Errors
 /// As [`encrypt_java_block`].
-pub fn encrypt_java_block_with_aad(
-    key: &CryptoKey,
-    plaintext: &[u8],
-    aad: &[u8],
-) -> Result<Vec<u8>> {
+pub fn seal_framed(key: &CryptoKey, plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>> {
     let nonce = random_nonce()?;
     let sealed = key.encrypt_raw(&nonce, plaintext, aad)?;
     let mut out = Vec::with_capacity(4 + IV_LENGTH + sealed.len());
@@ -186,7 +184,7 @@ pub fn encrypt_java_block_with_aad(
 /// [`FormatError::Truncated`] or [`FormatError::Corrupt`] when the framing is invalid,
 /// [`FormatError::Authentication`] when the key is wrong or the bytes were altered.
 pub fn decrypt_java_block(key: &CryptoKey, bytes: &[u8]) -> Result<Vec<u8>> {
-    decrypt_java_block_with_aad(key, bytes, &[])
+    open_framed(key, bytes, &[])
 }
 
 /// Decrypts a block in the `Crypto.encryptData` framing that was sealed with `aad`.
@@ -194,7 +192,7 @@ pub fn decrypt_java_block(key: &CryptoKey, bytes: &[u8]) -> Result<Vec<u8>> {
 /// # Errors
 /// As [`decrypt_java_block`]; a different `aad` than the one used to encrypt also yields
 /// [`FormatError::Authentication`].
-pub fn decrypt_java_block_with_aad(key: &CryptoKey, bytes: &[u8], aad: &[u8]) -> Result<Vec<u8>> {
+pub fn open_framed(key: &CryptoKey, bytes: &[u8], aad: &[u8]) -> Result<Vec<u8>> {
     let (nonce, ciphertext) = split_frame(bytes)?;
     key.decrypt_raw(&nonce, ciphertext, aad)
 }

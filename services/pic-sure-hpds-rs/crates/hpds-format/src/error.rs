@@ -37,10 +37,10 @@ pub enum FormatError {
     Checksum(&'static str),
 
     /// AES-GCM refused the ciphertext: the key is wrong, the bytes are corrupt, or the
-    /// block was read under a different concept path or format version than it was
-    /// written with.
+    /// block was read under a different store, concept path or format version than it
+    /// was written with.
     #[error(
-        "authentication failed: wrong key, corrupt data, or a block read under the wrong concept path"
+        "authentication failed: wrong key, corrupt data, or a block read under the wrong store or concept path"
     )]
     Authentication,
 
@@ -48,10 +48,30 @@ pub enum FormatError {
     #[error("invalid AES key length {0}; keys are 16, 24 or 32 bytes")]
     InvalidKeyLength(usize),
 
-    /// The store is encrypted and no key was supplied, or a key was supplied for an
-    /// operation on an unencrypted store that requires none.
-    #[error("{0}")]
-    KeyMismatch(&'static str),
+    /// The caller expected a plain store but the named file is encrypted.
+    #[error("{0} is encrypted and no key was supplied")]
+    MissingKey(&'static str),
+
+    /// The caller supplied a key, so it expects an encrypted store, but the named file is
+    /// plain. Refused so that a plain file can never stand in for an encrypted one.
+    #[error("{0} is not encrypted but a key was supplied; refusing an unencrypted store")]
+    UnexpectedKey(&'static str),
+
+    /// `pheno.blocks` belongs to a different store than the index it was opened with.
+    #[error("pheno.blocks belongs to a different store than pheno.index")]
+    StoreMismatch,
+
+    /// A compressed frame declares a decoded size above the bound its concept metadata
+    /// allows. Rejected before anything is allocated.
+    #[error("{what} declares {declared} decoded bytes, above the limit of {limit}")]
+    PayloadTooLarge {
+        /// Which structure was being decoded.
+        what: &'static str,
+        /// The decoded size the frame header claims.
+        declared: u64,
+        /// The largest decoded size the caller allows.
+        limit: u64,
+    },
 
     /// The operating system random number generator failed.
     #[error("random number generator failed: {0}")]

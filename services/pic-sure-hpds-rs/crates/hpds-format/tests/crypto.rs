@@ -1,9 +1,7 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use hpds_format::{
-    CryptoKey, FormatError, decrypt_java_block, decrypt_java_block_with_aad, encrypt_java_block,
-    encrypt_java_block_with_aad,
+    CryptoKey, FormatError, decrypt_java_block, encrypt_java_block, open_framed, seal_framed,
 };
 
 fn fixture(name: &str) -> PathBuf {
@@ -62,13 +60,10 @@ fn wrong_key_fails_authentication() {
 #[test]
 fn associated_data_must_match() {
     let key = CryptoKey::from_bytes(&[7u8; 32]).unwrap();
-    let sealed = encrypt_java_block_with_aad(&key, b"payload", b"\\a\\").unwrap();
-    assert_eq!(
-        decrypt_java_block_with_aad(&key, &sealed, b"\\a\\").unwrap(),
-        b"payload"
-    );
+    let sealed = seal_framed(&key, b"payload", b"\\a\\").unwrap();
+    assert_eq!(open_framed(&key, &sealed, b"\\a\\").unwrap(), b"payload");
     assert!(matches!(
-        decrypt_java_block_with_aad(&key, &sealed, b"\\b\\"),
+        open_framed(&key, &sealed, b"\\b\\"),
         Err(FormatError::Authentication)
     ));
     assert!(matches!(
@@ -110,35 +105,19 @@ fn corrupt_and_truncated_frames_are_errors() {
     ));
 }
 
-/// Encrypts with Rust and decrypts with Java `Crypto.decryptData` through jshell.
-/// Run with `HPDS_JSHELL` set to a JDK 25 `jshell` and `HPDS_JAVA_CLASSPATH` to the HPDS
-/// common jar plus commons-io and slf4j-api.
+/// The Rust-sealed fixture that `CryptoRustFixtureTest` in the HPDS common module decrypts
+/// with Java `Crypto.decryptData`. When the Java module is present (not under `bin/cargo`,
+/// which mounts only this workspace), its copy must be byte-identical to this one.
 #[test]
-#[ignore = "needs a JDK and the HPDS common jar; see the doc comment"]
-fn java_decrypts_rust_blocks() {
-    let jshell = std::env::var("HPDS_JSHELL").expect("HPDS_JSHELL");
-    let classpath = std::env::var("HPDS_JAVA_CLASSPATH").expect("HPDS_JAVA_CLASSPATH");
-    let dir = std::env::temp_dir().join(format!("hpds-format-java-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let plaintext = read("plaintext.txt");
-    for name in ["aes256", "aes192", "aes128"] {
-        let key_file = fixture(&format!("key_{name}.txt"));
-        let key = CryptoKey::load(&key_file).unwrap();
-        let cipher_file = dir.join(format!("rust_{name}.bin"));
-        let out_file = dir.join(format!("java_out_{name}.txt"));
-        std::fs::write(&cipher_file, encrypt_java_block(&key, &plaintext).unwrap()).unwrap();
-        let status = Command::new(&jshell)
-            .arg("-q")
-            .arg("--class-path")
-            .arg(&classpath)
-            .arg(format!("-R-Dkey.file={}", key_file.display()))
-            .arg(format!("-R-Dcipher.file={}", cipher_file.display()))
-            .arg(format!("-R-Dout.file={}", out_file.display()))
-            .arg(fixture("decrypt_with_java.jsh"))
-            .status()
-            .unwrap();
-        assert!(status.success());
-        assert_eq!(std::fs::read(&out_file).unwrap(), plaintext, "{name}");
+fn rust_sealed_fixture_for_java_opens() {
+    let key = CryptoKey::load(fixture("key_aes256.txt")).unwrap();
+    assert_eq!(
+        decrypt_java_block(&key, &read("rust_aes256.bin")).unwrap(),
+        read("plaintext.txt")
+    );
+    let java_copy = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../pic-sure-hpds/common/src/test/resources/crypto/rust_aes256.bin");
+    if let Ok(copy) = std::fs::read(java_copy) {
+        assert_eq!(copy, read("rust_aes256.bin"));
     }
-    std::fs::remove_dir_all(&dir).unwrap();
 }
