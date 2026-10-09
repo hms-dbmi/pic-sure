@@ -190,6 +190,7 @@ pub struct ResultRegistry {
     limit: usize,
     max_age: Option<Duration>,
     max_bytes: u64,
+    max_file_bytes: u64,
     id_batch_size: u64,
 }
 
@@ -219,6 +220,7 @@ impl ResultRegistry {
             limit: config.result_limit,
             max_age: config.result_max_age,
             max_bytes: config.result_max_bytes,
+            max_file_bytes: config.result_max_file_bytes,
             id_batch_size: config.id_batch_size,
         })
     }
@@ -281,6 +283,7 @@ impl ResultRegistry {
         let engine_slots = Arc::clone(&self.engine_slots);
         let entries = Arc::clone(&self.entries);
         let max_bytes = self.max_bytes;
+        let max_file_bytes = self.max_file_bytes;
         let file = self.results_dir.join(format!("result-{id}.csv"));
         tokio::spawn(async move {
             let (Ok(_pool_slot), Ok(_export_slot), Ok(_engine_slot)) = (
@@ -293,7 +296,7 @@ impl ResultRegistry {
             set_state(&entries, &id, ResultState::Running);
             let target = file.clone();
             let outcome = engine
-                .run_blocking(move |e| Ok(write_export(e, &query, &target)))
+                .run_blocking(move |e| Ok(write_export(e, &query, &target, max_file_bytes)))
                 .await
                 .unwrap_or_else(|e| Err(ExportError::Query(e)));
             let state = match outcome {
@@ -384,6 +387,7 @@ pub enum ResultError {
 #[derive(Debug)]
 enum ExportError {
     Query(QueryError),
+    TooLarge { limit: u64 },
     Io(io::Error),
 }
 
@@ -395,7 +399,50 @@ impl From<QueryError> for ExportError {
 
 impl From<io::Error> for ExportError {
     fn from(error: io::Error) -> Self {
-        ExportError::Io(error)
+        match error
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<FileTooLarge>())
+        {
+            Some(FileTooLarge { limit }) => ExportError::TooLarge { limit: *limit },
+            None => ExportError::Io(error),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FileTooLarge {
+    limit: u64,
+}
+
+impl std::fmt::Display for FileTooLarge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "export file exceeds {} bytes", self.limit)
+    }
+}
+
+impl std::error::Error for FileTooLarge {}
+
+/// A file that refuses any write that would take it past `limit` bytes, counting every byte
+/// that reaches the file, header included.
+struct LimitedFile {
+    file: File,
+    written: u64,
+    limit: u64,
+}
+
+impl Write for LimitedFile {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let next = self.written.saturating_add(buf.len() as u64);
+        if next > self.limit {
+            return Err(io::Error::other(FileTooLarge { limit: self.limit }));
+        }
+        self.file.write_all(buf)?;
+        self.written = next;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.file.flush()
     }
 }
 
@@ -407,6 +454,10 @@ impl ExportError {
                 tracing::error!(%error, result = id, "export failed");
                 SERVER_ERROR_MESSAGE.to_owned()
             }
+            ExportError::TooLarge { limit } => format!(
+                "the export is larger than the maximum result file size of {limit} bytes \
+                 (HPDS_RESULT_MAX_FILE_BYTES); narrow the cohort or select fewer concepts"
+            ),
             ExportError::Io(error) => {
                 tracing::error!(%error, result = id, "export could not be written");
                 SERVER_ERROR_MESSAGE.to_owned()
@@ -601,11 +652,16 @@ fn resolve(path: &Path) -> io::Result<PathBuf> {
 /// time into a reused buffer, never on the async runtime. Returns the file's length. The file
 /// is created only after the cohort is computed, so a query that fails to evaluate leaves
 /// nothing behind.
-fn write_export(engine: &Engine, query: &Query, path: &Path) -> Result<u64, ExportError> {
+fn write_export(
+    engine: &Engine,
+    query: &Query,
+    path: &Path,
+    max_file_bytes: u64,
+) -> Result<u64, ExportError> {
     match query.expected_result_type {
         ResultType::Patients => {
             let cohort = engine.patients(query)?;
-            let mut out = create_result_file(path)?;
+            let mut out = create_result_file(path, max_file_bytes)?;
             write_csv_row(&mut out, [PATIENTS_HEADER])?;
             for patient in &cohort {
                 writeln!(out, "{patient}")?;
@@ -614,7 +670,7 @@ fn write_export(engine: &Engine, query: &Query, path: &Path) -> Result<u64, Expo
         }
         ResultType::Dataframe => {
             let frame = engine.dataframe(query)?;
-            let mut out = create_result_file(path)?;
+            let mut out = create_result_file(path, max_file_bytes)?;
             write_csv_row(&mut out, &frame.header)?;
             let mut rows = frame.rows;
             let mut row = RowBuffer::new();
@@ -627,18 +683,25 @@ fn write_export(engine: &Engine, query: &Query, path: &Path) -> Result<u64, Expo
     }
 }
 
-fn create_result_file(path: &Path) -> io::Result<BufWriter<File>> {
+fn create_result_file(path: &Path, limit: u64) -> io::Result<BufWriter<LimitedFile>> {
     let file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .open(path)?;
-    Ok(BufWriter::with_capacity(1 << 20, file))
+    Ok(BufWriter::with_capacity(
+        1 << 20,
+        LimitedFile {
+            file,
+            written: 0,
+            limit,
+        },
+    ))
 }
 
-fn close_result_file(out: BufWriter<File>) -> Result<u64, ExportError> {
-    let file = out.into_inner().map_err(|e| e.into_error())?;
-    Ok(file.metadata()?.len())
+fn close_result_file(out: BufWriter<LimitedFile>) -> Result<u64, ExportError> {
+    let limited = out.into_inner().map_err(|e| e.into_error())?;
+    Ok(limited.file.metadata()?.len())
 }
 
 /// Writes one CSV row as FastCSV 1.0's `CsvWriter` does with its defaults, which Java's
@@ -717,6 +780,7 @@ pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Respon
              set hpds.requireAuthorizationFilter=false"
         );
     }
+    engine.check_limits(&query)?;
     engine.validate(&query, state.async_validator())?;
     let status = state.results().submit(engine, query)?;
     Ok(axum::Json(status).into_response())

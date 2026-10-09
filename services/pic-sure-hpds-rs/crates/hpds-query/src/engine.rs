@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use hpds_format::{Block, ConceptType, java_double_cmp, java_string_cmp};
 use rayon::prelude::*;
@@ -12,6 +13,7 @@ use roaring::RoaringBitmap;
 
 use crate::cohort::evaluate_cohort_cow;
 use crate::error::{QueryError, Result};
+use crate::limits::QueryLimits;
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
 use crate::results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,
@@ -37,6 +39,7 @@ pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 pub struct Engine {
     store: Store,
     export_pin_bytes: u64,
+    limits: QueryLimits,
 }
 
 impl Engine {
@@ -53,6 +56,7 @@ impl Engine {
         Engine {
             store,
             export_pin_bytes: DEFAULT_EXPORT_PIN_BYTES,
+            limits: QueryLimits::default(),
         }
     }
 
@@ -63,6 +67,27 @@ impl Engine {
     pub fn with_export_pin_bytes(mut self, bytes: u64) -> Self {
         self.export_pin_bytes = bytes;
         self
+    }
+
+    /// Sets the per-query bounds ([`QueryLimits::default`] by default). A query over a bound
+    /// fails with [`QueryError::LimitExceeded`] before any block is loaded.
+    #[must_use]
+    pub fn with_limits(mut self, limits: QueryLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    /// The per-query bounds.
+    pub fn limits(&self) -> &QueryLimits {
+        &self.limits
+    }
+
+    /// Checks `query` against the per-query bounds.
+    ///
+    /// # Errors
+    /// [`QueryError::LimitExceeded`] naming the first bound the query breaks.
+    pub fn check_limits(&self, query: &Query) -> Result<()> {
+        self.limits.check(query, self.store.index())
     }
 
     /// The store.
@@ -94,6 +119,7 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn cohort_cow(&self, query: &Query) -> Result<Cow<'_, RoaringBitmap>> {
+        self.check_limits(query)?;
         check_supported(query)?;
         self.cohort_unchecked(query)
     }
@@ -174,10 +200,11 @@ impl Engine {
                 values.extend(filter.values.iter().flatten().map(String::as_str));
             }
         }
+        let entries = AtomicU64::new(0);
         let mut concepts = called_out
             .par_iter()
             .map(|(path, named)| {
-                let counts = match self.store.block(path)?.as_deref() {
+                let counts: Vec<(String, u64)> = match self.store.block(path)?.as_deref() {
                     Some(Block::Categorical(block)) => block
                         .dictionary()
                         .zip(block.bitmaps())
@@ -189,11 +216,32 @@ impl Engine {
                         .collect(),
                     _ => Vec::new(),
                 };
+                self.reserve_entries(&entries, counts.len())?;
                 Ok(((*path).to_owned(), counts))
             })
             .collect::<Result<Vec<_>>>()?;
         concepts.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
         Ok(CategoricalCrossCounts { concepts })
+    }
+
+    fn reserve_entries(&self, total: &AtomicU64, added: usize) -> Result<()> {
+        let added = added as u64;
+        if total
+            .fetch_add(added, Ordering::Relaxed)
+            .saturating_add(added)
+            > self.limits.max_cross_count_entries
+        {
+            return Err(self.too_many_entries());
+        }
+        Ok(())
+    }
+
+    fn too_many_entries(&self) -> QueryError {
+        QueryError::LimitExceeded(format!(
+            "the cross count would hold more than {} entries (HPDS_MAX_CROSS_COUNT_ENTRIES); \
+             filter on fewer or narrower concepts",
+            self.limits.max_cross_count_entries
+        ))
     }
 
     fn is_categorical_cross_count_filter(&self, filter: &PhenotypicFilter) -> bool {
@@ -239,6 +287,7 @@ impl Engine {
                     .is_some_and(|c| c.concept_type == ConceptType::Numeric)
             })
             .collect();
+        let entries = AtomicU64::new(0);
         let mut concepts = paths
             .par_iter()
             .map(|path| {
@@ -252,10 +301,16 @@ impl Engine {
                             Some((last, count)) if java_double_cmp(*last, value).is_eq() => {
                                 *count += 1;
                             }
-                            _ => counts.push((value, 1)),
+                            _ => {
+                                counts.push((value, 1));
+                                if counts.len() as u64 > self.limits.max_cross_count_entries {
+                                    return Err(self.too_many_entries());
+                                }
+                            }
                         }
                     }
                 }
+                self.reserve_entries(&entries, counts.len())?;
                 Ok(((*path).to_owned(), counts))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -308,6 +363,7 @@ impl Engine {
     /// the export types (DATAFRAME, PATIENTS, DATAFRAME_TIMESERIES, DATAFRAME_PFB), and the
     /// errors of the computation.
     pub fn run_sync(&self, query: &Query) -> Result<SyncResult> {
+        self.check_limits(query)?;
         check_supported(query)?;
         let result_type = query.expected_result_type;
         if !result_type.is_sync() {

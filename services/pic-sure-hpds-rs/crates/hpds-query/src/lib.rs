@@ -17,6 +17,7 @@
 pub mod cohort;
 mod engine;
 mod error;
+mod limits;
 pub mod model;
 mod results;
 mod store;
@@ -25,6 +26,10 @@ pub mod validate;
 pub use cohort::{evaluate_cohort, evaluate_cohort_cow};
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine};
 pub use error::{QueryError, Result};
+pub use limits::{
+    DEFAULT_MAX_CLAUSE_DEPTH, DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES,
+    DEFAULT_MAX_QUERY_CONCEPTS, DEFAULT_MAX_SELECT_PATHS, QueryLimits,
+};
 pub use model::{
     AuthorizationFilter, GenomicFilter, Operator, PhenotypicClause, PhenotypicFilter,
     PhenotypicFilterType, PhenotypicSubquery, Query, ResultType,

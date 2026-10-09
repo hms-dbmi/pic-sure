@@ -65,6 +65,11 @@ pub enum QueryError {
     #[error("export too wide; select fewer concepts")]
     ExportTooWide,
 
+    /// The query or its result is larger than a configured bound. The message names the
+    /// bound and its setting, never a concept path or a value.
+    #[error("{0}")]
+    LimitExceeded(String),
+
     /// A result type that `/query/sync` does not serve because it is produced by an
     /// asynchronous job.
     #[error("Result type {0} is served asynchronously")]

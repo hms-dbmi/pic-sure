@@ -45,6 +45,7 @@ pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Re
         )));
     }
     let engine = state.engine()?;
+    engine.check_limits(&query)?;
     let timeout = state.sync_timeout();
     let computation = async {
         let slot = state.engine_slot().await;

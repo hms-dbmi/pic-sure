@@ -58,6 +58,12 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `HPDS_RESULT_MAX_BYTES` | 10 GiB | Cap on finished export files held at once. Past it the oldest finished result goes first; a lone result larger than the cap is kept. |
 | `SMALL_JOB_LIMIT` | `100` | Exports with more `select` paths run on the large pool. |
 | `SMALL_TASK_THREADS`, `LARGE_TASK_THREADS` | `1`, `1` | Exports running at once per pool. |
+| `HPDS_RESULT_MAX_FILE_BYTES` | 4 GiB | Cap on one export file, header included, checked on the bytes written as the file grows. An export that passes it ends in ERROR ("the export is larger than the maximum result file size ...") and its partial file is deleted. |
+| `HPDS_MAX_SELECT_PATHS` | `5000` | Most distinct `select` paths in a query. Repeats are counted once, except that a DATAFRAME export also refuses a `select` list longer than the cap, since repeats widen every row. Over the cap is a 400 (`text/plain`) on `/query` and `/query/sync`. |
+| `HPDS_MAX_CLAUSE_DEPTH` | `64` | Deepest nesting of phenotypic subqueries, checked without recursion. The JSON parser also refuses a body nested more than 128 levels (about 60 subqueries deep), whatever this is set to. |
+| `HPDS_MAX_CLAUSE_NODES` | `10000` | Most clauses (filters and subqueries) plus authorization filters in one query. |
+| `HPDS_MAX_QUERY_CONCEPTS` | `20000` | Most concepts one query touches: the distinct paths in `select`, the filters and the authorization filters, plus the number of concepts under each distinct `ANY_RECORD_OF` prefix. Counted before any block is loaded. |
+| `HPDS_MAX_CROSS_COUNT_ENTRIES` | `5000000` | Most entries, over all concepts, in one `CATEGORICAL_CROSS_COUNT` or `CONTINUOUS_CROSS_COUNT` answer. |
 | `HPDS_EXPORT_CONCURRENCY` | `2` | Exports running at once across both pools; each pins its selected blocks in memory. |
 | `HPDS_MAX_CONNECTIONS` | `512` | Most connections served at once. A connection accepted at the cap is answered `503` (`text/plain`, `Retry-After: 1`) and closed, so clients and the health probe fail fast instead of waiting in the kernel backlog. A request body must arrive in full within 30 seconds of the request starting (408 otherwise), and a connection idle between requests is closed after 10 seconds. |
 | `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) running at once. |
