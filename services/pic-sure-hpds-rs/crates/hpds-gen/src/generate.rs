@@ -112,6 +112,10 @@ fn push_observations(
     }
 }
 
+fn consent_group(seed: u64, patient: u64) -> u32 {
+    (mix(seed ^ mix(patient ^ 0x5EED_0C0D_E000_0000)) % CONSENT_GROUPS.len() as u64) as u32
+}
+
 fn generate_block(
     seed: u64,
     block: u64,
@@ -124,7 +128,7 @@ fn generate_block(
     let mut rng = Source::new(mix(seed ^ mix(block.wrapping_add(1))));
     let span = last - first;
     for offset in 0..span {
-        let group = rng.range(0, CONSENT_GROUPS.len() as i64 - 1) as u32;
+        let group = consent_group(seed, first + offset + 1);
         for special in 0..3u32 {
             rows.push(Row {
                 order: (offset << 32) | u64::from(rng.bits32()),
@@ -205,19 +209,86 @@ struct Scratch {
     time: String,
 }
 
+/// Row order of the generated file.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Order {
+    /// Blocks of 2,000 patients, rows interleaved across concepts inside a block, like a real
+    /// export. The Java loaders lose data on files this large in this order.
+    Patient,
+    /// All rows of a concept are contiguous, which every Java loader handles correctly.
+    Concept,
+}
+
 /// Writes the dataset to `sink` as CSV with the standard header and returns the observation
 /// count.
 ///
-/// Output is a pure function of `shape` and `seed`. Patients are processed in blocks of 2,000,
-/// and rows inside a block are interleaved across concepts, so memory use is bounded by one
-/// block regardless of the dataset size.
+/// Output is a pure function of `shape`, `seed` and `order`. Memory use is bounded by one block
+/// of patients (or one patient) regardless of the dataset size.
 ///
 /// # Errors
 /// Returns any I/O or CSV error from the sink.
-pub fn generate<W: Write>(shape: Shape, seed: u64, sink: W) -> csv::Result<u64> {
+pub fn generate<W: Write>(shape: Shape, seed: u64, order: Order, sink: W) -> csv::Result<u64> {
     let concepts = build_concepts(seed, shape.concepts, shape.patients, shape.observations);
     let mut out = csv::WriterBuilder::new().from_writer(sink);
     out.write_record(HEADER)?;
+    let total = match order {
+        Order::Patient => write_by_patient(shape, seed, &concepts, &mut out)?,
+        Order::Concept => write_by_concept(shape, seed, &concepts, &mut out)?,
+    };
+    out.flush()?;
+    Ok(total)
+}
+
+fn write_by_concept<W: Write>(
+    shape: Shape,
+    seed: u64,
+    concepts: &[Concept],
+    out: &mut csv::Writer<W>,
+) -> csv::Result<u64> {
+    use std::fmt::Write as _;
+    let mut rows = Vec::new();
+    let mut scratch = Scratch::default();
+    let mut patient_text = String::new();
+    let mut total = 0u64;
+    for (index, concept) in concepts.iter().enumerate() {
+        let mut rng = Source::new(mix(seed ^ mix(0xC0C0_0000_0000_0000 ^ index as u64)));
+        let log_miss = (1.0 - concept.coverage).ln();
+        let mut patient = 0u64;
+        while patient < shape.patients {
+            rows.clear();
+            if index < 3 {
+                rows.push(Row {
+                    order: 0,
+                    concept: index as u32,
+                    timestamp: -1,
+                    cell: Cell::Category(consent_group(seed, patient + 1)),
+                });
+            } else {
+                let skip = (1.0 - rng.unit()).ln() / log_miss;
+                if !skip.is_finite() || skip >= (shape.patients - patient) as f64 {
+                    break;
+                }
+                patient += skip as u64;
+                push_observations(&mut rows, 0, index as u32, concept, &mut rng);
+            }
+            patient_text.clear();
+            write!(patient_text, "{}", patient + 1).unwrap();
+            for row in &rows {
+                write_row(out, &patient_text, concept, row, &mut scratch)?;
+            }
+            total += rows.len() as u64;
+            patient += 1;
+        }
+    }
+    Ok(total)
+}
+
+fn write_by_patient<W: Write>(
+    shape: Shape,
+    seed: u64,
+    concepts: &[Concept],
+    out: &mut csv::Writer<W>,
+) -> csv::Result<u64> {
     let mut rows = Vec::new();
     let mut scratch = Scratch::default();
     let mut total = 0u64;
@@ -226,13 +297,13 @@ pub fn generate<W: Write>(shape: Shape, seed: u64, sink: W) -> csv::Result<u64> 
     let mut block = 0u64;
     while first < shape.patients {
         let last = (first + BLOCK_PATIENTS).min(shape.patients);
-        generate_block(seed, block, first, last, &concepts, &mut rows);
+        generate_block(seed, block, first, last, concepts, &mut rows);
         for row in &rows {
             use std::fmt::Write as _;
             patient_text.clear();
             write!(patient_text, "{}", first + (row.order >> 32) + 1).unwrap();
             write_row(
-                &mut out,
+                out,
                 &patient_text,
                 &concepts[row.concept as usize],
                 row,
@@ -243,6 +314,5 @@ pub fn generate<W: Write>(shape: Shape, seed: u64, sink: W) -> csv::Result<u64> 
         first = last;
         block += 1;
     }
-    out.flush()?;
     Ok(total)
 }

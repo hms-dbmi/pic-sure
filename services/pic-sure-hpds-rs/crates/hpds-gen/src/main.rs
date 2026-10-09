@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use hpds_gen::edge::{write_edge_cases, write_embedded_newline, write_negative_ids};
-use hpds_gen::generate::{Shape, generate};
+use hpds_gen::generate::{Order, Shape, generate};
 
 const WRITE_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 
@@ -39,6 +39,12 @@ enum Preset {
     Bench,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum RowOrder {
+    Patient,
+    Concept,
+}
+
 #[derive(Args)]
 struct SyntheticArgs {
     /// Dataset size preset
@@ -50,6 +56,9 @@ struct SyntheticArgs {
     /// Output CSV path
     #[arg(long)]
     out: Option<PathBuf>,
+    /// Row order: interleaved by patient block, or grouped by concept
+    #[arg(long, value_enum, default_value_t = RowOrder::Patient)]
+    order: RowOrder,
     /// Override the preset patient count
     #[arg(long)]
     patients: Option<u64>,
@@ -103,8 +112,12 @@ fn run_synthetic(args: SyntheticArgs) -> Result<(), String> {
     if shape.patients == 0 || shape.concepts < 4 {
         return Err("need at least 1 patient and 4 concepts".to_string());
     }
+    let order = match args.order {
+        RowOrder::Patient => Order::Patient,
+        RowOrder::Concept => Order::Concept,
+    };
     let started = Instant::now();
-    let rows = generate(shape, args.seed, create(&out)?).map_err(|e| e.to_string())?;
+    let rows = generate(shape, args.seed, order, create(&out)?).map_err(|e| e.to_string())?;
     eprintln!(
         "wrote {rows} observations for {} patients and {} concepts to {} in {:.1}s",
         shape.patients,
