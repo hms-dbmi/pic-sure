@@ -42,6 +42,7 @@ else
   echo "query.env: absent"
 fi
 [[ -f "$QUERY_ENV_BACKUP" ]] && echo "backup: $QUERY_ENV_BACKUP"
+[[ -f "$QUERY_ENV_LEGACY_BACKUP" ]] && echo "backup (earlier name): $QUERY_ENV_LEGACY_BACKUP"
 
 echo "java hpds $HPDS_JAVA_CONTAINER: $(container_health "$HPDS_JAVA_CONTAINER")"
 echo "hpds-rs $HPDS_RS_CONTAINER: $(container_health "$HPDS_RS_CONTAINER")"

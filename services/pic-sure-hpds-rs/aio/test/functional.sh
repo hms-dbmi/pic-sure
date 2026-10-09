@@ -37,7 +37,7 @@ expect_equal() {
 }
 
 cleanup() {
-  docker rm -f qs-t qs-t-switch-new qs-t-switch-old hpds-rs-t hpds-java-t probe-t >/dev/null 2>&1 || true
+  docker rm -f qs-t qs-t-switch-new qs-t-switch-old hpds-rs-t hpds-rs-t-new hpds-rs-t-old hpds-java-t probe-t >/dev/null 2>&1 || true
   docker network rm picsure-t hpds-t >/dev/null 2>&1 || true
   docker rmi aio-test-qs-t >/dev/null 2>&1 || true
   rm -rf "$WORK"
@@ -57,6 +57,10 @@ fingerprint() {
   }'
 }
 
+env_value_of() {
+  sed -n "s/^$2=//p" "$1" | tail -n 1
+}
+
 env_of() {
   docker container inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1"
 }
@@ -71,7 +75,7 @@ fi
 mkdir -p "$DOCKER_CONFIG_DIR"/{query,hpds,hpds_input,log} "$WORK/qs-data"
 cp "$FIXTURE/encryption_key" "$DOCKER_CONFIG_DIR/hpds/encryption_key"
 cp "$SOURCE_CSV" "$DOCKER_CONFIG_DIR/hpds_input/allConcepts.csv"
-printf 'ID_BATCH_SIZE=1500\nhpds.requireAuthorizationFilter=false\n' > "$DOCKER_CONFIG_DIR/hpds/hpds.env"
+printf 'ID_BATCH_SIZE=1500\nSMALL_TASK_THREADS=3\nLARGE_TASK_THREADS=2\nhpds.requireAuthorizationFilter=false\n' > "$DOCKER_CONFIG_DIR/hpds/hpds.env"
 cat > "$DOCKER_CONFIG_DIR/query/query.env" <<'ENV'
 # fake query service env
 HPDS_AUTH_URL=http://hpds-java-t:8080/PIC-SURE
@@ -110,12 +114,16 @@ expect_equal "csv load key mode" "$(stat -f '%Lp' "$DOCKER_CONFIG_DIR/hpds-rs/en
 echo "--- switch rust refuses while hpds-rs is absent"
 if "$AIO/switch.sh" rust >/dev/null 2>&1; then check_failed "switch rust refused"; else pass "switch rust refused"; fi
 cmp -s "$WORK/query.env.original" "$DOCKER_CONFIG_DIR/query/query.env" && pass "query.env untouched by the refusal" || check_failed "query.env untouched by the refusal"
-[[ ! -e "$DOCKER_CONFIG_DIR/query/query.env.java-backup" ]] && pass "no backup written by the refusal" || check_failed "no backup written by the refusal"
+[[ ! -e "$DOCKER_CONFIG_DIR/query/query.env.pre-rust" ]] && pass "no backup written by the refusal" || check_failed "no backup written by the refusal"
 
 echo "--- up"
 "$AIO/up.sh"
 expect_equal "hpds-rs health" "$(docker container inspect -f '{{.State.Health.Status}}' hpds-rs-t)" healthy
 grep -q '^ID_BATCH_SIZE=1500$' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" && pass "env template took ID_BATCH_SIZE from hpds.env" || check_failed "env template took ID_BATCH_SIZE"
+for pair in SMALL_TASK_THREADS=3 LARGE_TASK_THREADS=2 HPDS_REQUIRE_AUTHORIZATION_FILTER=false; do
+  grep -q "^$pair\$" "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" && pass "hpds-rs.env has $pair" || check_failed "hpds-rs.env has $pair"
+done
+expect_equal "running container got the thread setting" "$(env_of hpds-rs-t | sed -n 's/^SMALL_TASK_THREADS=//p')" 3
 expect_equal "hpds-rs networks" "$(docker container inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' hpds-rs-t | tr ' ' '\n' | sort | xargs)" "hpds-t picsure-t"
 docker run -d --name probe-t --network picsure-t alpine:3.20 sleep 600 >/dev/null
 reachable() { docker exec probe-t wget -q -T 5 -O - "http://$1:8080/actuator/health" 2>&1; }
@@ -137,16 +145,16 @@ expect_equal "docker-run-only env kept" "$(env_of qs-t | sed -n 's/^EXTRA_FROM_R
 expect_equal "value containing = kept" "$(env_of qs-t | sed -n 's/^SECRET_ONE=//p')" "abc=def"
 expect_equal "image env not duplicated" "$(env_of qs-t | grep -c '^PATH=')" 1
 expect_equal "query.env changed on exactly the two URL lines" "$(diff "$WORK/query.env.original" "$DOCKER_CONFIG_DIR/query/query.env" | grep -c '^[<>]')" 4
-cmp -s "$WORK/query.env.original" "$DOCKER_CONFIG_DIR/query/query.env.java-backup" && pass "backup equals the original" || check_failed "backup equals the original"
+cmp -s "$WORK/query.env.original" "$DOCKER_CONFIG_DIR/query/query.env.pre-rust" && pass "backup equals the original" || check_failed "backup equals the original"
 expect_equal "status engine" "$("$AIO/status.sh" | sed -n 's/^  engine in use: //p')" rust
 expect_equal "qs name resolves on picsure-t" "$(docker exec probe-t sh -c 'getent hosts qs-t >/dev/null && echo ok')" ok
 expect_equal "qs alias resolves on picsure-t" "$(docker exec probe-t sh -c 'getent hosts qs-alias-t >/dev/null && echo ok')" ok
 expect_equal "no leftover switch containers" "$(docker ps -a --format '{{.Names}}' | grep -c '^qs-t-switch' || true)" 0
 
 echo "--- switch rust again keeps the backup"
-backup_sum="$(cksum < "$DOCKER_CONFIG_DIR/query/query.env.java-backup")"
+backup_sum="$(cksum < "$DOCKER_CONFIG_DIR/query/query.env.pre-rust")"
 "$AIO/switch.sh" rust
-expect_equal "backup unchanged" "$(cksum < "$DOCKER_CONFIG_DIR/query/query.env.java-backup")" "$backup_sum"
+expect_equal "backup unchanged" "$(cksum < "$DOCKER_CONFIG_DIR/query/query.env.pre-rust")" "$backup_sum"
 expect_equal "fingerprint still identical" "$(fingerprint qs-t)" "$before_fp"
 
 echo "--- switch java"
@@ -154,27 +162,34 @@ echo "--- switch java"
 expect_equal "running HPDS_AUTH_URL back" "$(env_of qs-t | sed -n 's/^HPDS_AUTH_URL=//p')" "http://hpds-java-t:8080/PIC-SURE"
 cmp -s "$WORK/query.env.original" "$DOCKER_CONFIG_DIR/query/query.env" && pass "query.env restored byte for byte" || check_failed "query.env restored byte for byte"
 expect_equal "fingerprint after java" "$(fingerprint qs-t)" "$before_fp"
-[[ ! -e "$DOCKER_CONFIG_DIR/query/query.env.java-backup" && -e "$DOCKER_CONFIG_DIR/query/query.env.java-backup.used" ]] && pass "backup retired" || check_failed "backup retired"
+[[ ! -e "$DOCKER_CONFIG_DIR/query/query.env.pre-rust" && -e "$DOCKER_CONFIG_DIR/query/query.env.pre-rust.used" ]] && pass "backup retired" || check_failed "backup retired"
 
 echo "--- a recreate docker rejects leaves the old container running"
 keep_id="$(docker container inspect -f '{{.Id}}' qs-t)"
 reset_query_env() {
   cp "$WORK/query.env.original" "$DOCKER_CONFIG_DIR/query/query.env"
-  rm -f "$DOCKER_CONFIG_DIR/query/query.env.java-backup"
+  rm -f "$DOCKER_CONFIG_DIR/query/query.env.pre-rust"
 }
 printf 'BAD KEY=1\n' >> "$DOCKER_CONFIG_DIR/query/query.env"
+rejected_sum="$(cksum < "$DOCKER_CONFIG_DIR/query/query.env")"
 if "$AIO/switch.sh" rust >/dev/null 2>&1; then check_failed "rejected create fails the switch"; else pass "rejected create fails the switch"; fi
 expect_equal "old container untouched" "$(docker container inspect -f '{{.Id}} {{.State.Running}}' qs-t)" "$keep_id true"
 expect_equal "no leftover switch containers after rejection" "$(docker ps -a --format '{{.Names}}' | grep -c '^qs-t-switch' || true)" 0
+expect_equal "query.env untouched after the rejected create" "$(cksum < "$DOCKER_CONFIG_DIR/query/query.env")" "$rejected_sum"
+[[ ! -e "$DOCKER_CONFIG_DIR/query/query.env.pre-rust" ]] && pass "no backup left by the rejected create" || check_failed "no backup left by the rejected create"
 reset_query_env
 
 echo "--- an unhealthy replacement rolls back"
 sed -i.bak 's/^QS_OK=1$/QS_OK=0/' "$DOCKER_CONFIG_DIR/query/query.env"
 rm -f "$DOCKER_CONFIG_DIR/query/query.env.bak"
+unhealthy_sum="$(cksum < "$DOCKER_CONFIG_DIR/query/query.env")"
 if HEALTH_TIMEOUT=15 "$AIO/switch.sh" rust >/dev/null 2>&1; then check_failed "unhealthy replacement fails the switch"; else pass "unhealthy replacement fails the switch"; fi
 expect_equal "original container is back" "$(docker container inspect -f '{{.Id}} {{.State.Running}}' qs-t)" "$keep_id true"
 expect_equal "original env unchanged" "$(env_of qs-t | sed -n 's/^HPDS_AUTH_URL=//p')" "http://hpds-java-t:8080/PIC-SURE"
 expect_equal "no leftover switch containers after rollback" "$(docker ps -a --format '{{.Names}}' | grep -c '^qs-t-switch' || true)" 0
+expect_equal "query.env matches the running container after rollback" "$(cksum < "$DOCKER_CONFIG_DIR/query/query.env")" "$unhealthy_sum"
+expect_equal "query.env URLs still java after rollback" "$(env_value_of "$DOCKER_CONFIG_DIR/query/query.env" HPDS_AUTH_URL)" "http://hpds-java-t:8080/PIC-SURE"
+[[ ! -e "$DOCKER_CONFIG_DIR/query/query.env.pre-rust" ]] && pass "no backup left by the rollback" || check_failed "no backup left by the rollback"
 reset_query_env
 
 echo "--- migrate while running recreates hpds-rs"
@@ -186,6 +201,22 @@ expect_equal "hpds-rs healthy after migrate" "$(docker container inspect -f '{{.
 expect_equal "migrate key mode" "$(stat -f '%Lp' "$DOCKER_CONFIG_DIR/hpds-rs/encryption_key")" 600
 "$AIO/status.sh"
 
+echo "--- up keeps the old hpds-rs when the new one is unhealthy"
+old_rs_id="$(docker container inspect -f '{{.Id}}' hpds-rs-t)"
+cp -p "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env" "$WORK/hpds-rs.env.good"
+sed -i.bak 's/^ID_BATCH_SIZE=.*/ID_BATCH_SIZE=not-a-number/' "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env"
+rm -f "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env.bak"
+if HEALTH_TIMEOUT=30 "$AIO/up.sh" >/dev/null 2>&1; then check_failed "up fails when the new container is unhealthy"; else pass "up fails when the new container is unhealthy"; fi
+expect_equal "old hpds-rs still running" "$(docker container inspect -f '{{.Id}} {{.State.Running}}' hpds-rs-t)" "$old_rs_id true"
+expect_equal "old hpds-rs still healthy" "$(docker container inspect -f '{{.State.Health.Status}}' hpds-rs-t)" healthy
+expect_equal "no leftover hpds-rs temporary containers" "$(docker ps -a --format '{{.Names}}' | grep -c '^hpds-rs-t-' || true)" 0
+cp -p "$WORK/hpds-rs.env.good" "$DOCKER_CONFIG_DIR/hpds-rs/hpds-rs.env"
+"$AIO/up.sh"
+[[ "$old_rs_id" != "$(docker container inspect -f '{{.Id}}' hpds-rs-t)" ]] && pass "up swapped in a healthy replacement" || check_failed "up swapped in a healthy replacement"
+expect_equal "replacement healthy" "$(docker container inspect -f '{{.State.Health.Status}}' hpds-rs-t)" healthy
+expect_equal "replacement restarts always" "$(docker container inspect -f '{{.HostConfig.RestartPolicy.Name}}' hpds-rs-t)" always
+expect_equal "no leftover hpds-rs temporary containers after the swap" "$(docker ps -a --format '{{.Names}}' | grep -c '^hpds-rs-t-' || true)" 0
+
 echo "--- down while qs points at rust"
 "$AIO/switch.sh" rust
 "$AIO/down.sh"
@@ -193,6 +224,16 @@ expect_equal "hpds-rs removed" "$(docker container inspect hpds-rs-t >/dev/null 
 expect_equal "qs back on java" "$(env_of qs-t | sed -n 's/^HPDS_AUTH_URL=//p')" "http://hpds-java-t:8080/PIC-SURE"
 [[ -f "$DOCKER_CONFIG_DIR/hpds-rs/pheno.index" ]] && pass "down kept the store" || check_failed "down kept the store"
 "$AIO/down.sh" >/dev/null && pass "down is idempotent" || check_failed "down is idempotent"
+
+echo "--- down with no query service container restores the file"
+"$AIO/up.sh"
+"$AIO/switch.sh" rust
+mv "$DOCKER_CONFIG_DIR/query/query.env.pre-rust" "$DOCKER_CONFIG_DIR/query/query.env.java-backup"
+docker rm -f qs-t >/dev/null
+"$AIO/down.sh"
+expect_equal "hpds-rs removed by the second down" "$(docker container inspect hpds-rs-t >/dev/null 2>&1 && echo present || echo gone)" gone
+cmp -s "$WORK/query.env.original" "$DOCKER_CONFIG_DIR/query/query.env" && pass "query.env restored from an earlier-named backup with no query service" || check_failed "query.env restored from an earlier-named backup with no query service"
+[[ -e "$DOCKER_CONFIG_DIR/query/query.env.java-backup.used" ]] && pass "earlier-named backup retired" || check_failed "earlier-named backup retired"
 
 echo "--- unset DOCKER_CONFIG_DIR"
 unset_output="$(env -u DOCKER_CONFIG_DIR "$AIO/status.sh" 2>&1 || true)"

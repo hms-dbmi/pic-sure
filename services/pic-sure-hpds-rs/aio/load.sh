@@ -24,7 +24,7 @@ usage() {
 
 # Loads the Java store in hpds/ into hpds-rs/ through bin/migrate-javabins.
 load_migrate() {
-  local java_etl
+  local java_etl name
   for name in columnMeta.javabin allObservationsStore.javabin encryption_key; do
     if [[ ! -r "$JAVA_STORE_DIR/$name" ]]; then
       if [[ "$DRY_RUN" == "1" ]]; then
@@ -56,8 +56,8 @@ load_migrate() {
   install_key
 }
 
-# Copies the all-in-one's encryption key into hpds-rs/ with mode 600 unless it is there and
-# identical; refuses to replace a different key.
+# Copies the all-in-one's encryption key into hpds-rs/ with mode 600. An identical key already
+# there is left in place (only its mode is set); a different key is refused.
 install_key() {
   local source_key="$JAVA_STORE_DIR/encryption_key" target_key="$RS_STORE_DIR/encryption_key"
   if [[ "$DRY_RUN" == "1" && ! -r "$source_key" ]]; then
@@ -66,6 +66,11 @@ install_key() {
   fi
   if [[ -e "$target_key" ]] && ! cmp -s "$source_key" "$target_key"; then
     fail "$target_key differs from $source_key; refusing to replace the key of an existing store"
+  fi
+  if [[ -e "$target_key" ]]; then
+    log "encryption key already in place and identical"
+    act chmod 600 "$target_key"
+    return 0
   fi
   act install -m 600 "$source_key" "$target_key"
 }

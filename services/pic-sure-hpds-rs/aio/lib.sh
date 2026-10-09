@@ -16,6 +16,7 @@
 #   RUST_ETL_IMAGE      hms-dbmi/pic-sure-hpds-rs-etl:LATEST
 #   JAVA_ETL_IMAGE      Java ETL image holding ExportForMigration (found automatically)
 #   HEALTH_TIMEOUT      seconds to wait for a container to become healthy (180)
+#   STABILITY_SECONDS   seconds a container without a healthcheck must stay running (5)
 
 AIO_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 RS_ROOT="$(cd -P "$AIO_DIR/.." && pwd -P)"
@@ -28,6 +29,7 @@ HPDS_JAVA_CONTAINER="${HPDS_JAVA_CONTAINER:-hpds}"
 HPDS_RS_IMAGE="${HPDS_RS_IMAGE:-hms-dbmi/pic-sure-hpds-rs:LATEST}"
 RUST_ETL_IMAGE="${RUST_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-rs-etl:LATEST}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-180}"
+STABILITY_SECONDS="${STABILITY_SECONDS:-5}"
 BACKEND_PATH="/PIC-SURE"
 
 DRY_RUN=0
@@ -41,6 +43,93 @@ fail() {
 log() {
   echo "$(basename "$0"): $*"
 }
+
+CLEANUP_FILES=()
+CLEANUP_CONTAINERS=()
+SWAP_ACTIVE=0
+SWAP_NAME=""
+SWAP_OLD_NAME=""
+RESTORE_TARGET=""
+RESTORE_SOURCE=""
+RESTORE_REMOVE=""
+
+# Remembers that file $1 must be put back from the snapshot $2 (and file $3, when given,
+# removed) if the process exits before disarm_file_restore.
+arm_file_restore() {
+  RESTORE_TARGET="$1"
+  RESTORE_SOURCE="$2"
+  RESTORE_REMOVE="${3:-}"
+}
+
+# Forgets the pending restore, keeping the changes.
+disarm_file_restore() {
+  RESTORE_TARGET=""
+  RESTORE_SOURCE=""
+  RESTORE_REMOVE=""
+}
+
+# Puts the armed file back from its snapshot, removes the file registered with it, and
+# disarms.
+restore_armed_file() {
+  [[ -n "$RESTORE_TARGET" ]] || return 0
+  cat "$RESTORE_SOURCE" > "$RESTORE_TARGET"
+  [[ -z "$RESTORE_REMOVE" ]] || rm -f "$RESTORE_REMOVE"
+  disarm_file_restore
+}
+
+# Registers the temporary file $1 for removal on every exit path.
+register_temp_file() {
+  CLEANUP_FILES+=("$1")
+}
+
+# Registers container $1 for forced removal on every exit path until unregister_container.
+register_container() {
+  CLEANUP_CONTAINERS+=("$1")
+}
+
+# Stops tracking container $1 once it has been renamed into service or removed.
+unregister_container() {
+  local kept=() entry
+  for entry in ${CLEANUP_CONTAINERS[@]+"${CLEANUP_CONTAINERS[@]}"}; do
+    [[ "$entry" == "$1" ]] || kept+=("$entry")
+  done
+  CLEANUP_CONTAINERS=(${kept[@]+"${kept[@]}"})
+}
+
+# Puts a container swap that stopped $SWAP_NAME back: removes whatever now holds the name
+# when the previous container was renamed to $SWAP_OLD_NAME, renames it back and starts it.
+# Starts the original in place when it was only stopped.
+rollback_swap() {
+  [[ "$SWAP_ACTIVE" == "1" ]] || return 0
+  if container_exists "$SWAP_OLD_NAME"; then
+    docker rm -f "$SWAP_NAME" >/dev/null 2>&1 || true
+    docker rename "$SWAP_OLD_NAME" "$SWAP_NAME" >/dev/null 2>&1 || true
+  fi
+  if container_exists "$SWAP_NAME" && ! container_running "$SWAP_NAME"; then
+    docker start "$SWAP_NAME" >/dev/null 2>&1 || true
+  fi
+  SWAP_ACTIVE=0
+}
+
+# EXIT handler: removes registered temporary files (they can hold secrets), registered
+# half-created containers, and restores an interrupted container swap.
+run_cleanup() {
+  local entry
+  rollback_swap
+  restore_armed_file
+  for entry in ${CLEANUP_CONTAINERS[@]+"${CLEANUP_CONTAINERS[@]}"}; do
+    docker rm -f "$entry" >/dev/null 2>&1 || true
+  done
+  CLEANUP_CONTAINERS=()
+  for entry in ${CLEANUP_FILES[@]+"${CLEANUP_FILES[@]}"}; do
+    rm -f "$entry"
+  done
+  CLEANUP_FILES=()
+}
+
+trap run_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
 # Sets DRY_RUN and ARGS from the command line. --dry-run may appear anywhere.
 parse_args() {
@@ -68,7 +157,8 @@ require_config_dir() {
   RS_LOG_DIR="$DOCKER_CONFIG_DIR/log/hpds-rs-logs"
   CSV_INPUT_DIR="$DOCKER_CONFIG_DIR/hpds_input"
   QUERY_ENV="$DOCKER_CONFIG_DIR/query/query.env"
-  QUERY_ENV_BACKUP="$QUERY_ENV.java-backup"
+  QUERY_ENV_BACKUP="$QUERY_ENV.pre-rust"
+  QUERY_ENV_LEGACY_BACKUP="$QUERY_ENV.java-backup"
   RS_ENV="$RS_STORE_DIR/hpds-rs.env"
 }
 
@@ -137,25 +227,27 @@ require_networks() {
   done
 }
 
+# Prints the restart count of container $1.
+container_restart_count() {
+  docker container inspect -f '{{.RestartCount}}' "$1" 2>/dev/null || echo 0
+}
+
 # Waits until container $1 reports healthy, or returns 1 with a message after HEALTH_TIMEOUT
-# seconds, on unhealthy, or when the container stops. A container without a healthcheck only
-# has to be running. Returns instead of exiting so callers can roll back.
+# seconds, on unhealthy, or when the container stops or restarts. A container without a
+# healthcheck must stay running, without restarting, for STABILITY_SECONDS. Returns instead
+# of exiting so callers can roll back.
 wait_healthy() {
-  local name="$1" waited=0 state
+  local name="$1" waited=0 state status restarts_at_start
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "+ wait up to ${HEALTH_TIMEOUT}s for $name to report healthy"
     return 0
   fi
+  restarts_at_start="$(container_restart_count "$name")"
   while true; do
     state="$(container_health "$name")"
+    status="$(docker container inspect -f '{{.State.Status}}' "$name" 2>/dev/null || echo absent)"
     case "$state" in
       healthy) log "$name is healthy"; return 0 ;;
-      none)
-        if container_running "$name"; then
-          log "$name is running (no healthcheck)"
-          return 0
-        fi
-        ;;
       unhealthy)
         docker logs --tail 30 "$name" >&2 || true
         echo "$(basename "$0"): $name is unhealthy" >&2
@@ -166,18 +258,23 @@ wait_healthy() {
         return 1
         ;;
     esac
-    if ! container_running "$name"; then
+    if [[ "$status" != "running" && "$status" != "created" ]] \
+      || [[ "$(container_restart_count "$name")" != "$restarts_at_start" ]]; then
       docker logs --tail 30 "$name" >&2 || true
-      echo "$(basename "$0"): $name is not running" >&2
+      echo "$(basename "$0"): $name is not staying up (status: $status)" >&2
       return 1
+    fi
+    if [[ "$state" == "none" && "$waited" -ge "$STABILITY_SECONDS" && "$status" == "running" ]]; then
+      log "$name is running (no healthcheck, stable for ${STABILITY_SECONDS}s)"
+      return 0
     fi
     if [[ "$waited" -ge "$HEALTH_TIMEOUT" ]]; then
       docker logs --tail 30 "$name" >&2 || true
       echo "$(basename "$0"): $name was not healthy after ${HEALTH_TIMEOUT}s (state: $state)" >&2
       return 1
     fi
-    sleep 2
-    waited=$((waited + 2))
+    sleep 1
+    waited=$((waited + 1))
   done
 }
 
@@ -189,6 +286,12 @@ env_value() {
     { k = substr($0, 1, index($0, "=") - 1); if (k == key) v = substr($0, index($0, "=") + 1) }
     END { print v }
   ' "$1"
+}
+
+# Prints the value of KEY $1 in the Java HPDS hpds.env, or nothing when the file or key is absent.
+java_env_value() {
+  [[ -f "$JAVA_STORE_DIR/hpds.env" ]] || return 0
+  env_value "$JAVA_STORE_DIR/hpds.env" "$1"
 }
 
 # Prints the value of environment variable $2 as set in the container $1, or nothing.
@@ -239,13 +342,26 @@ find_java_etl_image() {
   done
 }
 
-# Rewrites the HPDS_AUTH_URL and HPDS_OPEN_URL lines of env file $1 to the URL $2 (the other
-# lines are copied byte for byte) and prints the result to stdout. Fails when a key is missing.
+# Prints the backup file that holds the pre-rust query.env: query.env.pre-rust, else a
+# query.env.java-backup left by an earlier version of these scripts. Prints nothing when
+# neither exists.
+find_backup() {
+  if [[ -f "$QUERY_ENV_BACKUP" ]]; then
+    echo "$QUERY_ENV_BACKUP"
+  elif [[ -f "$QUERY_ENV_LEGACY_BACKUP" ]]; then
+    echo "$QUERY_ENV_LEGACY_BACKUP"
+  fi
+}
+
+# Rewrites the HPDS_AUTH_URL line of env file $1 to the URL $2 and the HPDS_OPEN_URL line to
+# the URL $3 (the other lines are copied byte for byte) and prints the result to stdout. The
+# URLs reach awk through the environment so backslashes survive. Fails when a key is missing
+# or repeated.
 rewrite_backend_urls() {
-  local file="$1" url="$2"
-  awk -v url="$url" '
-    /^HPDS_AUTH_URL=/ { print "HPDS_AUTH_URL=" url; auth++; next }
-    /^HPDS_OPEN_URL=/ { print "HPDS_OPEN_URL=" url; open++; next }
+  local file="$1"
+  NEW_AUTH_URL="$2" NEW_OPEN_URL="$3" awk '
+    /^HPDS_AUTH_URL=/ { print "HPDS_AUTH_URL=" ENVIRON["NEW_AUTH_URL"]; auth++; next }
+    /^HPDS_OPEN_URL=/ { print "HPDS_OPEN_URL=" ENVIRON["NEW_OPEN_URL"]; open++; next }
     { print }
     END { if (auth != 1 || open != 1) exit 3 }
   ' "$file"
@@ -256,6 +372,7 @@ rewrite_backend_urls() {
 replace_contents() {
   local target="$1" tmp
   tmp="$(mktemp "${TMPDIR:-/tmp}/aio-replace.XXXXXX")"
+  register_temp_file "$tmp"
   cat > "$tmp"
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "+ rewrite $target; changed lines:"
@@ -266,24 +383,31 @@ replace_contents() {
   rm -f "$tmp"
 }
 
-# Recreates the query service container $QS_CONTAINER from its own configuration, with its
-# environment re-read from query.env so the new URLs take effect.
+QS_REPLACEMENT=""
+QS_OLD_NAME=""
+
+# Runs every check and builds the replacement of the query service container $QS_CONTAINER,
+# without stopping or renaming anything and without reading query.env.
 #
-# The new container is built from `docker inspect` of the old one: image (by name while the name
-# still resolves to the same image id, else by id), restart policy,
-# networks and aliases, mounts, ports and labels. Its environment is the old container's own
-# variables (those the image does not define) overridden by every key in query.env. The
-# container is first created under a temporary name, so a configuration docker rejects fails
-# before anything is stopped. Then the old container is stopped and renamed aside, the new one
-# takes the name and starts, and on any failure the new container is removed and the old one
-# is renamed back and started. The old container is removed only once the new one is running.
+# The replacement is created, not started, under the temporary name $QS_CONTAINER-switch-new.
+# It is built from `docker inspect` of the running container: image (by name while the name
+# still resolves to the same image id, else by id), restart policy, networks and aliases,
+# mounts, ports and labels. Its environment is the old container's own variables (those the
+# image does not define) overridden by every key in the env file $1. The merged environment
+# lives in a temporary file removed as soon as docker create has read it, and on every exit
+# path.
 #
-# Containers carrying settings this does not reproduce (a changed entrypoint, user, resource
-# limits, devices, extra capabilities, tmpfs) are refused so nothing is dropped silently.
-recreate_qs() {
-  local name="$QS_CONTAINER" new_name old_name
+# Sets QS_REPLACEMENT to the temporary name, or leaves it empty when the container does not
+# exist. Containers carrying settings this does not reproduce (a changed entrypoint, user,
+# resource limits, devices, extra capabilities, tmpfs, init, ulimits and similar) are refused so
+# nothing is dropped silently. Exits through fail when a check fails or docker rejects the
+# configuration; the half-created replacement is removed by the exit handler.
+prepare_qs_recreation() {
+  local candidate_env="$1" name="$QS_CONTAINER" new_name old_name
   new_name="$name-switch-new"
   old_name="$name-switch-old"
+  QS_REPLACEMENT=""
+  QS_OLD_NAME="$old_name"
 
   if ! container_exists "$name"; then
     echo "note: container $name does not exist; run Start PIC-SURE to create it from query.env"
@@ -302,12 +426,13 @@ recreate_qs() {
   if [[ -n "$reasons" ]]; then
     echo "$name carries settings this script does not reproduce:" >&2
     while IFS= read -r line; do echo "  - $line" >&2; done <<<"$reasons"
-    fail "run Start PIC-SURE to recreate $name from query.env instead"
+    fail "run Start PIC-SURE to recreate $name from query.env instead. query.env was not changed"
   fi
 
   local env_file
   env_file="$(mktemp "${TMPDIR:-/tmp}/qs-env.XXXXXX")"
-  build_merged_env "$inspect" "$image_inspect" "$QUERY_ENV" > "$env_file"
+  register_temp_file "$env_file"
+  build_merged_env "$inspect" "$image_inspect" "$candidate_env" > "$env_file"
   report_env_changes "$inspect" "$env_file"
 
   local create_args=()
@@ -317,7 +442,7 @@ recreate_qs() {
 
   local first_network extra_networks=()
   first_network="$(jq -r --arg preferred "$PICSURE_NETWORK" '.[0].NetworkSettings.Networks | keys | (if index($preferred) then $preferred else .[0] end) // empty' <<<"$inspect")"
-  [[ -n "$first_network" ]] || fail "$name is attached to no network"
+  [[ -n "$first_network" ]] || fail "$name is attached to no network. query.env was not changed"
   while IFS= read -r line; do
     [[ -n "$line" ]] && extra_networks+=("$line")
   done < <(jq -r --arg first "$first_network" '.[0].NetworkSettings.Networks | keys[] | select(. != $first)' <<<"$inspect")
@@ -333,8 +458,12 @@ recreate_qs() {
     image_ref="$image_id"
   fi
 
-  act docker create --name "$new_name" --network "$first_network" ${first_aliases[@]+"${first_aliases[@]}"} \
-    ${create_args[@]+"${create_args[@]}"} --env-file "$env_file" "$image_ref"
+  [[ "$DRY_RUN" == "1" ]] || register_container "$new_name"
+  if ! act docker create --name "$new_name" --network "$first_network" ${first_aliases[@]+"${first_aliases[@]}"} \
+    ${create_args[@]+"${create_args[@]}"} --env-file "$env_file" "$image_ref"; then
+    fail "docker rejected the replacement for $name. query.env was not changed and $name is untouched"
+  fi
+  rm -f "$env_file"
 
   local extra extra_aliases
   for extra in ${extra_networks[@]+"${extra_networks[@]}"}; do
@@ -342,30 +471,44 @@ recreate_qs() {
     while IFS= read -r alias; do
       [[ -n "$alias" ]] && extra_aliases+=(--alias "$alias")
     done < <(network_aliases "$inspect" "$extra")
-    act docker network connect ${extra_aliases[@]+"${extra_aliases[@]}"} "$extra" "$new_name"
+    if ! act docker network connect ${extra_aliases[@]+"${extra_aliases[@]}"} "$extra" "$new_name"; then
+      fail "could not attach the replacement for $name to network $extra. query.env was not changed and $name is untouched"
+    fi
   done
+  QS_REPLACEMENT="$new_name"
+}
+
+# Swaps the replacement made by prepare_qs_recreation into service: stops the old container,
+# renames it aside, gives the replacement its name, starts it and waits for it to be healthy.
+# The old container is removed only after that. Does nothing when no replacement exists.
+#
+# Returns 1, after putting the previous container back under its name and running, when the
+# replacement does not come up. The caller then restores query.env.
+commit_qs_recreation() {
+  local name="$QS_CONTAINER" new_name="$QS_REPLACEMENT" old_name="$QS_OLD_NAME"
+  [[ -n "$new_name" ]] || return 0
 
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "+ docker stop $name; docker rename $name $old_name; docker rename $new_name $name; docker start $name"
     echo "+ on failure: docker rm -f $name; docker rename $old_name $name; docker start $name"
     echo "+ docker rm $old_name"
-    rm -f "$env_file"
     return 0
   fi
 
+  SWAP_NAME="$name"
+  SWAP_OLD_NAME="$old_name"
+  SWAP_ACTIVE=1
   docker stop "$name" >/dev/null
   docker rename "$name" "$old_name"
   docker rename "$new_name" "$name"
+  unregister_container "$new_name"
   if ! docker start "$name" >/dev/null || ! wait_healthy "$name"; then
     echo "$name failed to start; restoring the previous container" >&2
-    docker rm -f "$name" >/dev/null 2>&1 || true
-    docker rename "$old_name" "$name"
-    docker start "$name" >/dev/null
-    rm -f "$env_file"
-    fail "the previous $name is running again; nothing was lost"
+    rollback_swap
+    return 1
   fi
   docker rm "$old_name" >/dev/null
-  rm -f "$env_file"
+  SWAP_ACTIVE=0
   log "recreated $name"
 }
 
@@ -386,6 +529,7 @@ network_aliases() {
 build_merged_env() {
   local inspect="$1" image_inspect="$2" env_file="$3" old
   old="$(mktemp "${TMPDIR:-/tmp}/qs-old-env.XXXXXX")"
+  register_temp_file "$old"
   jq -r --argjson img "$image_inspect" '.[0].Config.Env - ($img[0].Config.Env // []) | .[]' <<<"$inspect" > "$old"
   awk '
     NR == FNR {

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Removes the hpds-rs container, switching the query service back to Java first if needed.
+# When the query service container is gone or already on Java but query.env still points at
+# hpds-rs or a pre-rust backup exists (after a Docker reset, say), only the file is restored.
 #
 # Usage: aio/down.sh [--dry-run]
 #
@@ -18,11 +20,17 @@ parse_args "$@"
 require_config_dir
 require_docker
 
+switch_args=()
+[[ "$DRY_RUN" == "1" ]] && switch_args+=(--dry-run)
+
 if container_exists "$QS_CONTAINER" && [[ "$(qs_engine)" == "rust" ]]; then
   log "$QS_CONTAINER points at $HPDS_RS_CONTAINER; switching it back to Java first"
-  switch_args=()
-  [[ "$DRY_RUN" == "1" ]] && switch_args+=(--dry-run)
   "$AIO_DIR/switch.sh" ${switch_args[@]+"${switch_args[@]}"} java
+elif [[ -f "$QUERY_ENV" ]] \
+  && { [[ -n "$(find_backup)" ]] \
+    || [[ "$(classify_engine "$(env_value "$QUERY_ENV" HPDS_AUTH_URL)" "$(env_value "$QUERY_ENV" HPDS_OPEN_URL)")" == "rust" ]]; }; then
+  log "no running $QS_CONTAINER points at $HPDS_RS_CONTAINER, but query.env still has the rust setup; restoring the file only"
+  "$AIO_DIR/switch.sh" ${switch_args[@]+"${switch_args[@]}"} --file-only java
 fi
 
 if container_exists "$HPDS_RS_CONTAINER"; then
