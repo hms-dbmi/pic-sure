@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
@@ -27,7 +28,30 @@ final class ProposeQueryBinder {
     private static final ObjectMapper STRICT = JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
         .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES).build();
 
+    /**
+     * For the researcher's own current query arriving on the request: the UI's full query object carries fields the model may not set
+     * ({@code authorizationFilters}, {@code expectedResultType}, {@code not}, ...), and those must not make a legitimate request fail. They
+     * are dropped here; everything {@link ProposeQueryInput} models is still bound and type-checked.
+     */
+    private static final ObjectMapper LENIENT = JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES).build();
+
     private ProposeQueryBinder() {}
+
+    /**
+     * Binds the request's current {@code query} to its input record, ignoring fields the record doesn't model.
+     *
+     * @param query the query object from the request
+     * @return the bound input
+     * @throws IllegalArgumentException naming the offending field when a modeled field is of the wrong type or not a valid clause
+     */
+    static ProposeQueryInput bindClientQuery(JsonNode query) {
+        try {
+            return LENIENT.convertValue(query, ProposeQueryInput.class);
+        } catch (IllegalArgumentException e) {
+            throw e.getCause() instanceof JsonMappingException mapping ? describe(mapping) : unreadable();
+        }
+    }
 
     /**
      * Binds a {@code propose_query} call's arguments to its input record.

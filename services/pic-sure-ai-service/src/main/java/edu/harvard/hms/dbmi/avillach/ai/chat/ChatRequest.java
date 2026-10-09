@@ -15,15 +15,15 @@ import jakarta.validation.constraints.NotBlank;
  * request body on arrival (Spring Boot leaves {@code FAIL_ON_UNKNOWN_PROPERTIES} off by default), so "removed before any downstream call"
  * is a consequence of this shape, not something a filter has to strip.
  *
- * <p>{@code query} and {@code search} are kept as opaque {@link JsonNode} for now: validating them against a real schema is Story 4's job,
- * out of scope while the proposal tool (see {@code McpToolGateway}) is still a stub.
+ * <p>{@code query} is kept as an opaque {@link JsonNode} and validated by {@link ChatStateValidator}; {@code search} is the dictionary
+ * search text, a plain string (the UI sends it to {@code /dictionary} together with {@code facets}).
  *
  * @param message the user's chat message
  * @param conversationId the UI-generated conversation id this turn belongs to
  * @param requestId the UI-generated idempotency key for this turn
  * @param query the researcher's current query object, if any
  * @param facets the researcher's current facet selection, in the slimmed {@link FacetSelection} shape
- * @param search the researcher's current dictionary-search state, if any
+ * @param search the researcher's current dictionary search text, if any
  */
 public record ChatRequest(
     @NotBlank String message,
@@ -31,6 +31,6 @@ public record ChatRequest(
     @NotBlank String requestId,
     JsonNode query,
     List<FacetSelection> facets,
-    JsonNode search
+    String search
 ) {
 }

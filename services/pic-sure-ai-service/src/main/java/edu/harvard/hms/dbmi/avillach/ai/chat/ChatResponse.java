@@ -13,10 +13,10 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param response the model's final chat reply
  * @param query the updated query object, or null if this turn didn't change it
  * @param facets the updated facet selection, or null if this turn didn't change it
- * @param search the updated dictionary-search state, or null if this turn didn't change it
+ * @param search the updated dictionary search text, or null if this turn didn't change it
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record ChatResponse(String response, JsonNode query, List<FacetSelection> facets, JsonNode search) {
+public record ChatResponse(String response, JsonNode query, List<FacetSelection> facets, String search) {
 
     /**
      * A reply with no query/facets/search change -- the common case (prose-only dictionary Q&A).

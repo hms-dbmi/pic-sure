@@ -1,9 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,7 +22,8 @@ final class ConceptPaths {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern BACKSLASH_RUN = Pattern.compile("\\\\+");
 
-    private final Set<String> seen = new HashSet<>();
+    /** Normalized path to the form it was first seen in, so output can carry the path exactly as a tool returned it. */
+    private final Map<String, String> seen = new HashMap<>();
 
     /**
      * Collapses every run of backslashes to one and ensures exactly one leading and one trailing backslash.
@@ -93,7 +93,7 @@ final class ConceptPaths {
     private void learn(String path) {
         String normalized = normalize(path);
         if (normalized != null && !normalized.isBlank()) {
-            seen.add(normalized);
+            seen.putIfAbsent(normalized, path);
         }
     }
 
@@ -103,7 +103,16 @@ final class ConceptPaths {
      */
     boolean isKnown(String path) {
         String normalized = normalize(path);
-        return normalized != null && seen.contains(normalized);
+        return normalized != null && seen.containsKey(normalized);
+    }
+
+    /**
+     * @param path a concept path in any variant
+     * @return the path as a tool result or the researcher's query first showed it, or the input unchanged if it hasn't been seen
+     */
+    String canonical(String path) {
+        String normalized = normalize(path);
+        return normalized == null ? path : seen.getOrDefault(normalized, path);
     }
 
     /**
