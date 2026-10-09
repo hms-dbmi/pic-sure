@@ -14,7 +14,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param response the model's final chat reply
  * @param query the updated query object, or null if this turn didn't change it
  * @param facets the updated facet selection, or null if this turn didn't change it
- * @param search the updated dictionary-search state, or null if this turn didn't change it
+ * @param search the updated dictionary search text, or null if this turn didn't change it
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(description = "The model's reply to a chat turn, plus any query, facet or search state the turn changed.")
@@ -25,7 +25,7 @@ public record ChatResponse(
     ) String response,
     @Schema(description = "The updated query object. Absent when the turn did not change it.") JsonNode query,
     @Schema(description = "The updated facet selection. Absent when the turn did not change it.") List<FacetSelection> facets,
-    @Schema(description = "The updated dictionary-search state. Absent when the turn did not change it.") JsonNode search
+    @Schema(description = "The updated dictionary-search state. Absent when the turn did not change it.") String search
 ) {
 
     /**
