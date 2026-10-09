@@ -2,7 +2,9 @@ package edu.harvard.hms.dbmi.avillach.ai.chat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -49,20 +51,35 @@ class ToolUseLoopService implements ChatOrchestrator {
     private final McpToolGateway toolGateway;
     private final ProposeQueryTool proposeQueryTool;
     private final int maxIterations;
+    private final Set<String> excludedTools;
 
     ToolUseLoopService(
+        ConverseModelClient modelClient, McpToolGateway toolGateway, ProposeQueryTool proposeQueryTool, int maxIterations
+    ) {
+        this(modelClient, toolGateway, proposeQueryTool, maxIterations, Set.of());
+    }
+
+    /**
+     * @param excludedTools gateway tool names withheld from the model and refused if it requests them anyway -- tools the connected UI
+     *        has no use for. Costs input tokens on every model call otherwise, since the definitions are resent each time.
+     */
+    @Autowired
+    ToolUseLoopService(
         ConverseModelClient modelClient, McpToolGateway toolGateway, ProposeQueryTool proposeQueryTool,
-        @Value("${picsure.ai.max-tool-iterations:8}") int maxIterations
+        @Value("${picsure.ai.max-tool-iterations:8}") int maxIterations,
+        @Value("${picsure.ai.mcp.excluded-tools:get_adapter_code}") Set<String> excludedTools
     ) {
         this.modelClient = modelClient;
         this.toolGateway = toolGateway;
         this.proposeQueryTool = proposeQueryTool;
         this.maxIterations = maxIterations;
+        this.excludedTools = Set.copyOf(excludedTools);
     }
 
     @Override
     public ChatResponse handle(ChatRequest request, CallerContext caller) {
-        List<ToolDefinition> tools = new ArrayList<>(toolGateway.listTools(caller));
+        List<ToolDefinition> tools =
+            new ArrayList<>(toolGateway.listTools(caller).stream().filter(tool -> !excludedTools.contains(tool.name())).toList());
         tools.add(proposeQueryTool.definition());
         List<ConversationEntry> history = new ArrayList<>();
         history.add(new UserEntry(request.message()));
@@ -105,6 +122,9 @@ class ToolUseLoopService implements ChatOrchestrator {
     /** A tool/MCP failure never crashes the turn -- it becomes a normal, model-visible error result. */
     private ToolResult callToolSafely(RequestedToolCall call, CallerContext caller) {
         try {
+            if (excludedTools.contains(call.name())) {
+                return ToolResult.failure("Unknown tool: " + call.name());
+            }
             if (ProposeQueryTool.NAME.equals(call.name())) {
                 return proposeQueryTool.propose(call.argumentsJson());
             }
