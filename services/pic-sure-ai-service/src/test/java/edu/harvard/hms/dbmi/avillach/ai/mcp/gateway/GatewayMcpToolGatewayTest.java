@@ -64,11 +64,26 @@ class GatewayMcpToolGatewayTest {
             {"jsonrpc":"2.0","id":1,"result":{"tools":[
                {"name":"search_concepts","description":"Search the dictionary.","inputSchema":{"type":"object"}}]}}""")));
 
-        List<ToolDefinition> tools = gateway.listTools();
+        List<ToolDefinition> tools = gateway.listTools(callerWith("Bearer caller-token", "req-1"));
 
         assertEquals(1, tools.size());
         assertEquals("search_concepts", tools.get(0).name());
         assertEquals("Search the dictionary.", tools.get(0).description());
+    }
+
+    @Test
+    void handshakeAndListToolsReplayTheCallersAuthorization() {
+        server.stubFor(post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/list"))).willReturn(okRpc("""
+            {"jsonrpc":"2.0","id":1,"result":{"tools":[]}}""")));
+
+        gateway.listTools(callerWith("Bearer caller-token", "req-1"));
+
+        for (String method : List.of("initialize", "notifications/initialized", "tools/list")) {
+            server.verify(
+                postRequestedFor(urlEqualTo("/mcp")).withHeader("Authorization", equalTo("Bearer caller-token"))
+                    .withRequestBody(matchingJsonPath("$.method", equalTo(method)))
+            );
+        }
     }
 
     @Test
