@@ -1,0 +1,304 @@
+{
+ "dataset": "harm-fixture-strict",
+ "cases": [
+  {
+   "name": "strict-count-no-clause-p1",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "userConsents": [
+      {
+       "value": "partition1"
+      }
+     ]
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": "494"
+   }
+  },
+  {
+   "name": "strict-count-age-35-45-p1",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "userConsents": [
+      {
+       "value": "partition1"
+      }
+     ],
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": "50"
+   }
+  },
+  {
+   "name": "strict-count-age-35-45-p2-p3",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "userConsents": [
+      {
+       "value": "partition2"
+      },
+      {
+       "value": "partition3"
+      }
+     ],
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": "151"
+   }
+  },
+  {
+   "name": "strict-count-age-35-45-p1-p4",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "userConsents": [
+      {
+       "value": "partition1"
+      },
+      {
+       "value": "partition4"
+      }
+     ],
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": "411"
+   }
+  },
+  {
+   "name": "strict-count-age-35-45-p2-unknown-p3",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "userConsents": [
+      {
+       "value": "partition2"
+      },
+      {
+       "value": "partition3452345"
+      },
+      {
+       "value": "partition3"
+      }
+     ],
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": "151"
+   }
+  },
+  {
+   "name": "strict-count-age-35-45-unknown-only",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "userConsents": [
+      {
+       "value": "partition3452345"
+      }
+     ],
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": "0"
+   }
+  },
+  {
+   "name": "strict-count-no-clause-off-node",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "userConsents": [
+      {
+       "value": "phs999999.c1"
+      }
+     ]
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": "0"
+   }
+  },
+  {
+   "name": "strict-sync-count-no-consents-answers-empty-200",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": ""
+   }
+  },
+  {
+   "name": "strict-sync-count-empty-consents-answers-empty-200",
+   "kind": "sync",
+   "resultType": "COUNT",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "COUNT",
+     "userConsents": [],
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "text": ""
+   }
+  },
+  {
+   "name": "strict-patients-age-35-45-p1",
+   "kind": "async",
+   "resultType": "PATIENTS",
+   "request": {
+    "query": {
+     "select": [],
+     "expectedResultType": "PATIENTS",
+     "userConsents": [
+      {
+       "value": "partition1"
+      }
+     ],
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "header": "PATIENT_NUM",
+    "rows": 50
+   }
+  },
+  {
+   "name": "strict-dataframe-age-35-45-p1",
+   "kind": "async",
+   "resultType": "DATAFRAME",
+   "request": {
+    "query": {
+     "select": [
+      "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+     ],
+     "expectedResultType": "DATAFRAME",
+     "userConsents": [
+      {
+       "value": "partition1"
+      }
+     ],
+     "phenotypicClause": {
+      "phenotypicFilterType": "FILTER",
+      "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+      "min": 35.0,
+      "max": 45.0
+     }
+    },
+    "resourceUUID": null
+   },
+   "expect": {
+    "header": "patient_id,\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+    "rows": 50
+   }
+  },
+  {
+   "name": "strict-search-null-term",
+   "kind": "search",
+   "resultType": "SEARCH",
+   "request": {
+    "query": null
+   },
+   "expect": {
+    "checks": [
+     {
+      "at": [
+       "searchQuery"
+      ],
+      "eq": ""
+     }
+    ]
+   }
+  }
+ ]
+}
