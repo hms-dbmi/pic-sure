@@ -77,6 +77,63 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void aConceptPathNoSearchReturnedIsRefusedWithoutReachingTheGateway() {
+        // The placeholder path a small model copied from a tool example, called before any search had returned.
+        String invented = "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"phs999999/bmi/\"}}}";
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("count_participants", invented), doneTurn("Handled the error"));
+        FakeToolGateway tools = new FakeToolGateway();
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertTrue(tools.calls.isEmpty(), "an invented path must never be forwarded to the gateway");
+        ConversationEntry.ToolResultEntry fedBack =
+            (ConversationEntry.ToolResultEntry) model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
+        assertTrue(fedBack.content().contains("phs999999/bmi/"), "the refused path is named: " + fedBack.content());
+        assertTrue(fedBack.content().contains("search_concepts"), "the model is told to search first: " + fedBack.content());
+    }
+
+    @Test
+    void aProposalWithAnInventedPathIsRefusedToo() {
+        String invented = "{\"query\":{\"select\":[\"phs999999/bmi/\"]}}";
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", invented), doneTurn("Handled the error"));
+
+        new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        ConversationEntry.ToolResultEntry fedBack =
+            (ConversationEntry.ToolResultEntry) model.historySeenOnCall(2).get(model.historySeenOnCall(2).size() - 1);
+        assertTrue(fedBack.content().contains("Unknown concept path"), fedBack.content());
+    }
+
+    @Test
+    void aPathFromAnEarlierSearchResultInTheSameTurnIsAllowedThrough() {
+        String searchResult = "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}]}";
+        String countWithThatPath =
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\body\\\\bmi\\\\\"}}}";
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"query\":\"bmi\"}"), toolCallTurn("count_participants", countWithThatPath), doneTurn("Done")
+        );
+        FakeToolGateway tools = FakeToolGateway.returning(searchResult);
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertEquals(List.of("search_concepts", "count_participants"), tools.calls.stream().map(c -> c.name).toList());
+    }
+
+    @Test
+    void aPathFromTheResearchersCurrentQueryIsAllowedThrough() throws Exception {
+        ChatRequest request = new ChatRequest(
+            "narrow it", "conv-1", "req-1", new ObjectMapper().readTree("{\"select\":[\"\\\\demo\\\\age\\\\\"]}"), null, null
+        );
+        String countWithThatPath = "{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}";
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("count_participants", countWithThatPath), doneTurn("Done"));
+        FakeToolGateway tools = new FakeToolGateway();
+
+        new ToolUseLoopService(model, tools, PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+        assertEquals(List.of("count_participants"), tools.calls.stream().map(c -> c.name).toList());
+    }
+
+    @Test
     void stopsAtTheIterationCapAndReturnsTheBestAnswerSoFar() {
         FakeModelClient model = FakeModelClient
             .returning(toolCallTurn("search_concepts", "{}"), toolCallTurn("search_concepts", "{}"), toolCallTurn("search_concepts", "{}"));
@@ -166,17 +223,24 @@ class ToolUseLoopServiceTest {
 
         private final List<Call> calls = new ArrayList<>();
         private final boolean failEveryCall;
+        private final String successContent;
 
         FakeToolGateway() {
-            this(false);
+            this(false, "{}");
         }
 
-        private FakeToolGateway(boolean failEveryCall) {
+        private FakeToolGateway(boolean failEveryCall, String successContent) {
             this.failEveryCall = failEveryCall;
+            this.successContent = successContent;
         }
 
         static FakeToolGateway thatFailsEveryCall() {
-            return new FakeToolGateway(true);
+            return new FakeToolGateway(true, "{}");
+        }
+
+        /** A gateway whose every successful call returns the given content, e.g. a search result carrying concept paths. */
+        static FakeToolGateway returning(String successContent) {
+            return new FakeToolGateway(false, successContent);
         }
 
         @Override
@@ -190,7 +254,7 @@ class ToolUseLoopServiceTest {
             if (failEveryCall) {
                 throw new RuntimeException("mock gateway failure");
             }
-            return ToolResult.success("{}");
+            return ToolResult.success(successContent);
         }
     }
 }
