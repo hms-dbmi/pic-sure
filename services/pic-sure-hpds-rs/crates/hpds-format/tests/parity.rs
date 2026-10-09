@@ -1,6 +1,9 @@
 use std::cmp::Ordering;
 
-use hpds_format::{canonical_nan, java_double_cmp, java_string_cmp, java_trim, parse_java_double};
+use hpds_format::{
+    canonical_nan, java_double_cmp, java_double_to_string, java_string_cmp, java_trim,
+    parse_java_double,
+};
 use proptest::prelude::*;
 
 /// Expected `Double.doubleToRawLongBits(Double.parseDouble(input))`, or `None` where Java
@@ -207,4 +210,28 @@ fn double_order_matches_double_compare_to() {
 fn java_trim_strips_control_characters_but_not_nbsp() {
     assert_eq!(java_trim("\u{1}\t abc \n\u{0}"), "abc");
     assert_eq!(java_trim("\u{a0}abc\u{a0}"), "\u{a0}abc\u{a0}");
+}
+
+#[test]
+fn java_double_to_string_matches_jdk() {
+    let cases = [
+        (1.0, "1.0"),
+        (-7.25, "-7.25"),
+        (1e7, "1.0E7"),
+        (9_999_999.0, "9999999.0"),
+        (0.001, "0.001"),
+        (0.0001, "1.0E-4"),
+        (31.0, "31.0"),
+        (1e23, "1.0E23"),
+        (f64::MAX, "1.7976931348623157E308"),
+        (f64::from_bits(1), "4.9E-324"),
+        (123_456_789.0, "1.23456789E8"),
+        (-0.0, "-0.0"),
+        (f64::NAN, "NaN"),
+        (f64::INFINITY, "Infinity"),
+        (f64::NEG_INFINITY, "-Infinity"),
+    ];
+    for (value, expected) in cases {
+        assert_eq!(java_double_to_string(value), expected, "{value:e}");
+    }
 }

@@ -9,8 +9,22 @@ publish.workspace = true
 [lib]
 name = "hpds_query"
 
+[features]
+tokio = ["dep:tokio"]
+
 [dependencies]
 hpds-format.workspace = true
+moka.workspace = true
+rayon.workspace = true
+roaring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, optional = true, features = ["rt"] }
+tracing.workspace = true
 
 [dev-dependencies]
+hpds-bench = { path = "../hpds-bench" }
+hpds-etl = { path = "../hpds-etl" }
 tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

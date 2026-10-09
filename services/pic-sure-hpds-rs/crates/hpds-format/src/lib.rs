@@ -145,7 +145,10 @@ pub use error::{FormatError, Result};
 pub use index::{
     BlockLocation, ConceptMeta, ConceptType, IndexHeader, MAX_INDEX_BODY_LEN, PhenoIndex,
 };
-pub use parity::{canonical_nan, java_double_cmp, java_string_cmp, java_trim, parse_java_double};
+pub use parity::{
+    canonical_nan, java_double_cmp, java_double_to_string, java_string_cmp, java_trim,
+    parse_java_double,
+};
 pub use protection::{Protection, STORE_ID_LEN, StoreId};
 
 /// Name of the index file that marks a populated phenotype data directory.

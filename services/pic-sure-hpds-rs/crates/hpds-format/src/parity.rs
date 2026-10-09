@@ -42,6 +42,79 @@ pub fn java_double_cmp(a: f64, b: f64) -> Ordering {
     canonical_nan(a).total_cmp(&canonical_nan(b))
 }
 
+/// Splits Rust's `{:e}` rendering of a finite positive double into its significant digits,
+/// without trailing zeros, and its decimal exponent: the value is `d.ddd × 10^exponent`.
+fn scientific_digits(rendered: &str) -> (String, i32) {
+    let (mantissa, exponent) = rendered.split_once('e').unwrap_or((rendered, "0"));
+    let mut digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    while digits.len() > 1 && digits.ends_with('0') {
+        digits.pop();
+    }
+    (digits, exponent.parse().unwrap_or(0))
+}
+
+/// Formats `value` exactly as JDK 19 and later `Double.toString` does, which is also how
+/// Jackson writes a `Double` map key and how `String.valueOf` renders a boxed `Double`.
+///
+/// The digits are the shortest decimal that rounds to `value`, closest to it when several
+/// qualify. When one digit would do, Java considers two-digit decimals as well and takes the
+/// closest, which is why the smallest subnormal prints as `4.9E-324`. Magnitudes in
+/// `[1e-3, 1e7)` print in plain notation with at least one fractional digit, everything else
+/// as `d.dddE<n>`. NaN prints as `NaN` and the infinities as `Infinity` and `-Infinity`.
+pub fn java_double_to_string(value: f64) -> String {
+    if value.is_nan() {
+        return "NaN".into();
+    }
+    if value.is_infinite() {
+        return if value > 0.0 { "Infinity" } else { "-Infinity" }.into();
+    }
+    if value == 0.0 {
+        return if value.is_sign_negative() {
+            "-0.0"
+        } else {
+            "0.0"
+        }
+        .into();
+    }
+    let magnitude = value.abs();
+    let (mut digits, mut exponent) = scientific_digits(&format!("{magnitude:e}"));
+    if digits.len() == 1 {
+        let two = format!("{magnitude:.1e}");
+        if two.parse::<f64>() == Ok(magnitude) {
+            (digits, exponent) = scientific_digits(&two);
+        }
+    }
+    let mut out = String::with_capacity(digits.len() + 8);
+    if value < 0.0 {
+        out.push('-');
+    }
+    if (-3..7).contains(&exponent) {
+        if exponent >= 0 {
+            let int_len = exponent as usize + 1;
+            if digits.len() <= int_len {
+                out.push_str(&digits);
+                out.extend(std::iter::repeat_n('0', int_len - digits.len()));
+                out.push_str(".0");
+            } else {
+                out.push_str(&digits[..int_len]);
+                out.push('.');
+                out.push_str(&digits[int_len..]);
+            }
+        } else {
+            out.push_str("0.");
+            out.extend(std::iter::repeat_n('0', (-exponent - 1) as usize));
+            out.push_str(&digits);
+        }
+    } else {
+        out.push_str(&digits[..1]);
+        out.push('.');
+        out.push_str(if digits.len() > 1 { &digits[1..] } else { "0" });
+        out.push('E');
+        out.push_str(&exponent.to_string());
+    }
+    out
+}
+
 /// Removes leading and trailing characters at or below U+0020, as Java `String.trim` does.
 ///
 /// This differs from Rust `str::trim`, which removes Unicode whitespace (including U+00A0)
