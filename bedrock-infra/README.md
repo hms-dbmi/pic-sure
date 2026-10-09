@@ -36,6 +36,13 @@ terraform apply poc.tfplan
 
 Get model IDs with `aws bedrock list-foundation-models --region <region>`.
 
+**Pick models that support tool use.** `pic-sure-ai-service` needs the model to return Converse `toolUse` blocks, and
+the Amazon Nova models tested (`amazon.nova-lite-v1:0`, `amazon.nova-pro-v1:0`) did not, even though they invoke fine.
+Tested and working: `openai.gpt-oss-120b-1:0` and `mistral.voxtral-small-24b-2507` (full loops); `mistral.voxtral-mini-3b-2507` calls tools but is too shallow to finish a multi-step question. Returned a correct first tool call:
+`mistral.mistral-large-3-675b-instruct`. These are on-demand in `us-east-1` (no inference profile needed). Details are in
+`services/pic-sure-ai-service/README.md#choosing-a-model`. Whatever model the service is configured with via
+`BEDROCK_MODEL_ID` must be listed in `allowed_model_ids`; any other model is rejected with a 403.
+
 ## Before applying in a production account
 
 - Review the plan: it should only add a policy, attachment(s), and the optional roles/boundary.
@@ -51,4 +58,4 @@ Get model IDs with `aws bedrock list-foundation-models --region <region>`.
 
 ## Verified
 
-Applied and smoke-tested successfully in the POC (NHANES dev) account: `amazon.nova-lite-v1:0` invoked via the Converse API, through both a direct attachment onto an existing EC2 role and a dedicated assumable role for an IAM Identity Center–managed CLI session. Still unverified: the FISMA-environment path (new Region, new role names, not yet run), `enforce_guardrail_identifier`'s exact value format (no guardrail exists yet to test against), and whether the FISMA environment's Terraform version supports `use_lockfile` (needs 1.10+).
+Applied and smoke-tested successfully in the POC (NHANES dev) account: `amazon.nova-lite-v1:0` invoked via the Converse API, through both a direct attachment onto an existing EC2 role and a dedicated assumable role for an IAM Identity Center–managed CLI session. That smoke test shows the invocation path works, not that the model can use tools: later end-to-end testing of `pic-sure-ai-service` against the dedicated role (`bedrock-assistant-poc-invoke`, assumed from a personal SSO session, service running in a local container) found Nova unable to do tool use and `openai.gpt-oss-120b-1:0` working (see the service README). Still unverified: the FISMA-environment path (new Region, new role names, not yet run), `enforce_guardrail_identifier`'s exact value format (no guardrail exists yet to test against), and whether the FISMA environment's Terraform version supports `use_lockfile` (needs 1.10+).
