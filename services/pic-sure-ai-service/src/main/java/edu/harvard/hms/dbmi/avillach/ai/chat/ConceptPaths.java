@@ -1,7 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,9 +23,14 @@ final class ConceptPaths {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern BACKSLASH_RUN = Pattern.compile("\\\\+");
+    /** A code range such as {@code (G00-G99)} that dictionary folders carry and models drop when copying a long path. */
+    private static final Pattern TRAILING_PARENTHETICAL = Pattern.compile("\\s*\\([^()]*\\)\\s*$");
 
     /** Normalized path to the form it was first seen in, so output can carry the path exactly as a tool returned it. */
     private final Map<String, String> seen = new HashMap<>();
+
+    /** A categorical value (stripped) to the concept path it was listed under, as first seen. */
+    private final Map<String, String> valueOwners = new HashMap<>();
 
     /**
      * Collapses every run of backslashes to one and ensures exactly one leading and one trailing backslash.
@@ -76,6 +83,7 @@ final class ConceptPaths {
                 JsonNode value = entry.getValue();
                 if ("conceptPath".equals(entry.getKey()) && value.isTextual()) {
                     learn(value.asText());
+                    learnValues(value.asText(), node.path("values"));
                 } else if ("select".equals(entry.getKey()) && value.isArray()) {
                     value.forEach(item -> {
                         if (item.isTextual()) {
@@ -88,6 +96,38 @@ final class ConceptPaths {
         } else if (node.isArray()) {
             node.forEach(this::learnFrom);
         }
+    }
+
+    private void learnValues(String path, JsonNode values) {
+        if (values.isArray()) {
+            values.forEach(item -> {
+                if (item.isTextual() && !item.asText().isBlank()) {
+                    valueOwners.putIfAbsent(item.asText().strip(), path);
+                }
+            });
+        }
+    }
+
+    /**
+     * Diagnosis folders list their child codes as values ({@code G47 Sleep disorders\} has the value {@code G47.9 Sleep disorder,
+     * unspecified}), and gpt-oss turns such a value into a path of its own (T14 in round 17).
+     *
+     * @param path a concept path as written in a reply
+     * @return the seen path whose values include the written path's last folder, or null when none does
+     */
+    String ownerOfValueIn(String path) {
+        List<String> segments = path == null || path.isBlank() ? List.of() : segments(path);
+        return segments.isEmpty() ? null : valueOwners.get(segments.getLast());
+    }
+
+    /**
+     * @param path a concept path as written in a reply
+     * @return whether it is an ancestor, in the concept tree, of some seen path without having been returned itself
+     */
+    boolean isAncestorOfSeen(String path) {
+        String normalized = normalize(path);
+        return normalized != null && !normalized.isBlank() && !isKnown(path)
+            && seen.keySet().stream().anyMatch(known -> known.startsWith(normalized));
     }
 
     private void learn(String path) {
@@ -113,6 +153,68 @@ final class ConceptPaths {
     String canonical(String path) {
         String normalized = normalize(path);
         return normalized == null ? path : seen.getOrDefault(normalized, path);
+    }
+
+    /**
+     * Maps a path the model shortened back to the seen path it was copied from. gpt-oss drops the {@code (G00-G99)} suffix of a folder or
+     * leaves out a middle folder when it copies a long path into prose, which leaves a path that exists nowhere in the dictionary.
+     * A path is only restored when it keeps the first and last folder of exactly one seen path and its other folders appear in that
+     * path in order; with no match, or more than one, it is returned as written, so an invented path is still shown as invented.
+     *
+     * @param path a concept path as written in a reply
+     * @return the single seen path it abbreviates, in the form a tool returned it, or the input unchanged
+     */
+    String snapped(String path) {
+        if (path == null || path.isBlank() || isKnown(path)) {
+            return path;
+        }
+        List<String> wanted = segments(path);
+        if (wanted.size() < 2) {
+            return path;
+        }
+        String match = null;
+        for (Map.Entry<String, String> entry : seen.entrySet()) {
+            if (abbreviates(wanted, segments(entry.getKey()))) {
+                if (match != null) {
+                    return path;
+                }
+                match = entry.getValue();
+            }
+        }
+        return match == null ? path : match;
+    }
+
+    private static List<String> segments(String path) {
+        List<String> segments = new ArrayList<>();
+        for (String segment : normalize(path).split("\\\\")) {
+            if (!segment.isBlank()) {
+                segments.add(segment.strip());
+            }
+        }
+        return segments;
+    }
+
+    /**
+     * Whether the folders {@code wanted} are the folders {@code full} with some left out, the first and last kept. Case and wording must
+     * match exactly. A folder may lose its trailing parenthetical ({@code Cholesterol (mg per dL)} written as {@code Cholesterol}), but
+     * one the model does write must be the dictionary's own: a different unit or range is a different variable, not a shortening.
+     */
+    private static boolean abbreviates(List<String> wanted, List<String> full) {
+        if (full.isEmpty() || wanted.size() > full.size() || !sameFolder(wanted.getFirst(), full.getFirst())
+            || !sameFolder(wanted.getLast(), full.getLast())) {
+            return false;
+        }
+        int next = 0;
+        for (String folder : full) {
+            if (next < wanted.size() && sameFolder(wanted.get(next), folder)) {
+                next++;
+            }
+        }
+        return next == wanted.size();
+    }
+
+    private static boolean sameFolder(String written, String real) {
+        return written.equals(real) || written.equals(TRAILING_PARENTHETICAL.matcher(real).replaceFirst(""));
     }
 
     /**

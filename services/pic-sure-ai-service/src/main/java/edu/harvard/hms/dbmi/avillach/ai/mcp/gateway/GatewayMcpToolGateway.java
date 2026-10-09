@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.ai.mcp.gateway;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -7,10 +8,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -45,9 +48,24 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     private final ObjectMapper objectMapper;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
-    public GatewayMcpToolGateway(@Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, ObjectMapper objectMapper) {
+    /** Without a timeout a stuck dictionary call hangs the whole chat turn: the JDK client waits forever by default. */
+    private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(20);
+
+    public GatewayMcpToolGateway(String gatewayUrl, ObjectMapper objectMapper) {
+        this(gatewayUrl, objectMapper, DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT);
+    }
+
+    @Autowired
+    public GatewayMcpToolGateway(
+        @Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, ObjectMapper objectMapper,
+        @Value("${picsure.ai.mcp.connect-timeout:5s}") Duration connectTimeout, @Value("${picsure.ai.mcp.read-timeout:20s}") Duration readTimeout
+    ) {
         requireNonBlank(gatewayUrl);
-        this.restClient = RestClient.builder().baseUrl(gatewayUrl + "/mcp").build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeout);
+        requestFactory.setReadTimeout(readTimeout);
+        this.restClient = RestClient.builder().baseUrl(gatewayUrl + "/mcp").requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
     }
 

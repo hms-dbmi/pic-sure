@@ -8,6 +8,8 @@ spring:
         # access-key/secret-key left unset on purpose: the default AWS SDK credential chain
         # (the IAM role bedrock-infra/ provisions) is the credential path. Never set a long-term
         # key here outside local dev.
+        # A stalled Bedrock call otherwise waits the SDK's 90s default before its own retry; normal calls take a few seconds.
+        socket-timeout: ${BEDROCK_SOCKET_TIMEOUT:30s}
       converse:
         chat:
           options:
@@ -54,6 +56,12 @@ picsure:
     require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
     token: ${PICSURE_APPLICATION_TOKEN:}
     header-name: X-Application-Token
+
+logging:
+  pattern:
+    # Boot's default level pattern plus the chat turn's ids (MDC set in ToolUseLoopService.handle), blank outside a turn.
+    # Pull one turn out of a full log with: rg '<chatRequestId>' <logfile>
+    level: "%5p [%X{conversationId:-}|%X{chatRequestId:-}]"
 
 server:
   port: ${SERVER_PORT:8080}

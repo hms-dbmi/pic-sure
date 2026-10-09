@@ -1,9 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
@@ -65,6 +67,17 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
     }
 
     /**
+     * The UI starts every session with a query that selects nothing and filters nothing ({@code "select":[]}, {@code
+     * "phenotypicClause":null}, {@code "genomicFilters":[]}).
+     *
+     * @return whether this input selects and filters nothing
+     */
+    @JsonIgnore // not a query field: without this Jackson serializes it as "empty" into the response's query
+    public boolean isEmpty() {
+        return (select == null || select.isEmpty()) && phenotypicClause == null && (genomicFilters == null || genomicFilters.isEmpty());
+    }
+
+    /**
      * Rewrites every concept path (in {@code select} and in every filter), leaving the rest untouched.
      *
      * @param rewrite maps a path to the form to emit
@@ -75,6 +88,22 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
             select == null ? null : select.stream().map(rewrite).toList(),
             phenotypicClause == null ? null : phenotypicClause.mapPaths(rewrite), genomicFilters
         );
+    }
+
+    /**
+     * The UI exports every variable it filters on (a categorical filter is useless without the column that says which values matched), so
+     * a query handed back to it lists each filtered concept path in {@code select}. A path the model left out is added back, after the
+     * ones it chose, without repeats.
+     *
+     * @return this input with every filter's concept path in {@code select}; this input itself when there are no filters
+     */
+    public ProposeQueryInput withFilterPathsSelected() {
+        if (phenotypicClause == null) {
+            return this;
+        }
+        Set<String> paths = new LinkedHashSet<>(select == null ? List.of() : select);
+        phenotypicClause.addPathsTo(paths);
+        return new ProposeQueryInput(List.copyOf(paths), phenotypicClause, genomicFilters);
     }
 
     private static void requirePath(String field, String path) {
@@ -104,6 +133,9 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
          * @return this clause with every concept path rewritten
          */
         Clause mapPaths(UnaryOperator<String> rewrite);
+
+        /** Adds the concept path of this clause and of every nested clause to {@code paths}. */
+        void addPathsTo(Set<String> paths);
     }
 
     /**
@@ -139,6 +171,11 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
         public Clause mapPaths(UnaryOperator<String> rewrite) {
             return new Filter(phenotypicFilterType, rewrite.apply(conceptPath), values, min, max);
         }
+
+        @Override
+        public void addPathsTo(Set<String> paths) {
+            paths.add(conceptPath);
+        }
     }
 
     /**
@@ -171,6 +208,11 @@ public record ProposeQueryInput(List<String> select, Clause phenotypicClause, Li
         @Override
         public Clause mapPaths(UnaryOperator<String> rewrite) {
             return new Subquery(phenotypicClauses.stream().map(clause -> clause.mapPaths(rewrite)).toList(), operator);
+        }
+
+        @Override
+        public void addPathsTo(Set<String> paths) {
+            phenotypicClauses.forEach(clause -> clause.addPathsTo(paths));
         }
     }
 }

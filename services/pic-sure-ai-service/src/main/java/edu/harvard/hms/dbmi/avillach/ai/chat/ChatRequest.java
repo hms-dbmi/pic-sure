@@ -42,6 +42,6 @@ public record ChatRequest(
     ) @NotBlank String requestId,
     @Schema(description = "The researcher's current query object, if any. Passed through unvalidated.") JsonNode query,
     @Schema(description = "The researcher's current facet selection, if any.") List<FacetSelection> facets,
-    @Schema(description = "The researcher's current dictionary-search state, if any. Passed through unvalidated.") String search
+    @Schema(description = "The researcher's current dictionary-search state, if any. Passed through unvalidated.", example = "blood pressure") String search
 ) {
 }

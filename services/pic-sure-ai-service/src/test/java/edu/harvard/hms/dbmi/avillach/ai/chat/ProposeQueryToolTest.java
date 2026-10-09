@@ -51,11 +51,40 @@ class ProposeQueryToolTest {
     }
 
     @Test
+    void querySentAtTheTopLevelIsReadAsTheQuery() {
+        // Round 17, T10 R1: gpt-oss sent {"select":[...]} with no query wrapper and was refused.
+        ProposeQueryTool.Outcome outcome = tool.propose("{\"select\":[\"\\\\demo\\\\race\\\\\"]}", knownFacets);
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        assertEquals(List.of("\\demo\\race\\"), outcome.proposal().query().select());
+    }
+
+    @Test
     void anEmptyFacetListIsAValidClearingProposal() {
         ProposeQueryTool.Outcome outcome = tool.propose("{\"facets\":[]}", knownFacets);
 
         assertFalse(outcome.result().error(), outcome.result().content());
         assertEquals(List.of(), outcome.proposal().facets());
+    }
+
+    @Test
+    void emptyObjectsSentForFieldsTheModelMeansToOmitAreReadAsNotSent() {
+        // The shape gpt-oss sent for a select-only request: no filter and no search, each as {}.
+        ProposeQueryTool.Outcome outcome = tool.propose("""
+            {"search":{},"query":{"select":["\\\\demo\\\\bmi\\\\"],"genomicFilters":[],"phenotypicClause":{}},"facets":[]}""", knownFacets);
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        assertEquals(List.of("\\demo\\bmi\\"), outcome.proposal().query().select());
+        assertNull(outcome.proposal().query().phenotypicClause());
+        assertNull(outcome.proposal().search());
+    }
+
+    @Test
+    void aNonEmptyUnrecognisedClauseStillFailsAndTellsTheModelToOmitItWhenThereIsNothingToFilter() {
+        ProposeQueryTool.Outcome outcome = tool.propose("{\"query\":{\"phenotypicClause\":{\"bogus\":1}}}", knownFacets);
+
+        assertTrue(outcome.result().error());
+        assertTrue(outcome.result().content().contains("leave phenotypicClause out"), outcome.result().content());
     }
 
     @Test
@@ -97,17 +126,19 @@ class ProposeQueryToolTest {
     }
 
     @Test
-    void acceptsAProposalWithNoFieldsPresent() {
+    void rejectsAProposalWithNoFieldsPresent() {
         ToolResult result = propose("{}");
 
-        assertFalse(result.error(), result.content());
+        assertTrue(result.error());
+        assertTrue(result.content().contains("empty"), result.content());
     }
 
     @Test
-    void acceptsBlankArguments() {
+    void rejectsBlankArguments() {
         ToolResult result = propose("");
 
-        assertFalse(result.error(), result.content());
+        assertTrue(result.error());
+        assertTrue(result.content().contains("empty"), result.content());
     }
 
     @Test

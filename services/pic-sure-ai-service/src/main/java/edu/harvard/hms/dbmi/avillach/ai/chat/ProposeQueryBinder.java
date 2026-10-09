@@ -80,7 +80,7 @@ final class ProposeQueryBinder {
         ) {
             return new IllegalArgumentException(
                 "Each phenotypic clause must be a filter (phenotypicFilterType and conceptPath) or a subquery (operator and "
-                    + "phenotypicClauses)."
+                    + "phenotypicClauses). If there is nothing to filter on, leave phenotypicClause out."
             );
         }
         String field = lastField(e.getPath());
