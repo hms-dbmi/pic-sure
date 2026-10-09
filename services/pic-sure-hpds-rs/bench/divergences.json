@@ -13,6 +13,18 @@
       "reason": "Spec divergence, HTTP errors: Java answers an unknown async result id with a NullPointerException 500; Rust returns 404."
     },
     {
+      "name": "invalid-request-empty-200",
+      "entry": "error-*",
+      "statuses": [200, 400],
+      "reason": "Spec divergence, HTTP errors: Java answers a FILTER with neither values nor a range, an empty subquery, or non-empty genomicFilters with 200 and an empty body; Rust returns 400 with a JSON message."
+    },
+    {
+      "name": "unknown-async-id-status-empty-200",
+      "entry": "error-unknown-async-id-*",
+      "statuses": [200, 404],
+      "reason": "Spec divergence, HTTP errors: Java answers /status for an unknown async id with 200 and an empty body; Rust returns 404."
+    },
+    {
       "name": "observation-cross-count-defect",
       "resultType": "OBSERVATION_CROSS_COUNT",
       "when": "strict-subset-or-timeout",

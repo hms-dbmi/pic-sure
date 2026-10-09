@@ -1,39 +1,52 @@
-use axum::{body::Body, http::Request, http::StatusCode};
-use hpds_rs::{probe_health, router};
-use tower::ServiceExt;
+mod common;
+
+use axum::http::StatusCode;
+use common::{config, fixture, get};
+use hpds_rs::{AppState, probe_health, router};
 
 #[tokio::test]
-async fn health_is_503_without_index_and_200_with_it() {
+async fn health_is_down_without_a_store() {
     let dir = tempfile::tempdir().unwrap();
-    let app = router(dir.path().to_path_buf());
-    let request = || {
-        Request::get("/actuator/health")
-            .body(Body::empty())
-            .unwrap()
-    };
-    let down = app.clone().oneshot(request()).await.unwrap();
-    assert_eq!(down.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let app = router(AppState::new(None, &config(dir.path())).unwrap());
+    let reply = get(&app, "/actuator/health").await;
+    assert_eq!(reply.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(reply.json()["status"], "DOWN");
+    let query = common::post(
+        &app,
+        "/PIC-SURE/v3/query/sync",
+        common::envelope(serde_json::json!({"expectedResultType": "COUNT"})),
+    )
+    .await;
+    assert_eq!(query.status, StatusCode::SERVICE_UNAVAILABLE);
+}
 
-    std::fs::write(dir.path().join("pheno.index"), b"").unwrap();
-    let up = app.oneshot(request()).await.unwrap();
-    assert_eq!(up.status(), StatusCode::OK);
+#[tokio::test]
+async fn health_is_up_with_a_store() {
+    let fixture = fixture();
+    let reply = get(&fixture.app, "/actuator/health").await;
+    assert_eq!(reply.status, StatusCode::OK);
+    assert_eq!(reply.body, r#"{"status":"UP"}"#);
 }
 
 #[tokio::test]
 async fn probe_follows_server_health() {
-    let dir = tempfile::tempdir().unwrap();
+    let fixture = fixture();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    tokio::spawn(axum::serve(listener, router(dir.path().to_path_buf())).into_future());
-
+    tokio::spawn(axum::serve(listener, fixture.app.clone()).into_future());
     assert!(
-        !tokio::task::spawn_blocking(move || probe_health(port))
+        tokio::task::spawn_blocking(move || probe_health(port))
             .await
             .unwrap()
     );
-    std::fs::write(dir.path().join("pheno.index"), b"").unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let down = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let down_port = down.local_addr().unwrap().port();
+    let app = router(AppState::new(None, &config(dir.path())).unwrap());
+    tokio::spawn(axum::serve(down, app).into_future());
     assert!(
-        tokio::task::spawn_blocking(move || probe_health(port))
+        !tokio::task::spawn_blocking(move || probe_health(down_port))
             .await
             .unwrap()
     );

@@ -10,7 +10,7 @@ the Maven reactor and is not listed in any pom.
 | `hpds-format` | lib | On-disk index and block format, crypto and Java parity helpers |
 | `hpds-etl` | bin + lib | Loads CSV and migrates Java javabins into the store (`hpds-etl`) |
 | `hpds-query` | lib | Query engine over the store; currently the health-state check only |
-| `hpds-rs` | bin + lib | HTTP server (`hpds-rs`) over `hpds-query`, currently `GET /actuator/health` only |
+| `hpds-rs` | bin + lib | HTTP server (`hpds-rs`) over `hpds-query`, serving the HPDS v3 contract |
 | `hpds-gen` | bin | Deterministic synthetic dataset generator |
 | `hpds-bench` | bin | Query corpus, compare and load harness |
 
@@ -45,15 +45,55 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 |---|---|---|
 | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Store directory. Matches the Java service; the all-in-one stack bind-mounts the hpds-rs host directory here. |
 | `SERVER_PORT` | `8080` | Listen port on `0.0.0.0`. |
-| `RUST_LOG` | `info` | Log filter, in `tracing` `EnvFilter` syntax. |
+| `CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. |
+| `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
+| `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
+| `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | `true` | Refuse `POST /query` without an authorization filter, as Java does. The all-in-one sets it false. |
+| `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Export files (directory 0700, files 0600). Leftover files are removed at startup. |
+| `HPDS_RESULT_LIMIT` | `1000` | Most async results held at once. |
+| `HPDS_RESULT_MAX_AGE_SECONDS` | `3600` | How long a finished result is kept. |
+| `SMALL_JOB_LIMIT` | `100` | Exports with more `select` paths run on the large pool. |
+| `SMALL_TASK_THREADS`, `LARGE_TASK_THREADS` | `1`, `1` | Exports running at once per pool. |
+| `HPDS_EXPORT_CONCURRENCY` | `2` | Exports running at once across both pools; each pins its selected blocks in memory. |
+| `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) running at once. |
+| `HPDS_BLOCKING_THREADS` | `64` | Cap on tokio's blocking threads. |
+| `RUST_LOG` | `info` | Log filter, in `tracing` `EnvFilter` syntax. The `hpds_rs::access` target logs one line per request with method, path, status and latency. |
 
-The encryption key will be read from `<HPDS_DATA_DIRECTORY>/encryption_key` once the store
-loads data.
+The key is read from `<HPDS_DATA_DIRECTORY>/encryption_key`. When the store cannot be opened
+the server still starts, health reports DOWN, and query routes answer 503.
 
-`/actuator/health` returns 200 `{"status":"UP"}` when `pheno.index` exists in the data
-directory and 503 `{"status":"DOWN"}` otherwise. This existence check is a placeholder: when
-the store exists, health means the index loads with at least one concept, and that check
-replaces this one.
+### Routes
+
+Mounted under both `/PIC-SURE/v3` and `/PIC-SURE`, because the query service calls search on the
+unversioned path. Request bodies are capped at 2 MiB.
+
+| Route | Answer |
+|---|---|
+| `POST /query/sync` | COUNT (`text/plain`) and the four cross counts (`application/json`), byte for byte as Java, with a `queryMetadata` header |
+| `POST /query` | `QueryStatus` for a PATIENTS or DATAFRAME export; DATAFRAME_TIMESERIES and DATAFRAME_PFB end in ERROR |
+| `POST /query/{id}/status` | `QueryStatus`, with Java's status mapping |
+| `POST /query/{id}/result` | The CSV export as `text/plain`; 400 `Status : <state>` before it succeeds |
+| `POST /query/{id}/signed-url` | 400, S3 upload is out of scope |
+| `POST /query/format`, `POST /write/{dataType}` | 400, not supported |
+| `POST /search` | `phenotypes` matched by path substring or category value, `info: {}` |
+| `GET /search/values/` | An empty page |
+| `GET /actuator/health` | 200 `{"status":"UP"}` when the store is open with at least one concept, else 503 DOWN |
+
+Differences from Java a caller can see:
+
+- Invalid requests are 400 with `{"error": ..., "message": ...}`, where Java answers 500, an
+  empty 200, or a 200 status of ERROR. Unknown result ids are 404 on every route.
+- `/query/sync` does not validate, as Java does not, so an authorization filter on a concept
+  the store lacks counts 0. `POST /query` validates as Java does, but refuses with a 400 instead
+  of registering an ERROR result.
+- Result ids and `queryMetadata` are random UUIDs, not Java's UUIDv5 of the query text.
+- A failed query's `resultMetadata` carries an `error` message.
+- Results are dropped after `HPDS_RESULT_MAX_AGE_SECONDS`, or oldest finished first when
+  `HPDS_RESULT_LIMIT` is reached; Java keeps them until restart.
+- Search leaves out `timestampMin` and `timestampMax`. No Java loader sets them, so Java never
+  writes them.
+- Genomic input (genomic result types, `genomicFilters`, variant-spec paths) is a 400 naming the
+  unsupported feature.
 
 The server stops cleanly on SIGTERM and ctrl-c. `hpds-rs healthcheck` requests
 `http://127.0.0.1:$SERVER_PORT/actuator/health` and exits 0 on a 200 `UP`, 1 otherwise; the

@@ -1,52 +1,123 @@
-//! HTTP server in front of the `hpds-query` engine.
+//! HTTP server in front of the `hpds-query` engine, serving the Java HPDS v3 contract.
+//!
+//! Every route is mounted under both `/PIC-SURE/v3` and `/PIC-SURE`, since the query service
+//! calls search on the unversioned path:
+//!
+//! | Route | Handler |
+//! |---|---|
+//! | `POST /query/sync` | [`sync::query_sync`] |
+//! | `POST /query` | [`jobs::submit`] |
+//! | `POST /query/{id}/status` | [`jobs::status`] |
+//! | `POST /query/{id}/result` | [`jobs::result`] |
+//! | `POST /query/{id}/signed-url` | [`jobs::signed_url`] |
+//! | `POST /query/format` | 400, not supported |
+//! | `POST /write/{dataType}` | 400, not supported |
+//! | `POST /search` | [`search::search`] |
+//! | `GET /search/values/` (and without the slash) | [`search::search_values`] |
+//!
+//! `GET /actuator/health` is at the root. Every request is logged with its method, path,
+//! status and latency, never its body.
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
-use hpds_query::{HealthState, health_for};
+use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::http::StatusCode;
+use axum::middleware::{self, Next};
+use axum::response::Response;
+use axum::routing::{get, post};
+use axum::{Json, Router};
 use serde::Serialize;
 
-/// Port used when `SERVER_PORT` is not set.
-pub const DEFAULT_PORT: u16 = 8080;
+pub mod config;
+pub mod envelope;
+pub mod error;
+pub mod jobs;
+pub mod search;
+pub mod state;
+pub mod sync;
+
+pub use config::{Config, DEFAULT_PORT, port_from_env};
+pub use error::ApiError;
+pub use state::AppState;
 
 /// Body of the `/actuator/health` response.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Health {
-    /// `UP` when the store is loaded, `DOWN` otherwise.
+    /// `UP` when the store is open and holds at least one concept, `DOWN` otherwise.
     pub status: &'static str,
 }
 
-async fn health(State(data_dir): State<PathBuf>) -> (StatusCode, Json<Health>) {
-    match health_for(&data_dir) {
-        HealthState::Up => (StatusCode::OK, Json(Health { status: "UP" })),
-        HealthState::Down => (
+async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
+    if state.is_healthy() {
+        (StatusCode::OK, Json(Health { status: "UP" }))
+    } else {
+        (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(Health { status: "DOWN" }),
-        ),
+        )
     }
 }
 
-/// Builds the HTTP router serving the given data directory.
-pub fn router(data_dir: PathBuf) -> Router {
+async fn query_format() -> ApiError {
+    ApiError::bad_request("query formatting is not supported by this HPDS")
+}
+
+async fn write_result() -> ApiError {
+    ApiError::bad_request("writing results to file sharing is not supported by this HPDS")
+}
+
+async fn access_log(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let started = Instant::now();
+    let response = next.run(request).await;
+    tracing::info!(
+        target: "hpds_rs::access",
+        %method,
+        %path,
+        status = response.status().as_u16(),
+        latency_ms = started.elapsed().as_secs_f64() * 1000.0,
+        "request"
+    );
+    response
+}
+
+fn api() -> Router<AppState> {
+    Router::new()
+        .route("/query/sync", post(sync::query_sync))
+        .route("/query", post(jobs::submit))
+        .route("/query/format", post(query_format))
+        .route("/query/{id}/status", post(jobs::status))
+        .route("/query/{id}/result", post(jobs::result))
+        .route("/query/{id}/signed-url", post(jobs::signed_url))
+        .route("/write/{data_type}", post(write_result))
+        .route("/search", post(search::search))
+        .route("/search/values/", get(search::search_values))
+        .route("/search/values", get(search::search_values))
+}
+
+/// Builds the HTTP router over `state`, with a 2 MiB request body limit and the access log.
+pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/actuator/health", get(health))
-        .with_state(data_dir)
+        .nest("/PIC-SURE/v3", api())
+        .nest("/PIC-SURE", api())
+        .layer(DefaultBodyLimit::max(config::MAX_BODY_BYTES))
+        .layer(middleware::from_fn(access_log))
+        .with_state(state)
 }
 
-/// Reads the listen port from `SERVER_PORT`, falling back to [`DEFAULT_PORT`].
-///
-/// Returns an error message when the variable is set but is not a valid port.
-pub fn port_from_env() -> Result<u16, String> {
-    match std::env::var("SERVER_PORT") {
-        Ok(value) => value
-            .trim()
-            .parse()
-            .map_err(|_| format!("SERVER_PORT is not a valid port: {value}")),
-        Err(_) => Ok(DEFAULT_PORT),
-    }
+/// Drops expired async results every `period` until the runtime shuts down.
+pub fn spawn_result_reaper(state: AppState, period: Duration) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticks = tokio::time::interval(period);
+        loop {
+            ticks.tick().await;
+            state.jobs().sweep();
+        }
+    })
 }
 
 /// Probes `/actuator/health` on the loopback interface at `port`.

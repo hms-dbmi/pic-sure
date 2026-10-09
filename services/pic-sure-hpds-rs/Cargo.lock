@@ -782,8 +782,15 @@ name = "hpds-rs"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bytes",
+ "futures-util",
+ "getrandom 0.4.3",
+ "hpds-etl",
+ "hpds-format",
  "hpds-query",
+ "http-body-util",
  "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tower",
