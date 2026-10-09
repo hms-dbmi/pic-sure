@@ -138,6 +138,7 @@ struct StoredResult {
     queued_ms: u64,
     completed_ms: u64,
     state: ResultState,
+    reserved: u64,
 }
 
 impl StoredResult {
@@ -248,6 +249,7 @@ impl ResultRegistry {
             picsure_query_id: query.id.clone().unwrap_or_else(random_uuid),
             queued_ms: now,
             completed_ms: if refusal.is_some() { now } else { 0 },
+            reserved: 0,
             state: match &refusal {
                 Some(message) => ResultState::Error {
                     message: message.clone(),
@@ -284,6 +286,11 @@ impl ResultRegistry {
         let entries = Arc::clone(&self.entries);
         let max_bytes = self.max_bytes;
         let max_file_bytes = self.max_file_bytes;
+        let quota = Quota {
+            entries: Arc::clone(&self.entries),
+            id: id.clone(),
+            max_bytes,
+        };
         let file = self.results_dir.join(format!("result-{id}.csv"));
         tokio::spawn(async move {
             let (Ok(_pool_slot), Ok(_export_slot), Ok(_engine_slot)) = (
@@ -296,7 +303,7 @@ impl ResultRegistry {
             set_state(&entries, &id, ResultState::Running);
             let target = file.clone();
             let outcome = engine
-                .run_blocking(move |e| Ok(write_export(e, &query, &target, max_file_bytes)))
+                .run_blocking(move |e| Ok(write_export(e, &query, &target, max_file_bytes, &quota)))
                 .await
                 .unwrap_or_else(|e| Err(ExportError::Query(e)));
             let state = match outcome {
@@ -388,6 +395,7 @@ pub enum ResultError {
 enum ExportError {
     Query(QueryError),
     TooLarge { limit: u64 },
+    StorageFull,
     Io(io::Error),
 }
 
@@ -399,12 +407,13 @@ impl From<QueryError> for ExportError {
 
 impl From<io::Error> for ExportError {
     fn from(error: io::Error) -> Self {
-        match error
-            .get_ref()
-            .and_then(|inner| inner.downcast_ref::<FileTooLarge>())
-        {
-            Some(FileTooLarge { limit }) => ExportError::TooLarge { limit: *limit },
-            None => ExportError::Io(error),
+        let inner = error.get_ref();
+        if let Some(FileTooLarge { limit }) = inner.and_then(|e| e.downcast_ref::<FileTooLarge>()) {
+            ExportError::TooLarge { limit: *limit }
+        } else if inner.is_some_and(|e| e.is::<StorageFull>()) {
+            ExportError::StorageFull
+        } else {
+            ExportError::Io(error)
         }
     }
 }
@@ -422,20 +431,79 @@ impl std::fmt::Display for FileTooLarge {
 
 impl std::error::Error for FileTooLarge {}
 
+#[derive(Debug)]
+struct StorageFull;
+
+impl std::fmt::Display for StorageFull {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no room left in the result store")
+    }
+}
+
+impl std::error::Error for StorageFull {}
+
+/// An export's claim on the result store's byte cap. Each write reserves its bytes in the
+/// registry before they reach the file, so exports still being written count against
+/// `HPDS_RESULT_MAX_BYTES` alongside the finished ones. A reservation that does not fit
+/// evicts the oldest finished results first. It then fails unless this is the only export
+/// holding reserved bytes, which keeps a lone result larger than the cap, as a finished one
+/// is kept.
+struct Quota {
+    entries: Arc<Mutex<Entries>>,
+    id: String,
+    max_bytes: u64,
+}
+
+impl Quota {
+    fn reserve(&self, len: u64) -> io::Result<()> {
+        let mut removed = Vec::new();
+        let granted = {
+            let mut entries = lock(&self.entries);
+            loop {
+                let fits = held_bytes(&entries).saturating_add(len) <= self.max_bytes;
+                if !fits {
+                    if let Some(id) = oldest_finished(&entries, None) {
+                        removed.extend(evict(&mut entries, &id));
+                        continue;
+                    }
+                    let lone = !entries.iter().any(|(id, entry)| {
+                        id != &self.id && !entry.state.is_finished() && entry.reserved > 0
+                    });
+                    if !lone {
+                        break false;
+                    }
+                }
+                if let Some(entry) = entries.get_mut(&self.id) {
+                    entry.reserved = entry.reserved.saturating_add(len);
+                }
+                break true;
+            }
+        };
+        remove_files(&removed);
+        if granted {
+            Ok(())
+        } else {
+            Err(io::Error::other(StorageFull))
+        }
+    }
+}
+
 /// A file that refuses any write that would take it past `limit` bytes, counting every byte
 /// that reaches the file, header included.
-struct LimitedFile {
+struct LimitedFile<'a> {
     file: File,
     written: u64,
     limit: u64,
+    quota: &'a Quota,
 }
 
-impl Write for LimitedFile {
+impl Write for LimitedFile<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let next = self.written.saturating_add(buf.len() as u64);
         if next > self.limit {
             return Err(io::Error::other(FileTooLarge { limit: self.limit }));
         }
+        self.quota.reserve(buf.len() as u64)?;
         self.file.write_all(buf)?;
         self.written = next;
         Ok(buf.len())
@@ -454,6 +522,9 @@ impl ExportError {
                 tracing::error!(%error, result = id, "export failed");
                 SERVER_ERROR_MESSAGE.to_owned()
             }
+            ExportError::StorageFull => "the result store has no room for this export while \
+                 other exports are running (HPDS_RESULT_MAX_BYTES); try again later"
+                .to_owned(),
             ExportError::TooLarge { limit } => format!(
                 "the export is larger than the maximum result file size of {limit} bytes \
                  (HPDS_RESULT_MAX_FILE_BYTES); narrow the cohort or select fewer concepts"
@@ -484,6 +555,7 @@ fn finish(entries: &Mutex<Entries>, id: &str, state: ResultState, max_bytes: u64
         match entries.get_mut(id) {
             Some(entry) => {
                 entry.state = state;
+                entry.reserved = 0;
                 entry.completed_ms = now_ms().max(1);
                 enforce_byte_cap(&mut entries, max_bytes, Some(id))
             }
@@ -509,7 +581,8 @@ fn held_bytes(entries: &Entries) -> u64 {
         .values()
         .map(|entry| match &entry.state {
             ResultState::Success { size, .. } => *size,
-            _ => 0,
+            ResultState::Pending | ResultState::Running => entry.reserved,
+            ResultState::Error { .. } => 0,
         })
         .fold(0, u64::saturating_add)
 }
@@ -657,11 +730,12 @@ fn write_export(
     query: &Query,
     path: &Path,
     max_file_bytes: u64,
+    quota: &Quota,
 ) -> Result<u64, ExportError> {
     match query.expected_result_type {
         ResultType::Patients => {
             let cohort = engine.patients(query)?;
-            let mut out = create_result_file(path, max_file_bytes)?;
+            let mut out = create_result_file(path, max_file_bytes, quota)?;
             write_csv_row(&mut out, [PATIENTS_HEADER])?;
             for patient in &cohort {
                 writeln!(out, "{patient}")?;
@@ -670,7 +744,7 @@ fn write_export(
         }
         ResultType::Dataframe => {
             let frame = engine.dataframe(query)?;
-            let mut out = create_result_file(path, max_file_bytes)?;
+            let mut out = create_result_file(path, max_file_bytes, quota)?;
             write_csv_row(&mut out, &frame.header)?;
             let mut rows = frame.rows;
             let mut row = RowBuffer::new();
@@ -683,7 +757,11 @@ fn write_export(
     }
 }
 
-fn create_result_file(path: &Path, limit: u64) -> io::Result<BufWriter<LimitedFile>> {
+fn create_result_file<'a>(
+    path: &Path,
+    limit: u64,
+    quota: &'a Quota,
+) -> io::Result<BufWriter<LimitedFile<'a>>> {
     let file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -695,11 +773,12 @@ fn create_result_file(path: &Path, limit: u64) -> io::Result<BufWriter<LimitedFi
             file,
             written: 0,
             limit,
+            quota,
         },
     ))
 }
 
-fn close_result_file(out: BufWriter<LimitedFile>) -> Result<u64, ExportError> {
+fn close_result_file(out: BufWriter<LimitedFile<'_>>) -> Result<u64, ExportError> {
     let limited = out.into_inner().map_err(|e| e.into_error())?;
     Ok(limited.file.metadata()?.len())
 }
@@ -853,6 +932,89 @@ pub async fn signed_url(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entry(state: ResultState, completed_ms: u64, reserved: u64) -> StoredResult {
+        StoredResult {
+            picsure_query_id: String::new(),
+            queued_ms: 0,
+            completed_ms,
+            state,
+            reserved,
+        }
+    }
+
+    fn finished(size: u64, completed_ms: u64) -> StoredResult {
+        entry(
+            ResultState::Success {
+                file: PathBuf::from("/nonexistent/result.csv"),
+                size,
+            },
+            completed_ms,
+            0,
+        )
+    }
+
+    fn quota(entries: Entries, max_bytes: u64) -> Quota {
+        Quota {
+            entries: Arc::new(Mutex::new(entries)),
+            id: "mine".to_owned(),
+            max_bytes,
+        }
+    }
+
+    fn reserved_of(quota: &Quota, id: &str) -> u64 {
+        lock(&quota.entries).get(id).map_or(0, |e| e.reserved)
+    }
+
+    #[test]
+    fn a_reservation_evicts_the_oldest_finished_result_to_fit() {
+        let mut entries = Entries::new();
+        entries.insert("mine".into(), entry(ResultState::Running, 0, 0));
+        entries.insert("old".into(), finished(60, 1));
+        entries.insert("new".into(), finished(30, 2));
+        let quota = quota(entries, 100);
+        quota.reserve(50).unwrap();
+        let entries = lock(&quota.entries);
+        assert!(!entries.contains_key("old") && entries.contains_key("new"));
+        assert_eq!(held_bytes(&entries), 80);
+    }
+
+    #[test]
+    fn running_exports_count_against_the_byte_cap() {
+        let mut entries = Entries::new();
+        entries.insert("mine".into(), entry(ResultState::Running, 0, 0));
+        entries.insert("other".into(), entry(ResultState::Running, 0, 90));
+        entries.insert("done".into(), finished(5, 1));
+        let quota = quota(entries, 100);
+        let error = quota.reserve(20).unwrap_err();
+        assert!(error.get_ref().is_some_and(|e| e.is::<StorageFull>()));
+        let entries = lock(&quota.entries);
+        assert!(!entries.contains_key("done"));
+        assert!(entries.contains_key("other"));
+        assert_eq!(held_bytes(&entries), 90);
+    }
+
+    #[test]
+    fn running_exports_are_never_evicted_by_the_byte_cap() {
+        let mut entries = Entries::new();
+        entries.insert("running".into(), entry(ResultState::Running, 0, 500));
+        entries.insert("done".into(), finished(10, 1));
+        assert_eq!(enforce_byte_cap(&mut entries, 100, None).len(), 1);
+        assert!(entries.contains_key("running"));
+    }
+
+    #[test]
+    fn a_lone_export_may_pass_the_cap_but_not_beside_another() {
+        let mut entries = Entries::new();
+        entries.insert("mine".into(), entry(ResultState::Running, 0, 0));
+        let lone = quota(entries, 10);
+        lone.reserve(50).unwrap();
+        assert_eq!(reserved_of(&lone, "mine"), 50);
+
+        lock(&lone.entries).insert("rival".into(), entry(ResultState::Running, 0, 1));
+        assert!(lone.reserve(1).is_err());
+        assert_eq!(reserved_of(&lone, "mine"), 50);
+    }
 
     #[test]
     fn csv_rows_quote_like_fastcsv() {

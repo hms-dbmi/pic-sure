@@ -222,3 +222,29 @@ async fn an_export_is_cut_off_at_the_file_cap_counting_the_header() {
         .to_owned();
     assert_eq!(wait(&header_only.app, &id).await["status"], "ERROR");
 }
+
+#[tokio::test]
+async fn in_flight_exports_cannot_pass_the_result_count_cap() {
+    let f = fixture_with(|c| c.result_limit = 3);
+    let mut held = Vec::new();
+    for _ in 0..f.config.engine_concurrency {
+        held.push(f.state.engine_slot().await);
+    }
+    let mut accepted = 0;
+    for _ in 0..8 {
+        let reply = post(
+            &f.app,
+            QUERY,
+            envelope(json!({"expectedResultType": "PATIENTS"})),
+        )
+        .await;
+        match reply.status {
+            StatusCode::OK => accepted += 1,
+            StatusCode::SERVICE_UNAVAILABLE => {}
+            other => panic!("{other}: {}", reply.body),
+        }
+    }
+    assert_eq!(accepted, 3);
+    assert_eq!(f.state.results().len(), 3);
+    drop(held);
+}
