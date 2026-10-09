@@ -1,0 +1,26 @@
+[package]
+name = "hpds-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "hpds_rs"
+
+[[bin]]
+name = "hpds-rs"
+path = "src/main.rs"
+
+[dependencies]
+hpds-query.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tower = { version = "0.5", features = ["util"] }
