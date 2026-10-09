@@ -190,6 +190,43 @@ class UserServiceOverPostingTest {
         );
     }
 
+    @Test
+    void updateRejectsAnUnknownConnection() {
+        User stored = userWithRoles(superAdminRole);
+        when(userRepository.findById(stored.getUuid())).thenReturn(Optional.of(stored));
+        when(connectionRepository.findById("no-such-connection")).thenReturn(Optional.empty());
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> userService.updateFrom(
+                List.of(new UserUpdateRequest(stored.getUuid(), null, null, null, new ConnectionRef("no-such-connection"), null))
+            )
+        );
+        verify(userRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void createRejectsAnUnknownConnection() {
+        when(connectionRepository.findById("no-such-connection")).thenReturn(Optional.empty());
+
+        ConnectionRef unknown = new ConnectionRef("no-such-connection");
+        UserCreateRequest request = new UserCreateRequest("new@example.com", true, null, unknown, Set.of(idRef(superAdminRole)));
+
+        assertThrows(IllegalArgumentException.class, () -> userService.createFrom(List.of(request)));
+        verify(userRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void writesReturnNullWhenTheSecurityContextHoldsNoUser() {
+        authenticateAs(null);
+
+        assertNull(userService.updateFrom(List.of(new UserUpdateRequest(UUID.randomUUID(), null, null, null, null, null))));
+        assertNull(
+            userService.createFrom(List.of(new UserCreateRequest("new@example.com", true, null, null, Set.of(idRef(superAdminRole)))))
+        );
+        verify(userRepository, never()).saveAll(anyList());
+    }
+
     @SuppressWarnings("unchecked")
     private User savedUser() {
         ArgumentCaptor<List<User>> captor = ArgumentCaptor.forClass(List.class);

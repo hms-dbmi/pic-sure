@@ -322,8 +322,8 @@ public class UserService {
      *
      * @param requests the users to create
      * @return the persisted users, or {@code null} when the security context holds no user
-     * @throws IllegalArgumentException if a request names no role or an unknown role, or grants {@code SUPER_ADMIN} without the caller
-     *         holding it
+     * @throws IllegalArgumentException if a request names no role, an unknown role or an unknown connection, or grants {@code SUPER_ADMIN}
+     *         without the caller holding it
      */
     @Transactional
     public List<User> createFrom(List<UserCreateRequest> requests) {
@@ -367,7 +367,7 @@ public class UserService {
      *
      * @param requests the users to update, each named by UUID
      * @return the persisted users, or {@code null} when the security context holds no user
-     * @throws IllegalArgumentException if a request names a user or role that does not exist, or changes whether the user holds
+     * @throws IllegalArgumentException if a request names a user, role or connection that does not exist, or changes whether the user holds
      *         {@code SUPER_ADMIN} without the caller holding it
      */
     @Transactional
@@ -415,7 +415,7 @@ public class UserService {
     private User currentUserOrNull() {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
-        if (customUserDetails == null || customUserDetails.getUser() == null && customUserDetails.getUser().getUuid() == null) {
+        if (customUserDetails == null || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null) {
             logger.error("Security context didn't have a user stored.");
             return null;
         }
@@ -451,7 +451,10 @@ public class UserService {
         if (connectionRef == null) {
             return current;
         }
-        return this.connectionRepository.findById(connectionRef.id()).orElse(null);
+        return this.connectionRepository.findById(connectionRef.id()).orElseThrow(() -> {
+            logger.error("resolveConnection() cannot find connection by id: {}", connectionRef.id());
+            return new IllegalArgumentException("Cannot find connection by input id: " + connectionRef.id());
+        });
     }
 
     public String sendUserUpdateEmailsFromResponse(List<User> addedUsers) {
