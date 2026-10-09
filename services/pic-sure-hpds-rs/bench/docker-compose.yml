@@ -1,0 +1,55 @@
+# Standalone Java HPDS benchmark stack, isolated from the all-in-one on its own network.
+#
+# HPDS_DATA_DIR    host directory holding a Java store (allObservationsStore.javabin,
+#                  columnMeta.javabin, encryption_key); for the ETL profile it also holds
+#                  allConcepts.csv in concept order
+# HOST_PORT        published service port, default 18090
+# JAVA_OPTS        service JVM options, default -Xmx16g as in the AIO hpds.env
+# CACHE_SIZE       PhenoCube cache entries, default 1500 as in the AIO
+# ETL_HEAPSIZE     Java ETL heap in MB, default 16384
+# ETL_LOADER       Java ETL loader jar, default CSVLoaderNewSearch
+# ASYNC_PROFILER_DIR  host async-profiler linux-arm64 directory, mounted at /opt/async-profiler
+# RESULTS_DIR      host directory mounted at /results for profiler output
+name: bench-hpds
+
+networks:
+  bench-net:
+    name: bench-net
+
+services:
+  bench-hpds-java:
+    image: ${JAVA_HPDS_IMAGE:-hms-dbmi/pic-sure-hpds:bench}
+    container_name: bench-hpds-java
+    networks: [bench-net]
+    ports:
+      - "127.0.0.1:${HOST_PORT:-18090}:8080"
+    environment:
+      SMALL_JOB_LIMIT: ${SMALL_JOB_LIMIT:-100}
+      SMALL_TASK_THREADS: ${SMALL_TASK_THREADS:-4}
+      LARGE_TASK_THREADS: ${LARGE_TASK_THREADS:-2}
+      ID_BATCH_SIZE: ${ID_BATCH_SIZE:-1000}
+      CACHE_SIZE: ${CACHE_SIZE:-1500}
+      PICSURE_ACTUATOR_EXPOSURE: health
+      hpds.requireAuthorizationFilter: "false"
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx16g -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints}
+    volumes:
+      - ${HPDS_DATA_DIR:?set HPDS_DATA_DIR to a Java store directory}:/opt/local/hpds
+      - ${ASYNC_PROFILER_DIR:-./tools/async-profiler-4.5-linux-arm64}:/opt/async-profiler:ro
+      - ${RESULTS_DIR:-./results}:/results
+    cap_add:
+      - SYS_ADMIN
+      - PERFMON
+    security_opt:
+      - seccomp=unconfined
+
+  bench-hpds-java-etl:
+    image: ${JAVA_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-etl:bench}
+    container_name: bench-hpds-java-etl
+    profiles: [etl]
+    networks: [bench-net]
+    user: "0:0"
+    environment:
+      LOADER_NAME: ${ETL_LOADER:-CSVLoaderNewSearch}
+      HEAPSIZE: ${ETL_HEAPSIZE:-16384}
+    volumes:
+      - ${HPDS_DATA_DIR:?set HPDS_DATA_DIR to a Java store directory}:/opt/local/hpds

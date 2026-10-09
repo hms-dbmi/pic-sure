@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+image="hms-dbmi/pic-sure-hpds-rs-builder:LATEST"
+registry_volume="hpds-rs-cargo-home"
+target_volume="hpds-rs-target"
+
+docker build -q -f "$root/docker/builder.Dockerfile" -t "$image" "$root/docker" >/dev/null
+
+docker run --rm -u 0 -v "$registry_volume:/cargo-home" -v "$target_volume:/target" \
+  "$image" chown 1000:1000 /cargo-home /target
+
+tty_flag=()
+if [ -t 0 ] && [ -t 1 ]; then tty_flag=(-t); fi
+
+exec docker run --rm -i "${tty_flag[@]}" \
+  -u 1000:1000 \
+  -e CARGO_HOME=/cargo-home \
+  -e CARGO_TARGET_DIR=/target \
+  -e HOME=/tmp \
+  -v "$root:/workspace" \
+  -v "$registry_volume:/cargo-home" \
+  -v "$target_volume:/target" \
+  -w /workspace \
+  "$image" cargo "$@"

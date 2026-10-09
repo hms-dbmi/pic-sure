@@ -1,0 +1,115 @@
+{
+  "description": "Differences between a Java-built HPDS phenotype store and a Rust-built one that the spec (brain/rust-hpds-phenotype/spec.md) accepts. etl-parity-compare.py whitelists a difference when its kind is in a rule's kinds, the case's loader is in the rule's loaders (when given), and the rule's condition holds. Every other difference is unexpected and fails the run.",
+  "ignoredColumnMetaColumns": [
+    {
+      "index": 7,
+      "name": "block-offset",
+      "spec": "Deliberate divergences: columnMeta.csv columns 8 and 9 hold the block offset and length. Java writes the javabin offset and end position.",
+      "reason": "Java writes the javabin offset; Rust writes the offset in pheno.blocks. The dictionary ETL stores the column as an unused string."
+    },
+    {
+      "index": 8,
+      "name": "block-length",
+      "spec": "Deliberate divergences: columnMeta.csv columns 8 and 9 hold the block offset and length. Java writes the javabin offset and end position.",
+      "reason": "Java writes the javabin end position; Rust writes the block length in pheno.blocks."
+    }
+  ],
+  "rules": [
+    {
+      "name": "loading-cache-overwrite",
+      "spec": "Deliberate divergences: Both Java loaders keep one (LowRAM) or 16 (new-search) concepts in a loading cache and overwrite a concept's metadata when its rows are not contiguous in ingest order, losing the earlier rows.",
+      "reason": "The Java loader evicted the concept from its loading cache, created a fresh cube when the concept came back, and kept only the last cube's rows and metadata. Every Java row is also in the Rust store; Rust keeps every row.",
+      "kinds": [
+        "dump-rows-only-in-rust",
+        "columnmeta-width",
+        "columnmeta-categories",
+        "columnmeta-min",
+        "columnmeta-max",
+        "columnmeta-observation-count",
+        "columnmeta-patient-count"
+      ],
+      "when": "java-rows-subset-and-concept-recreated"
+    },
+    {
+      "name": "lowram-lost-last-chunk",
+      "spec": "Deliberate divergences: LowRAM also loses its last chunk when the file has more lines than records, and rows of a concept split across 5 GiB chunks. Rust keeps every row.",
+      "reason": "LowRAMCSVProcessor counts physical lines, so a quoted field holding a line break leaves the last chunk unflushed and its records are never ingested. Every Java row is also in the Rust store.",
+      "kinds": [
+        "dump-rows-only-in-rust",
+        "dump-concept-only-in-rust",
+        "columnmeta-concept-only-in-rust",
+        "columnmeta-width",
+        "columnmeta-categories",
+        "columnmeta-min",
+        "columnmeta-max",
+        "columnmeta-observation-count",
+        "columnmeta-patient-count"
+      ],
+      "loaders": ["lowram"],
+      "when": "java-rows-subset-and-concept-in-lost-chunk"
+    },
+    {
+      "name": "lowram-lost-last-chunk-patients",
+      "spec": "Deliberate divergences: LowRAM also loses its last chunk when the file has more lines than records. Rust keeps every row.",
+      "reason": "The patient only has rows in the chunk LowRAM never ingested, so it never reached allIds.",
+      "kinds": ["patient-only-in-rust"],
+      "loaders": ["lowram"],
+      "when": "patient-in-lost-chunk"
+    },
+    {
+      "name": "lowram-max-double-min-value",
+      "spec": "Deliberate divergences: LowRAMLoadingStore.complete and LoadingStore (CSVLoaderNewSearch) initialize max to Double.MIN_VALUE (the smallest positive double), so a concept with only negative values reports a max of 4.9E-324. Rust reports the real max.",
+      "reason": "Java starts max at Double.MIN_VALUE, so a numeric concept whose real max is zero or negative reports 4.9E-324.",
+      "kinds": ["columnmeta-max"],
+      "loaders": ["lowram", "migration-lowram", "newsearch", "migration-newsearch"],
+      "when": "java-max-is-double-min-value-and-real-max-not-positive"
+    },
+    {
+      "name": "empty-numeric-concept-min-max",
+      "spec": "Deliberate divergences: An empty numeric concept gets null min and max in Rust. Java writes 1.7976931348623157E308 and 4.9E-324.",
+      "reason": "Every row of the numeric concept was dropped. Java prints its initial min and max; Rust prints null.",
+      "kinds": ["columnmeta-min", "columnmeta-max"],
+      "when": "empty-numeric-concept"
+    },
+    {
+      "name": "newsearch-crashes-on-unparseable-value",
+      "spec": "Deliberate divergences: CSVLoaderNewSearch crashes on an unparseable number or timestamp, and LowRAM crashes on a one-field row or invalid UTF-8. Rust drops and counts the row or timestamp, and decodes UTF-8 lossily.",
+      "reason": "CSVLoaderNewSearch calls Double.parseDouble and Long.parseLong without a catch, so the Java load stops with a NumberFormatException and writes no store.",
+      "kinds": ["java-load-failed"],
+      "loaders": ["newsearch"],
+      "when": "log-matches",
+      "params": {"pattern": "NumberFormatException"}
+    },
+    {
+      "name": "lowram-crashes-on-one-field-row-or-bad-utf8",
+      "spec": "Deliberate divergences: LowRAM crashes on a one-field row or invalid UTF-8. Rust drops and counts the row, and decodes UTF-8 lossily.",
+      "reason": "LowRAMCSVProcessor sorts each chunk on field 1 before checking the field count, and counts lines with Files.lines, which rejects invalid UTF-8.",
+      "kinds": ["java-load-failed"],
+      "loaders": ["lowram"],
+      "when": "log-matches",
+      "params": {"pattern": "(ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1|MalformedInputException)"}
+    },
+    {
+      "name": "negative-patient-ids-rejected",
+      "spec": "Parity rules: Negative patient IDs: Java int allows them, roaring is u32. The ETL rejects them with a clear error until we know whether any real dataset has them. Decisions 6: the ETL and migrate reject them with an error naming the first offending row.",
+      "reason": "hpds-etl refuses a negative patient number; the Java outcome is recorded in the case report.",
+      "kinds": ["rust-load-failed"],
+      "when": "log-matches",
+      "params": {"pattern": "PATIENT_NUM is not an integer between 0 and 2147483647"}
+    },
+    {
+      "name": "long-min-timestamp-is-no-timestamp",
+      "spec": "Timestamps: Java has two no-timestamp values, null and Long.MIN_VALUE (from the two-argument KeyAndValue constructor). Both map to i64::MIN.",
+      "reason": "DumpSourceCSV prints a Long.MIN_VALUE timestamp as -9223372036854775808; the Rust store cannot tell it from no timestamp and prints an empty field.",
+      "kinds": ["dump-long-min-timestamp"],
+      "when": "always"
+    },
+    {
+      "name": "double-to-string-format",
+      "spec": "Parity rules: Double.toString vs Rust {} formatting differ in the canonical dump (1.0E10 vs 10000000000). The dump compares parsed values, not strings.",
+      "reason": "The two sides print the same double differently.",
+      "kinds": ["dump-number-format", "columnmeta-number-format"],
+      "when": "always"
+    }
+  ]
+}

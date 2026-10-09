@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# Migrates a javabin phenotype store (columnMeta.javabin, allObservationsStore.javabin,
+# encryption_key) into a Rust store, through the Java ExportForMigration loader and
+# hpds-etl migrate. The javabin directory is mounted read-only and never written.
+#
+# Usage: bin/migrate-javabins [--dry-run] <javabin-dir> <out-dir>
+#
+#   --dry-run   print the resolved paths, the hpds-etl that would run and every mount, and
+#               change nothing
+#
+# Every path is resolved to its real path (symbolic links followed) before anything is
+# created. The script refuses an output or export directory inside the javabin directory,
+# a javabin directory inside either of them, and an export directory inside the output
+# directory or around it. A non-empty output directory is refused unless FORCE=1.
+#
+# The new store is staged in <out-dir>/.next and its files are renamed into <out-dir> only
+# once hpds-etl migrate has succeeded, pheno.index last. A failed run removes .next (and
+# <out-dir> itself when this run created it), so <out-dir> is left as it was.
+#
+# The export holds every observation, encrypted with the javabin store's key, in a
+# directory of mode 0700. It is removed when the script exits, on success and on failure:
+# the whole directory when the script created it, else the export files and their
+# temporaries. KEEP_EXPORT=1 keeps it.
+#
+# Env:
+#   JAVA_ETL_IMAGE   Java ETL image holding ExportForMigration
+#                    (hms-dbmi/pic-sure-hpds-etl:bench). The :bench tag is not published:
+#                    build it from the pic-sure root with
+#                      mvn -pl services/pic-sure-hpds/etl -am install
+#                    then, from services/pic-sure-hpds,
+#                      docker build -f docker/pic-sure-hpds-etl/Dockerfile \
+#                        -t hms-dbmi/pic-sure-hpds-etl:bench .
+#   RUST_ETL_IMAGE   Rust ETL image (hms-dbmi/pic-sure-hpds-rs-etl:LATEST), built from
+#                    services/pic-sure-hpds-rs with
+#                      docker build -f docker/hpds-rs-etl.Dockerfile \
+#                        -t hms-dbmi/pic-sure-hpds-rs-etl:LATEST .
+#   HPDS_ETL         unset or "image" runs RUST_ETL_IMAGE (the default); "host" runs the first
+#                    of $CARGO_TARGET_DIR/release/hpds-etl and $CARGO_TARGET_DIR/debug/hpds-etl
+#                    (CARGO_TARGET_DIR defaults to target/) that runs; any other value is the
+#                    path of an hpds-etl binary
+#   EXPORT_DIR       where the intermediate export goes (a fresh temporary directory)
+#   KEEP_EXPORT      1 keeps the export when the script exits
+#   FORCE            1 migrates into a non-empty output directory, replacing the store files
+#   HEAPSIZE         Java heap in MiB for the exporter (4096). The exporter holds one cube
+#                    at a time as its encrypted bytes, its plaintext and the deserialized
+#                    objects, so the heap must exceed about 6 times the largest cube in
+#                    allObservationsStore.javabin
+set -euo pipefail
+
+dry_run=0
+if [[ "${1:-}" == "--dry-run" ]]; then
+  dry_run=1
+  shift
+fi
+if [[ $# -ne 2 ]]; then
+  echo "usage: $0 [--dry-run] <javabin-dir> <out-dir>" >&2
+  exit 2
+fi
+
+fail() {
+  echo "migrate-javabins: $*" >&2
+  exit 1
+}
+
+# Prints the real path of $1. A missing path resolves through its nearest existing
+# ancestor, which must be a directory; its missing names may not be "." or "..".
+resolve() {
+  local path="$1" tail="" base
+  [[ -n "$path" ]] || fail "an empty path was given"
+  [[ "$path" == /* ]] || path="$PWD/$path"
+  while [[ "$path" == */ && "$path" != "/" ]]; do path="${path%/}"; done
+  while [[ ! -e "$path" ]]; do
+    base="${path##*/}"
+    if [[ "$base" == "." || "$base" == ".." || -z "$base" ]]; then
+      fail "cannot resolve $1: '.' or '..' in a part that does not exist yet"
+    fi
+    tail="/$base$tail"
+    path="${path%/*}"
+    [[ -n "$path" ]] || path="/"
+  done
+  [[ -d "$path" ]] || fail "$path is not a directory"
+  local real
+  real="$(cd -P "$path" && pwd -P)"
+  [[ "$real" == "/" && -n "$tail" ]] && real=""
+  printf '%s%s\n' "$real" "$tail"
+}
+
+# True when $1 is $2 or inside it.
+within() {
+  [[ "$1" == "$2" || "$1" == "$2"/* ]]
+}
+
+root="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+java_image="${JAVA_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-etl:bench}"
+rust_image="${RUST_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-rs-etl:LATEST}"
+heap="${HEAPSIZE:-4096}"
+[[ "$heap" =~ ^[0-9]+$ ]] || fail "HEAPSIZE must be a whole number of MiB"
+
+[[ -d "$1" ]] || fail "$1 is not a directory"
+source_dir="$(resolve "$1")"
+out_dir="$(resolve "$2")"
+if [[ -n "${EXPORT_DIR:-}" ]]; then
+  export_dir="$(resolve "$EXPORT_DIR")"
+else
+  export_dir=""
+fi
+
+for name in columnMeta.javabin allObservationsStore.javabin encryption_key; do
+  [[ -r "$source_dir/$name" ]] || fail "$source_dir/$name is missing or unreadable"
+done
+within "$out_dir" "$source_dir" && fail "the output directory $out_dir is inside the javabin directory $source_dir"
+within "$source_dir" "$out_dir" && fail "the javabin directory $source_dir is inside the output directory $out_dir"
+if [[ -n "$export_dir" ]]; then
+  within "$export_dir" "$source_dir" && fail "the export directory $export_dir is inside the javabin directory $source_dir"
+  within "$source_dir" "$export_dir" && fail "the javabin directory $source_dir is inside the export directory $export_dir"
+  within "$export_dir" "$out_dir" && fail "the export directory $export_dir is inside the output directory $out_dir"
+  within "$out_dir" "$export_dir" && fail "the output directory $out_dir is inside the export directory $export_dir"
+fi
+
+if [[ -e "$out_dir" ]]; then
+  [[ -d "$out_dir" ]] || fail "$out_dir exists and is not a directory"
+  if [[ -n "$(ls -A "$out_dir" | grep -vx '\.next' || true)" && "${FORCE:-0}" != "1" ]]; then
+    fail "$out_dir is not empty; set FORCE=1 to replace the store files in it"
+  fi
+  if [[ -e "$out_dir/encryption_key" ]] && ! cmp -s "$source_dir/encryption_key" "$out_dir/encryption_key"; then
+    fail "$out_dir/encryption_key exists and differs from the javabin store's key"
+  fi
+fi
+next_dir="$out_dir/.next"
+
+host_binary=""
+case "${HPDS_ETL:-image}" in
+  image) ;;
+  host)
+    target="${CARGO_TARGET_DIR:-$root/target}"
+    [[ "$target" == /* ]] || target="$root/$target"
+    for candidate in "$target/release/hpds-etl" "$target/debug/hpds-etl"; do
+      if [[ -x "$candidate" ]] && "$candidate" --version >/dev/null 2>&1; then
+        host_binary="$candidate"
+        break
+      fi
+    done
+    [[ -n "$host_binary" ]] || fail "HPDS_ETL=host but no hpds-etl under $target/{release,debug} runs"
+    ;;
+  *)
+    host_binary="$HPDS_ETL"
+    [[ -x "$host_binary" ]] && "$host_binary" --version >/dev/null 2>&1 || fail "HPDS_ETL=$host_binary does not run"
+    ;;
+esac
+
+suffix="$$-$(date +%s)"
+user="$(id -u):$(id -g)"
+export_mount_note="${export_dir:-<new temporary directory under ${TMPDIR:-/tmp}>}"
+
+echo "javabin store: $source_dir (read-only)"
+echo "output:        $out_dir (staged in $next_dir)"
+echo "export:        $export_mount_note"
+echo "java exporter: $java_image, HEAPSIZE=${heap}m"
+if [[ -n "$host_binary" ]]; then
+  echo "hpds-etl:      host binary $host_binary ($("$host_binary" --version 2>/dev/null))"
+else
+  echo "hpds-etl:      image $rust_image"
+fi
+
+if [[ "$dry_run" == "1" ]]; then
+  echo "mounts, export step (container etl-mig-export-*):"
+  echo "  $source_dir -> /opt/local/hpds (read-only)"
+  echo "  $export_mount_note -> /opt/local/export"
+  if [[ -n "$host_binary" ]]; then
+    echo "migrate step runs on the host: $host_binary migrate --export $export_mount_note --out $next_dir/store"
+  else
+    echo "mounts, migrate step (container etl-mig-migrate-*):"
+    echo "  $export_mount_note -> /export (read-only)"
+    echo "  $next_dir -> /work"
+  fi
+  echo "key: install -m 600 $source_dir/encryption_key $next_dir/store/encryption_key"
+  echo "then the store files move from $next_dir/store into $out_dir, pheno.index last"
+  exit 0
+fi
+
+created_out=0
+created_export=0
+staged=0
+cleanup() {
+  local status=$?
+  docker rm -f "etl-mig-export-$suffix" "etl-mig-migrate-$suffix" >/dev/null 2>&1 || true
+  rm -rf "$next_dir"
+  if [[ "$status" -ne 0 && "$created_out" == "1" ]]; then
+    rmdir "$out_dir" 2>/dev/null || true
+  fi
+  if [[ -n "$export_dir" ]]; then
+    if [[ "${KEEP_EXPORT:-0}" == "1" ]]; then
+      echo "export kept in $export_dir" >&2
+    elif [[ "$created_export" == "1" ]]; then
+      rm -rf "$export_dir"
+    else
+      rm -f "$export_dir/concepts.bin" "$export_dir/patients.txt" \
+        "$export_dir/concepts.bin.tmp" "$export_dir/patients.txt.tmp"
+    fi
+  fi
+  if [[ "$status" -ne 0 && "$staged" == "0" ]]; then
+    echo "migrate-javabins: failed; $out_dir is unchanged" >&2
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if [[ ! -e "$out_dir" ]]; then
+  mkdir -p "$out_dir"
+  created_out=1
+fi
+rm -rf "$next_dir"
+mkdir -m 700 "$next_dir"
+
+if [[ -n "$export_dir" ]]; then
+  if [[ ! -e "$export_dir" ]]; then
+    mkdir -p "$export_dir"
+    created_export=1
+  fi
+else
+  export_dir="$(mktemp -d "${TMPDIR:-/tmp}/hpds-export.XXXXXX")"
+  export_dir="$(resolve "$export_dir")"
+  created_export=1
+fi
+chmod 700 "$export_dir"
+
+echo "exporting $source_dir to $export_dir"
+docker run --rm --name "etl-mig-export-$suffix" --user "$user" \
+  -e LOADER_NAME=ExportForMigration \
+  -e LOADER_ARGS="/opt/local/hpds /opt/local/export" \
+  -e HEAPSIZE="$heap" \
+  -v "$source_dir:/opt/local/hpds:ro" \
+  -v "$export_dir:/opt/local/export" \
+  "$java_image"
+
+mkdir -m 700 "$next_dir/store"
+install -m 600 "$source_dir/encryption_key" "$next_dir/store/encryption_key"
+
+echo "migrating into $next_dir/store"
+if [[ -n "$host_binary" ]]; then
+  "$host_binary" migrate --export "$export_dir" --out "$next_dir/store"
+else
+  docker run --rm --name "etl-mig-migrate-$suffix" --user "$user" \
+    -v "$export_dir:/export:ro" \
+    -v "$next_dir:/work" \
+    "$rust_image" migrate --export /export --out /work/store
+fi
+
+for name in pheno.blocks columnMeta.csv etl-report.json encryption_key pheno.index; do
+  [[ -f "$next_dir/store/$name" ]] || fail "hpds-etl migrate did not write $name"
+done
+staged=1
+for name in pheno.blocks columnMeta.csv etl-report.json encryption_key pheno.index; do
+  mv -f "$next_dir/store/$name" "$out_dir/$name"
+done
+echo "migrated store in $out_dir"

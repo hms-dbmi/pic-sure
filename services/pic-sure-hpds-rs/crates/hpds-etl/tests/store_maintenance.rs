@@ -1,0 +1,366 @@
+//! `remove-concepts`, `column-meta-csv` and `dump` on stores built by `load`, through the
+//! library and through the `hpds-etl` binary.
+
+mod common;
+
+use std::path::Path;
+use std::process::Command;
+
+use common::{KEY, Store, fixture, load_files};
+use hpds_etl::column_meta_csv::write_column_meta_csv;
+use hpds_etl::dump::{dump, dump_patients};
+use hpds_etl::java::java_double_to_string;
+use hpds_etl::load::Mode;
+use hpds_etl::store::OpenStore;
+use hpds_etl::store_maintenance::{regenerate_column_meta_csv, remove_concepts};
+use hpds_format::{BLOCKS_FILE_NAME, Block, CryptoKey, NO_TIMESTAMP, Protection};
+
+fn protection() -> Protection {
+    Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap())
+}
+
+fn edge_store() -> Store {
+    let content = std::fs::read(fixture("edge.csv")).unwrap();
+    load_files(Mode::NewSearch, &[("allConcepts.csv", &content)], |_| {}).unwrap()
+}
+
+fn hpds_etl(args: &[&str]) -> std::process::Output {
+    let output = Command::new(env!("CARGO_BIN_EXE_hpds-etl"))
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "hpds-etl {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+/// The rows of `path` read from an opened store, in the shape of [`Store::rows`].
+fn open_store_rows(store: &OpenStore, path: &str) -> Vec<common::Row> {
+    let ts = |t: i64| (t != NO_TIMESTAMP).then_some(t);
+    match store
+        .reader
+        .read_block(&store.codec, store.index.get(path).unwrap())
+        .unwrap()
+    {
+        Block::Numeric(b) => b
+            .by_key()
+            .iter()
+            .map(|&i| {
+                let i = i as usize;
+                (
+                    b.patients()[i],
+                    java_double_to_string(b.values()[i]),
+                    ts(b.timestamp_at_value_pos(i)),
+                )
+            })
+            .collect(),
+        Block::Categorical(b) => (0..b.len())
+            .map(|i| {
+                let value = b.dictionary_value(b.value_indices()[i] as usize).unwrap();
+                (
+                    b.patients()[i],
+                    value.to_string(),
+                    ts(b.timestamp_at_key_pos(i)),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn key_file(store: &Store) -> String {
+    let path = store.dir.path().join("key");
+    std::fs::write(&path, format!("{KEY}\n")).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+#[test]
+fn column_meta_csv_regenerates_what_load_wrote() {
+    let store = edge_store();
+    let csv = store.out.join("columnMeta.csv");
+    let original = std::fs::read(&csv).unwrap();
+    std::fs::remove_file(&csv).unwrap();
+    let rows = regenerate_column_meta_csv(&store.out, None, &protection()).unwrap();
+    assert_eq!(rows as usize, store.index.concepts().len());
+    assert_eq!(std::fs::read(&csv).unwrap(), original);
+
+    let elsewhere = store.dir.path().join("elsewhere.csv");
+    let key = key_file(&store);
+    hpds_etl(&[
+        "column-meta-csv",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--key-file",
+        &key,
+        "--out",
+        elsewhere.to_str().unwrap(),
+    ]);
+    assert_eq!(std::fs::read(&elsewhere).unwrap(), original);
+}
+
+#[test]
+fn remove_concepts_without_compaction_drops_exact_lines_from_the_index_only() {
+    let store = edge_store();
+    let before: Vec<String> = store
+        .index
+        .concepts()
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    let first = before[0].clone();
+    let second = before[1].clone();
+    let with_replacement = format!("{}\u{FFFD}", before[2]);
+    let prefix = before[3][..before[3].len() - 1].to_string();
+    let padded = format!(" {}", before[4]);
+    let list =
+        format!("{first}\r\n{second}\n\n{with_replacement}\r{prefix}\n{padded}\nnot a concept");
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, list).unwrap();
+    let blocks_before = std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap();
+
+    let report = remove_concepts(&store.out, &list_path, &protection(), false).unwrap();
+
+    assert!(!report.compacted);
+    assert_eq!(report.blocks_bytes_before, report.blocks_bytes_after);
+    assert_eq!(report.lines, 7);
+    assert_eq!(report.removed, 3);
+    assert_eq!(report.remaining as usize, before.len() - 3);
+    assert_eq!(
+        report.not_found,
+        ["", prefix.as_str(), padded.as_str(), "not a concept"]
+    );
+    let after = OpenStore::open(&store.out, protection()).unwrap();
+    let remaining: Vec<&str> = after
+        .index
+        .concepts()
+        .iter()
+        .map(|c| c.path.as_str())
+        .collect();
+    let expected: Vec<&str> = before[3..].iter().map(String::as_str).collect();
+    assert_eq!(remaining, expected);
+    assert_eq!(after.index.patients(), store.index.patients());
+    assert_eq!(after.index.store_id(), store.index.store_id());
+    assert_eq!(
+        std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap(),
+        blocks_before
+    );
+    for concept in after.index.concepts() {
+        after.reader.read_block(&after.codec, concept).unwrap();
+    }
+    let mut csv = Vec::new();
+    write_column_meta_csv(&mut csv, after.index.concepts()).unwrap();
+    assert_eq!(
+        std::fs::read(store.out.join("columnMeta.csv")).unwrap(),
+        csv
+    );
+    let leftovers: Vec<String> = std::fs::read_dir(&store.out)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains(".tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn remove_concepts_compacts_the_blocks_by_default() {
+    let store = edge_store();
+    let before = OpenStore::open(&store.out, protection()).unwrap();
+    let removed: Vec<String> = before.index.concepts()[..3]
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    let kept_rows: Vec<_> = before.index.concepts()[3..]
+        .iter()
+        .map(|c| (c.path.clone(), store.rows(&c.path)))
+        .collect();
+    let removed_bytes: u64 = before.index.concepts()[..3]
+        .iter()
+        .map(|c| c.block.length)
+        .sum();
+    drop(before);
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, removed.join("\n")).unwrap();
+    let blocks_before = std::fs::metadata(store.out.join(BLOCKS_FILE_NAME))
+        .unwrap()
+        .len();
+
+    let report = remove_concepts(&store.out, &list_path, &protection(), true).unwrap();
+
+    assert!(report.compacted);
+    assert_eq!(report.removed, 3);
+    assert_eq!(report.blocks_bytes_before, blocks_before);
+    assert_eq!(report.blocks_bytes_after, blocks_before - removed_bytes);
+    assert_eq!(
+        std::fs::metadata(store.out.join(BLOCKS_FILE_NAME))
+            .unwrap()
+            .len(),
+        report.blocks_bytes_after
+    );
+    let after = OpenStore::open(&store.out, protection()).unwrap();
+    assert_eq!(after.index.store_id(), store.index.store_id());
+    assert_eq!(after.index.patients(), store.index.patients());
+    for (path, rows) in &kept_rows {
+        assert_eq!(&open_store_rows(&after, path), rows, "{path}");
+    }
+    for path in &removed {
+        assert!(after.index.get(path).is_none());
+    }
+    let leftovers: Vec<String> = std::fs::read_dir(&store.out)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains(".tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn remove_concepts_through_the_binary() {
+    let store = edge_store();
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let key = key_file(&store);
+    let output = hpds_etl(&[
+        "remove-concepts",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--concepts",
+        list_path.to_str().unwrap(),
+        "--key-file",
+        &key,
+    ]);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["removed"], 1);
+    assert_eq!(report["compacted"], true);
+    let after = OpenStore::open(&store.out, protection()).unwrap();
+    assert!(after.index.get(&first).is_none());
+
+    let second = after.index.concepts()[0].path.clone();
+    std::fs::write(&list_path, format!("{second}\n")).unwrap();
+    let blocks_before = std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap();
+    std::fs::write(store.out.join("encryption_key"), format!("{KEY}\n")).unwrap();
+    let output = hpds_etl(&[
+        "remove-concepts",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--concepts",
+        list_path.to_str().unwrap(),
+        "--no-compact",
+    ]);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["compacted"], false);
+    assert_eq!(
+        std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap(),
+        blocks_before
+    );
+}
+
+fn dump_text(dir: &Path) -> String {
+    let store = OpenStore::open(dir, protection()).unwrap();
+    let mut out = Vec::new();
+    dump(&store, &mut out).unwrap();
+    String::from_utf8(out).unwrap()
+}
+
+#[test]
+fn dump_writes_every_observation_in_concept_then_by_key_order() {
+    let store = edge_store();
+    let text = dump_text(&store.out);
+    let mut lines = text.split_terminator("\r\n");
+    assert_eq!(
+        lines.next(),
+        Some("PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,TIMESTAMP")
+    );
+    let mut expected = Vec::new();
+    for concept in store.index.concepts() {
+        for (patient, value, timestamp) in store.rows(&concept.path) {
+            let (numeric, text) = if concept.is_categorical() {
+                (String::new(), value)
+            } else {
+                (value, String::new())
+            };
+            let timestamp = timestamp.map(|t| t.to_string()).unwrap_or_default();
+            hpds_etl::column_meta_csv::write_commons_csv_record(
+                &mut expected,
+                &[
+                    patient.to_string(),
+                    concept.path.clone(),
+                    numeric,
+                    text,
+                    timestamp,
+                ],
+            )
+            .unwrap();
+        }
+    }
+    let body = text.split_once("\r\n").unwrap().1;
+    assert_eq!(body, String::from_utf8(expected).unwrap());
+    assert_eq!(
+        body.matches("\r\n").count() as u64,
+        store.report.counts.accepted
+    );
+}
+
+#[test]
+fn dump_and_patients_through_the_binary() {
+    let store = edge_store();
+    let key = key_file(&store);
+    let out = store.dir.path().join("dump.csv");
+    hpds_etl(&[
+        "dump",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--key-file",
+        &key,
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        dump_text(&store.out)
+    );
+
+    let output = hpds_etl(&[
+        "dump",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--key-file",
+        &key,
+        "--patients",
+    ]);
+    let listed: Vec<u32> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|l| l.parse().unwrap())
+        .collect();
+    assert_eq!(listed, store.patients());
+
+    let opened = OpenStore::open(&store.out, protection()).unwrap();
+    let mut patients = Vec::new();
+    assert_eq!(
+        dump_patients(&opened, &mut patients).unwrap(),
+        store.patients().len() as u64
+    );
+}
+
+#[test]
+fn store_commands_refuse_a_wrong_or_missing_key() {
+    let store = edge_store();
+    let output = Command::new(env!("CARGO_BIN_EXE_hpds-etl"))
+        .args(["dump", "--store", store.out.to_str().unwrap(), "--plain"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let output = Command::new(env!("CARGO_BIN_EXE_hpds-etl"))
+        .args(["column-meta-csv", "--store", store.out.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("encryption key"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

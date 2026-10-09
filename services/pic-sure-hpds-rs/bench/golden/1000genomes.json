@@ -1,0 +1,1040 @@
+{
+  "dataset": "1000genomes",
+  "cases": [
+    {
+      "name": "cross-count-multiple-concepts-no-filters",
+      "kind": "sync",
+      "resultType": "CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [
+            "\\open_access-1000Genomes\\data\\SEX\\",
+            "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+          ],
+          "expectedResultType": "CROSS_COUNT"
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "json": {
+          "\\open_access-1000Genomes\\data\\SEX\\": 4978,
+          "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\": 1126
+        }
+      }
+    },
+    {
+      "name": "cross-count-unknown-concept-no-filters",
+      "kind": "sync",
+      "resultType": "CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [
+            "\\open_access-1000Genomes\\data\\SEX\\",
+            "\\open_access-1000Genomes\\data\\NOT_REAL_DOESNT_EXIST\\"
+          ],
+          "expectedResultType": "CROSS_COUNT"
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "json": {
+          "\\open_access-1000Genomes\\data\\SEX\\": 4978,
+          "\\open_access-1000Genomes\\data\\NOT_REAL_DOESNT_EXIST\\": 0
+        }
+      }
+    },
+    {
+      "name": "cross-count-multiple-concepts-with-filters",
+      "kind": "sync",
+      "resultType": "CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [
+            "\\open_access-1000Genomes\\data\\SEX\\",
+            "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\"
+          ],
+          "expectedResultType": "CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "male"
+                ]
+              },
+              {
+                "phenotypicFilterType": "REQUIRED",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+              }
+            ],
+            "operator": "AND"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "json": {
+          "\\open_access-1000Genomes\\data\\SEX\\": 551,
+          "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\": 551
+        }
+      }
+    },
+    {
+      "name": "cross-count-concepts-no-results",
+      "kind": "sync",
+      "resultType": "CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [
+            "\\open_access-1000Genomes\\data\\SEX\\",
+            "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\"
+          ],
+          "expectedResultType": "CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "vulcan"
+                ]
+              },
+              {
+                "phenotypicFilterType": "REQUIRED",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+                "max": 500.0
+              }
+            ],
+            "operator": "AND"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "json": {
+          "\\open_access-1000Genomes\\data\\SEX\\": 0,
+          "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\": 0
+        }
+      }
+    },
+    {
+      "name": "categorical-cross-count-two-filters",
+      "kind": "sync",
+      "resultType": "CATEGORICAL_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CATEGORICAL_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "female",
+                  "male"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+                "values": [
+                  "Finnish"
+                ]
+              }
+            ],
+            "operator": "AND"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [],
+            "keys": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "\\open_access-1000Genomes\\data\\POPULATION NAME\\"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "male"
+            ],
+            "eq": 38
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "female"
+            ],
+            "eq": 64
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+              "Finnish"
+            ],
+            "eq": 102
+          }
+        ]
+      }
+    },
+    {
+      "name": "categorical-cross-count-two-filters-or",
+      "kind": "sync",
+      "resultType": "CATEGORICAL_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CATEGORICAL_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "male"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+                "values": [
+                  "Finnish"
+                ]
+              }
+            ],
+            "operator": "OR"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [],
+            "keys": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "\\open_access-1000Genomes\\data\\POPULATION NAME\\"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\"
+            ],
+            "keys": [
+              "male",
+              "female"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "male"
+            ],
+            "eq": 2648
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "female"
+            ],
+            "gt": 0
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+              "Finnish"
+            ],
+            "eq": 102
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\POPULATION NAME\\"
+            ],
+            "minKeys": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "categorical-cross-count-same-path-or",
+      "kind": "sync",
+      "resultType": "CATEGORICAL_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CATEGORICAL_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "male"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              }
+            ],
+            "operator": "OR"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [],
+            "keys": [
+              "\\open_access-1000Genomes\\data\\SEX\\"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\"
+            ],
+            "keys": [
+              "male",
+              "female"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "male"
+            ],
+            "eq": 2648
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "female"
+            ],
+            "eq": 2330
+          }
+        ]
+      }
+    },
+    {
+      "name": "categorical-cross-count-same-path-and-disjoint",
+      "kind": "sync",
+      "resultType": "CATEGORICAL_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CATEGORICAL_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "male"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              }
+            ],
+            "operator": "AND"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [],
+            "keys": [
+              "\\open_access-1000Genomes\\data\\SEX\\"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\"
+            ],
+            "keys": [
+              "male",
+              "female"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "male"
+            ],
+            "eq": 0
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "female"
+            ],
+            "eq": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "categorical-cross-count-required-plus-filter-same-path",
+      "kind": "sync",
+      "resultType": "CATEGORICAL_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CATEGORICAL_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "REQUIRED",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\"
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "male"
+                ]
+              }
+            ],
+            "operator": "AND"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [],
+            "keys": [
+              "\\open_access-1000Genomes\\data\\SEX\\"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\"
+            ],
+            "keys": [
+              "male"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "male"
+            ],
+            "eq": 2648
+          }
+        ]
+      }
+    },
+    {
+      "name": "categorical-cross-count-value-filter-or-required-other-concept",
+      "kind": "sync",
+      "resultType": "CATEGORICAL_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CATEGORICAL_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "male"
+                ]
+              },
+              {
+                "phenotypicFilterType": "REQUIRED",
+                "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\"
+              }
+            ],
+            "operator": "OR"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\"
+            ],
+            "keys": [
+              "male",
+              "female"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "male"
+            ],
+            "eq": 2648
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SEX\\",
+              "female"
+            ],
+            "gt": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "categorical-cross-count-required-continuous-excluded",
+      "kind": "sync",
+      "resultType": "CATEGORICAL_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CATEGORICAL_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "REQUIRED",
+            "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+            ],
+            "present": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "continuous-cross-count-same-path-ranges-or",
+      "kind": "sync",
+      "resultType": "CONTINUOUS_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CONTINUOUS_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+                "min": 31.0,
+                "max": 35.0
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+                "min": 55.0,
+                "max": 62.0
+              }
+            ],
+            "operator": "OR"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [],
+            "keys": [
+              "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+            ]
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+              "31.0"
+            ],
+            "gt": 0
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+              "62.0"
+            ],
+            "gt": 0
+          },
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+              "44.0"
+            ],
+            "present": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "continuous-cross-count-range-or-other-concept",
+      "kind": "sync",
+      "resultType": "CONTINUOUS_CROSS_COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "CONTINUOUS_CROSS_COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+                "min": 55.0,
+                "max": 62.0
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "male"
+                ]
+              }
+            ],
+            "operator": "OR"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "checks": [
+          {
+            "at": [
+              "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+            ],
+            "anyKeyLt": 55.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "count-age-35-45",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+            "min": 35.0,
+            "max": 45.0
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "562"
+      }
+    },
+    {
+      "name": "count-population-finnish",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+            "values": [
+              "Finnish"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "102"
+      }
+    },
+    {
+      "name": "count-nonexistent-concept",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\NOTAREAL_CONCEPT\\",
+            "values": [
+              "Finnish"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "0"
+      }
+    },
+    {
+      "name": "count-population-colombian",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+            "values": [
+              "Colombian"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "153"
+      }
+    },
+    {
+      "name": "count-population-finnish-or-colombian-values",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+            "values": [
+              "Colombian",
+              "Finnish"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "255"
+      }
+    },
+    {
+      "name": "count-sex-female",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+            "values": [
+              "female"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "2330"
+      }
+    },
+    {
+      "name": "count-sex-male",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+            "values": [
+              "male"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "2648"
+      }
+    },
+    {
+      "name": "count-finnish-and-female",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+                "values": [
+                  "Finnish"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              }
+            ],
+            "operator": "AND"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "64"
+      }
+    },
+    {
+      "name": "count-age-and-male",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+                "min": 35.0,
+                "max": 45.0
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "male"
+                ]
+              }
+            ],
+            "operator": "AND"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "269"
+      }
+    },
+    {
+      "name": "count-population-yoruba",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+            "values": [
+              "Yoruba"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "208"
+      }
+    },
+    {
+      "name": "count-required-age",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "REQUIRED",
+            "conceptPath": "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "1126"
+      }
+    },
+    {
+      "name": "count-authorization-filter-finnish-and-female",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "authorizationFilters": [
+            {
+              "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+              "values": [
+                "Finnish"
+              ]
+            }
+          ],
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+            "values": [
+              "female"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "64"
+      }
+    },
+    {
+      "name": "count-any-record-of-study",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "ANY_RECORD_OF",
+            "conceptPath": "\\open_access-1000Genomes\\"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "4978"
+      }
+    },
+    {
+      "name": "count-any-record-of-missing-study",
+      "kind": "sync",
+      "resultType": "COUNT",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "COUNT",
+          "phenotypicClause": {
+            "phenotypicFilterType": "ANY_RECORD_OF",
+            "conceptPath": "\\study-does-not-exist\\demographics\\"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "text": "0"
+      }
+    },
+    {
+      "name": "patients-finnish",
+      "kind": "async",
+      "resultType": "PATIENTS",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "PATIENTS",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+            "values": [
+              "Finnish"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "header": "PATIENT_NUM",
+        "rows": 102
+      }
+    },
+    {
+      "name": "patients-finnish-and-female",
+      "kind": "async",
+      "resultType": "PATIENTS",
+      "request": {
+        "query": {
+          "select": [],
+          "expectedResultType": "PATIENTS",
+          "phenotypicClause": {
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+                "values": [
+                  "Finnish"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\open_access-1000Genomes\\data\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              }
+            ],
+            "operator": "AND"
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "header": "PATIENT_NUM",
+        "rows": 64
+      }
+    },
+    {
+      "name": "dataframe-finnish-sex-age",
+      "kind": "async",
+      "resultType": "DATAFRAME",
+      "request": {
+        "query": {
+          "select": [
+            "\\open_access-1000Genomes\\data\\SEX\\",
+            "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+          ],
+          "expectedResultType": "DATAFRAME",
+          "phenotypicClause": {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
+            "values": [
+              "Finnish"
+            ]
+          }
+        },
+        "resourceUUID": null
+      },
+      "expect": {
+        "header": "patient_id,\\open_access-1000Genomes\\data\\SEX\\,\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\",
+        "rows": 102
+      }
+    }
+  ]
+}

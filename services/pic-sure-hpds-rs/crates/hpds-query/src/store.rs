@@ -1,0 +1,208 @@
+//! The phenotype store: `pheno.index` held in memory, `pheno.blocks` read on demand into a
+//! byte-bounded cache of decoded blocks.
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use hpds_format::{
+    BLOCKS_FILE_NAME, Block, BlockCodec, BlocksReader, ConceptMeta, CryptoKey, INDEX_FILE_NAME,
+    PhenoIndex, Protection,
+};
+use moka::sync::Cache;
+
+use crate::error::{QueryError, Result};
+
+/// Name of the key file inside the data directory, as the Java service reads
+/// `/opt/local/hpds/encryption_key`.
+pub const KEY_FILE_NAME: &str = "encryption_key";
+
+/// Default capacity of the decoded block cache: 4 GiB.
+pub const DEFAULT_CACHE_BYTES: u64 = 4 << 30;
+
+/// How a [`Store`] is opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreOptions {
+    /// Upper bound on the summed [`Block::heap_size`] of cached blocks, in bytes.
+    pub cache_bytes: u64,
+    /// Open a plain store when the data directory holds no key file. Off by default: a
+    /// missing key is then an error. For local benchmarking only.
+    pub allow_plain: bool,
+}
+
+impl Default for StoreOptions {
+    /// A 4 GiB cache, and a key file required.
+    fn default() -> Self {
+        StoreOptions {
+            cache_bytes: DEFAULT_CACHE_BYTES,
+            allow_plain: false,
+        }
+    }
+}
+
+/// An open store. Cheap to share behind an `Arc`; every method takes `&self` and is safe to
+/// call from many threads.
+///
+/// Block loads are blocking (a positioned read, then decryption and decompression on the
+/// calling thread). Async callers run them inside `tokio::task::spawn_blocking`, or enable
+/// the `tokio` feature and use [`Store::block_async`].
+pub struct Store {
+    dir: PathBuf,
+    index: PhenoIndex,
+    reader: BlocksReader,
+    codec: BlockCodec,
+    cache: Cache<String, Arc<Block>>,
+}
+
+impl std::fmt::Debug for Store {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Store")
+            .field("dir", &self.dir)
+            .field("concepts", &self.index.concepts().len())
+            .field("patients", &self.index.patients().len())
+            .field("encrypted", &self.codec.is_encrypted())
+            .finish_non_exhaustive()
+    }
+}
+
+impl Store {
+    /// Opens the store in `dir`. The protection comes from `<dir>/encryption_key`: when the
+    /// file exists the store must be encrypted with that key; when it does not, the store
+    /// opens only as a plain store and only if `options.allow_plain` is set.
+    ///
+    /// # Errors
+    /// [`QueryError::Open`] when the key file is unreadable or invalid, when it is missing
+    /// and plain stores are not allowed, or when the index or blocks file is missing,
+    /// corrupt, from another store, or protected differently from the key's presence.
+    pub fn open(dir: &Path, options: &StoreOptions) -> Result<Self> {
+        let key_path = dir.join(KEY_FILE_NAME);
+        let protection = if key_path.exists() {
+            Protection::Encrypted(CryptoKey::load(&key_path).map_err(|e| open_error(dir, e))?)
+        } else if options.allow_plain {
+            Protection::Plain
+        } else {
+            return Err(QueryError::Open {
+                dir: dir.to_path_buf(),
+                detail: format!(
+                    "no key file {} and plain stores are not allowed",
+                    key_path.display()
+                ),
+            });
+        };
+        Self::open_with(dir, protection, options.cache_bytes)
+    }
+
+    /// Opens the store in `dir` under an explicit `protection`, with a block cache of
+    /// `cache_bytes`.
+    ///
+    /// # Errors
+    /// [`QueryError::Open`] as for [`Store::open`].
+    pub fn open_with(dir: &Path, protection: Protection, cache_bytes: u64) -> Result<Self> {
+        let index = PhenoIndex::read_file(dir.join(INDEX_FILE_NAME), &protection)
+            .map_err(|e| open_error(dir, e))?;
+        let reader = BlocksReader::open(dir.join(BLOCKS_FILE_NAME), index.store_id())
+            .map_err(|e| open_error(dir, e))?;
+        let codec = index
+            .block_codec(protection)
+            .map_err(|e| open_error(dir, e))?;
+        let cache = Cache::builder()
+            .max_capacity(cache_bytes)
+            .weigher(|path: &String, block: &Arc<Block>| {
+                u32::try_from(block.heap_size().saturating_add(path.len())).unwrap_or(u32::MAX)
+            })
+            .build();
+        Ok(Store {
+            dir: dir.to_path_buf(),
+            index,
+            reader,
+            codec,
+            cache,
+        })
+    }
+
+    /// The data directory.
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// The decoded index: every concept's metadata and every patient id.
+    pub fn index(&self) -> &PhenoIndex {
+        &self.index
+    }
+
+    /// True when the index holds at least one concept, the readiness rule for health
+    /// checks.
+    pub fn is_healthy(&self) -> bool {
+        !self.index.concepts().is_empty()
+    }
+
+    /// Metadata of the concept at exactly `path`.
+    pub fn concept(&self, path: &str) -> Option<&ConceptMeta> {
+        self.index.get(path)
+    }
+
+    /// The decoded block of the concept at `path`, from the cache or loaded from disk, or
+    /// `None` when there is no such concept (Java's `getCube` returning `Optional.empty()`).
+    ///
+    /// Concurrent calls for the same uncached path load it once; the others wait for that
+    /// load. Blocking.
+    ///
+    /// # Errors
+    /// [`QueryError::Block`] when the block cannot be read, authenticated or decoded.
+    pub fn block(&self, path: &str) -> Result<Option<Arc<Block>>> {
+        let Some(concept) = self.index.get(path) else {
+            return Ok(None);
+        };
+        self.cache
+            .try_get_with_by_ref(path, || {
+                self.reader.read_block(&self.codec, concept).map(Arc::new)
+            })
+            .map(Some)
+            .map_err(|source| QueryError::Block {
+                concept_path: path.to_owned(),
+                source,
+            })
+    }
+
+    /// The block of `path` if it is cached, without loading it.
+    pub fn cached_block(&self, path: &str) -> Option<Arc<Block>> {
+        self.cache.get(path)
+    }
+
+    /// Number of cached blocks. Eventually consistent: pending evictions may not show yet.
+    pub fn cached_block_count(&self) -> u64 {
+        self.cache.entry_count()
+    }
+
+    /// Summed weight of the cached blocks in bytes. Eventually consistent, like
+    /// [`Store::cached_block_count`].
+    pub fn cached_bytes(&self) -> u64 {
+        self.cache.weighted_size()
+    }
+
+    /// Drops every cached block.
+    pub fn clear_cache(&self) {
+        self.cache.invalidate_all();
+        self.cache.run_pending_tasks();
+    }
+
+    /// [`Store::block`] on the blocking thread pool.
+    ///
+    /// # Errors
+    /// The errors of [`Store::block`], and [`QueryError::Task`] when the blocking task
+    /// panics or is cancelled.
+    #[cfg(feature = "tokio")]
+    pub async fn block_async(self: &Arc<Self>, path: &str) -> Result<Option<Arc<Block>>> {
+        let store = Arc::clone(self);
+        let path = path.to_owned();
+        tokio::task::spawn_blocking(move || store.block(&path))
+            .await
+            .map_err(|e| QueryError::Task(e.to_string()))?
+    }
+}
+
+fn open_error(dir: &Path, error: impl std::fmt::Display) -> QueryError {
+    QueryError::Open {
+        dir: dir.to_path_buf(),
+        detail: error.to_string(),
+    }
+}

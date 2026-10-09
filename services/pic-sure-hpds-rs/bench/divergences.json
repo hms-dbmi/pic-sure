@@ -1,0 +1,51 @@
+{
+  "rules": [
+    {
+      "name": "invalid-request-status",
+      "entry": "error-*",
+      "statuses": [400, 500],
+      "reason": "Spec divergence, HTTP errors: Java answers a bad sync query or a validation failure with 500 (the query service then returns 502); Rust returns 400 with a text message."
+    },
+    {
+      "name": "unknown-async-id-status",
+      "entry": "error-unknown-async-id-*",
+      "statuses": [404, 500],
+      "reason": "Spec divergence, HTTP errors: Java answers an unknown async result id with a NullPointerException 500; Rust returns 404."
+    },
+    {
+      "name": "invalid-request-empty-200",
+      "entries": [
+        "error-filter-without-values-or-range",
+        "error-empty-subquery",
+        "error-genomic-filters-without-genotype-data"
+      ],
+      "statuses": [200, 400],
+      "when": "success-body-empty",
+      "reason": "Spec divergence, HTTP errors: Java answers a FILTER with neither values nor a range, an empty subquery, or non-empty genomicFilters with 200 and an empty body; Rust returns 400 with a text message. The rule covers only these entries and only when the 200 side's body is empty."
+    },
+    {
+      "name": "unknown-async-id-status-empty-200",
+      "entry": "error-unknown-async-id-*",
+      "statuses": [200, 404],
+      "reason": "Spec divergence, HTTP errors: Java answers /status for an unknown async id with 200 and an empty body; Rust returns 404."
+    },
+    {
+      "name": "observation-cross-count-defect",
+      "resultType": "OBSERVATION_CROSS_COUNT",
+      "when": "strict-subset-or-timeout",
+      "reason": "Java OBSERVATION_CROSS_COUNT defect: with two or more selects it can drop keys or hang. Accepted when one side's key set is a strict subset of the other's and every shared key matches, or when a side times out."
+    },
+    {
+      "name": "search-max-double-min-value",
+      "entry": "search-*",
+      "when": "numeric-max-double-min-value",
+      "reason": "Spec divergence, LowRAMLoadingStore.complete and LoadingStore initialize max to Double.MIN_VALUE, so a numeric concept with no value above zero reports a max of 4.9E-324; /search returns that stored max, where Rust returns the real one. Accepted only when every other field of the search body is equal and the real max is zero or below."
+    },
+    {
+      "name": "range-min-above-every-value-empty-200",
+      "statuses": [200, 200],
+      "when": "range-min-success-body-empty",
+      "reason": "Spec divergence, Range filters: Java's seekForMinIndex throws when min is above every value, and copyOfRange throws when max is below min; Java then answers 200 with an empty body, where Rust answers 200 with the result for an empty cohort. Accepted only for sync entries whose phenotypic clause holds a FILTER with a min, and only when exactly one side's 200 body is empty."
+    }
+  ]
+}

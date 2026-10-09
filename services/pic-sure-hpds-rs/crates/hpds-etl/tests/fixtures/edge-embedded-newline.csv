@@ -1,0 +1,5 @@
+PATIENT_NUM,CONCEPT_PATH,NVAL_NUM,TVAL_CHAR,TIMESTAMP
+1,\edge\newline\cat\,,"line1
+line2",
+2,\edge\newline\cat\,,plain,
+3,\edge\newline\cat\,,plain,
