@@ -34,6 +34,12 @@
       "resultType": "OBSERVATION_CROSS_COUNT",
       "when": "strict-subset-or-timeout",
       "reason": "Java OBSERVATION_CROSS_COUNT defect: with two or more selects it can drop keys or hang. Accepted when one side's key set is a strict subset of the other's and every shared key matches, or when a side times out."
+    },
+    {
+      "name": "search-max-double-min-value",
+      "entry": "search-*",
+      "when": "numeric-max-double-min-value",
+      "reason": "Spec divergence, LowRAMLoadingStore.complete and LoadingStore initialize max to Double.MIN_VALUE, so a numeric concept with no value above zero reports a max of 4.9E-324; /search returns that stored max, where Rust returns the real one. Accepted only when every other field of the search body is equal and the real max is zero or below."
     }
   ]
 }

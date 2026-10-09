@@ -17,7 +17,14 @@ pub enum Condition {
     StrictSubsetOrTimeout,
     /// Every side that answered 200 sent an empty body, and at least one side answered 200.
     SuccessBodyEmpty,
+    /// Both sides answered 200 with JSON that is equal once every `max` field reporting
+    /// `4.9E-324` (Java's `Double.MIN_VALUE`) on one side, against a value of zero or below on
+    /// the other, takes the other side's value. At least one such field must differ.
+    NumericMaxDoubleMinValue,
 }
+
+/// Java's `Double.MIN_VALUE`, the smallest positive double, printed as `4.9E-324`.
+const JAVA_DOUBLE_MIN_VALUE: f64 = f64::from_bits(1);
 
 /// One known and accepted difference between the Java and Rust services.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -124,6 +131,64 @@ fn subset_or_timeout(a: &Outcome, b: &Outcome) -> bool {
     }
 }
 
+fn is_java_min_value(value: &Value) -> bool {
+    value.as_f64() == Some(JAVA_DOUBLE_MIN_VALUE)
+}
+
+fn is_zero_or_below(value: &Value) -> bool {
+    value.as_f64().is_some_and(|number| number <= 0.0)
+}
+
+/// Copies onto `a` and `b` the real `max` wherever one side holds `Double.MIN_VALUE` and the
+/// other a value of zero or below. Returns how many fields it aligned.
+fn align_min_value_max(a: &mut Value, b: &mut Value) -> usize {
+    match (a, b) {
+        (Value::Object(left), Value::Object(right)) => {
+            let mut aligned = 0;
+            for (key, left_value) in left.iter_mut() {
+                let Some(right_value) = right.get_mut(key) else {
+                    continue;
+                };
+                if key == "max" {
+                    if is_java_min_value(left_value) && is_zero_or_below(right_value) {
+                        *left_value = right_value.clone();
+                        aligned += 1;
+                    } else if is_java_min_value(right_value) && is_zero_or_below(left_value) {
+                        *right_value = left_value.clone();
+                        aligned += 1;
+                    }
+                } else {
+                    aligned += align_min_value_max(left_value, right_value);
+                }
+            }
+            aligned
+        }
+        (Value::Array(left), Value::Array(right)) => left
+            .iter_mut()
+            .zip(right.iter_mut())
+            .map(|(x, y)| align_min_value_max(x, y))
+            .sum(),
+        _ => 0,
+    }
+}
+
+fn differs_only_in_min_value_max(a: &Outcome, b: &Outcome) -> bool {
+    let (Outcome::Sync(x), Outcome::Sync(y)) = (a, b) else {
+        return false;
+    };
+    if x.status != 200 || y.status != 200 {
+        return false;
+    }
+    let (Ok(mut left), Ok(mut right)) = (
+        serde_json::from_str::<Value>(&x.body),
+        serde_json::from_str::<Value>(&y.body),
+    ) else {
+        return false;
+    };
+    align_min_value_max(&mut left, &mut right) > 0
+        && json_diff_with(&left, &right, false).is_empty()
+}
+
 impl Rule {
     fn matches(&self, entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
         if let Some(pattern) = &self.entry
@@ -150,6 +215,7 @@ impl Rule {
         match self.when {
             Some(Condition::StrictSubsetOrTimeout) => subset_or_timeout(a, b),
             Some(Condition::SuccessBodyEmpty) => empty_success_body(a, b),
+            Some(Condition::NumericMaxDoubleMinValue) => differs_only_in_min_value_max(a, b),
             None => true,
         }
     }
@@ -281,6 +347,42 @@ mod tests {
         assert!(
             set.find(&entry("error-b", "COUNT"), &sync(500, ""), &sync(400, "m"))
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn java_min_value_max_is_accepted_only_against_a_max_of_zero_or_below() {
+        let set = rules(json!([
+            {"name": "max", "entry": "search-*", "when": "numeric-max-double-min-value", "reason": "why"}
+        ]));
+        let e = entry("search-path-0", "SEARCH");
+        let java =
+            r#"{"results":{"phenotypes":{"p":{"min":-63.4,"max":4.9E-324,"patientCount":3}}}}"#;
+        let rust = r#"{"results":{"phenotypes":{"p":{"min":-63.4,"max":-45.5,"patientCount":3}}}}"#;
+        assert!(set.find(&e, &sync(200, java), &sync(200, rust)).is_some());
+        assert!(set.find(&e, &sync(200, rust), &sync(200, java)).is_some());
+        let zero = r#"{"results":{"phenotypes":{"p":{"min":-63.4,"max":0,"patientCount":3}}}}"#;
+        assert!(set.find(&e, &sync(200, java), &sync(200, zero)).is_some());
+        let positive =
+            r#"{"results":{"phenotypes":{"p":{"min":-63.4,"max":2.5,"patientCount":3}}}}"#;
+        assert!(
+            set.find(&e, &sync(200, java), &sync(200, positive))
+                .is_none()
+        );
+        let other_field =
+            r#"{"results":{"phenotypes":{"p":{"min":-63.4,"max":-45.5,"patientCount":4}}}}"#;
+        assert!(
+            set.find(&e, &sync(200, java), &sync(200, other_field))
+                .is_none()
+        );
+        assert!(set.find(&e, &sync(200, rust), &sync(200, rust)).is_none());
+        assert!(
+            set.find(
+                &entry("0001-count", "COUNT"),
+                &sync(200, java),
+                &sync(200, rust)
+            )
+            .is_none()
         );
     }
 
