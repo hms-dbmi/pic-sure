@@ -19,8 +19,18 @@
 #       On the running container: async entries only, at each of EXPORT_CONCURRENCIES.
 #   bench/arms.sh rest <arm> <data-dir> <corpus> <out-dir>
 #       Container memory at rest: right after health UP on a fresh container, after one pass at
-#       concurrency 1, and after 30 s idle, with Java heap used from jstat where available.
-#   bench/arms.sh stop <arm>
+#       concurrency 1, and after 30 s idle. Each point records docker stats usage, the anon
+#       bytes of the container cgroup's memory.stat and, for the Java arms, the heap in use after
+#       a full GC (jcmd GC.run, then GC.heap_info). With KEEP_RUNNING=1 the container is left
+#       up for warm and exports.
+#   bench/arms.sh stop <arm> [log-file]
+#       Stops the container gracefully (the layout arm logs its block cache statistics on
+#       shutdown), saves its log to log-file when given, and removes it.
+#
+# A load run is recorded as failed in summary.tsv when hpds-bench exits non-zero, any request
+# errors, or the container was OOM-killed or is no longer running afterwards. Memory under load
+# is sampled every second as docker stats usage (which counts page cache) and as cgroup anon
+# memory (which does not); both peak and average go in summary.tsv.
 #
 # Arms: java (hms-dbmi/pic-sure-hpds:bench on javabins), layout (hms-dbmi/pic-sure-hpds:layout
 # with HPDS_STORE_FORMAT=layout on an encrypted hpds-rs store), rust (hms-dbmi/pic-sure-hpds-rs
@@ -29,7 +39,7 @@
 # Env: BENCH_BIN, ETL_BIN, HOST_PORT (18091), HOST_PORT_B (18092), DURATION (60s), LEAD_IN
 #      (10s), CONCURRENCIES ("1 8 32"), EXPORT_CONCURRENCIES ("1 4"), EXCLUDE (result types
 #      left out, comma separated, default none), JAVA_OPTS (-Xmx16g), CACHE_BYTES (4 GiB),
-#      MEM_LIMIT (container memory limit, default none), TIMEOUT (120s).
+#      MEM_LIMIT (container memory limit, default none), TIMEOUT (120s), KEEP_RUNNING (0).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,6 +56,7 @@ JAVA_OPTS="${JAVA_OPTS:--Xmx16g}"
 CACHE_BYTES="${CACHE_BYTES:-4294967296}"
 MEM_LIMIT="${MEM_LIMIT:-}"
 TIMEOUT="${TIMEOUT:-120s}"
+KEEP_RUNNING="${KEEP_RUNNING:-0}"
 
 log() {
   printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >&2
@@ -118,16 +129,24 @@ start_arm() {
   wait_healthy "$port" "$name"
 }
 
+# Prints the anon memory of container $1 in MiB, from its cgroup v2 memory.stat.
+anon_mib() {
+  docker exec "$1" cat /sys/fs/cgroup/memory.stat 2>/dev/null | awk '$1 == "anon" {printf "%.0f", $2 / 1048576}'
+}
+
+# Appends one line per second to $2 until killed: docker stats usage in MiB, CPU %, and cgroup
+# anon memory in MiB.
 sample_stats() {
-  local container="$1" out="$2"
+  local container="$1" out="$2" usage
   : > "$out"
   while true; do
-    docker stats --no-stream --format '{{.MemUsage}} {{.CPUPerc}}' "$container" 2>/dev/null \
+    usage="$(docker stats --no-stream --format '{{.MemUsage}} {{.CPUPerc}}' "$container" 2>/dev/null \
       | awk '{
           v = $1; u = v; sub(/[0-9.]+/, "", u); sub(/[A-Za-z]+$/, "", v);
           if (u == "GiB") v *= 1024; else if (u == "KiB" || u == "kB") v /= 1024; else if (u == "B") v /= 1048576;
-          c = $NF; sub(/%/, "", c); printf "%.0f %s\n", v, c
-        }' >> "$out" || true
+          c = $NF; sub(/%/, "", c); printf "%.0f %s", v, c
+        }' || true)"
+    [[ -n "$usage" ]] && echo "$usage $(anon_mib "$container")" >> "$out"
     sleep 1
   done
 }
@@ -138,7 +157,7 @@ load_once() {
   local container sampler status=0
   container="$(container_of "$arm")"
   if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" != "true" ]]; then
-    printf '%s\t%s\tcontainer-down\t\t\t\t\t\t\t\t\t\t\toom=%s\n' "$arm" "$name" \
+    printf '%s\t%s\t\t\t\t\t\t\t\t\t\t\t\t\t\t\toom=%s\tfailed(container-down)\n' "$arm" "$name" \
       "$(docker inspect -f '{{.State.OOMKilled}}' "$container" 2>/dev/null || echo gone)" >> "$dir/summary.tsv"
     log "$arm $name skipped: container is not running"
     return 1
@@ -150,26 +169,45 @@ load_once() {
   "$BENCH_BIN" load "${args[@]}" "$@" > "$dir/$name.json" || status=$?
   kill "$sampler" 2>/dev/null || true
   wait "$sampler" 2>/dev/null || true
-  local load1 peak cpu oom
+  local load1 peak avg peak_anon avg_anon cpu oom running errors result
   load1=$(sysctl -n vm.loadavg | awk '{print $2}')
   peak=$(awk '{print $1}' "$dir/$name.stats" | sort -n | tail -1)
+  avg=$(awk '{s += $1; n++} END {if (n) printf "%.0f", s / n}' "$dir/$name.stats")
+  peak_anon=$(awk 'NF >= 3 {print $3}' "$dir/$name.stats" | sort -n | tail -1)
+  avg_anon=$(awk 'NF >= 3 {s += $3; n++} END {if (n) printf "%.0f", s / n}' "$dir/$name.stats")
   cpu=$(awk '$2 > 0 {s += $2; n++} END {if (n) printf "%.0f", s / n; else print 0}' "$dir/$name.stats")
   oom=$(docker inspect -f '{{.State.OOMKilled}}' "$container" 2>/dev/null || echo gone)
-  if [[ "$status" != 0 || ! -s "$dir/$name.json" ]]; then
-    printf '%s\t%s\tfailed(%s)\t\t\t\t\t\t\t%s\t%s\t%s\toom=%s\n' "$arm" "$name" "$status" "${peak:-}" "$cpu" "$load1" "$oom" >> "$dir/summary.tsv"
-    log "$arm $name failed with $status (oom=$oom)"
-    return 0
+  running=$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || echo false)
+  errors=$(jq -r '.overall.errors // empty' "$dir/$name.json" 2>/dev/null || true)
+  if [[ "$status" != 0 || ! -s "$dir/$name.json" || -z "$errors" ]]; then
+    result="failed(exit=$status)"
+  elif [[ "$oom" != "false" ]]; then
+    result="failed(oom)"
+  elif [[ "$running" != "true" ]]; then
+    result="failed(container-down)"
+  elif [[ "$errors" != "0" ]]; then
+    result="failed(errors=$errors)"
+  else
+    result="ok"
   fi
-  jq -r --arg a "$arm" --arg n "$name" --arg peak "${peak:-}" --arg cpu "$cpu" --arg load "$load1" --arg oom "$oom" \
-    '[$a, $n, .overall.requests, .overall.errors, .overall.timeouts, (.overall.throughput_rps * 100 | round / 100),
-      .overall.p50_ms, .overall.p90_ms, .overall.p99_ms, .overall.max_ms, $peak, $cpu, $load, ("oom=" + $oom)] | @tsv' \
-    "$dir/$name.json" >> "$dir/summary.tsv"
+  if [[ -z "$errors" ]]; then
+    printf '%s\t%s\t\t\t\t\t\t\t\t\t%s\t%s\t%s\t%s\t%s\t%s\toom=%s\t%s\n' "$arm" "$name" "${peak:-}" "${avg:-}" \
+      "${peak_anon:-}" "${avg_anon:-}" "$cpu" "$load1" "$oom" "$result" >> "$dir/summary.tsv"
+  else
+    jq -r --arg a "$arm" --arg n "$name" --arg peak "${peak:-}" --arg avg "${avg:-}" --arg pa "${peak_anon:-}" \
+      --arg aa "${avg_anon:-}" --arg cpu "$cpu" --arg load "$load1" --arg oom "$oom" --arg result "$result" \
+      '[$a, $n, .overall.requests, .overall.errors, .overall.timeouts, (.overall.throughput_rps * 100 | round / 100),
+        .overall.p50_ms, .overall.p90_ms, .overall.p99_ms, .overall.max_ms, $peak, $avg, $pa, $aa, $cpu, $load,
+        ("oom=" + $oom), $result] | @tsv' \
+      "$dir/$name.json" >> "$dir/summary.tsv"
+  fi
   log "$(tail -1 "$dir/summary.tsv")"
+  [[ "$result" == "ok" ]] || log "$arm $name $result"
 }
 
 init_dir() {
   mkdir -p "$1"
-  [[ -s "$1/summary.tsv" ]] || printf 'arm\trun\trequests\terrors\ttimeouts\trps\tp50_ms\tp90_ms\tp99_ms\tmax_ms\tpeak_mem_mib\tmean_cpu_pct\thost_load1\toom\n' > "$1/summary.tsv"
+  [[ -s "$1/summary.tsv" ]] || printf 'arm\trun\trequests\terrors\ttimeouts\trps\tp50_ms\tp90_ms\tp99_ms\tmax_ms\tpeak_mem_mib\tavg_mem_mib\tpeak_anon_mib\tavg_anon_mib\tmean_cpu_pct\thost_load1\toom\tresult\n' > "$1/summary.tsv"
 }
 
 run_cold() {
@@ -215,9 +253,20 @@ mem_now() {
   docker stats --no-stream --format '{{.MemUsage}}' "$1" | awk '{print $1}'
 }
 
-java_heap_used_mib() {
-  docker exec "$1" sh -c 'jstat -gc 1 2>/dev/null' 2>/dev/null \
-    | awk 'NR == 1 {for (i = 1; i <= NF; i++) h[$i] = i} NR == 2 {printf "%.0f", ($h["S0U"] + $h["S1U"] + $h["EU"] + $h["OU"]) / 1024}'
+# Prints the Java heap in use, in MiB, right after a full GC (jcmd GC.run, then the "used"
+# figure of GC.heap_info), or nothing for a container without a JVM.
+java_heap_after_gc_mib() {
+  docker exec "$1" sh -c '
+    pid=$(jcmd -l 2>/dev/null | awk "/service.jar/ {print \$1; exit}")
+    [ -n "$pid" ] || exit 0
+    jcmd "$pid" GC.run >/dev/null 2>&1
+    jcmd "$pid" GC.heap_info 2>/dev/null' 2>/dev/null \
+    | awk 'match($0, /used [0-9]+K/) {v = substr($0, RSTART + 5, RLENGTH - 6); printf "%.0f", v / 1024; exit}'
+}
+
+# Prints one rest measurement of container $1 as key=value pairs.
+rest_point() {
+  echo "usage=$(mem_now "$1") anon_mib=$(anon_mib "$1") heap_after_gc_mib=$(java_heap_after_gc_mib "$1") host_load1=$(sysctl -n vm.loadavg | awk '{print $2}')"
 }
 
 run_rest() {
@@ -231,15 +280,23 @@ run_rest() {
   sleep 2
   {
     echo "arm=$arm java_opts=$JAVA_OPTS cache_bytes=$CACHE_BYTES mem_limit=$MEM_LIMIT"
-    echo "rest_cold_mem=$(mem_now "$container") heap_used_mib=$(java_heap_used_mib "$container")"
+    echo "rest_cold $(rest_point "$container")"
   } > "$out"
   local args=(--url "http://127.0.0.1:$HOST_PORT/PIC-SURE" --corpus "$corpus" --timeout "$TIMEOUT" --only sync)
   [[ -n "$EXCLUDE" ]] && args+=(--exclude "$EXCLUDE")
   "$BENCH_BIN" load "${args[@]}" --concurrency 1 --passes 1 > "$dir/$arm-rest-pass.json"
-  echo "after_pass_mem=$(mem_now "$container") heap_used_mib=$(java_heap_used_mib "$container")" >> "$out"
+  echo "after_pass usage=$(mem_now "$container") anon_mib=$(anon_mib "$container")" >> "$out"
   sleep 30
-  echo "rest_warm_mem=$(mem_now "$container") heap_used_mib=$(java_heap_used_mib "$container")" >> "$out"
+  echo "rest_warm $(rest_point "$container")" >> "$out"
   cat "$out" >&2
+  [[ "$KEEP_RUNNING" == "1" ]] || docker rm -f "$container" >/dev/null 2>&1 || true
+}
+
+stop_arm() {
+  local container log_file="${2:-}"
+  container="$(container_of "$1")"
+  docker stop -t 30 "$container" >/dev/null 2>&1 || true
+  [[ -z "$log_file" ]] || docker logs "$container" > "$log_file" 2>&1 || true
   docker rm -f "$container" >/dev/null 2>&1 || true
 }
 
@@ -281,6 +338,6 @@ case "${1:-}" in
   warm) run_warm "$2" "$3" "$4" "$5" ;;
   exports) run_exports "$2" "$3" "$4" ;;
   rest) run_rest "$2" "$3" "$4" "$5" ;;
-  stop) docker rm -f "$(container_of "$2")" >/dev/null 2>&1 || true ;;
+  stop) stop_arm "$2" "${3:-}" ;;
   *) sed -n '2,/^set -euo/{/^set -euo/d;p;}' "$0" >&2; exit 2 ;;
 esac
