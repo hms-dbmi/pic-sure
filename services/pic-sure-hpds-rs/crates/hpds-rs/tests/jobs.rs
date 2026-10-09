@@ -166,7 +166,7 @@ async fn evaluation_failures_end_in_error() {
 }
 
 #[tokio::test]
-async fn invalid_submissions_are_json_400s() {
+async fn invalid_submissions_are_plain_text_400s() {
     let f = fixture_with(|c| c.require_authorization_filter = true);
     let required_with_values =
         json!({"phenotypicFilterType": "REQUIRED", "conceptPath": SEX, "values": ["x"]});
@@ -186,9 +186,9 @@ async fn invalid_submissions_are_json_400s() {
             "{query}: {}",
             reply.body
         );
-        assert!(reply.json()["message"].is_string());
+        assert!(!reply.body.is_empty(), "{query}");
     }
-    assert!(f.state.jobs().is_empty());
+    assert!(f.state.results().is_empty());
     let ok = submit(
         &f.app,
         json!({"expectedResultType": "PATIENTS", "authorizationFilters": auth}),
@@ -205,14 +205,14 @@ async fn unknown_and_malformed_ids() {
     for route in ["status", "result", "signed-url"] {
         let reply = post(&f.app, &format!("{QUERY}/{unknown}/{route}"), "{}").await;
         assert_eq!(reply.status, StatusCode::NOT_FOUND, "{route}");
-        assert_eq!(reply.json()["error"], "Not Found");
+        assert!(!reply.body.is_empty(), "{route}");
         let reply = post(&f.app, &format!("{QUERY}/not-a-uuid/{route}"), "{}").await;
         assert_eq!(reply.status, StatusCode::BAD_REQUEST, "{route}");
     }
 }
 
 #[tokio::test]
-async fn unsupported_routes_are_json_400s() {
+async fn unsupported_routes_are_plain_text_400s() {
     let f = fixture();
     let submitted = submit(&f.app, json!({"expectedResultType": "PATIENTS"})).await;
     let id = submitted["resourceResultId"].as_str().unwrap().to_owned();
@@ -229,12 +229,7 @@ async fn unsupported_routes_are_json_400s() {
         )
         .await;
         assert_eq!(reply.status, StatusCode::BAD_REQUEST, "{path}");
-        assert!(
-            reply.json()["message"]
-                .as_str()
-                .unwrap()
-                .contains("not supported")
-        );
+        assert!(reply.body.contains("not supported"));
     }
 }
 
@@ -248,7 +243,7 @@ async fn results_not_yet_available_answer_their_status() {
     }
     let status = f
         .state
-        .jobs()
+        .results()
         .submit(engine, Query::new(ResultType::Patients))
         .unwrap();
     let result = post(
@@ -278,7 +273,7 @@ async fn registry_evicts_oldest_finished_and_their_files() {
     for _ in 0..2 {
         let status = f
             .state
-            .jobs()
+            .results()
             .submit(Arc::clone(&f.engine), Query::new(ResultType::Patients))
             .unwrap();
         finished(&f, &status.resource_result_id).await;
@@ -288,13 +283,13 @@ async fn registry_evicts_oldest_finished_and_their_files() {
     assert_eq!(result_files(&f.config.results_dir), 2);
     let third = f
         .state
-        .jobs()
+        .results()
         .submit(Arc::clone(&f.engine), Query::new(ResultType::Patients))
         .unwrap();
     finished(&f, &third.resource_result_id).await;
-    assert_eq!(f.state.jobs().len(), 2);
-    assert!(f.state.jobs().status(&ids[0]).is_none());
-    assert!(f.state.jobs().status(&ids[1]).is_some());
+    assert_eq!(f.state.results().len(), 2);
+    assert!(f.state.results().status(&ids[0]).is_none());
+    assert!(f.state.results().status(&ids[1]).is_some());
     assert_eq!(result_files(&f.config.results_dir), 2);
     assert!(
         !f.config
@@ -312,12 +307,12 @@ async fn registry_refuses_when_every_entry_is_unfinished() {
         held.push(f.state.engine_slot().await);
     }
     f.state
-        .jobs()
+        .results()
         .submit(Arc::clone(&f.engine), Query::new(ResultType::Patients))
         .unwrap();
     let refused = f
         .state
-        .jobs()
+        .results()
         .submit(Arc::clone(&f.engine), Query::new(ResultType::Patients));
     assert_eq!(refused.unwrap_err().status, StatusCode::SERVICE_UNAVAILABLE);
     drop(held);
@@ -325,16 +320,17 @@ async fn registry_refuses_when_every_entry_is_unfinished() {
 
 #[tokio::test]
 async fn registry_expires_finished_results_by_age() {
-    let f = fixture_with(|c| c.result_max_age = Duration::ZERO);
+    let f = fixture_with(|c| c.result_max_age = Some(Duration::from_millis(1)));
     let status = f
         .state
-        .jobs()
+        .results()
         .submit(Arc::clone(&f.engine), Query::new(ResultType::Patients))
         .unwrap();
     finished(&f, &status.resource_result_id).await;
     assert_eq!(result_files(&f.config.results_dir), 1);
-    f.state.jobs().sweep();
-    assert!(f.state.jobs().is_empty());
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    f.state.results().sweep();
+    assert!(f.state.results().is_empty());
     assert_eq!(result_files(&f.config.results_dir), 0);
 }
 
@@ -348,4 +344,124 @@ async fn stale_result_files_are_removed_at_startup() {
     hpds_rs::AppState::new(None, &config).unwrap();
     assert!(!config.results_dir.join("result-old.csv").exists());
     assert!(config.results_dir.join("keep.txt").exists());
+}
+
+#[tokio::test]
+async fn dataframe_is_disabled_while_id_batch_size_is_zero() {
+    let f = fixture_with(|c| c.id_batch_size = 0);
+    let submitted = submit(
+        &f.app,
+        json!({"expectedResultType": "DATAFRAME", "select": [SEX]}),
+    )
+    .await;
+    assert_eq!(submitted["status"], "ERROR");
+    assert_eq!(
+        submitted["resultMetadata"]["error"],
+        "exports are disabled (ID_BATCH_SIZE=0)"
+    );
+    let patients = submit(&f.app, json!({"expectedResultType": "PATIENTS"})).await;
+    let id = patients["resourceResultId"].as_str().unwrap().to_owned();
+    assert_eq!(wait(&f.app, &id).await["resourceStatus"], "SUCCESS");
+}
+
+#[tokio::test]
+async fn export_over_the_pin_cap_ends_in_error() {
+    let f = fixture();
+    let engine = Arc::new(
+        hpds_query::Engine::open(
+            &f.dir.path().join("store"),
+            &hpds_query::StoreOptions::default(),
+        )
+        .unwrap()
+        .with_export_pin_bytes(1),
+    );
+    let mut query = Query::new(ResultType::Dataframe);
+    query.select = vec![SEX.to_owned(), AGE.to_owned()];
+    let status = f.state.results().submit(engine, query).unwrap();
+    let done = wait(&f.app, &status.resource_result_id).await;
+    assert_eq!(done["status"], "ERROR");
+    assert_eq!(
+        done["resultMetadata"]["error"],
+        "export too wide; select fewer concepts"
+    );
+    assert_eq!(result_files(&f.config.results_dir), 0);
+}
+
+#[tokio::test]
+async fn registry_evicts_oldest_finished_past_the_byte_cap() {
+    let f = fixture_with(|c| c.result_max_bytes = 1);
+    let mut ids = Vec::new();
+    for _ in 0..3 {
+        let status = f
+            .state
+            .results()
+            .submit(Arc::clone(&f.engine), Query::new(ResultType::Patients))
+            .unwrap();
+        finished(&f, &status.resource_result_id).await;
+        ids.push(status.resource_result_id);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert_eq!(f.state.results().len(), 1);
+    assert!(f.state.results().status(&ids[2]).is_some());
+    assert_eq!(result_files(&f.config.results_dir), 1);
+}
+
+#[tokio::test]
+async fn results_without_an_age_limit_survive_a_sweep() {
+    let f = fixture();
+    let status = f
+        .state
+        .results()
+        .submit(Arc::clone(&f.engine), Query::new(ResultType::Patients))
+        .unwrap();
+    finished(&f, &status.resource_result_id).await;
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    f.state.results().sweep();
+    assert_eq!(f.state.results().len(), 1);
+}
+
+#[test]
+fn existing_results_directories_are_checked_not_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path());
+    config.data_dir = dir.path().join("data");
+
+    std::fs::create_dir(&config.results_dir).unwrap();
+    std::fs::set_permissions(&config.results_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    hpds_rs::AppState::new(None, &config).unwrap();
+    let mode = std::fs::metadata(&config.results_dir)
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o755);
+
+    std::fs::set_permissions(&config.results_dir, std::fs::Permissions::from_mode(0o775)).unwrap();
+    let error = hpds_rs::AppState::new(None, &config).err().unwrap();
+    assert!(error.to_string().contains("writable"), "{error}");
+}
+
+#[test]
+fn symlinked_results_directories_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path());
+    config.data_dir = dir.path().join("data");
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    std::os::unix::fs::symlink(&real, &config.results_dir).unwrap();
+    let error = hpds_rs::AppState::new(None, &config).err().unwrap();
+    assert!(error.to_string().contains("symbolic link"), "{error}");
+}
+
+#[test]
+fn results_directories_in_the_data_directory_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path());
+    config.data_dir = dir.path().join("data");
+    for results in [config.data_dir.clone(), config.data_dir.join("results")] {
+        config.results_dir = results;
+        let error = hpds_rs::AppState::new(None, &config).err().unwrap();
+        assert!(error.to_string().contains("data directory"), "{error}");
+    }
+    config.results_dir = dir.path().join("elsewhere");
+    hpds_rs::AppState::new(None, &config).unwrap();
 }

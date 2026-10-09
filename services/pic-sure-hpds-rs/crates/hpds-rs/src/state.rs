@@ -1,15 +1,18 @@
 //! State shared by every request handler.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use hpds_query::{Engine, QueryValidator};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::config::Config;
 use crate::error::ApiError;
-use crate::jobs::Jobs;
+use crate::jobs::ResultRegistry;
+use crate::search::SearchIndex;
 
-/// The engine, the async result registry, and the validation settings. Cheap to clone.
+/// The engine, the async result registry, the search index, and the validation settings.
+/// Cheap to clone.
 #[derive(Clone)]
 pub struct AppState {
     inner: Arc<Shared>,
@@ -18,23 +21,30 @@ pub struct AppState {
 struct Shared {
     engine: Option<Arc<Engine>>,
     engine_slots: Arc<Semaphore>,
-    jobs: Jobs,
+    results: ResultRegistry,
+    search_index: Arc<SearchIndex>,
+    sync_timeout: Duration,
     async_validator: QueryValidator,
 }
 
 impl AppState {
     /// State over `engine`, which is `None` when the store could not be opened (every query
     /// route then answers 503 and health reports DOWN), with the registry and validation
-    /// settings of `config`.
+    /// settings of `config`. The lowercase search index is built here, once.
     ///
     /// # Errors
-    /// The I/O error of [`Jobs::new`] when the results directory cannot be prepared.
+    /// The I/O error of [`ResultRegistry::new`] when the results directory cannot be prepared.
     pub fn new(engine: Option<Arc<Engine>>, config: &Config) -> std::io::Result<Self> {
         let engine_slots = Arc::new(Semaphore::new(config.engine_concurrency));
+        let search_index = Arc::new(engine.as_ref().map_or_else(SearchIndex::default, |e| {
+            SearchIndex::build(e.store().index().concepts())
+        }));
         Ok(AppState {
             inner: Arc::new(Shared {
                 engine,
-                jobs: Jobs::new(config, Arc::clone(&engine_slots))?,
+                results: ResultRegistry::new(config, Arc::clone(&engine_slots))?,
+                search_index,
+                sync_timeout: config.sync_timeout,
                 engine_slots,
                 async_validator: QueryValidator {
                     require_authorization_filter: config.require_authorization_filter,
@@ -73,8 +83,18 @@ impl AppState {
     }
 
     /// The async result registry.
-    pub fn jobs(&self) -> &Jobs {
-        &self.inner.jobs
+    pub fn results(&self) -> &ResultRegistry {
+        &self.inner.results
+    }
+
+    /// The lowercase search index over the store's concepts.
+    pub fn search_index(&self) -> &Arc<SearchIndex> {
+        &self.inner.search_index
+    }
+
+    /// How long a sync query may run before the request is answered 503.
+    pub fn sync_timeout(&self) -> Duration {
+        self.inner.sync_timeout
     }
 
     /// The validator `POST /query` applies, with `hpds.requireAuthorizationFilter` from the

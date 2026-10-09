@@ -29,26 +29,53 @@ pub fn read_envelope(body: &[u8]) -> Result<Map<String, Value>, ApiError> {
     Ok(fields)
 }
 
+/// Message answered for a query written in the v1 model.
+pub const V1_QUERY_MESSAGE: &str = "v1 queries are not supported; use /PIC-SURE/v3";
+
+/// Top-level keys of the v1 `Query` that the v3 model does not have.
+const V1_QUERY_KEYS: [&str; 8] = [
+    "fields",
+    "crossCountFields",
+    "requiredFields",
+    "anyRecordOf",
+    "anyRecordOfMulti",
+    "numericFilters",
+    "categoryFilters",
+    "variantInfoFilters",
+];
+
+fn has_v1_keys(query: &Value) -> bool {
+    query
+        .as_object()
+        .is_some_and(|fields| V1_QUERY_KEYS.iter().any(|key| fields.contains_key(*key)))
+}
+
 /// Reads a request body as a `QueryRequest` and its `query` as a v3 [`Query`]. The query may
 /// be a JSON object or a string holding one, as `convertIncomingQuery` accepts both, and is
 /// read with the engine's strict model: unknown fields inside it are refused.
 ///
 /// # Errors
 /// A 400 [`ApiError`] for the envelope errors of [`read_envelope`], a missing or null
-/// `query`, a `query` that is neither an object nor a string, and a query the model refuses.
+/// `query`, a `query` that is neither an object nor a string, a query with v1 keys
+/// ([`V1_QUERY_MESSAGE`]), and a query the model refuses.
 pub fn read_query(body: &[u8]) -> Result<Query, ApiError> {
     let mut fields = read_envelope(body)?;
-    let parsed = match fields.remove("query") {
+    let value = match fields.remove("query") {
         None | Some(Value::Null) => return Err(ApiError::bad_request("the request has no query")),
-        Some(Value::String(text)) => serde_json::from_str(&text),
-        Some(object @ Value::Object(_)) => serde_json::from_value(object),
+        Some(Value::String(text)) => serde_json::from_str::<Value>(&text)
+            .map_err(|e| ApiError::bad_request(format!("the query is not valid: {e}")))?,
+        Some(object @ Value::Object(_)) => object,
         Some(_) => {
             return Err(ApiError::bad_request(
                 "query must be a JSON object or a string holding one",
             ));
         }
     };
-    parsed.map_err(|e| ApiError::bad_request(format!("the query is not valid: {e}")))
+    if has_v1_keys(&value) {
+        return Err(ApiError::bad_request(V1_QUERY_MESSAGE));
+    }
+    serde_json::from_value(value)
+        .map_err(|e| ApiError::bad_request(format!("the query is not valid: {e}")))
 }
 
 /// The lowercase canonical form of `text` when it is a UUID in the `8-4-4-4-12` hexadecimal
@@ -109,6 +136,19 @@ mod tests {
         ] {
             let error = read_query(body).unwrap_err();
             assert_eq!(error.status, 400, "{}", String::from_utf8_lossy(body));
+        }
+    }
+
+    #[test]
+    fn v1_queries_are_refused_with_one_message() {
+        for query in [
+            r#"{"query":{"fields":["\\a\\"],"expectedResultType":"COUNT"}}"#,
+            r#"{"query":{"categoryFilters":{},"expectedResultType":"COUNT"}}"#,
+            r#"{"query":"{\"requiredFields\":[],\"expectedResultType\":\"COUNT\"}"}"#,
+        ] {
+            let error = read_query(query.as_bytes()).unwrap_err();
+            assert_eq!(error.status, 400);
+            assert_eq!(error.message, V1_QUERY_MESSAGE);
         }
     }
 

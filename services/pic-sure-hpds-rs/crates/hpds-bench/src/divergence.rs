@@ -15,6 +15,8 @@ pub enum Condition {
     /// One side timed out, or its JSON object holds a strict subset of the other side's keys
     /// and every key both sides hold has an equal value.
     StrictSubsetOrTimeout,
+    /// Every side that answered 200 sent an empty body, and at least one side answered 200.
+    SuccessBodyEmpty,
 }
 
 /// One known and accepted difference between the Java and Rust services.
@@ -26,6 +28,9 @@ pub struct Rule {
     /// Glob over entry names; `*` matches any run of characters.
     #[serde(default)]
     pub entry: Option<String>,
+    /// Exact corpus entry names the rule is limited to.
+    #[serde(default)]
+    pub entries: Option<Vec<String>>,
     /// Requested result type the rule is limited to.
     #[serde(default, rename = "resultType")]
     pub result_type: Option<String>,
@@ -90,6 +95,22 @@ fn strict_subset(
         })
 }
 
+fn empty_success_body(a: &Outcome, b: &Outcome) -> bool {
+    let bodies = [a, b]
+        .into_iter()
+        .filter(|outcome| outcome.status_code() == 200)
+        .map(|outcome| match outcome {
+            Outcome::Sync(sync) => sync.body.is_empty(),
+            Outcome::Async(asynchronous) => asynchronous
+                .result_body
+                .as_deref()
+                .is_none_or(str::is_empty),
+            Outcome::TimedOut | Outcome::Failed(_) => false,
+        })
+        .collect::<Vec<_>>();
+    !bodies.is_empty() && bodies.into_iter().all(|empty| empty)
+}
+
 fn subset_or_timeout(a: &Outcome, b: &Outcome) -> bool {
     if a.is_timeout() || b.is_timeout() {
         return true;
@@ -110,6 +131,11 @@ impl Rule {
         {
             return false;
         }
+        if let Some(names) = &self.entries
+            && !names.contains(&entry.name)
+        {
+            return false;
+        }
         if let Some(result_type) = &self.result_type
             && result_type != &entry.result_type
         {
@@ -123,6 +149,7 @@ impl Rule {
         }
         match self.when {
             Some(Condition::StrictSubsetOrTimeout) => subset_or_timeout(a, b),
+            Some(Condition::SuccessBodyEmpty) => empty_success_body(a, b),
             None => true,
         }
     }
@@ -140,12 +167,13 @@ impl Divergences {
             .map_err(|e| BenchError::json(path.display().to_string(), e))?;
         for rule in &parsed.rules {
             if rule.entry.is_none()
+                && rule.entries.is_none()
                 && rule.result_type.is_none()
                 && rule.statuses.is_none()
                 && rule.when.is_none()
             {
                 return Err(BenchError::Invalid(format!(
-                    "divergence rule '{}' has no entry, resultType, statuses or when",
+                    "divergence rule '{}' has no entry, entries, resultType, statuses or when",
                     rule.name
                 )));
             }
@@ -234,6 +262,26 @@ mod tests {
         assert!(set.find(&e, &sync(200, r#"{"a":1.0}"#), &full).is_none());
         let other = entry("0007-x-cross-count", "CROSS_COUNT");
         assert!(set.find(&other, &Outcome::TimedOut, &full).is_none());
+    }
+
+    #[test]
+    fn named_entries_with_an_empty_success_body_are_accepted() {
+        let set = rules(json!([
+            {"name": "empty", "entries": ["error-a", "error-b"], "statuses": [200, 400],
+             "when": "success-body-empty", "reason": "why"}
+        ]));
+        let a = entry("error-a", "COUNT");
+        assert!(set.find(&a, &sync(200, ""), &sync(400, "msg")).is_some());
+        assert!(set.find(&a, &sync(400, "msg"), &sync(200, "")).is_some());
+        assert!(set.find(&a, &sync(200, "7"), &sync(400, "msg")).is_none());
+        assert!(
+            set.find(&entry("error-c", "COUNT"), &sync(200, ""), &sync(400, "m"))
+                .is_none()
+        );
+        assert!(
+            set.find(&entry("error-b", "COUNT"), &sync(500, ""), &sync(400, "m"))
+                .is_none()
+        );
     }
 
     #[test]

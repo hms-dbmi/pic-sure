@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{Query as QueryParams, State};
@@ -16,23 +17,90 @@ use crate::state::AppState;
 
 const JSON: &str = "application/json";
 
+/// Lowercase copies of every concept path and categorical value, made once at startup so a
+/// search compares against them without allocating.
+///
+/// Java lowercases with `String.toLowerCase()`, which uses the JVM's default locale, and this
+/// uses Rust's `str::to_lowercase`, which applies the Unicode default case mapping (including
+/// the final-sigma rule, as Java does) regardless of locale. The two agree for every locale
+/// except locales with their own rules for `I` and `i`: under a Turkish or Azerbaijani default
+/// locale Java maps `I` to the dotless `ı` and Rust always maps it to `i`, and Lithuanian
+/// adds combining dots. A JVM with an English or root default locale, which is what a
+/// container normally has, matches Rust.
+#[derive(Debug, Default)]
+pub struct SearchIndex {
+    entries: Vec<SearchEntry>,
+}
+
+#[derive(Debug)]
+struct SearchEntry {
+    path: String,
+    categories: Vec<String>,
+}
+
+impl SearchIndex {
+    /// The index over `concepts`, in the same order.
+    pub fn build(concepts: &[ConceptMeta]) -> Self {
+        let entries = concepts
+            .iter()
+            .map(|concept| SearchEntry {
+                path: concept.path.to_lowercase(),
+                categories: if concept.concept_type == ConceptType::Categorical {
+                    concept
+                        .category_values
+                        .iter()
+                        .flatten()
+                        .map(|value| value.to_lowercase())
+                        .collect()
+                } else {
+                    Vec::new()
+                },
+            })
+            .collect();
+        SearchIndex { entries }
+    }
+
+    fn matches(&self, position: usize, needle: &str) -> bool {
+        self.entries.get(position).is_some_and(|entry| {
+            entry.path.contains(needle) || entry.categories.iter().any(|value| value == needle)
+        })
+    }
+}
+
 /// `POST /search`: the concepts matching the request's `query`, as `SearchResults`.
 ///
 /// The term is `query` as Java's `toString` writes it, lowercased. A concept matches when its
 /// lowercased path contains the term, or when it is categorical and one of its lowercased
 /// category values equals the term. The body is
 /// `{"results":{"phenotypes":{<path>:<ColumnMeta>...},"info":{}},"searchQuery":<term as sent>}`.
+/// The scan and the rendering run on tokio's blocking pool.
 ///
 /// With a null or missing `query`, Java serializes its whole dictionary's entry set, so
 /// `phenotypes` is an array of one-entry objects `{<path>:<ColumnMeta>}` for every concept and
 /// `searchQuery` is empty. That shape is reproduced.
 pub async fn search(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
     let mut fields = read_envelope(&body)?;
-    let engine = state.engine()?;
-    let concepts = engine.store().index().concepts();
+    let engine = Arc::clone(state.engine()?);
+    let index = Arc::clone(state.search_index());
+    let term = match fields.remove("query") {
+        None | Some(Value::Null) => None,
+        Some(term) => Some(java_to_string(&term)),
+    };
+    let out = tokio::task::spawn_blocking(move || {
+        render_search(engine.store().index().concepts(), &index, term)
+    })
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "search task failed");
+        ApiError::internal()
+    })?;
+    Ok(([(CONTENT_TYPE, JSON)], out).into_response())
+}
+
+fn render_search(concepts: &[ConceptMeta], index: &SearchIndex, term: Option<String>) -> String {
     let mut out = String::from(r#"{"results":{"phenotypes":"#);
-    let search_query = match fields.remove("query") {
-        None | Some(Value::Null) => {
+    let search_query = match term {
+        None => {
             out.push('[');
             for (i, concept) in concepts.iter().enumerate() {
                 if i > 0 {
@@ -48,11 +116,13 @@ pub async fn search(State(state): State<AppState>, body: Bytes) -> Result<Respon
             String::new()
         }
         Some(term) => {
-            let term = java_to_string(&term);
             let needle = term.to_lowercase();
             out.push('{');
             let mut first = true;
-            for concept in concepts.iter().filter(|c| matches(c, &needle)) {
+            for (position, concept) in concepts.iter().enumerate() {
+                if !index.matches(position, &needle) {
+                    continue;
+                }
                 if !first {
                     out.push(',');
                 }
@@ -68,17 +138,7 @@ pub async fn search(State(state): State<AppState>, body: Bytes) -> Result<Respon
     out.push_str(r#","info":{}},"searchQuery":"#);
     push_string(&mut out, &search_query);
     out.push('}');
-    Ok(([(CONTENT_TYPE, JSON)], out).into_response())
-}
-
-fn matches(concept: &ConceptMeta, needle: &str) -> bool {
-    concept.path.to_lowercase().contains(needle)
-        || (concept.concept_type == ConceptType::Categorical
-            && concept
-                .category_values
-                .iter()
-                .flatten()
-                .any(|value| value.to_lowercase() == needle))
+    out
 }
 
 /// `GET /search/values/`: genomic concept values. This engine holds no genomic data, so the

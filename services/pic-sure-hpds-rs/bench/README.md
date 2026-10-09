@@ -57,8 +57,9 @@ integers. CSV compares the header exactly and the rows as a multiset; a row that
 or has the wrong field count is a difference.
 
 A difference matching a rule in the divergence file prints as `WHITELISTED` with the rule's
-reason and does not fail the run. A rule names an entry glob, a result type, an unordered status
-pair, or the `strict-subset-or-timeout` condition. `--retries N` retries other differences; an
+reason and does not fail the run. A rule names an entry glob, a list of exact entry names, a result type, an unordered status
+pair, or a condition: `strict-subset-or-timeout`, or `success-body-empty` (every side that
+answered 200 sent an empty body). `--retries N` retries other differences; an
 entry that recovers is listed as `FLAKY` with the side that answered differently between
 attempts.
 

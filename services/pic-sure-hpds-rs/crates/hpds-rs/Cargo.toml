@@ -18,6 +18,11 @@ hpds-format.workspace = true
 hpds-query = { workspace = true, features = ["tokio"] }
 axum.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "sync", "time"] }
+hyper = { version = "1", features = ["http1", "http2", "server"] }
+hyper-util = { version = "0.1", features = ["server-auto", "server-graceful", "service", "tokio", "http1", "http2"] }
+tower-http = { version = "0.6", default-features = false, features = ["timeout"] }
+tracing-appender = "0.2"
+libc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

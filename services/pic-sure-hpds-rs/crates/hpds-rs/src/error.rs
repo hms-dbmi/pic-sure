@@ -1,15 +1,18 @@
-//! The JSON error responses.
+//! The plain-text error responses.
 
-use axum::Json;
 use axum::http::StatusCode;
+use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use hpds_query::QueryError;
-use serde::Serialize;
 
 /// Message sent in place of the detail of a server-side failure, which goes to the log.
 pub const SERVER_ERROR_MESSAGE: &str = "the request could not be completed; see the server log";
 
-/// An error answered as `{"error": <reason phrase>, "message": <message>}`.
+/// Content type of every error body.
+pub const ERROR_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
+
+/// An error answered with its message as the whole `text/plain` body, as Java's 400 bodies
+/// are, so the query service shows a readable message.
 ///
 /// Messages describe the request (and may repeat its own concept paths) but never carry
 /// observation values from the store.
@@ -19,12 +22,6 @@ pub struct ApiError {
     pub status: StatusCode,
     /// What went wrong.
     pub message: String,
-}
-
-#[derive(Serialize)]
-struct ErrorBody<'a> {
-    error: &'a str,
-    message: &'a str,
 }
 
 impl ApiError {
@@ -71,10 +68,11 @@ impl From<QueryError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = ErrorBody {
-            error: self.status.canonical_reason().unwrap_or("Error"),
-            message: &self.message,
-        };
-        (self.status, Json(body)).into_response()
+        (
+            self.status,
+            [(CONTENT_TYPE, ERROR_CONTENT_TYPE)],
+            self.message,
+        )
+            .into_response()
     }
 }

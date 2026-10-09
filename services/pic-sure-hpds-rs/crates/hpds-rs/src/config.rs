@@ -14,25 +14,42 @@ pub const DEFAULT_RESULTS_DIRECTORY: &str = "/tmp/hpds-rs-results";
 /// Largest request body accepted, in bytes.
 pub const MAX_BODY_BYTES: usize = 2 << 20;
 
+/// Default byte cap on the decoded blocks one DATAFRAME export holds, 2 GiB.
+pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
+
+/// Default byte cap on the finished export files held at once, 10 GiB.
+pub const DEFAULT_RESULT_MAX_BYTES: u64 = 10 << 30;
+
+/// Default seconds a sync query may run before the request is answered 503.
+pub const DEFAULT_SYNC_TIMEOUT_SECONDS: u64 = 300;
+
+const DEFAULT_BLOCKING_THREADS: usize = 64;
+const BLOCKING_THREAD_HEADROOM: usize = 16;
+
 /// Every setting the service reads at startup.
 ///
 /// | Variable | Default | Meaning |
 /// |---|---|---|
 /// | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Store directory |
 /// | `SERVER_PORT` | 8080 | Listen port |
-/// | `CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache |
+/// | `HPDS_CACHE_BYTES` (or the old name `CACHE_BYTES`, with a warning) | 4 GiB | Byte bound of the decoded block cache |
 /// | `CACHE_SIZE` | ignored | Java's cache size in cubes; logged and ignored |
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
 /// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse async queries without an authorization filter |
 /// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
-/// | `HPDS_RESULT_MAX_AGE_SECONDS` | 3600 | How long a finished result is kept |
+/// | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept; 0 or unset keeps it until evicted |
+/// | `HPDS_RESULT_MAX_BYTES` | 10 GiB | Byte cap on finished export files; the oldest finished result goes first |
+/// | `ID_BATCH_SIZE` | 0 | Java's export switch: 0 disables DATAFRAME exports, any larger value enables them |
+/// | `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds; a wider export ends in ERROR |
+/// | `HPDS_SYNC_TIMEOUT_SECONDS` | 300 | A sync query running longer is answered 503 |
+/// | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated file there |
 /// | `SMALL_JOB_LIMIT` | 100 | An export with more `select` paths than this runs on the large pool |
 /// | `SMALL_TASK_THREADS` | 1 | Exports run at once on the small pool |
 /// | `LARGE_TASK_THREADS` | 1 | Exports run at once on the large pool |
 /// | `HPDS_EXPORT_CONCURRENCY` | 2 | Exports run at once across both pools; each pins its selected blocks |
 /// | `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) run at once |
-/// | `HPDS_BLOCKING_THREADS` | 64 | Cap on tokio's blocking threads, which run every engine call |
+/// | `HPDS_BLOCKING_THREADS` | 64, or the engine concurrency plus 16 when larger | Cap on tokio's blocking threads, which run every engine call; must exceed `HPDS_ENGINE_CONCURRENCY` |
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     /// The store directory.
@@ -47,8 +64,18 @@ pub struct Config {
     pub results_dir: PathBuf,
     /// Most async results held at once.
     pub result_limit: usize,
-    /// How long a finished result is kept.
-    pub result_max_age: Duration,
+    /// How long a finished result is kept, or `None` to keep it until evicted.
+    pub result_max_age: Option<Duration>,
+    /// Byte cap on finished export files held at once.
+    pub result_max_bytes: u64,
+    /// Java's `ID_BATCH_SIZE`; 0 disables DATAFRAME exports.
+    pub id_batch_size: u64,
+    /// Cap on the decoded blocks one DATAFRAME export holds.
+    pub export_pin_bytes: u64,
+    /// How long a sync query may run before the request is answered 503.
+    pub sync_timeout: Duration,
+    /// Directory for the rotated log file, when set.
+    pub log_directory: Option<PathBuf>,
     /// An export with more `select` paths than this runs on the large pool.
     pub small_job_limit: usize,
     /// Exports run at once on the small pool.
@@ -78,15 +105,49 @@ impl Config {
     /// is unset. Every variable falls back to the default in the table above.
     ///
     /// # Errors
-    /// A message naming the first variable whose value cannot be parsed.
+    /// A message naming the first variable whose value cannot be parsed, or the pair of
+    /// settings that conflict (`HPDS_ENGINE_CONCURRENCY` must be below `HPDS_BLOCKING_THREADS`).
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let mut warnings = Vec::new();
         if lookup("CACHE_SIZE").is_some() {
             warnings.push(
-                "CACHE_SIZE counts cubes in the Java service and is ignored; set CACHE_BYTES"
+                "CACHE_SIZE counts cubes in the Java service and is ignored; set HPDS_CACHE_BYTES"
                     .to_owned(),
             );
         }
+        let cache_bytes = match (lookup("HPDS_CACHE_BYTES"), lookup("CACHE_BYTES")) {
+            (Some(_), Some(_)) => {
+                warnings.push(
+                    "CACHE_BYTES is the old name and is ignored; HPDS_CACHE_BYTES is set"
+                        .to_owned(),
+                );
+                parse_or(&lookup, "HPDS_CACHE_BYTES", DEFAULT_CACHE_BYTES)?
+            }
+            (Some(_), None) => parse_or(&lookup, "HPDS_CACHE_BYTES", DEFAULT_CACHE_BYTES)?,
+            (None, Some(_)) => {
+                warnings
+                    .push("CACHE_BYTES is deprecated; rename it to HPDS_CACHE_BYTES".to_owned());
+                parse_or(&lookup, "CACHE_BYTES", DEFAULT_CACHE_BYTES)?
+            }
+            (None, None) => DEFAULT_CACHE_BYTES,
+        };
+        let engine_concurrency = positive(&lookup, "HPDS_ENGINE_CONCURRENCY", cpu_count())?;
+        let blocking_threads = positive(
+            &lookup,
+            "HPDS_BLOCKING_THREADS",
+            DEFAULT_BLOCKING_THREADS.max(engine_concurrency + BLOCKING_THREAD_HEADROOM),
+        )?;
+        if engine_concurrency >= blocking_threads {
+            return Err(format!(
+                "HPDS_ENGINE_CONCURRENCY ({engine_concurrency}) must be less than \
+                 HPDS_BLOCKING_THREADS ({blocking_threads}); the difference is the headroom \
+                 file reads need on tokio's blocking pool"
+            ));
+        }
+        let result_max_age = match parse_or(&lookup, "HPDS_RESULT_MAX_AGE_SECONDS", 0u64)? {
+            0 => None,
+            seconds => Some(Duration::from_secs(seconds)),
+        };
         let require_authorization_filter = match lookup("HPDS_REQUIRE_AUTHORIZATION_FILTER") {
             Some(value) => parse_bool("HPDS_REQUIRE_AUTHORIZATION_FILTER", &value)?,
             None => match lookup("hpds.requireAuthorizationFilter") {
@@ -104,7 +165,7 @@ impl Config {
             ),
             port: parse_or(&lookup, "SERVER_PORT", DEFAULT_PORT)?,
             store: StoreOptions {
-                cache_bytes: parse_or(&lookup, "CACHE_BYTES", DEFAULT_CACHE_BYTES)?,
+                cache_bytes,
                 allow_plain,
             },
             require_authorization_filter,
@@ -113,17 +174,32 @@ impl Config {
                     .unwrap_or_else(|| DEFAULT_RESULTS_DIRECTORY.to_owned()),
             ),
             result_limit: positive(&lookup, "HPDS_RESULT_LIMIT", 1000)?,
-            result_max_age: Duration::from_secs(parse_or(
+            result_max_age,
+            result_max_bytes: positive_u64(
                 &lookup,
-                "HPDS_RESULT_MAX_AGE_SECONDS",
-                3600,
+                "HPDS_RESULT_MAX_BYTES",
+                DEFAULT_RESULT_MAX_BYTES,
+            )?,
+            id_batch_size: parse_or(&lookup, "ID_BATCH_SIZE", 0)?,
+            export_pin_bytes: positive_u64(
+                &lookup,
+                "HPDS_EXPORT_PIN_BYTES",
+                DEFAULT_EXPORT_PIN_BYTES,
+            )?,
+            sync_timeout: Duration::from_secs(positive_u64(
+                &lookup,
+                "HPDS_SYNC_TIMEOUT_SECONDS",
+                DEFAULT_SYNC_TIMEOUT_SECONDS,
             )?),
+            log_directory: lookup("HPDS_LOG_DIRECTORY")
+                .filter(|dir| !dir.trim().is_empty())
+                .map(PathBuf::from),
             small_job_limit: parse_or(&lookup, "SMALL_JOB_LIMIT", 100)?,
             small_task_threads: positive(&lookup, "SMALL_TASK_THREADS", 1)?,
             large_task_threads: positive(&lookup, "LARGE_TASK_THREADS", 1)?,
             export_concurrency: positive(&lookup, "HPDS_EXPORT_CONCURRENCY", 2)?,
-            engine_concurrency: positive(&lookup, "HPDS_ENGINE_CONCURRENCY", cpu_count())?,
-            blocking_threads: positive(&lookup, "HPDS_BLOCKING_THREADS", 64)?,
+            engine_concurrency,
+            blocking_threads,
             warnings,
         })
     }
@@ -170,6 +246,17 @@ fn positive(
     }
 }
 
+fn positive_u64(
+    lookup: &impl Fn(&str) -> Option<String>,
+    name: &str,
+    default: u64,
+) -> Result<u64, String> {
+    match parse_or(lookup, name, default)? {
+        0 => Err(format!("{name} must be at least 1")),
+        value => Ok(value),
+    }
+}
+
 fn parse_bool(name: &str, value: &str) -> Result<bool, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" => Ok(true),
@@ -208,6 +295,58 @@ mod tests {
             (100, 1, 1)
         );
         assert!(c.warnings.is_empty());
+        assert_eq!(c.result_max_age, None);
+        assert_eq!(c.result_max_bytes, 10 << 30);
+        assert_eq!(c.id_batch_size, 0);
+        assert_eq!(c.export_pin_bytes, 2 << 30);
+        assert_eq!(c.sync_timeout, Duration::from_secs(300));
+        assert_eq!(c.result_limit, 1000);
+        assert!(c.engine_concurrency < c.blocking_threads);
+    }
+
+    #[test]
+    fn result_age_zero_means_unlimited() {
+        assert_eq!(
+            config(&[("HPDS_RESULT_MAX_AGE_SECONDS", "0")])
+                .unwrap()
+                .result_max_age,
+            None
+        );
+        assert_eq!(
+            config(&[("HPDS_RESULT_MAX_AGE_SECONDS", "60")])
+                .unwrap()
+                .result_max_age,
+            Some(Duration::from_secs(60))
+        );
+    }
+
+    #[test]
+    fn cache_bytes_old_name_is_accepted_with_a_warning() {
+        let old = config(&[("CACHE_BYTES", "2048")]).unwrap();
+        assert_eq!(old.store.cache_bytes, 2048);
+        assert_eq!(old.warnings.len(), 1);
+        let both = config(&[("CACHE_BYTES", "2048"), ("HPDS_CACHE_BYTES", "4096")]).unwrap();
+        assert_eq!(both.store.cache_bytes, 4096);
+        let new = config(&[("HPDS_CACHE_BYTES", "4096")]).unwrap();
+        assert_eq!((new.store.cache_bytes, new.warnings.len()), (4096, 0));
+    }
+
+    #[test]
+    fn engine_concurrency_must_leave_blocking_headroom() {
+        let error = config(&[
+            ("HPDS_ENGINE_CONCURRENCY", "8"),
+            ("HPDS_BLOCKING_THREADS", "8"),
+        ])
+        .unwrap_err();
+        assert!(error.contains("HPDS_ENGINE_CONCURRENCY"), "{error}");
+        assert!(config(&[("HPDS_ENGINE_CONCURRENCY", "128")]).is_ok());
+        assert!(
+            config(&[
+                ("HPDS_ENGINE_CONCURRENCY", "8"),
+                ("HPDS_BLOCKING_THREADS", "9")
+            ])
+            .is_ok()
+        );
     }
 
     #[test]
@@ -229,7 +368,7 @@ mod tests {
 
     #[test]
     fn cache_size_is_ignored_with_a_warning() {
-        let c = config(&[("CACHE_SIZE", "1500"), ("CACHE_BYTES", "1024")]).unwrap();
+        let c = config(&[("CACHE_SIZE", "1500"), ("HPDS_CACHE_BYTES", "1024")]).unwrap();
         assert_eq!(c.store.cache_bytes, 1024);
         assert_eq!(c.warnings.len(), 1);
     }
@@ -239,5 +378,7 @@ mod tests {
         assert!(config(&[("SERVER_PORT", "http")]).is_err());
         assert!(config(&[("SMALL_TASK_THREADS", "0")]).is_err());
         assert!(config(&[("HPDS_ALLOW_PLAIN", "maybe")]).is_err());
+        assert!(config(&[("HPDS_SYNC_TIMEOUT_SECONDS", "0")]).is_err());
+        assert!(config(&[("HPDS_RESULT_MAX_BYTES", "0")]).is_err());
     }
 }

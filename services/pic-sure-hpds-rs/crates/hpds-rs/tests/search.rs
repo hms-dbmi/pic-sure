@@ -2,7 +2,7 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{SEX, fixture, get, post};
-use serde_json::{Value, json};
+use serde_json::json;
 
 #[tokio::test]
 async fn search_matches_javas_bytes_for_a_numeric_concept() {
@@ -82,7 +82,7 @@ async fn search_values_is_an_empty_page() {
     ] {
         let reply = get(&f.app, &format!("/PIC-SURE/v3/search/values/?{query}")).await;
         assert_eq!(reply.status, StatusCode::BAD_REQUEST, "{query}");
-        assert!(reply.json()["message"].is_string());
+        assert!(!reply.body.is_empty(), "{query}");
     }
 }
 
@@ -91,5 +91,6 @@ async fn malformed_search_bodies_are_400() {
     let f = fixture();
     let reply = post(&f.app, "/PIC-SURE/v3/search", "nope").await;
     assert_eq!(reply.status, StatusCode::BAD_REQUEST);
-    let _: Value = reply.json();
+    assert_eq!(reply.content_type(), Some("text/plain; charset=utf-8"));
+    assert!(!reply.body.is_empty());
 }

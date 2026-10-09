@@ -4,7 +4,7 @@
       "name": "invalid-request-status",
       "entry": "error-*",
       "statuses": [400, 500],
-      "reason": "Spec divergence, HTTP errors: Java answers a bad sync query or a validation failure with 500 (the query service then returns 502); Rust returns 400 with a JSON message."
+      "reason": "Spec divergence, HTTP errors: Java answers a bad sync query or a validation failure with 500 (the query service then returns 502); Rust returns 400 with a text message."
     },
     {
       "name": "unknown-async-id-status",
@@ -14,9 +14,14 @@
     },
     {
       "name": "invalid-request-empty-200",
-      "entry": "error-*",
+      "entries": [
+        "error-filter-without-values-or-range",
+        "error-empty-subquery",
+        "error-genomic-filters-without-genotype-data"
+      ],
       "statuses": [200, 400],
-      "reason": "Spec divergence, HTTP errors: Java answers a FILTER with neither values nor a range, an empty subquery, or non-empty genomicFilters with 200 and an empty body; Rust returns 400 with a JSON message."
+      "when": "success-body-empty",
+      "reason": "Spec divergence, HTTP errors: Java answers a FILTER with neither values nor a range, an empty subquery, or non-empty genomicFilters with 200 and an empty body; Rust returns 400 with a text message. The rule covers only these entries and only when the 200 side's body is empty."
     },
     {
       "name": "unknown-async-id-status-empty-200",

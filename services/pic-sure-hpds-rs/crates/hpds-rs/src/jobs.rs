@@ -1,17 +1,18 @@
 //! The async query lifecycle: `POST /query`, `/query/{id}/status`, `/query/{id}/result` and
-//! `/query/{id}/signed-url`, with a result registry bounded by count and age and the PATIENTS
-//! and DATAFRAME CSV exports.
+//! `/query/{id}/signed-url`, with a result registry bounded by count, bytes and optionally age,
+//! and the PATIENTS and DATAFRAME CSV exports.
 //!
 //! Java keeps every result in an unbounded map and names it with a UUIDv5 of the query text.
 //! Here a result is named with a random UUID (callers treat the id as opaque), finished results
-//! are dropped after a maximum age or when the registry is full (oldest finished first, never
-//! a pending or running one), and each export is a file in the results directory, removed
-//! with its registry entry.
+//! are dropped after a maximum age, when the registry is full, or when the export files pass
+//! the byte cap (oldest finished first, never a pending or running one), and each export is a
+//! file in the results directory, removed with its registry entry. Files are removed after the
+//! registry lock is released.
 
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
+use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::{self, BufWriter, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -36,11 +37,14 @@ use crate::state::AppState;
 /// Content type of a finished export, as Java's `CsvWriter.getResponseType` gives it.
 pub const RESULT_CONTENT_TYPE: &str = "text/plain";
 
+/// Message of an export that is refused because Java's `ID_BATCH_SIZE` is 0.
+pub const EXPORTS_DISABLED_MESSAGE: &str = "exports are disabled (ID_BATCH_SIZE=0)";
+
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 
 /// Where an async query is in its lifecycle. The names are Java's `AsyncResult.Status`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum JobState {
+pub enum ResultState {
     /// Waiting for a slot on its pool.
     Pending,
     /// Being computed.
@@ -59,14 +63,14 @@ pub enum JobState {
     },
 }
 
-impl JobState {
+impl ResultState {
     /// The `AsyncResult.Status` name: `PENDING`, `RUNNING`, `SUCCESS` or `ERROR`.
     pub fn name(&self) -> &'static str {
         match self {
-            JobState::Pending => "PENDING",
-            JobState::Running => "RUNNING",
-            JobState::Success { .. } => "SUCCESS",
-            JobState::Error { .. } => "ERROR",
+            ResultState::Pending => "PENDING",
+            ResultState::Running => "RUNNING",
+            ResultState::Success { .. } => "SUCCESS",
+            ResultState::Error { .. } => "ERROR",
         }
     }
 
@@ -74,15 +78,18 @@ impl JobState {
     /// SUCCESS is AVAILABLE and ERROR is ERROR.
     pub fn picsure_status(&self) -> &'static str {
         match self {
-            JobState::Pending => "QUEUED",
-            JobState::Running => "PENDING",
-            JobState::Success { .. } => "AVAILABLE",
-            JobState::Error { .. } => "ERROR",
+            ResultState::Pending => "QUEUED",
+            ResultState::Running => "PENDING",
+            ResultState::Success { .. } => "AVAILABLE",
+            ResultState::Error { .. } => "ERROR",
         }
     }
 
     fn is_finished(&self) -> bool {
-        matches!(self, JobState::Success { .. } | JobState::Error { .. })
+        matches!(
+            self,
+            ResultState::Success { .. } | ResultState::Error { .. }
+        )
     }
 }
 
@@ -126,21 +133,21 @@ pub struct ResultMetadata {
 }
 
 #[derive(Debug, Clone)]
-struct Job {
+struct StoredResult {
     picsure_query_id: String,
     queued_ms: u64,
     completed_ms: u64,
-    state: JobState,
+    state: ResultState,
 }
 
-impl Job {
+impl StoredResult {
     fn status(&self, id: &str) -> QueryStatus {
         let size = match &self.state {
-            JobState::Success { size, .. } => *size,
+            ResultState::Success { size, .. } => *size,
             _ => 0,
         };
         let error = match &self.state {
-            JobState::Error { message } => Some(message.clone()),
+            ResultState::Error { message } => Some(message.clone()),
             _ => None,
         };
         QueryStatus {
@@ -165,15 +172,15 @@ impl Job {
     }
 }
 
-type Registry = HashMap<String, Job>;
+type Entries = HashMap<String, StoredResult>;
 
-/// The registry of async queries and the two pools that run exports.
+/// The registry of async query results and the two pools that run exports.
 ///
 /// An export with more `select` paths than `SMALL_JOB_LIMIT` runs on the large pool, the
 /// others on the small pool, each pool running at most its configured number of exports at
 /// once. The computation runs on tokio's blocking pool.
-pub struct Jobs {
-    registry: Arc<Mutex<Registry>>,
+pub struct ResultRegistry {
+    entries: Arc<Mutex<Entries>>,
     small: Arc<Semaphore>,
     large: Arc<Semaphore>,
     exports: Arc<Semaphore>,
@@ -181,20 +188,28 @@ pub struct Jobs {
     small_job_limit: usize,
     results_dir: PathBuf,
     limit: usize,
-    max_age: Duration,
+    max_age: Option<Duration>,
+    max_bytes: u64,
+    id_batch_size: u64,
 }
 
-impl Jobs {
+impl ResultRegistry {
     /// An empty registry with the pool sizes, bounds and results directory of `config`. Every
-    /// export also holds one of `engine_slots` while it computes. Creates the results directory with mode 0700 and removes export files a previous
-    /// process left in it.
+    /// export also holds one of `engine_slots` while it computes.
+    ///
+    /// A results directory that does not exist is created with mode 0700. An existing one is
+    /// used only when it is a real directory (not a symbolic link) owned by the current user
+    /// with no group or other write bit, and its permissions are left as they are. The
+    /// directory must not be the data directory or lie inside it. Export files a previous
+    /// process left in it are removed.
     ///
     /// # Errors
-    /// The I/O error when the directory cannot be created, restricted or cleaned.
+    /// The I/O error when the directory cannot be created, fails these checks, or cannot be
+    /// cleaned.
     pub fn new(config: &Config, engine_slots: Arc<Semaphore>) -> io::Result<Self> {
-        prepare_results_dir(&config.results_dir)?;
-        Ok(Jobs {
-            registry: Arc::new(Mutex::new(HashMap::new())),
+        prepare_results_dir(&config.results_dir, &config.data_dir)?;
+        Ok(ResultRegistry {
+            entries: Arc::new(Mutex::new(HashMap::new())),
             small: Arc::new(Semaphore::new(config.small_task_threads)),
             large: Arc::new(Semaphore::new(config.large_task_threads)),
             exports: Arc::new(Semaphore::new(config.export_concurrency)),
@@ -203,12 +218,14 @@ impl Jobs {
             results_dir: config.results_dir.clone(),
             limit: config.result_limit,
             max_age: config.result_max_age,
+            max_bytes: config.result_max_bytes,
+            id_batch_size: config.id_batch_size,
         })
     }
 
     /// Registers `query` and starts its export. DATAFRAME_TIMESERIES and DATAFRAME_PFB are
-    /// registered already failed, since this engine does not produce them. Returns the
-    /// status right after registration.
+    /// registered already failed, since this engine does not produce them, and so is
+    /// DATAFRAME while `ID_BATCH_SIZE` is 0. Returns the status right after registration.
     ///
     /// # Errors
     /// A 503 [`ApiError`] when the registry is full of pending and running queries.
@@ -220,25 +237,34 @@ impl Jobs {
                 "{} exports are not supported by this phenotype-only HPDS",
                 query.expected_result_type
             )),
+            ResultType::Dataframe if self.id_batch_size == 0 => {
+                Some(EXPORTS_DISABLED_MESSAGE.to_owned())
+            }
             _ => None,
         };
-        let job = Job {
+        let entry = StoredResult {
             picsure_query_id: query.id.clone().unwrap_or_else(random_uuid),
             queued_ms: now,
             completed_ms: if refusal.is_some() { now } else { 0 },
             state: match &refusal {
-                Some(message) => JobState::Error {
+                Some(message) => ResultState::Error {
                     message: message.clone(),
                 },
-                None => JobState::Pending,
+                None => ResultState::Pending,
             },
         };
-        let status = job.status(&id);
-        {
-            let mut registry = lock(&self.registry);
-            self.make_room(&mut registry, now)?;
-            registry.insert(id.clone(), job);
-        }
+        let status = entry.status(&id);
+        let mut removed = Vec::new();
+        let admitted = {
+            let mut entries = lock(&self.entries);
+            let admitted = self.make_room(&mut entries, now, &mut removed);
+            if admitted.is_ok() {
+                entries.insert(id.clone(), entry);
+            }
+            admitted
+        };
+        remove_files(&removed);
+        admitted?;
         if refusal.is_none() {
             self.spawn_export(id, engine, query);
         }
@@ -253,7 +279,8 @@ impl Jobs {
         };
         let exports = Arc::clone(&self.exports);
         let engine_slots = Arc::clone(&self.engine_slots);
-        let registry = Arc::clone(&self.registry);
+        let entries = Arc::clone(&self.entries);
+        let max_bytes = self.max_bytes;
         let file = self.results_dir.join(format!("result-{id}.csv"));
         tokio::spawn(async move {
             let (Ok(_pool_slot), Ok(_export_slot), Ok(_engine_slot)) = (
@@ -263,28 +290,28 @@ impl Jobs {
             ) else {
                 return;
             };
-            set_state(&registry, &id, JobState::Running);
+            set_state(&entries, &id, ResultState::Running);
             let target = file.clone();
             let outcome = engine
                 .run_blocking(move |e| Ok(write_export(e, &query, &target)))
                 .await
                 .unwrap_or_else(|e| Err(ExportError::Query(e)));
             let state = match outcome {
-                Ok(size) => JobState::Success { file, size },
+                Ok(size) => ResultState::Success { file, size },
                 Err(error) => {
                     remove_file(&file);
-                    JobState::Error {
+                    ResultState::Error {
                         message: error.public_message(&id),
                     }
                 }
             };
-            finish(&registry, &id, state);
+            finish(&entries, &id, state, max_bytes);
         });
     }
 
     /// The status of result `id`, or `None` when the registry does not hold it.
     pub fn status(&self, id: &str) -> Option<QueryStatus> {
-        lock(&self.registry).get(id).map(|job| job.status(id))
+        lock(&self.entries).get(id).map(|entry| entry.status(id))
     }
 
     /// The finished export of result `id`, opened, and its length.
@@ -293,19 +320,20 @@ impl Jobs {
     /// [`ResultError::Unknown`] when the registry does not hold `id`, and
     /// [`ResultError::NotReady`] with the state name when the query has not succeeded.
     pub fn open_result(&self, id: &str) -> Result<(File, u64), ResultError> {
-        let registry = lock(&self.registry);
-        let job = registry.get(id).ok_or(ResultError::Unknown)?;
-        match &job.state {
-            JobState::Success { file, size } => File::open(file)
-                .map(|f| (f, *size))
-                .map_err(ResultError::Io),
-            other => Err(ResultError::NotReady(other.name())),
-        }
+        let (file, size) = {
+            let entries = lock(&self.entries);
+            let entry = entries.get(id).ok_or(ResultError::Unknown)?;
+            match &entry.state {
+                ResultState::Success { file, size } => (file.clone(), *size),
+                other => return Err(ResultError::NotReady(other.name())),
+            }
+        };
+        File::open(file).map(|f| (f, size)).map_err(ResultError::Io)
     }
 
     /// Number of results held.
     pub fn len(&self) -> usize {
-        lock(&self.registry).len()
+        lock(&self.entries).len()
     }
 
     /// True when no result is held.
@@ -313,21 +341,24 @@ impl Jobs {
         self.len() == 0
     }
 
-    /// Drops every finished result older than the maximum age, with its file.
+    /// Drops every finished result older than the maximum age, with its file. Does nothing
+    /// when results have no age limit.
     pub fn sweep(&self) {
-        expire(&mut lock(&self.registry), now_ms(), self.max_age);
+        let removed = expire(&mut lock(&self.entries), now_ms(), self.max_age);
+        remove_files(&removed);
     }
 
-    fn make_room(&self, registry: &mut Registry, now: u64) -> Result<(), ApiError> {
-        expire(registry, now, self.max_age);
-        while registry.len() >= self.limit {
-            let oldest = registry
-                .iter()
-                .filter(|(_, job)| job.state.is_finished())
-                .min_by_key(|(_, job)| job.completed_ms)
-                .map(|(id, _)| id.clone());
-            match oldest {
-                Some(id) => evict(registry, &id),
+    fn make_room(
+        &self,
+        entries: &mut Entries,
+        now: u64,
+        removed: &mut Vec<PathBuf>,
+    ) -> Result<(), ApiError> {
+        removed.extend(expire(entries, now, self.max_age));
+        removed.extend(enforce_byte_cap(entries, self.max_bytes, None));
+        while entries.len() >= self.limit {
+            match oldest_finished(entries, None) {
+                Some(id) => removed.extend(evict(entries, &id)),
                 None => {
                     return Err(ApiError::unavailable(
                         "too many queries are pending or running; try again later",
@@ -384,54 +415,93 @@ impl ExportError {
     }
 }
 
-fn lock(registry: &Mutex<Registry>) -> MutexGuard<'_, Registry> {
-    registry
+fn lock(entries: &Mutex<Entries>) -> MutexGuard<'_, Entries> {
+    entries
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn set_state(registry: &Mutex<Registry>, id: &str, state: JobState) {
-    if let Some(job) = lock(registry).get_mut(id) {
-        job.state = state;
+fn set_state(entries: &Mutex<Entries>, id: &str, state: ResultState) {
+    if let Some(entry) = lock(entries).get_mut(id) {
+        entry.state = state;
     }
 }
 
-fn finish(registry: &Mutex<Registry>, id: &str, state: JobState) {
-    let mut registry = lock(registry);
-    match registry.get_mut(id) {
-        Some(job) => {
-            job.state = state;
-            job.completed_ms = now_ms().max(1);
-        }
-        None => {
-            if let JobState::Success { file, .. } = state {
-                remove_file(&file);
+fn finish(entries: &Mutex<Entries>, id: &str, state: ResultState, max_bytes: u64) {
+    let removed = {
+        let mut entries = lock(entries);
+        match entries.get_mut(id) {
+            Some(entry) => {
+                entry.state = state;
+                entry.completed_ms = now_ms().max(1);
+                enforce_byte_cap(&mut entries, max_bytes, Some(id))
             }
+            None => match state {
+                ResultState::Success { file, .. } => vec![file],
+                _ => Vec::new(),
+            },
         }
-    }
+    };
+    remove_files(&removed);
 }
 
-fn expire(registry: &mut Registry, now: u64, max_age: Duration) {
-    let max_age_ms = u64::try_from(max_age.as_millis()).unwrap_or(u64::MAX);
-    let expired: Vec<String> = registry
+fn oldest_finished(entries: &Entries, keep: Option<&str>) -> Option<String> {
+    entries
         .iter()
-        .filter(|(_, job)| {
-            job.state.is_finished() && now.saturating_sub(job.completed_ms) >= max_age_ms
+        .filter(|(id, entry)| entry.state.is_finished() && Some(id.as_str()) != keep)
+        .min_by_key(|(_, entry)| entry.completed_ms)
+        .map(|(id, _)| id.clone())
+}
+
+fn held_bytes(entries: &Entries) -> u64 {
+    entries
+        .values()
+        .map(|entry| match &entry.state {
+            ResultState::Success { size, .. } => *size,
+            _ => 0,
+        })
+        .fold(0, u64::saturating_add)
+}
+
+fn enforce_byte_cap(entries: &mut Entries, max_bytes: u64, keep: Option<&str>) -> Vec<PathBuf> {
+    let mut removed = Vec::new();
+    while held_bytes(entries) > max_bytes {
+        match oldest_finished(entries, keep) {
+            Some(id) => removed.extend(evict(entries, &id)),
+            None => break,
+        }
+    }
+    removed
+}
+
+fn expire(entries: &mut Entries, now: u64, max_age: Option<Duration>) -> Vec<PathBuf> {
+    let Some(max_age) = max_age else {
+        return Vec::new();
+    };
+    let max_age_ms = u64::try_from(max_age.as_millis()).unwrap_or(u64::MAX);
+    let expired: Vec<String> = entries
+        .iter()
+        .filter(|(_, entry)| {
+            entry.state.is_finished() && now.saturating_sub(entry.completed_ms) >= max_age_ms
         })
         .map(|(id, _)| id.clone())
         .collect();
-    for id in expired {
-        evict(registry, &id);
+    expired.iter().filter_map(|id| evict(entries, id)).collect()
+}
+
+fn evict(entries: &mut Entries, id: &str) -> Option<PathBuf> {
+    match entries.remove(id) {
+        Some(StoredResult {
+            state: ResultState::Success { file, .. },
+            ..
+        }) => Some(file),
+        _ => None,
     }
 }
 
-fn evict(registry: &mut Registry, id: &str) {
-    if let Some(Job {
-        state: JobState::Success { file, .. },
-        ..
-    }) = registry.remove(id)
-    {
-        remove_file(&file);
+fn remove_files(files: &[PathBuf]) {
+    for file in files {
+        remove_file(file);
     }
 }
 
@@ -450,24 +520,87 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn prepare_results_dir(dir: &Path) -> io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+fn prepare_results_dir(dir: &Path, data_dir: &Path) -> io::Result<()> {
+    let refuse = |message: String| io::Error::new(io::ErrorKind::PermissionDenied, message);
+    match std::fs::symlink_metadata(dir) {
+        Ok(meta) => {
+            if !meta.file_type().is_dir() {
+                return Err(refuse(format!(
+                    "{} is not a directory (a symbolic link is refused)",
+                    dir.display()
+                )));
+            }
+            let owner = meta.uid();
+            let current = current_uid();
+            if owner != current {
+                return Err(refuse(format!(
+                    "{} is owned by uid {owner}, not the service user {current}",
+                    dir.display()
+                )));
+            }
+            if meta.mode() & 0o022 != 0 {
+                return Err(refuse(format!(
+                    "{} is writable by its group or others",
+                    dir.display()
+                )));
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            if let Some(parent) = dir.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            DirBuilder::new().mode(0o700).create(dir)?;
+        }
+        Err(error) => return Err(error),
+    }
+    if resolve(dir)?.starts_with(resolve(data_dir)?) {
+        return Err(refuse(format!(
+            "{} must not be the data directory or inside it",
+            dir.display()
+        )));
+    }
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with("result-") && name.ends_with(".csv") {
+        if name.starts_with("result-") && name.ends_with(".csv") && entry.file_type()?.is_file() {
             std::fs::remove_file(entry.path())?;
         }
     }
     Ok(())
 }
 
+fn current_uid() -> u32 {
+    unsafe { libc::geteuid() }
+}
+
+fn resolve(path: &Path) -> io::Result<PathBuf> {
+    let absolute = std::path::absolute(path)?;
+    let mut missing = Vec::new();
+    let mut existing = absolute.as_path();
+    loop {
+        match existing.canonicalize() {
+            Ok(mut resolved) => {
+                resolved.extend(missing.iter().rev());
+                return Ok(resolved);
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                let (Some(parent), Some(name)) = (existing.parent(), existing.file_name()) else {
+                    return Ok(absolute);
+                };
+                missing.push(name);
+                existing = parent;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 /// Computes the export of `query` and writes it to a new file at `path` with mode 0600.
 /// Runs on a blocking thread: DATAFRAME rows are produced and rendered there, one row at a
-/// time into a reused buffer, never on the async runtime. Returns the file's length. The file is created only after the cohort is computed, so a
-/// query that fails to evaluate leaves nothing behind.
+/// time into a reused buffer, never on the async runtime. Returns the file's length. The file
+/// is created only after the cohort is computed, so a query that fails to evaluate leaves
+/// nothing behind.
 fn write_export(engine: &Engine, query: &Query, path: &Path) -> Result<u64, ExportError> {
     match query.expected_result_type {
         ResultType::Patients => {
@@ -542,7 +675,7 @@ fn unknown_id() -> ApiError {
     ApiError::not_found("no query with this id is held")
 }
 
-fn status_text(name: &str) -> Response {
+fn not_ready_response(name: &str) -> Response {
     (
         StatusCode::BAD_REQUEST,
         [(CONTENT_TYPE, "application/json")],
@@ -554,9 +687,11 @@ fn status_text(name: &str) -> Response {
 /// `POST /query`: validates an export query and starts it, answering its [`QueryStatus`].
 ///
 /// PATIENTS and DATAFRAME are exported; DATAFRAME_TIMESERIES and DATAFRAME_PFB are accepted
-/// and end in ERROR. Any other result type, a validation failure (with
-/// `hpds.requireAuthorizationFilter` from the configuration), or a malformed request is a
-/// 400 JSON error, where Java answers 200 with an ERROR status or 500.
+/// and end in ERROR, as does DATAFRAME while `ID_BATCH_SIZE` is 0. Any other result type, a
+/// validation failure (with `hpds.requireAuthorizationFilter` from the configuration), or a
+/// malformed request is a 400 text error, where Java answers 200 with an ERROR status or 500.
+/// Java accepts COUNT, CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT here and COUNT then
+/// ends in ERROR; this service refuses all sync types up front.
 pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
     let query = read_query(&body)?;
     match query.expected_result_type {
@@ -574,8 +709,16 @@ pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Respon
         }
     }
     let engine = Arc::clone(state.engine()?);
+    if state.async_validator().require_authorization_filter
+        && query.authorization_filters.is_empty()
+    {
+        tracing::warn!(
+            "Authorization filter is required for this query. To disable this requirement, \
+             set hpds.requireAuthorizationFilter=false"
+        );
+    }
     engine.validate(&query, state.async_validator())?;
-    let status = state.jobs().submit(engine, query)?;
+    let status = state.results().submit(engine, query)?;
     Ok(axum::Json(status).into_response())
 }
 
@@ -586,7 +729,7 @@ pub async fn status(
     PathParam(id): PathParam<String>,
 ) -> Result<Response, ApiError> {
     let id = parse_id(&id)?;
-    let status = state.jobs().status(&id).ok_or_else(unknown_id)?;
+    let status = state.results().status(&id).ok_or_else(unknown_id)?;
     Ok(axum::Json(status).into_response())
 }
 
@@ -598,10 +741,10 @@ pub async fn result(
     PathParam(id): PathParam<String>,
 ) -> Result<Response, ApiError> {
     let id = parse_id(&id)?;
-    let (file, size) = match state.jobs().open_result(&id) {
+    let (file, size) = match state.results().open_result(&id) {
         Ok(opened) => opened,
         Err(ResultError::Unknown) => return Err(unknown_id()),
-        Err(ResultError::NotReady(name)) => return Ok(status_text(name)),
+        Err(ResultError::NotReady(name)) => return Ok(not_ready_response(name)),
         Err(ResultError::Io(error)) => {
             tracing::error!(%error, result = %id, "cannot open result file");
             return Err(ApiError::internal());
@@ -637,7 +780,7 @@ pub async fn signed_url(
     PathParam(id): PathParam<String>,
 ) -> Result<Response, ApiError> {
     let id = parse_id(&id)?;
-    state.jobs().status(&id).ok_or_else(unknown_id)?;
+    state.results().status(&id).ok_or_else(unknown_id)?;
     Err(ApiError::bad_request(
         "signed URLs are not supported: this HPDS does not upload results to S3",
     ))
@@ -664,10 +807,10 @@ mod tests {
     #[test]
     fn states_map_to_java_names() {
         let states = [
-            (JobState::Pending, "PENDING", "QUEUED"),
-            (JobState::Running, "RUNNING", "PENDING"),
+            (ResultState::Pending, "PENDING", "QUEUED"),
+            (ResultState::Running, "RUNNING", "PENDING"),
             (
-                JobState::Success {
+                ResultState::Success {
                     file: PathBuf::new(),
                     size: 0,
                 },
@@ -675,7 +818,7 @@ mod tests {
                 "AVAILABLE",
             ),
             (
-                JobState::Error {
+                ResultState::Error {
                     message: String::new(),
                 },
                 "ERROR",

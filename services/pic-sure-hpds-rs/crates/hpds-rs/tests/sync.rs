@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{AGE, POPULATION, SEX, envelope, fixture, post};
+use common::{AGE, POPULATION, SEX, envelope, fixture, fixture_with, post};
 use serde_json::json;
 
 const SYNC: &str = "/PIC-SURE/v3/query/sync";
@@ -90,7 +90,7 @@ async fn export_types_get_javas_text_message() {
     )
     .await;
     assert_eq!(reply.status, StatusCode::BAD_REQUEST);
-    assert_eq!(reply.content_type(), Some("text/plain"));
+    assert_eq!(reply.content_type(), Some("text/plain; charset=utf-8"));
     assert_eq!(
         reply.body,
         "Result type PATIENTS is served asynchronously. Submit it with POST /query, poll \
@@ -99,7 +99,7 @@ async fn export_types_get_javas_text_message() {
 }
 
 #[tokio::test]
-async fn invalid_requests_are_json_400s() {
+async fn invalid_requests_are_plain_text_400s() {
     let f = fixture();
     let filter_without_criteria = json!({"phenotypicFilterType": "FILTER", "conceptPath": SEX});
     let cases = [
@@ -129,12 +129,87 @@ async fn invalid_requests_are_json_400s() {
             "{body}: {}",
             reply.body
         );
-        assert_eq!(reply.content_type(), Some("application/json"), "{body}");
-        let json = reply.json();
-        assert_eq!(json["error"], "Bad Request");
-        assert!(json["message"].as_str().is_some_and(|m| !m.is_empty()));
+        assert_eq!(
+            reply.content_type(),
+            Some("text/plain; charset=utf-8"),
+            "{body}"
+        );
+        assert!(!reply.body.is_empty(), "{body}");
+        assert!(serde_json::from_str::<serde_json::Value>(&reply.body).is_err());
         assert!(!reply.headers.contains_key("querymetadata"));
     }
+}
+
+#[tokio::test]
+async fn v1_queries_are_refused() {
+    let f = fixture();
+    let v1 = [
+        json!({"fields": [SEX], "expectedResultType": "COUNT"}),
+        json!({"categoryFilters": {SEX: ["female"]}, "expectedResultType": "COUNT"}),
+        json!({"numericFilters": {}, "requiredFields": [SEX], "expectedResultType": "COUNT"}),
+        json!({"anyRecordOf": [SEX], "expectedResultType": "COUNT"}),
+        json!({"variantInfoFilters": [], "expectedResultType": "COUNT"}),
+        json!({"crossCountFields": [SEX], "expectedResultType": "COUNT"}),
+    ];
+    for query in v1 {
+        for path in [SYNC, "/PIC-SURE/v3/query"] {
+            let reply = post(&f.app, path, envelope(query.clone())).await;
+            assert_eq!(reply.status, StatusCode::BAD_REQUEST, "{query}");
+            assert_eq!(reply.body, "v1 queries are not supported; use /PIC-SURE/v3");
+        }
+    }
+}
+
+#[tokio::test]
+async fn info_column_listing_is_an_empty_array() {
+    let f = fixture();
+    let reply = post(
+        &f.app,
+        SYNC,
+        envelope(json!({"expectedResultType": "INFO_COLUMN_LISTING"})),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::OK);
+    assert_eq!(reply.content_type(), Some("application/json"));
+    assert_eq!(reply.body, "[]");
+}
+
+#[tokio::test]
+async fn other_genomic_types_name_the_unsupported_feature() {
+    let f = fixture();
+    let reply = post(
+        &f.app,
+        SYNC,
+        envelope(json!({"expectedResultType": "VCF_EXCERPT"})),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+    assert!(reply.body.contains("not supported"), "{}", reply.body);
+}
+
+#[tokio::test]
+async fn a_sync_query_that_outlasts_the_timeout_is_a_503() {
+    let f = fixture_with(|c| c.sync_timeout = std::time::Duration::from_millis(100));
+    let mut held = Vec::new();
+    for _ in 0..f.config.engine_concurrency {
+        held.push(f.state.engine_slot().await);
+    }
+    let reply = post(
+        &f.app,
+        SYNC,
+        envelope(json!({"expectedResultType": "COUNT"})),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(reply.body.contains("did not finish"), "{}", reply.body);
+    drop(held);
+    let reply = post(
+        &f.app,
+        SYNC,
+        envelope(json!({"expectedResultType": "COUNT"})),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::OK);
 }
 
 #[tokio::test]

@@ -39,6 +39,7 @@ pub fn config(dir: &std::path::Path) -> Config {
     let mut config = Config::from_lookup(|_| None).unwrap();
     config.results_dir = dir.join("results");
     config.require_authorization_filter = false;
+    config.id_batch_size = 1000;
     config
 }
 
