@@ -3,15 +3,18 @@
 //! [`crate::PartitionSet`] holds.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use hpds_format::{
     BLOCKS_FILE_NAME, Block, BlockCodec, BlockLocation, BlocksReader, ConceptView, ExpectedBlock,
     INDEX_FILE_NAME, IndexBody, Membership, PartitionHolder, PartitionTable, Protection,
 };
+use moka::notification::RemovalCause;
 use moka::sync::Cache;
 use roaring::RoaringBitmap;
 
+use crate::counters::BlockCacheCounters;
 use crate::error::{QueryError, Result};
 use crate::view::View;
 
@@ -32,12 +35,18 @@ const ENTRY_OVERHEAD: usize = 64;
 /// A block cache bounded by the summed weight of its entries ([`CachedConcept::weight`]). A
 /// `moka` weigher returns a `u32`, so an entry heavier than `u32::MAX` bytes (4 GiB) is
 /// weighed at `u32::MAX`, under its real size; at the default 4 GiB bound such an entry
-/// already fills the cache on its own.
-pub(crate) fn block_cache(cache_bytes: u64) -> BlockCache {
+/// already fills the cache on its own. Every entry dropped to keep the bound is counted in
+/// `counters.evictions`; an entry replaced by its reweighed self is not.
+pub(crate) fn block_cache(cache_bytes: u64, counters: Arc<BlockCacheCounters>) -> BlockCache {
     Cache::builder()
         .max_capacity(cache_bytes)
         .weigher(|_: &u32, concept: &Arc<CachedConcept>| {
             u32::try_from(concept.weight()).unwrap_or(u32::MAX)
+        })
+        .eviction_listener(move |_, _, cause| {
+            if cause == RemovalCause::Size {
+                counters.evictions.fetch_add(1, Ordering::Relaxed);
+            }
         })
         .build()
 }

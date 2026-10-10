@@ -32,9 +32,11 @@
 //! empty cache. The generation in the key does not expire anything; it only ties each
 //! entry to the stores it was computed from.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bytes::Bytes;
+use moka::notification::RemovalCause;
 use moka::sync::Cache;
 
 use crate::limits::CheckedQuery;
@@ -95,6 +97,8 @@ pub struct ResultCacheStats {
     pub hits: u64,
     /// Lookups of a cacheable query that found no entry.
     pub misses: u64,
+    /// Entries dropped to keep the cache within its byte bound.
+    pub evictions: u64,
     /// Entries held.
     pub entries: u64,
     /// Summed weight of the entries held: key, body and a fixed overhead each.
@@ -109,6 +113,7 @@ pub(crate) struct ResultCache {
     capacity: u64,
     hits: AtomicU64,
     misses: AtomicU64,
+    evictions: Arc<AtomicU64>,
 }
 
 impl std::fmt::Debug for ResultCache {
@@ -122,14 +127,22 @@ impl std::fmt::Debug for ResultCache {
 impl ResultCache {
     /// An empty cache bounded at `capacity` bytes, which must be above 0.
     pub(crate) fn new(capacity: u64) -> Self {
+        let evictions = Arc::new(AtomicU64::new(0));
+        let evicted = Arc::clone(&evictions);
         ResultCache {
             entries: Cache::<Box<[u8]>, SyncAnswer>::builder()
                 .max_capacity(capacity)
                 .weigher(|key, answer| u32::try_from(entry_weight(key, answer)).unwrap_or(u32::MAX))
+                .eviction_listener(move |_, _, cause| {
+                    if cause == RemovalCause::Size {
+                        evicted.fetch_add(1, Ordering::Relaxed);
+                    }
+                })
                 .build(),
             capacity,
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
+            evictions,
         }
     }
 
@@ -159,6 +172,7 @@ impl ResultCache {
         ResultCacheStats {
             hits: self.hits.load(Ordering::Relaxed),
             misses: self.misses.load(Ordering::Relaxed),
+            evictions: self.evictions.load(Ordering::Relaxed),
             entries: self.entries.entry_count(),
             bytes: self.entries.weighted_size(),
             capacity: self.capacity,

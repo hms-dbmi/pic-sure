@@ -25,6 +25,7 @@
 //! that.
 
 mod cohort;
+mod counters;
 mod engine;
 mod error;
 mod fan_out;
@@ -37,6 +38,7 @@ mod store;
 pub mod validate;
 mod view;
 
+pub use counters::BlockCacheStats;
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine, ReadPlan};
 pub use error::{QueryError, Result};
 pub use limits::{

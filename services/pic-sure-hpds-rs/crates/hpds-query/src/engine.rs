@@ -1161,6 +1161,7 @@ mod tests {
                 assert!(!error.is_client_error());
                 assert!(!error.to_string().contains("11"), "no patient id: {error}");
             }
+            assert_eq!(engine.partitions().cohort_guard_refusals(), 7);
         }
 
         #[test]

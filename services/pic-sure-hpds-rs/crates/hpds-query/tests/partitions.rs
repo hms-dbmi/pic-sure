@@ -515,6 +515,73 @@ fn a_small_cache_evicts_after_reading_whole_blocks() {
 }
 
 #[test]
+fn block_cache_stats_count_lookups_loads_evictions_and_views() {
+    const HEIGHT: &str = "\\demographics\\HEIGHT\\";
+    let rows = |patients: &[u32]| -> Vec<Row<'static>> {
+        numeric_rows(patients)
+            .into_iter()
+            .chain(
+                patients
+                    .iter()
+                    .map(|&p| (p, HEIGHT, Some(f64::from(p) + 0.5), None)),
+            )
+            .collect()
+    };
+    let patients: Vec<u32> = (1..=400).collect();
+    let (first, second) = patients.split_at(200);
+    let d = partitioned_rows(&[("p1", rows(first)), ("p2", rows(second))]);
+    let (age, height) = (
+        block_heap_size(&d.out, CONCEPT),
+        block_heap_size(&d.out, HEIGHT),
+    );
+    let options = |cache_bytes| hpds_query::PartitionOptions {
+        store: StoreOptions {
+            cache_bytes,
+            ..StoreOptions::default()
+        },
+        narrow_view_share: 2.0,
+        ..lenient()
+    };
+    let roomy = d.open(&options(1 << 30)).unwrap();
+    let stats = roomy.partitions().block_cache_stats();
+    assert_eq!((stats.hits, stats.misses, stats.loads), (0, 0, 0));
+    assert_eq!(stats.capacity, 1 << 30);
+    for _ in 0..3 {
+        roomy
+            .count(&query(ResultType::Count, Some(required(CONCEPT))))
+            .unwrap();
+    }
+    let only_p1 = Query {
+        phenotypic_clause: Some(required(HEIGHT)),
+        ..Query::with_consents(ResultType::Count, ["p1"])
+    };
+    roomy.count(&only_p1).unwrap();
+    let stats = roomy.partitions().block_cache_stats();
+    assert_eq!(stats.loads, 2, "{stats:?}");
+    assert_eq!(stats.misses, 2, "{stats:?}");
+    assert!(stats.hits >= 2, "{stats:?}");
+    assert!(stats.load_seconds > 0.0, "{stats:?}");
+    assert_eq!((stats.entries, stats.evictions), (2, 0), "{stats:?}");
+    assert_eq!(stats.views, 1, "{stats:?}");
+    assert!(stats.view_bytes > 0, "{stats:?}");
+    assert_eq!(stats.bytes, roomy.partitions().cached_bytes());
+    assert!(stats.bytes >= age + height + stats.view_bytes, "{stats:?}");
+
+    let small = d
+        .open(&options(age.max(height) + age.min(height) / 2))
+        .unwrap();
+    for path in [CONCEPT, HEIGHT] {
+        small
+            .count(&query(ResultType::Count, Some(required(path))))
+            .unwrap();
+    }
+    let stats = small.partitions().block_cache_stats();
+    assert_eq!(stats.loads, 2, "{stats:?}");
+    assert_eq!(stats.entries, 1, "{stats:?}");
+    assert_eq!(stats.evictions, 1, "evicted or never admitted: {stats:?}");
+}
+
+#[test]
 fn a_failed_block_load_still_weighs_the_blocks_it_read() {
     const LATER: &str = "\\demographics\\ZZZ\\";
     let rows = |patients: &[u32]| -> Vec<Row<'static>> {

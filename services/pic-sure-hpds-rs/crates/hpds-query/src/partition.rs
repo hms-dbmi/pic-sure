@@ -15,8 +15,9 @@
 use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 
 use hpds_format::{
     Block, ConceptMeta, ConceptType, CryptoKey, INDEX_FILE_NAME, PartitionHolder, Protection,
@@ -27,6 +28,7 @@ use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 use serde_json::Value;
 
+use crate::counters::{BlockCacheCounters, BlockCacheStats};
 use crate::error::{QueryError, Result};
 use crate::model::Query;
 use crate::store::{
@@ -289,6 +291,9 @@ pub struct PartitionSet {
     narrow_view_share: f64,
     evaluating: AtomicUsize,
     cache: BlockCache,
+    cache_capacity: u64,
+    cache_counters: Arc<BlockCacheCounters>,
+    guard_refusals: AtomicU64,
     scopes: Cache<Box<[u64]>, Arc<Scope>>,
     generation: u128,
 }
@@ -335,7 +340,8 @@ impl PartitionSet {
     /// store whose index or blocks file is missing, corrupt, from another store, or
     /// protected differently from the key.
     pub fn open(dir: &Path, options: &PartitionOptions) -> Result<Self> {
-        let cache = block_cache(options.store.cache_bytes);
+        let cache_counters = Arc::new(BlockCacheCounters::default());
+        let cache = block_cache(options.store.cache_bytes, Arc::clone(&cache_counters));
         if !dir.join(INDEX_FILE_NAME).exists() {
             return Err(refuse_without_index(dir)?);
         }
@@ -431,6 +437,9 @@ impl PartitionSet {
             narrow_view_share: options.narrow_view_share,
             evaluating: AtomicUsize::new(0),
             cache,
+            cache_capacity: options.store.cache_bytes,
+            cache_counters,
+            guard_refusals: AtomicU64::new(0),
             scopes: Cache::<Box<[u64]>, Arc<Scope>>::builder()
                 .max_capacity(SCOPE_CACHE_BYTES)
                 .weigher(|key, scope| scope_weight(key, scope))
@@ -634,6 +643,37 @@ impl PartitionSet {
             .fold((0, 0), |(count, bytes), size| (count + 1, bytes + size))
     }
 
+    /// The block cache's counters and what it holds, after applying its pending inserts
+    /// and evictions. Walks the cache to weigh the partition views, so its cost grows with
+    /// the cached concepts; meant for a metrics scrape, not a query.
+    pub fn block_cache_stats(&self) -> BlockCacheStats {
+        let (views, view_bytes) = self.cached_views();
+        let counters = &self.cache_counters;
+        BlockCacheStats {
+            hits: counters.hits.get(),
+            misses: counters.misses.get(),
+            evictions: counters.evictions.load(Ordering::Relaxed),
+            loads: counters.loads.load(Ordering::Relaxed),
+            load_seconds: counters.load_nanos.load(Ordering::Relaxed) as f64 / 1e9,
+            entries: self.cache.entry_count(),
+            bytes: self.cache.weighted_size(),
+            capacity: self.cache_capacity,
+            views,
+            view_bytes,
+        }
+    }
+
+    /// Queries refused because a cohort held patients outside the selected partitions,
+    /// since the store was opened.
+    pub fn cohort_guard_refusals(&self) -> u64 {
+        self.guard_refusals.load(Ordering::Relaxed)
+    }
+
+    /// Counts one query refused by the cohort guard.
+    pub(crate) fn count_guard_refusal(&self) {
+        self.guard_refusals.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Counts a cohort evaluation as running until the guard is dropped, for
     /// [`PartitionSet::spare_parallelism`].
     pub(crate) fn begin_evaluation(&self) -> Evaluating<'_> {
@@ -674,14 +714,37 @@ impl PartitionSet {
     /// # Errors
     /// [`QueryError::Block`] when the block cannot be read.
     fn entry_at(&self, index: usize) -> Result<Arc<CachedConcept>> {
-        let key = index as u32;
-        if let Some(entry) = self.cache.get(&key) {
-            return Ok(entry);
+        match self.cached_entry(index) {
+            Some(entry) => Ok(entry),
+            None => self.load_entry(index),
         }
+    }
+
+    /// The cached entry of the concept at `index`, if any, counting a hit or a miss.
+    fn cached_entry(&self, index: usize) -> Option<Arc<CachedConcept>> {
+        let found = self.cache.get(&(index as u32));
+        let counter = if found.is_some() {
+            &self.cache_counters.hits
+        } else {
+            &self.cache_counters.misses
+        };
+        counter.add(1);
+        found
+    }
+
+    /// The entry of the concept at `index` after a miss: read from the store and cached,
+    /// or the entry another reader cached meanwhile. Counts and times the read when this
+    /// call makes it. Blocking.
+    ///
+    /// # Errors
+    /// [`QueryError::Block`] when the block cannot be read.
+    fn load_entry(&self, index: usize) -> Result<Arc<CachedConcept>> {
         self.cache
-            .try_get_with(key, || {
-                self.read_block(index)
-                    .map(|block| Arc::new(CachedConcept::new(block)))
+            .try_get_with(index as u32, || {
+                let started = Instant::now();
+                let block = self.read_block(index);
+                self.cache_counters.record_load(started.elapsed());
+                block.map(|block| Arc::new(CachedConcept::new(block)))
             })
             .map_err(|error| (*error).clone())
     }
@@ -1074,13 +1137,19 @@ impl<'a> Selection<'a> {
     pub(crate) fn entries(&self, reads: &[ConceptRead]) -> Result<Vec<Arc<CachedConcept>>> {
         let mut entries: Vec<Option<Arc<CachedConcept>>> = reads
             .iter()
-            .map(|read| self.set.cache.get(&(read.index as u32)))
+            .map(|read| self.set.cached_entry(read.index))
             .collect();
         let missing: Vec<usize> = (0..reads.len()).filter(|&i| entries[i].is_none()).collect();
         let loaded: Vec<Result<Arc<CachedConcept>>> = if missing.len() < 2 {
-            missing.iter().map(|&i| self.entry(&reads[i])).collect()
+            missing
+                .iter()
+                .map(|&i| self.set.load_entry(reads[i].index))
+                .collect()
         } else {
-            missing.par_iter().map(|&i| self.entry(&reads[i])).collect()
+            missing
+                .par_iter()
+                .map(|&i| self.set.load_entry(reads[i].index))
+                .collect()
         };
         for (i, entry) in missing.into_iter().zip(loaded) {
             entries[i] = Some(entry?);

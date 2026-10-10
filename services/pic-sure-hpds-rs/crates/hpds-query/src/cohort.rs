@@ -85,6 +85,7 @@ fn guard(selection: &Selection<'_>, cohort: &RoaringBitmap) -> Result<()> {
     if outside == 0 {
         return Ok(());
     }
+    selection.set().count_guard_refusal();
     tracing::error!(
         outside,
         cohort = cohort.len(),
