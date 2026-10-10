@@ -385,6 +385,27 @@ impl Generation {
     }
 }
 
+/// An exclusive `flock` on a partitioned store's directory itself, held while a command
+/// changes which stores the directory holds or rewrites its [`GENERATION_FILE_NAME`]
+/// marker: the publish of a partitioned load or migration, and `hpds-etl combine` and
+/// `combine --remove`. Two such commands, in this process or in another container sharing
+/// the directory, never interleave their moves and marker writes. The lock is on the
+/// directory's inode, so no lock file is left in it, and it is released when dropped.
+pub(crate) struct StoreLock {
+    _dir: std::fs::File,
+}
+
+/// Takes the [`StoreLock`] of the partitioned store directory `dir`, waiting while another
+/// command holds it.
+///
+/// # Errors
+/// I/O errors opening or locking the directory.
+pub(crate) fn lock_store(dir: &Path) -> Result<StoreLock> {
+    let file = std::fs::File::open(dir).map_err(EtlError::io("opening", dir))?;
+    file.lock().map_err(EtlError::io("locking", dir))?;
+    Ok(StoreLock { _dir: file })
+}
+
 /// A directory beside the output in which every partition, and optionally their combined
 /// store, is built and from which the set is published. Removed on drop, and on SIGTERM or
 /// SIGINT, unless published.
@@ -504,7 +525,9 @@ impl PartitionedStaging {
     /// directory (removed with it) and the new one, if any, renamed into place; then the
     /// key, and the marker last, replacing the old one. Until then a reader can see old and
     /// new stores side by side, which the marker's ids reveal. An interrupt waits until the
-    /// moves are done.
+    /// moves are done. Into an existing `out` the moves and the marker write hold its
+    /// [`StoreLock`], so `hpds-etl combine` never publishes in the middle of them; a new
+    /// `out` appears with one rename, and nothing else can publish into it before.
     ///
     /// # Errors
     /// [`EtlError::Usage`] when `combined_id` is given without a staged combined store or
@@ -531,8 +554,13 @@ impl PartitionedStaging {
             private_fs::sync_dir(&dir).map_err(EtlError::io("syncing", &dir))?;
         }
         let generation = generation_text(&self.names, records, combined_id)?;
+        let store_lock = if out.exists() {
+            Some(lock_store(out)?)
+        } else {
+            None
+        };
         let mut registered = cleanup::lock();
-        if !out.exists() {
+        if store_lock.is_none() {
             let marker = staged.join(GENERATION_FILE_NAME);
             private_fs::write_file(&marker, generation.as_bytes())
                 .map_err(EtlError::io("writing", &marker))?;
@@ -571,6 +599,7 @@ impl PartitionedStaging {
                 .map_err(EtlError::io("writing", &marker))
         });
         drop(registered);
+        drop(store_lock);
         written
     }
 }

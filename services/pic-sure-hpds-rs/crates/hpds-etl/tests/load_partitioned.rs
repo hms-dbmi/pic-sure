@@ -1179,3 +1179,92 @@ fn cli_combine_no_combined_and_remove_concepts_keep_the_combined_store_consisten
     assert!(!root.status.success());
     assert!(stderr(&root).contains("--no-combined is for partitioned mode"));
 }
+
+/// Loads the harmonization fixture into `<tmp>/out` without a combined store.
+fn load_harmonization_without_combined() -> (tempfile::TempDir, PathBuf, PartitionedLoadOptions) {
+    let dir = tempfile::tempdir().unwrap();
+    let key = dir.path().join("key");
+    write_key(&key);
+    let out = dir.path().join("out");
+    let mut options = options(harmonization_inputs(), out.clone());
+    options.no_config = true;
+    options.config = None;
+    options.key = KeySource::File(key);
+    options.threads = Some(2);
+    options.combined = false;
+    load_partitioned(&options).unwrap();
+    (dir, out, options)
+}
+
+/// Waits up to a minute for `ready` to hold, then a little longer, so a thread that got
+/// that far without blocking would have finished.
+fn wait_until(mut ready: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while !ready() {
+        assert!(std::time::Instant::now() < deadline, "timed out");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+}
+
+/// Takes the exclusive `flock` on the directory `dir` that the ETL's publishes take.
+fn hold_store_lock(dir: &Path) -> std::fs::File {
+    let file = std::fs::File::open(dir).unwrap();
+    file.lock().unwrap();
+    file
+}
+
+/// True when some directory in `parent` whose name starts with `prefix` holds `file`.
+fn staged(parent: &Path, prefix: &str, file: &str) -> bool {
+    std::fs::read_dir(parent).unwrap().flatten().any(|e| {
+        e.file_name().to_string_lossy().starts_with(prefix) && e.path().join(file).exists()
+    })
+}
+
+#[test]
+fn combine_publishes_only_under_the_store_lock() {
+    let (_dir, out, _) = load_harmonization_without_combined();
+    let before = read_generation(&out);
+    let lock = hold_store_lock(&out);
+    let target = out.clone();
+    let combine = std::thread::spawn(move || {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(2)
+            .build()
+            .unwrap();
+        hpds_etl::combined::combine_in_place(&target, &test_protection(), &pool)
+    });
+    wait_until(|| {
+        combine.is_finished() || staged(&out, ".combined.staging-", ".combined/pheno.index")
+    });
+    assert!(!combine.is_finished(), "combine waits for the lock");
+    assert!(!out.join(".combined").exists());
+    assert_eq!(read_generation(&out), before);
+    drop(lock);
+    combine.join().unwrap().unwrap();
+    assert!(out.join(".combined").join("pheno.index").exists());
+    assert_eq!(read_generation(&out), store_ids(&out));
+}
+
+#[test]
+fn a_load_publishes_into_an_existing_store_only_under_the_store_lock() {
+    let (dir, out, options) = load_harmonization_without_combined();
+    let before = read_generation(&out);
+    let lock = hold_store_lock(&out);
+    let load = std::thread::spawn(move || load_partitioned(&options).map(|_| ()));
+    let parent = dir.path().to_path_buf();
+    wait_until(|| {
+        load.is_finished()
+            || hpds_etl::partitions::partition_dirs(&out)
+                .unwrap()
+                .iter()
+                .all(|p| staged(&parent, ".out.staging-", &format!("{}/pheno.index", p.name)))
+    });
+    assert!(!load.is_finished(), "the publish waits for the lock");
+    assert_eq!(read_generation(&out), before);
+    drop(lock);
+    load.join().unwrap().unwrap();
+    let after = read_generation(&out);
+    assert_ne!(after, before);
+    assert_eq!(after, store_ids(&out));
+}

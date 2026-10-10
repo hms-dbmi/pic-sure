@@ -385,7 +385,10 @@ partition. Into a new `--out` the whole
 set appears at once. Into an existing one the publish is not atomic across partitions: the
 partitions are replaced one after another (each partition's `pheno.index` last), then the old
 combined store is moved out and the new one, if any, moved in, so a reader can briefly see old
-and new stores side by side. The last step writes `<out>/.generation` (mode `0600`, through a
+and new stores side by side. Those moves and the marker write below hold an exclusive `flock`
+on the `<out>` directory itself (no lock file), which `hpds-etl combine` takes too, so the two
+never interleave, also from separate containers sharing the directory; a publish waits while
+the other holds it. The last step writes `<out>/.generation` (mode `0600`, through a
 temporary file renamed into place): one line per partition, in partition name order, holding
 the store id of its `pheno.index` as 32 lowercase hex digits followed by ` patients-indexed`
 (every patient with a row is in the partition's patient set, see
@@ -444,10 +447,12 @@ partitioned store in place, for a store loaded with `--no-combined` or by an old
 reads the partitions without changing them, refuses a store with one partition, or whose
 `.generation` lists other partition ids than the partitions hold (a publish under way),
 builds into a temporary directory inside `<dir>` (named with a leading `.`), moves it into
-place and rewrites `.generation` last. Just before moving it into place it reads the
-partitions' ids again, and when a load published new partitions during the build it stops
-without replacing anything, so the newer `.generation` stays. `--remove` instead rewrites
-`.generation` without the combined line and then removes `.combined`. Either rewrite keeps
+place and rewrites `.generation` last. The build takes no lock. Before moving it into place
+it takes the `flock` on `<dir>` that a load's publish holds, waiting for one under way, then
+reads the partitions' ids again, and when a load published new partitions during the build
+it stops without replacing anything, so the newer `.generation` stays. Holding the lock, no
+load can publish between that check and the rewrite. `--remove` instead takes the same lock,
+rewrites `.generation` without the combined line and then removes `.combined`. Either rewrite keeps
 a partition's ` patients-indexed` tag from the old `.generation` line of the same store id
 and adds none: `combine` does not check the partitions' blocks for it, so a store with no
 `.generation` (loaded by an older ETL) stays without the tag until it is reloaded.

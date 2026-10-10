@@ -52,8 +52,8 @@ use crate::cleanup::TemporaryDir;
 use crate::error::{EtlError, Result};
 use crate::load::{DEFAULT_KEY_NAME, REPORT_FILE_NAME};
 use crate::partitions::{
-    GENERATION_FILE_NAME, Generation, Partition, PartitionRecord, generation_text, partition_dirs,
-    replace_combined_dir,
+    GENERATION_FILE_NAME, Generation, Partition, PartitionRecord, generation_text, lock_store,
+    partition_dirs, replace_combined_dir,
 };
 use crate::private_fs;
 use crate::store::{OpenStore, read_index, replace_file};
@@ -420,9 +420,12 @@ pub fn existing_combined_dir(store: &Path) -> Option<PathBuf> {
 /// under way or was interrupted is refused rather than certified. The new store is built in
 /// a temporary directory inside `store` (named with a leading `.`, so neither the ETL nor
 /// the query service takes it for a partition), renamed into place, and the marker written
-/// last. Just before that, with the interrupt handler held off, the partitions' ids are
-/// read again, and the publish is abandoned when they changed during the build, so a load
-/// that published meanwhile keeps its newer marker.
+/// last. The build runs without a lock. The publish takes `store`'s directory lock, the
+/// `flock` a partitioned load or migration holds while it publishes into an existing
+/// directory, waiting while one does, and then, with the interrupt handler held off, reads
+/// the partitions' ids again and abandons the publish when they changed during the build,
+/// so a load that published meanwhile keeps its newer marker. Under the lock no load can
+/// publish between that check and the marker write.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when `store` holds no partitions or only one (a combined store would
@@ -452,6 +455,7 @@ pub fn combine_in_place(
     })?;
     let names: Vec<String> = partitions.into_iter().map(|p| p.name).collect();
     let generation = generation_text(&names, &records, Some(&report.store_id))?;
+    let store_lock = lock_store(store)?;
     let registered = crate::cleanup::lock();
     let published = refuse_if_changed(store, protection, &records).and_then(|()| {
         replace_combined_dir(store, staging.path(), Some(built))?;
@@ -462,6 +466,7 @@ pub fn combine_in_place(
         })
     });
     drop(registered);
+    drop(store_lock);
     published?;
     Ok(report)
 }
@@ -491,13 +496,16 @@ fn refuse_if_changed(
 /// Removes the combined store of the partitioned store `store` (`hpds-etl combine
 /// --remove`) and drops its line from the `.generation` marker, so a query service without
 /// combined store support opens `store` again. The marker is rewritten first, then the
-/// directory moved into a temporary directory and removed. Returns whether there was a
-/// combined store or a marker line to remove.
+/// directory moved into a temporary directory and removed, all under `store`'s directory
+/// lock (see [`combine_in_place`]), so a load cannot publish between reading the
+/// partitions' ids and writing the marker. Returns whether there was a combined store or a
+/// marker line to remove.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when `store` holds no partitions or its marker disagrees with them;
 /// I/O errors.
 pub fn remove_combined(store: &Path, protection: &Protection) -> Result<bool> {
+    let _store_lock = lock_store(store)?;
     let (partitions, records) = checked_partitions(store, protection)?;
     let listed = Generation::read(store)?.is_some_and(|g| g.combined.is_some());
     let present = store.join(COMBINED_DIR_NAME).symlink_metadata().is_ok();
