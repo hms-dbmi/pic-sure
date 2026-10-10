@@ -248,6 +248,72 @@ async fn errors_are_not_cached() {
 }
 
 #[tokio::test]
+async fn a_cross_count_holding_minus_one_is_not_stored() {
+    let f = cached();
+    let blocks = f.store().join("partition1").join("pheno.blocks");
+    let len = usize::try_from(std::fs::metadata(&blocks).unwrap().len()).unwrap();
+    std::fs::write(&blocks, vec![0xff; len]).unwrap();
+    for result_type in ["CROSS_COUNT", "OBSERVATION_CROSS_COUNT"] {
+        let query = json!({"expectedResultType": result_type, "select": [SEX, AGE],
+            "userConsents": consents(&["partition1"])});
+        for _ in 0..2 {
+            let reply = sync(&f.app, &query).await;
+            assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
+            let counts = reply.json();
+            assert_eq!(
+                (&counts[SEX], &counts[AGE]),
+                (&json!(-1), &json!(-1)),
+                "{result_type}: {counts}"
+            );
+        }
+    }
+    let after = stats(&f);
+    assert_eq!((after.hits, after.misses, after.entries), (0, 4, 0));
+
+    let readable =
+        json!({"expectedResultType": "COUNT", "userConsents": consents(&["partition1"])});
+    for _ in 0..2 {
+        assert_eq!(sync(&f.app, &readable).await.body, "494");
+    }
+    let after = stats(&f);
+    assert_eq!(
+        (after.hits, after.entries),
+        (1, 1),
+        "an answer that reads no block is stored"
+    );
+}
+
+#[tokio::test]
+async fn an_answer_over_a_sixteenth_of_the_bound_is_not_stored() {
+    let capacity = 16 * 256;
+    let f = fixture_with(|c| c.result_cache_bytes = capacity);
+    let wide = json!({"expectedResultType": "CROSS_COUNT", "select": [SEX, AGE, POPULATION]});
+    for _ in 0..2 {
+        let reply = sync(&f.app, &wide).await;
+        assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
+        let paths: usize = [SEX, AGE, POPULATION].iter().map(|p| p.len()).sum();
+        assert!(
+            128 + paths + reply.body.len() > 256,
+            "overhead, the select paths in the key and the body pass a sixteenth"
+        );
+    }
+    let after = stats(&f);
+    assert_eq!((after.hits, after.misses, after.entries), (0, 2, 0));
+
+    let small = json!({"expectedResultType": "COUNT"});
+    for _ in 0..2 {
+        assert_eq!(sync(&f.app, &small).await.body, "4978");
+    }
+    let after = stats(&f);
+    assert_eq!(
+        (after.hits, after.entries),
+        (1, 1),
+        "a small answer is stored"
+    );
+    assert!(after.bytes <= 256, "{after:?}");
+}
+
+#[tokio::test]
 async fn the_byte_bound_is_honored() {
     let capacity = 16 << 10;
     let f = fixture_with(|c| c.result_cache_bytes = capacity);
