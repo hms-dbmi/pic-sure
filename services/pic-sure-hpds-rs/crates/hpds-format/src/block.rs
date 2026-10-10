@@ -11,14 +11,18 @@ use xxhash_rust::xxh3::Xxh3Default;
 use crate::aligned::AlignedBuf;
 use crate::crypto::{open_framed, seal_framed};
 use crate::error::{FormatError, Result};
+use crate::membership::Membership;
 use crate::parity::{canonical_nan, java_double_cmp, java_string_cmp};
 use crate::protection::{Protection, StoreId};
-use crate::{FORMAT_VERSION, NO_TIMESTAMP};
+use crate::{FORMAT_VERSION, LEGACY_FORMAT_VERSION, NO_TIMESTAMP};
 
 const KIND_NUMERIC: u8 = 0;
 const KIND_CATEGORICAL: u8 = 1;
 const NUMERIC_HEADER_LEN: usize = 8;
 const CATEGORICAL_HEADER_LEN: usize = 16;
+const PREFIX_HEADER_LEN: usize = 16;
+const HOLDER_LEN: usize = 12;
+const FLAG_TAGGED: u8 = 1;
 
 /// One numeric observation handed to [`encode_numeric_payload`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -90,19 +94,73 @@ fn positions_by_patient(n: u32, patient_at: impl Fn(usize) -> u32) -> Vec<u32> {
     keys.into_iter().map(|k| k as u32).collect()
 }
 
-/// Encodes numeric observations, given in input (file) order, as a numeric block payload.
+/// A consent partition that holds a concept, with its share of the concept's block: the
+/// partition's index in the store's partition table, its rows, and the distinct patients of
+/// those rows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct PartitionHolder {
+    /// The partition's index in the store's partition table.
+    pub partition: u16,
+    /// Rows of the block that belong to the partition.
+    pub observations: u32,
+    /// Distinct patients of those rows.
+    pub patients: u32,
+}
+
+/// How the rows handed to a block encoder split over the store's consent partitions.
 ///
-/// The payload holds `values`, `patients` and `timestamps` sorted by (value in Java
+/// An unpartitioned store's blocks use [`BlockPartitioning::default`]: no holders and no
+/// tags. A partitioned store's blocks list every partition holding the concept in
+/// `holders`, ascending by partition, with observation counts summing to the rows. When
+/// some row belongs to a patient whose partition the patient alone does not decide (the
+/// overlap set), `row_partitions` gives every row's partition, parallel to the input rows,
+/// and the block is tagged.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BlockPartitioning<'a> {
+    /// The partitions holding the concept, ascending by partition.
+    pub holders: &'a [PartitionHolder],
+    /// The partition of each input row, or `None` for an untagged block.
+    pub row_partitions: Option<&'a [u16]>,
+    /// The number of partitions in the store, which decides the tag width: one byte for at
+    /// most [`MAX_NARROW_TAG_PARTITIONS`] partitions, two bytes above.
+    pub partition_count: usize,
+}
+
+/// The most partitions a store may hold for its block tags to take one byte each.
+pub const MAX_NARROW_TAG_PARTITIONS: usize = 255;
+
+/// The most partitions a store may hold.
+pub const MAX_PARTITIONS: usize = u16::MAX as usize;
+
+/// Encodes numeric observations, given in input (file) order, as the payload of an
+/// unpartitioned store's block: [`encode_numeric_block`] with no holders and no tags.
+///
+/// # Errors
+/// As [`encode_numeric_block`].
+pub fn encode_numeric_payload(observations: &[NumericObservation]) -> Result<Vec<u8>> {
+    encode_numeric_block(observations, &BlockPartitioning::default())
+}
+
+/// Encodes numeric observations, given in input (file) order, as a numeric block payload
+/// whose rows split over partitions as `partitioning` says.
+///
+/// The body holds `values`, `patients` and `timestamps` sorted by (value in Java
 /// `Double.compareTo` order, patient, timestamp, input position), then a `by_key`
 /// permutation into those arrays that orders the observations by patient and, within a
 /// patient, by input position, as Java's stable `sortedByKey` does. NaN values are
 /// canonicalized. The timestamp array is omitted when every timestamp is
-/// [`NO_TIMESTAMP`]. `observations` is not modified.
+/// [`NO_TIMESTAMP`]. Tags, when given, are stored in value order. `observations` is not
+/// modified.
 ///
 /// # Errors
-/// [`FormatError::InvalidInput`] when there are more than `u32::MAX` observations.
-pub fn encode_numeric_payload(observations: &[NumericObservation]) -> Result<Vec<u8>> {
+/// [`FormatError::InvalidInput`] when there are more than `u32::MAX` observations, or the
+/// partitioning does not fit the rows (see [`check_partitioning`]).
+pub fn encode_numeric_block(
+    observations: &[NumericObservation],
+    partitioning: &BlockPartitioning<'_>,
+) -> Result<Vec<u8>> {
     let n = observation_count(observations.len())?;
+    check_partitioning(n, partitioning)?;
     let mut by_value: Vec<(i64, u32, i64, u32)> = observations
         .iter()
         .enumerate()
@@ -128,7 +186,10 @@ pub fn encode_numeric_payload(observations: &[NumericObservation]) -> Result<Vec
     let has_timestamp = observations.iter().any(|o| o.timestamp != NO_TIMESTAMP);
 
     let len = observations.len();
-    let mut buf = Vec::with_capacity(numeric_payload_bound(n.into()) as usize);
+    let mut buf = Vec::with_capacity(
+        (numeric_payload_bound(n.into()) + partition_bound(n.into(), partitioning)) as usize,
+    );
+    put_prefix(&mut buf, n, has_timestamp, KIND_NUMERIC, partitioning)?;
     buf.extend_from_slice(&n.to_le_bytes());
     buf.extend_from_slice(&[u8::from(has_timestamp), KIND_NUMERIC, 0, 0]);
     let mut values = Vec::with_capacity(len);
@@ -146,15 +207,22 @@ pub fn encode_numeric_payload(observations: &[NumericObservation]) -> Result<Vec
         let timestamps: Vec<i64> = by_value.iter().map(|e| e.2).collect();
         put_array(&mut buf, &timestamps);
     }
-    drop(by_value);
     put_array(&mut buf, &by_key);
+    drop(by_key);
+    if let Some(rows) = partitioning.row_partitions {
+        put_tags(
+            &mut buf,
+            by_value.iter().map(|e| rows[e.3 as usize]),
+            tag_width(partitioning.partition_count),
+        );
+    }
     Ok(buf)
 }
 
-/// Encodes categorical observations, given in input (file) order, as a categorical block
-/// payload. Interns the values and calls [`encode_interned_categorical_payload`]; prefer
-/// that function when the caller already holds distinct values, since this one needs a
-/// `String` per observation.
+/// Encodes categorical observations, given in input (file) order, as the payload of an
+/// unpartitioned store's block. Interns the values and calls
+/// [`encode_interned_categorical_payload`]; prefer that function when the caller already
+/// holds distinct values, since this one needs a `String` per observation.
 ///
 /// # Errors
 /// As [`encode_interned_categorical_payload`].
@@ -176,24 +244,40 @@ pub fn encode_categorical_payload(observations: &[CategoricalObservation]) -> Re
     encode_interned_categorical_payload(&values, &rows)
 }
 
+/// Encodes categorical observations as the payload of an unpartitioned store's block:
+/// [`encode_interned_categorical_block`] with no holders and no tags.
+///
+/// # Errors
+/// As [`encode_interned_categorical_block`].
+pub fn encode_interned_categorical_payload<S: AsRef<str>>(
+    values: &[S],
+    rows: &[CategoricalRow],
+) -> Result<Vec<u8>> {
+    encode_interned_categorical_block(values, rows, &BlockPartitioning::default())
+}
+
 /// Encodes categorical observations as a categorical block payload, with each value named
-/// by its index into `values`. `rows` are in input (file) order.
+/// by its index into `values`, and the rows split over partitions as `partitioning` says.
+/// `rows` are in input (file) order.
 ///
 /// The dictionary holds the values that at least one row uses, sorted in Java
 /// `String.compareTo` order; unused entries of `values` are dropped. Each dictionary entry
 /// gets one roaring bitmap of the patients that have it. The `by_key` arrays (`patients`,
 /// `value_index`, `timestamps`) order the rows by patient and, within a patient, by input
 /// position, as Java's stable `sortedByKey` does. The timestamp array is omitted when every
-/// timestamp is [`NO_TIMESTAMP`].
+/// timestamp is [`NO_TIMESTAMP`]. Tags, when given, are stored in that key order.
 ///
 /// # Errors
 /// [`FormatError::InvalidInput`] when there are more than `u32::MAX` rows or values, a
-/// row's `value_id` is out of range, or two used entries of `values` are equal.
-pub fn encode_interned_categorical_payload<S: AsRef<str>>(
+/// row's `value_id` is out of range, two used entries of `values` are equal, or the
+/// partitioning does not fit the rows (see [`check_partitioning`]).
+pub fn encode_interned_categorical_block<S: AsRef<str>>(
     values: &[S],
     rows: &[CategoricalRow],
+    partitioning: &BlockPartitioning<'_>,
 ) -> Result<Vec<u8>> {
     let n = observation_count(rows.len())?;
+    check_partitioning(n, partitioning)?;
     if u32::try_from(values.len()).is_err() {
         return Err(FormatError::InvalidInput(format!(
             "{} distinct values exceed the u32 limit of a block",
@@ -242,6 +326,7 @@ pub fn encode_interned_categorical_payload<S: AsRef<str>>(
     let has_timestamp = rows.iter().any(|r| r.timestamp != NO_TIMESTAMP);
 
     let mut buf = Vec::new();
+    put_prefix(&mut buf, n, has_timestamp, KIND_CATEGORICAL, partitioning)?;
     buf.extend_from_slice(&n.to_le_bytes());
     buf.extend_from_slice(&[u8::from(has_timestamp), KIND_CATEGORICAL, 0, 0]);
     buf.extend_from_slice(&k.to_le_bytes());
@@ -278,7 +363,160 @@ pub fn encode_interned_categorical_payload<S: AsRef<str>>(
         let timestamps: Vec<i64> = by_key.iter().map(|&i| rows[i as usize].timestamp).collect();
         put_array(&mut buf, &timestamps);
     }
+    if let Some(row_partitions) = partitioning.row_partitions {
+        put_tags(
+            &mut buf,
+            by_key.iter().map(|&i| row_partitions[i as usize]),
+            tag_width(partitioning.partition_count),
+        );
+    }
     Ok(buf)
+}
+
+/// The tag width in bytes for a store of `partition_count` partitions.
+fn tag_width(partition_count: usize) -> u8 {
+    if partition_count <= MAX_NARROW_TAG_PARTITIONS {
+        1
+    } else {
+        2
+    }
+}
+
+/// Bytes of the block prefix for `holders` holders: the 16-byte header and the holder
+/// table, padded to 8.
+fn prefix_len(holders: usize) -> usize {
+    (PREFIX_HEADER_LEN + HOLDER_LEN * holders).next_multiple_of(8)
+}
+
+/// Bytes the prefix and tags add to a block of `n` rows partitioned as `partitioning`.
+fn partition_bound(n: u64, partitioning: &BlockPartitioning<'_>) -> u64 {
+    let tags = if partitioning.row_partitions.is_some() {
+        padded(n.saturating_mul(u64::from(tag_width(partitioning.partition_count))))
+    } else {
+        0
+    };
+    prefix_len(partitioning.holders.len()) as u64 + tags
+}
+
+/// Checks that `partitioning` fits a block of `n` rows: at most [`MAX_PARTITIONS`]
+/// partitions; holders strictly ascending by partition, each below the partition count,
+/// with observation counts summing to `n` (no holders for an unpartitioned block, which
+/// then takes no tags); and, when tagged, one tag per row naming a holder, each holder
+/// getting exactly its observation count.
+///
+/// # Errors
+/// [`FormatError::InvalidInput`] naming the first mismatch.
+pub fn check_partitioning(n: u32, partitioning: &BlockPartitioning<'_>) -> Result<()> {
+    let invalid = |detail: String| Err(FormatError::InvalidInput(detail));
+    let holders = partitioning.holders;
+    if partitioning.partition_count > MAX_PARTITIONS {
+        return invalid(format!(
+            "{} partitions exceed the limit of {MAX_PARTITIONS}",
+            partitioning.partition_count
+        ));
+    }
+    if holders.is_empty() {
+        if partitioning.row_partitions.is_some() {
+            return invalid("an unpartitioned block takes no tags".into());
+        }
+        return Ok(());
+    }
+    if let Some(w) = holders
+        .windows(2)
+        .find(|w| w[0].partition >= w[1].partition)
+    {
+        return invalid(format!(
+            "holder partitions {} and {} are not strictly ascending",
+            w[0].partition, w[1].partition
+        ));
+    }
+    if let Some(h) = holders
+        .iter()
+        .find(|h| usize::from(h.partition) >= partitioning.partition_count)
+    {
+        return invalid(format!(
+            "holder partition {} is not below the partition count {}",
+            h.partition, partitioning.partition_count
+        ));
+    }
+    let summed: u64 = holders.iter().map(|h| u64::from(h.observations)).sum();
+    if summed != u64::from(n) {
+        return invalid(format!(
+            "holders count {summed} observations, the block has {n}"
+        ));
+    }
+    if let Some(tags) = partitioning.row_partitions {
+        if tags.len() != n as usize {
+            return invalid(format!("{} tags for {n} rows", tags.len()));
+        }
+        let mut counts = vec![0u32; holders.len()];
+        for &tag in tags {
+            let Ok(slot) = holders.binary_search_by_key(&tag, |h| h.partition) else {
+                return invalid(format!(
+                    "a tag names partition {tag}, which holds no rows here"
+                ));
+            };
+            counts[slot] += 1;
+        }
+        if let Some((h, c)) = holders
+            .iter()
+            .zip(&counts)
+            .find(|(h, c)| h.observations != **c)
+        {
+            return invalid(format!(
+                "partition {} is tagged on {c} rows, its holder says {}",
+                h.partition, h.observations
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Writes the block prefix: `n`, the timestamp flag, the kind, the tag flag and width, the
+/// holder count and a reserved word, then the holder table, padded to 8.
+fn put_prefix(
+    buf: &mut Vec<u8>,
+    n: u32,
+    has_timestamp: bool,
+    kind: u8,
+    partitioning: &BlockPartitioning<'_>,
+) -> Result<()> {
+    let holders = u32::try_from(partitioning.holders.len())
+        .map_err(|_| FormatError::InvalidInput("more holders than a block records".into()))?;
+    let tagged = partitioning.row_partitions.is_some();
+    buf.extend_from_slice(&n.to_le_bytes());
+    buf.extend_from_slice(&[
+        u8::from(has_timestamp),
+        kind,
+        if tagged { FLAG_TAGGED } else { 0 },
+        if tagged {
+            tag_width(partitioning.partition_count)
+        } else {
+            0
+        },
+    ]);
+    buf.extend_from_slice(&holders.to_le_bytes());
+    buf.extend_from_slice(&0u32.to_le_bytes());
+    for holder in partitioning.holders {
+        buf.extend_from_slice(&holder.partition.to_le_bytes());
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        buf.extend_from_slice(&holder.observations.to_le_bytes());
+        buf.extend_from_slice(&holder.patients.to_le_bytes());
+    }
+    pad8(buf);
+    Ok(())
+}
+
+/// Writes one tag per row, `width` bytes each, little-endian, padded to 8.
+fn put_tags(buf: &mut Vec<u8>, tags: impl Iterator<Item = u16>, width: u8) {
+    for tag in tags {
+        if width == 1 {
+            buf.push(tag as u8);
+        } else {
+            buf.extend_from_slice(&tag.to_le_bytes());
+        }
+    }
+    pad8(buf);
 }
 
 /// Largest numeric payload `n` observations can encode to.
@@ -391,6 +629,247 @@ fn bitmap_heap_size(bitmap: &RoaringBitmap) -> usize {
     size_of::<RoaringBitmap>() + bitmap.serialized_size()
 }
 
+/// The tag array of a block, empty when it is untagged.
+fn tag_bytes<'a>(buf: &'a AlignedBuf, partitions: &BlockPartitions) -> &'a [u8] {
+    partitions
+        .tags
+        .clone()
+        .and_then(|range| buf.as_bytes().get(range))
+        .unwrap_or_default()
+}
+
+/// The tag of row `index` in `buf` under `partitions`, `None` when untagged or out of
+/// range.
+fn tag_at(buf: &AlignedBuf, partitions: &BlockPartitions, index: usize) -> Option<u16> {
+    let bytes = buf.as_bytes().get(partitions.tags.clone()?)?;
+    match partitions.tag_width {
+        1 => bytes.get(index).map(|&t| u16::from(t)),
+        _ => bytes
+            .get(index * 2..index * 2 + 2)
+            .map(|t| u16::from_le_bytes([t[0], t[1]])),
+    }
+}
+
+/// The partition layout a decoded block records: its holders, and for a tagged block the
+/// partition of every row.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BlockPartitions {
+    holders: Vec<PartitionHolder>,
+    tag_width: u8,
+    tags: Option<Range<usize>>,
+}
+
+impl BlockPartitions {
+    /// The partitions holding the concept, ascending by partition. Empty for a block of an
+    /// unpartitioned store.
+    pub fn holders(&self) -> &[PartitionHolder] {
+        &self.holders
+    }
+
+    /// True when every row carries its partition ([`Block::tag`]).
+    pub fn is_tagged(&self) -> bool {
+        self.tags.is_some()
+    }
+
+    fn heap_size(&self) -> usize {
+        self.holders.capacity() * size_of::<PartitionHolder>()
+    }
+}
+
+/// The block prefix as parsed, before the body.
+struct Prefix {
+    n: usize,
+    has_timestamp: bool,
+    kind: u8,
+    tag_width: u8,
+    tagged: bool,
+    holders: Vec<PartitionHolder>,
+    body_start: usize,
+}
+
+impl Prefix {
+    /// The prefix of a format 1 payload, which has none: the body starts at 0.
+    fn legacy(bytes: &[u8]) -> Result<Self> {
+        let header = bytes
+            .get(..8)
+            .ok_or(FormatError::Truncated("block header"))?;
+        Ok(Prefix {
+            n: u32::from_le_bytes(header[..4].try_into().unwrap_or_default()) as usize,
+            has_timestamp: check_flag(header[4], "block")?,
+            kind: header[5],
+            tag_width: 0,
+            tagged: false,
+            holders: Vec::new(),
+            body_start: 0,
+        })
+    }
+
+    /// Parses and checks the prefix at the start of `bytes`: known flags, a tag width that
+    /// fits the flag, zero reserved bytes, holders strictly ascending by partition whose
+    /// observation counts sum to the rows, and no tags without holders.
+    fn parse(bytes: &[u8]) -> Result<Self> {
+        let what = "block prefix";
+        let header = bytes
+            .get(..PREFIX_HEADER_LEN)
+            .ok_or(FormatError::Truncated(what))?;
+        let word =
+            |at: usize| u32::from_le_bytes(header[at..at + 4].try_into().unwrap_or_default());
+        let n = word(0) as usize;
+        let has_timestamp = check_flag(header[4], what)?;
+        let kind = header[5];
+        let flags = header[6];
+        let tag_width = header[7];
+        let holder_count = word(8) as usize;
+        if word(12) != 0 {
+            return Err(FormatError::corrupt(what, "reserved bytes are not zero"));
+        }
+        if flags & !FLAG_TAGGED != 0 {
+            return Err(FormatError::corrupt(
+                what,
+                format!("unknown flags {flags:#04x}"),
+            ));
+        }
+        let tagged = flags & FLAG_TAGGED != 0;
+        match (tagged, tag_width) {
+            (false, 0) | (true, 1) | (true, 2) => {}
+            _ => {
+                return Err(FormatError::corrupt(
+                    what,
+                    format!("tag width {tag_width} with tagging {tagged}"),
+                ));
+            }
+        }
+        let table_end = holder_count
+            .checked_mul(HOLDER_LEN)
+            .and_then(|len| len.checked_add(PREFIX_HEADER_LEN))
+            .filter(|&end| end <= bytes.len())
+            .ok_or(FormatError::Truncated(what))?;
+        let body_start = table_end.next_multiple_of(8);
+        if body_start > bytes.len() || bytes[table_end..body_start].iter().any(|&b| b != 0) {
+            return Err(FormatError::corrupt(
+                what,
+                "holder table padding is not zero",
+            ));
+        }
+        let holders: Vec<PartitionHolder> = bytes[PREFIX_HEADER_LEN..table_end]
+            .as_chunks::<HOLDER_LEN>()
+            .0
+            .iter()
+            .map(|h| {
+                let reserved = u16::from_le_bytes([h[2], h[3]]);
+                (reserved == 0)
+                    .then(|| PartitionHolder {
+                        partition: u16::from_le_bytes([h[0], h[1]]),
+                        observations: u32::from_le_bytes(h[4..8].try_into().unwrap_or_default()),
+                        patients: u32::from_le_bytes(h[8..12].try_into().unwrap_or_default()),
+                    })
+                    .ok_or_else(|| FormatError::corrupt(what, "holder reserved bytes are not zero"))
+            })
+            .collect::<Result<_>>()?;
+        if holders.is_empty() && tagged {
+            return Err(FormatError::corrupt(
+                what,
+                "an unpartitioned block is tagged",
+            ));
+        }
+        if holders.windows(2).any(|w| w[0].partition >= w[1].partition) {
+            return Err(FormatError::corrupt(
+                what,
+                "holder partitions are not strictly ascending",
+            ));
+        }
+        let summed: u64 = holders.iter().map(|h| u64::from(h.observations)).sum();
+        if !holders.is_empty() && summed != n as u64 {
+            return Err(FormatError::corrupt(
+                what,
+                format!("holders count {summed} rows, the block has {n}"),
+            ));
+        }
+        Ok(Prefix {
+            n,
+            has_timestamp,
+            kind,
+            tag_width,
+            tagged,
+            holders,
+            body_start,
+        })
+    }
+
+    /// Checks that the body header at `at` repeats the prefix's row count, timestamp flag
+    /// and kind.
+    fn check_body_header(&self, bytes: &[u8], at: usize, what: &'static str) -> Result<()> {
+        let header = bytes.get(at..at + 8).ok_or(FormatError::Truncated(what))?;
+        let n = u32::from_le_bytes(header[..4].try_into().unwrap_or_default()) as usize;
+        if n != self.n
+            || check_flag(header[4], what)? != self.has_timestamp
+            || header[5] != self.kind
+        {
+            return Err(FormatError::corrupt(
+                what,
+                "the body header disagrees with the block prefix",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Reads the tag array after the body when the block is tagged, and checks that every
+    /// tag names a holder and each holder gets exactly its observation count. Returns the
+    /// partitions record of the block.
+    fn finish(self, c: &mut Cursor<'_>) -> Result<BlockPartitions> {
+        let tags = if self.tagged {
+            let range = match self.tag_width {
+                1 => c.array::<u8>(self.n)?,
+                _ => c.array::<u16>(self.n)?,
+            };
+            let bytes = &c.bytes[range.clone()];
+            let mut counts = vec![0u32; self.holders.len()];
+            let mut count = |tag: u16| -> Result<()> {
+                let slot = self
+                    .holders
+                    .binary_search_by_key(&tag, |h| h.partition)
+                    .map_err(|_| {
+                        FormatError::corrupt(
+                            "block tags",
+                            format!("a tag names partition {tag}, no holder"),
+                        )
+                    })?;
+                counts[slot] += 1;
+                Ok(())
+            };
+            if self.tag_width == 1 {
+                bytes.iter().try_for_each(|&t| count(u16::from(t)))?;
+            } else {
+                bytes
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .try_for_each(|t| count(u16::from_le_bytes([t[0], t[1]])))?;
+            }
+            if self
+                .holders
+                .iter()
+                .zip(&counts)
+                .any(|(h, &c)| h.observations != c)
+            {
+                return Err(FormatError::corrupt(
+                    "block tags",
+                    "the tags disagree with the holders' observation counts",
+                ));
+            }
+            Some(range)
+        } else {
+            None
+        };
+        c.finish()?;
+        Ok(BlockPartitions {
+            holders: self.holders,
+            tag_width: self.tag_width,
+            tags,
+        })
+    }
+}
+
 /// A decoded numeric block. The array accessors are zero-copy views over one aligned
 /// buffer; the patient set is computed once at decode.
 #[derive(Clone, Debug)]
@@ -403,18 +882,21 @@ pub struct NumericBlock {
     timestamps: Option<Range<usize>>,
     by_key: Range<usize>,
     all_patients: RoaringBitmap,
+    partitions: BlockPartitions,
 }
 
 impl NumericBlock {
-    fn decode(buf: AlignedBuf) -> Result<Self> {
+    fn decode(buf: AlignedBuf, prefix: Prefix) -> Result<Self> {
+        let what = "numeric block";
         let mut c = Cursor {
             bytes: buf.as_bytes(),
-            pos: 0,
-            what: "numeric block",
+            pos: prefix.body_start,
+            what,
         };
-        let header = c.take(NUMERIC_HEADER_LEN)?;
-        let len = c.u32_at(header.start)? as usize;
-        let has_timestamp = check_flag(c.bytes[header.start + 4], c.what)?;
+        prefix.check_body_header(c.bytes, c.pos, what)?;
+        c.take(NUMERIC_HEADER_LEN)?;
+        let len = prefix.n;
+        let has_timestamp = prefix.has_timestamp;
         let values = c.array::<f64>(len)?;
         let patients = c.array::<u32>(len)?;
         let timestamps = if has_timestamp {
@@ -423,7 +905,7 @@ impl NumericBlock {
             None
         };
         let by_key = c.array::<u32>(len)?;
-        c.finish()?;
+        let partitions = prefix.finish(&mut c)?;
         let mut block = NumericBlock {
             len,
             has_timestamp,
@@ -433,6 +915,7 @@ impl NumericBlock {
             by_key,
             buf,
             all_patients: RoaringBitmap::new(),
+            partitions,
         };
         let mut seen = vec![0u64; len.div_ceil(64)];
         for &i in block.by_key() {
@@ -452,6 +935,17 @@ impl NumericBlock {
             "numeric block",
         )?;
         Ok(block)
+    }
+
+    /// The partition layout the block records.
+    pub fn partitions(&self) -> &BlockPartitions {
+        &self.partitions
+    }
+
+    /// The partition tag of value position `index`, or `None` when the block is untagged or
+    /// `index` is out of range.
+    pub fn tag_at_value_pos(&self, index: usize) -> Option<u16> {
+        tag_at(&self.buf, &self.partitions, index)
     }
 
     /// Number of observations.
@@ -517,9 +1011,10 @@ impl NumericBlock {
         start..end.max(start)
     }
 
-    /// Approximate heap bytes held: the payload buffer plus the patient bitmap.
+    /// Approximate heap bytes held: the payload buffer, the patient bitmap and the holder
+    /// table.
     pub fn heap_size(&self) -> usize {
-        self.buf.heap_size() + bitmap_heap_size(&self.all_patients)
+        self.buf.heap_size() + bitmap_heap_size(&self.all_patients) + self.partitions.heap_size()
     }
 }
 
@@ -539,6 +1034,7 @@ pub struct CategoricalBlock {
     patients: Range<usize>,
     value_indices: Range<usize>,
     timestamps: Option<Range<usize>>,
+    partitions: BlockPartitions,
 }
 
 fn check_offsets(offsets: &[u64], data_len: usize, what: &'static str) -> Result<()> {
@@ -555,16 +1051,21 @@ fn check_offsets(offsets: &[u64], data_len: usize, what: &'static str) -> Result
 }
 
 impl CategoricalBlock {
-    fn decode(buf: AlignedBuf) -> Result<Self> {
+    fn decode(buf: AlignedBuf, prefix: Prefix) -> Result<Self> {
+        let what = "categorical block";
         let mut c = Cursor {
             bytes: buf.as_bytes(),
-            pos: 0,
-            what: "categorical block",
+            pos: prefix.body_start,
+            what,
         };
+        prefix.check_body_header(c.bytes, c.pos, what)?;
         let header = c.take(CATEGORICAL_HEADER_LEN)?;
-        let len = c.u32_at(header.start)? as usize;
-        let has_timestamp = check_flag(c.bytes[header.start + 4], c.what)?;
+        let len = prefix.n;
+        let has_timestamp = prefix.has_timestamp;
         let dictionary_len = c.u32_at(header.start + 8)? as usize;
+        if c.u32_at(header.start + 12)? != 0 {
+            return Err(FormatError::corrupt(what, "reserved bytes are not zero"));
+        }
         let entries = dictionary_len
             .checked_add(1)
             .ok_or(FormatError::Truncated(c.what))?;
@@ -592,7 +1093,7 @@ impl CategoricalBlock {
         } else {
             None
         };
-        c.finish()?;
+        let partitions = prefix.finish(&mut c)?;
 
         let strings = view::<u8>(&buf, &string_bytes);
         let offsets = view::<u64>(&buf, &string_offsets);
@@ -632,6 +1133,7 @@ impl CategoricalBlock {
             value_indices,
             timestamps,
             buf,
+            partitions,
         };
         if block
             .value_indices()
@@ -750,10 +1252,22 @@ impl CategoricalBlock {
             .unwrap_or(NO_TIMESTAMP)
     }
 
-    /// Approximate heap bytes held: the payload buffer, the dictionary copy and the
-    /// deserialized bitmaps.
+    /// The partition layout the block records.
+    pub fn partitions(&self) -> &BlockPartitions {
+        &self.partitions
+    }
+
+    /// The partition tag of key position `index`, or `None` when the block is untagged or
+    /// `index` is out of range.
+    pub fn tag_at_key_pos(&self, index: usize) -> Option<u16> {
+        tag_at(&self.buf, &self.partitions, index)
+    }
+
+    /// Approximate heap bytes held: the payload buffer, the dictionary copy, the
+    /// deserialized bitmaps and the holder table.
     pub fn heap_size(&self) -> usize {
-        self.buf.heap_size()
+        self.partitions.heap_size()
+            + self.buf.heap_size()
             + self.dictionary_text.capacity()
             + self.dictionary.capacity() * size_of::<Range<usize>>()
             + self.bitmaps.iter().map(bitmap_heap_size).sum::<usize>()
@@ -772,21 +1286,199 @@ pub enum Block {
 
 impl Block {
     /// Validates a decoded payload, wraps it in typed views, and computes the patient set
-    /// (and, for categorical blocks, the dictionary and bitmaps).
+    /// (and, for categorical blocks, the dictionary and bitmaps). Checks the prefix and the
+    /// tags on their own; [`Block::check_membership`] checks them against the store's
+    /// partitions.
     ///
     /// # Errors
     /// [`FormatError::Truncated`] or [`FormatError::Corrupt`] when the payload does not
     /// match either layout.
     pub fn decode(payload: AlignedBuf) -> Result<Self> {
-        match payload.as_bytes().get(5) {
-            Some(&KIND_NUMERIC) => NumericBlock::decode(payload).map(Block::Numeric),
-            Some(&KIND_CATEGORICAL) => CategoricalBlock::decode(payload).map(Block::Categorical),
-            Some(other) => Err(FormatError::corrupt(
+        let prefix = Prefix::parse(payload.as_bytes())?;
+        Self::decode_body(payload, prefix)
+    }
+
+    /// [`Block::decode`] for a format 1 payload, which has no prefix, holders or tags.
+    ///
+    /// # Errors
+    /// As [`Block::decode`].
+    pub fn decode_legacy(payload: AlignedBuf) -> Result<Self> {
+        let prefix = Prefix::legacy(payload.as_bytes())?;
+        Self::decode_body(payload, prefix)
+    }
+
+    fn decode_body(payload: AlignedBuf, prefix: Prefix) -> Result<Self> {
+        match prefix.kind {
+            KIND_NUMERIC => NumericBlock::decode(payload, prefix).map(Block::Numeric),
+            KIND_CATEGORICAL => CategoricalBlock::decode(payload, prefix).map(Block::Categorical),
+            other => Err(FormatError::corrupt(
                 "block",
                 format!("unknown kind {other}"),
             )),
-            None => Err(FormatError::Truncated("block header")),
         }
+    }
+
+    /// The partition layout the block records.
+    pub fn partitions(&self) -> &BlockPartitions {
+        match self {
+            Block::Numeric(b) => b.partitions(),
+            Block::Categorical(b) => b.partitions(),
+        }
+    }
+
+    /// Patient and tag of every row, in key order: by patient, then the order within the
+    /// patient ([`NumericBlock::by_key`] order for a numeric block, key position order for a
+    /// categorical one). The tag is `None` in an untagged block.
+    fn tags_by_key(&self) -> impl Iterator<Item = (u32, Option<u16>)> + '_ {
+        let (patients, order, tags): (&[u32], &[u32], &[u8]) = match self {
+            Block::Numeric(b) => (b.patients(), b.by_key(), tag_bytes(&b.buf, &b.partitions)),
+            Block::Categorical(b) => (b.patients(), &[][..], tag_bytes(&b.buf, &b.partitions)),
+        };
+        let width = usize::from(self.partitions().tag_width);
+        let numeric = matches!(self, Block::Numeric(_));
+        (0..patients.len()).map(move |k| {
+            let position = if numeric { order[k] as usize } else { k };
+            let tag = match width {
+                1 => tags.get(position).map(|&t| u16::from(t)),
+                2 => tags
+                    .get(position * 2..position * 2 + 2)
+                    .map(|t| u16::from_le_bytes([t[0], t[1]])),
+                _ => None,
+            };
+            (patients[position], tag)
+        })
+    }
+
+    /// Patient and partition of every row, in key order: by patient, then the order within
+    /// the patient. For a numeric block that is [`NumericBlock::by_key`] order, for a
+    /// categorical one key position order. The partition is the row's tag in a tagged block,
+    /// and otherwise the partition `membership` routes the patient to, `None` when it routes
+    /// nowhere.
+    pub fn rows_by_key<'a>(
+        &'a self,
+        membership: &'a Membership,
+    ) -> impl Iterator<Item = (u32, Option<u16>)> + 'a {
+        let tagged = self.partitions().is_tagged();
+        self.tags_by_key().map(move |(patient, tag)| {
+            if tagged {
+                (patient, tag)
+            } else {
+                (patient, membership.partition_of(patient))
+            }
+        })
+    }
+
+    /// Checks the block's partitions against the store's: its holders must be `expected`
+    /// (the index's holders of the concept) and its tagging must be `tagged`; every row of
+    /// an untagged block must belong to a patient `membership` routes to one partition; a
+    /// tagged row of a patient routed to a partition must carry that partition; and the rows
+    /// and distinct patients each partition gets must equal its holder's counts. A block of
+    /// an unpartitioned store holds no holders and passes.
+    ///
+    /// # Errors
+    /// [`FormatError::Corrupt`] naming the first disagreement.
+    pub fn check_membership(
+        &self,
+        expected: &[PartitionHolder],
+        tagged: bool,
+        membership: &Membership,
+    ) -> Result<()> {
+        let what = "block partitions";
+        let partitions = self.partitions();
+        if partitions.holders() != expected {
+            return Err(FormatError::corrupt(
+                what,
+                "the block's holders disagree with the index",
+            ));
+        }
+        if partitions.is_tagged() != tagged {
+            return Err(FormatError::corrupt(
+                what,
+                "the block's tagging disagrees with the index",
+            ));
+        }
+        if expected.is_empty() {
+            return Ok(());
+        }
+        let mut slot_of = vec![u32::MAX; membership.partition_count()];
+        for (slot, holder) in expected.iter().enumerate() {
+            match slot_of.get_mut(usize::from(holder.partition)) {
+                Some(entry) => *entry = slot as u32,
+                None => {
+                    return Err(FormatError::corrupt(
+                        what,
+                        format!("holder partition {} is not in the store", holder.partition),
+                    ));
+                }
+            }
+        }
+        let mut rows = vec![0u32; expected.len()];
+        let mut patients = vec![0u32; expected.len()];
+        let mut last = vec![None::<u32>; expected.len()];
+        let mut routed: Option<(u32, Option<u16>)> = None;
+        for (patient, tag) in self.tags_by_key() {
+            let route = match routed {
+                Some((p, route)) if p == patient => route,
+                _ => {
+                    let route = membership.partition_of(patient);
+                    routed = Some((patient, route));
+                    route
+                }
+            };
+            let partition = match (partitions.is_tagged(), tag, route) {
+                (false, _, Some(partition)) => partition,
+                (false, _, None) => {
+                    return Err(FormatError::corrupt(
+                        what,
+                        "an untagged block holds a row of a patient no single partition holds",
+                    ));
+                }
+                (true, Some(tag), Some(route)) if tag != route => {
+                    return Err(FormatError::corrupt(
+                        what,
+                        "a row is tagged with another partition than its patient's",
+                    ));
+                }
+                (true, Some(tag), _) => tag,
+                (true, None, _) => {
+                    return Err(FormatError::corrupt(
+                        what,
+                        "a tagged block lacks a row's tag",
+                    ));
+                }
+            };
+            let slot = slot_of
+                .get(usize::from(partition))
+                .copied()
+                .filter(|&slot| slot != u32::MAX)
+                .ok_or_else(|| {
+                    FormatError::corrupt(
+                        what,
+                        format!("a row belongs to partition {partition}, which is no holder"),
+                    )
+                })? as usize;
+            rows[slot] += 1;
+            if last[slot] != Some(patient) {
+                patients[slot] += 1;
+                last[slot] = Some(patient);
+            }
+        }
+        for (slot, holder) in expected.iter().enumerate() {
+            if holder.observations != rows[slot] || holder.patients != patients[slot] {
+                return Err(FormatError::corrupt(
+                    what,
+                    format!(
+                        "partition {} holds {} rows of {} patients, its holder says {} of {}",
+                        holder.partition,
+                        rows[slot],
+                        patients[slot],
+                        holder.observations,
+                        holder.patients
+                    ),
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Number of observations.
@@ -821,13 +1513,17 @@ impl Block {
 }
 
 /// Associated data bound into a block: the store id, the concept path's UTF-8 bytes, and
-/// the format version as a little-endian `u16`. Encrypted blocks authenticate it; plain
-/// blocks fold it into their checksum.
+/// the format version ([`FORMAT_VERSION`]) as a little-endian `u16`. Encrypted blocks
+/// authenticate it; plain blocks fold it into their checksum.
 pub fn block_aad(store_id: &StoreId, concept_path: &str) -> Vec<u8> {
+    versioned_block_aad(store_id, concept_path, FORMAT_VERSION)
+}
+
+fn versioned_block_aad(store_id: &StoreId, concept_path: &str, version: u16) -> Vec<u8> {
     let mut aad = Vec::with_capacity(store_id.as_bytes().len() + concept_path.len() + 2);
     aad.extend_from_slice(store_id.as_bytes());
     aad.extend_from_slice(concept_path.as_bytes());
-    aad.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+    aad.extend_from_slice(&version.to_le_bytes());
     aad
 }
 
@@ -853,6 +1549,7 @@ pub struct BlockCodec {
     store_id: StoreId,
     compressed: bool,
     level: i32,
+    format_version: u16,
 }
 
 impl BlockCodec {
@@ -864,7 +1561,23 @@ impl BlockCodec {
             store_id,
             compressed,
             level: zstd::DEFAULT_COMPRESSION_LEVEL,
+            format_version: FORMAT_VERSION,
         }
+    }
+
+    /// A codec that only opens blocks of a format 1 store (Rust HPDS v1 to v3), whose
+    /// associated data binds format version 1 and whose payloads carry no partition prefix.
+    /// It refuses to seal: format 1 is read only, for `hpds-etl convert`.
+    pub fn legacy(protection: Protection, store_id: StoreId, compressed: bool) -> Self {
+        BlockCodec {
+            format_version: LEGACY_FORMAT_VERSION,
+            ..BlockCodec::new(protection, store_id, compressed)
+        }
+    }
+
+    /// The format version whose blocks this codec seals and opens.
+    pub fn format_version(&self) -> u16 {
+        self.format_version
     }
 
     /// Sets the zstd level used by [`BlockCodec::seal`].
@@ -894,6 +1607,12 @@ impl BlockCodec {
     /// [`FormatError::Compression`] when zstd fails, and the errors of
     /// [`crate::crypto::seal_framed`].
     pub fn seal(&self, concept_path: &str, payload: &[u8]) -> Result<Vec<u8>> {
+        if self.format_version != FORMAT_VERSION {
+            return Err(FormatError::InvalidInput(format!(
+                "format {} is read only; blocks are written in format {FORMAT_VERSION}",
+                self.format_version
+            )));
+        }
         let compressed;
         let body = if self.compressed {
             compressed = zstd::bulk::compress(payload, self.level)
@@ -902,7 +1621,7 @@ impl BlockCodec {
         } else {
             payload
         };
-        let aad = block_aad(&self.store_id, concept_path);
+        let aad = versioned_block_aad(&self.store_id, concept_path, self.format_version);
         match &self.protection {
             Protection::Encrypted(key) => seal_framed(key, body, &aad),
             Protection::Plain => {
@@ -929,7 +1648,7 @@ impl BlockCodec {
         stored: &[u8],
         max_payload_len: u64,
     ) -> Result<AlignedBuf> {
-        let aad = block_aad(&self.store_id, concept_path);
+        let aad = versioned_block_aad(&self.store_id, concept_path, self.format_version);
         let decrypted;
         let body = match &self.protection {
             Protection::Encrypted(key) => {
@@ -959,12 +1678,19 @@ impl BlockCodec {
         }
     }
 
-    /// Verifies, decodes and validates a stored block.
+    /// Verifies, decodes and validates a stored block, with [`Block::decode_legacy`] for a
+    /// [`BlockCodec::legacy`] codec. The block is checked on its own, not against the
+    /// store's partitions ([`Block::check_membership`]).
     ///
     /// # Errors
     /// The errors of [`BlockCodec::open_payload`] and [`Block::decode`].
     pub fn open(&self, concept_path: &str, stored: &[u8], max_payload_len: u64) -> Result<Block> {
-        Block::decode(self.open_payload(concept_path, stored, max_payload_len)?)
+        let payload = self.open_payload(concept_path, stored, max_payload_len)?;
+        if self.format_version == LEGACY_FORMAT_VERSION {
+            Block::decode_legacy(payload)
+        } else {
+            Block::decode(payload)
+        }
     }
 }
 

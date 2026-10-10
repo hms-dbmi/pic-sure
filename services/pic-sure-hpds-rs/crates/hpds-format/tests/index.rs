@@ -58,6 +58,8 @@ fn meta(path: &str) -> ConceptMeta {
             offset: 8,
             length: 10,
         },
+        holders: Vec::new(),
+        tagged: false,
     }
 }
 
@@ -95,6 +97,8 @@ fn concept() -> impl Strategy<Value = ConceptMeta> {
                     offset: layout.2,
                     length: layout.3,
                 },
+                holders: Vec::new(),
+                tagged: false,
             },
         )
 }

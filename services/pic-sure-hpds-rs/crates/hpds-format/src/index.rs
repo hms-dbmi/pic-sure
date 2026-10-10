@@ -8,13 +8,15 @@ use xxhash_rust::xxh3::xxh3_64;
 
 use crate::aligned::AlignedBuf;
 use crate::block::{
-    BlockCodec, categorical_payload_bound, numeric_payload_bound, zstd_decompress_aligned,
+    BlockCodec, MAX_PARTITIONS, PartitionHolder, categorical_payload_bound, numeric_payload_bound,
+    zstd_decompress_aligned,
 };
 use crate::crypto::{open_framed, seal_framed};
 use crate::error::{FormatError, Result};
+use crate::membership::Membership;
 use crate::parity::java_string_cmp;
 use crate::protection::{Protection, STORE_ID_LEN, StoreId};
-use crate::{FORMAT_VERSION, INDEX_MAGIC};
+use crate::{FORMAT_VERSION, INDEX_MAGIC, LEGACY_FORMAT_VERSION};
 
 const FLAG_ENCRYPTED: u16 = 1;
 const FLAG_COMPRESSED: u16 = 1 << 1;
@@ -27,6 +29,12 @@ const META_TIMESTAMP_MIN: u8 = 1 << 3;
 const META_TIMESTAMP_MAX: u8 = 1 << 4;
 const META_CATEGORY_VALUES: u8 = 1 << 5;
 const KNOWN_META: u8 = (1 << 6) - 1;
+
+const CONCEPT_TAGGED: u8 = 1;
+const PARTITION_PATIENTS_INDEXED: u8 = 1;
+const LAYOUT_UNPARTITIONED: u8 = 0;
+const LAYOUT_PARTITIONED: u8 = 1;
+const INDEX_HOLDER_LEN: usize = 10;
 
 /// Largest decompressed index body accepted, checked against the zstd frame header before
 /// anything is allocated.
@@ -83,6 +91,12 @@ pub struct ConceptMeta {
     /// Location of the concept's block. Stands in for `allObservationsOffset` and
     /// `allObservationsLength`.
     pub block: BlockLocation,
+    /// The partitions holding the concept, ascending by partition, with their rows and
+    /// patients in its block. Empty in an unpartitioned store.
+    pub holders: Vec<PartitionHolder>,
+    /// True when the block carries a partition tag on every row, because it holds a row of
+    /// a patient in the store's overlap set.
+    pub tagged: bool,
 }
 
 impl ConceptMeta {
@@ -103,7 +117,20 @@ impl ConceptMeta {
             self.observation_count,
             values.len() as u64,
             values.iter().map(|v| v.len() as u64).sum(),
+            self.holders.len(),
+            self.tagged,
         )
+    }
+
+    /// The sum of the holders' patient counts: the concept's patient count as Java's
+    /// `SummaryColumnMeta.merge` sums it, a patient in two partitions counted twice. For an
+    /// unpartitioned store, the patient count.
+    pub fn summed_patient_count(&self) -> u64 {
+        if self.holders.is_empty() {
+            u64::from(self.patient_count)
+        } else {
+            self.holders.iter().map(|h| u64::from(h.patients)).sum()
+        }
     }
 }
 
@@ -114,12 +141,21 @@ fn payload_bound(
     observation_count: u32,
     value_count: u64,
     string_bytes: u64,
+    holders: usize,
+    tagged: bool,
 ) -> u64 {
     let n = u64::from(observation_count);
-    let exact = match concept_type {
+    let body = match concept_type {
         ConceptType::Numeric => numeric_payload_bound(n),
         ConceptType::Categorical => categorical_payload_bound(n, value_count, string_bytes),
     };
+    let prefix = (16 + 12 * holders as u64).next_multiple_of(8);
+    let tags = if tagged {
+        (2 * n).next_multiple_of(8)
+    } else {
+        0
+    };
+    let exact = body.saturating_add(prefix).saturating_add(tags);
     exact.saturating_add(exact / 4).saturating_add(4096)
 }
 
@@ -153,6 +189,10 @@ pub struct ConceptView<'a> {
     pub column_offset: i32,
     /// Location of the concept's block.
     pub block: BlockLocation,
+    /// The partitions holding the concept. [`ConceptMeta::holders`].
+    pub holders: ConceptHolders<'a>,
+    /// [`ConceptMeta::tagged`].
+    pub tagged: bool,
 }
 
 impl ConceptView<'_> {
@@ -166,7 +206,14 @@ impl ConceptView<'_> {
         let (count, bytes) = self
             .category_values
             .map_or((0, 0), |v| (v.len() as u64, v.string_bytes()));
-        payload_bound(self.concept_type, self.observation_count, count, bytes)
+        payload_bound(
+            self.concept_type,
+            self.observation_count,
+            count,
+            bytes,
+            self.holders.len(),
+            self.tagged,
+        )
     }
 
     /// The concept as an owned [`ConceptMeta`].
@@ -187,7 +234,145 @@ impl ConceptView<'_> {
             width_in_bytes: self.width_in_bytes,
             column_offset: self.column_offset,
             block: self.block,
+            holders: self.holders.iter().collect(),
+            tagged: self.tagged,
         }
+    }
+}
+
+/// A concept's holders inside an index body, already checked when the concept was parsed.
+/// Iterates ascending by partition.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ConceptHolders<'a> {
+    bytes: &'a [u8],
+}
+
+impl<'a> ConceptHolders<'a> {
+    /// The number of holders.
+    pub fn len(&self) -> usize {
+        self.bytes.len() / INDEX_HOLDER_LEN
+    }
+
+    /// True when there are no holders, as in an unpartitioned store.
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    /// The holders, ascending by partition.
+    pub fn iter(&self) -> impl Iterator<Item = PartitionHolder> + 'a {
+        self.bytes
+            .as_chunks::<INDEX_HOLDER_LEN>()
+            .0
+            .iter()
+            .map(|h| PartitionHolder {
+                partition: u16::from_le_bytes([h[0], h[1]]),
+                observations: u32::from_le_bytes([h[2], h[3], h[4], h[5]]),
+                patients: u32::from_le_bytes([h[6], h[7], h[8], h[9]]),
+            })
+    }
+}
+
+/// A consent partition of a partitioned store, as its index records it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexPartition {
+    /// The partition name, the consent value that selects it.
+    pub name: String,
+    /// True when every patient with a row in the partition is in its patient set. Always
+    /// true for a store loaded from CSV; a migrated or converted store keeps the patient set
+    /// Java exported, which can miss a patient its rows hold.
+    pub patients_indexed: bool,
+    /// The partition's patient set, as Java's per-partition patient ids.
+    pub patients: RoaringBitmap,
+}
+
+/// The partition table of a store: its partitions in Java `String.compareTo` order of the
+/// names, and the overlap set `O`. Empty for an unpartitioned store.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PartitionTable {
+    /// The partitions, strictly ascending by name in Java string order.
+    pub partitions: Vec<IndexPartition>,
+    /// The patients whose partition the patient alone does not decide: those in two or more
+    /// partitions' sets, and those with a row in a partition whose set lacks them. Their
+    /// rows carry partition tags.
+    pub overlap: RoaringBitmap,
+}
+
+impl PartitionTable {
+    /// True for an unpartitioned store's table.
+    pub fn is_empty(&self) -> bool {
+        self.partitions.is_empty()
+    }
+
+    /// The union of the partitions' patient sets.
+    pub fn patients(&self) -> RoaringBitmap {
+        let mut union = RoaringBitmap::new();
+        for partition in &self.partitions {
+            union |= &partition.patients;
+        }
+        union
+    }
+
+    /// The routing of patients to partitions this table gives ([`Membership::new`]).
+    pub fn membership(&self) -> Membership {
+        if self.partitions.is_empty() {
+            return Membership::unpartitioned();
+        }
+        let sets: Vec<&RoaringBitmap> = self.partitions.iter().map(|p| &p.patients).collect();
+        Membership::new(&sets, &self.overlap)
+    }
+
+    /// The position of the partition named `name`, by binary search in Java string order.
+    pub fn position(&self, name: &str) -> Option<usize> {
+        self.partitions
+            .binary_search_by(|p| java_string_cmp(&p.name, name))
+            .ok()
+    }
+
+    /// Checks the table against the store's `patients`: at most [`MAX_PARTITIONS`]
+    /// partitions, names strictly ascending in Java string order, `overlap` a subset of
+    /// `patients`, and, for a partitioned store, the partition sets unioning to `patients`;
+    /// an unpartitioned store has an empty overlap set.
+    fn check(&self, patients: &RoaringBitmap) -> Result<()> {
+        let what = "partition table";
+        if self.partitions.len() > MAX_PARTITIONS {
+            return Err(FormatError::corrupt(
+                what,
+                format!(
+                    "{} partitions exceed {MAX_PARTITIONS}",
+                    self.partitions.len()
+                ),
+            ));
+        }
+        if let Some(w) = self
+            .partitions
+            .windows(2)
+            .find(|w| java_string_cmp(&w[0].name, &w[1].name) != Ordering::Less)
+        {
+            return Err(FormatError::corrupt(
+                what,
+                format!("{:?} is not sorted after {:?}", w[1].name, w[0].name),
+            ));
+        }
+        if !self.overlap.is_subset(patients) {
+            return Err(FormatError::corrupt(
+                what,
+                "the overlap set holds a patient the store does not",
+            ));
+        }
+        if self.partitions.is_empty() {
+            if !self.overlap.is_empty() {
+                return Err(FormatError::corrupt(
+                    what,
+                    "an unpartitioned store has an overlap set",
+                ));
+            }
+        } else if &self.patients() != patients {
+            return Err(FormatError::corrupt(
+                what,
+                "the partitions' patient sets do not union to the store's patients",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -249,24 +434,45 @@ pub struct IndexHeader {
     pub store_id: StoreId,
 }
 
-/// The in-memory form of `pheno.index`: header, all patient IDs, and the concept table
-/// sorted by path in Java `String.compareTo` order.
+/// The in-memory form of `pheno.index`: header, all patient IDs, the partition table, and
+/// the concept table sorted by path in Java `String.compareTo` order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PhenoIndex {
     header: IndexHeader,
     patients: RoaringBitmap,
+    table: PartitionTable,
     concepts: Vec<ConceptMeta>,
 }
 
 impl PhenoIndex {
-    /// Builds an index, sorting `concepts` by path. The header's format version is set to
-    /// [`FORMAT_VERSION`].
+    /// Builds the index of an unpartitioned store, sorting `concepts` by path. The header's
+    /// format version is set to [`FORMAT_VERSION`].
     ///
     /// # Errors
-    /// [`FormatError::InvalidInput`] when two concepts share a path.
+    /// [`FormatError::InvalidInput`] when two concepts share a path or a concept has
+    /// holders.
     pub fn new(
+        header: IndexHeader,
+        patients: RoaringBitmap,
+        concepts: Vec<ConceptMeta>,
+    ) -> Result<Self> {
+        Self::with_partitions(header, patients, PartitionTable::default(), concepts)
+    }
+
+    /// Builds the index of a store with the partition table `table` (empty for an
+    /// unpartitioned store), sorting `concepts` by path. The header's format version is set
+    /// to [`FORMAT_VERSION`].
+    ///
+    /// # Errors
+    /// [`FormatError::InvalidInput`] when two concepts share a path, the table does not fit
+    /// `patients` (see [`PartitionTable`]), or a concept's holders do not fit the table
+    /// (holders strictly ascending by partition, each partition in the table, observation
+    /// counts summing to the concept's; none in an unpartitioned store; a tagged concept
+    /// only with a non-empty overlap set).
+    pub fn with_partitions(
         mut header: IndexHeader,
         patients: RoaringBitmap,
+        table: PartitionTable,
         mut concepts: Vec<ConceptMeta>,
     ) -> Result<Self> {
         header.format_version = FORMAT_VERSION;
@@ -277,9 +483,27 @@ impl PhenoIndex {
                 w[0].path
             )));
         }
+        let invalid = |e: FormatError| FormatError::InvalidInput(e.to_string());
+        table.check(&patients).map_err(invalid)?;
+        let context = ConceptContext {
+            version: FORMAT_VERSION,
+            partitions: table.partitions.len(),
+            overlap_empty: table.overlap.is_empty(),
+        };
+        for concept in &concepts {
+            context
+                .check_holders(
+                    &concept.path,
+                    concept.observation_count,
+                    &concept.holders,
+                    concept.tagged,
+                )
+                .map_err(invalid)?;
+        }
         Ok(PhenoIndex {
             header,
             patients,
+            table,
             concepts,
         })
     }
@@ -312,6 +536,21 @@ impl PhenoIndex {
     /// Every patient ID in the store.
     pub fn patients(&self) -> &RoaringBitmap {
         &self.patients
+    }
+
+    /// The partition table, empty for an unpartitioned store.
+    pub fn partition_table(&self) -> &PartitionTable {
+        &self.table
+    }
+
+    /// True when the store is split into consent partitions.
+    pub fn is_partitioned(&self) -> bool {
+        !self.table.is_empty()
+    }
+
+    /// The routing of patients to partitions ([`PartitionTable::membership`]).
+    pub fn membership(&self) -> Membership {
+        self.table.membership()
     }
 
     /// All concepts in Java string order of their paths.
@@ -380,8 +619,25 @@ impl PhenoIndex {
 
     fn encode_body(&self) -> Result<Vec<u8>> {
         let mut out = Vec::new();
-        out.extend_from_slice(&(self.patients.serialized_size() as u64).to_le_bytes());
-        self.patients.serialize_into(&mut out)?;
+        put_bitmap(&mut out, &self.patients)?;
+        out.push(if self.table.is_empty() {
+            LAYOUT_UNPARTITIONED
+        } else {
+            LAYOUT_PARTITIONED
+        });
+        let k = u16::try_from(self.table.partitions.len())
+            .map_err(|_| FormatError::InvalidInput("too many partitions".into()))?;
+        out.extend_from_slice(&k.to_le_bytes());
+        for partition in &self.table.partitions {
+            put_str(&mut out, &partition.name)?;
+            out.push(if partition.patients_indexed {
+                PARTITION_PATIENTS_INDEXED
+            } else {
+                0
+            });
+            put_bitmap(&mut out, &partition.patients)?;
+        }
+        put_bitmap(&mut out, &self.table.overlap)?;
         put_u32(&mut out, self.concepts.len(), "concept count")?;
         for c in &self.concepts {
             put_str(&mut out, &c.path)?;
@@ -418,6 +674,15 @@ impl PhenoIndex {
             for v in values {
                 put_str(&mut out, v)?;
             }
+            out.push(if c.tagged { CONCEPT_TAGGED } else { 0 });
+            let h = u16::try_from(c.holders.len())
+                .map_err(|_| FormatError::InvalidInput("too many holders".into()))?;
+            out.extend_from_slice(&h.to_le_bytes());
+            for holder in &c.holders {
+                out.extend_from_slice(&holder.partition.to_le_bytes());
+                out.extend_from_slice(&holder.observations.to_le_bytes());
+                out.extend_from_slice(&holder.patients.to_le_bytes());
+            }
         }
         Ok(out)
     }
@@ -426,10 +691,11 @@ impl PhenoIndex {
     /// to load before calling [`PhenoIndex::decode`].
     ///
     /// # Errors
-    /// [`FormatError::BadMagic`], [`FormatError::UnsupportedVersion`],
-    /// [`FormatError::Truncated`] or [`FormatError::Corrupt`].
+    /// [`FormatError::BadMagic`], [`FormatError::LegacyFormat`],
+    /// [`FormatError::UnsupportedVersion`], [`FormatError::Truncated`] or
+    /// [`FormatError::Corrupt`].
     pub fn decode_header(bytes: &[u8]) -> Result<IndexHeader> {
-        Ok(decode_preamble(bytes)?.0)
+        Ok(decode_preamble(bytes, FORMAT_VERSION)?.0)
     }
 
     /// Parses and verifies a serialized index under the protection the caller requires.
@@ -437,13 +703,15 @@ impl PhenoIndex {
     /// checksum is refused when `protection` holds a key.
     ///
     /// # Errors
-    /// [`FormatError::MissingKey`] when the index is encrypted and `protection` is plain;
-    /// [`FormatError::UnexpectedKey`] when `protection` holds a key and the index is plain;
-    /// [`FormatError::Authentication`] or [`FormatError::Checksum`] when the bytes were
-    /// altered or the key is wrong; [`FormatError::PayloadTooLarge`] when the compressed
-    /// body declares more than [`MAX_INDEX_BODY_LEN`]; [`FormatError::Truncated`] or
-    /// [`FormatError::Corrupt`] for structural damage, including a concept table that is
-    /// not strictly sorted.
+    /// [`FormatError::LegacyFormat`] for an index of format 1 (Rust HPDS v1 to v3), which
+    /// `hpds-etl convert` turns into this format; [`FormatError::MissingKey`] when the index
+    /// is encrypted and `protection` is plain; [`FormatError::UnexpectedKey`] when
+    /// `protection` holds a key and the index is plain; [`FormatError::Authentication`] or
+    /// [`FormatError::Checksum`] when the bytes were altered or the key is wrong;
+    /// [`FormatError::PayloadTooLarge`] when the compressed body declares more than
+    /// [`MAX_INDEX_BODY_LEN`]; [`FormatError::Truncated`] or [`FormatError::Corrupt`] for
+    /// structural damage, including a concept table that is not strictly sorted or a
+    /// partition table or holder list that does not fit the store.
     pub fn decode(bytes: &[u8], protection: &Protection) -> Result<Self> {
         let body = IndexBody::decode(bytes, protection)?;
         let concepts = body
@@ -453,6 +721,7 @@ impl PhenoIndex {
         Ok(PhenoIndex {
             header: body.header,
             patients: body.patients,
+            table: body.table,
             concepts,
         })
     }
@@ -475,6 +744,108 @@ impl PhenoIndex {
     }
 }
 
+/// The index of a format 1 store, written by Rust HPDS v1 to v3: one store per directory,
+/// no partition table and no holders. Read only, for `hpds-etl convert`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LegacyIndex {
+    header: IndexHeader,
+    patients: RoaringBitmap,
+    concepts: Vec<ConceptMeta>,
+}
+
+impl LegacyIndex {
+    /// Parses and verifies a serialized format 1 index under `protection`, with the
+    /// protection rules of [`PhenoIndex::decode`].
+    ///
+    /// # Errors
+    /// [`FormatError::UnsupportedVersion`] for any other format version, and the errors of
+    /// [`PhenoIndex::decode`].
+    pub fn decode(bytes: &[u8], protection: &Protection) -> Result<Self> {
+        let (header, patients, body, table_start, concept_count) =
+            open_body(bytes, protection, LEGACY_FORMAT_VERSION)?;
+        let concepts = ConceptViews {
+            reader: Reader::new(&body.as_bytes()[table_start..], "index body"),
+            remaining: concept_count,
+            previous: None,
+            done: false,
+            context: ConceptContext {
+                version: LEGACY_FORMAT_VERSION,
+                partitions: 0,
+                overlap_empty: true,
+            },
+        }
+        .map(|concept| concept.map(|c| c.to_meta()))
+        .collect::<Result<Vec<_>>>()?;
+        Ok(LegacyIndex {
+            header,
+            patients,
+            concepts,
+        })
+    }
+
+    /// Reads and verifies the format 1 index at `path`.
+    ///
+    /// # Errors
+    /// The errors of [`LegacyIndex::decode`] and [`FormatError::Io`].
+    pub fn read_file(path: impl AsRef<Path>, protection: &Protection) -> Result<Self> {
+        Self::decode(&std::fs::read(path)?, protection)
+    }
+
+    /// The file header.
+    pub fn header(&self) -> &IndexHeader {
+        &self.header
+    }
+
+    /// The store id from the header.
+    pub fn store_id(&self) -> StoreId {
+        self.header.store_id
+    }
+
+    /// The codec that opens this store's blocks ([`BlockCodec::legacy`]).
+    ///
+    /// # Errors
+    /// As for [`PhenoIndex::block_codec`].
+    pub fn block_codec(&self, protection: Protection) -> Result<BlockCodec> {
+        protection.require(self.header.encrypted, INDEX_FILE)?;
+        Ok(BlockCodec::legacy(
+            protection,
+            self.header.store_id,
+            self.header.compressed,
+        ))
+    }
+
+    /// Every patient ID in the store.
+    pub fn patients(&self) -> &RoaringBitmap {
+        &self.patients
+    }
+
+    /// All concepts in Java string order of their paths, none with holders.
+    pub fn concepts(&self) -> &[ConceptMeta] {
+        &self.concepts
+    }
+
+    /// Position of `path` in [`LegacyIndex::concepts`], by binary search.
+    pub fn position(&self, path: &str) -> Option<usize> {
+        self.concepts
+            .binary_search_by(|c| java_string_cmp(&c.path, path))
+            .ok()
+    }
+}
+
+/// The format version recorded in the header of the index file `bytes`, read without
+/// verifying anything else: [`FORMAT_VERSION`] for a store this crate reads,
+/// [`LEGACY_FORMAT_VERSION`] for a store `hpds-etl convert` reads.
+///
+/// # Errors
+/// [`FormatError::BadMagic`] or [`FormatError::Truncated`].
+pub fn index_format_version(bytes: &[u8]) -> Result<u16> {
+    let mut r = Reader::new(bytes, "index header");
+    if r.bytes(INDEX_MAGIC.len())? != INDEX_MAGIC {
+        return Err(FormatError::BadMagic { file: INDEX_FILE });
+    }
+    r.u16()
+}
+
 /// A verified and decompressed `pheno.index` whose concept table is parsed on demand
 /// ([`IndexBody::concepts`]), borrowing every path and category value from the body. A
 /// reader that keeps only some of each concept's fields builds its own table from it
@@ -483,54 +854,109 @@ impl PhenoIndex {
 pub struct IndexBody {
     header: IndexHeader,
     patients: RoaringBitmap,
+    table: PartitionTable,
     body: AlignedBuf,
     table_start: usize,
     concept_count: usize,
 }
 
+/// Opens the stored body of an index of format `version`: verifies the preamble, the
+/// protection and the checksum or tag, decompresses, and reads the patient set. Returns
+/// the header, the patients, the body and the position after the patient set.
+#[allow(clippy::type_complexity)]
+fn open_body(
+    bytes: &[u8],
+    protection: &Protection,
+    version: u16,
+) -> Result<(IndexHeader, RoaringBitmap, AlignedBuf, usize, usize)> {
+    let (header, preamble_len) = decode_preamble(bytes, version)?;
+    protection.require(header.encrypted, INDEX_FILE)?;
+    let mut r = Reader::new(&bytes[preamble_len..], "index");
+    let stored_len = r.u64()?;
+    let stored_len = r.len(stored_len)?;
+    let stored = r.bytes(stored_len)?;
+    let body_start = preamble_len + 8;
+    let opened;
+    let body: &[u8] = if let Some(key) = protection.key() {
+        r.finish()?;
+        opened = open_framed(key, stored, &bytes[..preamble_len])?;
+        &opened
+    } else {
+        let checksum = r.u64()?;
+        r.finish()?;
+        if xxh3_64(&bytes[..body_start + stored_len]) != checksum {
+            return Err(FormatError::Checksum("index"));
+        }
+        stored
+    };
+    let body = if header.compressed {
+        zstd_decompress_aligned(body, MAX_INDEX_BODY_LEN, "index body")?
+    } else {
+        AlignedBuf::copy_from(body)
+    };
+    let mut r = Reader::new(body.as_bytes(), "index body");
+    let patients = r.bitmap("patient bitmap")?;
+    let (pos, concept_count) = if version == LEGACY_FORMAT_VERSION {
+        let count = r.u32()? as usize;
+        (r.pos, count)
+    } else {
+        (r.pos, 0)
+    };
+    Ok((header, patients, body, pos, concept_count))
+}
+
 impl IndexBody {
     /// Parses and verifies a serialized index as [`PhenoIndex::decode`] does, but parses
-    /// only the patient set and the concept count. The concept table is checked as
-    /// [`IndexBody::concepts`] walks it.
+    /// only the patient set, the partition table and the concept count. The concept table
+    /// is checked as [`IndexBody::concepts`] walks it.
     ///
     /// # Errors
     /// The errors of [`PhenoIndex::decode`], except those of the concept table.
     pub fn decode(bytes: &[u8], protection: &Protection) -> Result<Self> {
-        let (header, preamble_len) = decode_preamble(bytes)?;
-        protection.require(header.encrypted, INDEX_FILE)?;
-        let mut r = Reader::new(&bytes[preamble_len..], "index");
-        let stored_len = r.u64()?;
-        let stored_len = r.len(stored_len)?;
-        let stored = r.bytes(stored_len)?;
-        let body_start = preamble_len + 8;
-        let opened;
-        let body: &[u8] = if let Some(key) = protection.key() {
-            r.finish()?;
-            opened = open_framed(key, stored, &bytes[..preamble_len])?;
-            &opened
-        } else {
-            let checksum = r.u64()?;
-            r.finish()?;
-            if xxh3_64(&bytes[..body_start + stored_len]) != checksum {
-                return Err(FormatError::Checksum("index"));
-            }
-            stored
-        };
-        let body = if header.compressed {
-            zstd_decompress_aligned(body, MAX_INDEX_BODY_LEN, "index body")?
-        } else {
-            AlignedBuf::copy_from(body)
-        };
+        let (header, patients, body, after_patients, _) =
+            open_body(bytes, protection, FORMAT_VERSION)?;
         let mut r = Reader::new(body.as_bytes(), "index body");
-        let bitmap_len = r.u64()?;
-        let bitmap_len = r.len(bitmap_len)?;
-        let patients = RoaringBitmap::deserialize_from(r.bytes(bitmap_len)?)
-            .map_err(|e| FormatError::corrupt("patient bitmap", e.to_string()))?;
+        r.pos = after_patients;
+        let layout = r.u8()?;
+        let k = r.u16()? as usize;
+        match (layout, k) {
+            (LAYOUT_UNPARTITIONED, 0) => {}
+            (LAYOUT_PARTITIONED, k) if k > 0 => {}
+            _ => {
+                return Err(FormatError::corrupt(
+                    "partition table",
+                    format!("layout {layout} with {k} partitions"),
+                ));
+            }
+        }
+        let mut partitions = Vec::with_capacity(k);
+        for _ in 0..k {
+            let name = r.string()?;
+            let flags = r.u8()?;
+            if flags & !PARTITION_PATIENTS_INDEXED != 0 {
+                return Err(FormatError::corrupt(
+                    "partition table",
+                    format!("unknown partition flags {flags:#04x}"),
+                ));
+            }
+            partitions.push(IndexPartition {
+                name,
+                patients_indexed: flags & PARTITION_PATIENTS_INDEXED != 0,
+                patients: r.bitmap("partition patient bitmap")?,
+            });
+        }
+        let overlap = r.bitmap("overlap bitmap")?;
+        let table = PartitionTable {
+            partitions,
+            overlap,
+        };
+        table.check(&patients)?;
         let concept_count = r.u32()? as usize;
         let table_start = r.pos;
         Ok(IndexBody {
             header,
             patients,
+            table,
             body,
             table_start,
             concept_count,
@@ -574,9 +1000,14 @@ impl IndexBody {
         &self.patients
     }
 
-    /// The patient set, dropping the body.
-    pub fn into_patients(self) -> RoaringBitmap {
-        self.patients
+    /// The partition table, empty for an unpartitioned store.
+    pub fn partition_table(&self) -> &PartitionTable {
+        &self.table
+    }
+
+    /// The patient set and the partition table, dropping the body.
+    pub fn into_parts(self) -> (RoaringBitmap, PartitionTable) {
+        (self.patients, self.table)
     }
 
     /// The number of concepts the table declares.
@@ -587,15 +1018,74 @@ impl IndexBody {
     /// The concepts in table order, which is Java string order of their paths. Each item
     /// is checked as it is parsed, as [`PhenoIndex::decode`] checks it: a concept that is
     /// truncated, has unknown flags or type, values without a value list, a path or value
-    /// that is not UTF-8, or a path not sorted after the previous one is an error, and so
-    /// are bytes left after the last concept. The iteration ends after the first error.
+    /// that is not UTF-8, a path not sorted after the previous one, or holders that do not
+    /// fit the partition table is an error, and so are bytes left after the last concept.
+    /// The iteration ends after the first error.
     pub fn concepts(&self) -> ConceptViews<'_> {
         ConceptViews {
             reader: Reader::new(&self.body.as_bytes()[self.table_start..], "index body"),
             remaining: self.concept_count,
             previous: None,
             done: false,
+            context: ConceptContext {
+                version: FORMAT_VERSION,
+                partitions: self.table.partitions.len(),
+                overlap_empty: self.table.overlap.is_empty(),
+            },
         }
+    }
+}
+
+/// What a concept entry is checked against: the format version it was written in, the
+/// number of partitions in the store, and whether the overlap set is empty.
+#[derive(Clone, Copy, Debug)]
+struct ConceptContext {
+    version: u16,
+    partitions: usize,
+    overlap_empty: bool,
+}
+
+impl ConceptContext {
+    /// Checks a concept's holders: none in an unpartitioned store; otherwise strictly
+    /// ascending by partition, each below the partition count, with observation counts
+    /// summing to `observation_count`; and a tagged concept only in a store whose overlap
+    /// set is not empty.
+    fn check_holders(
+        &self,
+        path: &str,
+        observation_count: u32,
+        holders: &[PartitionHolder],
+        tagged: bool,
+    ) -> Result<()> {
+        let refuse = |detail: &str| {
+            Err(FormatError::corrupt(
+                "concept table",
+                format!("{path:?} {detail}"),
+            ))
+        };
+        if self.partitions == 0 {
+            if !holders.is_empty() || tagged {
+                return refuse("has holders in an unpartitioned store");
+            }
+            return Ok(());
+        }
+        if holders.windows(2).any(|w| w[0].partition >= w[1].partition) {
+            return refuse("has holders not strictly ascending by partition");
+        }
+        if holders
+            .iter()
+            .any(|h| usize::from(h.partition) >= self.partitions)
+        {
+            return refuse("has a holder outside the partition table");
+        }
+        let summed: u64 = holders.iter().map(|h| u64::from(h.observations)).sum();
+        if summed != u64::from(observation_count) {
+            return refuse("has holders whose observations do not sum to its count");
+        }
+        if tagged && self.overlap_empty {
+            return refuse("is tagged in a store without overlap patients");
+        }
+        Ok(())
     }
 }
 
@@ -605,6 +1095,7 @@ pub struct ConceptViews<'a> {
     remaining: usize,
     previous: Option<&'a str>,
     done: bool,
+    context: ConceptContext,
 }
 
 impl std::fmt::Debug for ConceptViews<'_> {
@@ -628,13 +1119,19 @@ impl<'a> Iterator for ConceptViews<'a> {
             return self.reader.finish().err().map(Err);
         }
         self.remaining -= 1;
-        let parsed = parse_concept(&mut self.reader, self.previous);
+        let parsed = parse_concept(&mut self.reader, self.previous, &self.context);
         match &parsed {
             Ok(concept) => self.previous = Some(concept.path),
             Err(_) => self.done = true,
         }
         Some(parsed)
     }
+}
+
+fn put_bitmap(out: &mut Vec<u8>, bitmap: &RoaringBitmap) -> Result<()> {
+    out.extend_from_slice(&(bitmap.serialized_size() as u64).to_le_bytes());
+    bitmap.serialize_into(out)?;
+    Ok(())
 }
 
 fn put_u32(out: &mut Vec<u8>, value: usize, what: &str) -> Result<()> {
@@ -650,6 +1147,7 @@ fn put_str(out: &mut Vec<u8>, s: &str) -> Result<()> {
     Ok(())
 }
 
+/// Writes the plain preamble of an index in [`FORMAT_VERSION`].
 fn encode_preamble(header: &IndexHeader) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     out.extend_from_slice(INDEX_MAGIC);
@@ -669,14 +1167,19 @@ fn encode_preamble(header: &IndexHeader) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn decode_preamble(bytes: &[u8]) -> Result<(IndexHeader, usize)> {
+/// Reads the plain preamble of an index of format `version`.
+fn decode_preamble(bytes: &[u8], version: u16) -> Result<(IndexHeader, usize)> {
     let mut r = Reader::new(bytes, "index header");
     if r.bytes(INDEX_MAGIC.len())? != INDEX_MAGIC {
         return Err(FormatError::BadMagic { file: INDEX_FILE });
     }
     let format_version = r.u16()?;
-    if format_version != FORMAT_VERSION {
-        return Err(FormatError::UnsupportedVersion(format_version));
+    if format_version != version {
+        return Err(if format_version == LEGACY_FORMAT_VERSION {
+            FormatError::LegacyFormat
+        } else {
+            FormatError::UnsupportedVersion(format_version)
+        });
     }
     let flags = r.u16()?;
     if flags & !KNOWN_FLAGS != 0 {
@@ -701,8 +1204,13 @@ fn decode_preamble(bytes: &[u8]) -> Result<(IndexHeader, usize)> {
     Ok((header, r.pos))
 }
 
-/// Parses the concept at `r`'s position, which must sort after `previous`.
-fn parse_concept<'a>(r: &mut Reader<'a>, previous: Option<&'a str>) -> Result<ConceptView<'a>> {
+/// Parses the concept at `r`'s position, which must sort after `previous`, with the fields
+/// and checks of `context`'s format version.
+fn parse_concept<'a>(
+    r: &mut Reader<'a>,
+    previous: Option<&'a str>,
+    context: &ConceptContext,
+) -> Result<ConceptView<'a>> {
     let path = r.str()?;
     let concept_type = match r.u8()? {
         0 => ConceptType::Numeric,
@@ -744,6 +1252,24 @@ fn parse_concept<'a>(r: &mut Reader<'a>, previous: Option<&'a str>) -> Result<Co
         count: value_count,
         string_bytes,
     };
+    let (tagged, holders) = if context.version == LEGACY_FORMAT_VERSION {
+        (false, ConceptHolders::default())
+    } else {
+        let concept_flags = r.u8()?;
+        if concept_flags & !CONCEPT_TAGGED != 0 {
+            return Err(FormatError::corrupt(
+                "concept table",
+                format!("{path:?} has unknown concept flags {concept_flags:#04x}"),
+            ));
+        }
+        let count = r.u16()? as usize;
+        let holders = ConceptHolders {
+            bytes: r.bytes(count * INDEX_HOLDER_LEN)?,
+        };
+        (concept_flags & CONCEPT_TAGGED != 0, holders)
+    };
+    let listed: Vec<PartitionHolder> = holders.iter().collect();
+    context.check_holders(path, observation_count, &listed, tagged)?;
     let has = |bit: u8| flags & bit != 0;
     if !has(META_CATEGORY_VALUES) && value_count != 0 {
         return Err(FormatError::corrupt(
@@ -773,6 +1299,8 @@ fn parse_concept<'a>(r: &mut Reader<'a>, previous: Option<&'a str>) -> Result<Co
         width_in_bytes,
         column_offset,
         block,
+        holders,
+        tagged,
     })
 }
 
@@ -840,6 +1368,13 @@ impl<'a> Reader<'a> {
             .ok()
             .filter(|&len| len <= self.remaining())
             .ok_or(FormatError::Truncated(self.what))
+    }
+
+    fn bitmap(&mut self, what: &'static str) -> Result<RoaringBitmap> {
+        let len = self.u64()?;
+        let len = self.len(len)?;
+        RoaringBitmap::deserialize_from(self.bytes(len)?)
+            .map_err(|e| FormatError::corrupt(what, e.to_string()))
     }
 
     fn string(&mut self) -> Result<String> {

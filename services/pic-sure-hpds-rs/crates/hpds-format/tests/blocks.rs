@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use hpds_format::{
     AlignedBuf, BLOCKS_HEADER_LEN, Block, BlockCodec, BlockLocation, BlocksReader, BlocksWriter,
     CategoricalObservation, CategoricalRow, ConceptMeta, ConceptType, CryptoKey, FormatError,
-    NO_TIMESTAMP, NumericObservation, Protection, StoreId, canonical_nan,
+    Membership, NO_TIMESTAMP, NumericObservation, Protection, StoreId, canonical_nan,
     encode_categorical_payload, encode_interned_categorical_payload, encode_numeric_payload,
     java_double_cmp, java_string_cmp,
 };
@@ -46,6 +46,8 @@ fn meta(path: &str, concept_type: ConceptType, observations: usize) -> ConceptMe
         width_in_bytes: 0,
         column_offset: 0,
         block: BlockLocation::default(),
+        holders: Vec::new(),
+        tagged: false,
     }
 }
 
@@ -617,17 +619,27 @@ fn blocks_file_round_trip_and_bounds() {
     ));
     let reader = BlocksReader::open(&path, store()).unwrap();
     assert_eq!(reader.store_id(), store());
-    check_numeric(&sample_input(), &reader.read_block(&codec, &a).unwrap());
-    check_categorical(&cat, &reader.read_block(&codec, &b).unwrap());
+    check_numeric(
+        &sample_input(),
+        &reader
+            .read_block(&codec, &a, &Membership::unpartitioned())
+            .unwrap(),
+    );
+    check_categorical(
+        &cat,
+        &reader
+            .read_block(&codec, &b, &Membership::unpartitioned())
+            .unwrap(),
+    );
     let mut swapped = a.clone();
     swapped.block = b.block;
     assert!(matches!(
-        reader.read_block(&codec, &swapped),
+        reader.read_block(&codec, &swapped, &Membership::unpartitioned()),
         Err(FormatError::Authentication)
     ));
     let other_store = BlockCodec::new(encrypted(), StoreId::from_bytes([1; 16]), true);
     assert!(matches!(
-        reader.read_block(&other_store, &a),
+        reader.read_block(&other_store, &a, &Membership::unpartitioned()),
         Err(FormatError::StoreMismatch)
     ));
     let past_end = BlockLocation {

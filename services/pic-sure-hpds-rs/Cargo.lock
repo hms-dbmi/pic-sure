@@ -780,6 +780,7 @@ dependencies = [
  "getrandom 0.4.3",
  "proptest",
  "roaring",
+ "tempfile",
  "thiserror",
  "xxhash-rust",
  "zstd",

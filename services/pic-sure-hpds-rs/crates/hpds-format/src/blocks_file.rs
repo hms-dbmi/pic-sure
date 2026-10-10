@@ -10,6 +10,7 @@ use crate::BLOCKS_MAGIC;
 use crate::block::{Block, BlockCodec};
 use crate::error::{FormatError, Result};
 use crate::index::{BlockLocation, ConceptMeta};
+use crate::membership::Membership;
 use crate::protection::{STORE_ID_LEN, StoreId};
 
 /// Bytes before the first block: the magic and the store id.
@@ -167,24 +168,39 @@ impl BlocksReader {
     }
 
     /// Reads, verifies and decodes the block of `concept`, bounding its decoded size by
-    /// [`ConceptMeta::max_payload_len`]. Blocking: this does a positioned read and then
-    /// decrypts and decompresses on the calling thread.
+    /// [`ConceptMeta::max_payload_len`], and checks it against the index: its row count must
+    /// be the concept's observation count, and its partitions must match the concept's
+    /// holders and tagging and the store's `membership` ([`Block::check_membership`]).
+    /// Blocking: this does a positioned read and then decrypts and decompresses on the
+    /// calling thread.
     ///
     /// # Errors
-    /// [`FormatError::StoreMismatch`] when `codec` is for another store, and the errors of
-    /// [`BlocksReader::read_stored`] and [`BlockCodec::open`].
-    pub fn read_block(&self, codec: &BlockCodec, concept: &ConceptMeta) -> Result<Block> {
+    /// [`FormatError::StoreMismatch`] when `codec` is for another store, the errors of
+    /// [`BlocksReader::read_stored`] and [`BlockCodec::open`], and
+    /// [`FormatError::Corrupt`] when the block disagrees with the index.
+    pub fn read_block(
+        &self,
+        codec: &BlockCodec,
+        concept: &ConceptMeta,
+        membership: &Membership,
+    ) -> Result<Block> {
         self.read_block_at(
             codec,
             &concept.path,
             concept.block,
             concept.max_payload_len(),
+            &ExpectedBlock {
+                observation_count: concept.observation_count,
+                holders: &concept.holders,
+                tagged: concept.tagged,
+                membership,
+            },
         )
     }
 
-    /// [`BlocksReader::read_block`] from the three things it reads of the concept: its
-    /// path, its block location and its decoded size bound
-    /// ([`crate::ConceptView::max_payload_len`]).
+    /// [`BlocksReader::read_block`] from what it reads of the concept: its path, its block
+    /// location, its decoded size bound ([`crate::ConceptView::max_payload_len`]), and what
+    /// the index says the block holds.
     ///
     /// # Errors
     /// As for [`BlocksReader::read_block`].
@@ -194,10 +210,72 @@ impl BlocksReader {
         concept_path: &str,
         location: BlockLocation,
         max_payload_len: u64,
+        expected: &ExpectedBlock<'_>,
     ) -> Result<Block> {
         if codec.store_id() != self.store_id {
             return Err(FormatError::StoreMismatch);
         }
-        codec.open(concept_path, &self.read_stored(location)?, max_payload_len)
+        let block = codec.open(concept_path, &self.read_stored(location)?, max_payload_len)?;
+        if block.len() != expected.observation_count as usize {
+            return Err(FormatError::corrupt(
+                "block",
+                format!(
+                    "{concept_path:?} holds {} rows, its index entry {}",
+                    block.len(),
+                    expected.observation_count
+                ),
+            ));
+        }
+        block
+            .check_membership(expected.holders, expected.tagged, expected.membership)
+            .map_err(|e| match e {
+                FormatError::Corrupt { what, detail } => FormatError::Corrupt {
+                    what,
+                    detail: format!("{concept_path:?}: {detail}"),
+                },
+                other => other,
+            })?;
+        Ok(block)
     }
+
+    /// Reads, verifies and decodes the block of `concept` in a format 1 store, opened with a
+    /// [`BlockCodec::legacy`] codec, checking only its row count against the index.
+    ///
+    /// # Errors
+    /// As for [`BlocksReader::read_block`].
+    pub fn read_legacy_block(&self, codec: &BlockCodec, concept: &ConceptMeta) -> Result<Block> {
+        if codec.store_id() != self.store_id {
+            return Err(FormatError::StoreMismatch);
+        }
+        let block = codec.open(
+            &concept.path,
+            &self.read_stored(concept.block)?,
+            concept.max_payload_len(),
+        )?;
+        if block.len() != concept.observation_count as usize {
+            return Err(FormatError::corrupt(
+                "block",
+                format!(
+                    "{:?} holds {} rows, its index entry {}",
+                    concept.path,
+                    block.len(),
+                    concept.observation_count
+                ),
+            ));
+        }
+        Ok(block)
+    }
+}
+
+/// What the index says a block holds, checked by [`BlocksReader::read_block_at`].
+#[derive(Clone, Copy, Debug)]
+pub struct ExpectedBlock<'a> {
+    /// The concept's observation count.
+    pub observation_count: u32,
+    /// The concept's holders.
+    pub holders: &'a [crate::PartitionHolder],
+    /// Whether the block is tagged.
+    pub tagged: bool,
+    /// The store's routing of patients to partitions.
+    pub membership: &'a Membership,
 }

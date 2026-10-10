@@ -19,6 +19,13 @@ pub enum FormatError {
     #[error("unsupported format version {0}")]
     UnsupportedVersion(u16),
 
+    /// The store was written in format 1 by Rust HPDS v1 to v3, before consent partitions
+    /// moved inside each block. Only `hpds-etl convert` reads it.
+    #[error(
+        "the store is in format 1 (Rust HPDS v1 to v3); convert it with hpds-etl convert --store <dir> --out <dir>"
+    )]
+    LegacyFormat,
+
     /// The input ended before a complete structure could be read.
     #[error("truncated {0}")]
     Truncated(&'static str),

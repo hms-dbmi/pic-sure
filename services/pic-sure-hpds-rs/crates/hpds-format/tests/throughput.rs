@@ -42,6 +42,8 @@ fn ten_million_observation_numeric_block() {
         width_in_bytes: 0,
         column_offset: 0,
         block: BlockLocation::default(),
+        holders: Vec::new(),
+        tagged: false,
     };
     for (label, codec) in [
         (

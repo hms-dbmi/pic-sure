@@ -39,11 +39,23 @@
 //! When encrypted, `stored` is that in the `Crypto.java` framing (see [`crypto`]) with the
 //! preamble as associated data, and there is no checksum.
 //!
-//! The body:
+//! A store is unpartitioned, or split into consent partitions inside each block: every
+//! concept's rows from every partition are in one block, and the index records which
+//! partitions hold them. The body:
 //!
 //! ```text
 //! patients_len      u64
-//! patients          roaring bitmap, portable serialization
+//! patients          roaring bitmap, portable serialization: every patient of the store
+//! layout            u8   0 unpartitioned, 1 partitioned
+//! k                 u16  partitions, 0 when unpartitioned
+//! k times, strictly ascending in Java String.compareTo order of the names:
+//!   name            string
+//!   flags           u8   bit 0 patients-indexed: every patient with a row in the
+//!                        partition is in its patient set
+//!   patients_len    u64
+//!   patients        roaring bitmap, the partition's patient set
+//! overlap_len       u64
+//! overlap           roaring bitmap, the overlap set O (see below)
 //! concept_count     u32
 //! concept_count times, sorted strictly by path in Java String.compareTo order:
 //!   path            string
@@ -53,8 +65,8 @@
 //!                        5 category_values present
 //!   block_offset    u64
 //!   block_length    u64
-//!   observation_cnt u32
-//!   patient_count   u32
+//!   observation_cnt u32  rows of the block, every partition's
+//!   patient_count   u32  distinct patients of the block's rows
 //!   width_in_bytes  i32
 //!   column_offset   i32
 //!   min             f64  0.0 when absent
@@ -63,7 +75,19 @@
 //!   timestamp_max   i64  0 when absent
 //!   value_count     u32  0 when category_values is absent
 //!   values          value_count strings
+//!   concept_flags   u8   bit 0 tagged block
+//!   h               u16  partitions holding the concept, 0 when unpartitioned
+//!   h times, strictly ascending by partition:
+//!     partition     u16  index in the partition table
+//!     observations  u32  the partition's rows in the block, summing to observation_cnt
+//!     patients      u32  distinct patients of those rows
 //! ```
+//!
+//! The partition sets union to the store's patients. `O` holds every patient in two or
+//! more partition sets, or with a row in a partition whose set lacks it; every other
+//! patient with a row is in exactly one set, which decides the partition of all their rows
+//! ([`Membership`]). A block holding a row of a patient in `O` is tagged: it records the
+//! partition of every row.
 //!
 //! # `pheno.blocks`
 //!
@@ -71,14 +95,37 @@
 //! stored blocks back to back at the offsets the index records. A stored block is, when
 //! encrypted, `ivLength (i32 big-endian, 12) || iv(12) || AES-GCM(body) || tag(16)` with
 //! associated data `store_id || path bytes || FORMAT_VERSION (u16)` (see [`block_aad`]);
-//! when plain, `body || xxh3_64(associated data || body)`. The body is `zstd(payload)`
+//! when plain, `body || xxh3_64(associated data || body)`. Format 1 stores bound version 1
+//! here, so a format 1 block fails authentication under a reader of this format. The body is `zstd(payload)`
 //! when compressed and the payload otherwise. A reader refuses a frame that declares more
 //! than [`ConceptMeta::max_payload_len`] decoded bytes before allocating.
 //!
 //! Every array in a payload starts on an 8-byte boundary and is followed by zero padding
 //! to the next one, so [`Block`] exposes them as typed slices without copying.
 //!
-//! Numeric payload, `n` observations:
+//! A payload is a prefix, the body, and for a tagged block the tags:
+//!
+//! ```text
+//! 0   n               u32
+//! 4   has_timestamp   u8   0 or 1
+//! 5   kind            u8   0 numeric, 1 categorical
+//! 6   flags           u8   bit 0 tagged
+//! 7   tag_width       u8   0 when untagged, else 1 (at most 255 partitions) or 2
+//! 8   h               u32  holders, 0 in an unpartitioned store
+//! 12  reserved        u32  zero
+//! 16  holders         h times { partition u16, reserved u16, observations u32,
+//!                     patients u32 }, ascending by partition, observations summing to n,
+//!                     equal to the index's holders of the concept
+//!     body            numeric or categorical, below, starting on an 8-byte boundary
+//!     tags            only when tagged: n partition indexes of tag_width bytes, parallel
+//!                     to value order (numeric) or key order (categorical)
+//! ```
+//!
+//! Rows of every partition are in one body, in key order by patient, then partition name in
+//! Java string order, then each partition's input order: the order Java's stable
+//! `sortedByKey` gives the concatenation of the partitions' rows in partition name order.
+//!
+//! Numeric body, `n` observations:
 //!
 //! ```text
 //! 0   n               u32
@@ -92,7 +139,7 @@
 //!     by_key          u32[n]  indexes into values, ordered by patient, then input position
 //! ```
 //!
-//! Categorical payload, `n` observations, `k` distinct values:
+//! Categorical body, `n` observations, `k` distinct values:
 //!
 //! ```text
 //! 0   n               u32
@@ -109,6 +156,9 @@
 //!     value_index     u32[n]    dictionary index, parallel to patients
 //!     timestamps      i64[n]    parallel to patients, only when has_timestamp
 //! ```
+//!
+//! The body repeats the prefix's `n`, timestamp flag and kind; a reader refuses a body that
+//! disagrees. A format 1 payload is the body alone.
 //!
 //! "Input position" is the observation's position in the encoder's input, which the ETL
 //! passes in file order. Within one patient the `by_key` order is therefore file order,
@@ -130,22 +180,27 @@ pub mod blocks_file;
 pub mod crypto;
 mod error;
 pub mod index;
+pub mod membership;
 pub mod parity;
 pub mod protection;
 
 pub use aligned::AlignedBuf;
 pub use block::{
-    Block, BlockCodec, CategoricalBlock, CategoricalObservation, CategoricalRow, NumericBlock,
-    NumericObservation, block_aad, encode_categorical_payload, encode_interned_categorical_payload,
-    encode_numeric_payload,
+    Block, BlockCodec, BlockPartitioning, BlockPartitions, CategoricalBlock,
+    CategoricalObservation, CategoricalRow, MAX_NARROW_TAG_PARTITIONS, MAX_PARTITIONS,
+    NumericBlock, NumericObservation, PartitionHolder, block_aad, check_partitioning,
+    encode_categorical_payload, encode_interned_categorical_block,
+    encode_interned_categorical_payload, encode_numeric_block, encode_numeric_payload,
 };
-pub use blocks_file::{BLOCKS_HEADER_LEN, BlocksReader, BlocksWriter};
+pub use blocks_file::{BLOCKS_HEADER_LEN, BlocksReader, BlocksWriter, ExpectedBlock};
 pub use crypto::{CryptoKey, decrypt_java_block, encrypt_java_block, open_framed, seal_framed};
 pub use error::{FormatError, Result};
 pub use index::{
-    BlockLocation, CategoryValues, ConceptMeta, ConceptType, ConceptView, ConceptViews, IndexBody,
-    IndexHeader, MAX_INDEX_BODY_LEN, PhenoIndex,
+    BlockLocation, CategoryValues, ConceptHolders, ConceptMeta, ConceptType, ConceptView,
+    ConceptViews, IndexBody, IndexHeader, IndexPartition, LegacyIndex, MAX_INDEX_BODY_LEN,
+    PartitionTable, PhenoIndex, index_format_version,
 };
+pub use membership::Membership;
 pub use parity::{
     canonical_nan, java_double_cmp, java_double_to_string, java_string_cmp, java_trim,
     parse_java_double,
@@ -159,7 +214,12 @@ pub const INDEX_FILE_NAME: &str = "pheno.index";
 pub const BLOCKS_FILE_NAME: &str = "pheno.blocks";
 
 /// Format version written into the index header and bound into block associated data.
-pub const FORMAT_VERSION: u16 = 1;
+pub const FORMAT_VERSION: u16 = 2;
+
+/// Format version of the stores Rust HPDS v1 to v3 wrote: one store per partition
+/// directory, no partition table in the index and no prefix in the blocks. Only
+/// [`LegacyIndex`] and [`BlockCodec::legacy`] read it.
+pub const LEGACY_FORMAT_VERSION: u16 = 1;
 
 /// Magic bytes at the start of `pheno.index`.
 pub const INDEX_MAGIC: &[u8; 8] = b"HPDSPHN1";
