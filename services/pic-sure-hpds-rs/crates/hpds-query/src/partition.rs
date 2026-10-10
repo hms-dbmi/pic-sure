@@ -391,7 +391,9 @@ impl PartitionSet {
     /// partitions' patients. A `.combined/pheno.index` that `.generation` does not list
     /// (or with no `.generation` at all) refuses the open too, as a store nothing ties to
     /// these partitions. An unpartitioned directory has no combined store; one listed or
-    /// present refuses the open. [`CombinedMode::Off`] skips all of this.
+    /// present refuses the open. A directory with exactly one partition reads it directly:
+    /// a combined store there would only repeat it, so any combined store is ignored and
+    /// the status is [`CombinedStatus::Absent`]. [`CombinedMode::Off`] skips all of this.
     ///
     /// The key is `<dir>/encryption_key`, shared by every partition. A partition may carry
     /// its own `encryption_key` only if it holds the same key. With no root key the
@@ -492,7 +494,7 @@ impl PartitionSet {
     }
 
     /// The combined store [`PartitionSet::open`] describes, or `None` when the directory has
-    /// none.
+    /// none or holds a single partition.
     ///
     /// # Errors
     /// [`QueryError::Open`] for every refusal [`PartitionSet::open`] lists for the combined
@@ -516,6 +518,9 @@ impl PartitionSet {
                     ),
                 ));
             }
+            return Ok(None);
+        }
+        if self.partitions.len() == 1 {
             return Ok(None);
         }
         let id = match (listed, present) {

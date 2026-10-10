@@ -415,8 +415,9 @@ impl PartitionedStaging {
     /// Builds the combined store of the staged partitions into the staged
     /// [`COMBINED_DIR_NAME`] (see [`build_combined`]), when the staging was created with
     /// one. Call it once every partition is complete. When [`build_combined`] writes none
-    /// (two partitions type a concept differently), the staged directory is removed and the
-    /// publish then removes any combined store `out` has, as with `--no-combined`.
+    /// (a single partition, or two partitions typing a concept differently), the staged
+    /// directory is removed and the publish then removes any combined store `out` has, as
+    /// with `--no-combined`.
     ///
     /// # Errors
     /// The errors of [`build_combined`], and I/O errors removing the staged directory.

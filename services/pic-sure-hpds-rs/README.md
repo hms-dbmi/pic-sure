@@ -146,6 +146,10 @@ partition reads one block per concept instead of one per partition, and gets the
   own `.generation` check applies either way, and so does one more: a `.generation` line
   whose second token starts with `.` but is not `.combined` names a store kind this service
   does not know (a newer ETL wrote it), and the open is refused saying so.
+- **One partition.** A data directory with a single partition reads it directly. The ETL
+  builds no combined store for it (it would repeat the partition block for block),
+  `hpds-etl combine` refuses it, and the service ignores a combined store there, with
+  `combinedStore` `ABSENT`.
 - **Health.** `GET /actuator/health` answers `{"status":"UP","combinedStore":"IN_USE"}`
   (or `ABSENT`, `OFF`) when UP.
 
@@ -314,7 +318,8 @@ input directory: give `--config <hpds_input>/config.json` to match a Java load t
 
 Partitions build in parallel and nothing is published until every one is complete; a failure
 in any partition publishes none. Once they are built, the combined store is built from them
-into the staging directory too (below), unless `--no-combined`. Into a new `--out` the whole
+into the staging directory too (below), unless `--no-combined` or there is only one
+partition. Into a new `--out` the whole
 set appears at once. Into an existing one the publish is not atomic across partitions: the
 partitions are replaced one after another (each partition's `pheno.index` last), then the old
 combined store is moved out and the new one, if any, moved in, so a reader can briefly see old
@@ -370,13 +375,13 @@ place of `pheno.index`, and writes `<out>/<partition>/`, the combined store (unl
 
 `hpds-etl combine --store <dir>` builds or rebuilds the combined store of an existing
 partitioned store in place, for a store loaded with `--no-combined` or by an older ETL. It
-reads the partitions without changing them, refuses a store whose `.generation` lists other
-partition ids than the partitions hold (a publish under way), builds into a temporary
-directory inside `<dir>` (named with a leading `.`), moves it into place and rewrites
-`.generation` last. Just before moving it into place it reads the partitions' ids again, and
-when a load published new partitions during the build it stops without replacing anything,
-so the newer `.generation` stays. `--remove` instead rewrites `.generation` without the combined line and
-then removes `.combined`.
+reads the partitions without changing them, refuses a store with one partition, or whose
+`.generation` lists other partition ids than the partitions hold (a publish under way),
+builds into a temporary directory inside `<dir>` (named with a leading `.`), moves it into
+place and rewrites `.generation` last. Just before moving it into place it reads the
+partitions' ids again, and when a load published new partitions during the build it stops
+without replacing anything, so the newer `.generation` stays. `--remove` instead rewrites
+`.generation` without the combined line and then removes `.combined`.
 `bin/migrate-javabins` detects a partitioned javabin directory and exports each partition: a
 subdirectory with both javabin files is a partition, one with only one of them fails the run.
 

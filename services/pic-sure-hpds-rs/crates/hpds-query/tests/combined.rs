@@ -562,6 +562,38 @@ fn an_unknown_store_tag_in_the_generation_refuses_the_open() {
 }
 
 #[test]
+fn a_single_partition_ignores_a_combined_store() {
+    let (d, _) = small();
+    let index = std::fs::read(d.out.join("p1").join("pheno.index")).unwrap();
+    let p1_id = hpds_format::PhenoIndex::decode_header(&index)
+        .unwrap()
+        .store_id
+        .to_string();
+    let combined_line = generation(&d.out)
+        .lines()
+        .find(|l| l.ends_with(" .combined"))
+        .unwrap()
+        .to_owned();
+    std::fs::remove_dir_all(d.out.join("p2")).unwrap();
+    std::fs::write(
+        d.out.join(".generation"),
+        format!("{p1_id}\n{combined_line}\n"),
+    )
+    .unwrap();
+    let engine = open(&d.out, CombinedMode::Auto);
+    assert_eq!(engine.partitions().combined_status(), CombinedStatus::Absent);
+    assert_eq!(engine.count(&Query::new(ResultType::Count)).unwrap(), 2);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap();
+    let error = hpds_etl::combined::combine_in_place(&d.out, &common::protection(), &pool)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("holds one partition"), "{error}");
+}
+
+#[test]
 fn a_stale_partition_still_refuses_with_a_combined_store() {
     let (d, rows) = small();
     let fresh = partitioned_rows(&rows);

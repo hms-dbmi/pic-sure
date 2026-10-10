@@ -106,10 +106,11 @@ pub fn generation_line(store_id: &str) -> String {
 /// partition is opened with `protection`, and the combined store is sealed with it under a
 /// new store id. Blocks are read and merged on `pool`.
 ///
-/// Returns `None`, after logging a warning and writing nothing, when a concept is numeric
-/// in one partition and categorical in another: no block can hold both, and the query
-/// engine refuses to open such a store anyway. The partitions themselves load as
-/// `CSVLoader` loads them.
+/// Returns `None`, writing nothing, in two cases. With exactly one partition, the combined
+/// store would repeat it block for block, and the query engine ignores one there, so none is
+/// built. When a concept is numeric in one partition and categorical in another, a warning
+/// is logged: no block can hold both, and the query engine refuses to open such a store
+/// anyway. The partitions themselves load as `CSVLoader` loads them.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when `partitions` is empty; the errors of opening the partitions and
@@ -126,6 +127,12 @@ pub fn build_combined(
         return Err(EtlError::Usage(
             "a combined store needs at least one partition".into(),
         ));
+    }
+    if partitions.len() == 1 {
+        tracing::info!(
+            "no combined store is written for a single partition: it would repeat that partition, and the query service reads the partition directly"
+        );
+        return Ok(None);
     }
     let mut ordered: Vec<&Partition> = partitions.iter().collect();
     ordered.sort_by(|a, b| java_string_cmp(&a.name, &b.name));
@@ -418,8 +425,9 @@ pub fn existing_combined_dir(store: &Path) -> Option<PathBuf> {
 /// that published meanwhile keeps its newer marker.
 ///
 /// # Errors
-/// [`EtlError::Usage`] when `store` holds no partitions, its marker disagrees with them, two
-/// partitions type a concept differently, or the partitions changed during the build;
+/// [`EtlError::Usage`] when `store` holds no partitions or only one (a combined store would
+/// repeat it, and the query service ignores one there), its marker disagrees with them,
+/// two partitions type a concept differently, or the partitions changed during the build;
 /// the errors of [`build_combined`]; I/O errors.
 pub fn combine_in_place(
     store: &Path,
@@ -427,6 +435,12 @@ pub fn combine_in_place(
     pool: &rayon::ThreadPool,
 ) -> Result<CombinedReport> {
     let (partitions, store_ids) = checked_partitions(store, protection)?;
+    if partitions.len() == 1 {
+        return Err(EtlError::Usage(format!(
+            "{} holds one partition; a combined store would only repeat it, and the query service ignores one there",
+            store.display()
+        )));
+    }
     let staging = TemporaryDir::create(store, "combined.staging")?;
     let built = staging.path().join(COMBINED_DIR_NAME);
     private_fs::create_dir(&built).map_err(EtlError::io("creating", &built))?;
@@ -585,6 +599,23 @@ mod tests {
             error.contains("changed while the combined store was built"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_single_partition_gets_no_combined_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        load_plain(&out);
+        let partitions = partition_dirs(&out).unwrap();
+        let target = dir.path().join("combined");
+        std::fs::create_dir(&target).unwrap();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+        let built = build_combined(&partitions[..1], &target, &Protection::Plain, &pool).unwrap();
+        assert!(built.is_none());
+        assert_eq!(std::fs::read_dir(&target).unwrap().count(), 0);
     }
 
     #[test]
