@@ -341,6 +341,58 @@ fn row_buffer_matches_the_iterator_and_is_reused() {
     assert_eq!(rendered, expected);
 }
 
+/// The CSV line FastCSV writes for `fields`: a field quoted only when it holds `"`, `,`, CR
+/// or LF, with `"` doubled inside.
+fn fastcsv_line(fields: &[String]) -> String {
+    let quoted: Vec<String> = fields
+        .iter()
+        .map(|field| {
+            if field.contains(['"', ',', '\r', '\n']) {
+                format!("\"{}\"", field.replace('"', "\"\""))
+            } else {
+                field.clone()
+            }
+        })
+        .collect();
+    format!("{}\n", quoted.join(","))
+}
+
+#[test]
+fn csv_lines_match_the_fields_quoted_like_fastcsv() {
+    const NOTE: &str = "\\note\\";
+    const LAB: &str = "\\lab\\";
+    const MISSING: &str = "\\missing\\";
+    let s = store(&[
+        (1, NOTE, None, Some("plain")),
+        (2, NOTE, None, Some("a,b")),
+        (2, NOTE, None, Some("plain")),
+        (3, NOTE, None, Some("say \"hi\"")),
+        (4, NOTE, None, Some("line\nbreak")),
+        (4, NOTE, None, Some("cr\rhere")),
+        (5, NOTE, None, Some("tab\tinside")),
+        (5, LAB, Some(-0.25), None),
+        (5, LAB, Some(4.9e-324), None),
+        (6, LAB, Some(123_456_789.0), None),
+        (6, LAB, Some(0.001), None),
+        (7, NOTE, None, Some("\"")),
+        (8, NOTE, None, Some("é,ü")),
+    ]);
+    let mut q = query(ResultType::Dataframe, None);
+    q.select = vec![NOTE.into(), LAB.into(), MISSING.into(), NOTE.into()];
+    let fields: Vec<Vec<String>> = s.engine.dataframe(&q).unwrap().rows.collect();
+    let expected: String = fields.iter().map(|row| fastcsv_line(row)).collect();
+    let mut rows = s.engine.dataframe(&q).unwrap().rows;
+    let mut out = b"header\n".to_vec();
+    while rows.next_csv_into(&mut out) {}
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        format!("header\n{expected}")
+    );
+    assert!(expected.contains("\"a,b\tplain\""));
+    assert!(expected.contains("\"say \"\"hi\"\"\""));
+    assert!(expected.contains("-0.25\t4.9E-324"));
+}
+
 #[test]
 fn a_dataframe_over_the_pin_cap_is_a_client_error() {
     let s = demographics();

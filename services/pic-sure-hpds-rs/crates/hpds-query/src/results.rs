@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use hpds_format::{Block, java_double_to_string};
+use hpds_format::{Block, java_double_to_string, push_decimal_u32, push_java_double};
 use roaring::RoaringBitmap;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
@@ -262,22 +262,26 @@ impl Part {
         self.next = self.patient_at(self.cursor);
     }
 
-    fn write_cell(&mut self, patient: u32, out: &mut String) {
+    /// Appends the patient's values for this column to `out`, joined with a tab, and
+    /// returns true when one of them holds a byte that makes the CSV field need quotes
+    /// (`"`, `,`, CR or LF). Only categorical values can; numbers never do.
+    fn write_cell(&mut self, patient: u32, out: &mut Vec<u8>) -> bool {
         if self.next > patient {
-            return;
+            return false;
         }
         if self.next < patient {
             self.seek(patient);
             if self.next != patient {
-                return;
+                return false;
             }
         }
         let mut first = true;
-        let mut separator = |out: &mut String| {
+        let mut separator = |out: &mut Vec<u8>| {
             if !std::mem::take(&mut first) {
-                out.push('\t');
+                out.push(b'\t');
             }
         };
+        let mut needs_quotes = false;
         let selected = self.partitions.as_deref();
         let mut cursor = self.cursor;
         match self.block.as_ref() {
@@ -290,8 +294,10 @@ impl Part {
                         continue;
                     }
                     let index = b.value_indices()[key] as usize;
+                    let value = b.dictionary_value(index).unwrap_or_default().as_bytes();
                     separator(out);
-                    out.push_str(b.dictionary_value(index).unwrap_or_default());
+                    needs_quotes |= value.iter().any(|&byte| needs_csv_quotes(byte));
+                    out.extend_from_slice(value);
                 }
             }
             Block::Numeric(b) => {
@@ -303,13 +309,34 @@ impl Part {
                         continue;
                     }
                     separator(out);
-                    out.push_str(&java_double_to_string(b.values()[position]));
+                    push_java_double(b.values()[position], out);
                 }
             }
         }
         self.cursor = cursor;
         self.next = self.patient_at(self.cursor);
+        needs_quotes
     }
+}
+
+/// True for the bytes that make FastCSV quote a field: `"`, `,`, CR and LF.
+fn needs_csv_quotes(byte: u8) -> bool {
+    matches!(byte, b'"' | b',' | b'\r' | b'\n')
+}
+
+/// Wraps the field that starts at `start` and runs to the end of `out` in quotes, doubling
+/// every `"` inside it, as FastCSV writes a field that needs quoting.
+fn quote_field(out: &mut Vec<u8>, start: usize) {
+    let field = out.split_off(start);
+    out.reserve(field.len() + 2);
+    out.push(b'"');
+    for byte in field {
+        if byte == b'"' {
+            out.push(b'"');
+        }
+        out.push(byte);
+    }
+    out.push(b'"');
 }
 
 /// True when a row whose tag is `tag` is written: always without a partition filter, and
@@ -324,7 +351,7 @@ fn writes(selected: Option<&[bool]>, tag: impl FnOnce() -> Option<u16>) -> bool 
 /// and the end offset of each, so a row costs no allocation once the buffer has grown.
 #[derive(Debug, Default, Clone)]
 pub struct RowBuffer {
-    text: String,
+    text: Vec<u8>,
     ends: Vec<usize>,
 }
 
@@ -348,7 +375,7 @@ impl RowBuffer {
         let starts = std::iter::once(0).chain(self.ends.iter().copied());
         starts
             .zip(self.ends.iter().copied())
-            .map(|(start, end)| &self.text[start..end])
+            .map(|(start, end)| std::str::from_utf8(&self.text[start..end]).unwrap_or_default())
     }
 }
 
@@ -356,12 +383,11 @@ impl DataframeRows {
     /// Renders the next row into `row`, replacing its previous content, and returns false
     /// when no patients remain. No per-row or per-cell allocation once `row` has grown.
     pub fn next_into(&mut self, row: &mut RowBuffer) -> bool {
-        use std::fmt::Write;
         let Some(patient) = self.patients.next() else {
             return false;
         };
         row.clear();
-        let _ = write!(row.text, "{patient}");
+        push_decimal_u32(patient, &mut row.text);
         row.end_field();
         for column in &mut self.columns {
             if let Some(part) = column {
@@ -369,6 +395,29 @@ impl DataframeRows {
             }
             row.end_field();
         }
+        true
+    }
+
+    /// Appends the next row to `out` as one CSV line and returns false when no patients
+    /// remain. The line is what `write_csv_row` writes for the fields [`Self::next_into`]
+    /// renders: fields joined with `,`, a field quoted only when it holds `"`, `,`, CR or LF
+    /// with `"` doubled inside, and `\n` at the end. Each value is written once, straight into
+    /// `out`; only a field that needs quotes is copied again.
+    pub fn next_csv_into(&mut self, out: &mut Vec<u8>) -> bool {
+        let Some(patient) = self.patients.next() else {
+            return false;
+        };
+        push_decimal_u32(patient, out);
+        for column in &mut self.columns {
+            out.push(b',');
+            let start = out.len();
+            if let Some(part) = column
+                && part.write_cell(patient, out)
+            {
+                quote_field(out, start);
+            }
+        }
+        out.push(b'\n');
         true
     }
 }
