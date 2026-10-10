@@ -33,6 +33,24 @@ enum Command {
     ColumnMetaCsv(ColumnMetaCsvArgs),
     /// Write a store as canonical CSV in DumpSourceCSV layout and order, or its patient IDs.
     Dump(DumpArgs),
+    /// Build, rebuild or remove the combined store of a partitioned store in place.
+    Combine(CombineArgs),
+}
+
+#[derive(Args)]
+struct CombineArgs {
+    /// Partitioned store directory. Its partitions are read, never changed.
+    #[arg(long)]
+    store: PathBuf,
+    /// Remove the combined store and its .generation line instead of building one, so a
+    /// query service without combined store support opens the store again.
+    #[arg(long)]
+    remove: bool,
+    /// Worker threads for merging blocks.
+    #[arg(long)]
+    threads: Option<usize>,
+    #[command(flatten)]
+    key: KeyArgs,
 }
 
 #[derive(Args)]
@@ -77,11 +95,16 @@ struct MigrateArgs {
     /// list them in etl-report.json, instead of stopping.
     #[arg(long)]
     skip_inconsistent: bool,
+    /// Partitioned exports only: do not write the combined store of every partition, and
+    /// remove one that <out> already has.
+    #[arg(long)]
+    no_combined: bool,
 }
 
 #[derive(Args)]
 struct RemoveConceptsArgs {
-    /// Store directory to change in place. A partitioned store has every partition changed.
+    /// Store directory to change in place. A partitioned store has every partition changed,
+    /// then its combined store.
     #[arg(long)]
     store: PathBuf,
     /// File naming one concept path per line (conceptsToRemove.txt).
@@ -97,7 +120,7 @@ struct RemoveConceptsArgs {
 #[derive(Args)]
 struct ColumnMetaCsvArgs {
     /// Store directory to read. A partitioned store has each partition's columnMeta.csv
-    /// regenerated in place.
+    /// regenerated in place; its combined store is left as it is.
     #[arg(long)]
     store: PathBuf,
     /// File to write. Defaults to columnMeta.csv in the store directory. For a partitioned
@@ -116,7 +139,8 @@ struct ColumnMetaCsvArgs {
 
 #[derive(Args)]
 struct DumpArgs {
-    /// Store directory to read.
+    /// Store directory to read. A partitioned store's combined store is never read, since
+    /// it repeats the partitions' rows.
     #[arg(long)]
     store: PathBuf,
     /// File to write, mode 0600. Defaults to standard output. For a partitioned store
@@ -205,6 +229,10 @@ struct LoadArgs {
     /// Sequential mode only: chunk size in GiB, as Java's MAX_CHUNK_SIZE.
     #[arg(long)]
     max_chunk_gib: Option<f64>,
+    /// Partitioned mode only: do not write the combined store of every partition, and
+    /// remove one that <out> already has.
+    #[arg(long)]
+    no_combined: bool,
 }
 
 impl LoadArgs {
@@ -240,6 +268,7 @@ impl LoadArgs {
         options.spill_partitions = self.spill_partitions;
         options.threads = self.threads;
         options.tmp = self.tmp;
+        options.combined = !self.no_combined;
         Ok(options)
     }
 }
@@ -297,6 +326,7 @@ fn main() -> ExitCode {
         Command::RemoveConcepts(args) => run_remove_concepts(args),
         Command::ColumnMetaCsv(args) => run_column_meta_csv(args),
         Command::Dump(args) => run_dump(args),
+        Command::Combine(args) => run_combine(args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -342,6 +372,12 @@ fn run_load(args: LoadArgs) -> Result<()> {
             "--input-dir is for partitioned mode; use --input".into(),
         ));
     }
+    if args.no_combined {
+        return Err(EtlError::Usage(
+            "--no-combined is for partitioned mode, the only one that writes a combined store"
+                .into(),
+        ));
+    }
     let report = hpds_etl::load::load(&args.into())?;
     print_json(&report.counts);
     Ok(())
@@ -363,8 +399,15 @@ fn run_migrate(args: MigrateArgs) -> Result<()> {
         },
         threads: args.threads,
         skip_inconsistent: args.skip_inconsistent,
+        combined: !args.no_combined,
     };
     match StoreLayout::detect(&options.export, EXPORT_CONCEPTS_FILE)? {
+        StoreLayout::Root if args.no_combined => {
+            return Err(EtlError::Usage(
+                "--no-combined is for a partitioned export, the only one that gets a combined store"
+                    .into(),
+            ));
+        }
         StoreLayout::Root => print_json(&hpds_etl::migrate::migrate(&options)?),
         StoreLayout::Partitioned(_) => {
             print_json(&hpds_etl::migrate::migrate_partitioned(&options)?)
@@ -393,6 +436,7 @@ fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
         StoreLayout::Partitioned(partitions) => {
             print_json(&hpds_etl::store_maintenance::remove_concepts_partitioned(
                 &partitions,
+                hpds_etl::combined::existing_combined_dir(&args.store).as_deref(),
                 &args.concepts,
                 &protection,
                 !args.no_compact,
@@ -499,6 +543,31 @@ fn run_dump(args: DumpArgs) -> Result<()> {
             write_dump(std::slice::from_ref(&store), args.patients, out)
         })?;
     }
+    Ok(())
+}
+
+fn run_combine(args: CombineArgs) -> Result<()> {
+    let (layout, protection) = open_layout(&args.store, &args.key)?;
+    if layout == StoreLayout::Root {
+        return Err(EtlError::Usage(format!(
+            "{} is not partitioned; only a partitioned store has a combined store",
+            args.store.display()
+        )));
+    }
+    if args.remove {
+        let removed = hpds_etl::combined::remove_combined(&args.store, &protection)?;
+        tracing::info!(removed, store = %args.store.display(), "combined store removed");
+        return Ok(());
+    }
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(args.threads.unwrap_or(0))
+        .build()
+        .map_err(|e| EtlError::ThreadPool(e.to_string()))?;
+    print_json(&hpds_etl::combined::combine_in_place(
+        &args.store,
+        &protection,
+        &pool,
+    )?);
     Ok(())
 }
 

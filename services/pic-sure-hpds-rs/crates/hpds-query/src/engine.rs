@@ -123,6 +123,23 @@ impl Engine {
         &self.partitions
     }
 
+    /// What a computation of `query` would read, decided by the same admission step every
+    /// computation goes through (for the select use its declared result type implies): the
+    /// partitions its consents select, and whether it reads the combined store instead of
+    /// them. Reads no block.
+    ///
+    /// # Errors
+    /// The errors of admission: [`QueryError::LimitExceeded`], [`QueryError::Unsupported`]
+    /// and [`QueryError::UserConsentsRequired`].
+    pub fn read_plan(&self, query: &Query) -> Result<ReadPlan> {
+        let checked = self.admit(query, SelectUse::of(query.expected_result_type))?;
+        let selection = checked.selection();
+        Ok(ReadPlan {
+            partitions: selection.names().into_iter().map(str::to_owned).collect(),
+            combined: selection.reads_combined(),
+        })
+    }
+
     /// Validates `query` against the merged dictionary with the [`QueryValidator`] the
     /// partition set's flag gives: consents are required exactly when
     /// [`PartitionSet::requires_consents`] (the Java property
@@ -438,6 +455,16 @@ impl Engine {
             .await
             .map_err(|e| QueryError::Task(e.to_string()))?
     }
+}
+
+/// What one query reads, from [`Engine::read_plan`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadPlan {
+    /// The partitions its consents select, in partition name order.
+    pub partitions: Vec<String>,
+    /// True when it reads the combined store instead of those partitions, which happens
+    /// only when they are every partition.
+    pub combined: bool,
 }
 
 const EXPORT_LOAD_CHUNK: usize = 16;

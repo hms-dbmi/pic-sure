@@ -16,41 +16,23 @@
 //!
 //! `/search` cases run against the merged dictionary with the Java match rule and
 //! [`SummaryColumnMeta::write_json`].
+//!
+//! The store also gets a combined store. Every corpus runs with it in use and with it off,
+//! and every case must give byte for byte the same outcome both ways, so the cases that
+//! select every partition answer from the combined store exactly as from the partitions.
 
 mod common;
 
-use std::path::PathBuf;
-
-use common::{PartitionedDir, lenient, partitioned, strict};
+use common::{add_combined, harm_fixture as fixture, lenient, strict, workspace};
 use hpds_bench::client::{AsyncOutcome, Outcome, SyncOutcome};
 use hpds_bench::corpus::Kind;
+use hpds_bench::golden::GoldenCase;
 use hpds_bench::golden::{GoldenFile, evaluate, read_golden};
-use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType, SummaryColumnMeta};
+use hpds_query::{
+    CombinedMode, CombinedStatus, Engine, PATIENTS_HEADER, PartitionOptions, Query, QueryError,
+    ResultType, SummaryColumnMeta,
+};
 use serde_json::Value;
-
-fn workspace() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-const HEADER: &str = "PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME\n";
-
-/// The four fixture partitions, each with a header line prepended.
-pub fn fixture() -> PartitionedDir {
-    let resources = workspace().join("../pic-sure-hpds/service/src/test/resources/phenotypic");
-    let partitions: Vec<(String, String)> = (1..=4)
-        .map(|n| {
-            let name = format!("partition{n}");
-            let path = resources.join(format!("{name}-allConcepts.csv"));
-            let body = std::fs::read_to_string(&path).unwrap();
-            (name, format!("{HEADER}{body}"))
-        })
-        .collect();
-    let refs: Vec<(&str, String)> = partitions
-        .iter()
-        .map(|(name, text)| (name.as_str(), text.clone()))
-        .collect();
-    partitioned(&refs)
-}
 
 fn csv_line<S: AsRef<str>>(fields: impl IntoIterator<Item = S>) -> String {
     let quoted: Vec<String> = fields
@@ -222,36 +204,85 @@ fn run_golden(engine: &Engine, golden: &GoldenFile) -> Vec<String> {
     failures
 }
 
-fn assert_golden(file: &str, require_consents: bool, cases: usize) {
+/// The outcome of one case as the HTTP layer would report it, without the golden file's
+/// expectations: search, async exports, and sync queries (errors as 400 or 500).
+fn case_outcome(engine: &Engine, case: &GoldenCase) -> Outcome {
+    match case.entry.kind {
+        Kind::Search => run_search(engine, &case.entry.request),
+        Kind::Async => run_async(engine, &parse_query(&case.entry.request)),
+        Kind::Sync => run_sync(engine, &parse_query(&case.entry.request)),
+        Kind::UnknownStatus | Kind::UnknownResult => {
+            panic!("{}: no in-process support", case.entry.name)
+        }
+    }
+}
+
+/// Runs `file` against the fixture with a combined store, once with it in use and once
+/// with it off: both must pass every case, and give the same outcome for every case.
+/// `routes` is whether some case selects every partition and so reads the combined store.
+fn assert_golden(file: &str, require_consents: bool, cases: usize, routes: bool) {
     let dir = fixture();
-    let options = if require_consents {
+    add_combined(&dir.out);
+    let base = if require_consents {
         strict()
     } else {
         lenient()
     };
-    let engine = dir.open(&options).unwrap();
+    let open = |combined| dir.open(&PartitionOptions { combined, ..base }).unwrap();
+    let (auto, off) = (open(CombinedMode::Auto), open(CombinedMode::Off));
+    assert_eq!(auto.partitions().combined_status(), CombinedStatus::InUse);
+    assert_eq!(off.partitions().combined_status(), CombinedStatus::Off);
     let golden = read_golden(&workspace().join("bench/golden").join(file)).unwrap();
     assert_eq!(golden.cases.len(), cases);
-    assert_eq!(engine.partitions().requires_consents(), require_consents);
-    let failures = run_golden(&engine, &golden);
-    assert!(
-        failures.is_empty(),
-        "{} of {} golden cases failed:\n{}",
-        failures.len(),
-        golden.cases.len(),
-        failures.join("\n")
+    for engine in [&auto, &off] {
+        assert_eq!(engine.partitions().requires_consents(), require_consents);
+        let failures = run_golden(engine, &golden);
+        assert!(
+            failures.is_empty(),
+            "{} of {} golden cases failed ({:?}):\n{}",
+            failures.len(),
+            golden.cases.len(),
+            engine.partitions().combined_status(),
+            failures.join("\n")
+        );
+    }
+    let mut routed = 0;
+    for case in &golden.cases {
+        if case.entry.kind != Kind::Search {
+            let query = parse_query(&case.entry.request);
+            if auto.read_plan(&query).is_ok_and(|plan| plan.combined) {
+                routed += 1;
+            }
+            if let Ok(plan) = off.read_plan(&query) {
+                assert!(!plan.combined, "{}", case.entry.name);
+            }
+        }
+        assert_eq!(
+            case_outcome(&auto, case),
+            case_outcome(&off, case),
+            "{}: the combined store answers differently",
+            case.entry.name
+        );
+    }
+    assert_eq!(
+        routed > 0,
+        routes,
+        "{routed} cases of {file} read the combined store"
     );
-    eprintln!("{file}: {} golden cases passed", golden.cases.len());
+    eprintln!(
+        "{file}: {} golden cases passed with the combined store in use and off, {routed} of them read it",
+        golden.cases.len()
+    );
 }
 
 #[test]
 fn harmonization_golden_corpus_passes_in_process() {
-    assert_golden("harm-fixture.json", false, 73);
+    assert_golden("harm-fixture.json", false, 73, true);
 }
 
 #[test]
 fn strict_harmonization_golden_corpus_passes_in_process() {
-    assert_golden("harm-fixture-strict.json", true, 12);
+    assert_golden("harm-fixture-strict.json", true, 12, false);
 }
 
 #[test]

@@ -130,6 +130,7 @@ async fn run(config: Config) -> ExitCode {
                 partitions = ?partitions.partition_names().collect::<Vec<_>>(),
                 concepts = partitions.concept_count(),
                 require_consents = partitions.requires_consents(),
+                combined_store = partitions.combined_status().as_str(),
                 "store opened"
             );
             Some(Arc::new(engine))

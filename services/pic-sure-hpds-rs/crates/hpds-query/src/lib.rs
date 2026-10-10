@@ -8,7 +8,9 @@
 //!   byte-bounded cache of decoded blocks, the merged [`SummaryColumnMeta`] dictionary, and
 //!   the choice of partitions a query's `userConsents` grant ([`Selection`]). Its public
 //!   surface is that dictionary and the partition names; patient data is read only by the
-//!   [`Engine`], within a query's consents.
+//!   [`Engine`], within a query's consents. A query whose consents select every partition
+//!   reads the combined store instead, when the data directory has one
+//!   ([`CombinedStatus`]).
 //! - Cohort evaluation, `PhenotypicQueryExecutor.getPatientSet`, runs only inside the
 //!   [`Engine`], after the query passes its [`QueryLimits`] and its consents select the
 //!   partitions; each filter is evaluated per selected partition and the results ORed.
@@ -31,7 +33,7 @@ mod results;
 mod store;
 pub mod validate;
 
-pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine};
+pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine, ReadPlan};
 pub use error::{QueryError, Result};
 pub use limits::{
     DEFAULT_MAX_CLAUSE_DEPTH, DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES,
@@ -42,8 +44,8 @@ pub use model::{
     PhenotypicFilterType, PhenotypicSubquery, Query, ResultType, UserConsent, parse_strict,
 };
 pub use partition::{
-    Layout, Partition, PartitionOptions, PartitionSet, Selection, SummaryColumnMeta,
-    UNPARTITIONED_NAME,
+    COMBINED_DIR_NAME, CombinedMode, CombinedStatus, Layout, Partition, PartitionOptions,
+    PartitionSet, Selection, SummaryColumnMeta, UNPARTITIONED_NAME,
 };
 pub use results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,

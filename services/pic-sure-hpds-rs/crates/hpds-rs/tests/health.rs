@@ -3,7 +3,7 @@ mod common;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use common::{config, fixture, get};
+use common::{KEY, config, fixture, fixture_with, get, open_engine};
 use hpds_query::Engine;
 use hpds_rs::state::NOT_OPENED_REASON;
 use hpds_rs::{AppState, probe_health, router};
@@ -73,7 +73,29 @@ async fn health_is_up_with_a_store() {
     let fixture = fixture();
     let reply = get(&fixture.app, "/actuator/health").await;
     assert_eq!(reply.status, StatusCode::OK);
-    assert_eq!(reply.body, r#"{"status":"UP"}"#);
+    assert_eq!(reply.body, r#"{"status":"UP","combinedStore":"IN_USE"}"#);
+}
+
+#[tokio::test]
+async fn health_says_when_the_combined_store_is_off_or_absent() {
+    let off = fixture_with(|c| c.partitions.combined = hpds_query::CombinedMode::Off);
+    let reply = get(&off.app, "/actuator/health").await;
+    assert_eq!(reply.body, r#"{"status":"UP","combinedStore":"OFF"}"#);
+
+    let absent = fixture();
+    let store = absent.store();
+    let removed = hpds_etl::combined::remove_combined(
+        &store,
+        &hpds_format::Protection::Encrypted(
+            hpds_format::CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap(),
+        ),
+    )
+    .unwrap();
+    assert!(removed);
+    let engine = open_engine(&store, &absent.config);
+    let state = AppState::new(Some(engine), &absent.config).unwrap();
+    let reply = get(&router(state), "/actuator/health").await;
+    assert_eq!(reply.body, r#"{"status":"UP","combinedStore":"ABSENT"}"#);
 }
 
 #[tokio::test]

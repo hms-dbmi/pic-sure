@@ -91,21 +91,27 @@ fn read_generation(out: &Path) -> Vec<String> {
 }
 
 /// The store id of each partition of `out`, in partition name order, as 32 lowercase hex
-/// digits.
+/// digits, then the combined store's id and its tag when `out` has one: the lines
+/// `.generation` should hold.
 fn store_ids(out: &Path) -> Vec<String> {
+    let id_of = |dir: &Path| {
+        let id = open(dir).index.store_id().to_string();
+        assert!(
+            id.len() == 32
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        );
+        id
+    };
     hpds_etl::partitions::partition_dirs(out)
         .unwrap()
         .into_iter()
-        .map(|p| {
-            let id = open(&p.dir).index.store_id().to_string();
-            assert!(
-                id.len() == 32
-                    && id
-                        .bytes()
-                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            );
-            id
-        })
+        .map(|p| id_of(&p.dir))
+        .chain(
+            hpds_etl::combined::existing_combined_dir(out)
+                .map(|dir| format!("{} .combined", id_of(&dir))),
+        )
         .collect()
 }
 
@@ -235,6 +241,7 @@ fn harmonization_fixture_matches_java_csv_loader() {
     assert_eq!(
         names,
         [
+            ".combined",
             ".generation",
             "encryption_key",
             "partition1",
@@ -530,6 +537,7 @@ fn migrate_edge_export() -> (tempfile::TempDir, PathBuf) {
         key: KeySource::File(fixture("java-export/encryption_key")),
         threads: Some(2),
         skip_inconsistent: false,
+        combined: true,
     })
     .unwrap();
     assert_eq!(
@@ -816,7 +824,14 @@ fn the_generation_marker_follows_every_publish() {
     let second = read_generation(&out);
     assert_eq!(second, store_ids(&out));
     assert_ne!(first, second);
-    assert_eq!(second.len(), 2);
+    assert_eq!(second.len(), 3);
+    assert!(second[2].ends_with(" .combined"), "{second:?}");
+    options.combined = false;
+    load_partitioned(&options).unwrap();
+    let third = read_generation(&out);
+    assert_eq!(third, store_ids(&out));
+    assert_eq!(third.len(), 2);
+    assert!(!out.join(".combined").exists());
     let leftovers: Vec<String> = std::fs::read_dir(&out)
         .unwrap()
         .chain(std::fs::read_dir(dir.path()).unwrap())
@@ -934,6 +949,7 @@ fn remove_concepts_names_the_partitions_changed_before_a_failure_and_reruns_clea
     let partitions = hpds_etl::partitions::partition_dirs(&out).unwrap();
     let error = hpds_etl::store_maintenance::remove_concepts_partitioned(
         &partitions,
+        None,
         &concepts,
         &test_protection(),
         true,
@@ -962,6 +978,7 @@ fn remove_concepts_names_the_partitions_changed_before_a_failure_and_reruns_clea
     std::fs::write(&edge_c_index, saved).unwrap();
     let reports = hpds_etl::store_maintenance::remove_concepts_partitioned(
         &partitions,
+        None,
         &concepts,
         &test_protection(),
         true,
@@ -1031,4 +1048,112 @@ fn dump_outputs_are_private_new_and_outside_the_store() {
         assert!(!split.status.success(), "{}", target.display());
         assert!(!target.exists(), "{}", target.display());
     }
+}
+
+#[test]
+fn the_edge_partitions_get_no_combined_store_because_of_their_type_conflict() {
+    let (_dir, out) = load(&fixture("input"));
+    assert!(!out.join(".combined").exists());
+    assert_eq!(read_generation(&out), store_ids(&out));
+    assert_eq!(read_generation(&out).len(), EDGE_PARTITIONS.len());
+}
+
+#[test]
+fn cli_combine_no_combined_and_remove_concepts_keep_the_combined_store_consistent() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = dir.path().join("key");
+    write_key(&key);
+    let out = dir.path().join("out");
+    let loaded = hpds_etl(&[
+        "load",
+        "--mode",
+        "partitioned",
+        "--input-dir",
+        path_str(&harmonization_inputs()),
+        "--no-config",
+        "--key-file",
+        path_str(&key),
+        "--out",
+        path_str(&out),
+        "--no-combined",
+    ]);
+    assert!(loaded.status.success(), "{loaded:?}");
+    assert!(!out.join(".combined").exists());
+    assert_eq!(read_generation(&out).len(), 4);
+
+    let combined = hpds_etl(&["combine", "--store", path_str(&out)]);
+    assert!(combined.status.success(), "{combined:?}");
+    let report: serde_json::Value = serde_json::from_slice(&combined.stdout).unwrap();
+    assert_eq!(report["patients"], 4978);
+    assert_eq!(report["partitions_disjoint"], true);
+    assert_eq!(read_generation(&out), store_ids(&out));
+    assert_eq!(read_generation(&out).len(), 5);
+    let combined_store = open(&out.join(".combined"));
+    assert_eq!(combined_store.index.patients().len(), 4978);
+    let partition_rows: u64 = hpds_etl::partitions::partition_dirs(&out)
+        .unwrap()
+        .iter()
+        .flat_map(|p| open(&p.dir).index.concepts().to_vec())
+        .map(|c| u64::from(c.observation_count))
+        .sum();
+    let combined_rows: u64 = combined_store
+        .index
+        .concepts()
+        .iter()
+        .map(|c| u64::from(c.observation_count))
+        .sum();
+    assert_eq!(partition_rows, combined_rows);
+    assert_eq!(mode_bits(&out.join(".combined")), 0o700);
+    assert_eq!(
+        mode_bits(&out.join(".combined").join("pheno.blocks")),
+        0o600
+    );
+
+    let dumped = hpds_etl(&["dump", "--store", path_str(&out), "--concat", "--patients"]);
+    assert!(dumped.status.success(), "{dumped:?}");
+    assert_eq!(
+        String::from_utf8(dumped.stdout).unwrap().lines().count(),
+        4978
+    );
+
+    let path = combined_store.index.concepts()[0].path.clone();
+    let concepts = dir.path().join("remove.txt");
+    std::fs::write(&concepts, format!("{path}\n")).unwrap();
+    let removed = hpds_etl(&[
+        "remove-concepts",
+        "--store",
+        path_str(&out),
+        "--concepts",
+        path_str(&concepts),
+    ]);
+    assert!(removed.status.success(), "{removed:?}");
+    let report: serde_json::Value = serde_json::from_slice(&removed.stdout).unwrap();
+    assert_eq!(report[".combined"]["removed"], 1);
+    assert!(open(&out.join(".combined")).index.get(&path).is_none());
+    assert_eq!(read_generation(&out), store_ids(&out));
+
+    let removed = hpds_etl(&["combine", "--store", path_str(&out), "--remove"]);
+    assert!(removed.status.success(), "{removed:?}");
+    assert!(!out.join(".combined").exists());
+    assert_eq!(read_generation(&out), store_ids(&out));
+    assert_eq!(read_generation(&out).len(), 4);
+
+    std::fs::write(out.join(".combined"), b"not a directory").unwrap();
+    let mut options = options(harmonization_inputs(), out.clone());
+    options.key = KeySource::File(key.clone());
+    let error = load_partitioned(&options).unwrap_err().to_string();
+    assert!(error.contains("where the combined store goes"), "{error}");
+
+    let root = hpds_etl(&[
+        "load",
+        "--mode",
+        "new-search",
+        "--input",
+        path_str(&key),
+        "--out",
+        path_str(&dir.path().join("root")),
+        "--no-combined",
+    ]);
+    assert!(!root.status.success());
+    assert!(stderr(&root).contains("--no-combined is for partitioned mode"));
 }

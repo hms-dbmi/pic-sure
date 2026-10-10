@@ -85,7 +85,9 @@ impl QueryLimits {
     /// an evaluation that reads `select` as `select_use` says, the refusal of unsupported
     /// genomic input ([`check_supported`]), the consent selection
     /// ([`PartitionSet::select`]), and the concept bound over that selection, in that order.
-    /// Returns the receipt every evaluation requires, carrying the selection.
+    /// Then, and only here, a selection of every partition is routed to the combined store
+    /// when the set has one ([`Selection::routed`]); any narrower selection reads its own
+    /// partitions. Returns the receipt every evaluation requires, carrying the selection.
     ///
     /// # Errors
     /// [`QueryError::LimitExceeded`] naming the first bound the query breaks, the errors of
@@ -101,7 +103,10 @@ impl QueryLimits {
         check_supported(query)?;
         let selection = set.select(query)?;
         self.check_concepts(query, &selection)?;
-        Ok(CheckedQuery { query, selection })
+        Ok(CheckedQuery {
+            query,
+            selection: selection.routed(),
+        })
     }
 
     fn check_shape_for(&self, query: &Query, select_use: SelectUse) -> Result<()> {
@@ -207,7 +212,7 @@ pub(crate) enum SelectUse {
 
 impl SelectUse {
     /// The use a query declaring `result_type` makes of `select`.
-    fn of(result_type: ResultType) -> Self {
+    pub(crate) fn of(result_type: ResultType) -> Self {
         if result_type == ResultType::Dataframe {
             SelectUse::EveryEntry
         } else {

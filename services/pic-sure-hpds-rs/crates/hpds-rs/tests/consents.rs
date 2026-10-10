@@ -320,5 +320,5 @@ async fn every_route_answers_on_both_prefixes() {
         assert_eq!(values.status, StatusCode::OK);
     }
     let health = get(&f.app, "/actuator/health").await;
-    assert_eq!(health.body, r#"{"status":"UP"}"#);
+    assert_eq!(health.body, r#"{"status":"UP","combinedStore":"IN_USE"}"#);
 }

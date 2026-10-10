@@ -197,6 +197,7 @@ fn options(export: PathBuf, out: PathBuf, key: KeySource) -> MigrateOptions {
         key,
         threads: Some(2),
         skip_inconsistent: false,
+        combined: true,
     }
 }
 

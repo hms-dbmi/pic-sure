@@ -45,6 +45,7 @@ use roaring::RoaringBitmap;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
+use crate::combined::CombinedReport;
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
 use crate::load::{
@@ -191,6 +192,9 @@ pub struct MigrateOptions {
     /// Leave out a concept whose recorded metadata disagrees with its observations, and list
     /// it in the report, instead of stopping the migration.
     pub skip_inconsistent: bool,
+    /// For a partitioned export, also write the combined store of every partition
+    /// (`--no-combined` turns it off). Not used for an unpartitioned export.
+    pub combined: bool,
 }
 
 /// Two raw keys that strip to the same path. The later one in raw key order is kept.
@@ -307,6 +311,8 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
 pub struct PartitionedMigrateReport {
     /// Partition name to its report, in byte order of the names.
     pub partitions: BTreeMap<String, MigrateReport>,
+    /// What building the combined store did, when one was built.
+    pub combined: Option<CombinedReport>,
     /// Wall time in seconds.
     pub elapsed_seconds: f64,
 }
@@ -317,8 +323,9 @@ pub struct PartitionedMigrateReport {
 /// The export at `options.export` holds one export directory per partition, each named
 /// after its partition (`bin/migrate-javabins` runs `ExportForMigration` once for each
 /// partition of a partitioned javabin directory). [`KeySource::File`] also installs a copy
-/// of the key as `<out>/encryption_key`. Every partition is staged beside `out` and the set
-/// is published once all are migrated, as [`crate::load::load_partitioned`] does (see
+/// of the key as `<out>/encryption_key`. Every partition is staged beside `out`, then their
+/// combined store when [`MigrateOptions::combined`] is set, and the set is published once
+/// every store is complete, as [`crate::load::load_partitioned`] does (see
 /// [`PartitionedStaging::publish`]).
 ///
 /// # Errors
@@ -344,7 +351,7 @@ pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrat
     check_partitioned_output(&options.out, &names)?;
     let (protection, install_key) = resolve_shared_key(&options.key, &options.out)?;
     let pool = thread_pool(options.threads)?;
-    let mut staging = PartitionedStaging::create(&options.out, &names)?;
+    let mut staging = PartitionedStaging::create(&options.out, &names, options.combined)?;
     let mut reports = BTreeMap::new();
     for partition in &partitions {
         tracing::info!(partition = %partition.name, "migrating partition");
@@ -357,6 +364,7 @@ pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrat
         )?;
         reports.insert(partition.name.clone(), report);
     }
+    let combined = staging.build_combined(&protection, &pool)?;
     if let Some(key) = install_key {
         staging.stage_key(&key)?;
     }
@@ -364,9 +372,14 @@ pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrat
         .iter()
         .map(|(name, report): (&String, &MigrateReport)| (name.clone(), report.store_id.clone()))
         .collect();
-    staging.publish(&options.out, &store_ids)?;
+    staging.publish(
+        &options.out,
+        &store_ids,
+        combined.as_ref().map(|c| c.store_id.as_str()),
+    )?;
     let report = PartitionedMigrateReport {
         partitions: reports,
+        combined,
         elapsed_seconds: started.elapsed().as_secs_f64(),
     };
     tracing::info!(

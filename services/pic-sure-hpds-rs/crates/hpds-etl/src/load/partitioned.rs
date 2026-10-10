@@ -19,7 +19,9 @@
 //!   nested where the service, which lists only immediate subdirectories, never reads it.
 //!
 //! Every partition is staged beside `out` and nothing is published until all are complete;
-//! a failure in any partition publishes none. Into a new `out` the set appears at once;
+//! a failure in any partition publishes none. Unless [`PartitionedLoadOptions::combined`]
+//! is off, the combined store of every partition is then built from the staged partitions
+//! ([`crate::combined`]) and published with them. Into a new `out` the set appears at once;
 //! into an existing one the partitions are replaced one after another and the
 //! `.generation` marker is written last (see [`PartitionedStaging::publish`]).
 
@@ -34,6 +36,7 @@ use super::{
     CONFIG_FILE_NAME, InputFile, KeySource, LoadOptions, LoadReport, Mode, StoreSettings,
     build_store, resolve_config, thread_pool, warn_without_all_concepts_entry,
 };
+use crate::combined::CombinedReport;
 use crate::error::{EtlError, Result};
 use crate::partitions::{
     PartitionedStaging, check_partition_name, check_partitioned_output, resolve_shared_key,
@@ -69,6 +72,9 @@ pub struct PartitionedLoadOptions {
     pub threads: Option<usize>,
     /// Directory for the spill files; `None` uses each partition's staging directory.
     pub tmp: Option<PathBuf>,
+    /// Also write the combined store of every partition (`--no-combined` turns it off).
+    /// Off, an existing combined store in `out` is removed by the publish.
+    pub combined: bool,
 }
 
 impl PartitionedLoadOptions {
@@ -83,6 +89,7 @@ impl PartitionedLoadOptions {
             spill_partitions: None,
             threads: None,
             tmp: None,
+            combined: true,
         }
     }
 }
@@ -93,6 +100,8 @@ impl PartitionedLoadOptions {
 pub struct PartitionedLoadReport {
     /// Partition name to its report, in byte order of the names.
     pub partitions: BTreeMap<String, LoadReport>,
+    /// What building the combined store did, when one was built.
+    pub combined: Option<CombinedReport>,
     /// Wall time in seconds.
     pub elapsed_seconds: f64,
 }
@@ -204,16 +213,18 @@ fn walk(dir: &Path, found: &mut Vec<PathBuf>) -> Result<()> {
 /// with `CSVLoader`'s rules ([`Mode::Partitioned`]), all under one key.
 ///
 /// Inputs, output, key and config are checked before anything is written. The partitions
-/// build in parallel on one thread pool into a staging directory beside `out`, and are
-/// published once every one is complete, as [`PartitionedStaging::publish`] describes.
+/// build in parallel on one thread pool into a staging directory beside `out`, then their
+/// combined store when [`PartitionedLoadOptions::combined`] is set, and the set is published
+/// once every store is complete, as [`PartitionedStaging::publish`] describes.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when neither `config` nor `no_config` is set; everything
 /// [`discover_partition_inputs`] and [`check_partitioned_output`] refuse; a key
 /// that cannot be read, a missing `<out>/encryption_key`, or an `--key-file` that differs
 /// from an existing `<out>/encryption_key`; [`EtlError::InvalidPatient`] for the first row
-/// of a partition whose patient number Java would fail on, or that is negative; I/O, CSV,
-/// config and format errors.
+/// of a partition whose patient number Java would fail on, or that is negative; the errors
+/// of [`crate::combined::build_combined`], a concept typed differently in two partitions
+/// among them; I/O, CSV, config and format errors.
 pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedLoadReport> {
     let started = Instant::now();
     if options.config.is_none() && !options.no_config {
@@ -251,7 +262,7 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
         "loading partitions"
     );
 
-    let mut staging = PartitionedStaging::create(&options.out, &names)?;
+    let mut staging = PartitionedStaging::create(&options.out, &names, options.combined)?;
     let pool = thread_pool(options.threads)?;
     let reports: Vec<LoadReport> = pool.install(|| {
         inputs
@@ -273,6 +284,7 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
             })
             .collect::<Result<Vec<_>>>()
     })?;
+    let combined = staging.build_combined(&protection, &pool)?;
     if let Some(key) = install_key {
         staging.stage_key(&key)?;
     }
@@ -281,9 +293,14 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
         .iter()
         .map(|(name, report)| (name.clone(), report.store_id.clone()))
         .collect();
-    staging.publish(&options.out, &store_ids)?;
+    staging.publish(
+        &options.out,
+        &store_ids,
+        combined.as_ref().map(|c| c.store_id.as_str()),
+    )?;
     let report = PartitionedLoadReport {
         partitions,
+        combined,
         elapsed_seconds: started.elapsed().as_secs_f64(),
     };
     tracing::info!(

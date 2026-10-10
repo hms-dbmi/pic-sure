@@ -6,11 +6,14 @@
 //! regenerates `columnMeta.csv`. [`java`] holds the JDK and library behavior those rules
 //! depend on, [`column_meta_csv`] writes `columnMeta.csv` byte for byte as Java does, and
 //! [`store`] opens existing stores. [`partitions`] holds the layout of a consent-partitioned
-//! store, one store per partition directory. [`output`] writes the files `dump` produces
-//! outside a store. [`cleanup`] removes the temporary directories of an interrupted run.
+//! store, one store per partition directory, and [`combined`] the combined store that holds
+//! every partition's rows for queries that select all of them. [`output`] writes the files
+//! `dump` produces outside a store. [`cleanup`] removes the temporary directories of an
+//! interrupted run.
 
 pub mod cleanup;
 pub mod column_meta_csv;
+pub mod combined;
 pub mod dump;
 mod error;
 pub mod java;

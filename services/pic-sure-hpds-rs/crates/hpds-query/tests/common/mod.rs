@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use hpds_etl::load::{KeySource, LoadOptions, Mode, load};
+use hpds_format::{CryptoKey, Protection};
 use hpds_query::{
     Engine, PartitionOptions, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, Query,
     ResultType,
@@ -174,4 +175,58 @@ pub fn query(result_type: ResultType, clause: Option<PhenotypicClause>) -> Query
 
 pub fn ids(bitmap: &roaring::RoaringBitmap) -> Vec<u32> {
     bitmap.iter().collect()
+}
+
+/// The protection of every test store: encrypted with [`KEY`].
+pub fn protection() -> Protection {
+    Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap())
+}
+
+/// Builds the combined store of the partitioned directory `out` in place, as `hpds-etl
+/// combine` does, and returns its store id.
+pub fn add_combined(out: &Path) -> String {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+    hpds_etl::combined::combine_in_place(out, &protection(), &pool)
+        .unwrap()
+        .store_id
+}
+
+/// The workspace root.
+pub fn workspace() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// The header line the Java fixture files lack.
+pub const FIXTURE_HEADER: &str = "PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME\n";
+
+/// The Java integration fixture (`partition{1..4}-allConcepts.csv`) as (name, csv text)
+/// pairs, each text with [`FIXTURE_HEADER`] prepended.
+pub fn fixture_texts() -> Vec<(String, String)> {
+    let resources = workspace().join("../pic-sure-hpds/service/src/test/resources/phenotypic");
+    (1..=4)
+        .map(|n| {
+            let name = format!("partition{n}");
+            let path = resources.join(format!("{name}-allConcepts.csv"));
+            let body = std::fs::read_to_string(&path).unwrap();
+            (name, format!("{FIXTURE_HEADER}{body}"))
+        })
+        .collect()
+}
+
+/// [`partitioned`] over `(name, text)` pairs held as owned strings.
+pub fn partitioned_texts(texts: &[(String, String)]) -> PartitionedDir {
+    let refs: Vec<(&str, String)> = texts
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.clone()))
+        .collect();
+    partitioned(&refs)
+}
+
+/// The four fixture partitions, each loaded with the new-search loader after a header line
+/// is prepended. No combined store.
+pub fn harm_fixture() -> PartitionedDir {
+    partitioned_texts(&fixture_texts())
 }

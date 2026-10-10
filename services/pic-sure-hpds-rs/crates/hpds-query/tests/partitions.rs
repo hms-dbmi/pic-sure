@@ -441,6 +441,7 @@ fn a_missing_shared_key_or_store_refuses_to_open() {
             ..StoreOptions::default()
         },
         require_consents: false,
+        combined: hpds_query::CombinedMode::Auto,
     };
     assert!(d.open(&plain).is_err());
 

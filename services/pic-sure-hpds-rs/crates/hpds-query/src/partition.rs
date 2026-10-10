@@ -5,6 +5,12 @@
 //! opens them all with one key and one block cache, merges their dictionaries into one
 //! [`SummaryColumnMeta`] per concept, and picks the partitions a query may read
 //! ([`PartitionSet::select`]).
+//!
+//! A partitioned data directory may also hold a combined store in [`COMBINED_DIR_NAME`],
+//! written by the ETL with every partition's rows in the order this module merges them. It
+//! is never a partition. When it is present, listed in `.generation` and consistent with
+//! the partitions, a query whose consents select every partition reads it instead of the
+//! partitions; any narrower selection reads only its own partitions.
 
 use std::borrow::Cow;
 use std::fmt::Write as _;
@@ -28,6 +34,48 @@ use crate::validate::ConceptLookup;
 /// consent, as in Java.
 pub const UNPARTITIONED_NAME: &str = "__unpartitioned__";
 
+/// Name of the combined store's directory inside a partitioned data directory. It starts
+/// with `.`, so it is never a partition, and the ETL refuses a partition of that name.
+pub const COMBINED_DIR_NAME: &str = ".combined";
+
+/// The tag after the combined store's id on its `.generation` line.
+const COMBINED_GENERATION_TAG: &str = ".combined";
+
+/// Whether a [`PartitionSet`] uses the combined store (`HPDS_COMBINED_STORE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CombinedMode {
+    /// Open the combined store when the data directory has one, and refuse the open when
+    /// it is listed in `.generation` but missing, present but not listed, or inconsistent
+    /// with the partitions.
+    #[default]
+    Auto,
+    /// Never open it. `.generation`'s combined store line is ignored, and every query reads
+    /// its partitions, as before the combined store existed.
+    Off,
+}
+
+/// Whether an open [`PartitionSet`] answers full selections from a combined store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CombinedStatus {
+    /// A combined store is open, and every query that selects every partition reads it.
+    InUse,
+    /// The data directory has no combined store (or is unpartitioned).
+    Absent,
+    /// [`CombinedMode::Off`]: any combined store was ignored.
+    Off,
+}
+
+impl CombinedStatus {
+    /// The status as health and the startup log write it: `IN_USE`, `ABSENT` or `OFF`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CombinedStatus::InUse => "IN_USE",
+            CombinedStatus::Absent => "ABSENT",
+            CombinedStatus::Off => "OFF",
+        }
+    }
+}
+
 /// How a [`PartitionSet`] is opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PartitionOptions {
@@ -37,14 +85,18 @@ pub struct PartitionOptions {
     /// directory is refused at open, and every query must carry at least one consent value.
     /// The [`PartitionSet`] keeps it, and [`crate::Engine::validate`] reads it from there.
     pub require_consents: bool,
+    /// Whether to use the combined store. Its blocks share the one cache.
+    pub combined: CombinedMode,
 }
 
 impl Default for PartitionOptions {
-    /// The default store options, and consents required (the Java default).
+    /// The default store options, consents required (the Java default), and the combined
+    /// store used when present.
     fn default() -> Self {
         PartitionOptions {
             store: StoreOptions::default(),
             require_consents: true,
+            combined: CombinedMode::Auto,
         }
     }
 }
@@ -77,9 +129,9 @@ impl Partition {
     }
 }
 
-/// Where one partition keeps one concept: the partition's slot in [`PartitionSet`] order and
-/// the concept's position in that partition's index, which together are the block's cache
-/// key.
+/// Where one store keeps one concept: the store's slot (a partition's position in
+/// [`PartitionSet`] order, or one past the last partition for the combined store) and the
+/// concept's position in that store's index, which together are the block's cache key.
 #[derive(Debug, Clone, Copy)]
 struct Holder {
     slot: u32,
@@ -285,6 +337,8 @@ pub struct PartitionSet {
     holder_ends: Vec<u32>,
     holders: Vec<Holder>,
     all_patients: RoaringBitmap,
+    combined: Option<Store>,
+    combined_mode: CombinedMode,
     cache: BlockCache,
 }
 
@@ -300,6 +354,7 @@ impl std::fmt::Debug for PartitionSet {
             )
             .field("concepts", &self.dictionary.len())
             .field("patients", &self.all_patients.len())
+            .field("combined", &self.combined_status())
             .finish_non_exhaustive()
     }
 }
@@ -320,11 +375,21 @@ impl PartitionSet {
     ///
     /// When `<dir>/.generation` exists, the ETL wrote it last, after every partition of a
     /// load was in place. It lists the store id of each partition of that load, one per
-    /// line as 32 lowercase hex digits ([`hpds_format::StoreId`]'s display form); only the
-    /// first whitespace-separated token of a line is read, and blank lines are skipped.
-    /// Every opened store's id must be listed and every listed id must belong to an opened
-    /// store, or the open is refused as a partially published load. Without the file the
-    /// stores open as found.
+    /// line as 32 lowercase hex digits ([`hpds_format::StoreId`]'s display form); blank
+    /// lines are skipped. A line whose second token is `.combined` lists the combined
+    /// store; otherwise only the first token of a line is read. Every opened partition's id
+    /// must be listed and every listed partition id must belong to an opened partition, or
+    /// the open is refused as a partially published load. Without the file the stores open
+    /// as found.
+    ///
+    /// The combined store, under [`CombinedMode::Auto`], is opened when `.generation` lists
+    /// it, and must then be in [`COMBINED_DIR_NAME`] with that store id. It must hold
+    /// exactly the merged dictionary's concepts, each with the merged type and the summed
+    /// observation count of the partitions holding it, and exactly the union of the
+    /// partitions' patients. A `.combined/pheno.index` that `.generation` does not list
+    /// (or with no `.generation` at all) refuses the open too, as a store nothing ties to
+    /// these partitions. An unpartitioned directory has no combined store; one listed or
+    /// present refuses the open. [`CombinedMode::Off`] skips all of this.
     ///
     /// The key is `<dir>/encryption_key`, shared by every partition. A partition may carry
     /// its own `encryption_key` only if it holds the same key. With no root key the
@@ -336,8 +401,9 @@ impl PartitionSet {
     /// empty instead), holds a subdirectory with a javabin file but no `pheno.index`, holds a
     /// `.generation` file that cannot be read or does not match the opened stores' ids, is
     /// unpartitioned while `options.require_consents` is set, a partition's key file
-    /// differs from the shared key, or a store cannot be opened (its index or blocks file is
-    /// missing, corrupt, from another store, or protected differently from the key).
+    /// differs from the shared key, a store cannot be opened (its index or blocks file is
+    /// missing, corrupt, from another store, or protected differently from the key), or the
+    /// combined store is missing, unlisted or inconsistent as described above.
     /// [`QueryError::TypeConflict`] when two partitions type one concept differently.
     pub fn open(dir: &Path, options: &PartitionOptions) -> Result<Self> {
         let cache = block_cache(options.store.cache_bytes);
@@ -368,7 +434,7 @@ impl PartitionSet {
                     ),
                 ));
             }
-            let store = Store::open_shared(dir, protection, cache.clone(), 0)?;
+            let store = Store::open_shared(dir, protection.clone(), cache.clone(), 0)?;
             let partition = Partition {
                 name: UNPARTITIONED_NAME.to_owned(),
                 store,
@@ -397,13 +463,14 @@ impl PartitionSet {
                 .collect::<Result<Vec<_>>>()?;
             (Layout::Partitioned, partitions)
         };
-        check_generation(dir, &partitions)?;
+        let generation = read_generation(dir)?;
+        check_generation(dir, &partitions, generation.as_ref())?;
         let (dictionary, holder_ends, holders) = merge_dictionaries(&partitions)?;
         let all_patients = partitions
             .iter()
             .map(|p| p.store.index().patients())
             .union();
-        Ok(PartitionSet {
+        let mut set = PartitionSet {
             dir: dir.to_path_buf(),
             layout,
             require_consents: options.require_consents,
@@ -412,8 +479,166 @@ impl PartitionSet {
             holder_ends,
             holders,
             all_patients,
+            combined: None,
+            combined_mode: options.combined,
             cache,
-        })
+        };
+        if options.combined == CombinedMode::Auto {
+            set.combined = set.open_combined(generation.as_ref(), protection)?;
+        }
+        Ok(set)
+    }
+
+    /// The combined store [`PartitionSet::open`] describes, or `None` when the directory has
+    /// none.
+    ///
+    /// # Errors
+    /// [`QueryError::Open`] for every refusal [`PartitionSet::open`] lists for the combined
+    /// store.
+    fn open_combined(
+        &self,
+        generation: Option<&Generation>,
+        protection: Protection,
+    ) -> Result<Option<Store>> {
+        let combined_dir = self.dir.join(COMBINED_DIR_NAME);
+        let present = combined_dir.join(INDEX_FILE_NAME).exists();
+        let listed = generation.and_then(|g| g.combined.as_deref());
+        if self.layout == Layout::Unpartitioned {
+            if present || listed.is_some() {
+                return Err(open_error(
+                    &self.dir,
+                    format!(
+                        "an unpartitioned store has no combined store, but {COMBINED_DIR_NAME} \
+                         or {GENERATION_FILE_NAME} names one. Remove it, or set \
+                         HPDS_COMBINED_STORE=off"
+                    ),
+                ));
+            }
+            return Ok(None);
+        }
+        let id = match (listed, present) {
+            (None, false) => return Ok(None),
+            (Some(id), true) => id,
+            (Some(_), false) => {
+                return Err(open_error(
+                    &self.dir,
+                    format!(
+                        "{GENERATION_FILE_NAME} lists a combined store but {} holds no \
+                         {INDEX_FILE_NAME}. Republish the load, or set HPDS_COMBINED_STORE=off",
+                        combined_dir.display()
+                    ),
+                ));
+            }
+            (None, true) => {
+                return Err(open_error(
+                    &self.dir,
+                    format!(
+                        "{} holds a combined store that {GENERATION_FILE_NAME} does not list, \
+                         so nothing ties it to these partitions. Republish the load, remove \
+                         it with hpds-etl combine --remove, or set HPDS_COMBINED_STORE=off",
+                        combined_dir.display()
+                    ),
+                ));
+            }
+        };
+        let slot = u32::try_from(self.partitions.len())
+            .map_err(|_| open_error(&self.dir, "too many partitions"))?;
+        let store = Store::open_shared(&combined_dir, protection, self.cache.clone(), slot)?;
+        let opened = store.index().store_id().to_string();
+        if opened != id {
+            return Err(open_error(
+                &self.dir,
+                format!(
+                    "a partially published load: {GENERATION_FILE_NAME} lists combined store \
+                     {id} but {} holds {opened}. Wait for the load to finish, or republish it",
+                    combined_dir.display()
+                ),
+            ));
+        }
+        self.check_combined(&store)?;
+        Ok(Some(store))
+    }
+
+    /// Refuses a combined store that does not hold exactly the partitions' data: the merged
+    /// dictionary's concepts in the same order, each with the merged type and the summed
+    /// observation count of its holders, and the union of the partitions' patients.
+    ///
+    /// # Errors
+    /// [`QueryError::Open`] naming the first disagreement.
+    fn check_combined(&self, store: &Store) -> Result<()> {
+        let refuse = |detail: String| {
+            Err(open_error(
+                &self.dir.join(COMBINED_DIR_NAME),
+                format!(
+                    "the combined store disagrees with the partitions: {detail}. Rebuild it \
+                     with hpds-etl combine, or set HPDS_COMBINED_STORE=off"
+                ),
+            ))
+        };
+        let concepts = store.index().concepts();
+        if concepts.len() != self.dictionary.len() {
+            return refuse(format!(
+                "it holds {} concepts, the partitions {}",
+                concepts.len(),
+                self.dictionary.len()
+            ));
+        }
+        for (index, (concept, summary)) in concepts.iter().zip(&self.dictionary).enumerate() {
+            if concept.path != summary.name {
+                return refuse(format!("concept {} differs in path", index + 1));
+            }
+            if concept.concept_type != summary.concept_type() {
+                return refuse(format!("concept {} differs in type", index + 1));
+            }
+            let summed: u64 = self
+                .holders_of(index)
+                .iter()
+                .map(|h| u64::from(self.partition_concept(*h).observation_count))
+                .sum();
+            if u64::from(concept.observation_count) != summed {
+                return refuse(format!(
+                    "concept {} has {} observations, the partitions {summed}",
+                    index + 1,
+                    concept.observation_count
+                ));
+            }
+        }
+        if store.index().patients() != &self.all_patients {
+            return refuse(format!(
+                "it holds {} patients, the partitions {}",
+                store.index().patients().len(),
+                self.all_patients.len()
+            ));
+        }
+        Ok(())
+    }
+
+    /// The metadata of a partition's concept.
+    fn partition_concept(&self, holder: Holder) -> &ConceptMeta {
+        &self.partitions[holder.slot as usize]
+            .store
+            .index()
+            .concepts()[holder.position as usize]
+    }
+
+    /// The store at `slot`: a partition, or the combined store one past the last partition.
+    fn store_at(&self, slot: u32) -> &Store {
+        match self.partitions.get(slot as usize) {
+            Some(partition) => &partition.store,
+            None => self
+                .combined
+                .as_ref()
+                .unwrap_or_else(|| unreachable!("slot {slot} names no opened store")),
+        }
+    }
+
+    /// Whether full selections read a combined store.
+    pub fn combined_status(&self) -> CombinedStatus {
+        match (&self.combined, self.combined_mode) {
+            (Some(_), _) => CombinedStatus::InUse,
+            (None, CombinedMode::Off) => CombinedStatus::Off,
+            (None, CombinedMode::Auto) => CombinedStatus::Absent,
+        }
     }
 
     /// The data directory.
@@ -550,6 +775,7 @@ impl PartitionSet {
             set: self,
             members,
             mask,
+            routed_to_combined: false,
         })
     }
 
@@ -595,11 +821,17 @@ impl ConceptLookup for PartitionSet {
 /// The partitions one query reads, in partition name order. Built only by
 /// [`PartitionSet::select`] and [`PartitionSet::select_consents`]. Publicly it only names
 /// the partitions; the engine reads patient data through it.
+///
+/// A selection reads the partitions it names. The engine's admission step alone may route
+/// it to the combined store ([`Selection::routed`]), and a routed selection reads the
+/// combined store only while it names every partition: [`Selection::combined_store`]
+/// checks that on every read, so no narrower selection can reach the combined rows.
 #[derive(Debug, Clone)]
 pub struct Selection<'a> {
     set: &'a PartitionSet,
     members: Vec<&'a Partition>,
     mask: Vec<bool>,
+    routed_to_combined: bool,
 }
 
 impl<'a> Selection<'a> {
@@ -616,6 +848,33 @@ impl<'a> Selection<'a> {
     /// True when every partition of the set is selected.
     pub fn is_all(&self) -> bool {
         self.members.len() == self.set.partitions.len()
+            && self.mask.len() == self.set.partitions.len()
+            && self.mask.iter().all(|&selected| selected)
+    }
+
+    /// True when this selection reads the combined store instead of its partitions.
+    pub fn reads_combined(&self) -> bool {
+        self.combined_store().is_some()
+    }
+
+    /// This selection, routed to the combined store when it selects every partition and
+    /// the set has one open. The one place the engine decides to read the combined store;
+    /// called only by its admission step, after the consent checks.
+    pub(crate) fn routed(mut self) -> Self {
+        self.routed_to_combined = self.is_all() && self.set.combined.is_some();
+        self
+    }
+
+    /// The combined store and its slot, when this selection is routed to it and still
+    /// selects every partition.
+    fn combined_store(&self) -> Option<(&'a Store, u32)> {
+        if !self.routed_to_combined || !self.is_all() {
+            return None;
+        }
+        self.set
+            .combined
+            .as_ref()
+            .map(|store| (store, self.set.partitions.len() as u32))
     }
 
     /// The union of the selected partitions' patients
@@ -631,7 +890,8 @@ impl<'a> Selection<'a> {
     }
 
     /// The type of the concept at exactly `path`, or `None` when no selected partition holds
-    /// it. Partitions never disagree on a type: [`PartitionSet::open`] refuses that.
+    /// it. Partitions never disagree on a type: [`PartitionSet::open`] refuses that, and the
+    /// combined store holds every concept with the merged type.
     pub fn concept_type(&self, path: &str) -> Option<ConceptType> {
         let index = self.set.concept_index(path)?;
         self.selected_holders(index)
@@ -650,27 +910,33 @@ impl<'a> Selection<'a> {
     }
 
     fn concept(&self, holder: Holder) -> &'a ConceptMeta {
-        &self.set.partitions[holder.slot as usize]
-            .store
-            .index()
-            .concepts()[holder.position as usize]
+        &self.set.store_at(holder.slot).index().concepts()[holder.position as usize]
     }
 
     /// The block of `path` in each selected partition that holds the concept, in partition
     /// name order. Only the partitions holding the concept are visited. When every block
     /// is cached they are returned without spawning work; otherwise all of them load on the
-    /// rayon pool, where the cached ones return at once. Blocking.
+    /// rayon pool, where the cached ones return at once. A selection routed to the combined
+    /// store returns the one combined block, whose rows are those blocks' rows merged.
+    /// Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be loaded.
     pub(crate) fn blocks(&self, path: &str) -> Result<Vec<Arc<Block>>> {
-        match self.set.concept_index(path) {
-            Some(index) => self.load(
-                self.selected_holders(index),
-                self.set.holders_of(index).len(),
-            ),
-            None => Ok(Vec::new()),
+        let Some(index) = self.set.concept_index(path) else {
+            return Ok(Vec::new());
+        };
+        if let Some((_, slot)) = self.combined_store() {
+            let holder = Holder {
+                slot,
+                position: index as u32,
+            };
+            return self.load(std::iter::once(holder), 1);
         }
+        self.load(
+            self.selected_holders(index),
+            self.set.holders_of(index).len(),
+        )
     }
 
     /// The blocks of every concept whose path starts with `prefix` and that has at least one
@@ -682,6 +948,17 @@ impl<'a> Selection<'a> {
     /// [`QueryError::Block`] when a block cannot be loaded.
     pub(crate) fn blocks_with_prefix(&self, prefix: &str) -> Result<Vec<Arc<Block>>> {
         let range = self.set.prefix_range(prefix);
+        if let Some((store, slot)) = self.combined_store() {
+            let concepts = store.index().concepts();
+            let capacity = range.len();
+            let holders = range
+                .filter(|&index| concepts[index].observation_count > 0)
+                .map(|index| Holder {
+                    slot,
+                    position: index as u32,
+                });
+            return self.load(holders, capacity);
+        }
         let capacity = if range.is_empty() {
             0
         } else {
@@ -727,11 +1004,7 @@ impl<'a> Selection<'a> {
         let holders: Vec<Holder> = holders.collect();
         holders
             .par_iter()
-            .map(|h| {
-                self.set.partitions[h.slot as usize]
-                    .store
-                    .block_at(h.position as usize)
-            })
+            .map(|h| self.set.store_at(h.slot).block_at(h.position as usize))
             .collect()
     }
 }
@@ -824,32 +1097,67 @@ fn partition_dirs(dir: &Path) -> Result<Vec<(String, PathBuf)>> {
 /// load it completed.
 const GENERATION_FILE_NAME: &str = ".generation";
 
-/// Refuses a data directory whose `.generation` file names a different set of stores than
-/// `partitions` hold. Passes when there is no such file.
+/// The store ids a `.generation` file lists.
+#[derive(Debug, Default)]
+struct Generation {
+    /// The partitions' ids, lowercase.
+    partitions: std::collections::BTreeSet<String>,
+    /// The combined store's id, lowercase, from the line tagged `.combined`.
+    combined: Option<String>,
+}
+
+/// Reads `<dir>/.generation`, or `None` when there is none.
 ///
 /// # Errors
 /// [`QueryError::Open`] when the file cannot be read, a line's first token is not a store
-/// id, or the listed ids and the opened stores' ids differ.
-fn check_generation(dir: &Path, partitions: &[Partition]) -> Result<()> {
+/// id, or two lines are tagged `.combined`.
+fn read_generation(dir: &Path) -> Result<Option<Generation>> {
     let path = dir.join(GENERATION_FILE_NAME);
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(open_error(&path, e)),
     };
-    let mut listed = std::collections::BTreeSet::new();
-    for token in text
-        .lines()
-        .filter_map(|line| line.split_whitespace().next())
-    {
+    let mut generation = Generation::default();
+    for line in text.lines() {
+        let mut tokens = line.split_whitespace();
+        let Some(token) = tokens.next() else {
+            continue;
+        };
         if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(open_error(
                 &path,
                 format!("{token:?} is not a store id of 32 hex digits"),
             ));
         }
-        listed.insert(token.to_ascii_lowercase());
+        let id = token.to_ascii_lowercase();
+        if tokens.next() == Some(COMBINED_GENERATION_TAG) {
+            if generation.combined.replace(id).is_some() {
+                return Err(open_error(&path, "it lists more than one combined store"));
+            }
+        } else {
+            generation.partitions.insert(id);
+        }
     }
+    Ok(Some(generation))
+}
+
+/// Refuses a data directory whose `.generation` file names a different set of partition
+/// stores than `partitions` hold. Passes when there is no such file. The combined store's
+/// line is checked by [`PartitionSet::open`], not here.
+///
+/// # Errors
+/// [`QueryError::Open`] when the listed partition ids and the opened partitions' ids
+/// differ.
+fn check_generation(
+    dir: &Path,
+    partitions: &[Partition],
+    generation: Option<&Generation>,
+) -> Result<()> {
+    let Some(generation) = generation else {
+        return Ok(());
+    };
+    let listed = &generation.partitions;
     let opened: std::collections::BTreeMap<String, &str> = partitions
         .iter()
         .map(|p| (p.store.index().store_id().to_string(), p.name.as_str()))

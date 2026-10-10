@@ -1,6 +1,8 @@
 //! Commands that change or regenerate the metadata of an existing store:
 //! `hpds-etl remove-concepts` and `hpds-etl column-meta-csv`, and the merged
-//! `columnMeta.csv` of a partitioned store.
+//! `columnMeta.csv` of a partitioned store. `remove-concepts` changes a partitioned store's
+//! combined store with its partitions; `column-meta-csv` only writes `columnMeta.csv` files,
+//! which the query service never reads, so it leaves the combined store as it is.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -13,6 +15,7 @@ use hpds_format::{
 use serde::Serialize;
 
 use crate::column_meta_csv::write_column_meta_csv;
+use crate::combined::COMBINED_DIR_NAME;
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
 use crate::load::COLUMN_META_CSV_NAME;
@@ -162,36 +165,46 @@ pub fn remove_concepts(
 }
 
 /// Removes the concepts named in `concepts_file` from every partition in `partitions`, in
-/// order, as [`remove_concepts`] does for one store, and returns each partition's report
-/// by name.
+/// order, and then from the combined store in `combined` when given, as [`remove_concepts`]
+/// does for one store, and returns each store's report by name (the combined store's under
+/// [`COMBINED_DIR_NAME`]).
 ///
-/// The partitions are changed one at a time, so a failure leaves the ones before it
-/// changed and the rest untouched. The command is idempotent: run again, it finds the
-/// concepts already gone from the changed partitions (they appear in `not_found`) and
-/// removes them from the rest.
+/// The stores are changed one at a time, so a failure leaves the ones before it changed and
+/// the rest untouched. The combined store goes last and keeps its store id, so once every
+/// store is changed it holds exactly the concepts of the partitions again and the
+/// `.generation` marker still matches. Until then the query service refuses to open the
+/// store, since the combined store's concepts differ from the partitions'. The command is
+/// idempotent: run again, it finds the concepts already gone from the changed stores (they
+/// appear in `not_found`) and removes them from the rest.
 ///
 /// # Errors
-/// [`EtlError::PartitionFailed`] naming the partition that failed, the partitions
-/// already changed, and the error of [`remove_concepts`].
+/// [`EtlError::PartitionFailed`] naming the store that failed, the stores already changed,
+/// and the error of [`remove_concepts`].
 pub fn remove_concepts_partitioned(
     partitions: &[Partition],
+    combined: Option<&Path>,
     concepts_file: &Path,
     protection: &Protection,
     compact: bool,
 ) -> Result<BTreeMap<String, RemoveReport>> {
     let mut reports = BTreeMap::new();
     let mut changed = Vec::new();
-    for partition in partitions {
-        let report = remove_concepts(&partition.dir, concepts_file, protection, compact).map_err(
-            |source| EtlError::PartitionFailed {
-                partition: partition.name.clone(),
-                changed: changed.clone(),
-                source: Box::new(source),
-            },
-        )?;
-        tracing::info!(partition = %partition.name, removed = report.removed, "concepts removed");
-        changed.push(partition.name.clone());
-        reports.insert(partition.name.clone(), report);
+    let stores = partitions
+        .iter()
+        .map(|p| (p.name.as_str(), p.dir.as_path()))
+        .chain(combined.map(|dir| (COMBINED_DIR_NAME, dir)));
+    for (name, dir) in stores {
+        let report =
+            remove_concepts(dir, concepts_file, protection, compact).map_err(|source| {
+                EtlError::PartitionFailed {
+                    partition: name.to_owned(),
+                    changed: changed.clone(),
+                    source: Box::new(source),
+                }
+            })?;
+        tracing::info!(store = %name, removed = report.removed, "concepts removed");
+        changed.push(name.to_owned());
+        reports.insert(name.to_owned(), report);
     }
     Ok(reports)
 }

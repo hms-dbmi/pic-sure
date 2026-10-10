@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use hpds_query::CombinedMode;
 use hpds_query::{
     DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_MAX_CLAUSE_DEPTH,
     DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_QUERY_CONCEPTS,
@@ -43,6 +44,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `CACHE_SIZE` | ignored | Java's cache size in cubes; logged and ignored |
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
 /// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory |
+/// | `HPDS_COMBINED_STORE` | `auto` | `auto` answers queries that select every partition from the combined store when the data directory has a valid one; `off` ignores it |
 /// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
 /// | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept; 0 or unset keeps it until evicted |
@@ -178,6 +180,10 @@ impl Config {
             Some(value) => parse_bool("HPDS_ALLOW_PLAIN", &value)?,
             None => false,
         };
+        let combined = match lookup("HPDS_COMBINED_STORE") {
+            Some(value) => parse_combined_mode(&value)?,
+            None => CombinedMode::Auto,
+        };
         Ok(Config {
             data_dir: PathBuf::from(
                 lookup("HPDS_DATA_DIRECTORY").unwrap_or_else(|| DEFAULT_DATA_DIRECTORY.to_owned()),
@@ -189,6 +195,7 @@ impl Config {
                     allow_plain,
                 },
                 require_consents,
+                combined,
             },
             results_dir: PathBuf::from(
                 lookup("HPDS_RESULTS_DIRECTORY")
@@ -308,6 +315,16 @@ fn positive_u64(
     match parse_or(lookup, name, default)? {
         0 => Err(format!("{name} must be at least 1")),
         value => Ok(value),
+    }
+}
+
+fn parse_combined_mode(value: &str) -> Result<CombinedMode, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "auto" => Ok(CombinedMode::Auto),
+        "off" => Ok(CombinedMode::Off),
+        _ => Err(format!(
+            "HPDS_COMBINED_STORE is not valid: {value} (use auto or off)"
+        )),
     }
 }
 
@@ -445,6 +462,22 @@ mod tests {
         assert!(config(&[("SERVER_PORT", "http")]).is_err());
         assert!(config(&[("SMALL_TASK_THREADS", "0")]).is_err());
         assert!(config(&[("HPDS_ALLOW_PLAIN", "maybe")]).is_err());
+        assert_eq!(config(&[]).unwrap().partitions.combined, CombinedMode::Auto);
+        assert_eq!(
+            config(&[("HPDS_COMBINED_STORE", " OFF ")])
+                .unwrap()
+                .partitions
+                .combined,
+            CombinedMode::Off
+        );
+        assert_eq!(
+            config(&[("HPDS_COMBINED_STORE", "auto")])
+                .unwrap()
+                .partitions
+                .combined,
+            CombinedMode::Auto
+        );
+        assert!(config(&[("HPDS_COMBINED_STORE", "on")]).is_err());
         assert!(config(&[("HPDS_SYNC_TIMEOUT_SECONDS", "0")]).is_err());
         assert!(config(&[("HPDS_RESULT_MAX_BYTES", "0")]).is_err());
         for name in [
