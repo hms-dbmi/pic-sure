@@ -13,6 +13,7 @@ use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 
 use crate::error::{QueryError, Result};
+use crate::fan_out;
 use crate::limits::CheckedQuery;
 use crate::model::{
     Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery,
@@ -158,9 +159,8 @@ fn combine(
     clauses: &[PhenotypicClause],
     operator: Operator,
 ) -> Result<Patients> {
-    let mut sets = clauses
-        .par_iter()
-        .map(|clause| evaluate_checked(selection, clause))
+    let mut sets = fan_out::map(clauses, |clause| evaluate_checked(selection, clause))
+        .into_iter()
         .collect::<Result<Vec<_>>>()?;
     if sets.len() <= 1 {
         return sets.pop().ok_or(QueryError::EmptySubquery);

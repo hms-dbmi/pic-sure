@@ -13,6 +13,7 @@ use roaring::{MultiOps, RoaringBitmap};
 
 use crate::cohort::evaluate_cohort_cow;
 use crate::error::{QueryError, Result};
+use crate::fan_out;
 use crate::limits::{CheckedQuery, QueryLimits, SelectUse};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{PartitionOptions, PartitionSet, Selection};
@@ -262,17 +263,17 @@ impl Engine {
             }
         }
         let budget = EntryBudget::new(self.limits.max_cross_count_entries);
-        let mut concepts = called_out
-            .par_iter()
-            .map(|(path, named)| {
-                let blocks = selection.blocks(path)?;
-                let mut tally = budget.tally();
-                let disjoint = selection.counts_per_partition();
-                let counts = category_counts(&blocks, cohort, named, disjoint, &mut tally)?;
-                tally.settle()?;
-                Ok(((*path).to_owned(), counts))
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let called_out: Vec<(&str, HashSet<&str>)> = called_out.into_iter().collect();
+        let mut concepts = fan_out::map(&called_out, |(path, named)| {
+            let blocks = selection.blocks(path)?;
+            let mut tally = budget.tally();
+            let disjoint = selection.counts_per_partition();
+            let counts = category_counts(&blocks, cohort, named, disjoint, &mut tally)?;
+            tally.settle()?;
+            Ok(((*path).to_owned(), counts))
+        })
+        .into_iter()
+        .collect::<Result<Vec<_>>>()?;
         concepts.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
         Ok(CategoricalCrossCounts { concepts })
     }
@@ -321,16 +322,16 @@ impl Engine {
             .filter(|path| self.concept_type(path) == Some(ConceptType::Numeric))
             .collect();
         let budget = EntryBudget::new(self.limits.max_cross_count_entries);
-        let mut concepts = paths
-            .par_iter()
-            .map(|path| {
-                let blocks = selection.blocks(path)?;
-                let mut tally = budget.tally();
-                let counts = value_counts(&blocks, cohort, &mut tally)?;
-                tally.settle()?;
-                Ok(((*path).to_owned(), counts))
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let paths: Vec<&str> = paths.into_iter().collect();
+        let mut concepts = fan_out::map(&paths, |path| {
+            let blocks = selection.blocks(path)?;
+            let mut tally = budget.tally();
+            let counts = value_counts(&blocks, cohort, &mut tally)?;
+            tally.settle()?;
+            Ok(((*path).to_owned(), counts))
+        })
+        .into_iter()
+        .collect::<Result<Vec<_>>>()?;
         concepts.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
         Ok(ContinuousCrossCounts { concepts })
     }
@@ -502,23 +503,19 @@ fn blocks_or_log(selection: &Selection<'_>, path: &str, what: &str) -> Option<Ve
 fn cross_count_in(checked: &CheckedQuery<'_, '_>, cohort: &RoaringBitmap) -> ConceptCounts {
     let selection = checked.selection();
     let paths = distinct(&checked.query().select);
-    let entries = paths
-        .par_iter()
-        .map(|path| {
-            let count = match blocks_or_log(selection, path, "cross count").as_deref() {
-                None => -1,
-                Some([]) => 0,
-                Some([one]) => one.all_patients().intersection_len(cohort) as i64,
-                Some(many) if selection.counts_per_partition() => {
-                    many.iter()
-                        .map(|b| b.all_patients().intersection_len(cohort))
-                        .sum::<u64>() as i64
-                }
-                Some(many) => cohort_patients_in(many, cohort) as i64,
-            };
-            ((*path).to_owned(), count)
-        })
-        .collect();
+    let entries = fan_out::map(&paths, |path| {
+        let count = match blocks_or_log(selection, path, "cross count").as_deref() {
+            None => -1,
+            Some([]) => 0,
+            Some([one]) => one.all_patients().intersection_len(cohort) as i64,
+            Some(many) if selection.counts_per_partition() => many
+                .iter()
+                .map(|b| b.all_patients().intersection_len(cohort))
+                .sum::<u64>() as i64,
+            Some(many) => cohort_patients_in(many, cohort) as i64,
+        };
+        ((*path).to_owned(), count)
+    });
     ConceptCounts { entries }
 }
 
@@ -548,25 +545,26 @@ fn observation_cross_count_in(
     cohort: &RoaringBitmap,
 ) -> ConceptCounts {
     let selection = checked.selection();
-    let mut entries: Vec<(String, i64)> = distinct(&checked.query().select)
-        .par_iter()
-        .filter_map(|path| {
-            let count = match blocks_or_log(selection, path, "observation cross count") {
-                None => -1,
-                Some(blocks) if blocks.is_empty() => return None,
-                Some(blocks) => blocks
-                    .iter()
-                    .map(|block| {
-                        observation_patients(block)
-                            .iter()
-                            .filter(|&&p| cohort.contains(p))
-                            .count() as i64
-                    })
-                    .sum(),
-            };
-            Some(((*path).to_owned(), count))
-        })
-        .collect();
+    let paths = distinct(&checked.query().select);
+    let mut entries: Vec<(String, i64)> = fan_out::map(&paths, |path| {
+        let count = match blocks_or_log(selection, path, "observation cross count") {
+            None => -1,
+            Some(blocks) if blocks.is_empty() => return None,
+            Some(blocks) => blocks
+                .iter()
+                .map(|block| {
+                    observation_patients(block)
+                        .iter()
+                        .filter(|&&p| cohort.contains(p))
+                        .count() as i64
+                })
+                .sum(),
+        };
+        Some(((*path).to_owned(), count))
+    })
+    .into_iter()
+    .flatten()
+    .collect();
     entries.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
     ConceptCounts { entries }
 }
