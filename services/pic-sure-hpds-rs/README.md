@@ -73,6 +73,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `HPDS_BLOCKING_THREADS` | `64`, or the engine concurrency plus 16 when that is larger | Cap on tokio's blocking threads. Startup fails unless `HPDS_ENGINE_CONCURRENCY` is below it, so file reads keep some blocking threads. |
 | `RUST_LOG` | `info` | Log filter, in `tracing` `EnvFilter` syntax. The `hpds_rs::access` target logs one line per request at info with method, path, status and latency. For benchmarks use `RUST_LOG=info,hpds_rs::access=warn` to silence it. |
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
+| `HPDS_METRICS` | `off` | `on` serves `GET /metrics` in the Prometheus text format and counts requests (see [Metrics](#metrics)). Off, `/metrics` is a 404 like any unknown path. `true`, `false`, `1`, `0`, `yes` and `no` are also read; anything else fails startup. |
 
 A query over a limit is a 400 naming the setting, before any block is read. Checks run in
 this order on both query routes: the query's shape (select paths, clause depth and nodes), then
@@ -193,12 +194,69 @@ An opt-in cache of sync answers, off unless `HPDS_RESULT_CACHE_BYTES` is above 0
   them. An answer heavier than a sixteenth of the bound is not cached.
 - **Counters.** With the cache on, the `hpds_rs::result_cache` log target reports hits,
   misses, the hit rate, entries, bytes and the bound every 60 seconds in which a lookup
-  happened, and once at shutdown. Health does not report them.
+  happened, and once at shutdown. With `HPDS_METRICS=on`, `/metrics` reports them too, with
+  evictions. Health does not report them.
 - **What to expect.** An ordinary query already answers in well under a millisecond on a
   warm block cache, so a hit mostly saves heavy entries (study-level `ANY_RECORD_OF`, wide
   cross counts). The `hpds-bench` corpora replay about a hundred distinct sync queries in a
   loop, so their hit rate converges on 100%; treat cache-on benchmark numbers as a best
   case, not a forecast for real traffic.
+
+### Search compression
+
+`POST /search` answers gzip only when the request's `Accept-Encoding` accepts it, following RFC
+9110: `gzip` or `x-gzip` with a qvalue above 0, or `*` when gzip is not named; names compare
+case-insensitively, `gzip;q=0` refuses it whatever `*` says, and an unparsable qvalue counts
+as 0. Such a request gets a body of at least 1,400 bytes as `Content-Encoding: gzip`, with
+`Content-Length` of the compressed bytes, which decompress to exactly the uncompressed body.
+Any request that sends `Accept-Encoding` gets `Vary: Accept-Encoding` on a body of that size,
+compressed or not. A shorter body is never compressed: the gzip stream's setup cost buys
+nothing on a body that already fits in about one TCP segment with its headers. A request
+without `Accept-Encoding` gets the same bytes and headers as before compression existed. No
+other route compresses.
+
+- **Levels.** A body matched for a term is compressed at level 1, the fastest, about 7 to 9
+  times smaller on `/search` bodies. Level 3 is a third smaller again but costs half again the
+  CPU, which pays only on a link slower than about 450 Mbit/s. The two answers that hold every
+  concept (a null or missing term, and the empty term) are built once at startup, shared by
+  every request, and compressed at level 9 the first time a client asks, then kept.
+- **The query service asks.** The harmonization query service talks to HPDS through Apache
+  HttpClient 5, which sends `Accept-Encoding: gzip, deflate, x-gzip` on every request and
+  decompresses the body, so its `/search` calls get gzip. Its decoded `SearchResults` are the
+  same.
+- **Why not query answers or downloads.** HttpClient 5 leaves `Content-Encoding` and the
+  compressed `Content-Length` on the response it decompresses, and the query service returns
+  HPDS's `/query/{id}/result` response to its caller headers and all, so a compressed download
+  would reach the caller as plain text labeled gzip with the wrong length. Sync answers are
+  mostly under 300 bytes.
+
+### Metrics
+
+With `HPDS_METRICS=on`, `GET /metrics` reports these in the Prometheus text exposition format.
+Labels take only fixed values: route templates as the router declares them (or `unmatched`),
+result type names (or `none`), error kinds, histogram bounds and export outcomes. No label or
+value carries a patient id, concept path, consent name, result id or anything from a request
+body. Counters are relaxed atomic adds; the block cache's lookup counters are striped across
+cache lines. Reading the block cache walks it to weigh the partition views, so a scrape runs on
+the blocking pool.
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `hpds_http_requests_total{route,result_type}` | counter | Requests answered, by route template and, on `/query/sync` and `POST /query`, the result type the query named |
+| `hpds_http_request_duration_seconds{route}` | histogram | Time from receiving a request to sending its response head; a streamed download's body is not timed. Bounds 0.5 ms to 60 s |
+| `hpds_http_errors_total{kind}` | counter | 4xx and 5xx answers: `bad_request`, `not_found`, `request_timeout`, `payload_too_large`, `internal`, `unavailable`, `other_client`, `other_server` |
+| `hpds_connections_refused_total` | counter | Connections answered 503 at `HPDS_MAX_CONNECTIONS` |
+| `hpds_block_cache_hits_total`, `hpds_block_cache_misses_total` | counter | Block cache lookups, one per concept read |
+| `hpds_block_cache_evictions_total` | counter | Entries dropped (or never admitted) to stay within `HPDS_CACHE_BYTES` |
+| `hpds_block_cache_entries`, `hpds_block_cache_bytes`, `hpds_block_cache_capacity_bytes` | gauge | Concepts and bytes held, blocks and views, and the bound |
+| `hpds_block_cache_views`, `hpds_block_cache_view_bytes` | gauge | Partition views held and their bytes, part of the above |
+| `hpds_block_loads_total`, `hpds_block_load_seconds_total` | counter | Blocks read from the store, authenticated and decoded, and the seconds spent, summed over threads |
+| `hpds_cohort_guard_refusals_total` | counter | Queries refused by the cohort check (see [Narrow selections](#narrow-selections)) |
+| `hpds_result_cache_hits_total`, `_misses_total`, `_evictions_total` | counter | Result cache lookups and evictions; only with `HPDS_RESULT_CACHE_BYTES` above 0 |
+| `hpds_result_cache_entries`, `_bytes`, `_capacity_bytes` | gauge | What the result cache holds, and its bound; only when it is on |
+| `hpds_async_results` | gauge | Async results held, pending, running and finished |
+| `hpds_exports_finished_total{outcome}` | counter | Async queries finished: `memory`, `file` or `error` (refusals at submission included) |
+| `hpds_result_memory_bytes`, `hpds_result_memory_budget_bytes` | gauge | Export results held in memory, downloads in progress included, and `HPDS_RESULT_MEMORY_BYTES` |
 
 ### Routes
 
@@ -215,9 +273,10 @@ off, and a connection that takes more than 10 seconds to send a request's header
 | `POST /query/{id}/result` | The CSV export as `text/plain`; 400 `Status : <state>` before it succeeds |
 | `POST /query/{id}/signed-url` | 400, S3 upload is out of scope |
 | `POST /query/format`, `POST /write/{dataType}` | 400, not supported |
-| `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info: {}`. See the locale note in `search.rs`. |
+| `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info: {}`. See the locale note in `search.rs`. gzip on request, see [Search compression](#search-compression). |
 | `GET /search/values/` | An empty page |
 | `GET /actuator/health` | 200 `{"status":"UP"}` when the store's dictionary holds a concept; else 503 `{"status":"DOWN","reason":...}` |
+| `GET /metrics` | With `HPDS_METRICS=on`, the counters of [Metrics](#metrics) as Prometheus text (`text/plain; version=0.0.4`); otherwise 404. At the root, not under `/PIC-SURE` |
 
 Differences from Java a caller can see:
 
