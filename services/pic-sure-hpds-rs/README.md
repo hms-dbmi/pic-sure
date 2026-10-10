@@ -97,16 +97,16 @@ directory itself) as `PartitionedPhenotypicObservationStore` serves its partitio
   so a query whose every consent is unknown counts 0. A store without partitions is read
   whatever the consents, and is refused while `HPDS_REQUIRE_AUTHORIZATION_FILTER` is true,
   as Java refuses an unpartitioned `allObservationsStore.javabin`.
-- Each concept is one block holding every partition's rows, in the order the v2 engine
-  merged partitions: by patient, then partition name in Java string order, then each
-  partition's own order. The index records which partitions hold the concept, with their row
-  and patient counts, and each partition's patient set. A patient in exactly one partition's
-  set decides the partition of all their rows; the patients that do not (in two or more
-  sets, or with a row in a partition whose set lacks them) form the overlap set, and every
-  block holding one of their rows records each row's partition. A patient with rows but in
-  no partition's set (a migrated partition whose Java patient list misses them) is in the
-  overlap set but not in the store's patients, which stay the union of the partition sets,
-  as Java's patient ids do. A block whose partition
+- Each concept is one block holding every partition's rows, in the order the v2 engine merged
+  partitions: by patient, then partition name in Java string order, then each partition's own
+  order. The index records which partitions hold the concept, with their row and patient
+  counts, each partition's patient set, and the overlap patients whose rows are tagged with
+  each partition. A patient in exactly one partition's set decides the partition of all their
+  rows; the patients that do not (in two or more sets, or with a row in a partition whose set
+  lacks them) form the overlap set, and every block holding one of their rows records each
+  row's partition. A patient with rows but in no partition's set (a migrated partition whose
+  Java patient list misses them) is in the overlap set but not in the store's patients, which
+  stay the union of the partition sets, as Java's patient ids do. A block whose partition
   record disagrees with the index or the patient sets refuses to load (`QueryError::Block`).
 - A store of format 1, written by Rust HPDS v1 to v3, is refused naming
   `hpds-etl convert` (see [Converting a store of format 1](#converting-a-store-of-format-1)):
@@ -135,9 +135,10 @@ partitions.
 
 - **Routed patients.** A patient outside the overlap set has every row in the one partition
   their patient set names, so a filter evaluated on the whole block is right for them once
-  patients of unselected partitions are dropped. A clause is evaluated on whole blocks and
-  intersected once, at the end, with the selected partitions' patients; no clause negates,
-  so that is the same as intersecting every filter.
+  patients of unselected partitions are dropped. A clause is evaluated on whole blocks, with
+  the overlap patients' share of each filter corrected by tag, and intersected once, at the
+  end, with the selected partitions' patients outside the overlap set together with the
+  overlap set; no clause negates, so that is the same as intersecting every filter.
 - **Concept by concept.** When the selected partitions hold every row of a concept, its
   block is read as for a full selection. When they hold at least `NARROW_VIEW_SHARE` of its
   rows (0.75), the block is evaluated whole. Below that share the concept's partition view
@@ -148,12 +149,12 @@ partitions.
 - **Overlap patients.** Rows of the overlap set's patients carry their partition, and every
   filter, count and export reads those rows by tag, keeping only rows of selected
   partitions. When the overlap set is empty no tag is ever read.
-- **Cohort check.** Before any count or export uses a cohort, on every selection including
-  a full one, the engine checks that every patient in it is in a selected partition: in its
-  patient set, or with a row tagged with it. A patient outside fails the query with a 500 and
-  an error log that counts such patients without naming any. Only a fault in the engine can
-  trip it; it turns such a fault into an error instead of an answer from another
-  partition's patients.
+- **Cohort check.** Before any count or export uses a cohort, on every selection including a
+  full one, the engine checks that every patient in it is in a selected partition: in its
+  patient set, or with a row tagged with it, as the index records for each partition. A patient
+  outside fails the query with a 500 and an error log that counts such patients without naming
+  any. Only a fault in the engine can trip it; it turns such a fault into an error instead of
+  an answer from another partition's patients.
 - **Repeated selections.** The union of the selected partitions' patient sets is computed
   once per distinct selection and kept, up to 64 MiB of such sets.
 
