@@ -30,7 +30,7 @@ use crate::load::{
 use crate::merge::{MergeReport, MergeSource, SourceStore, write_store};
 use crate::partitions::{partition_dirs, resolve_shared_key};
 use crate::private_fs;
-use crate::store::resolve_protection;
+use crate::store::{lock_store_shared, resolve_protection};
 
 /// Everything `hpds-etl convert` needs.
 #[derive(Clone, Debug)]
@@ -62,27 +62,26 @@ pub struct ConvertReport {
 
 /// Converts the format 1 store at `options.store` into a new store at `options.out`.
 ///
-/// The new store is staged beside `out` and published as [`crate::load::load`] publishes
-/// one, under the store lock when `out` exists.
+/// The source is read under a shared `flock` on its directory, the lock a format 1 load
+/// holds exclusively while it publishes, so no load publishes into it during the read; the
+/// `.generation` check is a second guard, and a source without a marker (written by Rust
+/// HPDS v1 or v2) is read as found. The new store is staged beside `out` and published as
+/// [`crate::load::load`] publishes one, under the store lock when `out` exists.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when `store` holds no format 1 store, holds a store of this format
 /// already, has a `.generation` marker that does not list exactly its partitions' store ids
-/// (a publish under way), or when `out` is `store`, lies inside it, or is refused by
-/// [`check_output`]; key errors; the errors of reading the old store and of
-/// [`write_store`], a concept typed differently in two partitions among them.
+/// (a publish under way), or when `out` is `store`, lies inside it, contains it, or is
+/// refused by [`check_output`]; key errors; I/O errors locking `store`; the errors of
+/// reading the old store and of [`write_store`], a concept typed differently in two
+/// partitions among them.
 pub fn convert(options: &ConvertOptions) -> Result<ConvertReport> {
     let started = Instant::now();
     let source = &options.store;
     check_not_inside(&options.out, source)?;
     check_output(&options.out, &options.key)?;
-    let protection = match &options.key {
-        KeySource::Plain => resolve_protection(&KeySource::Plain, source)?,
-        KeySource::File(path) => resolve_protection(&KeySource::File(path.clone()), source)?,
-        KeySource::OutputDirectoryKeyFile | KeySource::StoreDirectory => {
-            resolve_protection(&KeySource::StoreDirectory, source)?
-        }
-    };
+    let _source_lock = lock_store_shared(source)?;
+    let protection = resolve_protection(&options.key, source)?;
     let install_key = match &protection {
         hpds_format::Protection::Plain => None,
         hpds_format::Protection::Encrypted(_) => {
@@ -165,8 +164,8 @@ pub fn convert(options: &ConvertOptions) -> Result<ConvertReport> {
     Ok(report)
 }
 
-/// Refuses an `out` that is `store` or lies inside it, where publishing would replace or
-/// mix with the source.
+/// Refuses an `out` that is `store`, lies inside it, or contains it, where publishing would
+/// replace or mix with the source.
 ///
 /// # Errors
 /// [`EtlError::Usage`] naming both; I/O errors resolving `store`.
@@ -187,6 +186,13 @@ fn check_not_inside(out: &Path, store: &Path) -> Result<()> {
     if probe_real.starts_with(&store_real) {
         return Err(EtlError::Usage(format!(
             "{} is or lies inside the store {} it converts; write the new store to another directory",
+            out.display(),
+            store.display()
+        )));
+    }
+    if probe == out && store_real.starts_with(&probe_real) {
+        return Err(EtlError::Usage(format!(
+            "{} contains the store {} it converts; write the new store to another directory",
             out.display(),
             store.display()
         )));
@@ -262,6 +268,7 @@ mod tests {
         assert!(check_not_inside(&store, &store).is_err());
         assert!(check_not_inside(&store.join("new"), &store).is_err());
         assert!(check_not_inside(&dir.path().join("other"), &store).is_ok());
+        assert!(check_not_inside(dir.path(), &store).is_err());
     }
 
     #[test]

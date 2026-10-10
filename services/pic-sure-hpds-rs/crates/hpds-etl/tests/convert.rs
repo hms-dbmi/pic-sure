@@ -7,6 +7,8 @@
 //! - `not-indexed`: `edge-bc` with patient 3 removed from `edgeC`'s patient set, though
 //!   `edgeC` holds a row of it, and the `patients-indexed` tag dropped from its marker line,
 //!   as a migration from a Java store with that gap records it.
+//! - `gap`: `not-indexed` with patient 3 also removed from `edgeB`'s patient set, so it has
+//!   rows in both partitions and is in neither set.
 //! - `unpartitioned`: the edge-case file loaded in new-search mode, with
 //!   `unpartitioned.dump.csv`, the v3 `hpds-etl dump` of it.
 
@@ -227,7 +229,9 @@ fn conversions_that_cannot_be_right_are_refused() {
     };
     let again = run(&out, &dir.path().join("again"));
     assert!(again.contains("already in format 2"), "{again}");
-    let inside = run(&source, &source.join("v4"));
+    let inside = run(&source, &source.join("converted"));
+    let ancestor = run(&source, dir.path());
+    assert!(ancestor.contains("contains the store"), "{ancestor}");
     assert!(inside.contains("lies inside the store"), "{inside}");
     let itself = run(&source, &source);
     assert!(itself.contains("lies inside the store"), "{itself}");
@@ -300,4 +304,95 @@ fn cli_converts_a_partitioned_store() {
         let text = std::fs::read_to_string(dumps.join(format!("{partition}.csv"))).unwrap();
         assert_eq!(text.split_once("\r\n").unwrap().1, java_dump(partition));
     }
+}
+
+#[test]
+fn a_patient_in_no_partition_set_converts_into_the_overlap_set() {
+    let (_dir, _, out) = convert_fixture("gap");
+    let store = OpenStore::open(&out, protection()).unwrap();
+    assert_eq!(
+        table(&store),
+        [
+            ("edgeB".to_string(), false, vec![1, 2, 40]),
+            ("edgeC".to_string(), false, vec![50]),
+        ]
+    );
+    assert_eq!(
+        store.index.patients().iter().collect::<Vec<_>>(),
+        [1, 2, 40, 50],
+        "the store's patients stay the union of the partition sets"
+    );
+    assert_eq!(
+        store
+            .index
+            .partition_table()
+            .overlap
+            .iter()
+            .collect::<Vec<_>>(),
+        [3]
+    );
+    let dumps = partition_dumps(&store);
+    assert_eq!(dumps["edgeB"], java_dump("edgeB"));
+    assert_eq!(dumps["edgeC"], java_dump("edgeC"));
+}
+
+#[test]
+fn convert_waits_for_a_publish_holding_the_source_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("edge-bc");
+    copy_tree(&format_1("edge-bc"), &source);
+    let lock = std::fs::File::open(&source).unwrap();
+    lock.lock().unwrap();
+    let out = dir.path().join("out");
+    let options = ConvertOptions {
+        store: source.clone(),
+        out: out.clone(),
+        key: KeySource::StoreDirectory,
+        threads: Some(1),
+    };
+    let converting = std::thread::spawn(move || convert(&options).map(|_| ()));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(
+        !converting.is_finished(),
+        "convert waits for the source lock"
+    );
+    assert!(!out.exists());
+    drop(lock);
+    converting.join().unwrap().unwrap();
+    assert!(out.join("pheno.index").exists());
+}
+
+#[test]
+fn convert_publishes_into_an_existing_store_only_under_its_lock() {
+    let (dir, source, out) = convert_fixture("edge-bc");
+    let before = std::fs::read_to_string(out.join(".generation")).unwrap();
+    let lock = std::fs::File::open(&out).unwrap();
+    lock.lock().unwrap();
+    let options = ConvertOptions {
+        store: source,
+        out: out.clone(),
+        key: KeySource::StoreDirectory,
+        threads: Some(1),
+    };
+    let converting = std::thread::spawn(move || convert(&options).map(|_| ()));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while !std::fs::read_dir(dir.path()).unwrap().flatten().any(|e| {
+        e.file_name().to_string_lossy().starts_with(".out.staging-")
+            && e.path().join("etl-report.json").exists()
+    }) {
+        assert!(std::time::Instant::now() < deadline, "timed out");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(!converting.is_finished(), "the publish waits for the lock");
+    assert_eq!(
+        std::fs::read_to_string(out.join(".generation")).unwrap(),
+        before
+    );
+    drop(lock);
+    converting.join().unwrap().unwrap();
+    assert_ne!(
+        std::fs::read_to_string(out.join(".generation")).unwrap(),
+        before
+    );
 }

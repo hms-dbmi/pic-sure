@@ -144,6 +144,18 @@ pub struct StoreLock {
     _dir: File,
 }
 
+/// Takes a shared `flock` on the store directory `dir`, for a command that only reads the
+/// store and must not see a publish under way: it waits while a command holds the
+/// [`StoreLock`], and holds off a new one, while other readers share it.
+///
+/// # Errors
+/// I/O errors opening or locking the directory.
+pub fn lock_store_shared(dir: &Path) -> Result<StoreLock> {
+    let file = File::open(dir).map_err(EtlError::io("opening", dir))?;
+    file.lock_shared().map_err(EtlError::io("locking", dir))?;
+    Ok(StoreLock { _dir: file })
+}
+
 /// Takes the [`StoreLock`] of the store directory `dir`, waiting while another command
 /// holds it.
 ///
