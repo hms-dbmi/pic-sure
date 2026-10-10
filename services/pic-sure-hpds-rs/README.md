@@ -371,7 +371,9 @@ partitioned store in place, for a store loaded with `--no-combined` or by an old
 reads the partitions without changing them, refuses a store whose `.generation` lists other
 partition ids than the partitions hold (a publish under way), builds into a temporary
 directory inside `<dir>` (named with a leading `.`), moves it into place and rewrites
-`.generation` last. `--remove` instead rewrites `.generation` without the combined line and
+`.generation` last. Just before moving it into place it reads the partitions' ids again, and
+when a load published new partitions during the build it stops without replacing anything,
+so the newer `.generation` stays. `--remove` instead rewrites `.generation` without the combined line and
 then removes `.combined`.
 `bin/migrate-javabins` detects a partitioned javabin directory and exports each partition: a
 subdirectory with both javabin files is a partition, one with only one of them fails the run.

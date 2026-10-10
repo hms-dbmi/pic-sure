@@ -413,12 +413,14 @@ pub fn existing_combined_dir(store: &Path) -> Option<PathBuf> {
 /// under way or was interrupted is refused rather than certified. The new store is built in
 /// a temporary directory inside `store` (named with a leading `.`, so neither the ETL nor
 /// the query service takes it for a partition), renamed into place, and the marker written
-/// last.
+/// last. Just before that, with the interrupt handler held off, the partitions' ids are
+/// read again, and the publish is abandoned when they changed during the build, so a load
+/// that published meanwhile keeps its newer marker.
 ///
 /// # Errors
-/// [`EtlError::Usage`] when `store` holds no partitions, its marker disagrees with them, or
-/// two partitions type a concept differently; the errors of [`build_combined`]; I/O
-/// errors.
+/// [`EtlError::Usage`] when `store` holds no partitions, its marker disagrees with them, two
+/// partitions type a concept differently, or the partitions changed during the build;
+/// the errors of [`build_combined`]; I/O errors.
 pub fn combine_in_place(
     store: &Path,
     protection: &Protection,
@@ -437,15 +439,39 @@ pub fn combine_in_place(
     let names: Vec<String> = partitions.into_iter().map(|p| p.name).collect();
     let generation = generation_text(&names, &store_ids, Some(&report.store_id))?;
     let registered = crate::cleanup::lock();
-    replace_combined_dir(store, staging.path(), Some(built))?;
-    let marker = store.join(GENERATION_FILE_NAME);
-    let written = replace_file(&marker, |file| {
-        file.write_all(generation.as_bytes())
-            .map_err(EtlError::io("writing", &marker))
+    let published = refuse_if_changed(store, protection, &store_ids).and_then(|()| {
+        replace_combined_dir(store, staging.path(), Some(built))?;
+        let marker = store.join(GENERATION_FILE_NAME);
+        replace_file(&marker, |file| {
+            file.write_all(generation.as_bytes())
+                .map_err(EtlError::io("writing", &marker))
+        })
     });
     drop(registered);
-    written?;
+    published?;
     Ok(report)
+}
+
+/// Refuses to publish a combined store built from the partitions whose store ids were
+/// `built_from`, when `store`'s partitions or its marker no longer agree with them: a load
+/// published new partitions during the build, and its marker must not be overwritten.
+///
+/// # Errors
+/// [`EtlError::Usage`] when the partitions' ids changed, or the errors of reading them
+/// again (see [`checked_partitions`]).
+fn refuse_if_changed(
+    store: &Path,
+    protection: &Protection,
+    built_from: &BTreeMap<String, String>,
+) -> Result<()> {
+    let (_, now) = checked_partitions(store, protection)?;
+    if &now == built_from {
+        return Ok(());
+    }
+    Err(EtlError::Usage(format!(
+        "the partitions of {} changed while the combined store was built, so a newer load was published; nothing was replaced. Rerun hpds-etl combine",
+        store.display()
+    )))
 }
 
 /// Removes the combined store of the partitioned store `store` (`hpds-etl combine
@@ -525,6 +551,40 @@ mod tests {
     fn distinct_patients_counts_runs() {
         assert_eq!(distinct_patients([].into_iter()), 0);
         assert_eq!(distinct_patients([1, 1, 2, 5, 5, 5].into_iter()), 3);
+    }
+
+    fn harmonization_inputs() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../pic-sure-hpds/service/src/test/resources/phenotypic")
+    }
+
+    fn load_plain(out: &Path) {
+        let mut options = crate::load::PartitionedLoadOptions::new(
+            harmonization_inputs(),
+            out.to_path_buf(),
+        );
+        options.no_config = true;
+        options.key = crate::load::KeySource::Plain;
+        options.threads = Some(2);
+        options.combined = false;
+        crate::load::load_partitioned(&options).unwrap();
+    }
+
+    #[test]
+    fn a_publish_is_refused_when_the_partitions_changed_during_the_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        load_plain(&out);
+        let (_, built_from) = checked_partitions(&out, &Protection::Plain).unwrap();
+        refuse_if_changed(&out, &Protection::Plain, &built_from).unwrap();
+        load_plain(&out);
+        let error = refuse_if_changed(&out, &Protection::Plain, &built_from)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("changed while the combined store was built"),
+            "{error}"
+        );
     }
 
     #[test]
