@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use hpds_format::{Block, ConceptType, java_double_cmp, java_string_cmp};
 use rayon::prelude::*;
-use roaring::RoaringBitmap;
+use roaring::{MultiOps, RoaringBitmap};
 
 use crate::cohort::{evaluate_cohort_cow, for_each_row_of};
 use crate::error::{QueryError, Result};
@@ -24,6 +24,7 @@ use crate::results::{
 };
 use crate::store::CachedConcept;
 use crate::validate::{QueryValidator, path_is_variant_spec};
+use crate::view::View;
 
 /// Default cap on the summed decoded size of the blocks one DATAFRAME export may hold at
 /// once: 2 GiB.
@@ -620,6 +621,13 @@ fn cross_count_in(checked: &CheckedQuery<'_, '_>, cohort: &RoaringBitmap) -> Con
             None => 0,
             Some(read) => match entry_or_log(selection, &read, path, "cross count") {
                 None => -1,
+                Some(entry) if read.mode == ReadMode::View => match selection.view(&read, &entry) {
+                    Ok(view) => view_cohort_patients_in(selection, &view, entry.block(), cohort),
+                    Err(error) => {
+                        tracing::warn!(concept = %path, %error, "cross count failed");
+                        -1
+                    }
+                },
                 Some(entry) => cohort_patients_in(selection, &read, entry.block(), cohort) as i64,
             },
         };
@@ -651,6 +659,29 @@ fn cohort_patients_in(
         }
     });
     count - (overlap_cohort.len() - held.len())
+}
+
+/// [`cohort_patients_in`] through the concept's partition view: the cohort patients of each
+/// selected partition, summed when the block is untagged (each patient's rows lie in one
+/// partition) and unioned first otherwise.
+fn view_cohort_patients_in(
+    selection: &Selection<'_>,
+    view: &View,
+    block: &Block,
+    cohort: &RoaringBitmap,
+) -> i64 {
+    let slots = view.selected_slots(selection.mask());
+    let count = if block.partitions().is_tagged() {
+        slots
+            .map(|slot| view.patients(slot))
+            .union()
+            .intersection_len(cohort)
+    } else {
+        slots
+            .map(|slot| view.patients(slot).intersection_len(cohort))
+            .sum()
+    };
+    count as i64
 }
 
 /// Cohort patients per block row above which counting a block's cohort rows walks every
@@ -724,7 +755,7 @@ fn cohort_rows_in(
 fn category_counts(
     selection: &Selection<'_>,
     read: &ConceptRead,
-    entry: &CachedConcept,
+    entry: &Arc<CachedConcept>,
     cohort: &RoaringBitmap,
     named: &HashSet<&str>,
     tally: &mut EntryTally<'_>,
@@ -733,6 +764,9 @@ fn category_counts(
     let Block::Categorical(categorical) = block.as_ref() else {
         return Ok(Vec::new());
     };
+    if read.mode == ReadMode::View {
+        return view_category_counts(selection, read, entry, cohort, named, tally);
+    }
     let narrow = read.mode != ReadMode::Exact;
     let tagged = narrow && block.partitions().is_tagged();
     let mut overlap_values: HashMap<u32, RoaringBitmap> = HashMap::new();
@@ -765,9 +799,54 @@ fn category_counts(
         let listed = count > 0
             || (named.contains(category)
                 && (!narrow
-                    || !bitmap.is_disjoint(selection.scope().routed())
+                    || !bitmap.is_disjoint(selection.routed())
                     || overlap_held.is_some_and(|held| !held.is_empty())));
         if listed {
+            tally.take()?;
+            counts.push((category.to_owned(), count));
+        }
+    }
+    Ok(counts)
+}
+
+/// [`category_counts`] through the concept's partition view: per category, the cohort
+/// patients holding it in each selected partition, summed when the block is untagged (each
+/// patient's rows lie in one partition) and unioned first otherwise. A category is held by a
+/// selected partition exactly when the view has patients for it there.
+///
+/// # Errors
+/// [`QueryError::LimitExceeded`] when the shared entry cap is exceeded, and
+/// [`QueryError::StoreInconsistent`] when the view cannot be built.
+fn view_category_counts(
+    selection: &Selection<'_>,
+    read: &ConceptRead,
+    entry: &Arc<CachedConcept>,
+    cohort: &RoaringBitmap,
+    named: &HashSet<&str>,
+    tally: &mut EntryTally<'_>,
+) -> Result<Vec<(String, u64)>> {
+    let Block::Categorical(categorical) = entry.block().as_ref() else {
+        return Ok(Vec::new());
+    };
+    let view = selection.view(read, entry)?;
+    let tagged = categorical.partitions().is_tagged();
+    let mut counts = Vec::new();
+    for (value, category) in categorical.dictionary().enumerate() {
+        let parts: Vec<&RoaringBitmap> = view
+            .parts_of(value)
+            .map(|part| view.part(part))
+            .filter(|(slot, _)| selection.selects(view.partition(*slot)))
+            .map(|(_, patients)| patients)
+            .collect();
+        if parts.is_empty() {
+            continue;
+        }
+        let count = match parts.as_slice() {
+            [one] => one.intersection_len(cohort),
+            many if tagged => many.iter().copied().union().intersection_len(cohort),
+            many => many.iter().map(|part| part.intersection_len(cohort)).sum(),
+        };
+        if count > 0 || named.contains(category) {
             tally.take()?;
             counts.push((category.to_owned(), count));
         }
@@ -983,7 +1062,7 @@ mod tests {
 
         const KEY: &str = "0123456789ABCDEF0123456789ABCDEF";
 
-        /// A store of partitions `p1` (patients 1 and 2) and `p2` (3 and 4), every patient
+        /// A store of partitions `p1` (patients 1 to 10) and `p2` (11 to 20), every patient
         /// with one row of `\a\`, in a directory removed with the returned guard.
         fn two_partitions() -> (tempfile::TempDir, PathBuf) {
             let dir = tempfile::tempdir().unwrap();
@@ -992,7 +1071,7 @@ mod tests {
             let protection =
                 || Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap());
             let mut sources = Vec::new();
-            for (name, patients) in [("p1", [1, 2]), ("p2", [3, 4])] {
+            for (name, patients) in [("p1", 1..=10), ("p2", 11..=20)] {
                 let input = dir.path().join(format!("{name}.csv"));
                 let mut text =
                     String::from("PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME\n");
@@ -1048,7 +1127,7 @@ mod tests {
         fn a_cohort_left_holding_another_partition_fails_every_result_type() {
             let (_dir, out) = two_partitions();
             let engine = engine(&out, 0.0);
-            assert_eq!(engine.count(&required_in_p1(ResultType::Count)).unwrap(), 2);
+            assert_eq!(engine.count(&required_in_p1(ResultType::Count)).unwrap(), 10);
             for result_type in [
                 ResultType::Count,
                 ResultType::CrossCount,
@@ -1066,11 +1145,11 @@ mod tests {
                 });
                 let error = broken.unwrap_err();
                 assert!(
-                    matches!(error, QueryError::CohortOutsideSelection { patients: 2 }),
+                    matches!(error, QueryError::CohortOutsideSelection { patients: 10 }),
                     "{result_type:?}: {error}"
                 );
                 assert!(!error.is_client_error());
-                assert!(!error.to_string().contains('3'), "no patient id: {error}");
+                assert!(!error.to_string().contains("11"), "no patient id: {error}");
             }
         }
 
@@ -1085,10 +1164,15 @@ mod tests {
             cohort.insert(99);
             assert_eq!(full.check_members(&cohort).unwrap(), 1);
             let p1 = set.select_consents(&["p1"]).unwrap();
-            let one_of_each: roaring::RoaringBitmap = [1, 3].into_iter().collect();
-            assert_eq!(p1.check_members(&one_of_each).unwrap(), 1);
+            let one_of_each: roaring::RoaringBitmap = [1, 13].into_iter().collect();
+            assert_eq!(p1.check_members(&one_of_each).unwrap(), 1, "walked by route");
+            let wide: roaring::RoaringBitmap = (1..=12).collect();
+            assert_eq!(p1.check_members(&wide).unwrap(), 2, "compared as bitmaps");
+            let unknown: roaring::RoaringBitmap = [1, 99].into_iter().collect();
+            assert_eq!(p1.check_members(&unknown).unwrap(), 1, "in no partition");
             let both = set.select_consents(&["p1", "p2"]).unwrap();
             assert_eq!(both.check_members(&one_of_each).unwrap(), 0);
+            assert_eq!(both.check_members(&unknown).unwrap(), 1);
         }
     }
 

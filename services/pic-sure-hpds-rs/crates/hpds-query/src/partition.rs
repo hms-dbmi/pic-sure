@@ -48,11 +48,28 @@ pub const COMBINED_DIR_NAME: &str = ".combined";
 /// The share of a concept's rows below which a narrow selection reads the concept's
 /// partition view instead of its whole block: the selected partitions' rows divided by all
 /// of its rows. At or above it, evaluating the whole block and dropping the patients outside
-/// the selection costs less than reading the selected rows one partition at a time.
-pub const NARROW_VIEW_SHARE: f64 = 0.5;
+/// the selection costs less than reading the selected rows one partition at a time. Chosen
+/// by measurement on a store of 40 partitions over shares from 0.25 to 1: the view is faster
+/// up to about three quarters of the rows, and slower above.
+pub const NARROW_VIEW_SHARE: f64 = 0.75;
 
 /// Bytes of selection patient sets [`PartitionSet`] keeps for repeated selections.
 const SCOPE_CACHE_BYTES: u64 = 64 << 20;
+
+/// How many times smaller than the patient set it is checked against a narrow selection's
+/// patient set must be to be walked through the route table instead of compared as bitmaps:
+/// for the member check, and for dropping the patients a selection does not reach. Only a
+/// sparse set is walked ([`is_sparse`]); a dense one is compared as bitmaps.
+const ROUTE_WALK_RATIO: u64 = 4;
+
+/// True when most of `patients`' containers hold arrays rather than bitsets. Roaring
+/// intersects an array with a bitset in time proportional to the array, and two arrays in
+/// time proportional to both, so a set of many patients in array containers is cheaper to
+/// test a small set against through the route table, one lookup per patient.
+fn is_sparse(patients: &RoaringBitmap) -> bool {
+    let statistics = patients.statistics();
+    statistics.n_array_containers * 2 > statistics.n_containers
+}
 
 /// How a [`PartitionSet`] is opened.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -103,6 +120,7 @@ const JAVABIN_FILE_NAMES: [&str; 2] = ["allObservationsStore.javabin", "columnMe
 pub struct Partition {
     name: String,
     patients: RoaringBitmap,
+    sparse: bool,
 }
 
 impl Partition {
@@ -378,6 +396,7 @@ impl PartitionSet {
                 .into_iter()
                 .map(|p| Partition {
                     name: p.name,
+                    sparse: is_sparse(&p.patients),
                     patients: p.patients,
                 })
                 .collect()
@@ -385,6 +404,7 @@ impl PartitionSet {
             vec![Partition {
                 name: UNPARTITIONED_NAME.to_owned(),
                 patients: store.patients().clone(),
+                sparse: is_sparse(store.patients()),
             }]
         };
         let all_patients = store.patients().clone();
@@ -738,13 +758,22 @@ fn scope_weight(key: &[u64], scope: &Scope) -> u32 {
 #[derive(Debug)]
 pub(crate) struct Scope {
     patients: RoaringBitmap,
-    overlap: Option<(RoaringBitmap, RoaringBitmap)>,
+    sparse: bool,
+    overlap: Option<(RoaringBitmap, RoaringBitmap, bool)>,
 }
 
 impl Scope {
     fn new(patients: RoaringBitmap, overlap: &RoaringBitmap) -> Self {
-        let overlap = (!overlap.is_empty()).then(|| (&patients - overlap, &patients | overlap));
-        Scope { patients, overlap }
+        let overlap = (!overlap.is_empty()).then(|| {
+            let reach = &patients | overlap;
+            let sparse = is_sparse(&reach);
+            (&patients - overlap, reach, sparse)
+        });
+        Scope {
+            sparse: is_sparse(&patients),
+            patients,
+            overlap,
+        }
     }
 
     /// `P(S)`: the union of the selected partitions' patient sets.
@@ -757,7 +786,7 @@ impl Scope {
     pub(crate) fn routed(&self) -> &RoaringBitmap {
         self.overlap
             .as_ref()
-            .map_or(&self.patients, |(routed, _)| routed)
+            .map_or(&self.patients, |(routed, _, _)| routed)
     }
 
     /// `R(S)` together with the whole overlap set: every patient a clause evaluated on the
@@ -765,7 +794,14 @@ impl Scope {
     pub(crate) fn reach(&self) -> &RoaringBitmap {
         self.overlap
             .as_ref()
-            .map_or(&self.patients, |(_, reach)| reach)
+            .map_or(&self.patients, |(_, reach, _)| reach)
+    }
+
+    /// True when [`Scope::reach`] is mostly array containers ([`is_sparse`]).
+    fn reach_sparse(&self) -> bool {
+        self.overlap
+            .as_ref()
+            .map_or(self.sparse, |(_, _, sparse)| *sparse)
     }
 
     fn heap_size(&self) -> usize {
@@ -774,7 +810,7 @@ impl Scope {
             + self
                 .overlap
                 .as_ref()
-                .map_or(0, |(routed, reach)| size(routed) + size(reach))
+                .map_or(0, |(routed, reach, _)| size(routed) + size(reach))
     }
 }
 
@@ -865,6 +901,53 @@ impl<'a> Selection<'a> {
         })
     }
 
+    /// True when [`Selection::member_patients`] is mostly array containers ([`is_sparse`]).
+    fn members_sparse(&self) -> bool {
+        match self.members.as_slice() {
+            _ if self.full => false,
+            [] => false,
+            [one] => one.sparse,
+            _ => self.scope().sparse,
+        }
+    }
+
+    /// `R(S)`: the selected partitions' patients outside the overlap set
+    /// ([`Scope::routed`]). Their patient set itself when the overlap set is empty.
+    pub(crate) fn routed(&self) -> &RoaringBitmap {
+        if self.set.overlap.is_empty() {
+            self.member_patients()
+        } else {
+            self.scope().routed()
+        }
+    }
+
+    /// `found` without the patients this narrow selection does not reach ([`Scope::reach`]).
+    /// A result much smaller than the reach is filtered through the route table, one lookup
+    /// per patient; a larger one is intersected with the reach.
+    pub(crate) fn reached(&self, mut found: RoaringBitmap) -> RoaringBitmap {
+        let (reach, sparse) = if self.set.overlap.is_empty() {
+            (self.member_patients(), self.members_sparse())
+        } else {
+            (self.scope().reach(), self.scope().reach_sparse())
+        };
+        if !sparse || found.len().saturating_mul(ROUTE_WALK_RATIO) >= reach.len() {
+            found &= reach;
+            return found;
+        }
+        let membership = self.set.store.membership();
+        let mut kept = Vec::with_capacity(found.len() as usize);
+        found.iter().for_each(|patient| {
+            let reached = match membership.partition_of(patient) {
+                Some(partition) => self.selects(partition),
+                None => reach.contains(patient),
+            };
+            if reached {
+                kept.push(patient);
+            }
+        });
+        RoaringBitmap::from_sorted_iter(kept).unwrap_or_default()
+    }
+
     /// `P(S)`, the union of the selected partitions' patient sets, borrowed.
     pub(crate) fn member_patients(&self) -> &RoaringBitmap {
         match self.members.as_slice() {
@@ -887,20 +970,53 @@ impl<'a> Selection<'a> {
         }
     }
 
-    /// The patients of the selection's partitions together with the overlap patients whose
-    /// rows tagged with a selected partition put them in it: every patient a cohort of this
-    /// selection may hold.
+    /// The number of patients in `cohort` outside the selection's members: the selected
+    /// partitions' patient sets, and the overlap patients with a row tagged with a selected
+    /// partition. Every cohort of this selection should give 0.
+    ///
+    /// The cost follows the cohort rather than the members where that is cheaper. A cohort
+    /// that is the members' set itself passes at once. A narrow selection's cohort much
+    /// smaller than its members is walked through the route table, which settles every
+    /// patient outside the overlap set with one lookup; the patients it does not settle are
+    /// looked up in the patient sets and then the tagged rows. Any other cohort is compared
+    /// with the members as bitmaps.
     ///
     /// # Errors
-    /// [`QueryError::Block`] when a tagged block cannot be read to find those patients.
+    /// [`QueryError::Block`] when a tagged block cannot be read to find the overlap
+    /// patients' members.
     pub(crate) fn check_members(&self, cohort: &RoaringBitmap) -> Result<u64> {
         let patients = self.member_patients();
-        if cohort.is_subset(patients) {
+        if std::ptr::eq(cohort, patients) {
             return Ok(0);
         }
-        let outside = cohort - patients;
-        if !outside.is_subset(&self.set.overlap) {
-            return Ok(outside.len());
+        let mut outside = 0;
+        let walk =
+            self.members_sparse() && cohort.len().saturating_mul(ROUTE_WALK_RATIO) < patients.len();
+        let unsettled = if walk {
+            let membership = self.set.store.membership();
+            let mut unsettled = Vec::new();
+            cohort
+                .iter()
+                .for_each(|patient| match membership.partition_of(patient) {
+                    Some(partition) if self.selects(partition) => {}
+                    Some(_) => outside += 1,
+                    None if patients.contains(patient) => {}
+                    None => unsettled.push(patient),
+                });
+            RoaringBitmap::from_sorted_iter(unsettled).unwrap_or_default()
+        } else if cohort.difference_len(patients) == 0 {
+            return Ok(0);
+        } else {
+            cohort - patients
+        };
+        if unsettled.is_empty() {
+            return Ok(outside);
+        }
+        let overlap = &self.set.overlap;
+        outside += unsettled.difference_len(overlap);
+        let candidates = &unsettled & overlap;
+        if candidates.is_empty() {
+            return Ok(outside);
         }
         let tagged = self.set.tagged_members()?;
         let reached: RoaringBitmap = tagged
@@ -909,7 +1025,7 @@ impl<'a> Selection<'a> {
             .filter(|(_, selected)| **selected)
             .map(|(members, _)| members)
             .union();
-        Ok(outside.difference_len(&reached))
+        Ok(outside + candidates.difference_len(&reached))
     }
 
     /// The type of the concept at exactly `path`, or `None` when no selected partition holds

@@ -72,14 +72,7 @@ fn within_selection(selection: &Selection<'_>, found: Found) -> RoaringBitmap {
     if found.exact || fault::skips_reach() {
         return found.patients.into_owned();
     }
-    let reach = selection.scope().reach();
-    match found.patients {
-        Patients::Computed(mut patients) => {
-            patients &= reach;
-            patients
-        }
-        borrowed => borrowed.bitmap() & reach,
-    }
+    selection.reached(found.patients.into_owned())
 }
 
 /// Fails the query when `cohort` holds a patient outside the selected partitions' members,
@@ -344,12 +337,20 @@ fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
     let reads = selection.concepts_with_prefix(prefix);
     let entries = selection.entries(&reads)?;
     let pairs: Vec<(ConceptRead, _)> = reads.into_iter().zip(entries).collect();
-    let views = fan_out::map(&pairs, |(read, entry)| match read.mode {
-        ReadMode::View => selection.view(read, entry).map(Some),
-        _ => Ok(None),
-    })
-    .into_iter()
-    .collect::<Result<Vec<_>>>()?;
+    let mut views: Vec<Option<Arc<View>>> = pairs
+        .iter()
+        .map(|(read, entry)| match read.mode {
+            ReadMode::View => entry.view().cloned(),
+            _ => None,
+        })
+        .collect();
+    let unbuilt: Vec<usize> = (0..pairs.len())
+        .filter(|&i| pairs[i].1.view().is_none() && pairs[i].0.mode == ReadMode::View)
+        .collect();
+    let built = fan_out::map(&unbuilt, |&i| selection.view(&pairs[i].0, &pairs[i].1));
+    for (i, view) in unbuilt.into_iter().zip(built) {
+        views[i] = Some(view?);
+    }
     let mut exact = true;
     let mut corrected = Vec::new();
     for (read, entry) in &pairs {

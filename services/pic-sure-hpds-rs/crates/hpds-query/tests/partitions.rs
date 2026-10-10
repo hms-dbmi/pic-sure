@@ -424,7 +424,12 @@ fn block_heap_size(dir: &std::path::Path, path: &str) -> u64 {
 #[test]
 fn every_selection_caches_one_block_and_a_narrow_one_weighs_its_view_with_it() {
     let d = partitioned_rows(&[("p1", numeric_rows(&[1, 2])), ("p2", numeric_rows(&[3, 4]))]);
-    let engine = d.open(&lenient()).unwrap();
+    let engine = d
+        .open(&hpds_query::PartitionOptions {
+            narrow_view_share: 0.5,
+            ..lenient()
+        })
+        .unwrap();
     let set = engine.partitions();
     engine
         .count(&query(ResultType::Count, Some(required(CONCEPT))))
@@ -444,7 +449,7 @@ fn every_selection_caches_one_block_and_a_narrow_one_weighs_its_view_with_it() {
     };
     let views = d
         .open(&hpds_query::PartitionOptions {
-            narrow_view_share: 2.0,
+            narrow_view_share: 0.75,
             ..lenient()
         })
         .unwrap();
@@ -452,9 +457,9 @@ fn every_selection_caches_one_block_and_a_narrow_one_weighs_its_view_with_it() {
         assert_eq!(engine.count(&only_p1).unwrap(), 2);
         assert_eq!(engine.partitions().cached_block_count(), 1);
     }
-    assert_eq!(set.cached_views(), (0, 0), "p1 holds half the rows");
+    assert_eq!(set.cached_views(), (0, 0), "p1 holds half the rows, not below 0.5");
     let (count, bytes) = views.partitions().cached_views();
-    assert_eq!(count, 1, "p1 reads its view below a share of 2");
+    assert_eq!(count, 1, "p1 reads its view below a share of 0.75");
     assert!(
         views.partitions().cached_bytes() >= whole + bytes,
         "the view is weighed with its block: {} cached, {whole} + {bytes} built",
