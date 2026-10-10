@@ -373,9 +373,10 @@ impl RowBuffer {
     /// The fields of the row, in order: the patient id, then one per `select` path.
     pub fn fields(&self) -> impl Iterator<Item = &str> {
         let starts = std::iter::once(0).chain(self.ends.iter().copied());
-        starts
-            .zip(self.ends.iter().copied())
-            .map(|(start, end)| std::str::from_utf8(&self.text[start..end]).unwrap_or_default())
+        starts.zip(self.ends.iter().copied()).map(|(start, end)| {
+            std::str::from_utf8(&self.text[start..end])
+                .expect("fields hold only text copied from str values and ASCII digits")
+        })
     }
 }
 
