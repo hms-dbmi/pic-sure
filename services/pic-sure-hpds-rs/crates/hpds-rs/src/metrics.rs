@@ -84,20 +84,25 @@ pub struct Metrics {
     errors: [AtomicU64; ERROR_KINDS.len()],
 }
 
+/// Request durations: one counter per bound of [`DURATION_BUCKETS`] holding the requests
+/// that fell in it and no lower one, and a last counter for those above every bound. Each
+/// observation adds to exactly one counter, so a reader that loads each counter once and
+/// sums them gets cumulative buckets that never decrease and a `+Inf` bucket equal to the
+/// count, however observations interleave with the read.
 #[derive(Debug, Default)]
 struct Histogram {
-    buckets: [AtomicU64; DURATION_BUCKETS.len()],
-    count: AtomicU64,
+    buckets: [AtomicU64; DURATION_BUCKETS.len() + 1],
     nanos: AtomicU64,
 }
 
 impl Histogram {
     fn observe(&self, elapsed: Duration) {
         let seconds = elapsed.as_secs_f64();
-        if let Some(bucket) = DURATION_BUCKETS.iter().position(|&bound| seconds <= bound) {
-            self.buckets[bucket].fetch_add(1, Ordering::Relaxed);
-        }
-        self.count.fetch_add(1, Ordering::Relaxed);
+        let bucket = DURATION_BUCKETS
+            .iter()
+            .position(|&bound| seconds <= bound)
+            .unwrap_or(DURATION_BUCKETS.len());
+        self.buckets[bucket].fetch_add(1, Ordering::Relaxed);
         self.nanos.fetch_add(
             u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX),
             Ordering::Relaxed,
@@ -334,13 +339,18 @@ fn render_http(family: &mut Family<'_>, metrics: &Metrics) {
     );
     for (route, name) in ROUTES.iter().enumerate() {
         let histogram = &metrics.durations[route];
-        let count = histogram.count.load(Ordering::Relaxed);
+        let counts: Vec<u64> = histogram
+            .buckets
+            .iter()
+            .map(|bucket| bucket.load(Ordering::Relaxed))
+            .collect();
+        let count: u64 = counts.iter().sum();
         if count == 0 {
             continue;
         }
         let mut cumulative = 0;
-        for (bound, bucket) in DURATION_BUCKETS.iter().zip(&histogram.buckets) {
-            cumulative += bucket.load(Ordering::Relaxed);
+        for (bound, bucket) in DURATION_BUCKETS.iter().zip(&counts) {
+            cumulative += bucket;
             let le = bound.to_string();
             family.sample(
                 "hpds_http_request_duration_seconds_bucket",
@@ -519,7 +529,65 @@ mod tests {
             .collect();
         assert_eq!(counts[0], 1);
         assert_eq!(counts[3], 1);
-        assert_eq!(counts.iter().sum::<u64>(), 2);
-        assert_eq!(histogram.count.load(Ordering::Relaxed), 3);
+        assert_eq!(counts[DURATION_BUCKETS.len()], 1, "above every bound");
+        assert_eq!(counts.iter().sum::<u64>(), 3);
+    }
+
+    /// The bucket values and the `_count` of the first route in `text`.
+    fn first_histogram(text: &str) -> (Vec<u64>, u64) {
+        let value = |line: &str| line.rsplit_once(' ').unwrap().1.parse::<u64>().unwrap();
+        let route = format!("route=\"{}\"", ROUTES[0]);
+        let buckets = text
+            .lines()
+            .filter(|l| {
+                l.starts_with("hpds_http_request_duration_seconds_bucket") && l.contains(&route)
+            })
+            .map(value)
+            .collect();
+        let count = text
+            .lines()
+            .find(|l| {
+                l.starts_with("hpds_http_request_duration_seconds_count") && l.contains(&route)
+            })
+            .map_or(0, value);
+        (buckets, count)
+    }
+
+    #[test]
+    fn scrapes_during_observations_stay_cumulative_and_whole() {
+        let metrics = Metrics::default();
+        let done = std::sync::atomic::AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            for worker in 0..8u64 {
+                let (metrics, done) = (&metrics, &done);
+                scope.spawn(move || {
+                    let mut i = worker;
+                    while !done.load(Ordering::Relaxed) {
+                        let elapsed = Duration::from_micros((i * 7919) % 90_000_000);
+                        metrics.observe(0, None, StatusCode::OK, elapsed);
+                        i += 8;
+                    }
+                });
+            }
+            let mut previous = 0;
+            for _ in 0..500 {
+                let mut text = String::new();
+                render_http(&mut Family { out: &mut text }, &metrics);
+                let (buckets, count) = first_histogram(&text);
+                if buckets.is_empty() {
+                    continue;
+                }
+                assert_eq!(buckets.len(), DURATION_BUCKETS.len() + 1);
+                assert!(buckets.windows(2).all(|w| w[0] <= w[1]), "{buckets:?}");
+                assert_eq!(*buckets.last().unwrap(), count, "+Inf equals _count");
+                assert!(count >= previous, "{count} after {previous}");
+                previous = count;
+            }
+            done.store(true, Ordering::Relaxed);
+        });
+        assert!(
+            metrics.durations[0].buckets[DURATION_BUCKETS.len()].load(Ordering::Relaxed) > 0,
+            "observations above 60 s were made"
+        );
     }
 }
