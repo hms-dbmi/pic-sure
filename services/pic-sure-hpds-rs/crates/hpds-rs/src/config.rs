@@ -27,6 +27,9 @@ pub const DEFAULT_RESULT_MAX_BYTES: u64 = 10 << 30;
 /// Default byte cap on one export file while it is written, 4 GiB.
 pub const DEFAULT_RESULT_MAX_FILE_BYTES: u64 = 4 << 30;
 
+/// Default byte budget of the export results held in memory instead of in files, 64 MiB.
+pub const DEFAULT_RESULT_MEMORY_BYTES: u64 = 64 << 20;
+
 /// Default seconds a sync query may run before the request is answered 503.
 pub const DEFAULT_SYNC_TIMEOUT_SECONDS: u64 = 300;
 
@@ -48,7 +51,8 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
 /// | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept; 0 or unset keeps it until evicted |
-/// | `HPDS_RESULT_MAX_BYTES` | 10 GiB | Byte cap on finished export files; the oldest finished result goes first |
+/// | `HPDS_RESULT_MAX_BYTES` | 10 GiB | Byte cap on finished export results, in files and in memory; the oldest finished result goes first |
+/// | `HPDS_RESULT_MEMORY_BYTES` | 64 MiB | Budget of the export results of at most 256 KiB held in memory instead of in a file, downloads in progress included; a result that does not fit is written to a file; 0 writes every result to a file |
 /// | `ID_BATCH_SIZE` | 0 | Java's export switch: 0 disables DATAFRAME exports, any larger value enables them |
 /// | `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds; a wider export ends in ERROR |
 /// | `HPDS_RESULT_MAX_FILE_BYTES` | 4 GiB | Cap on one export file, checked as it is written; a larger export ends in ERROR and its partial file is deleted |
@@ -89,6 +93,8 @@ pub struct Config {
     pub export_pin_bytes: u64,
     /// Cap on one export file while it is written.
     pub result_max_file_bytes: u64,
+    /// Budget of the small export results held in memory; 0 writes every result to a file.
+    pub result_memory_bytes: u64,
     /// Per-query bounds the engine enforces.
     pub query_limits: QueryLimits,
     /// How long a sync query may run before the request is answered 503.
@@ -234,6 +240,11 @@ impl Config {
                 &lookup,
                 "HPDS_RESULT_MAX_FILE_BYTES",
                 DEFAULT_RESULT_MAX_FILE_BYTES,
+            )?,
+            result_memory_bytes: parse_or(
+                &lookup,
+                "HPDS_RESULT_MEMORY_BYTES",
+                DEFAULT_RESULT_MEMORY_BYTES,
             )?,
             query_limits: QueryLimits {
                 max_select_paths: positive(
@@ -383,12 +394,30 @@ mod tests {
         assert_eq!(c.max_connections, 512);
         assert_eq!(c.result_cache_bytes, 0);
         assert_eq!(c.result_max_file_bytes, 4 << 30);
+        assert_eq!(c.result_memory_bytes, 64 << 20);
         assert_eq!(c.query_limits, QueryLimits::default());
         assert_eq!(c.query_limits.max_select_paths, 5_000);
         assert_eq!(c.query_limits.max_clause_depth, 64);
         assert_eq!(c.query_limits.max_clause_nodes, 10_000);
         assert_eq!(c.query_limits.max_query_concepts, 20_000);
         assert!(config(&[("HPDS_MAX_CONNECTIONS", "0")]).is_err());
+    }
+
+    #[test]
+    fn result_memory_bytes_is_read_and_may_be_zero() {
+        assert_eq!(
+            config(&[("HPDS_RESULT_MEMORY_BYTES", "0")])
+                .unwrap()
+                .result_memory_bytes,
+            0
+        );
+        assert_eq!(
+            config(&[("HPDS_RESULT_MEMORY_BYTES", "1048576")])
+                .unwrap()
+                .result_memory_bytes,
+            1 << 20
+        );
+        assert!(config(&[("HPDS_RESULT_MEMORY_BYTES", "-1")]).is_err());
     }
 
     #[test]

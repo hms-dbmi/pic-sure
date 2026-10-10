@@ -46,7 +46,7 @@ fn result_files(dir: &std::path::Path) -> usize {
 
 #[tokio::test]
 async fn patients_lifecycle() {
-    let f = fixture();
+    let f = fixture_with(|c| c.result_memory_bytes = 0);
     let submitted = submit(
         &f.app,
         json!({"expectedResultType": "PATIENTS", "phenotypicClause": finnish(), "id": "1EFBC3DB-978F-452F-8CA3-BD4D4A207A41"}),
@@ -270,7 +270,10 @@ async fn finished(f: &common::Fixture, id: &str) {
 
 #[tokio::test]
 async fn registry_evicts_oldest_finished_and_their_files() {
-    let f = fixture_with(|c| c.result_limit = 2);
+    let f = fixture_with(|c| {
+        c.result_limit = 2;
+        c.result_memory_bytes = 0;
+    });
     let mut ids = Vec::new();
     for _ in 0..2 {
         let status = f
@@ -322,7 +325,10 @@ async fn registry_refuses_when_every_entry_is_unfinished() {
 
 #[tokio::test]
 async fn registry_expires_finished_results_by_age() {
-    let f = fixture_with(|c| c.result_max_age = Some(Duration::from_millis(1)));
+    let f = fixture_with(|c| {
+        c.result_max_age = Some(Duration::from_millis(1));
+        c.result_memory_bytes = 0;
+    });
     let status = f
         .state
         .results()
@@ -388,7 +394,10 @@ async fn export_over_the_pin_cap_ends_in_error() {
 
 #[tokio::test]
 async fn registry_evicts_oldest_finished_past_the_byte_cap() {
-    let f = fixture_with(|c| c.result_max_bytes = 1);
+    let f = fixture_with(|c| {
+        c.result_max_bytes = 1;
+        c.result_memory_bytes = 0;
+    });
     let mut ids = Vec::new();
     for _ in 0..3 {
         let status = f
@@ -463,4 +472,102 @@ fn results_directories_in_the_data_directory_are_refused() {
     }
     config.results_dir = dir.path().join("elsewhere");
     hpds_rs::AppState::new(None, &config).unwrap();
+}
+
+async fn exported(f: &common::Fixture, query: Value) -> (Value, common::Reply) {
+    let id = submit(&f.app, query).await["resourceResultId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let done = wait(&f.app, &id).await;
+    let result = post(&f.app, &format!("{QUERY}/{id}/result"), "{}").await;
+    (done, result)
+}
+
+#[tokio::test]
+async fn results_held_in_memory_answer_as_files_do() {
+    let in_memory = fixture();
+    let in_files = fixture_with(|c| c.result_memory_bytes = 0);
+    let queries = [
+        json!({"expectedResultType": "PATIENTS", "phenotypicClause": finnish()}),
+        json!({"expectedResultType": "PATIENTS"}),
+        json!({"expectedResultType": "DATAFRAME", "select": [SEX, AGE, r"\not\a\concept\"], "phenotypicClause": finnish()}),
+        json!({"expectedResultType": "DATAFRAME", "select": [AGE, SEX, AGE]}),
+    ];
+    for query in queries {
+        let (memory_status, memory) = exported(&in_memory, query.clone()).await;
+        let (file_status, file) = exported(&in_files, query).await;
+        assert_eq!(memory_status["resourceStatus"], "SUCCESS");
+        assert_eq!(memory_status["sizeInBytes"], file_status["sizeInBytes"]);
+        assert_eq!(
+            memory_status["sizeInBytes"].as_u64(),
+            Some(memory.body.len() as u64)
+        );
+        assert_eq!(memory.status, file.status);
+        assert_eq!(memory.headers, file.headers);
+        assert_eq!(memory.body, file.body);
+    }
+    assert_eq!(result_files(&in_memory.config.results_dir), 0);
+    assert_eq!(result_files(&in_files.config.results_dir), 4);
+    assert!(in_memory.state.results().memory_bytes() > 0);
+    assert_eq!(in_files.state.results().memory_bytes(), 0);
+}
+
+#[tokio::test]
+async fn results_held_in_memory_follow_the_same_retention() {
+    let f = fixture_with(|c| c.result_limit = 2);
+    let mut sizes = Vec::new();
+    for _ in 0..3 {
+        let status = f
+            .state
+            .results()
+            .submit(Arc::clone(&f.engine), Query::new(ResultType::Patients))
+            .unwrap();
+        let done = wait(&f.app, &status.resource_result_id).await;
+        sizes.push(done["sizeInBytes"].as_u64().unwrap());
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert_eq!(f.state.results().len(), 2);
+    assert_eq!(f.state.results().memory_bytes(), sizes[1] + sizes[2]);
+    assert_eq!(result_files(&f.config.results_dir), 0);
+
+    let aged = fixture_with(|c| c.result_max_age = Some(Duration::from_millis(1)));
+    let status = aged
+        .state
+        .results()
+        .submit(Arc::clone(&aged.engine), Query::new(ResultType::Patients))
+        .unwrap();
+    finished(&aged, &status.resource_result_id).await;
+    assert!(aged.state.results().memory_bytes() > 0);
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    aged.state.results().sweep();
+    assert!(aged.state.results().is_empty());
+    assert_eq!(aged.state.results().memory_bytes(), 0);
+
+    let capped = fixture_with(|c| c.result_max_bytes = 1);
+    let mut last = String::new();
+    for _ in 0..3 {
+        let status = capped
+            .state
+            .results()
+            .submit(Arc::clone(&capped.engine), Query::new(ResultType::Patients))
+            .unwrap();
+        finished(&capped, &status.resource_result_id).await;
+        last = status.resource_result_id;
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert_eq!(capped.state.results().len(), 1);
+    assert!(capped.state.results().status(&last).is_some());
+    let held = capped.state.results().status(&last).unwrap().size_in_bytes;
+    assert_eq!(capped.state.results().memory_bytes(), held);
+}
+
+#[tokio::test]
+async fn a_full_memory_budget_sends_results_to_files() {
+    let f = fixture_with(|c| c.result_memory_bytes = 1);
+    let (done, result) = exported(&f, json!({"expectedResultType": "PATIENTS"})).await;
+    assert_eq!(done["resourceStatus"], "SUCCESS");
+    assert_eq!(result.status, StatusCode::OK);
+    assert_eq!(result_files(&f.config.results_dir), 1);
+    assert_eq!(f.state.results().memory_bytes(), 0);
 }

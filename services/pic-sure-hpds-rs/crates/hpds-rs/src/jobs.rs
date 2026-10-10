@@ -5,15 +5,19 @@
 //! Java keeps every result in an unbounded map and names it with a UUIDv5 of the query text.
 //! Here a result is named with a random UUID (callers treat the id as opaque), finished results
 //! are dropped after a maximum age, when the registry is full, or when the export files pass
-//! the byte cap (oldest finished first, never a pending or running one), and each export is a
-//! file in the results directory, removed with its registry entry. Files are removed after the
-//! registry lock is released.
+//! the byte cap (oldest finished first, never a pending or running one). An export of at most
+//! [`MEMORY_RESULT_MAX_BYTES`] is held in memory while the memory budget
+//! (`HPDS_RESULT_MEMORY_BYTES`) has room for it; every other export is a file in the results
+//! directory. Either is removed with its registry entry, files after the registry lock is
+//! released. Where a result is held changes nothing a client sees: the status, the retention
+//! rules and the `GET /result` response are the same.
 
 use std::collections::HashMap;
 use std::fs::{DirBuilder, File, OpenOptions};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -22,9 +26,8 @@ use axum::extract::{Path as PathParam, State};
 use axum::http::StatusCode;
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
-use hpds_query::{
-    Engine, PATIENTS_HEADER, Query, QueryError, ResultType, RowBuffer, check_supported,
-};
+use hpds_format::push_decimal_u32;
+use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType, check_supported};
 use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
@@ -40,7 +43,19 @@ pub const RESULT_CONTENT_TYPE: &str = "text/plain";
 /// Message of an export that is refused because Java's `ID_BATCH_SIZE` is 0.
 pub const EXPORTS_DISABLED_MESSAGE: &str = "exports are disabled (ID_BATCH_SIZE=0)";
 
+/// Largest export held in memory instead of a file, 256 KiB. Creating, writing, reopening,
+/// reading and removing a file costs about 0.1 to 0.2 ms whatever its size, which is most of
+/// the work of a small export: on the export corpus it was 14 to 47% of the service time of
+/// exports up to this size, and 87% of exports are this size or smaller.
+pub const MEMORY_RESULT_MAX_BYTES: usize = 256 << 10;
+
+/// Rows are rendered into a buffer that is written to the export file each time it holds
+/// this many bytes.
+const WRITE_BUFFER_BYTES: usize = 1 << 20;
+
 const READ_CHUNK_BYTES: usize = 64 * 1024;
+
+const _: () = assert!(MEMORY_RESULT_MAX_BYTES <= WRITE_BUFFER_BYTES);
 
 /// Where an async query is in its lifecycle. The names are Java's `AsyncResult.Status`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,10 +64,10 @@ pub enum ResultState {
     Pending,
     /// Being computed.
     Running,
-    /// Finished; the export is `file`, `size` bytes long.
+    /// Finished; the export is `body`, `size` bytes long.
     Success {
-        /// The export file.
-        file: PathBuf,
+        /// Where the export is held.
+        body: ResultBody,
         /// Its length in bytes.
         size: u64,
     },
@@ -61,6 +76,16 @@ pub enum ResultState {
         /// What went wrong.
         message: String,
     },
+}
+
+/// Where a finished export is held.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResultBody {
+    /// A file in the results directory, removed with the result.
+    File(PathBuf),
+    /// The bytes themselves. They count against the memory budget until the result is
+    /// dropped and every download of it has finished.
+    Memory(Bytes),
 }
 
 impl ResultState {
@@ -192,6 +217,7 @@ pub struct ResultRegistry {
     max_age: Option<Duration>,
     max_bytes: u64,
     max_file_bytes: u64,
+    memory: Option<Arc<MemoryBudget>>,
     id_batch_size: u64,
 }
 
@@ -203,7 +229,8 @@ impl ResultRegistry {
     /// used only when it is a real directory (not a symbolic link) owned by the current user
     /// with no group or other write bit, and its permissions are left as they are. The
     /// directory must not be the data directory or lie inside it. Export files a previous
-    /// process left in it are removed.
+    /// process left in it are removed. Small exports are held in memory under a budget of
+    /// `result_memory_bytes`, none when it is 0.
     ///
     /// # Errors
     /// The I/O error when the directory cannot be created, fails these checks, or cannot be
@@ -222,6 +249,8 @@ impl ResultRegistry {
             max_age: config.result_max_age,
             max_bytes: config.result_max_bytes,
             max_file_bytes: config.result_max_file_bytes,
+            memory: (config.result_memory_bytes > 0)
+                .then(|| Arc::new(MemoryBudget::new(config.result_memory_bytes))),
             id_batch_size: config.id_batch_size,
         })
     }
@@ -292,6 +321,7 @@ impl ResultRegistry {
             max_bytes,
         };
         let file = self.results_dir.join(format!("result-{id}.csv"));
+        let memory = self.memory.clone();
         tokio::spawn(async move {
             let (Ok(_pool_slot), Ok(_export_slot), Ok(_engine_slot)) = (
                 pool.acquire_owned().await,
@@ -303,11 +333,28 @@ impl ResultRegistry {
             set_state(&entries, &id, ResultState::Running);
             let target = file.clone();
             let outcome = engine
-                .run_blocking(move |e| Ok(write_export(e, &query, &target, max_file_bytes, &quota)))
+                .run_blocking(move |e| {
+                    let output = ExportOutput {
+                        buffer: Vec::new(),
+                        file: None,
+                        path: &target,
+                        limit: max_file_bytes,
+                        quota: &quota,
+                        memory: memory.as_ref(),
+                    };
+                    Ok(write_export(e, &query, output))
+                })
                 .await
                 .unwrap_or_else(|e| Err(ExportError::Query(e)));
             let state = match outcome {
-                Ok(size) => ResultState::Success { file, size },
+                Ok(Written::File { size }) => ResultState::Success {
+                    body: ResultBody::File(file),
+                    size,
+                },
+                Ok(Written::Memory(bytes)) => ResultState::Success {
+                    size: bytes.len() as u64,
+                    body: ResultBody::Memory(bytes),
+                },
                 Err(error) => {
                     remove_file(&file);
                     ResultState::Error {
@@ -324,21 +371,35 @@ impl ResultRegistry {
         lock(&self.entries).get(id).map(|entry| entry.status(id))
     }
 
-    /// The finished export of result `id`, opened, and its length.
+    /// The finished export of result `id`: its file, opened, and its length, or its bytes.
     ///
     /// # Errors
     /// [`ResultError::Unknown`] when the registry does not hold `id`, and
     /// [`ResultError::NotReady`] with the state name when the query has not succeeded.
-    pub fn open_result(&self, id: &str) -> Result<(File, u64), ResultError> {
+    pub fn open_result(&self, id: &str) -> Result<OpenedResult, ResultError> {
         let (file, size) = {
             let entries = lock(&self.entries);
             let entry = entries.get(id).ok_or(ResultError::Unknown)?;
             match &entry.state {
-                ResultState::Success { file, size } => (file.clone(), *size),
+                ResultState::Success {
+                    body: ResultBody::File(file),
+                    size,
+                } => (file.clone(), *size),
+                ResultState::Success {
+                    body: ResultBody::Memory(bytes),
+                    ..
+                } => return Ok(OpenedResult::Memory(bytes.clone())),
                 other => return Err(ResultError::NotReady(other.name())),
             }
         };
-        File::open(file).map(|f| (f, size)).map_err(ResultError::Io)
+        File::open(file)
+            .map(|f| OpenedResult::File(f, size))
+            .map_err(ResultError::Io)
+    }
+
+    /// Bytes of export results held in memory now, downloads in progress included.
+    pub fn memory_bytes(&self) -> u64 {
+        self.memory.as_ref().map_or(0, |budget| budget.held())
     }
 
     /// Number of results held.
@@ -377,6 +438,74 @@ impl ResultRegistry {
             }
         }
         Ok(())
+    }
+}
+
+/// A finished export ready to be sent.
+#[derive(Debug)]
+pub enum OpenedResult {
+    /// The export file and its length.
+    File(File, u64),
+    /// The export's bytes.
+    Memory(Bytes),
+}
+
+/// The byte budget shared by every export held in memory.
+#[derive(Debug)]
+struct MemoryBudget {
+    limit: u64,
+    held: AtomicU64,
+}
+
+impl MemoryBudget {
+    fn new(limit: u64) -> Self {
+        MemoryBudget {
+            limit,
+            held: AtomicU64::new(0),
+        }
+    }
+
+    fn held(&self) -> u64 {
+        self.held.load(Ordering::Relaxed)
+    }
+
+    /// Takes `bytes` from the budget, or returns `None` when they do not fit.
+    fn take(self: &Arc<Self>, bytes: u64) -> Option<MemoryLease> {
+        self.held
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| {
+                held.checked_add(bytes).filter(|&total| total <= self.limit)
+            })
+            .ok()
+            .map(|_| MemoryLease {
+                budget: Arc::clone(self),
+                bytes,
+            })
+    }
+}
+
+/// Bytes taken from a [`MemoryBudget`], returned when the lease is dropped.
+struct MemoryLease {
+    budget: Arc<MemoryBudget>,
+    bytes: u64,
+}
+
+impl Drop for MemoryLease {
+    fn drop(&mut self) {
+        self.budget.held.fetch_sub(self.bytes, Ordering::AcqRel);
+    }
+}
+
+/// An export's bytes and their lease on the memory budget. It owns the [`Bytes`] that the
+/// registry and every download share, so the bytes go back to the budget only when the last
+/// of them is dropped.
+struct MemoryResult {
+    data: Vec<u8>,
+    _lease: MemoryLease,
+}
+
+impl AsRef<[u8]> for MemoryResult {
+    fn as_ref(&self) -> &[u8] {
+        &self.data
     }
 }
 
@@ -497,6 +626,23 @@ struct LimitedFile<'a> {
     quota: &'a Quota,
 }
 
+impl<'a> LimitedFile<'a> {
+    /// Creates the export file at `path` with mode 0600; it must not exist yet.
+    fn create(path: &Path, limit: u64, quota: &'a Quota) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)?;
+        Ok(LimitedFile {
+            file,
+            written: 0,
+            limit,
+            quota,
+        })
+    }
+}
+
 impl Write for LimitedFile<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let next = self.written.saturating_add(buf.len() as u64);
@@ -560,7 +706,10 @@ fn finish(entries: &Mutex<Entries>, id: &str, state: ResultState, max_bytes: u64
                 enforce_byte_cap(&mut entries, max_bytes, Some(id))
             }
             None => match state {
-                ResultState::Success { file, .. } => vec![file],
+                ResultState::Success {
+                    body: ResultBody::File(file),
+                    ..
+                } => vec![file],
                 _ => Vec::new(),
             },
         }
@@ -616,7 +765,11 @@ fn expire(entries: &mut Entries, now: u64, max_age: Option<Duration>) -> Vec<Pat
 fn evict(entries: &mut Entries, id: &str) -> Option<PathBuf> {
     match entries.remove(id) {
         Some(StoredResult {
-            state: ResultState::Success { file, .. },
+            state:
+                ResultState::Success {
+                    body: ResultBody::File(file),
+                    ..
+                },
             ..
         }) => Some(file),
         _ => None,
@@ -720,67 +873,111 @@ fn resolve(path: &Path) -> io::Result<PathBuf> {
     }
 }
 
-/// Computes the export of `query` and writes it to a new file at `path` with mode 0600.
-/// Runs on a blocking thread: DATAFRAME rows are produced and rendered there, one row at a
-/// time into a reused buffer, never on the async runtime. Returns the file's length. The file
-/// is created only after the cohort is computed, so a query that fails to evaluate leaves
-/// nothing behind.
-fn write_export(
-    engine: &Engine,
-    query: &Query,
-    path: &Path,
-    max_file_bytes: u64,
-    quota: &Quota,
-) -> Result<u64, ExportError> {
-    match query.expected_result_type {
-        ResultType::Patients => {
-            let cohort = engine.patients(query)?;
-            let mut out = create_result_file(path, max_file_bytes, quota)?;
-            write_csv_row(&mut out, [PATIENTS_HEADER])?;
-            for patient in &cohort {
-                writeln!(out, "{patient}")?;
-            }
-            close_result_file(out)
+/// A finished export: the length of its file, or its bytes when held in memory.
+#[derive(Debug)]
+enum Written {
+    File { size: u64 },
+    Memory(Bytes),
+}
+
+/// Where an export's rows go while they are rendered: a buffer that becomes the result when
+/// the export ends small enough and the memory budget has room, and is otherwise written to
+/// the export file each time it fills. The file is created at the first such write, or at the
+/// end, so an export that fails before then leaves no file.
+struct ExportOutput<'a> {
+    buffer: Vec<u8>,
+    file: Option<LimitedFile<'a>>,
+    path: &'a Path,
+    limit: u64,
+    quota: &'a Quota,
+    memory: Option<&'a Arc<MemoryBudget>>,
+}
+
+impl ExportOutput<'_> {
+    /// Writes the buffer to the export file once it holds [`WRITE_BUFFER_BYTES`]. Call after
+    /// each row.
+    fn row_done(&mut self) -> io::Result<()> {
+        if self.buffer.len() >= WRITE_BUFFER_BYTES {
+            self.write_buffer()?;
         }
-        ResultType::Dataframe => {
-            let frame = engine.dataframe(query)?;
-            let mut out = create_result_file(path, max_file_bytes, quota)?;
-            write_csv_row(&mut out, &frame.header)?;
-            let mut rows = frame.rows;
-            let mut row = RowBuffer::new();
-            while rows.next_into(&mut row) {
-                write_csv_row(&mut out, row.fields())?;
+        Ok(())
+    }
+
+    fn write_buffer(&mut self) -> io::Result<()> {
+        let file = match &mut self.file {
+            Some(file) => file,
+            None => self
+                .file
+                .insert(LimitedFile::create(self.path, self.limit, self.quota)?),
+        };
+        file.write_all(&self.buffer)?;
+        self.buffer.clear();
+        Ok(())
+    }
+
+    /// Ends the export. One that never reached the file, is at most
+    /// [`MEMORY_RESULT_MAX_BYTES`] long and fits the memory budget stays in memory, checked
+    /// against the size cap and reserved against the byte cap as a file write would be.
+    /// Anything else is written out and its file closed.
+    fn finish(mut self) -> Result<Written, ExportError> {
+        let len = self.buffer.len();
+        let lease = (self.file.is_none() && len <= MEMORY_RESULT_MAX_BYTES)
+            .then_some(self.memory)
+            .flatten()
+            .and_then(|budget| budget.take(len as u64));
+        if let Some(lease) = lease {
+            if len as u64 > self.limit {
+                return Err(ExportError::TooLarge { limit: self.limit });
             }
-            close_result_file(out)
+            self.quota.reserve(len as u64)?;
+            let mut data = std::mem::take(&mut self.buffer);
+            data.shrink_to_fit();
+            return Ok(Written::Memory(Bytes::from_owner(MemoryResult {
+                data,
+                _lease: lease,
+            })));
         }
-        other => Err(ExportError::Query(QueryError::NotSync(other))),
+        self.write_buffer()?;
+        let file = self.file.take().map(|limited| limited.file);
+        let size = match file {
+            Some(file) => file.metadata()?.len(),
+            None => 0,
+        };
+        Ok(Written::File { size })
     }
 }
 
-fn create_result_file<'a>(
-    path: &Path,
-    limit: u64,
-    quota: &'a Quota,
-) -> io::Result<BufWriter<LimitedFile<'a>>> {
-    let file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(path)?;
-    Ok(BufWriter::with_capacity(
-        1 << 20,
-        LimitedFile {
-            file,
-            written: 0,
-            limit,
-            quota,
-        },
-    ))
-}
-
-fn close_result_file(out: BufWriter<LimitedFile<'_>>) -> Result<u64, ExportError> {
-    let limited = out.into_inner().map_err(|e| e.into_error())?;
-    Ok(limited.file.metadata()?.len())
+/// Computes the export of `query` and renders it into `out`. Runs on a blocking thread:
+/// rows are produced and rendered there, one at a time, never on the async runtime. The
+/// cohort is computed before anything is written, so a query that fails to evaluate leaves
+/// no file behind.
+fn write_export(
+    engine: &Engine,
+    query: &Query,
+    mut out: ExportOutput<'_>,
+) -> Result<Written, ExportError> {
+    match query.expected_result_type {
+        ResultType::Patients => {
+            let cohort = engine.patients(query)?;
+            write_csv_row(&mut out.buffer, [PATIENTS_HEADER])?;
+            for patient in &cohort {
+                push_decimal_u32(patient, &mut out.buffer);
+                out.buffer.push(b'\n');
+                out.row_done()?;
+            }
+            out.finish()
+        }
+        ResultType::Dataframe => {
+            let frame = engine.dataframe(query)?;
+            write_csv_row(&mut out.buffer, &frame.header)?;
+            let mut rows = frame.rows;
+            while rows.next_csv_into(&mut out.buffer) {
+                out.row_done()?;
+            }
+            out.finish()
+        }
+        other => Err(ExportError::Query(QueryError::NotSync(other))),
+    }
 }
 
 /// Writes one CSV row as FastCSV 1.0's `CsvWriter` does with its defaults, which Java's
@@ -885,7 +1082,11 @@ pub async fn result(
 ) -> Result<Response, ApiError> {
     let id = parse_id(&id)?;
     let (file, size) = match state.results().open_result(&id) {
-        Ok(opened) => opened,
+        Ok(OpenedResult::File(file, size)) => (file, size),
+        Ok(OpenedResult::Memory(bytes)) => {
+            let size = bytes.len();
+            return Ok(result_response(size as u64, Body::from(bytes)));
+        }
         Err(ResultError::Unknown) => return Err(unknown_id()),
         Err(ResultError::NotReady(name)) => return Ok(not_ready_response(name)),
         Err(ResultError::Io(error)) => {
@@ -906,14 +1107,19 @@ pub async fn result(
             Err(error) => Some((Err::<Bytes, io::Error>(error), None)),
         }
     });
-    Ok((
+    Ok(result_response(size, Body::from_stream(chunks)))
+}
+
+/// The `GET /result` response for an export of `size` bytes: `text/plain` with its length.
+fn result_response(size: u64, body: Body) -> Response {
+    (
         [
             (CONTENT_TYPE, RESULT_CONTENT_TYPE.to_owned()),
             (CONTENT_LENGTH, size.to_string()),
         ],
-        Body::from_stream(chunks),
+        body,
     )
-        .into_response())
+        .into_response()
 }
 
 /// `POST /query/{id}/signed-url`: S3 upload is out of scope, so a held id is a 400 JSON error
@@ -946,7 +1152,7 @@ mod tests {
     fn finished(size: u64, completed_ms: u64) -> StoredResult {
         entry(
             ResultState::Success {
-                file: PathBuf::from("/nonexistent/result.csv"),
+                body: ResultBody::File(PathBuf::from("/nonexistent/result.csv")),
                 size,
             },
             completed_ms,
@@ -1016,6 +1222,149 @@ mod tests {
         assert_eq!(reserved_of(&lone, "mine"), 50);
     }
 
+    fn output<'a>(
+        path: &'a Path,
+        limit: u64,
+        quota: &'a Quota,
+        memory: Option<&'a Arc<MemoryBudget>>,
+    ) -> ExportOutput<'a> {
+        ExportOutput {
+            buffer: Vec::new(),
+            file: None,
+            path,
+            limit,
+            quota,
+            memory,
+        }
+    }
+
+    fn running_quota(max_bytes: u64) -> Quota {
+        let mut entries = Entries::new();
+        entries.insert("mine".into(), entry(ResultState::Running, 0, 0));
+        quota(entries, max_bytes)
+    }
+
+    #[test]
+    fn a_small_export_stays_in_memory_and_returns_its_bytes_to_the_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("result.csv");
+        let quota = running_quota(1 << 20);
+        let budget = Arc::new(MemoryBudget::new(100));
+        let mut out = output(&path, 1 << 20, &quota, Some(&budget));
+        out.buffer.extend_from_slice(b"PATIENT_NUM\n1\n");
+        let Written::Memory(bytes) = out.finish().unwrap() else {
+            panic!("expected an in-memory result");
+        };
+        assert_eq!(&bytes[..], b"PATIENT_NUM\n1\n");
+        assert!(!path.exists());
+        assert_eq!(budget.held(), 14);
+        assert_eq!(reserved_of(&quota, "mine"), 14);
+        let download = bytes.clone();
+        drop(bytes);
+        assert_eq!(budget.held(), 14);
+        drop(download);
+        assert_eq!(budget.held(), 0);
+    }
+
+    #[test]
+    fn an_export_goes_to_a_file_when_the_budget_is_full_or_it_is_too_long() {
+        let dir = tempfile::tempdir().unwrap();
+        let quota = running_quota(u64::MAX);
+        let budget = Arc::new(MemoryBudget::new(10));
+        let held = budget.take(8).unwrap();
+        let full = dir.path().join("full.csv");
+        let mut out = output(&full, u64::MAX, &quota, Some(&budget));
+        out.buffer.extend_from_slice(b"abc");
+        assert!(matches!(out.finish().unwrap(), Written::File { size: 3 }));
+        assert_eq!(std::fs::read(&full).unwrap(), b"abc");
+        drop(held);
+        assert_eq!(budget.held(), 0);
+
+        let roomy = Arc::new(MemoryBudget::new(u64::MAX));
+        let long = dir.path().join("long.csv");
+        let mut out = output(&long, u64::MAX, &quota, Some(&roomy));
+        out.buffer.resize(MEMORY_RESULT_MAX_BYTES + 1, b'x');
+        let written = out.finish().unwrap();
+        assert!(
+            matches!(written, Written::File { size } if size == MEMORY_RESULT_MAX_BYTES as u64 + 1)
+        );
+        assert_eq!(roomy.held(), 0);
+
+        let off = dir.path().join("off.csv");
+        let mut out = output(&off, u64::MAX, &quota, None);
+        out.buffer.extend_from_slice(b"x\n");
+        assert!(matches!(out.finish().unwrap(), Written::File { size: 2 }));
+    }
+
+    #[test]
+    fn an_export_that_once_reached_its_file_stays_there() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("result.csv");
+        let quota = running_quota(u64::MAX);
+        let budget = Arc::new(MemoryBudget::new(u64::MAX));
+        let mut out = output(&path, u64::MAX, &quota, Some(&budget));
+        out.buffer.resize(WRITE_BUFFER_BYTES, b'x');
+        out.row_done().unwrap();
+        assert!(out.buffer.is_empty() && path.exists());
+        out.buffer.extend_from_slice(b"tail");
+        let written = out.finish().unwrap();
+        assert!(matches!(written, Written::File { size } if size == WRITE_BUFFER_BYTES as u64 + 4));
+        assert_eq!(budget.held(), 0);
+    }
+
+    #[test]
+    fn an_in_memory_export_obeys_the_size_and_byte_caps() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("result.csv");
+        let budget = Arc::new(MemoryBudget::new(u64::MAX));
+
+        let lone = running_quota(u64::MAX);
+        let mut out = output(&path, 4, &lone, Some(&budget));
+        out.buffer.extend_from_slice(b"12345");
+        assert!(matches!(
+            out.finish().unwrap_err(),
+            ExportError::TooLarge { limit: 4 }
+        ));
+        assert_eq!(budget.held(), 0);
+
+        let mut entries = Entries::new();
+        entries.insert("mine".into(), entry(ResultState::Running, 0, 0));
+        entries.insert("rival".into(), entry(ResultState::Running, 0, 8));
+        let crowded = quota(entries, 10);
+        let mut out = output(&path, u64::MAX, &crowded, Some(&budget));
+        out.buffer.extend_from_slice(b"12345");
+        assert!(matches!(
+            out.finish().unwrap_err(),
+            ExportError::StorageFull
+        ));
+        assert_eq!(budget.held(), 0);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn the_memory_budget_never_overcommits_across_threads() {
+        let budget = Arc::new(MemoryBudget::new(1_000));
+        let granted: u64 = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..8)
+                .map(|_| {
+                    let budget = &budget;
+                    scope.spawn(move || {
+                        (0..100)
+                            .filter_map(|_| budget.take(7))
+                            .map(|lease| {
+                                std::mem::forget(lease);
+                                7
+                            })
+                            .sum::<u64>()
+                    })
+                })
+                .collect();
+            workers.into_iter().map(|w| w.join().unwrap()).sum()
+        });
+        assert_eq!(granted, budget.held());
+        assert!(granted <= 1_000 && granted > 1_000 - 7);
+    }
+
     #[test]
     fn csv_rows_quote_like_fastcsv() {
         let mut out = Vec::new();
@@ -1037,7 +1386,7 @@ mod tests {
             (ResultState::Running, "RUNNING", "PENDING"),
             (
                 ResultState::Success {
-                    file: PathBuf::new(),
+                    body: ResultBody::Memory(Bytes::new()),
                     size: 0,
                 },
                 "SUCCESS",
