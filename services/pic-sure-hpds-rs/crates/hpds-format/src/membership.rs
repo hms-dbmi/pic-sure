@@ -14,12 +14,16 @@ const DENSE_SLACK: u64 = 1 << 20;
 /// set `O`. Patients in `O`, and patients in no partition, route nowhere; their rows are
 /// read by tag.
 ///
+/// It may also carry, per partition, the overlap patients with a row tagged with it
+/// ([`Membership::with_tagged`]).
+///
 /// Dense ids get a table of one byte per patient id up to the largest (two bytes past 254
 /// partitions); sparse ids a sorted list searched by bisection.
 #[derive(Clone, Debug, Default)]
 pub struct Membership {
     route: Route,
     partition_count: usize,
+    tagged: Option<Vec<RoaringBitmap>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -86,7 +90,28 @@ impl Membership {
         Membership {
             route,
             partition_count,
+            tagged: None,
         }
+    }
+
+    /// This membership with `tagged[i]` as the overlap patients whose rows are tagged with
+    /// partition `i` ([`crate::IndexPartition::tagged`]), which [`Membership::tagged_with`]
+    /// then answers from.
+    #[must_use]
+    pub fn with_tagged(mut self, tagged: Vec<RoaringBitmap>) -> Self {
+        self.tagged = Some(tagged);
+        self
+    }
+
+    /// Whether the store records `patient` as having rows tagged with `partition`: `None`
+    /// when this membership carries no tagged sets.
+    pub fn tagged_with(&self, partition: u16, patient: u32) -> Option<bool> {
+        let tagged = self.tagged.as_ref()?;
+        Some(
+            tagged
+                .get(usize::from(partition))
+                .is_some_and(|set| set.contains(patient)),
+        )
     }
 
     /// The number of partitions in the store, 0 when unpartitioned.

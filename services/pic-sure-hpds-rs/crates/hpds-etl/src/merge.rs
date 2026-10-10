@@ -382,7 +382,9 @@ fn check_sources(sources: &mut [MergeSource], partitioned: bool) -> Result<()> {
 
 /// The partition table of `sources`, whose observed patients are `observed`, and each
 /// partition's summary. A partition's set is its source's patient set; the overlap set is
-/// every patient in two or more sets and every observed patient its partition's set lacks.
+/// every patient in two or more sets and every observed patient its partition's set lacks;
+/// a partition's tagged set is the overlap patients among its observed patients, whose rows
+/// in the merged blocks carry its tag.
 fn partition_table(
     sources: &[MergeSource],
     observed: &[RoaringBitmap],
@@ -407,7 +409,11 @@ fn partition_table(
             name: source.name.clone(),
             patients_indexed: missing.is_empty(),
             patients: set.clone(),
+            tagged: RoaringBitmap::new(),
         });
+    }
+    for (partition, observed) in partitions.iter_mut().zip(observed) {
+        partition.tagged = observed & &overlap;
     }
     let table = PartitionTable {
         partitions,

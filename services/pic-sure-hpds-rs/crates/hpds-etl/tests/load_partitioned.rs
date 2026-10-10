@@ -436,6 +436,12 @@ fn a_patient_in_two_partitions_goes_into_the_overlap_set_and_tags_its_blocks() {
     assert_eq!(patients(&store, "edgeB"), [1, 2, 3, 40]);
     assert_eq!(patients(&store, "edgeC"), [3, 50]);
     assert_eq!(table.overlap.iter().collect::<Vec<_>>(), [3]);
+    let tagged: Vec<Vec<u32>> = table
+        .partitions
+        .iter()
+        .map(|p| p.tagged.iter().collect())
+        .collect();
+    assert_eq!(tagged, [vec![3], vec![3]], "patient 3 has rows in both");
     assert_eq!(
         store.index.patients().iter().collect::<Vec<_>>(),
         [1, 2, 3, 40, 50]

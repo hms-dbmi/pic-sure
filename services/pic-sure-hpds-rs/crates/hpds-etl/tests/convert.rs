@@ -148,6 +148,14 @@ fn a_partitioned_store_converts_with_its_overlap_patient_tagged() {
         [3]
     );
     assert!(store.index.get("\\ds\\e\\shared\\").unwrap().tagged);
+    let tagged: Vec<Vec<u32>> = store
+        .index
+        .partition_table()
+        .partitions
+        .iter()
+        .map(|p| p.tagged.iter().collect())
+        .collect();
+    assert_eq!(tagged, [vec![3], vec![3]], "patient 3 has rows in both");
     assert_eq!(
         std::fs::read_to_string(out.join(".generation")).unwrap(),
         format!("{}\n", store.index.store_id())

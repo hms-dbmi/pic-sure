@@ -789,6 +789,12 @@ fn a_partition_with_observed_patients_missing_from_its_list_is_not_recorded_as_i
         [1],
         "patient 1 has a row in short, whose set lacks it"
     );
+    let tagged: Vec<Vec<u32>> = table
+        .partitions
+        .iter()
+        .map(|p| p.tagged.iter().collect())
+        .collect();
+    assert_eq!(tagged, [vec![1], vec![1]], "patient 1 has rows in both");
     assert!(store.index.get("\\a\\").unwrap().tagged);
     assert_eq!(store.index.patients().iter().collect::<Vec<_>>(), [1, 2, 3]);
     let summaries: Vec<(&str, u64)> = report

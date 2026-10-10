@@ -54,6 +54,9 @@
 //!                        partition is in its patient set
 //!   patients_len    u64
 //!   patients        roaring bitmap, the partition's patient set
+//!   tagged_len      u64
+//!   tagged          roaring bitmap, the patients of O with a row tagged with the
+//!                   partition, a subset of O
 //! overlap_len       u64
 //! overlap           roaring bitmap, the overlap set O (see below)
 //! concept_count     u32

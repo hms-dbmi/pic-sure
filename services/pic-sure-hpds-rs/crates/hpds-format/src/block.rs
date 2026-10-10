@@ -1371,9 +1371,11 @@ impl Block {
     /// Checks the block's partitions against the store's: its holders must be `expected`
     /// (the index's holders of the concept) and its tagging must be `tagged`; every row of
     /// an untagged block must belong to a patient `membership` routes to one partition; a
-    /// tagged row of a patient routed to a partition must carry that partition; and the rows
-    /// and distinct patients each partition gets must equal its holder's counts. A block of
-    /// an unpartitioned store holds no holders and passes.
+    /// tagged row of a patient routed to a partition must carry that partition; a tagged row
+    /// of an overlap patient must carry a partition whose tagged set holds the patient, when
+    /// `membership` carries tagged sets; and the rows and distinct patients each partition
+    /// gets must equal its holder's counts. A block of an unpartitioned store holds no
+    /// holders and passes.
     ///
     /// # Errors
     /// [`FormatError::Corrupt`] naming the first disagreement.
@@ -1437,6 +1439,12 @@ impl Block {
                     return Err(FormatError::corrupt(
                         what,
                         "a row is tagged with another partition than its patient's",
+                    ));
+                }
+                (true, Some(tag), None) if membership.tagged_with(tag, patient) == Some(false) => {
+                    return Err(FormatError::corrupt(
+                        what,
+                        "a row is tagged with a partition whose tagged set lacks its patient",
                     ));
                 }
                 (true, Some(tag), _) => tag,

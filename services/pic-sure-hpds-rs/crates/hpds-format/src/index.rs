@@ -283,6 +283,10 @@ pub struct IndexPartition {
     pub patients_indexed: bool,
     /// The partition's patient set, as Java's per-partition patient ids.
     pub patients: RoaringBitmap,
+    /// The patients of the overlap set with a row tagged with this partition, a subset of
+    /// the overlap set. With [`IndexPartition::patients`] they are the partition's members:
+    /// every patient a selection of the partition may answer for.
+    pub tagged: RoaringBitmap,
 }
 
 /// The partition table of a store: its partitions in Java `String.compareTo` order of the
@@ -320,7 +324,8 @@ impl PartitionTable {
             return Membership::unpartitioned();
         }
         let sets: Vec<&RoaringBitmap> = self.partitions.iter().map(|p| &p.patients).collect();
-        Membership::new(&sets, &self.overlap)
+        let tagged = self.partitions.iter().map(|p| p.tagged.clone()).collect();
+        Membership::new(&sets, &self.overlap).with_tagged(tagged)
     }
 
     /// The position of the partition named `name`, by binary search in Java string order.
@@ -331,7 +336,8 @@ impl PartitionTable {
     }
 
     /// Checks the table against the store's `patients`: at most [`MAX_PARTITIONS`]
-    /// partitions, names strictly ascending in Java string order, and, for a partitioned
+    /// partitions, names strictly ascending in Java string order, every partition's tagged
+    /// set within the overlap set, and, for a partitioned
     /// store, the partition sets unioning to `patients`; an unpartitioned store has an empty
     /// overlap set. The overlap set may hold patients outside `patients`: those with rows in
     /// a partition but in no partition's set.
@@ -354,6 +360,19 @@ impl PartitionTable {
             return Err(FormatError::corrupt(
                 what,
                 format!("{:?} is not sorted after {:?}", w[1].name, w[0].name),
+            ));
+        }
+        if let Some(p) = self
+            .partitions
+            .iter()
+            .find(|p| !p.tagged.is_subset(&self.overlap))
+        {
+            return Err(FormatError::corrupt(
+                what,
+                format!(
+                    "partition {:?} tags patients outside the overlap set",
+                    p.name
+                ),
             ));
         }
         if self.partitions.is_empty() {
@@ -633,6 +652,7 @@ impl PhenoIndex {
                 0
             });
             put_bitmap(&mut out, &partition.patients)?;
+            put_bitmap(&mut out, &partition.tagged)?;
         }
         put_bitmap(&mut out, &self.table.overlap)?;
         put_u32(&mut out, self.concepts.len(), "concept count")?;
@@ -940,6 +960,7 @@ impl IndexBody {
                 name,
                 patients_indexed: flags & PARTITION_PATIENTS_INDEXED != 0,
                 patients: r.bitmap("partition patient bitmap")?,
+                tagged: r.bitmap("partition tagged bitmap")?,
             });
         }
         let overlap = r.bitmap("overlap bitmap")?;

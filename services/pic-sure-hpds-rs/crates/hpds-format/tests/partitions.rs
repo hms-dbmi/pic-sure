@@ -29,7 +29,7 @@ fn bitmap(ids: &[u32]) -> RoaringBitmap {
 }
 
 /// Two partitions: `a` holds patients 1 and 2, `b` holds 3 and 4, and patient 5 is in both,
-/// so it is the overlap set.
+/// so it is the overlap set, with rows tagged with either.
 fn table() -> PartitionTable {
     PartitionTable {
         partitions: vec![
@@ -37,11 +37,13 @@ fn table() -> PartitionTable {
                 name: "a".into(),
                 patients_indexed: true,
                 patients: bitmap(&[1, 2, 5]),
+                tagged: bitmap(&[5]),
             },
             IndexPartition {
                 name: "b".into(),
                 patients_indexed: false,
                 patients: bitmap(&[3, 4, 5]),
+                tagged: bitmap(&[5]),
             },
         ],
         overlap: bitmap(&[5]),
@@ -320,7 +322,9 @@ fn an_index_whose_partitions_do_not_fit_is_refused() {
     unordered.partitions.swap(0, 1);
     let mut short_union = table();
     short_union.partitions[1].patients.remove(4);
-    for bad in [unordered, short_union] {
+    let mut tags_outside = table();
+    tags_outside.partitions[0].tagged.insert(1);
+    for bad in [unordered, short_union, tags_outside] {
         assert!(PhenoIndex::with_partitions(header(false), patients.clone(), bad, vec![]).is_err());
     }
     let concepts: [ConceptMeta; 4] = [
@@ -496,6 +500,8 @@ fn format_1_stores_are_read_only_through_the_legacy_reader() {
 fn a_patient_in_no_partition_set_is_an_overlap_patient_read_by_tag() {
     let mut gap = table();
     gap.overlap.insert(9);
+    gap.partitions[0].tagged.insert(9);
+    gap.partitions[1].tagged.insert(9);
     let holders = vec![holder(0, 2, 2), holder(1, 1, 1)];
     let index = PhenoIndex::with_partitions(
         header(false),
@@ -526,6 +532,13 @@ fn a_patient_in_no_partition_set_is_an_overlap_patient_read_by_tag() {
         .unwrap(),
     );
     block.check_membership(&holders, true, &membership).unwrap();
+    let mut untracked = gap.clone();
+    untracked.partitions[1].tagged.remove(9);
+    let error = block
+        .check_membership(&holders, true, &untracked.membership())
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("tagged set lacks"), "{error}");
     let untagged_holders = [holder(0, 3, 2)];
     let untagged = decode(
         encode_numeric_block(
