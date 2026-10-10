@@ -45,6 +45,12 @@ pub const COMBINED_DIR_NAME: &str = ".combined";
 /// The tag after the combined store's id on its `.generation` line.
 const COMBINED_GENERATION_TAG: &str = ".combined";
 
+/// The tag after a partition's store id on its `.generation` line when the ETL recorded
+/// that every patient with an observation in that store's blocks is in its index's patient
+/// set. Without it a block may hold a patient the partition's patient set lacks, so the
+/// patient sets say nothing about which partitions share a patient.
+const PATIENTS_INDEXED_TAG: &str = "patients-indexed";
+
 /// Whether a [`PartitionSet`] uses the combined store (`HPDS_COMBINED_STORE`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CombinedMode {
@@ -62,10 +68,12 @@ pub enum CombinedMode {
 /// (`HPDS_PER_PARTITION_COUNTS`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PerPartitionCounts {
-    /// When the partitions are patient-disjoint and a query reads two or more of them from
-    /// their own stores, count a concept's (or a category's) cohort patients in each
-    /// partition and sum the counts, instead of unioning the partitions' patient sets
-    /// first. No patient is in two partitions, so the sum is the count of the union.
+    /// When the partitions are patient-disjoint, a query reads two or more of them from
+    /// their own stores, and every one of those carries the ETL's record that its blocks
+    /// hold no patient outside its patient set, count a concept's (or a category's) cohort
+    /// patients in each partition and sum the counts, instead of unioning the partitions'
+    /// patient sets first. No patient is then in two of those partitions' blocks, so the
+    /// sum is the count of the union.
     #[default]
     Auto,
     /// Always union the partitions' patient sets before counting.
@@ -142,12 +150,19 @@ const JAVABIN_FILE_NAMES: [&str; 2] = ["allObservationsStore.javabin", "columnMe
 pub struct Partition {
     name: String,
     store: Store,
+    patients_indexed: bool,
 }
 
 impl Partition {
     /// The partition name: the subdirectory name, or [`UNPARTITIONED_NAME`].
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// True when `.generation` records, on this store's line, that every patient with an
+    /// observation in its blocks is in its patient set.
+    pub fn patients_indexed(&self) -> bool {
+        self.patients_indexed
     }
 }
 
@@ -391,8 +406,11 @@ impl PartitionSet {
     /// line as 32 lowercase hex digits ([`hpds_format::StoreId`]'s display form); blank
     /// lines are skipped. A line whose second token is `.combined` lists the combined
     /// store; a line with any other second token starting with `.` refuses the open, in
-    /// either combined mode, as a store kind this service does not know; otherwise only the
-    /// first token of a line is read. Every opened partition's id
+    /// either combined mode, as a store kind this service does not know. Any other line
+    /// lists a partition; its second token, when it is `patients-indexed`, records that
+    /// every patient with an observation in that store's blocks is in its patient set
+    /// (see [`Partition::patients_indexed`]), and is otherwise ignored. Every opened
+    /// partition's id
     /// must be listed and every listed partition id must belong to an opened partition, or
     /// the open is refused as a partially published load. Without the file the stores open
     /// as found.
@@ -498,9 +516,13 @@ impl PartitionSet {
                 }
                 let slot = partitions.len() as u32;
                 let entries = merger.add(slot, name, &files)?;
+                let patients_indexed = generation
+                    .as_ref()
+                    .is_some_and(|g| g.patients_indexed.contains(&id.to_string()));
                 partitions.push(Partition {
                     name: name.clone(),
                     store: files.into_store(entries),
+                    patients_indexed,
                 });
             }
         }
@@ -717,10 +739,28 @@ impl PartitionSet {
         self.disjoint
     }
 
-    /// True when queries reading two or more partitions from their own stores count cross
-    /// count patients per partition: the partitions are disjoint, there is more than one,
-    /// and [`PerPartitionCounts::Off`] was not set.
+    /// True when some query reading two or more partitions from their own stores counts
+    /// cross count patients per partition: the partitions' patient sets are disjoint, at
+    /// least two partitions carry the `patients-indexed` record
+    /// ([`Partition::patients_indexed`]), and [`PerPartitionCounts::Off`] was not set. A
+    /// query does so only when every partition it reads carries the record
+    /// ([`Selection::counts_per_partition`]).
     pub fn counts_per_partition(&self) -> bool {
+        self.sums_disjoint_partitions() && self.patients_indexed_partitions() > 1
+    }
+
+    /// The number of partitions carrying the `patients-indexed` record.
+    pub fn patients_indexed_partitions(&self) -> usize {
+        self.partitions
+            .iter()
+            .filter(|p| p.patients_indexed)
+            .count()
+    }
+
+    /// The conditions of [`PartitionSet::counts_per_partition`] that do not depend on the
+    /// selection: disjoint patient sets, a partitioned layout, more than one partition, and
+    /// [`PerPartitionCounts::Auto`].
+    fn sums_disjoint_partitions(&self) -> bool {
         self.disjoint
             && self.layout == Layout::Partitioned
             && self.partitions.len() > 1
@@ -977,11 +1017,16 @@ impl<'a> Selection<'a> {
     }
 
     /// True when the engine counts this selection's cross count patients per partition and
-    /// sums the counts: the set counts per partition
-    /// ([`PartitionSet::counts_per_partition`]), two or more partitions are selected, and
-    /// the selection reads them, not the combined store.
+    /// sums the counts: the partitions' patient sets are disjoint and
+    /// [`PerPartitionCounts::Off`] was not set ([`PartitionSet::counts_per_partition`]),
+    /// two or more partitions are selected, the selection reads them, not the combined
+    /// store, and every selected partition carries the `patients-indexed` record, so no
+    /// patient is in two selected partitions' blocks either.
     pub fn counts_per_partition(&self) -> bool {
-        self.set.counts_per_partition() && self.members.len() > 1 && !self.reads_combined()
+        self.set.sums_disjoint_partitions()
+            && self.members.len() > 1
+            && !self.reads_combined()
+            && self.members.iter().all(|p| p.patients_indexed)
     }
 
     /// True when this selection reads the combined store instead of its partitions.
@@ -1343,6 +1388,8 @@ const GENERATION_FILE_NAME: &str = ".generation";
 struct Generation {
     /// The partitions' ids, lowercase.
     partitions: std::collections::BTreeSet<String>,
+    /// The partition ids, lowercase, whose line carries [`PATIENTS_INDEXED_TAG`].
+    patients_indexed: std::collections::BTreeSet<String>,
     /// The combined store's id, lowercase, from the line tagged `.combined`.
     combined: Option<String>,
 }
@@ -1388,6 +1435,10 @@ fn read_generation(dir: &Path) -> Result<Option<Generation>> {
                          a newer ETL; serve it with a matching service"
                     ),
                 ));
+            }
+            Some(PATIENTS_INDEXED_TAG) => {
+                generation.patients_indexed.insert(id.clone());
+                generation.partitions.insert(id);
             }
             _ => {
                 generation.partitions.insert(id);

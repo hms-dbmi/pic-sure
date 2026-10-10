@@ -39,7 +39,8 @@ use super::{
 use crate::combined::CombinedReport;
 use crate::error::{EtlError, Result};
 use crate::partitions::{
-    PartitionedStaging, check_partition_name, check_partitioned_output, resolve_shared_key,
+    PartitionRecord, PartitionedStaging, check_partition_name, check_partitioned_output,
+    resolve_shared_key,
 };
 
 /// The suffix `CSVLoader` selects input files by.
@@ -215,7 +216,9 @@ fn walk(dir: &Path, found: &mut Vec<PathBuf>) -> Result<()> {
 /// Inputs, output, key and config are checked before anything is written. The partitions
 /// build in parallel on one thread pool into a staging directory beside `out`, then their
 /// combined store when [`PartitionedLoadOptions::combined`] is set, and the set is published
-/// once every store is complete, as [`PartitionedStaging::publish`] describes.
+/// once every store is complete, as [`PartitionedStaging::publish`] describes. Every
+/// partition's `.generation` line carries [`crate::partitions::PATIENTS_INDEXED_TAG`]: a
+/// loaded store's patient set is the set of patients its rows hold.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when neither `config` nor `no_config` is set; everything
@@ -289,13 +292,19 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
         staging.stage_key(&key)?;
     }
     let partitions: BTreeMap<String, LoadReport> = names.into_iter().zip(reports).collect();
-    let store_ids = partitions
+    let records = partitions
         .iter()
-        .map(|(name, report)| (name.clone(), report.store_id.clone()))
+        .map(|(name, report)| {
+            let record = PartitionRecord {
+                store_id: report.store_id.clone(),
+                patients_indexed: true,
+            };
+            (name.clone(), record)
+        })
         .collect();
     staging.publish(
         &options.out,
-        &store_ids,
+        &records,
         combined.as_ref().map(|c| c.store_id.as_str()),
     )?;
     let report = PartitionedLoadReport {

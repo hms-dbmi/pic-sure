@@ -46,7 +46,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
 /// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory |
 /// | `HPDS_COMBINED_STORE` | `auto` | `auto` answers queries that select every partition from the combined store when the data directory has a valid one; `off` ignores it |
-/// | `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts cross count patients in each selected partition and sums the counts when the partitions are patient-disjoint; `off` always unions the partitions' patient sets first |
+/// | `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts cross count patients in each selected partition and sums the counts when the partitions are patient-disjoint and every selected partition carries the `patients-indexed` record in `.generation`; `off` always unions the partitions' patient sets first |
 /// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
 /// | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept; 0 or unset keeps it until evicted |

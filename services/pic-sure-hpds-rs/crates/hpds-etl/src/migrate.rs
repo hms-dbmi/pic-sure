@@ -53,7 +53,7 @@ use crate::load::{
     write_index_and_column_meta,
 };
 use crate::partitions::{
-    PartitionedStaging, StoreLayout, check_partitioned_output, resolve_shared_key,
+    PartitionRecord, PartitionedStaging, StoreLayout, check_partitioned_output, resolve_shared_key,
 };
 use crate::private_fs;
 use crate::store::resolve_protection;
@@ -326,7 +326,10 @@ pub struct PartitionedMigrateReport {
 /// of the key as `<out>/encryption_key`. Every partition is staged beside `out`, then their
 /// combined store when [`MigrateOptions::combined`] is set, and the set is published once
 /// every store is complete, as [`crate::load::load_partitioned`] does (see
-/// [`PartitionedStaging::publish`]).
+/// [`PartitionedStaging::publish`]). A partition's `.generation` line carries
+/// [`crate::partitions::PATIENTS_INDEXED_TAG`] only when every patient with an observation
+/// is in its exported patient list (its report's `observed_patients_missing_from_set` is
+/// 0).
 ///
 /// # Errors
 /// [`EtlError::Usage`] when the export is not partitioned, for a partition name that
@@ -368,13 +371,19 @@ pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrat
     if let Some(key) = install_key {
         staging.stage_key(&key)?;
     }
-    let store_ids = reports
+    let records = reports
         .iter()
-        .map(|(name, report): (&String, &MigrateReport)| (name.clone(), report.store_id.clone()))
+        .map(|(name, report): (&String, &MigrateReport)| {
+            let record = PartitionRecord {
+                store_id: report.store_id.clone(),
+                patients_indexed: report.observed_patients_missing_from_set == 0,
+            };
+            (name.clone(), record)
+        })
         .collect();
     staging.publish(
         &options.out,
-        &store_ids,
+        &records,
         combined.as_ref().map(|c| c.store_id.as_str()),
     )?;
     let report = PartitionedMigrateReport {

@@ -90,8 +90,24 @@ fn read_generation(out: &Path) -> Vec<String> {
         .collect()
 }
 
+/// True when every patient with an observation in a block of the store in `dir` is in its
+/// index's patient set, read back from every block.
+fn observed_patients_indexed(dir: &Path) -> bool {
+    let store = open(dir);
+    let mut observed = roaring::RoaringBitmap::new();
+    for concept in store.index.concepts() {
+        observed |= store
+            .reader
+            .read_block(&store.codec, concept)
+            .unwrap()
+            .all_patients();
+    }
+    observed.is_subset(store.index.patients())
+}
+
 /// The store id of each partition of `out`, in partition name order, as 32 lowercase hex
-/// digits, then the combined store's id and its tag when `out` has one: the lines
+/// digits, followed by ` patients-indexed` when every patient its blocks hold is in its
+/// index, then the combined store's id and its tag when `out` has one: the lines
 /// `.generation` should hold.
 fn store_ids(out: &Path) -> Vec<String> {
     let id_of = |dir: &Path| {
@@ -107,7 +123,13 @@ fn store_ids(out: &Path) -> Vec<String> {
     hpds_etl::partitions::partition_dirs(out)
         .unwrap()
         .into_iter()
-        .map(|p| id_of(&p.dir))
+        .map(|p| {
+            if observed_patients_indexed(&p.dir) {
+                format!("{} patients-indexed", id_of(&p.dir))
+            } else {
+                id_of(&p.dir)
+            }
+        })
         .chain(
             hpds_etl::combined::existing_combined_dir(out)
                 .map(|dir| format!("{} .combined", id_of(&dir))),

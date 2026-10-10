@@ -20,7 +20,7 @@
 //! directory from an ordinary one, and [`PartitionedStaging`] writes a set of partitions,
 //! and optionally their combined store, and moves them into place.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
@@ -298,23 +298,49 @@ pub fn resolve_shared_key(key: &KeySource, out: &Path) -> Result<(Protection, Op
 
 /// Name of the generation marker of a partitioned store: one line per partition, in byte
 /// order of the partition names, holding the store id of its `pheno.index` as 32 lowercase
-/// hex digits, then, when the store has a combined store, its id and the tag `.combined`
-/// on a last line ([`generation_line`]). It is written last, atomically and mode `0600`, so
-/// its ids match the stores' indexes only once a publish is complete; the query engine
-/// refuses to open a store where they differ.
+/// hex digits, followed by [`PATIENTS_INDEXED_TAG`] when the partition carries that record,
+/// then, when the store has a combined store, its id and the tag `.combined` on a last line
+/// ([`generation_line`]). It is written last, atomically and mode `0600`, so its ids match
+/// the stores' indexes only once a publish is complete; the query engine refuses to open a
+/// store where they differ.
 pub const GENERATION_FILE_NAME: &str = ".generation";
+
+/// The second token of a partition's line in the [`GENERATION_FILE_NAME`] marker, after its
+/// store id, recording that every patient with an observation in that store's blocks is in
+/// its index's patient set. `load` writes it for every partition, since it builds the
+/// patient set from the observations; `migrate` writes it only for a partition whose
+/// observed patients are all in the exported patient list. The query engine sums cross
+/// counts per partition only over partitions that carry it. The tag is on the line of the
+/// store id it describes, so it cannot outlive that store: another store in its place has
+/// another id, which the marker must list before the engine opens it. It does not start
+/// with `.`, so a query service that does not know it reads the line as a plain partition
+/// line.
+pub const PATIENTS_INDEXED_TAG: &str = "patients-indexed";
+
+/// One partition's store as the [`GENERATION_FILE_NAME`] marker lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PartitionRecord {
+    /// The store id of its `pheno.index`, as 32 lowercase hex digits.
+    pub store_id: String,
+    /// True when every patient with an observation in the store's blocks is in its index's
+    /// patient set, written as [`PATIENTS_INDEXED_TAG`].
+    pub patients_indexed: bool,
+}
 
 /// The store ids of a partitioned store as its [`GENERATION_FILE_NAME`] marker lists them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Generation {
     /// The partitions' store ids, lowercase, in file order.
     pub partitions: Vec<String>,
+    /// The partition store ids, lowercase, whose line carries [`PATIENTS_INDEXED_TAG`].
+    pub patients_indexed: BTreeSet<String>,
     /// The combined store's id, lowercase, when a line is tagged `.combined`.
     pub combined: Option<String>,
 }
 
 impl Generation {
-    /// Reads `<dir>/.generation`, or `None` when there is none.
+    /// Reads `<dir>/.generation`, or `None` when there is none. A second token other than
+    /// `.combined` and [`PATIENTS_INDEXED_TAG`] is ignored.
     ///
     /// # Errors
     /// [`EtlError::Usage`] when a line's first token is not 32 hex digits or two lines are
@@ -339,15 +365,20 @@ impl Generation {
                 )));
             }
             let id = id.to_ascii_lowercase();
-            if tokens.next() == Some(crate::combined::COMBINED_GENERATION_TAG) {
-                if generation.combined.replace(id).is_some() {
-                    return Err(EtlError::Usage(format!(
-                        "{} lists more than one combined store",
-                        path.display()
-                    )));
+            match tokens.next() {
+                Some(crate::combined::COMBINED_GENERATION_TAG) => {
+                    if generation.combined.replace(id).is_some() {
+                        return Err(EtlError::Usage(format!(
+                            "{} lists more than one combined store",
+                            path.display()
+                        )));
+                    }
                 }
-            } else {
-                generation.partitions.push(id);
+                Some(PATIENTS_INDEXED_TAG) => {
+                    generation.patients_indexed.insert(id.clone());
+                    generation.partitions.push(id);
+                }
+                _ => generation.partitions.push(id),
             }
         }
         Ok(Some(generation))
@@ -460,8 +491,9 @@ impl PartitionedStaging {
     }
 
     /// Moves every staged partition, the staged combined store, and the staged key, into
-    /// `out`, and writes the [`GENERATION_FILE_NAME`] marker from `store_ids` (partition
-    /// name to store id) and `combined_id`, the combined store's id when one was built.
+    /// `out`, and writes the [`GENERATION_FILE_NAME`] marker from `records` (partition
+    /// name to its store id and record) and `combined_id`, the combined store's id when one
+    /// was built.
     ///
     /// When `out` does not exist the marker is staged too, and the staging directory is
     /// synced and renamed to `out`, so the whole set appears at once. When it does, the
@@ -480,7 +512,7 @@ impl PartitionedStaging {
     pub fn publish(
         mut self,
         out: &Path,
-        store_ids: &BTreeMap<String, String>,
+        records: &BTreeMap<String, PartitionRecord>,
         combined_id: Option<&str>,
     ) -> Result<()> {
         if self.combined != combined_id.is_some() {
@@ -498,7 +530,7 @@ impl PartitionedStaging {
             let dir = staged.join(name);
             private_fs::sync_dir(&dir).map_err(EtlError::io("syncing", &dir))?;
         }
-        let generation = generation_text(&self.names, store_ids, combined_id)?;
+        let generation = generation_text(&self.names, records, combined_id)?;
         let mut registered = cleanup::lock();
         if !out.exists() {
             let marker = staged.join(GENERATION_FILE_NAME);
@@ -543,14 +575,15 @@ impl PartitionedStaging {
     }
 }
 
-/// The content of the [`GENERATION_FILE_NAME`] marker for the partitions `names` and, when
-/// given, the combined store `combined_id`, whose line comes last.
+/// The content of the [`GENERATION_FILE_NAME`] marker for the partitions `names`, each line
+/// tagged [`PATIENTS_INDEXED_TAG`] when its record says so, and, when given, the combined
+/// store `combined_id`, whose line comes last.
 ///
 /// # Errors
-/// [`EtlError::Usage`] when `store_ids` lacks one of `names`.
+/// [`EtlError::Usage`] when `records` lacks one of `names`.
 pub(crate) fn generation_text(
     names: &[String],
-    store_ids: &BTreeMap<String, String>,
+    records: &BTreeMap<String, PartitionRecord>,
     combined_id: Option<&str>,
 ) -> Result<String> {
     let mut sorted: Vec<&String> = names.iter().collect();
@@ -558,9 +591,15 @@ pub(crate) fn generation_text(
     let mut text = sorted
         .into_iter()
         .map(|name| {
-            store_ids
+            records
                 .get(name)
-                .map(|id| format!("{id}\n"))
+                .map(|record| {
+                    if record.patients_indexed {
+                        format!("{} {PATIENTS_INDEXED_TAG}\n", record.store_id)
+                    } else {
+                        format!("{}\n", record.store_id)
+                    }
+                })
                 .ok_or_else(|| EtlError::Usage(format!("partition {name} has no store id")))
         })
         .collect::<Result<String>>()?;
@@ -761,17 +800,25 @@ mod tests {
 
     #[test]
     fn the_generation_marker_lists_every_partition_in_name_order() {
-        let ids: BTreeMap<String, String> = [("b", "22"), ("a", "11")]
+        let ids: BTreeMap<String, PartitionRecord> = [("b", "22", true), ("a", "11", false)]
             .into_iter()
-            .map(|(n, i)| (n.to_string(), i.to_string()))
+            .map(|(n, i, patients_indexed)| {
+                (
+                    n.to_string(),
+                    PartitionRecord {
+                        store_id: i.to_string(),
+                        patients_indexed,
+                    },
+                )
+            })
             .collect();
         assert_eq!(
             generation_text(&["b".into(), "a".into()], &ids, None).unwrap(),
-            "11\n22\n"
+            "11\n22 patients-indexed\n"
         );
         assert_eq!(
             generation_text(&["b".into(), "a".into()], &ids, Some("33")).unwrap(),
-            "11\n22\n33 .combined\n"
+            "11\n22 patients-indexed\n33 .combined\n"
         );
         assert!(generation_text(&["c".into()], &ids, None).is_err());
     }

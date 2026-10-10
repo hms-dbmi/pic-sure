@@ -12,7 +12,8 @@ use hpds_etl::java::java_double_to_string;
 use hpds_etl::load::KeySource;
 use hpds_etl::migrate::{
     EXPORT_CONCEPTS_FILE, EXPORT_ID_LEN, EXPORT_PATIENTS_FILE, ExportKind, KeyCollision,
-    MigrateOptions, MigrateReport, NameMismatch, SkippedConcept, migrate, seal_export,
+    MigrateOptions, MigrateReport, NameMismatch, SkippedConcept, migrate, migrate_partitioned,
+    seal_export,
 };
 use hpds_etl::store::OpenStore;
 use hpds_format::{Block, ConceptType, CryptoKey, NO_TIMESTAMP, Protection};
@@ -731,6 +732,47 @@ fn migrate_replaces_an_existing_store_and_leaves_the_export_alone() {
             "etl-report.json",
             "pheno.blocks",
             "pheno.index"
+        ]
+    );
+}
+
+#[test]
+fn a_partition_with_observed_patients_missing_from_its_list_is_not_recorded_as_indexed() {
+    let dir = tempfile::tempdir().unwrap();
+    let export = dir.path().join("export");
+    let partitions = [
+        ("complete", vec![(1, 1.0, None), (2, 2.0, None)], "1\n2\n"),
+        ("short", vec![(1, 3.0, None), (3, 4.0, None)], "3\n"),
+    ];
+    std::fs::create_dir(&export).unwrap();
+    for (name, observations, patients) in partitions {
+        let entries = [Entry::numeric("\\a\\", observations)];
+        let written = write_export(&dir.path().join(name), &encode(&entries), patients);
+        std::fs::rename(written, export.join(name)).unwrap();
+    }
+    let out = dir.path().join("store");
+    let report = migrate_partitioned(&options(
+        export,
+        out.clone(),
+        KeySource::File(key_file(dir.path())),
+    ))
+    .unwrap();
+    let short = &report.partitions["short"];
+    assert_eq!(short.observed_patients_missing_from_set, 1);
+    assert_eq!(
+        report.partitions["complete"].observed_patients_missing_from_set,
+        0
+    );
+    let marker = std::fs::read_to_string(out.join(".generation")).unwrap();
+    let lines: Vec<&str> = marker.lines().collect();
+    assert_eq!(
+        lines[..2],
+        [
+            format!(
+                "{} patients-indexed",
+                report.partitions["complete"].store_id
+            ),
+            short.store_id.clone(),
         ]
     );
 }

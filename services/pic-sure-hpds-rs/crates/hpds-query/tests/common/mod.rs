@@ -194,6 +194,23 @@ pub fn add_combined(out: &Path) -> String {
         .store_id
 }
 
+/// Writes the partitioned directory `out`'s `.generation` as the partitioned loader would:
+/// every partition's store id with the `patients-indexed` record, in name order. Partitions
+/// built one at a time with [`load_into`] are loaded stores, so the record holds for them.
+pub fn mark_patients_indexed(out: &Path) {
+    let text: String = hpds_etl::partitions::partition_dirs(out)
+        .unwrap()
+        .iter()
+        .map(|p| {
+            let id = hpds_etl::store::read_index(&p.dir, &protection())
+                .unwrap()
+                .store_id();
+            format!("{id} {}\n", hpds_etl::partitions::PATIENTS_INDEXED_TAG)
+        })
+        .collect();
+    std::fs::write(out.join(".generation"), text).unwrap();
+}
+
 /// The workspace root.
 pub fn workspace() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")

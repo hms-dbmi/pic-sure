@@ -52,7 +52,7 @@ use crate::cleanup::TemporaryDir;
 use crate::error::{EtlError, Result};
 use crate::load::{DEFAULT_KEY_NAME, REPORT_FILE_NAME};
 use crate::partitions::{
-    GENERATION_FILE_NAME, Generation, Partition, generation_text, partition_dirs,
+    GENERATION_FILE_NAME, Generation, Partition, PartitionRecord, generation_text, partition_dirs,
     replace_combined_dir,
 };
 use crate::private_fs;
@@ -434,7 +434,7 @@ pub fn combine_in_place(
     protection: &Protection,
     pool: &rayon::ThreadPool,
 ) -> Result<CombinedReport> {
-    let (partitions, store_ids) = checked_partitions(store, protection)?;
+    let (partitions, records) = checked_partitions(store, protection)?;
     if partitions.len() == 1 {
         return Err(EtlError::Usage(format!(
             "{} holds one partition; a combined store would only repeat it, and the query service ignores one there",
@@ -451,9 +451,9 @@ pub fn combine_in_place(
         ))
     })?;
     let names: Vec<String> = partitions.into_iter().map(|p| p.name).collect();
-    let generation = generation_text(&names, &store_ids, Some(&report.store_id))?;
+    let generation = generation_text(&names, &records, Some(&report.store_id))?;
     let registered = crate::cleanup::lock();
-    let published = refuse_if_changed(store, protection, &store_ids).and_then(|()| {
+    let published = refuse_if_changed(store, protection, &records).and_then(|()| {
         replace_combined_dir(store, staging.path(), Some(built))?;
         let marker = store.join(GENERATION_FILE_NAME);
         replace_file(&marker, |file| {
@@ -476,7 +476,7 @@ pub fn combine_in_place(
 fn refuse_if_changed(
     store: &Path,
     protection: &Protection,
-    built_from: &BTreeMap<String, String>,
+    built_from: &BTreeMap<String, PartitionRecord>,
 ) -> Result<()> {
     let (_, now) = checked_partitions(store, protection)?;
     if &now == built_from {
@@ -498,12 +498,12 @@ fn refuse_if_changed(
 /// [`EtlError::Usage`] when `store` holds no partitions or its marker disagrees with them;
 /// I/O errors.
 pub fn remove_combined(store: &Path, protection: &Protection) -> Result<bool> {
-    let (partitions, store_ids) = checked_partitions(store, protection)?;
+    let (partitions, records) = checked_partitions(store, protection)?;
     let listed = Generation::read(store)?.is_some_and(|g| g.combined.is_some());
     let present = store.join(COMBINED_DIR_NAME).symlink_metadata().is_ok();
     if listed {
         let names: Vec<String> = partitions.into_iter().map(|p| p.name).collect();
-        let generation = generation_text(&names, &store_ids, None)?;
+        let generation = generation_text(&names, &records, None)?;
         let marker = store.join(GENERATION_FILE_NAME);
         replace_file(&marker, |file| {
             file.write_all(generation.as_bytes())
@@ -518,8 +518,11 @@ pub fn remove_combined(store: &Path, protection: &Protection) -> Result<bool> {
     Ok(listed || present)
 }
 
-/// The partitions of `store` and their store ids by name, after checking that a
-/// `.generation` marker, when there is one, lists exactly those ids.
+/// The partitions of `store` and their records by name, after checking that a
+/// `.generation` marker, when there is one, lists exactly their store ids. A partition's
+/// record carries [`crate::partitions::PATIENTS_INDEXED_TAG`] over from the marker line of
+/// its store id; this command never reads blocks to establish it, so a store without a
+/// marker gets no such record.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when `store` holds no partitions or the marker disagrees; the errors
@@ -527,7 +530,7 @@ pub fn remove_combined(store: &Path, protection: &Protection) -> Result<bool> {
 fn checked_partitions(
     store: &Path,
     protection: &Protection,
-) -> Result<(Vec<Partition>, BTreeMap<String, String>)> {
+) -> Result<(Vec<Partition>, BTreeMap<String, PartitionRecord>)> {
     let partitions = partition_dirs(store)?;
     if partitions.is_empty() {
         return Err(EtlError::Usage(format!(
@@ -544,7 +547,8 @@ fn checked_partitions(
             ))
         })
         .collect::<Result<BTreeMap<String, String>>>()?;
-    if let Some(generation) = Generation::read(store)? {
+    let generation = Generation::read(store)?;
+    if let Some(generation) = &generation {
         let listed: BTreeSet<&str> = generation.partitions.iter().map(String::as_str).collect();
         let found: BTreeSet<&str> = store_ids.values().map(String::as_str).collect();
         if listed != found {
@@ -554,7 +558,20 @@ fn checked_partitions(
             )));
         }
     }
-    Ok((partitions, store_ids))
+    let records = store_ids
+        .into_iter()
+        .map(|(name, store_id)| {
+            let patients_indexed = generation
+                .as_ref()
+                .is_some_and(|g| g.patients_indexed.contains(&store_id));
+            let record = PartitionRecord {
+                store_id,
+                patients_indexed,
+            };
+            (name, record)
+        })
+        .collect();
+    Ok((partitions, records))
 }
 
 #[cfg(test)]

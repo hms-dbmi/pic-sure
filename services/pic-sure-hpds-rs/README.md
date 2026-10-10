@@ -48,7 +48,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's blocks in the partitions (each read on first use), another its block in the combined store, so a read of one concept in many partitions costs one lookup and the partitions' blocks of a concept are evicted together. The old name `CACHE_BYTES` is still read, with a warning. |
 | `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
-| `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts a CROSS_COUNT concept's or a CATEGORICAL_CROSS_COUNT category's cohort patients in each partition a query reads from its own store and sums the counts, when no patient id is in two partitions (see [Partition layout](#partition-layout)); `off` always unions the partitions' patient sets before counting, as v2 did. The answers are the same either way. |
+| `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts a CROSS_COUNT concept's or a CATEGORICAL_CROSS_COUNT category's cohort patients in each partition a query reads from its own store and sums the counts, when no patient id is in two partitions' patient sets and every partition the query reads carries the `patients-indexed` record in `.generation` (see [Partition layout](#partition-layout)); otherwise, and always with `off`, it unions the partitions' patient sets before counting, as v2 did. The answers are the same either way. |
 | `HPDS_RESULT_CACHE_BYTES` | `0` (off) | Byte bound of the sync result cache, which holds COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers (see [Result cache](#result-cache)). `0` turns it off. |
 | `HPDS_COMBINED_STORE` | `auto` | `auto` answers a query whose consents select every partition from the data directory's combined store, when it has a valid one (see [Combined store](#combined-store)); `off` ignores the combined store and its `.generation` line, so every query reads its partitions as before. |
 | `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name (the Rust name wins when both are set). Despite the name it gates `userConsents`, not authorization filters: when true, every query on `/query/sync` and `POST /query` needs at least one non-null `userConsents` value and is otherwise a 400 "User consents are required for this query", and an unpartitioned data directory is refused at startup. When false, a query without consent values reads every partition. `authorizationFilters` are validated on `POST /query` but never applied, in either mode, as on the Java branch. An open (non-auth) backend must run with it false, since the query service sends that backend no consents. |
@@ -109,10 +109,21 @@ The service opens `HPDS_DATA_DIRECTORY` as `PartitionedPhenotypicObservationStor
   [Combined store](#combined-store).
 - The partitions are disjoint when no patient id is in two of them, which the service
   computes at open from their patient sets (the counts sum to the count of the union); the
-  ETL's report is not trusted for it. Then a cross count over two or more partitions read
-  from their own stores sums each partition's count of cohort patients instead of counting
-  the union of the partitions' patient sets, which is the same number. With a shared
-  patient, or with `HPDS_PER_PARTITION_COUNTS=off`, the union is counted. Cohorts are always
+  ETL's report is not trusted for it. A patient set says which patients a partition's
+  blocks hold only when the ETL recorded that every patient with an observation is in it:
+  the `patients-indexed` tag after the partition's store id in `.generation`. `load` writes
+  it for every partition, since it builds the patient set from the rows. `migrate` keeps
+  the patient list Java exported, which can miss a patient the observations hold (its
+  report counts them in `observed_patients_missing_from_set`), so it tags only partitions
+  where that count is 0. The tag sits on the line of the store id it describes, so it
+  cannot outlive that store: a replaced partition has a new id, and the service refuses
+  the open until `.generation` lists it. When the partitions are disjoint and every
+  partition a query reads from its own store carries the tag, a cross count over two or
+  more of them sums each partition's count of cohort patients instead of counting the
+  union of the partitions' patient sets, which is the same number. With a shared patient,
+  a partition without the tag (a migrated one with missing patients, or any store with no
+  `.generation`), or `HPDS_PER_PARTITION_COUNTS=off`, the union is counted. The startup
+  log's `patients_indexed_partitions` gives the number of tagged partitions. Cohorts are always
   evaluated by unioning each filter's patients over the partitions first, so a patient in
   two partitions can match one filter in one and another filter in the other, as in Java.
 - The service holds one concept table for all partitions: each path and category value once,
@@ -376,8 +387,10 @@ partitions are replaced one after another (each partition's `pheno.index` last),
 combined store is moved out and the new one, if any, moved in, so a reader can briefly see old
 and new stores side by side. The last step writes `<out>/.generation` (mode `0600`, through a
 temporary file renamed into place): one line per partition, in partition name order, holding
-the store id of its `pheno.index` as 32 lowercase hex digits, then, when there is a combined
-store, a last line `<id> .combined`. The query service refuses to open the store while those
+the store id of its `pheno.index` as 32 lowercase hex digits followed by ` patients-indexed`
+(every patient with a row is in the partition's patient set, see
+[Partition layout](#partition-layout)), then, when there is a combined store, a last line
+`<id> .combined`. The query service refuses to open the store while those
 ids differ from the stores' indexes, so a publish under way or interrupted is never served.
 
 **The combined store.** `<out>/.combined/` holds `pheno.index`, `pheno.blocks` and an
@@ -422,7 +435,9 @@ query service applies too:
 
 `migrate` applies the same rule to a directory of per-partition exports, with `concepts.bin` in
 place of `pheno.index`, and writes `<out>/<partition>/`, the combined store (unless
-`--no-combined`, which an unpartitioned export refuses) and `.generation`.
+`--no-combined`, which an unpartitioned export refuses) and `.generation`. A partition's
+line there carries ` patients-indexed` only when every patient with an observation is in
+the exported patient list.
 
 `hpds-etl combine --store <dir>` builds or rebuilds the combined store of an existing
 partitioned store in place, for a store loaded with `--no-combined` or by an older ETL. It
@@ -432,7 +447,10 @@ builds into a temporary directory inside `<dir>` (named with a leading `.`), mov
 place and rewrites `.generation` last. Just before moving it into place it reads the
 partitions' ids again, and when a load published new partitions during the build it stops
 without replacing anything, so the newer `.generation` stays. `--remove` instead rewrites
-`.generation` without the combined line and then removes `.combined`.
+`.generation` without the combined line and then removes `.combined`. Either rewrite keeps
+a partition's ` patients-indexed` tag from the old `.generation` line of the same store id
+and adds none: `combine` does not check the partitions' blocks for it, so a store with no
+`.generation` (loaded by an older ETL) stays without the tag until it is reloaded.
 `bin/migrate-javabins` detects a partitioned javabin directory and exports each partition: a
 subdirectory with both javabin files is a partition, one with only one of them fails the run.
 
