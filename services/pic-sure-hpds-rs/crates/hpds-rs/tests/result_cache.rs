@@ -6,7 +6,9 @@ mod common;
 
 use axum::Router;
 use axum::http::StatusCode;
-use common::{AGE, Fixture, Reply, SEX, consents, envelope, fixture, fixture_with, post};
+use common::{
+    AGE, Fixture, POPULATION, Reply, SEX, consents, envelope, fixture, fixture_with, post,
+};
 use hpds_query::{CombinedMode, ResultCacheStats};
 use hpds_rs::sync::QUERY_METADATA_HEADER;
 use serde_json::{Value, json};
@@ -167,6 +169,69 @@ async fn a_refused_query_is_refused_with_the_cache_warm() {
 
     let after = stats(&f);
     assert_eq!((after.hits, after.misses), (1, 1), "refusals never look up");
+}
+
+/// [`hpds_query::Engine::cached_sync`] itself refuses what admission refuses, with an entry
+/// warm under the same key: the select and concept bounds (`select` is not in a COUNT's
+/// key), the clause bound and missing consents.
+#[test]
+fn the_engine_lookup_refuses_what_admission_refuses() {
+    let f = fixture_with(|c| {
+        c.result_cache_bytes = CACHE_BYTES;
+        c.partitions.require_consents = true;
+        c.query_limits.max_select_paths = 3;
+        c.query_limits.max_query_concepts = 3;
+        c.query_limits.max_clause_nodes = 2;
+    });
+    let parse = |value: Value| -> hpds_query::Query { serde_json::from_value(value).unwrap() };
+    let mut warm = age_count(35.0, 45.0, Some(&["partition2", "partition3"]));
+    warm["select"] = json!([SEX]);
+    let warm_query = parse(warm.clone());
+    let computed = f.engine.answer_sync(&warm_query).unwrap();
+    let hit = f.engine.cached_sync(&warm_query).unwrap();
+    assert_eq!(hit.as_ref(), Some(&computed), "the entry is warm");
+
+    let with = |field: &str, value: Value| {
+        let mut query = warm.clone();
+        query[field] = value;
+        parse(query)
+    };
+    let mut no_consents = warm.clone();
+    no_consents.as_object_mut().unwrap().remove("userConsents");
+    let refused = [
+        (
+            "over the select bound",
+            with("select", json!([SEX, POPULATION, r"\a\", r"\b\"])),
+            "HPDS_MAX_SELECT_PATHS",
+        ),
+        (
+            "over the concept bound",
+            with("select", json!([SEX, POPULATION, r"\a\"])),
+            "HPDS_MAX_QUERY_CONCEPTS",
+        ),
+        (
+            "over the clause bound",
+            with(
+                "authorizationFilters",
+                json!([
+                    {"conceptPath": SEX, "values": ["female"]},
+                    {"conceptPath": SEX, "values": ["male"]},
+                ]),
+            ),
+            "HPDS_MAX_CLAUSE_NODES",
+        ),
+        (
+            "without consents",
+            parse(no_consents),
+            "User consents are required",
+        ),
+    ];
+    for (name, query, message) in refused {
+        let error = f.engine.cached_sync(&query).unwrap_err();
+        assert!(error.to_string().contains(message), "{name}: {error}");
+    }
+    let after = stats(&f);
+    assert_eq!((after.hits, after.misses), (1, 0), "refusals never look up");
 }
 
 #[tokio::test]
