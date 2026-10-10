@@ -69,7 +69,7 @@
 #      BENCH_NETWORK (default none, see above), BENCH_IMAGE, EXTRA_ENV (space-separated
 #      KEY=VALUE pairs added to the service container's environment, for example
 #      HPDS_RESULT_CACHE_BYTES=268435456), ETL_ARGS (extra arguments to the rust ETL engine,
-#      for example --no-combined).
+#      for example --threads 4).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

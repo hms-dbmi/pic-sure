@@ -45,15 +45,14 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 |---|---|---|
 | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store, partitioned by consent inside its blocks or unpartitioned (see [Partition layout](#partition-layout)). Matches the Java service; the all-in-one stack bind-mounts the hpds-rs host directory here. |
 | `SERVER_PORT` | `8080` | Listen port on `0.0.0.0`. |
-| `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's whole block, another its rows split by the partitions a narrower selection read (each split on first use), so a read of one concept in many partitions costs one lookup. The old name `CACHE_BYTES` is still read, with a warning. |
+| `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's block and, once a narrow selection has read the concept through it, its partition view (see [Narrow selections](#narrow-selections)), weighed together, so a read of one concept costs one lookup whatever the selection. The old name `CACHE_BYTES` is still read, with a warning. |
 | `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
-| `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts a CROSS_COUNT concept's or a CATEGORICAL_CROSS_COUNT category's cohort patients in each partition a query reads one at a time and sums the counts, when no patient id is in two partitions' patient sets and every partition the query reads carries the `patients-indexed` record in the index (see [Partition layout](#partition-layout)); otherwise, and always with `off`, it unions the partitions' patient sets before counting, as v2 did. The answers are the same either way. |
 | `HPDS_RESULT_CACHE_BYTES` | `0` (off) | Byte bound of the sync result cache, which holds COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers (see [Result cache](#result-cache)). `0` turns it off. A bound above 0 but below 2,864 bytes can store no answer, since one answer may take at most a sixteenth of it; startup logs a warning saying so. |
-| `HPDS_COMBINED_STORE` | `auto` | `auto` answers a query whose consents select every partition of a store with two or more from each concept's whole block (see [Whole blocks](#whole-blocks)); `off` makes every query read its partitions' rows one partition at a time. The answers are the same either way. |
+| `HPDS_COMBINED_STORE`, `HPDS_PER_PARTITION_COUNTS` | ignored | Settings of the format 1 store layout; logged as ignored. |
 | `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name (the Rust name wins when both are set). Despite the name it gates `userConsents`, not authorization filters: when true, every query on `/query/sync` and `POST /query` needs at least one non-null `userConsents` value and is otherwise a 400 "User consents are required for this query", and an unpartitioned data directory is refused at startup. When false, a query without consent values reads every partition. `authorizationFilters` are validated on `POST /query` but never applied, in either mode, as on the Java branch. An open (non-auth) backend must run with it false, since the query service sends that backend no consents. |
 | `ID_BATCH_SIZE` | `0` | Java's export switch. `0` ends every DATAFRAME export in ERROR with "exports are disabled (ID_BATCH_SIZE=0)"; any larger value enables exports (the batch size itself does not change the algorithm). PATIENTS is unaffected. |
-| `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds in memory, summed over the blocks it pins (whole blocks, or the selected partitions' rows). A wider export ends in ERROR with "export too wide; select fewer concepts". |
+| `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds in memory, summed over the blocks it pins. Each concept's whole block counts, every partition's rows, whatever the selection, since that is what the export holds. A wider export ends in ERROR with "export too wide; select fewer concepts". |
 | `HPDS_MAX_SELECT_PATHS` | `5000` | Most distinct `select` paths in a query. |
 | `HPDS_MAX_CLAUSE_DEPTH` | `64` | Deepest nesting of phenotypic subqueries. |
 | `HPDS_MAX_CLAUSE_NODES` | `10000` | Most clauses and authorization filters in a query. |
@@ -69,7 +68,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `SMALL_TASK_THREADS`, `LARGE_TASK_THREADS` | `1`, `1` | Exports running at once per pool. |
 | `HPDS_EXPORT_CONCURRENCY` | `2` | Exports running at once across both pools; each pins its selected blocks in memory. |
 | `HPDS_MAX_CONNECTIONS` | `512` | Most connections served at once. A connection accepted at the cap is answered `503` (`text/plain`, `Retry-After: 1`) and closed, so clients and the health probe fail fast instead of waiting in the kernel backlog. A request body must arrive in full within 30 seconds of the request starting (408 otherwise), and a connection idle between requests is closed after 10 seconds. |
-| `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) running at once. One slot may use several cores, since a computation fans out across partitions with rayon. |
+| `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) running at once. One slot may use several cores, since a computation fans out across concepts and clauses with rayon. |
 | `HPDS_BLOCKING_THREADS` | `64`, or the engine concurrency plus 16 when that is larger | Cap on tokio's blocking threads. Startup fails unless `HPDS_ENGINE_CONCURRENCY` is below it, so file reads keep some blocking threads. |
 | `RUST_LOG` | `info` | Log filter, in `tracing` `EnvFilter` syntax. The `hpds_rs::access` target logs one line per request at info with method, path, status and latency. For benchmarks use `RUST_LOG=info,hpds_rs::access=warn` to silence it. |
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
@@ -84,8 +83,9 @@ opened (no store, a store of format 1 written by Rust HPDS v1 to v3, a partition
 javabin form, a `.generation` mismatch, a block that disagrees with the index, an
 unpartitioned store while consents are required) the server still starts, logs the open
 error, health reports DOWN with a reason, and query routes answer 503. The startup log line
-`store opened` carries `combined_store`: `IN_USE`, `ABSENT` or `OFF`, and
-`partitions_disjoint` and `per_partition_counts`.
+`store opened` carries `overlap_patients`, the size of the overlap set (see
+[Partition layout](#partition-layout)). At shutdown the service logs what its block cache
+holds: blocks, partition views, and the bytes of each.
 
 ### Partition layout
 
@@ -116,40 +116,46 @@ directory itself) as `PartitionedPhenotypicObservationStore` serves its partitio
   Beside a store, subdirectories are ignored.
 - When `<dir>/.generation` exists (the ETL writes it last), it must hold exactly the store id
   of `pheno.index`, or the open is refused as a load still being published.
-- The partitions are disjoint when no patient id is in two of their patient sets, which the
-  service computes at open. A patient set says which patients a partition's rows hold only
-  when the index records `patients-indexed` for it: always for `load`, which builds the set
-  from the rows, and for `migrate` and `convert` only where every patient with a row is in
-  the exported set. When the partitions are disjoint and every partition a query reads one at
-  a time carries the record, a cross count over two or more of them sums each partition's
-  count of cohort patients instead of counting the union of the partitions' patient sets,
-  which is the same number. Otherwise, or with `HPDS_PER_PARTITION_COUNTS=off`, the union is
-  counted. The startup log's `patients_indexed_partitions` gives the number of partitions
-  with the record. Cohorts are always evaluated by unioning each filter's patients over the
-  partitions first, so a patient in two partitions can match one filter in one and another
+- A filter matches a patient with a satisfying row in any selected partition, before
+  filters combine, so a patient in two partitions can match one filter in one and another
   filter in the other, as in Java.
 
 `/search`, validation and health read the store's dictionary, whatever the consents, merged
 over the partitions as Java's `SummaryColumnMeta` map merges them: category values unioned,
 the widest width, min of mins and max of maxes, and patient counts summed.
 
-### Whole blocks
+### Narrow selections
 
-A query whose consents select every partition of a store with two or more reads each
-concept's whole block: every partition named (unknown values beside them are skipped as
-ever), or no consent value with `HPDS_REQUIRE_AUTHORIZATION_FILTER` false. Any narrower
-selection, one partition short included, reads each selected partition's rows on their own:
-the block a store of that partition alone would hold, derived from the whole block on first
-use and cached with it. The answers are the same bytes either way.
+A query whose consents select every partition (every partition named, unknown values
+beside them skipped as ever, or no consent value with `HPDS_REQUIRE_AUTHORIZATION_FILTER`
+false) reads each concept's block and answers from it directly. So does every query on an
+unpartitioned store. A narrower selection reads the same blocks and keeps only what its
+partitions hold. The answers are byte for byte those of a store holding only the selected
+partitions.
 
-- **Routing.** The decision is made once per query, in the engine's admission step, after the
-  shape, consent and concept checks. Each read of a whole block also checks that the
-  selection covers every partition, so no narrower selection reaches another partition's
-  rows.
-- **One partition.** In an unpartitioned store, or one with a single partition, that
-  partition's rows are the whole block, read once; `combinedStore` is `ABSENT`.
-- **Health.** `GET /actuator/health` answers `{"status":"UP","combinedStore":"IN_USE"}`
-  (or `ABSENT`, `OFF`) when UP.
+- **Routed patients.** A patient outside the overlap set has every row in the one partition
+  their patient set names, so a filter evaluated on the whole block is right for them once
+  patients of unselected partitions are dropped. A clause is evaluated on whole blocks and
+  intersected once, at the end, with the selected partitions' patients; no clause negates,
+  so that is the same as intersecting every filter.
+- **Concept by concept.** When the selected partitions hold every row of a concept, its
+  block is read as for a full selection. When they hold at least `NARROW_VIEW_SHARE` of its
+  rows (0.5), the block is evaluated whole. Below that share the concept's partition view
+  is read: the block's rows grouped by partition (value positions per partition for a
+  numeric concept, patients per partition, and patients per category and partition), built
+  from the block on first use and cached with it, so the work follows the selected rows. A
+  filter read from a view needs no final intersection, nor does an AND holding one.
+- **Overlap patients.** Rows of the overlap set's patients carry their partition, and every
+  filter, count and export reads those rows by tag, keeping only rows of selected
+  partitions. When the overlap set is empty no tag is ever read.
+- **Cohort check.** Before any count or export uses a cohort, on every selection including
+  a full one, the engine checks that every patient in it is in a selected partition: in its
+  patient set, or with a row tagged with it. A patient outside fails the query with a 500 and
+  an error log that counts such patients without naming any. Only a fault in the engine can
+  trip it; it turns such a fault into an error instead of an answer from another
+  partition's patients.
+- **Repeated selections.** The union of the selected partitions' patient sets is computed
+  once per distinct selection and kept, up to 64 MiB of such sets.
 
 ### Result cache
 
@@ -164,18 +170,16 @@ An opt-in cache of sync answers, off unless `HPDS_RESULT_CACHE_BYTES` is above 0
   same message whether or not an answer to a similar query is cached. A hit skips the
   engine queue and answers at once.
 - **Keying.** An entry is keyed on the store generation (a hash of the store id), the result
-  type, the partitions the consents select after admission, whether that selection reads
-  whole blocks or its partitions, and the
-  fields that decide the answer: the phenotypic clause, and `select` for CROSS_COUNT and
-  OBSERVATION_CROSS_COUNT. It also holds `authorizationFilters` as their exact canonical
-  JSON, filters and values in request order with repeats kept, nothing sorted or
-  deduplicated. They are never applied, so what their order or repetition would mean is
-  undefined; two queries that differ there in any way, order included, compute the same
-  answer into two entries, which costs hits but is never wrong. The key holds the whole
-  encoding, not a hash of it. `id`, `picsureId` and the consent values themselves are not
-  in it, so two queries whose consents select different partitions never share an entry,
-  while consent lists that select the same partitions (reordered, repeated, or with
-  unknown values) do.
+  type, the partitions the consents select after admission, and the fields that decide the
+  answer: the phenotypic clause, and `select` for CROSS_COUNT and OBSERVATION_CROSS_COUNT. It
+  also holds `authorizationFilters` as their exact canonical JSON, filters and values in
+  request order with repeats kept, nothing sorted or deduplicated. They are never applied, so
+  what their order or repetition would mean is undefined; two queries that differ there in any
+  way, order included, compute the same answer into two entries, which costs hits but is never
+  wrong. The key holds the whole encoding, not a hash of it. `id`, `picsureId` and the consent
+  values themselves are not in it, so two queries whose consents select different partitions
+  never share an entry, while consent lists that select the same partitions (reordered,
+  repeated, or with unknown values) do.
 - **Lifetime.** The cache is in the process's memory and dies with it. The service opens
   its stores only at startup, so a new load is served only after a restart, which starts
   with an empty cache.
@@ -211,7 +215,7 @@ off, and a connection that takes more than 10 seconds to send a request's header
 | `POST /query/format`, `POST /write/{dataType}` | 400, not supported |
 | `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info: {}`. See the locale note in `search.rs`. |
 | `GET /search/values/` | An empty page |
-| `GET /actuator/health` | 200 `{"status":"UP","combinedStore":...}` when the store's dictionary holds a concept, with `combinedStore` `IN_USE`, `ABSENT` or `OFF`; else 503 `{"status":"DOWN","reason":...}` |
+| `GET /actuator/health` | 200 `{"status":"UP"}` when the store's dictionary holds a concept; else 503 `{"status":"DOWN","reason":...}` |
 
 Differences from Java a caller can see:
 
