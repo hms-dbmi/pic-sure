@@ -396,6 +396,42 @@ async fn result_cache_counters_appear_when_the_cache_is_on() {
 }
 
 #[tokio::test]
+async fn a_wrong_method_request_counts_under_its_route_template() {
+    let f = metrics_on();
+    let reply = get(&f.app, "/PIC-SURE/v3/query/sync").await;
+    assert_eq!(reply.status, StatusCode::METHOD_NOT_ALLOWED);
+    let (text, samples) = scrape(&f).await;
+    assert_eq!(
+        value(
+            &samples,
+            "hpds_http_requests_total",
+            &[
+                ("route", "/PIC-SURE/v3/query/sync"),
+                ("result_type", "none")
+            ]
+        ),
+        Some(1.0),
+        "{text}"
+    );
+    assert_eq!(
+        value(
+            &samples,
+            "hpds_http_requests_total",
+            &[("route", "unmatched"), ("result_type", "none")]
+        ),
+        None
+    );
+    assert_eq!(
+        value(
+            &samples,
+            "hpds_http_errors_total",
+            &[("kind", "other_client")]
+        ),
+        Some(1.0)
+    );
+}
+
+#[tokio::test]
 async fn the_metrics_route_counts_itself() {
     let f = metrics_on();
     scrape(&f).await;

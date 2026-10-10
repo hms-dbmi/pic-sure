@@ -240,18 +240,21 @@ other route compresses.
 
 With `HPDS_METRICS=on`, `GET /metrics` reports these in the Prometheus text exposition format.
 Labels take only fixed values: route templates as the router declares them (or `unmatched`),
-result type names (or `none`), error kinds, histogram bounds and export outcomes. No label or
-value carries a patient id, concept path, consent name, result id or anything from a request
-body. Counters are relaxed atomic adds; the block cache's lookup counters are striped across
-cache lines. Reading the block cache walks it to weigh the partition views, so a scrape runs on
-the blocking pool.
+result type names (or `none`), error kinds, histogram bounds and export outcomes. A request
+whose path matches a route but whose method does not (a 405) counts under that route's
+template; only a path no route matches counts as `unmatched`. No label or value carries a
+patient id, concept path, consent name, result id or anything from a request body. Counters
+are relaxed atomic adds; the block cache's lookup counters are striped across cache lines.
+Reading the block cache walks every cached concept to weigh the partition views, so a scrape
+costs more as more concepts are cached (under 1 ms with 6,500 cached on the bench store) and
+runs on the blocking pool.
 
 | Metric | Type | Meaning |
 |---|---|---|
 | `hpds_http_requests_total{route,result_type}` | counter | Requests answered, by route template and, on `/query/sync` and `POST /query`, the result type the query named |
 | `hpds_http_request_duration_seconds{route}` | histogram | Time from receiving a request to sending its response head; a streamed download's body is not timed. Bounds 0.5 ms to 60 s |
 | `hpds_http_errors_total{kind}` | counter | 4xx and 5xx answers: `bad_request`, `not_found`, `request_timeout`, `payload_too_large`, `internal`, `unavailable`, `other_client`, `other_server` |
-| `hpds_connections_refused_total` | counter | Connections answered 503 at `HPDS_MAX_CONNECTIONS` |
+| `hpds_connections_refused_total` | counter | Connections refused at `HPDS_MAX_CONNECTIONS`, answered 503 when possible (closed at once when as many refusals are already being answered) |
 | `hpds_block_cache_hits_total`, `hpds_block_cache_misses_total` | counter | Block cache lookups, one per concept read |
 | `hpds_block_cache_evictions_total` | counter | Entries dropped (or never admitted) to stay within `HPDS_CACHE_BYTES` |
 | `hpds_block_cache_entries`, `hpds_block_cache_bytes`, `hpds_block_cache_capacity_bytes` | gauge | Concepts and bytes held, blocks and views, and the bound |

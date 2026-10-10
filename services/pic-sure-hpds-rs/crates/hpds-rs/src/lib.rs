@@ -232,8 +232,9 @@ pub fn router_with_body_timeout(state: AppState, body_timeout: Duration) -> Rout
 
 static CONNECTIONS_REFUSED: AtomicU64 = AtomicU64::new(0);
 
-/// Connections this process answered 503 and closed because every connection slot was
-/// taken ([`serve`]).
+/// Connections this process refused because every connection slot was taken ([`serve`]).
+/// Each is answered 503 when one of the refusal slots is free, and otherwise closed at once,
+/// but counted either way.
 pub fn connections_refused() -> u64 {
     CONNECTIONS_REFUSED.load(Ordering::Relaxed)
 }

@@ -389,7 +389,7 @@ fn render_http(family: &mut Family<'_>, metrics: &Metrics) {
     family.single(
         "hpds_connections_refused_total",
         "counter",
-        "Connections answered 503 and closed because every connection slot was taken.",
+        "Connections refused because every connection slot was taken; each is answered 503 when a refusal slot is free, otherwise closed at once.",
         crate::connections_refused(),
     );
 }
