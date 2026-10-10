@@ -128,7 +128,7 @@ expect_equal "running container got the thread setting" "$(env_of hpds-rs-t | se
 expect_equal "hpds-rs networks" "$(docker container inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' hpds-rs-t | tr ' ' '\n' | sort | xargs)" "hpds-t picsure-t"
 docker run -d --name probe-t --network picsure-t alpine:3.20 sleep 600 >/dev/null
 reachable() { docker exec probe-t wget -q -T 5 -O - "http://$1:8080/actuator/health" 2>&1; }
-expect_equal "actuator health over the network" "$(reachable hpds-rs-t | tr -d ' ')" '{"status":"UP"}'
+expect_equal "actuator health over the network" "$(reachable hpds-rs-t | jq -r .status 2>/dev/null)" UP
 writable="$(docker exec hpds-rs-t sh -c 'touch /opt/local/hpds/x' 2>&1 || true)"
 [[ -z "$writable" ]] && check_failed "store mount is read-only" || pass "store mount is read-only"
 
@@ -232,7 +232,7 @@ until [[ "$(docker container inspect -f '{{.Name}}' hpds-rs-t-old 2>/dev/null ||
 done
 expect_equal "old container renamed and still running" "$(docker container inspect -f '{{.Id}} {{.State.Running}}' hpds-rs-t-old 2>/dev/null || echo absent)" "$old_rs_id true"
 expect_equal "old container keeps its address" "$(ip_on_picsure hpds-rs-t-old 2>/dev/null || echo absent)" "$old_rs_ip"
-expect_equal "old address still answers health" "$(probe "wget -q -T 5 -O - http://$old_rs_ip:8080/actuator/health" | tr -d ' ')" '{"status":"UP"}'
+expect_equal "old address still answers health" "$(probe "wget -q -T 5 -O - http://$old_rs_ip:8080/actuator/health" | jq -r .status 2>/dev/null)" UP
 new_rs_ip="$(ip_on_picsure hpds-rs-t)"
 [[ -n "$new_rs_ip" && "$new_rs_ip" != "$old_rs_ip" ]] && pass "replacement has its own address" || check_failed "replacement has its own address"
 expect_equal "the name resolves to the replacement" "$(probe 'getent hosts hpds-rs-t' | awk '{print $1}')" "$new_rs_ip"
