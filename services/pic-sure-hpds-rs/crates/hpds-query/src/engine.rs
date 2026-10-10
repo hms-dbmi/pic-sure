@@ -1065,13 +1065,20 @@ mod tests {
         /// A store of partitions `p1` (patients 1 to 10) and `p2` (11 to 20), every patient
         /// with one row of `\a\`, in a directory removed with the returned guard.
         fn two_partitions() -> (tempfile::TempDir, PathBuf) {
+            store_of(&[("p1", (1..=10).collect()), ("p2", (11..=20).collect())])
+        }
+
+        /// A store holding each `(name, patients)` partition, every patient with one row of
+        /// `\a\` in each partition listing them, in a directory removed with the returned
+        /// guard.
+        fn store_of(partitions: &[(&str, Vec<u32>)]) -> (tempfile::TempDir, PathBuf) {
             let dir = tempfile::tempdir().unwrap();
             let key_file = dir.path().join("key");
             std::fs::write(&key_file, KEY).unwrap();
             let protection =
                 || Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap());
             let mut sources = Vec::new();
-            for (name, patients) in [("p1", 1..=10), ("p2", 11..=20)] {
+            for (name, patients) in partitions {
                 let input = dir.path().join(format!("{name}.csv"));
                 let mut text =
                     String::from("PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME\n");
@@ -1087,7 +1094,7 @@ mod tests {
                 let store = SourceStore::open(&part, protection()).unwrap();
                 let observed = Some(store.patients().clone());
                 sources.push(MergeSource {
-                    name: name.to_owned(),
+                    name: (*name).to_owned(),
                     store,
                     observed,
                 });
@@ -1127,7 +1134,10 @@ mod tests {
         fn a_cohort_left_holding_another_partition_fails_every_result_type() {
             let (_dir, out) = two_partitions();
             let engine = engine(&out, 0.0);
-            assert_eq!(engine.count(&required_in_p1(ResultType::Count)).unwrap(), 10);
+            assert_eq!(
+                engine.count(&required_in_p1(ResultType::Count)).unwrap(),
+                10
+            );
             for result_type in [
                 ResultType::Count,
                 ResultType::CrossCount,
@@ -1154,25 +1164,47 @@ mod tests {
         }
 
         #[test]
+        fn an_overlap_patient_tagged_only_in_unselected_partitions_is_outside() {
+            let (_dir, out) = store_of(&[
+                ("a", (1..=10).chain([30]).collect()),
+                ("b", (11..=20).chain([30]).collect()),
+                ("c", (21..=29).collect()),
+            ]);
+            let engine = engine(&out, crate::NARROW_VIEW_SHARE);
+            let set = engine.partitions();
+            assert_eq!(set.overlap_patients(), 1);
+            let c = set.select_consents(&["c"]).unwrap();
+            let walked: roaring::RoaringBitmap = [21, 30].into_iter().collect();
+            assert_eq!(c.check_members(&walked), 1, "walked by route");
+            let compared: roaring::RoaringBitmap = (21..=30).collect();
+            assert_eq!(c.check_members(&compared), 1, "compared as bitmaps");
+            let a = set.select_consents(&["a"]).unwrap();
+            let in_a: roaring::RoaringBitmap = [1, 30].into_iter().collect();
+            assert_eq!(a.check_members(&in_a), 0);
+            let all = set.select_consents(&[]).unwrap();
+            assert_eq!(all.check_members(&compared), 0);
+        }
+
+        #[test]
         fn the_member_check_covers_full_and_narrow_selections() {
             let (_dir, out) = two_partitions();
             let engine = engine(&out, crate::NARROW_VIEW_SHARE);
             let set = engine.partitions();
             let full = set.select_consents(&[]).unwrap();
             let mut cohort = full.patients().into_owned();
-            assert_eq!(full.check_members(&cohort).unwrap(), 0);
+            assert_eq!(full.check_members(&cohort), 0);
             cohort.insert(99);
-            assert_eq!(full.check_members(&cohort).unwrap(), 1);
+            assert_eq!(full.check_members(&cohort), 1);
             let p1 = set.select_consents(&["p1"]).unwrap();
             let one_of_each: roaring::RoaringBitmap = [1, 13].into_iter().collect();
-            assert_eq!(p1.check_members(&one_of_each).unwrap(), 1, "walked by route");
+            assert_eq!(p1.check_members(&one_of_each), 1, "walked by route");
             let wide: roaring::RoaringBitmap = (1..=12).collect();
-            assert_eq!(p1.check_members(&wide).unwrap(), 2, "compared as bitmaps");
+            assert_eq!(p1.check_members(&wide), 2, "compared as bitmaps");
             let unknown: roaring::RoaringBitmap = [1, 99].into_iter().collect();
-            assert_eq!(p1.check_members(&unknown).unwrap(), 1, "in no partition");
+            assert_eq!(p1.check_members(&unknown), 1, "in no partition");
             let both = set.select_consents(&["p1", "p2"]).unwrap();
-            assert_eq!(both.check_members(&one_of_each).unwrap(), 0);
-            assert_eq!(both.check_members(&unknown).unwrap(), 1);
+            assert_eq!(both.check_members(&one_of_each), 0);
+            assert_eq!(both.check_members(&unknown), 1);
         }
     }
 

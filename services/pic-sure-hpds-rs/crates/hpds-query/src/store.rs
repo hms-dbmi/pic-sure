@@ -135,11 +135,6 @@ pub(crate) struct ConceptEntry {
 }
 
 impl ConceptEntry {
-    /// True when the concept's block records the partition of every row.
-    pub(crate) fn tagged(&self) -> bool {
-        self.tagged
-    }
-
     /// The entry of `concept`.
     pub(crate) fn of(concept: &ConceptView<'_>) -> Self {
         ConceptEntry {

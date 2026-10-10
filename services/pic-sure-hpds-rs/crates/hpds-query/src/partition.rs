@@ -16,7 +16,7 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use hpds_format::{
     Block, ConceptMeta, ConceptType, CryptoKey, INDEX_FILE_NAME, PartitionHolder, Protection,
@@ -120,6 +120,7 @@ const JAVABIN_FILE_NAMES: [&str; 2] = ["allObservationsStore.javabin", "columnMe
 pub struct Partition {
     name: String,
     patients: RoaringBitmap,
+    tagged: RoaringBitmap,
     sparse: bool,
 }
 
@@ -289,7 +290,6 @@ pub struct PartitionSet {
     evaluating: AtomicUsize,
     cache: BlockCache,
     scopes: Cache<Box<[u64]>, Arc<Scope>>,
-    tagged_members: Mutex<Option<Arc<Vec<RoaringBitmap>>>>,
     generation: u128,
 }
 
@@ -398,12 +398,14 @@ impl PartitionSet {
                     name: p.name,
                     sparse: is_sparse(&p.patients),
                     patients: p.patients,
+                    tagged: p.tagged,
                 })
                 .collect()
         } else {
             vec![Partition {
                 name: UNPARTITIONED_NAME.to_owned(),
                 patients: store.patients().clone(),
+                tagged: RoaringBitmap::new(),
                 sparse: is_sparse(store.patients()),
             }]
         };
@@ -433,7 +435,6 @@ impl PartitionSet {
                 .max_capacity(SCOPE_CACHE_BYTES)
                 .weigher(|key, scope| scope_weight(key, scope))
                 .build(),
-            tagged_members: Mutex::new(None),
             generation,
         })
     }
@@ -655,50 +656,6 @@ impl PartitionSet {
     pub fn clear_cache(&self) {
         self.cache.invalidate_all();
         self.cache.run_pending_tasks();
-    }
-
-    /// The patients each partition's tagged rows belong to: per partition, every patient
-    /// of the overlap set with a row tagged with it. Built on first use by reading every
-    /// tagged block, outside the block cache, and kept; empty sets when no block is tagged.
-    ///
-    /// # Errors
-    /// [`QueryError::Block`] when a tagged block cannot be read. The next call reads again.
-    fn tagged_members(&self) -> Result<Arc<Vec<RoaringBitmap>>> {
-        let mut built = self
-            .tagged_members
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(members) = built.as_ref() {
-            return Ok(Arc::clone(members));
-        }
-        let tagged: Vec<usize> = (0..self.dictionary.len())
-            .filter(|&index| self.store.entry(index as u32).tagged())
-            .collect();
-        let empty = || vec![RoaringBitmap::new(); self.partitions.len()];
-        let membership = self.store.membership();
-        let members = tagged
-            .par_iter()
-            .map(|&index| {
-                let block = self.read_block(index)?;
-                let mut members = empty();
-                for (patient, partition) in block.rows_by_key(membership) {
-                    if let Some(partition) = partition
-                        && self.overlap.contains(patient)
-                    {
-                        members[usize::from(partition)].insert(patient);
-                    }
-                }
-                Ok(members)
-            })
-            .try_reduce(empty, |mut a, b| {
-                for (into, from) in a.iter_mut().zip(b) {
-                    *into |= from;
-                }
-                Ok(a)
-            })?;
-        let members = Arc::new(members);
-        *built = Some(Arc::clone(&members));
-        Ok(members)
     }
 
     /// Reads and checks the block of the concept at `index` from the store, uncached.
@@ -971,23 +928,21 @@ impl<'a> Selection<'a> {
     }
 
     /// The number of patients in `cohort` outside the selection's members: the selected
-    /// partitions' patient sets, and the overlap patients with a row tagged with a selected
-    /// partition. Every cohort of this selection should give 0.
+    /// partitions' patient sets, and the overlap patients the index records as having a row
+    /// tagged with a selected partition. For a selection of every partition, every overlap
+    /// patient is a member, since an overlap patient is one with a row. Every cohort of this
+    /// selection should give 0.
     ///
     /// The cost follows the cohort rather than the members where that is cheaper. A cohort
     /// that is the members' set itself passes at once. A narrow selection's cohort much
     /// smaller than its members is walked through the route table, which settles every
     /// patient outside the overlap set with one lookup; the patients it does not settle are
-    /// looked up in the patient sets and then the tagged rows. Any other cohort is compared
+    /// looked up in the patient sets and then the tagged sets. Any other cohort is compared
     /// with the members as bitmaps.
-    ///
-    /// # Errors
-    /// [`QueryError::Block`] when a tagged block cannot be read to find the overlap
-    /// patients' members.
-    pub(crate) fn check_members(&self, cohort: &RoaringBitmap) -> Result<u64> {
+    pub(crate) fn check_members(&self, cohort: &RoaringBitmap) -> u64 {
         let patients = self.member_patients();
         if std::ptr::eq(cohort, patients) {
-            return Ok(0);
+            return 0;
         }
         let mut outside = 0;
         let walk =
@@ -1005,27 +960,24 @@ impl<'a> Selection<'a> {
                 });
             RoaringBitmap::from_sorted_iter(unsettled).unwrap_or_default()
         } else if cohort.difference_len(patients) == 0 {
-            return Ok(0);
+            return 0;
         } else {
             cohort - patients
         };
         if unsettled.is_empty() {
-            return Ok(outside);
+            return outside;
         }
         let overlap = &self.set.overlap;
         outside += unsettled.difference_len(overlap);
+        if self.full {
+            return outside;
+        }
         let candidates = &unsettled & overlap;
         if candidates.is_empty() {
-            return Ok(outside);
+            return outside;
         }
-        let tagged = self.set.tagged_members()?;
-        let reached: RoaringBitmap = tagged
-            .iter()
-            .zip(&self.mask)
-            .filter(|(_, selected)| **selected)
-            .map(|(members, _)| members)
-            .union();
-        Ok(outside + candidates.difference_len(&reached))
+        let tagged: RoaringBitmap = self.members.iter().map(|p| &p.tagged).union();
+        outside + candidates.difference_len(&tagged)
     }
 
     /// The type of the concept at exactly `path`, or `None` when no selected partition holds

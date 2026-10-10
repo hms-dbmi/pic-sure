@@ -79,10 +79,9 @@ fn within_selection(selection: &Selection<'_>, found: Found) -> RoaringBitmap {
 /// logging how many without naming any.
 ///
 /// # Errors
-/// [`QueryError::CohortOutsideSelection`] for such a cohort, and [`QueryError::Block`]
-/// when the check cannot read a tagged block it needs.
+/// [`QueryError::CohortOutsideSelection`] for such a cohort.
 fn guard(selection: &Selection<'_>, cohort: &RoaringBitmap) -> Result<()> {
-    let outside = selection.check_members(cohort)?;
+    let outside = selection.check_members(cohort);
     if outside == 0 {
         return Ok(());
     }
