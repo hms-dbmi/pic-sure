@@ -326,3 +326,67 @@ fn block_range(
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hpds_format::{AlignedBuf, NO_TIMESTAMP, NumericObservation, encode_numeric_payload};
+
+    /// A numeric block holding one observation for each of `patients`.
+    fn block_of(patients: &[u32]) -> Arc<Block> {
+        let observations: Vec<NumericObservation> = patients
+            .iter()
+            .map(|&patient| NumericObservation {
+                patient,
+                value: f64::from(patient),
+                timestamp: NO_TIMESTAMP,
+            })
+            .collect();
+        let payload = encode_numeric_payload(&observations).unwrap();
+        Arc::new(Block::decode(AlignedBuf::copy_from(&payload)).unwrap())
+    }
+
+    /// `count` blocks of a few patients each, spread over a range wider than one roaring
+    /// container, from a fixed linear congruential sequence; some blocks are empty.
+    fn synthetic_blocks(count: usize) -> Vec<Arc<Block>> {
+        let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = move || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 33) as u32
+        };
+        (0..count)
+            .map(|_| {
+                let len = next() % 6;
+                let patients: Vec<u32> = (0..len).map(|_| next() % 300_000).collect();
+                block_of(&patients)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_parallel_union_equals_the_serial_union() {
+        let blocks = synthetic_blocks(1_000);
+        assert!(blocks.len() >= PARALLEL_UNION_MIN_BLOCKS);
+        let serial = union_of_blocks(&blocks, 1);
+        let expected: RoaringBitmap = blocks
+            .iter()
+            .flat_map(|block| block.all_patients().iter())
+            .collect();
+        assert_eq!(serial, expected);
+        assert!(serial.len() > 1_000);
+        for chunks in [2, 3, 7, 64] {
+            assert_eq!(union_of_blocks(&blocks, chunks), serial, "{chunks} chunks");
+        }
+        let odd = &blocks[..997];
+        let odd_serial = union_of_blocks(odd, 1);
+        for chunks in [2, 3, 7, 64] {
+            assert_eq!(
+                union_of_blocks(odd, chunks),
+                odd_serial,
+                "{chunks} chunks of 997"
+            );
+        }
+    }
+}
