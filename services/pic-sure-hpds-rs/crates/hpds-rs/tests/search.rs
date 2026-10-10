@@ -478,6 +478,22 @@ async fn stored_answers_are_compressed_once_and_reused() {
 }
 
 #[tokio::test]
+async fn search_gzip_off_answers_every_request_as_without_accept_encoding() {
+    let f = common::fixture_with(|c| c.search_gzip = false);
+    for (body, term) in LARGE_TERMS {
+        for accept in [None, Some("gzip"), Some("*")] {
+            let response = search_raw(&f.app, body, accept).await;
+            assert_eq!(
+                header_names(&response),
+                ["content-length", "content-type"],
+                "{body} {accept:?}"
+            );
+            assert_eq!(response.body().as_ref(), reference_body(&f, term));
+        }
+    }
+}
+
+#[tokio::test]
 async fn small_answers_are_never_compressed() {
     let f = fixture();
     let body = json_body("no-such-concept");

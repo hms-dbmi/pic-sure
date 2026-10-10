@@ -32,6 +32,7 @@ struct Shared {
     search_index: Arc<SearchIndex>,
     sync_timeout: Duration,
     metrics: Option<Metrics>,
+    search_gzip: bool,
 }
 
 impl AppState {
@@ -54,6 +55,7 @@ impl AppState {
                 search_index,
                 sync_timeout: config.sync_timeout,
                 metrics: config.metrics.then(Metrics::default),
+                search_gzip: config.search_gzip,
                 engine_slots,
             }),
         })
@@ -109,6 +111,12 @@ impl AppState {
     /// The HTTP counters, or `None` when metrics are off.
     pub fn metrics(&self) -> Option<&Metrics> {
         self.inner.metrics.as_ref()
+    }
+
+    /// True when `/search` compresses answers for requests that accept gzip
+    /// (`HPDS_SEARCH_GZIP`).
+    pub fn search_gzip(&self) -> bool {
+        self.inner.search_gzip
     }
 
     /// How long a sync query may run before the request is answered 503.

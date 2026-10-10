@@ -226,11 +226,12 @@ impl SearchIndex {
 /// iteration order changes with every JVM start, the matches are collected into a `HashMap`,
 /// and the category values are a `HashSet`.
 ///
-/// A request whose `Accept-Encoding` accepts gzip ([`accepts_gzip`]) gets a body of at least
-/// [`MIN_GZIP_BYTES`] gzipped, with `Content-Encoding: gzip`. A request that sends
-/// `Accept-Encoding` gets `Vary: Accept-Encoding` on any body of that size, compressed or
-/// not. A request without `Accept-Encoding` gets the same bytes and headers as before
-/// compression existed.
+/// While `HPDS_SEARCH_GZIP` is on (the default), a request whose `Accept-Encoding` accepts
+/// gzip ([`accepts_gzip`]) gets a body of at least [`MIN_GZIP_BYTES`] gzipped, with
+/// `Content-Encoding: gzip`, and a request that sends `Accept-Encoding` gets
+/// `Vary: Accept-Encoding` on any body of that size, compressed or not. A request without
+/// `Accept-Encoding`, or any request while the setting is off, gets the same bytes and
+/// headers as before compression existed.
 pub async fn search(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -243,8 +244,9 @@ pub async fn search(
         None | Some(Value::Null) => None,
         Some(term) => Some(java_to_string(&term)),
     };
-    let negotiated = headers.contains_key(axum::http::header::ACCEPT_ENCODING);
-    let gzip_accepted = accepts_gzip(&headers);
+    let negotiated =
+        state.search_gzip() && headers.contains_key(axum::http::header::ACCEPT_ENCODING);
+    let gzip_accepted = negotiated && accepts_gzip(&headers);
     let answer = tokio::task::spawn_blocking(move || index.answer(term, gzip_accepted))
         .await
         .map_err(|error| {

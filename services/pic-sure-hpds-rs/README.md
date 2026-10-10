@@ -73,6 +73,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `HPDS_BLOCKING_THREADS` | `64`, or the engine concurrency plus 16 when that is larger | Cap on tokio's blocking threads. Startup fails unless `HPDS_ENGINE_CONCURRENCY` is below it, so file reads keep some blocking threads. |
 | `RUST_LOG` | `info` | Log filter, in `tracing` `EnvFilter` syntax. The `hpds_rs::access` target logs one line per request at info with method, path, status and latency. For benchmarks use `RUST_LOG=info,hpds_rs::access=warn` to silence it. |
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
+| `HPDS_SEARCH_GZIP` | `on` | `off` never compresses `POST /search`, whatever the request's `Accept-Encoding` (see [Search compression](#search-compression)): every answer then has the bytes and headers it had before compression existed. Read like `HPDS_METRICS`. |
 | `HPDS_METRICS` | `off` | `on` serves `GET /metrics` in the Prometheus text format and counts requests (see [Metrics](#metrics)). Off, `/metrics` is a 404 like any unknown path. `true`, `false`, `1`, `0`, `yes` and `no` are also read; anything else fails startup. |
 
 A query over a limit is a 400 naming the setting, before any block is read. Checks run in
@@ -204,10 +205,10 @@ An opt-in cache of sync answers, off unless `HPDS_RESULT_CACHE_BYTES` is above 0
 
 ### Search compression
 
-`POST /search` answers gzip only when the request's `Accept-Encoding` accepts it, following RFC
-9110: `gzip` or `x-gzip` with a qvalue above 0, or `*` when gzip is not named; names compare
-case-insensitively, `gzip;q=0` refuses it whatever `*` says, and an unparsable qvalue counts
-as 0. Such a request gets a body of at least 1,400 bytes as `Content-Encoding: gzip`, with
+While `HPDS_SEARCH_GZIP` is on (the default), `POST /search` answers gzip only when the
+request's `Accept-Encoding` accepts it, following RFC 9110: `gzip` or `x-gzip` with a qvalue
+above 0, or `*` when gzip is not named; names compare case-insensitively, `gzip;q=0` refuses
+it whatever `*` says, and an unparsable qvalue counts as 0. Such a request gets a body of at least 1,400 bytes as `Content-Encoding: gzip`, with
 `Content-Length` of the compressed bytes, which decompress to exactly the uncompressed body.
 Any request that sends `Accept-Encoding` gets `Vary: Accept-Encoding` on a body of that size,
 compressed or not. A shorter body is never compressed: the gzip stream's setup cost buys
@@ -223,7 +224,9 @@ other route compresses.
 - **The query service asks.** The harmonization query service talks to HPDS through Apache
   HttpClient 5, which sends `Accept-Encoding: gzip, deflate, x-gzip` on every request and
   decompresses the body, so its `/search` calls get gzip. Its decoded `SearchResults` are the
-  same.
+  same. Decoding costs it about 1 ms per MB of JSON; on a link faster than a few Gbit/s
+  between the two services, compressing and decoding take longer than sending the body
+  plain, and `HPDS_SEARCH_GZIP=off` turns compression off.
 - **Why not query answers or downloads.** HttpClient 5 leaves `Content-Encoding` and the
   compressed `Content-Length` on the response it decompresses, and the query service returns
   HPDS's `/query/{id}/result` response to its caller headers and all, so a compressed download
