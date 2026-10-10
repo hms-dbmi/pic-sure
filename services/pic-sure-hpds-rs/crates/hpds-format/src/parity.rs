@@ -159,7 +159,8 @@ impl StackText {
             bytes: [0; 32],
             len: 0,
         };
-        let _ = text.write_fmt(args);
+        let written = text.write_fmt(args);
+        debug_assert!(written.is_ok(), "a rendering overflowed the stack buffer");
         text
     }
 
@@ -198,6 +199,7 @@ impl Scientific {
             exponent: 0,
         };
         for &b in rendered[..split].iter().filter(|&&b| b != b'.') {
+            debug_assert!(parsed.len < parsed.digits.len(), "more than 24 digits");
             if let Some(slot) = parsed.digits.get_mut(parsed.len) {
                 *slot = b;
                 parsed.len += 1;
