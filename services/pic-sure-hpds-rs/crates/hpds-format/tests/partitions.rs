@@ -318,11 +318,9 @@ fn an_index_whose_partitions_do_not_fit_is_refused() {
     let patients = bitmap(&[1, 2, 3, 4, 5]);
     let mut unordered = table();
     unordered.partitions.swap(0, 1);
-    let mut stray_overlap = table();
-    stray_overlap.overlap.insert(9);
     let mut short_union = table();
     short_union.partitions[1].patients.remove(4);
-    for bad in [unordered, stray_overlap, short_union] {
+    for bad in [unordered, short_union] {
         assert!(PhenoIndex::with_partitions(header(false), patients.clone(), bad, vec![]).is_err());
     }
     let concepts: [ConceptMeta; 4] = [
@@ -492,4 +490,57 @@ fn format_1_stores_are_read_only_through_the_legacy_reader() {
         Err(FormatError::UnsupportedVersion(2))
     ));
     let _ = Membership::unpartitioned();
+}
+
+#[test]
+fn a_patient_in_no_partition_set_is_an_overlap_patient_read_by_tag() {
+    let mut gap = table();
+    gap.overlap.insert(9);
+    let holders = vec![holder(0, 2, 2), holder(1, 1, 1)];
+    let index = PhenoIndex::with_partitions(
+        header(false),
+        bitmap(&[1, 2, 3, 4, 5]),
+        gap.clone(),
+        vec![concept("\\n\\", 3, holders.clone(), true)],
+    )
+    .unwrap();
+    let decoded = PhenoIndex::decode(
+        &index.encode(&Protection::Plain).unwrap(),
+        &Protection::Plain,
+    )
+    .unwrap();
+    assert_eq!(decoded, index);
+    assert!(!decoded.patients().contains(9));
+    let membership = decoded.membership();
+    assert_eq!(membership.partition_of(9), None);
+    let rows = [numeric(9, 1.0), numeric(1, 2.0), numeric(9, 3.0)];
+    let block = decode(
+        encode_numeric_block(
+            &rows,
+            &BlockPartitioning {
+                holders: &holders,
+                row_partitions: Some(&[0, 0, 1]),
+                partition_count: 2,
+            },
+        )
+        .unwrap(),
+    );
+    block.check_membership(&holders, true, &membership).unwrap();
+    let untagged_holders = [holder(0, 3, 2)];
+    let untagged = decode(
+        encode_numeric_block(
+            &rows,
+            &BlockPartitioning {
+                holders: &untagged_holders,
+                row_partitions: None,
+                partition_count: 2,
+            },
+        )
+        .unwrap(),
+    );
+    assert!(
+        untagged
+            .check_membership(&untagged_holders, false, &membership)
+            .is_err()
+    );
 }

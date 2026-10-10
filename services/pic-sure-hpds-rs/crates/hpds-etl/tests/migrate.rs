@@ -801,3 +801,44 @@ fn a_partition_with_observed_patients_missing_from_its_list_is_not_recorded_as_i
     assert_eq!(report.store.overlap_observations, 2);
     store.read_block(store.index.get("\\a\\").unwrap()).unwrap();
 }
+
+#[test]
+fn a_patient_in_no_exported_patient_list_is_served_from_the_overlap_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let export = dir.path().join("export");
+    let partitions = [
+        ("complete", vec![(1, 1.0, None), (2, 2.0, None)], "2\n"),
+        ("short", vec![(3, 3.0, None)], "3\n"),
+    ];
+    std::fs::create_dir(&export).unwrap();
+    for (name, observations, patients) in partitions {
+        let entries = [Entry::numeric("\\a\\", observations)];
+        let written = write_export(&dir.path().join(name), &encode(&entries), patients);
+        std::fs::rename(written, export.join(name)).unwrap();
+    }
+    let out = dir.path().join("store");
+    let report = migrate_partitioned(&options(
+        export,
+        out.clone(),
+        KeySource::File(key_file(dir.path())),
+    ))
+    .unwrap();
+    assert_eq!(report.store.overlap_patients, 1);
+    assert_eq!(report.store.patients, 2);
+    let store = OpenStore::open(&out, Protection::Encrypted(crypto_key())).unwrap();
+    assert_eq!(
+        store.index.patients().iter().collect::<Vec<_>>(),
+        [2, 3],
+        "the store's patients stay the union of the exported lists"
+    );
+    let table = store.index.partition_table();
+    assert_eq!(table.overlap.iter().collect::<Vec<_>>(), [1]);
+    assert!(!table.partitions[0].patients_indexed);
+    let concept = store.index.get("\\a\\").unwrap();
+    assert!(concept.tagged);
+    let block = store.read_block(concept).unwrap();
+    assert_eq!(block.all_patients().iter().collect::<Vec<_>>(), [1, 2, 3]);
+    let mut dumped = Vec::new();
+    hpds_etl::dump::dump(&store, &mut dumped).unwrap();
+    assert_eq!(String::from_utf8(dumped).unwrap().lines().count(), 4);
+}

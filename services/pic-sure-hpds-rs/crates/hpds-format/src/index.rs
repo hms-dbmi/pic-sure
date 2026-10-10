@@ -293,7 +293,9 @@ pub struct PartitionTable {
     pub partitions: Vec<IndexPartition>,
     /// The patients whose partition the patient alone does not decide: those in two or more
     /// partitions' sets, and those with a row in a partition whose set lacks them. Their
-    /// rows carry partition tags.
+    /// rows carry partition tags. A patient with rows but in no partition's set (a migrated
+    /// partition whose exported patient list misses them) is here and not in the store's
+    /// patients, which stay the union of the partition sets, as Java's patient ids do.
     pub overlap: RoaringBitmap,
 }
 
@@ -329,9 +331,10 @@ impl PartitionTable {
     }
 
     /// Checks the table against the store's `patients`: at most [`MAX_PARTITIONS`]
-    /// partitions, names strictly ascending in Java string order, `overlap` a subset of
-    /// `patients`, and, for a partitioned store, the partition sets unioning to `patients`;
-    /// an unpartitioned store has an empty overlap set.
+    /// partitions, names strictly ascending in Java string order, and, for a partitioned
+    /// store, the partition sets unioning to `patients`; an unpartitioned store has an empty
+    /// overlap set. The overlap set may hold patients outside `patients`: those with rows in
+    /// a partition but in no partition's set.
     fn check(&self, patients: &RoaringBitmap) -> Result<()> {
         let what = "partition table";
         if self.partitions.len() > MAX_PARTITIONS {
@@ -351,12 +354,6 @@ impl PartitionTable {
             return Err(FormatError::corrupt(
                 what,
                 format!("{:?} is not sorted after {:?}", w[1].name, w[0].name),
-            ));
-        }
-        if !self.overlap.is_subset(patients) {
-            return Err(FormatError::corrupt(
-                what,
-                "the overlap set holds a patient the store does not",
             ));
         }
         if self.partitions.is_empty() {

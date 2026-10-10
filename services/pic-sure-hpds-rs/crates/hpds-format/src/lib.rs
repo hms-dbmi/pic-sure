@@ -84,9 +84,9 @@
 //! ```
 //!
 //! The partition sets union to the store's patients. `O` holds every patient in two or
-//! more partition sets, or with a row in a partition whose set lacks it; every other
-//! patient with a row is in exactly one set, which decides the partition of all their rows
-//! ([`Membership`]). A block holding a row of a patient in `O` is tagged: it records the
+//! more partition sets, or with a row in a partition whose set lacks it (possibly a patient
+//! in no set, and so outside the store's patients); every other patient with a row is in
+//! exactly one set, which decides the partition of all their rows ([`Membership`]). A block holding a row of a patient in `O` is tagged: it records the
 //! partition of every row.
 //!
 //! # `pheno.blocks`
