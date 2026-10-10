@@ -4,7 +4,7 @@
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use hpds_format::{
     BLOCKS_FILE_NAME, Block, BlockCodec, BlockLocation, BlocksReader, ConceptView, INDEX_FILE_NAME,
@@ -22,18 +22,74 @@ pub const KEY_FILE_NAME: &str = "encryption_key";
 /// Default capacity of the decoded block cache: 4 GiB.
 pub const DEFAULT_CACHE_BYTES: u64 = 4 << 30;
 
-/// Decoded blocks keyed by the owning store's slot and the concept's position in the
-/// partition set's shared concept table, so a lookup never allocates.
-pub(crate) type BlockCache = Cache<(u32, u32), Arc<Block>>;
+/// Decoded blocks, one entry per concept and group of stores: the key is the group
+/// ([`PARTITIONS_GROUP`] or [`COMBINED_GROUP`]) and the concept's position in the
+/// partition set's shared concept table, so a lookup never allocates, and a read of one
+/// concept in many partitions costs one lookup.
+pub(crate) type BlockCache = Cache<(u32, u32), Arc<ConceptBlocks>>;
 
-/// A block cache bounded by the summed [`Block::heap_size`] of its entries.
+/// The cache group holding a concept's blocks in the partitions, one slot per partition
+/// holding it, in slot order.
+pub(crate) const PARTITIONS_GROUP: u32 = 0;
+
+/// The cache group holding a concept's one block in the combined store.
+pub(crate) const COMBINED_GROUP: u32 = 1;
+
+/// Bytes an entry is weighed at beyond its blocks, for its slots.
+const ENTRY_OVERHEAD: usize = 64;
+
+/// A block cache bounded by the summed [`Block::heap_size`] of the blocks its entries hold.
 pub(crate) fn block_cache(cache_bytes: u64) -> BlockCache {
     Cache::builder()
         .max_capacity(cache_bytes)
-        .weigher(|_: &(u32, u32), block: &Arc<Block>| {
-            u32::try_from(block.heap_size()).unwrap_or(u32::MAX)
+        .weigher(|_: &(u32, u32), blocks: &Arc<ConceptBlocks>| {
+            u32::try_from(blocks.weight()).unwrap_or(u32::MAX)
         })
         .build()
+}
+
+/// One concept's decoded blocks in one group of stores: a slot per store holding the
+/// concept, each filled when its block is first read. The cache weighs an entry when it is
+/// inserted, so a reader that fills slots inserts the entry again to have it reweighed.
+#[derive(Debug)]
+pub(crate) struct ConceptBlocks {
+    slots: Box<[OnceLock<Arc<Block>>]>,
+}
+
+impl ConceptBlocks {
+    /// An entry of `len` empty slots.
+    pub(crate) fn new(len: usize) -> Self {
+        ConceptBlocks {
+            slots: (0..len).map(|_| OnceLock::new()).collect(),
+        }
+    }
+
+    /// The block in slot `slot`, when it has been read.
+    pub(crate) fn get(&self, slot: usize) -> Option<&Arc<Block>> {
+        self.slots.get(slot).and_then(OnceLock::get)
+    }
+
+    /// Fills slot `slot` with `block`, or keeps the block another reader filled it with
+    /// first, and returns the block the slot holds.
+    pub(crate) fn fill(&self, slot: usize, block: Arc<Block>) -> Arc<Block> {
+        Arc::clone(self.slots[slot].get_or_init(|| block))
+    }
+
+    /// The number of filled slots.
+    pub(crate) fn filled(&self) -> usize {
+        self.slots.iter().filter(|s| s.get().is_some()).count()
+    }
+
+    /// The weight the cache bounds: the summed [`Block::heap_size`] of the filled slots,
+    /// and a small overhead.
+    fn weight(&self) -> usize {
+        self.slots
+            .iter()
+            .filter_map(OnceLock::get)
+            .fold(ENTRY_OVERHEAD, |sum, block| {
+                sum.saturating_add(block.heap_size())
+            })
+    }
 }
 
 /// How the partition stores are opened.
@@ -140,23 +196,15 @@ impl StoreFiles {
         &self.index
     }
 
-    /// The open store, with blocks cached in `cache` under `slot`, which must be unique
-    /// among the stores sharing that cache, and `entries` its concepts' entries in index
-    /// order. The index body is dropped; only its patient set is kept.
-    pub(crate) fn into_store(
-        self,
-        cache: BlockCache,
-        slot: u32,
-        entries: Vec<ConceptEntry>,
-    ) -> Store {
+    /// The open store, with `entries` its concepts' entries in index order. The index body
+    /// is dropped; only its patient set is kept.
+    pub(crate) fn into_store(self, entries: Vec<ConceptEntry>) -> Store {
         Store {
             dir: self.dir,
             entries,
             patients: self.index.into_patients(),
             reader: self.reader,
             codec: self.codec,
-            cache,
-            slot,
         }
     }
 }
@@ -174,8 +222,6 @@ pub(crate) struct Store {
     patients: RoaringBitmap,
     reader: BlocksReader,
     codec: BlockCodec,
-    cache: BlockCache,
-    slot: u32,
 }
 
 impl std::fmt::Debug for Store {
@@ -199,24 +245,18 @@ impl Store {
         self.entries[position as usize]
     }
 
-    /// The decoded block of the concept at `position` in this store's index, whose path is
-    /// `path`, cached under the concept's position `concept` in the shared table, from the
-    /// cache or loaded from disk. Concurrent calls for the same uncached block load it
-    /// once; the others wait for that load. Blocking.
+    /// Reads and decodes the block of the concept at `position` in this store's index,
+    /// whose path is `path`. Uncached: the caller caches it. Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when the block cannot be read, authenticated or decoded.
-    pub(crate) fn block(&self, concept: u32, position: u32, path: &str) -> Result<Arc<Block>> {
+    pub(crate) fn read_block(&self, position: u32, path: &str) -> Result<Block> {
         let entry = self.entry(position);
-        self.cache
-            .try_get_with((self.slot, concept), || {
-                self.reader
-                    .read_block_at(&self.codec, path, entry.location, entry.max_payload_len)
-                    .map(Arc::new)
-            })
+        self.reader
+            .read_block_at(&self.codec, path, entry.location, entry.max_payload_len)
             .map_err(|source| QueryError::Block {
                 concept_path: path.to_owned(),
-                source,
+                source: Arc::new(source),
             })
     }
 }

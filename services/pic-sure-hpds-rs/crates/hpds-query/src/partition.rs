@@ -28,8 +28,8 @@ use serde_json::Value;
 use crate::error::{QueryError, Result};
 use crate::model::Query;
 use crate::store::{
-    BlockCache, ConceptEntry, KEY_FILE_NAME, Store, StoreFiles, StoreOptions, block_cache,
-    read_store_id,
+    BlockCache, COMBINED_GROUP, ConceptBlocks, ConceptEntry, KEY_FILE_NAME, PARTITIONS_GROUP,
+    Store, StoreFiles, StoreOptions, block_cache, read_store_id,
 };
 use crate::validate::ConceptLookup;
 
@@ -135,8 +135,7 @@ impl Partition {
 /// One store's copy of one concept: the store's slot (a partition's position in
 /// [`PartitionSet`] order, or one past the last partition for the combined store) and the
 /// concept's position in that store's index, where the store keeps its
-/// [`ConceptEntry`]. With the concept's position in the shared concept table, the slot is
-/// the block's cache key.
+/// [`ConceptEntry`].
 #[derive(Debug, Clone, Copy)]
 struct Holder {
     slot: u32,
@@ -478,7 +477,7 @@ impl PartitionSet {
                 let entries = merger.add(slot, name, &files)?;
                 partitions.push(Partition {
                     name: name.clone(),
-                    store: files.into_store(cache.clone(), slot, entries),
+                    store: files.into_store(entries),
                 });
             }
         }
@@ -558,7 +557,7 @@ impl PartitionSet {
                 ));
             }
         };
-        let slot = u32::try_from(self.partitions.len())
+        u32::try_from(self.partitions.len())
             .map_err(|_| open_error(&self.dir, "too many partitions"))?;
         let files = StoreFiles::open(&combined_dir, protection)?;
         let opened = files.index().store_id().to_string();
@@ -573,7 +572,7 @@ impl PartitionSet {
             ));
         }
         let entries = self.check_combined(&files)?;
-        Ok(Some(files.into_store(self.cache.clone(), slot, entries)))
+        Ok(Some(files.into_store(entries)))
     }
 
     /// Refuses a combined store that does not hold exactly the partitions' data: the merged
@@ -820,11 +819,14 @@ impl PartitionSet {
         Ok(())
     }
 
-    /// Number of cached blocks across all partitions, after applying the cache's pending
-    /// inserts and evictions.
+    /// Number of cached blocks across all partitions and the combined store, after
+    /// applying the cache's pending inserts and evictions.
     pub fn cached_block_count(&self) -> u64 {
         self.cache.run_pending_tasks();
-        self.cache.entry_count()
+        self.cache
+            .iter()
+            .map(|(_, blocks)| blocks.filled() as u64)
+            .sum()
     }
 
     /// Summed weight in bytes of the cached blocks across all partitions, after applying
@@ -939,11 +941,10 @@ impl<'a> Selection<'a> {
     }
 
     /// The block of `path` in each selected partition that holds the concept, in partition
-    /// name order. Only the partitions holding the concept are visited. When every block
-    /// is cached they are returned without spawning work; otherwise all of them load on the
-    /// rayon pool, where the cached ones return at once. A selection routed to the combined
-    /// store returns the one combined block, whose rows are those blocks' rows merged.
-    /// Blocking.
+    /// name order. Only the partitions holding the concept are visited, through one cache
+    /// lookup for the concept whatever the number of partitions. Blocks not yet cached load
+    /// on the rayon pool. A selection routed to the combined store returns the one combined
+    /// block, whose rows are those blocks' rows merged. Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be loaded.
@@ -952,14 +953,12 @@ impl<'a> Selection<'a> {
             return Ok(Vec::new());
         };
         if let Some(slot) = self.combined_slot() {
-            let holder = Holder {
-                slot,
-                position: index as u32,
-            };
-            return self.load(std::iter::once((index, holder)), 1);
+            let request = BlockRequest::combined(slot, index);
+            return self.load(COMBINED_GROUP, std::iter::once(request), 1);
         }
         self.load(
-            self.selected_holders(index).map(|h| (index, h)),
+            PARTITIONS_GROUP,
+            self.selected_requests(index),
             self.set.holders_of(index).len(),
         )
     }
@@ -975,26 +974,20 @@ impl<'a> Selection<'a> {
         let range = self.set.prefix_range(prefix);
         if let Some(slot) = self.combined_slot() {
             let capacity = range.len();
-            let holders = range
-                .map(|index| {
-                    let holder = Holder {
-                        slot,
-                        position: index as u32,
-                    };
-                    (index, holder)
-                })
-                .filter(|&(_, h)| self.set.entry(h).observation_count > 0);
-            return self.load(holders, capacity);
+            let requests = range
+                .map(|index| BlockRequest::combined(slot, index))
+                .filter(|r| self.set.entry(r.holder).observation_count > 0);
+            return self.load(COMBINED_GROUP, requests, capacity);
         }
         let capacity = if range.is_empty() {
             0
         } else {
             self.set.holder_ends[range.end - 1] as usize - self.set.holders_start(range.start)
         };
-        let holders = range
-            .flat_map(|index| self.selected_holders(index).map(move |h| (index, h)))
-            .filter(|&(_, h)| self.set.entry(h).observation_count > 0);
-        self.load(holders, capacity)
+        let requests = range
+            .flat_map(|index| self.selected_requests(index))
+            .filter(|r| self.set.entry(r.holder).observation_count > 0);
+        self.load(PARTITIONS_GROUP, requests, capacity)
     }
 
     /// The number of concepts whose path starts with `prefix` that a selected partition
@@ -1005,41 +998,140 @@ impl<'a> Selection<'a> {
             return range.len().min(limit);
         }
         range
-            .filter(|&index| self.selected_holders(index).next().is_some())
+            .filter(|&index| self.selected_requests(index).next().is_some())
             .take(limit)
             .count()
     }
 
-    /// The blocks at `holders`, each a concept's position in the shared concept table and
-    /// one store's copy of it, in order. Reads the shared cache first, and on the first
-    /// miss loads every holder on the rayon pool instead.
+    /// The requests for the blocks of the concept at dictionary position `index` in the
+    /// selected partitions holding it, in slot order.
+    fn selected_requests(&self, index: usize) -> impl Iterator<Item = BlockRequest> + Clone + '_ {
+        self.set
+            .holders_of(index)
+            .iter()
+            .enumerate()
+            .filter(|(_, h)| self.mask[h.slot as usize])
+            .map(move |(slot, &holder)| BlockRequest {
+                index,
+                slot,
+                holder,
+            })
+    }
+
+    /// The number of slots of the cache entry of the concept at `index` in `group`.
+    fn entry_len(&self, group: u32, index: usize) -> usize {
+        if group == COMBINED_GROUP {
+            1
+        } else {
+            self.set.holders_of(index).len()
+        }
+    }
+
+    /// The blocks `requests` name, in order, from the cache entries of `group`. Looks each
+    /// concept up once, and on the first block not cached hands over to
+    /// [`Selection::load_missing`].
     fn load(
         &self,
-        holders: impl Iterator<Item = (usize, Holder)> + Clone,
+        group: u32,
+        requests: impl Iterator<Item = BlockRequest> + Clone,
         capacity: usize,
     ) -> Result<Vec<Arc<Block>>> {
         let mut blocks = Vec::with_capacity(capacity);
-        for (index, holder) in holders.clone() {
-            match self.set.cache.get(&(holder.slot, index as u32)) {
-                Some(block) => blocks.push(block),
-                None => return self.load_all(holders),
+        let mut current: Option<(usize, Arc<ConceptBlocks>)> = None;
+        for request in requests.clone() {
+            let entry = match current {
+                Some((index, ref entry)) if index == request.index => entry,
+                _ => match self.set.cache.get(&(group, request.index as u32)) {
+                    Some(entry) => &current.insert((request.index, entry)).1,
+                    None => return self.load_missing(group, requests, capacity),
+                },
+            };
+            match entry.get(request.slot) {
+                Some(block) => blocks.push(Arc::clone(block)),
+                None => return self.load_missing(group, requests, capacity),
             }
         }
         Ok(blocks)
     }
 
-    fn load_all(&self, holders: impl Iterator<Item = (usize, Holder)>) -> Result<Vec<Arc<Block>>> {
-        let holders: Vec<(usize, Holder)> = holders.collect();
-        holders
+    /// [`Selection::load`] when some block is not cached: creates the missing cache
+    /// entries, loads every missing block on the rayon pool, and inserts each entry it
+    /// filled again so the cache weighs its new blocks. Two queries missing the same block
+    /// at once may both read it; the first to fill the slot wins.
+    fn load_missing(
+        &self,
+        group: u32,
+        requests: impl Iterator<Item = BlockRequest>,
+        capacity: usize,
+    ) -> Result<Vec<Arc<Block>>> {
+        let mut blocks: Vec<Option<Arc<Block>>> = Vec::with_capacity(capacity);
+        let mut missing: Vec<(usize, BlockRequest, Arc<ConceptBlocks>)> = Vec::new();
+        let mut current: Option<(usize, Arc<ConceptBlocks>)> = None;
+        for request in requests {
+            let entry = match current {
+                Some((index, ref entry)) if index == request.index => entry,
+                _ => {
+                    let len = self.entry_len(group, request.index);
+                    let entry = self.set.cache.get_with((group, request.index as u32), || {
+                        Arc::new(ConceptBlocks::new(len))
+                    });
+                    &current.insert((request.index, entry)).1
+                }
+            };
+            match entry.get(request.slot) {
+                Some(block) => blocks.push(Some(Arc::clone(block))),
+                None => {
+                    missing.push((blocks.len(), request, Arc::clone(entry)));
+                    blocks.push(None);
+                }
+            }
+        }
+        let loaded = missing
             .par_iter()
-            .map(|&(index, h)| {
-                self.set.store_at(h.slot).block(
-                    index as u32,
-                    h.position,
-                    &self.set.dictionary[index].name,
-                )
+            .map(|(_, request, entry)| {
+                let block = self.set.store_at(request.holder.slot).read_block(
+                    request.holder.position,
+                    &self.set.dictionary[request.index].name,
+                )?;
+                Ok(entry.fill(request.slot, Arc::new(block)))
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()?;
+        let mut reweighed = None;
+        for ((position, request, entry), block) in missing.iter().zip(loaded) {
+            blocks[*position] = Some(block);
+            if reweighed != Some(request.index) {
+                self.set
+                    .cache
+                    .insert((group, request.index as u32), Arc::clone(entry));
+                reweighed = Some(request.index);
+            }
+        }
+        Ok(blocks.into_iter().flatten().collect())
+    }
+}
+
+/// One block a selection reads: the concept's position `index` in the shared concept
+/// table, the slot of its cache entry that holds the block, and the store and position it
+/// is read from.
+#[derive(Debug, Clone, Copy)]
+struct BlockRequest {
+    index: usize,
+    slot: usize,
+    holder: Holder,
+}
+
+impl BlockRequest {
+    /// The request for the combined store's block of the concept at `index`, held by the
+    /// store in `store_slot` at the concept's dictionary position.
+    fn combined(store_slot: u32, index: usize) -> Self {
+        BlockRequest {
+            index,
+            slot: 0,
+            holder: Holder {
+                slot: store_slot,
+                position: index as u32,
+            },
+        }
     }
 }
 

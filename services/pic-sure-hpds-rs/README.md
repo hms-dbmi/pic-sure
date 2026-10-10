@@ -45,7 +45,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 |---|---|---|
 | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store per consent partition in its subdirectories, or one unpartitioned store (see [Partition layout](#partition-layout)). Matches the Java service; the all-in-one stack bind-mounts the hpds-rs host directory here. |
 | `SERVER_PORT` | `8080` | Listen port on `0.0.0.0`. |
-| `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. The old name `CACHE_BYTES` is still read, with a warning. |
+| `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's blocks in the partitions (each read on first use), another its block in the combined store, so a read of one concept in many partitions costs one lookup and the partitions' blocks of a concept are evicted together. The old name `CACHE_BYTES` is still read, with a warning. |
 | `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
 | `HPDS_COMBINED_STORE` | `auto` | `auto` answers a query whose consents select every partition from the data directory's combined store, when it has a valid one (see [Combined store](#combined-store)); `off` ignores the combined store and its `.generation` line, so every query reads its partitions as before. |
