@@ -43,17 +43,17 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store per consent partition in its subdirectories, or one unpartitioned store (see [Partition layout](#partition-layout)). Matches the Java service; the all-in-one stack bind-mounts the hpds-rs host directory here. |
+| `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store, partitioned by consent inside its blocks or unpartitioned (see [Partition layout](#partition-layout)). Matches the Java service; the all-in-one stack bind-mounts the hpds-rs host directory here. |
 | `SERVER_PORT` | `8080` | Listen port on `0.0.0.0`. |
-| `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's blocks in the partitions (each read on first use), another its block in the combined store, so a read of one concept in many partitions costs one lookup and the partitions' blocks of a concept are evicted together. The old name `CACHE_BYTES` is still read, with a warning. |
+| `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's whole block, another its rows split by the partitions a narrower selection read (each split on first use), so a read of one concept in many partitions costs one lookup. The old name `CACHE_BYTES` is still read, with a warning. |
 | `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
-| `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts a CROSS_COUNT concept's or a CATEGORICAL_CROSS_COUNT category's cohort patients in each partition a query reads from its own store and sums the counts, when no patient id is in two partitions' patient sets and every partition the query reads carries the `patients-indexed` record in `.generation` (see [Partition layout](#partition-layout)); otherwise, and always with `off`, it unions the partitions' patient sets before counting, as v2 did. The answers are the same either way. |
+| `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts a CROSS_COUNT concept's or a CATEGORICAL_CROSS_COUNT category's cohort patients in each partition a query reads one at a time and sums the counts, when no patient id is in two partitions' patient sets and every partition the query reads carries the `patients-indexed` record in the index (see [Partition layout](#partition-layout)); otherwise, and always with `off`, it unions the partitions' patient sets before counting, as v2 did. The answers are the same either way. |
 | `HPDS_RESULT_CACHE_BYTES` | `0` (off) | Byte bound of the sync result cache, which holds COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers (see [Result cache](#result-cache)). `0` turns it off. A bound above 0 but below 2,864 bytes can store no answer, since one answer may take at most a sixteenth of it; startup logs a warning saying so. |
-| `HPDS_COMBINED_STORE` | `auto` | `auto` answers a query whose consents select every partition from the data directory's combined store, when it has a valid one (see [Combined store](#combined-store)); `off` ignores the combined store and its `.generation` line, so every query reads its partitions as before. |
+| `HPDS_COMBINED_STORE` | `auto` | `auto` answers a query whose consents select every partition of a store with two or more from each concept's whole block (see [Whole blocks](#whole-blocks)); `off` makes every query read its partitions' rows one partition at a time. The answers are the same either way. |
 | `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name (the Rust name wins when both are set). Despite the name it gates `userConsents`, not authorization filters: when true, every query on `/query/sync` and `POST /query` needs at least one non-null `userConsents` value and is otherwise a 400 "User consents are required for this query", and an unpartitioned data directory is refused at startup. When false, a query without consent values reads every partition. `authorizationFilters` are validated on `POST /query` but never applied, in either mode, as on the Java branch. An open (non-auth) backend must run with it false, since the query service sends that backend no consents. |
 | `ID_BATCH_SIZE` | `0` | Java's export switch. `0` ends every DATAFRAME export in ERROR with "exports are disabled (ID_BATCH_SIZE=0)"; any larger value enables exports (the batch size itself does not change the algorithm). PATIENTS is unaffected. |
-| `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds in memory, summed over every selected partition. A wider export ends in ERROR with "export too wide; select fewer concepts". |
+| `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds in memory, summed over the blocks it pins (whole blocks, or the selected partitions' rows). A wider export ends in ERROR with "export too wide; select fewer concepts". |
 | `HPDS_MAX_SELECT_PATHS` | `5000` | Most distinct `select` paths in a query. |
 | `HPDS_MAX_CLAUSE_DEPTH` | `64` | Deepest nesting of phenotypic subqueries. |
 | `HPDS_MAX_CLAUSE_NODES` | `10000` | Most clauses and authorization filters in a query. |
@@ -80,115 +80,73 @@ its consents, then the concepts it touches in the partitions those consents sele
 `POST /query` only) `QueryValidator`.
 
 The key is read from `<HPDS_DATA_DIRECTORY>/encryption_key`. When the data directory cannot be
-opened (no partition, a partition left unmigrated, a `.generation` mismatch, a concept typed
-differently in two partitions, an unpartitioned store while consents are required, a combined
-store that is missing, unlisted or inconsistent) the server still starts, logs the open error,
-health reports DOWN with a reason, and query routes answer 503. The startup log line
+opened (no store, a store of format 1 written by Rust HPDS v1 to v3, a partition left in
+javabin form, a `.generation` mismatch, a block that disagrees with the index, an
+unpartitioned store while consents are required) the server still starts, logs the open
+error, health reports DOWN with a reason, and query routes answer 503. The startup log line
 `store opened` carries `combined_store`: `IN_USE`, `ABSENT` or `OFF`, and
 `partitions_disjoint` and `per_partition_counts`.
 
 ### Partition layout
 
-The service opens `HPDS_DATA_DIRECTORY` as `PartitionedPhenotypicObservationStore` does:
+The service opens the store in `HPDS_DATA_DIRECTORY` (`pheno.index` and `pheno.blocks` in the
+directory itself) as `PartitionedPhenotypicObservationStore` serves its partitions:
 
-- When the directory itself holds `pheno.index`, it is one unpartitioned store, read whatever
-  the consents. It is refused while `HPDS_REQUIRE_AUTHORIZATION_FILTER` is true, as Java
-  refuses an unpartitioned `allObservationsStore.javabin`.
-- Otherwise every immediate subdirectory holding `pheno.index` is a consent partition named
-  after the subdirectory, for example `<dir>/phs000007.c1/`. A query's `userConsents` values
-  select the partitions of the same names; values naming no partition are skipped, so a query
-  whose every consent is unknown counts 0. The rules for which subdirectories count are those
-  of [Consent-partitioned stores](#consent-partitioned-stores); a subdirectory with Java
-  javabins but no `pheno.index` refuses the open rather than dropping that consent group.
-- Every partition shares `<dir>/encryption_key` and one block cache of `HPDS_CACHE_BYTES`.
-- When `<dir>/.generation` exists (the partitioned ETL writes it last), the partitions' store
-  ids must match it exactly, or the open is refused as a load still being published.
-- A concept typed numeric in one partition and categorical in another refuses the open, naming
-  the concept and both partitions.
-- `<dir>/.combined/` is the combined store, never a partition (its name starts with `.`). See
-  [Combined store](#combined-store).
-- The partitions are disjoint when no patient id is in two of them, which the service
-  computes at open from their patient sets (the counts sum to the count of the union); the
-  ETL's report is not trusted for it. A patient set says which patients a partition's
-  blocks hold only when the ETL recorded that every patient with an observation is in it:
-  the `patients-indexed` tag after the partition's store id in `.generation`, on a line
-  holding exactly those two tokens (anything after the tag drops the record). `load` writes
-  it for every partition, since it builds the patient set from the rows. `migrate` keeps
-  the patient list Java exported, which can miss a patient the observations hold (its
-  report counts them in `observed_patients_missing_from_set`), so it tags only partitions
-  where that count is 0. The tag sits on the line of the store id it describes, so it
-  cannot outlive that store: a replaced partition has a new id, and the service refuses
-  the open until `.generation` lists it. When the partitions are disjoint and every
-  partition a query reads from its own store carries the tag, a cross count over two or
-  more of them sums each partition's count of cohort patients instead of counting the
-  union of the partitions' patient sets, which is the same number. With a shared patient,
-  a partition without the tag (a migrated one with missing patients, or any store with no
-  `.generation`), or `HPDS_PER_PARTITION_COUNTS=off`, the union is counted. The startup
-  log's `patients_indexed_partitions` gives the number of tagged partitions. Cohorts are always
-  evaluated by unioning each filter's patients over the partitions first, so a patient in
-  two partitions can match one filter in one and another filter in the other, as in Java.
-- The service holds one concept table for all partitions: each path and category value once,
-  and per partition only an entry per concept (observation count and block location). On the
-  40-partition bench store (20,000 concepts, 129,563 distinct category values) it idles at
-  about 105 MiB.
+- A store whose index records consent partitions is partitioned. A query's `userConsents`
+  values select the partitions of the same names; values naming no partition are skipped,
+  so a query whose every consent is unknown counts 0. A store without partitions is read
+  whatever the consents, and is refused while `HPDS_REQUIRE_AUTHORIZATION_FILTER` is true,
+  as Java refuses an unpartitioned `allObservationsStore.javabin`.
+- Each concept is one block holding every partition's rows, in the order the v2 engine
+  merged partitions: by patient, then partition name in Java string order, then each
+  partition's own order. The index records which partitions hold the concept, with their row
+  and patient counts, and each partition's patient set. A patient in exactly one partition's
+  set decides the partition of all their rows; the patients that do not (in two or more
+  sets, or with a row in a partition whose set lacks them) form the overlap set, and every
+  block holding one of their rows records each row's partition. A block whose partition
+  record disagrees with the index or the patient sets refuses to load (`QueryError::Block`).
+- A store of format 1, written by Rust HPDS v1 to v3, is refused naming
+  `hpds-etl convert` (see [Converting a store of format 1](#converting-a-store-of-format-1)):
+  a format 1 `pheno.index`, or a directory without one but with partition subdirectories
+  holding one or a `.combined` directory. A subdirectory with Java javabins but no
+  `pheno.index`, in a directory without a store, refuses the open naming `hpds-etl migrate`.
+  Beside a store, subdirectories are ignored.
+- When `<dir>/.generation` exists (the ETL writes it last), it must hold exactly the store id
+  of `pheno.index`, or the open is refused as a load still being published.
+- The partitions are disjoint when no patient id is in two of their patient sets, which the
+  service computes at open. A patient set says which patients a partition's rows hold only
+  when the index records `patients-indexed` for it: always for `load`, which builds the set
+  from the rows, and for `migrate` and `convert` only where every patient with a row is in
+  the exported set. When the partitions are disjoint and every partition a query reads one at
+  a time carries the record, a cross count over two or more of them sums each partition's
+  count of cohort patients instead of counting the union of the partitions' patient sets,
+  which is the same number. Otherwise, or with `HPDS_PER_PARTITION_COUNTS=off`, the union is
+  counted. The startup log's `patients_indexed_partitions` gives the number of partitions
+  with the record. Cohorts are always evaluated by unioning each filter's patients over the
+  partitions first, so a patient in two partitions can match one filter in one and another
+  filter in the other, as in Java.
 
-`/search`, validation and health read the merged dictionary of every partition, whatever the
-consents, as Java's `SummaryColumnMeta` map does: category values unioned, the widest width,
-min of mins and max of maxes, and patient counts summed. The combined store never feeds it.
+`/search`, validation and health read the store's dictionary, whatever the consents, merged
+over the partitions as Java's `SummaryColumnMeta` map merges them: category values unioned,
+the widest width, min of mins and max of maxes, and patient counts summed.
 
-### Combined store
+### Whole blocks
 
-A partitioned data directory may hold one more store, `<dir>/.combined/`, that the ETL writes
-with every partition's rows (see [Consent-partitioned stores](#consent-partitioned-stores)).
-Each concept's rows are in the order the engine merges partitions: by patient, then partition
-name in Java string order, then each partition's own order. So a query that selects every
-partition reads one block per concept instead of one per partition, and gets the same bytes.
+A query whose consents select every partition of a store with two or more reads each
+concept's whole block: every partition named (unknown values beside them are skipped as
+ever), or no consent value with `HPDS_REQUIRE_AUTHORIZATION_FILTER` false. Any narrower
+selection, one partition short included, reads each selected partition's rows on their own:
+the block a store of that partition alone would hold, derived from the whole block on first
+use and cached with it. The answers are the same bytes either way.
 
 - **Routing.** The decision is made once per query, in the engine's admission step, after the
-  shape, consent and concept checks. A query reads the combined store only when its consents
-  select every partition: every partition named (unknown values beside them are skipped as
-  ever), or no consent value with `HPDS_REQUIRE_AUTHORIZATION_FILTER` false. Any narrower
-  selection, one partition short included, reads exactly its own partitions, as before. A
-  query with no consent value while consents are required is refused before routing, as
-  before. Each read of a combined block also checks that the selection covers every
-  partition. That check is defensive: a selection cannot change once built, so after the
-  routing decision it cannot fail. It is there so that a later change that builds a
-  narrower selection some other way still cannot reach the combined rows.
-- **What does not change.** `/search`, validation, `ANY_RECORD_OF` expansion, the
-  `HPDS_MAX_QUERY_CONCEPTS` count and health read the partitions' merged dictionary. The
-  combined store's blocks share the one `HPDS_CACHE_BYTES` cache with partition blocks, so a
-  deployment serving both full and narrow selections holds both copies of hot concepts in it.
-- **Checks at open** (with `HPDS_COMBINED_STORE=auto`). The open is refused, and health is
-  DOWN, when:
-  - `.generation` lists a combined store but `.combined/pheno.index` is missing;
-  - `.combined/pheno.index` exists but `.generation` does not list it, or there is no
-    `.generation`, so nothing ties it to these partitions;
-  - its store id differs from the listed one (a publish under way);
-  - its concepts, their types, their observation counts (each the sum over the partitions
-    holding the concept) or its patient set (the union of the partitions') differ from the
-    partitions';
-  - the directory is unpartitioned and a combined store is listed or present.
-
-  `HPDS_COMBINED_STORE=off` skips all of these and reads partitions only. The partitions'
-  own `.generation` check applies either way, and so does one more: a `.generation` line
-  whose second token starts with `.` but is not `.combined` names a store kind this service
-  does not know (a newer ETL wrote it), and the open is refused saying so.
-- **One partition.** A data directory with a single partition reads it directly. The ETL
-  builds no combined store for it (it would repeat the partition block for block),
-  `hpds-etl combine` refuses it, and the service ignores a combined store there, with
-  `combinedStore` `ABSENT`.
+  shape, consent and concept checks. Each read of a whole block also checks that the
+  selection covers every partition, so no narrower selection reaches another partition's
+  rows.
+- **One partition.** In an unpartitioned store, or one with a single partition, that
+  partition's rows are the whole block, read once; `combinedStore` is `ABSENT`.
 - **Health.** `GET /actuator/health` answers `{"status":"UP","combinedStore":"IN_USE"}`
   (or `ABSENT`, `OFF`) when UP.
-
-Divergences from the partition path (v2), none in any answer seen on the fixtures or the
-bench corpora:
-
-- `HPDS_EXPORT_PIN_BYTES` counts the decoded size of the blocks an export pins. A full
-  selection pins one combined block per concept, which decodes smaller than the partitions'
-  blocks together (one patient bitmap instead of one per partition), so an export just over
-  the cap through the partitions can fit through the combined store.
-- An older binary (v2) refuses a data directory that has a combined store; see
-  [Consent-partitioned stores](#consent-partitioned-stores).
 
 ### Result cache
 
@@ -202,9 +160,9 @@ An opt-in cache of sync answers, off unless `HPDS_RESULT_CACHE_BYTES` is above 0
   limits, genomic input, then consents. A query that would be refused is refused with the
   same message whether or not an answer to a similar query is cached. A hit skips the
   engine queue and answers at once.
-- **Keying.** An entry is keyed on the store generation (a hash of every opened store's id,
-  the combined store's included), the result type, the partitions the consents select after
-  admission, whether that selection reads the combined store or its partitions, and the
+- **Keying.** An entry is keyed on the store generation (a hash of the store id), the result
+  type, the partitions the consents select after admission, whether that selection reads
+  whole blocks or its partitions, and the
   fields that decide the answer: the phenotypic clause, and `select` for CROSS_COUNT and
   OBSERVATION_CROSS_COUNT. It also holds `authorizationFilters` as their exact canonical
   JSON, filters and values in request order with repeats kept, nothing sorted or
@@ -250,7 +208,7 @@ off, and a connection that takes more than 10 seconds to send a request's header
 | `POST /query/format`, `POST /write/{dataType}` | 400, not supported |
 | `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info: {}`. See the locale note in `search.rs`. |
 | `GET /search/values/` | An empty page |
-| `GET /actuator/health` | 200 `{"status":"UP","combinedStore":...}` when the merged dictionary of the partitions holds a concept, with `combinedStore` `IN_USE`, `ABSENT` or `OFF`; else 503 `{"status":"DOWN","reason":...}` |
+| `GET /actuator/health` | 200 `{"status":"UP","combinedStore":...}` when the store's dictionary holds a concept, with `combinedStore` `IN_USE`, `ABSENT` or `OFF`; else 503 `{"status":"DOWN","reason":...}` |
 
 Differences from Java a caller can see:
 
@@ -285,9 +243,10 @@ Differences from Java a caller can see:
   unspecified (an immutable map whose order changes with every start, a `HashMap`, a
   `HashSet`). `timestampMin` and `timestampMax` are always `null`, as no Java loader sets
   them; the Rust loaders do record them.
-- The data directory opens or refuses as a whole: a partition left in javabin form, a
-  `.generation` mismatch, or a concept typed differently in two partitions keeps the service
-  DOWN. Java has neither of the first two checks and fails the third only at query time.
+- The data directory opens or refuses as a whole: a partition left in javabin form or a
+  `.generation` mismatch keeps the service DOWN. Java has neither check. A concept typed
+  differently in two partitions never reaches the service: the ETL refuses to load it, where
+  Java loads it and fails only at query time.
 - Result ids and `queryMetadata` are random UUIDs, not Java's UUIDv5 of the query text.
 - A failed query's `resultMetadata` carries an `error` message.
 - With the consent flag on and an unpartitioned data directory, Java fails to start; this
@@ -335,7 +294,17 @@ can read the store or its temporary files. Both images run as UID 1000, so the `
 service reads what the `hpds-rs-etl` container wrote. A different service UID needs the store
 files made readable to it by hand.
 
-The store is written to a staging directory beside `--out` and moved into place when complete.
+The store is written to a staging directory beside `--out` and moved into place when complete,
+with `<out>/.generation` (mode `0600`, through a temporary file renamed into place) written
+last: one line, the store id of its `pheno.index` as 32 lowercase hex digits. Into an existing
+`--out`, `pheno.blocks`, `columnMeta.csv` and `etl-report.json` are renamed over the old files
+and `pheno.index` last, so a reader that finds the new index finds the new blocks, and the
+marker names the old id until the new store is complete. That publish holds an exclusive
+`flock` on the `--out` directory itself (no lock file), the store lock, which every command
+that writes a store takes (`load`, `migrate`, `convert`, `remove-concepts`, `column-meta-csv`),
+so two of them never interleave, also from separate containers sharing the directory (on one
+kernel, see below). `--out` is refused when it holds a partitioned store of format 1 (partition
+directories or a `.combined` directory); convert that one into another directory instead.
 The staging directory's name carries the pid, a per-process sequence number and a random
 suffix, so concurrent runs, also in separate containers, never share one. Moving into place is
 a `rename`, which cannot cross filesystems, so an existing `--out` that is a mount point (on
@@ -384,7 +353,7 @@ every key.
 
 `hpds-etl load --mode partitioned --input-dir <dir> --out <dir> (--config <file> | --no-config)`
 follows the harmonization branch's `CSVLoader`: every `<partition>-allConcepts.csv` in
-`--input-dir` becomes its own store in `<out>/<partition>/`, all encrypted with
+`--input-dir` becomes a consent partition of one store in `<out>`, encrypted with
 `<out>/encryption_key` (`--key-file` installs a copy there). The partition name is the file name
 up to its first `-`. Input is headerless, rollup is always on and comes after the dataset root
 prefix, and a `TEXT_VALUE` that parses as a Java double makes the row numeric. The
@@ -393,111 +362,80 @@ loaded with a warning. Partitioned mode needs `--config` or `--no-config` and do
 beside the inputs, because `CSVLoader` reads `/opt/local/hpds_input/config.json` and not its
 input directory: give `--config <hpds_input>/config.json` to match a Java load that had one.
 
-Partitions build in parallel and nothing is published until every one is complete; a failure
-in any partition publishes none. Once they are built, the combined store is built from them
-into the staging directory too (below), unless `--no-combined` or there is only one
-partition. Into a new `--out` the whole
-set appears at once. Into an existing one the publish is not atomic across partitions: the
-partitions are replaced one after another (each partition's `pheno.index` last), then the old
-combined store is moved out and the new one, if any, moved in, so a reader can briefly see old
-and new stores side by side. Those moves and the marker write below hold an exclusive `flock`
-on the `<out>` directory itself (no lock file), which `hpds-etl combine` takes too, so the two
-never interleave, also from separate containers sharing the directory (on one kernel, see
-above); a publish waits while the other holds it. The last step writes `<out>/.generation` (mode `0600`, through a
-temporary file renamed into place): one line per partition, in partition name order, holding
-the store id of its `pheno.index` as 32 lowercase hex digits followed by ` patients-indexed`
-(every patient with a row is in the partition's patient set, see
-[Partition layout](#partition-layout)), then, when there is a combined store, a last line
-`<id> .combined`. The query service refuses to open the store while those
-ids differ from the stores' indexes, so a publish under way or interrupted is never served.
+Each partition is built in parallel with those rules, its type fixed by its own first row and
+its own drops counted, into a store of its own inside the staging directory. The staged stores
+are then merged into the one store and removed: each concept's block holds the rows of every
+partition holding it, merged by patient, ties in partition name order (Java string order, which
+differs from byte order only for names with characters above U+FFFF), each partition's rows in
+its own order. The index records each partition's patient set, the partitions holding each
+concept with their row and patient counts, and the overlap set (see
+[Partition layout](#partition-layout)). Nothing is published until the merged store is
+complete; a failure in any partition publishes nothing. The store is published as above.
 
-**The combined store.** `<out>/.combined/` holds `pheno.index`, `pheno.blocks` and an
-`etl-report.json` (the partitions merged, concept, observation and patient counts, whether the
-partitions' patient sets are disjoint, block bytes and seconds); there is no `columnMeta.csv`.
-It has its own store id under the shared key. Each concept holds the rows of every partition
-holding it, merged by patient, ties in partition name order (Java string order, which differs
-from byte order only for names with characters above U+FFFF), each partition's rows in its own
-order. Its metadata is that of `column-meta-csv --merged` (widest width, unioned category
-values, min of mins, max of maxes), with the observation and patient counts of the merged
-rows. The directory name starts with `.`, so no command and no query service takes it for a
-partition, and a partition file prefix starting with `.` (`.combined` included) is refused.
-When two partitions type one concept differently, no block can hold both types: the load logs
-a warning and writes no combined store (and removes an old one), and the query service refuses
-that store anyway. On the 40-partition bench input (250 M rows) it adds 2.48 GB of blocks
-and 1 MB of index. The build starts only after every partition is complete, so all of it is
-on the load's critical path: its report gives 11 s, and the whole load took about 9 s longer
-than with `--no-combined` (about 31 s against 21 s; the partition phase varies by a few
-seconds from run to run).
+A concept typed numeric in one partition and categorical in another fails the load, naming the
+concept and both partitions: one block cannot hold both types. Java loads both and fails when a
+query reads the concept.
 
-**Older binaries.** A query service without combined store support (v2) reads the first token
-of every `.generation` line as a partition id, never opens `.combined` (its rule ignores names
-starting with `.`), and so refuses the store as a partially published load. It fails closed:
-health is DOWN and nothing is served. Before serving such a store with an older binary, run
-`hpds-etl combine --remove --store <dir>`, or load with `--no-combined`.
+`etl-report.json` holds each partition's counts (for its staged store) under `partitions`, and
+under `store` what the merge wrote: the store id, each partition's patient count and
+`patients-indexed` record, concepts, rows and patients, the overlap patients, their rows and
+that share of all rows, the tagged concepts, block bytes and seconds. The load logs a warning
+when the overlap rows exceed 5% of the rows, since narrow consent selections read those rows by
+tag, and another naming any partition whose rows hold a patient its patient set lacks.
 
 Where `CSVLoader` would crash, overwrite or hide a partition, the load is refused before
 anything is written: a file without a partition prefix (a bare `allConcepts.csv`), two files
-with the same prefix, a partition file in a subdirectory, and an `--out` that holds an
-unpartitioned store, partitions this load does not write, or a subdirectory the partition rule
-below refuses.
+with the same prefix, and a partition file in a subdirectory.
 
-Every command that reads a partitioned directory finds its partitions by one rule, which the
-query service applies too:
+`migrate` reads a directory of per-partition exports the same way, one partition per
+immediate subdirectory holding `concepts.bin` (names starting with `.` ignored; a subdirectory
+holding only one of the two javabin files, or both but no export, is an error naming it), and
+merges the migrated partitions into one store as `load` does. A partition carries
+`patients-indexed` only when every patient with an observation is in its exported patient
+list; the others go into the overlap set. `bin/migrate-javabins` detects a partitioned javabin
+directory and exports each partition: a subdirectory with both javabin files is a partition,
+one with only one of them fails the run.
 
-- only immediate subdirectories count, and names starting with `.` are ignored;
-- a subdirectory holding `pheno.index` is a partition;
-- one holding `allObservationsStore.javabin` and `columnMeta.javabin` but no `pheno.index` is
-  an error naming it, so an unconverted Java partition is never silently left out;
-- one holding only one of the two javabin files is an error naming it;
-- any other subdirectory is ignored.
+`remove-concepts` and `column-meta-csv` act on the one store under its store lock.
+`remove-concepts` keeps the store id, the partition table and the overlap set: removing rows
+never puts an overlap patient into an untagged block.
 
-`migrate` applies the same rule to a directory of per-partition exports, with `concepts.bin` in
-place of `pheno.index`, and writes `<out>/<partition>/`, the combined store (unless
-`--no-combined`, which an unpartitioned export refuses) and `.generation`. A partition's
-line there carries ` patients-indexed` only when every patient with an observation is in
-the exported patient list.
+`dump --out <dir>` of a partitioned store writes `<dir>/<partition>.csv`, each holding the rows
+of that partition (its tags, or its patients' routing), concept by concept, in the order a
+store of that partition alone dumps them; `dump --concat` (formerly `--merged`, still accepted)
+writes one file, those partitions' rows concatenated in byte order of the names under one
+header (with `--patients`, the store's patient set, the union of the partitions'). Splitting
+reads every block once, through a temporary directory (mode `0700`) beside the output, removed
+afterwards. Dumps hold observation data in the clear, so output files are created mode `0600`
+without following a symbolic link, and an existing file is refused unless `--force`, which
+replaces it through a temporary file renamed over it. A new `--out` directory is created mode
+`0700`; an existing one must be a real directory that grants group and others nothing. No
+`--out` may lie in the store, wherever a symbolic link takes it. The same applies to an
+unpartitioned store's dump.
 
-`hpds-etl combine --store <dir>` builds or rebuilds the combined store of an existing
-partitioned store in place, for a store loaded with `--no-combined` or by an older ETL. It
-reads the partitions without changing them, refuses a store with one partition, or whose
-`.generation` lists other partition ids than the partitions hold (a publish under way),
-builds into a temporary directory inside `<dir>` (named with a leading `.`), moves it into
-place and rewrites `.generation` last. The build takes no lock. Before moving it into place
-it takes the `flock` on `<dir>` that a load's publish holds, waiting for one under way, then
-reads the partitions' ids again, and when a load published new partitions during the build
-it stops without replacing anything, so the newer `.generation` stays. Holding the lock, no
-load can publish between that check and the rewrite. `--remove` instead takes the same lock,
-rewrites `.generation` without the combined line and then removes `.combined`. Either rewrite keeps
-a partition's ` patients-indexed` tag from the old `.generation` line of the same store id
-and adds none: `combine` does not check the partitions' blocks for it, so a store with no
-`.generation` (loaded by an older ETL) stays without the tag until it is reloaded.
-`bin/migrate-javabins` detects a partitioned javabin directory and exports each partition: a
-subdirectory with both javabin files is a partition, one with only one of them fails the run.
+`column-meta-csv` writes one `columnMeta.csv` with one row per concept. For a partitioned store
+that row merges the concept's metadata across partitions as the Java service's
+`SummaryColumnMeta` does: summed observation and patient counts (a patient in two partitions
+counts twice), unioned category values, widest width, min of mins and max of maxes, with the
+block's offset and length. `--merged` is accepted for a partitioned store and refused for an
+unpartitioned one. No per-partition `columnMeta.csv` is written: nothing on the harmonization
+branch, in Java HPDS or the query service, reads one; the dictionary ETL reads the one file it
+is given.
 
-`dump`, `remove-concepts` and `column-meta-csv` act on every partition of a partitioned store.
-`remove-concepts` changes the partitions one at a time, then the combined store (reported
-under `.combined`), which keeps its store id, so `.generation` still matches and the combined
-store again holds exactly the partitions' concepts. When one store fails, the error names it
-and the stores already changed, and until a rerun completes the query service refuses the
-store, since the combined store's concepts differ from the partitions'. Rerunning is safe: the
-changed stores report the concepts as not found and the rest have them removed. `dump` and
-`column-meta-csv` never read or write the combined store: `dump` writes the partitions' rows,
-which the combined store only repeats, and `columnMeta.csv` files are not read by the query
-service.
+### Converting a store of format 1
 
-`dump --out <dir>` writes `<dir>/<partition>.csv`, and `dump --concat` (formerly `--merged`,
-still accepted) writes one file, the partitions' rows concatenated in name order under one
-header (with `--patients`, the union of the patient sets). Dumps hold observation data in the
-clear, so output files are created mode `0600` without following a symbolic link, and an
-existing file is refused unless `--force`, which replaces it through a temporary file renamed
-over it. A new `--out` directory is created mode `0700`; an existing one must be a real
-directory that grants group and others nothing. No `--out` may lie in the store or in any of
-its partition directories, wherever a symbolic link takes them. The same applies to a
-single-store dump.
+`hpds-etl convert --store <old dir> --out <new dir>` reads a store written by Rust HPDS v1 to v3
+(format 1) and writes one of the current format. An unpartitioned store converts to an
+unpartitioned store; a partitioned one, one store per partition directory, to one partitioned
+store whose blocks hold every partition's rows, merged as a partitioned load merges them. The
+old combined store, if any, is never read: the partitions are the source. The key is
+`<old dir>/encryption_key` unless `--key-file` names another, and a copy is installed in
+`<new dir>` when it has none.
 
-`column-meta-csv --merged` is a different operation from `dump --concat`: it writes one
-`columnMeta.csv` with one row per concept, its metadata combined across partitions for
-dictionary hydration, as the Java service's `SummaryColumnMeta` merges in memory: summed
-counts, unioned category values, widest width, block offsets 0. Java writes no such file. A
-concept typed differently in two partitions loads into both, but `--merged` refuses it, as the
-query engine refuses to open such a store.
+Every block of every partition is read once to learn which patients have rows in it, the check
+`migrate` makes: a partition whose rows hold a patient its patient set lacks loses
+`patients-indexed`, and that patient goes into the overlap set. The `patients-indexed` tags of
+the old `.generation` are not trusted. A source whose `.generation` does not list exactly its
+partitions' store ids (a publish under way or interrupted) is refused, and so are a source
+already in the current format and a `--out` that is or lies inside the source. The source is
+never changed; the new store is published as a load publishes one, under the store lock.
