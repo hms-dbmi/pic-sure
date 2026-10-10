@@ -1408,7 +1408,10 @@ struct Generation {
     combined: Option<String>,
 }
 
-/// Reads `<dir>/.generation`, or `None` when there is none.
+/// Reads `<dir>/.generation`, or `None` when there is none. A partition carries the
+/// [`PATIENTS_INDEXED_TAG`] record only when its line is exactly two tokens, the store id
+/// and the tag; a line with anything after the tag lists the partition without the record,
+/// so the engine counts the union for it.
 ///
 /// # Errors
 /// [`QueryError::Open`] when the file cannot be read, a line's first token is not a store
@@ -1450,7 +1453,7 @@ fn read_generation(dir: &Path) -> Result<Option<Generation>> {
                     ),
                 ));
             }
-            Some(PATIENTS_INDEXED_TAG) => {
+            Some(PATIENTS_INDEXED_TAG) if tokens.next().is_none() => {
                 generation.patients_indexed.insert(id.clone());
                 generation.partitions.insert(id);
             }

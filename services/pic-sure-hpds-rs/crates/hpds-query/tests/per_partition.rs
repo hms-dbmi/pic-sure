@@ -143,6 +143,28 @@ fn a_store_without_the_record_keeps_counting_the_union() {
     assert!(!engine.read_plan(&two).unwrap().per_partition_counts);
 }
 
+#[test]
+fn the_record_counts_only_on_a_line_of_exactly_two_tokens() {
+    let dir = harm_fixture();
+    mark_patients_indexed(&dir.out);
+    let marker = dir.out.join(".generation");
+    let text = std::fs::read_to_string(&marker).unwrap();
+    let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
+    lines[0].push_str(" extra");
+    std::fs::write(&marker, lines.join("\n") + "\n").unwrap();
+    let engine = Engine::open(&dir.out, &options(PerPartitionCounts::Auto)).unwrap();
+    assert_eq!(engine.partitions().patients_indexed_partitions(), 3);
+    let with_first = Query::with_consents(ResultType::Count, ["partition1", "partition3"]);
+    assert!(!engine.read_plan(&with_first).unwrap().per_partition_counts);
+    let without_first = Query::with_consents(ResultType::Count, ["partition2", "partition3"]);
+    assert!(
+        engine
+            .read_plan(&without_first)
+            .unwrap()
+            .per_partition_counts
+    );
+}
+
 /// Rewrites the index of the store in `dir` with `patients` as its patient set, keeping its
 /// store id, concepts and blocks, as a migrated store whose exported patient list misses a
 /// patient its observations hold.

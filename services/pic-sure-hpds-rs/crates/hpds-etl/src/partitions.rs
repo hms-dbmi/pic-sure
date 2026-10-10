@@ -340,7 +340,9 @@ pub struct Generation {
 
 impl Generation {
     /// Reads `<dir>/.generation`, or `None` when there is none. A second token other than
-    /// `.combined` and [`PATIENTS_INDEXED_TAG`] is ignored.
+    /// `.combined` and [`PATIENTS_INDEXED_TAG`] is ignored. The tag counts only on a line of
+    /// exactly two tokens, the store id and the tag, as the query engine reads it; a line
+    /// with anything after the tag lists the partition without the record.
     ///
     /// # Errors
     /// [`EtlError::Usage`] when a line's first token is not 32 hex digits or two lines are
@@ -374,7 +376,7 @@ impl Generation {
                         )));
                     }
                 }
-                Some(PATIENTS_INDEXED_TAG) => {
+                Some(PATIENTS_INDEXED_TAG) if tokens.next().is_none() => {
                     generation.patients_indexed.insert(id.clone());
                     generation.partitions.push(id);
                 }
@@ -850,6 +852,20 @@ mod tests {
             "11\n22 patients-indexed\n33 .combined\n"
         );
         assert!(generation_text(&["c".into()], &ids, None).is_err());
+    }
+
+    #[test]
+    fn the_patients_indexed_tag_counts_only_on_a_line_of_two_tokens() {
+        let dir = tempfile::tempdir().unwrap();
+        let [a, b, c, d] = ["a", "b", "c", "d"].map(|digit| digit.repeat(32));
+        std::fs::write(
+            dir.path().join(GENERATION_FILE_NAME),
+            format!("{a} patients-indexed\n{b} patients-indexed extra\n{c}\n{d} other\n"),
+        )
+        .unwrap();
+        let generation = Generation::read(dir.path()).unwrap().unwrap();
+        assert_eq!(generation.partitions, [a.clone(), b, c, d]);
+        assert_eq!(generation.patients_indexed, BTreeSet::from([a]));
     }
 
     #[test]

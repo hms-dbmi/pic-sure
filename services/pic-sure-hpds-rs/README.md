@@ -111,7 +111,8 @@ The service opens `HPDS_DATA_DIRECTORY` as `PartitionedPhenotypicObservationStor
   computes at open from their patient sets (the counts sum to the count of the union); the
   ETL's report is not trusted for it. A patient set says which patients a partition's
   blocks hold only when the ETL recorded that every patient with an observation is in it:
-  the `patients-indexed` tag after the partition's store id in `.generation`. `load` writes
+  the `patients-indexed` tag after the partition's store id in `.generation`, on a line
+  holding exactly those two tokens (anything after the tag drops the record). `load` writes
   it for every partition, since it builds the patient set from the rows. `migrate` keeps
   the patient list Java exported, which can miss a patient the observations hold (its
   report counts them in `observed_patients_missing_from_set`), so it tags only partitions
