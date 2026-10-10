@@ -35,6 +35,7 @@ pub(crate) fn evaluate_cohort_cow<'s>(
     checked: &CheckedQuery<'_, 's>,
 ) -> Result<Cow<'s, RoaringBitmap>> {
     let selection = checked.selection();
+    let _evaluating = selection.set().begin_evaluation();
     match &checked.query().phenotypic_clause {
         None => Ok(selection.patients()),
         Some(clause) => {
@@ -208,7 +209,30 @@ fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Patients> 
 /// [`QueryError::Block`] when a block cannot be loaded.
 fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<RoaringBitmap> {
     let blocks = selection.blocks_with_prefix(prefix)?;
-    Ok(blocks.iter().map(|block| block.all_patients()).union())
+    Ok(union_of_blocks(
+        &blocks,
+        selection.set().spare_parallelism(),
+    ))
+}
+
+/// Blocks below which [`union_of_blocks`] unions on the calling thread.
+const PARALLEL_UNION_MIN_BLOCKS: usize = 512;
+
+/// The union of the patient sets of `blocks`. A long list (a study-level `ANY_RECORD_OF`
+/// reads thousands to tens of thousands of blocks) is split into up to `chunks` chunks,
+/// each unioned on its own rayon thread, and the chunk results unioned. A short list, or
+/// `chunks` of 1, is unioned in one multi-way union on the calling thread. Pass
+/// [`crate::PartitionSet::spare_parallelism`], so a busy service unions on the calling
+/// thread instead of queueing behind other queries for the pool.
+fn union_of_blocks(blocks: &[Arc<Block>], chunks: usize) -> RoaringBitmap {
+    if chunks <= 1 || blocks.len() < PARALLEL_UNION_MIN_BLOCKS {
+        return blocks.iter().map(|block| block.all_patients()).union();
+    }
+    let chunk = blocks.len().div_ceil(chunks);
+    blocks
+        .par_chunks(chunk)
+        .map(|chunk| chunk.iter().map(|block| block.all_patients()).union())
+        .reduce(RoaringBitmap::new, |a, b| a | b)
 }
 
 /// Patients with at least one of `values` for the categorical concept at `path` in any

@@ -16,6 +16,7 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use hpds_format::{
     Block, ConceptMeta, ConceptType, ConceptView, CryptoKey, INDEX_FILE_NAME, Protection,
@@ -329,6 +330,7 @@ pub struct PartitionSet {
     all_patients: RoaringBitmap,
     combined: Option<Store>,
     combined_mode: CombinedMode,
+    evaluating: AtomicUsize,
     cache: BlockCache,
 }
 
@@ -494,6 +496,7 @@ impl PartitionSet {
             all_patients,
             combined: None,
             combined_mode: options.combined,
+            evaluating: AtomicUsize::new(0),
             cache,
         };
         if options.combined == CombinedMode::Auto {
@@ -836,6 +839,24 @@ impl PartitionSet {
         self.cache.weighted_size()
     }
 
+    /// Counts a cohort evaluation as running until the guard is dropped, for
+    /// [`PartitionSet::spare_parallelism`].
+    pub(crate) fn begin_evaluation(&self) -> Evaluating<'_> {
+        self.evaluating.fetch_add(1, Ordering::Relaxed);
+        Evaluating {
+            count: &self.evaluating,
+        }
+    }
+
+    /// How many rayon threads one running cohort evaluation may spread a large union over:
+    /// the pool's threads divided by the evaluations running now, at least 1. A lone query
+    /// gets the whole pool; at the concurrency of the pool or above, each runs on its own
+    /// thread, since splitting would only queue its chunks behind other queries' work.
+    pub(crate) fn spare_parallelism(&self) -> usize {
+        let running = self.evaluating.load(Ordering::Relaxed).max(1);
+        (rayon::current_num_threads() / running).max(1)
+    }
+
     /// Drops every cached block of every partition.
     pub fn clear_cache(&self) {
         self.cache.invalidate_all();
@@ -846,6 +867,18 @@ impl PartitionSet {
 impl ConceptLookup for PartitionSet {
     fn concept_type(&self, path: &str) -> Option<ConceptType> {
         self.summary(path).map(SummaryColumnMeta::concept_type)
+    }
+}
+
+/// A running cohort evaluation, counted until dropped
+/// ([`PartitionSet::begin_evaluation`]).
+pub(crate) struct Evaluating<'a> {
+    count: &'a AtomicUsize,
+}
+
+impl Drop for Evaluating<'_> {
+    fn drop(&mut self) {
+        self.count.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
