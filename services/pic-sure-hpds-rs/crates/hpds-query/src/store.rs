@@ -3,7 +3,7 @@
 //! [`crate::PartitionSet`] holds.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use hpds_format::{
     BLOCKS_FILE_NAME, Block, BlockCodec, BlockLocation, BlocksReader, ConceptView, ExpectedBlock,
@@ -50,6 +50,7 @@ pub(crate) fn block_cache(cache_bytes: u64) -> BlockCache {
 pub(crate) struct CachedConcept {
     block: Arc<Block>,
     view: OnceLock<Arc<View>>,
+    building: Mutex<()>,
 }
 
 impl CachedConcept {
@@ -58,6 +59,7 @@ impl CachedConcept {
         CachedConcept {
             block: Arc::new(block),
             view: OnceLock::new(),
+            building: Mutex::new(()),
         }
     }
 
@@ -72,10 +74,11 @@ impl CachedConcept {
     }
 
     /// The view, built by `build` when no reader has built it yet, and whether this call
-    /// built it. Concurrent callers wait for one build.
+    /// built it. One reader builds; readers arriving during the build wait for it and get
+    /// its view.
     ///
     /// # Errors
-    /// The error of `build`; the next call builds again.
+    /// The error of `build`; a later call builds again.
     pub(crate) fn view_or_build(
         &self,
         build: impl FnOnce(&Block) -> Result<View>,
@@ -83,13 +86,16 @@ impl CachedConcept {
         if let Some(view) = self.view.get() {
             return Ok((Arc::clone(view), false));
         }
+        let _building = self
+            .building
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(view) = self.view.get() {
+            return Ok((Arc::clone(view), false));
+        }
         let built = Arc::new(build(&self.block)?);
-        let mut stored = false;
-        let view = self.view.get_or_init(|| {
-            stored = true;
-            built
-        });
-        Ok((Arc::clone(view), stored))
+        let view = self.view.get_or_init(|| built);
+        Ok((Arc::clone(view), true))
     }
 
     /// The weight the cache bounds: the block's [`Block::heap_size`], the view's
@@ -283,5 +289,43 @@ fn open_error(dir: &Path, error: impl std::fmt::Display) -> QueryError {
     QueryError::Open {
         dir: dir.to_path_buf(),
         detail: error.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    use hpds_format::{AlignedBuf, encode_numeric_payload};
+
+    use super::*;
+
+    #[test]
+    fn concurrent_first_readers_build_the_view_once() {
+        let payload = encode_numeric_payload(&[]).unwrap();
+        let entry = Arc::new(CachedConcept::new(
+            Block::decode(AlignedBuf::copy_from(&payload)).unwrap(),
+        ));
+        let builds = AtomicUsize::new(0);
+        let built: Vec<bool> = std::thread::scope(|scope| {
+            let readers: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        let (_, built) = entry
+                            .view_or_build(|block| {
+                                builds.fetch_add(1, Ordering::SeqCst);
+                                std::thread::sleep(Duration::from_millis(50));
+                                View::build(block, &[], &Membership::unpartitioned(), "\\a\\")
+                            })
+                            .unwrap();
+                        built
+                    })
+                })
+                .collect();
+            readers.into_iter().map(|r| r.join().unwrap()).collect()
+        });
+        assert_eq!(builds.load(Ordering::SeqCst), 1);
+        assert_eq!(built.iter().filter(|&&b| b).count(), 1);
     }
 }
