@@ -403,10 +403,10 @@ impl Engine {
     /// The lookup runs only after `query` passes the same admission step as every
     /// computation (limits, genomic input, consents), so a query that would be refused is
     /// refused here with the same error, warm cache or not. The key is the store
-    /// generation, the result type, the partitions the consents select after admission,
-    /// whether that selection reads the combined store, and a canonical form of the fields
-    /// that decide the answer: the phenotypic clause, `select` for CROSS_COUNT and
-    /// OBSERVATION_CROSS_COUNT, and `authorizationFilters` as their exact canonical JSON
+    /// generation, the result type, the partitions the consents select after admission, and
+    /// a canonical form of the fields that decide the answer: the phenotypic clause, `select`
+    /// for CROSS_COUNT and OBSERVATION_CROSS_COUNT, and `authorizationFilters` as their exact
+    /// canonical JSON
     /// (never applied, so any difference there, order included, splits entries). Ids and
     /// the consent values themselves are not in it. So two queries whose consents select
     /// different partitions never share an entry, and one answer serves every request that

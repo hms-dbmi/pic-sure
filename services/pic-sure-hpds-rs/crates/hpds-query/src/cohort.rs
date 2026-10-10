@@ -110,12 +110,18 @@ pub(crate) mod fault {
         SKIP_REACH.with(Cell::get)
     }
 
-    /// Runs `work` on the calling thread with that intersection skipped.
+    /// Runs `work` on the calling thread with that intersection skipped, and clears the
+    /// fault when `work` returns or panics.
     pub(crate) fn skipping_reach<R>(work: impl FnOnce() -> R) -> R {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                SKIP_REACH.with(|skip| skip.set(false));
+            }
+        }
         SKIP_REACH.with(|skip| skip.set(true));
-        let result = work();
-        SKIP_REACH.with(|skip| skip.set(false));
-        result
+        let _clear = Clear;
+        work()
     }
 }
 
