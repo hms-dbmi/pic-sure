@@ -205,13 +205,15 @@ An opt-in cache of sync answers, off unless `HPDS_RESULT_CACHE_BYTES` is above 0
   the combined store's included), the result type, the partitions the consents select after
   admission, whether that selection reads the combined store or its partitions, and the
   fields that decide the answer: the phenotypic clause, and `select` for CROSS_COUNT and
-  OBSERVATION_CROSS_COUNT. It also holds `authorizationFilters`, each filter's values sorted
-  and deduplicated and the filters sorted and deduplicated: they are never applied, so
-  today two queries that differ only there compute the same answer into two entries, but
-  the key stays correct if they ever are applied. The key holds the whole encoding, not a
-  hash of it. `id`, `picsureId` and the consent values themselves are not in it, so two
-  queries whose consents select different partitions never share an entry, while consent
-  lists that select the same partitions (reordered, repeated, or with unknown values) do.
+  OBSERVATION_CROSS_COUNT. It also holds `authorizationFilters` as their exact canonical
+  JSON, filters and values in request order with repeats kept, nothing sorted or
+  deduplicated. They are never applied, so what their order or repetition would mean is
+  undefined; two queries that differ there in any way, order included, compute the same
+  answer into two entries, which costs hits but is never wrong. The key holds the whole
+  encoding, not a hash of it. `id`, `picsureId` and the consent values themselves are not
+  in it, so two queries whose consents select different partitions never share an entry,
+  while consent lists that select the same partitions (reordered, repeated, or with
+  unknown values) do.
 - **Answers.** A cached answer is the same bytes with the same `Content-Type`, and a fresh
   `queryMetadata` UUID as every answer gets.
 - **Bound.** The entries' summed weight (key, body and 128 bytes of overhead each) is kept

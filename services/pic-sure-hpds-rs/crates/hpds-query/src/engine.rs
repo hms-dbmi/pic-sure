@@ -394,11 +394,11 @@ impl Engine {
     /// generation, the result type, the partitions the consents select after admission,
     /// whether that selection reads the combined store, and a canonical form of the fields
     /// that decide the answer: the phenotypic clause, `select` for CROSS_COUNT and
-    /// OBSERVATION_CROSS_COUNT, and `authorizationFilters` (never applied, but keyed so the
-    /// key stays correct if they ever are). Ids and the consent
-    /// values themselves are not in it. So two queries whose consents select different
-    /// partitions never share an entry, and one answer serves every request that selects
-    /// the same partitions. Each lookup of a cacheable query counts a hit or a miss.
+    /// OBSERVATION_CROSS_COUNT, and `authorizationFilters` as their exact canonical JSON
+    /// (never applied, so any difference there, order included, splits entries). Ids and
+    /// the consent values themselves are not in it. So two queries whose consents select
+    /// different partitions never share an entry, and one answer serves every request that
+    /// selects the same partitions. Each lookup of a cacheable query counts a hit or a miss.
     ///
     /// # Errors
     /// The errors of admission, as for [`Engine::run_sync`].

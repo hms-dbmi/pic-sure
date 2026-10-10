@@ -13,10 +13,11 @@
 //! - a canonical encoding of the phenotypic clause (every filter field, `not` included,
 //!   floats by their bits), and of `select` for the two types that read it (CROSS_COUNT and
 //!   OBSERVATION_CROSS_COUNT);
-//! - `authorizationFilters` in a canonical form: each filter's values sorted and
-//!   deduplicated, the filters sorted and deduplicated. They are validated and never
-//!   applied, so today they only split entries that share an answer, but the key stays
-//!   correct if they are ever applied.
+//! - `authorizationFilters` as their exact canonical JSON: the filters and each filter's
+//!   values in request order, repeats kept, with nothing sorted or deduplicated. They are
+//!   validated and never applied, so what order or repetition would mean is undefined;
+//!   keying them exactly means two queries that differ there never share an entry, which
+//!   costs hits and is never wrong, and stays correct whatever meaning they are given.
 //!
 //! Left out because they never change an answer: `id`, `picSureId`, the consent values
 //! themselves (the selection replaces them, so unknown values and their order do not
@@ -290,38 +291,22 @@ impl KeyWriter {
         }
     }
 
-    /// Writes `filters` so that lists differing only in order or repetition encode the
-    /// same: each filter as its concept path and its values sorted and deduplicated (a
-    /// filter accepts any of its values; `null` stays distinct from an empty list), then the
-    /// encoded filters sorted and deduplicated (every filter must hold), behind their count.
+    /// Writes `filters` as their canonical JSON, a length-prefixed
+    /// `[{"conceptPath":...,"values":[...]}]` with no whitespace, in request order with
+    /// repeats kept. `values` is `null` when the request held `null` or omitted it, which
+    /// the query model does not tell apart.
     fn authorization_filters(&mut self, filters: &[AuthorizationFilter]) {
-        let mut encoded: Vec<Vec<u8>> = filters
+        let canonical: Vec<serde_json::Value> = filters
             .iter()
             .map(|filter| {
-                let mut one = KeyWriter::default();
-                one.text(&filter.concept_path);
-                match &filter.values {
-                    None => one.byte(0),
-                    Some(values) => {
-                        let mut values: Vec<&str> = values.iter().map(String::as_str).collect();
-                        values.sort_unstable();
-                        values.dedup();
-                        one.byte(1);
-                        one.count(values.len());
-                        for value in values {
-                            one.text(value);
-                        }
-                    }
-                }
-                one.out
+                serde_json::json!({
+                    "conceptPath": filter.concept_path,
+                    "values": filter.values,
+                })
             })
             .collect();
-        encoded.sort_unstable();
-        encoded.dedup();
-        self.count(encoded.len());
-        for filter in &encoded {
-            self.bytes(filter);
-        }
+        let json = serde_json::Value::Array(canonical).to_string();
+        self.text(&json);
     }
 
     fn filter(&mut self, filter: &PhenotypicFilter) {

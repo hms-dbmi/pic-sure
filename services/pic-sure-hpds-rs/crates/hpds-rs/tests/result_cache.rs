@@ -333,24 +333,44 @@ async fn only_fields_that_change_the_answer_or_could_split_entries() {
         5,
         "authorization filters split entries, though never applied"
     );
-    let mut reordered = base.clone();
-    reordered["authorizationFilters"] = json!([
-        {"conceptPath": AGE, "values": null},
-        {"conceptPath": SEX, "values": ["female", "male", "female"]},
-        {"conceptPath": AGE, "values": null},
-    ]);
     let hits = stats(&f).hits;
-    assert_eq!(sync(&f.app, &reordered).await.body, "562");
+    assert_eq!(sync(&f.app, &authorized).await.body, "562");
     assert_eq!(
         (stats(&f).entries, stats(&f).hits),
         (5, hits + 1),
-        "order and repetition do not split them"
+        "the same filters in the same order share the entry"
     );
-    let mut narrower_authorization = base.clone();
-    narrower_authorization["authorizationFilters"] =
-        json!([{"conceptPath": SEX, "values": ["male"]}, {"conceptPath": AGE, "values": null}]);
-    sync(&f.app, &narrower_authorization).await;
-    assert_eq!(stats(&f).entries, 6);
+    let variants = [
+        json!([
+            {"conceptPath": AGE, "values": null},
+            {"conceptPath": SEX, "values": ["male", "female"]},
+        ]),
+        json!([
+            {"conceptPath": SEX, "values": ["female", "male"]},
+            {"conceptPath": AGE, "values": null},
+        ]),
+        json!([
+            {"conceptPath": SEX, "values": ["male", "female", "male"]},
+            {"conceptPath": AGE, "values": null},
+        ]),
+        json!([
+            {"conceptPath": SEX, "values": ["male", "female"]},
+            {"conceptPath": AGE, "values": null},
+            {"conceptPath": AGE, "values": null},
+        ]),
+        json!([{"conceptPath": SEX, "values": ["male"]}, {"conceptPath": AGE, "values": null}]),
+    ];
+    for (n, filters) in variants.into_iter().enumerate() {
+        let mut variant = base.clone();
+        variant["authorizationFilters"] = filters;
+        let hits = stats(&f).hits;
+        assert_eq!(sync(&f.app, &variant).await.body, "562");
+        assert_eq!(
+            (stats(&f).entries, stats(&f).hits),
+            (6 + n as u64, hits),
+            "variant {n}: filter order, value order and repetition each split entries"
+        );
+    }
 }
 
 #[tokio::test]
