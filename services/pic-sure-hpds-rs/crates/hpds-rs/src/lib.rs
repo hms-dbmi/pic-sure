@@ -18,7 +18,9 @@
 //! | `GET /search/values/` (and without the slash) | [`search::search_values`] |
 //!
 //! `GET /actuator/health` is at the root: 200 `{"status":"UP"}` when the merged dictionary of
-//! the partitions holds a concept, otherwise 503 `{"status":"DOWN","reason":...}`. Every
+//! the partitions holds a concept, otherwise 503 `{"status":"DOWN","reason":...}`. With
+//! `HPDS_METRICS=on`, `GET /metrics` is at the root too ([`metrics::metrics`]); otherwise
+//! it is a 404 like any unknown path. Every
 //! request is logged at info under the `hpds_rs::access` target with its method, path, status
 //! and latency, never its body.
 //!
@@ -32,6 +34,7 @@ use std::future::Future;
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::body::Body;
@@ -57,6 +60,7 @@ pub mod encoding;
 pub mod envelope;
 pub mod error;
 pub mod jobs;
+pub mod metrics;
 pub mod search;
 pub mod state;
 pub mod sync;
@@ -191,7 +195,8 @@ fn api() -> Router<AppState> {
 }
 
 /// Builds the HTTP router over `state`, with a 2 MiB request body limit, a
-/// [`BODY_READ_TIMEOUT`] and the access log.
+/// [`BODY_READ_TIMEOUT`], the access log and, when `state` keeps metrics, `GET /metrics` and
+/// the request counters.
 pub fn router(state: AppState) -> Router {
     router_with_body_timeout(state, BODY_READ_TIMEOUT)
 }
@@ -199,17 +204,38 @@ pub fn router(state: AppState) -> Router {
 /// [`router`] with `body_timeout` as the longest a request body may take to arrive in full.
 /// A body over 2 MiB is answered 413 and a body that misses the deadline 408.
 pub fn router_with_body_timeout(state: AppState, body_timeout: Duration) -> Router {
-    Router::new()
+    let mut app = Router::new()
         .route("/actuator/health", get(health))
         .nest("/PIC-SURE/v3", api())
-        .nest("/PIC-SURE", api())
+        .nest("/PIC-SURE", api());
+    let counted = state.metrics().is_some();
+    if counted {
+        app = app
+            .route("/metrics", get(metrics::metrics))
+            .route_layer(middleware::from_fn(metrics::tag_route));
+    }
+    app = app
         .layer(DefaultBodyLimit::max(config::MAX_BODY_BYTES))
         .layer(middleware::from_fn_with_state(
             body_timeout,
             bound_body_read,
         ))
-        .layer(middleware::from_fn(access_log))
-        .with_state(state)
+        .layer(middleware::from_fn(access_log));
+    if counted {
+        app = app.layer(middleware::from_fn_with_state(
+            state.clone(),
+            metrics::record,
+        ));
+    }
+    app.with_state(state)
+}
+
+static CONNECTIONS_REFUSED: AtomicU64 = AtomicU64::new(0);
+
+/// Connections this process answered 503 and closed because every connection slot was
+/// taken ([`serve`]).
+pub fn connections_refused() -> u64 {
+    CONNECTIONS_REFUSED.load(Ordering::Relaxed)
 }
 
 /// Drops expired async results every `period` until the runtime shuts down.
@@ -395,6 +421,7 @@ const REFUSAL_DEADLINE: Duration = Duration::from_secs(1);
 /// never read or parsed. After the response the write side is shut down and pending input is
 /// drained briefly, so the client reads the 503 instead of a connection reset.
 fn refuse_over_capacity(stream: AsyncTcpStream, refusals: &Arc<Semaphore>) {
+    CONNECTIONS_REFUSED.fetch_add(1, Ordering::Relaxed);
     let Ok(permit) = Arc::clone(refusals).try_acquire_owned() else {
         return;
     };

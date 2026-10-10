@@ -4,10 +4,11 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
-use hpds_query::SyncAnswer;
+use hpds_query::{Query, SyncAnswer};
 
 use crate::envelope::{random_uuid, read_query};
 use crate::error::ApiError;
+use crate::metrics::label_result_type;
 use crate::state::AppState;
 
 /// Response header that carries an id for the answered query.
@@ -58,6 +59,12 @@ const NO_VARIANT_FILTERS_BODY: &str =
 ///   computation finishes in the background and releases its slot then.
 pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
     let query = read_query(&body)?;
+    let result_type = query.expected_result_type;
+    let response = answer_query(&state, query).await.into_response();
+    Ok(label_result_type(&state, result_type, response))
+}
+
+async fn answer_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
     let result_type = query.expected_result_type;
     if result_type == hpds_query::ResultType::InfoColumnListing {
         return Ok(([(CONTENT_TYPE, "application/json")], "[]").into_response());

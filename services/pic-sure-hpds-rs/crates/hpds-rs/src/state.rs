@@ -9,6 +9,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use crate::config::Config;
 use crate::error::ApiError;
 use crate::jobs::ResultRegistry;
+use crate::metrics::Metrics;
 use crate::search::SearchIndex;
 
 /// Health reason when the data directory could not be opened.
@@ -17,7 +18,8 @@ pub const NOT_OPENED_REASON: &str = "the phenotype store could not be opened; se
 /// Health reason when the partitions were opened but hold no concept.
 pub const NO_CONCEPTS_REASON: &str = "no partition holds a concept";
 
-/// The engine, the async result registry and the search index. Cheap to clone.
+/// The engine, the async result registry, the search index and, when they are on, the
+/// metrics. Cheap to clone.
 #[derive(Clone)]
 pub struct AppState {
     inner: Arc<Shared>,
@@ -29,13 +31,14 @@ struct Shared {
     results: ResultRegistry,
     search_index: Arc<SearchIndex>,
     sync_timeout: Duration,
+    metrics: Option<Metrics>,
 }
 
 impl AppState {
     /// State over `engine`, which is `None` when the data directory could not be opened
     /// (every query route then answers 503 and health reports DOWN), with the registry
     /// settings of `config`. The lowercase search index over the merged dictionary is built
-    /// here, once.
+    /// here, once. Metrics are kept when `config.metrics` is set.
     ///
     /// # Errors
     /// The I/O error of [`ResultRegistry::new`] when the results directory cannot be prepared.
@@ -50,6 +53,7 @@ impl AppState {
                 results: ResultRegistry::new(config, Arc::clone(&engine_slots))?,
                 search_index,
                 sync_timeout: config.sync_timeout,
+                metrics: config.metrics.then(Metrics::default),
                 engine_slots,
             }),
         })
@@ -100,6 +104,11 @@ impl AppState {
     /// The lowercase search index over the merged dictionary.
     pub fn search_index(&self) -> &Arc<SearchIndex> {
         &self.inner.search_index
+    }
+
+    /// The HTTP counters, or `None` when metrics are off.
+    pub fn metrics(&self) -> Option<&Metrics> {
+        self.inner.metrics.as_ref()
     }
 
     /// How long a sync query may run before the request is answered 503.

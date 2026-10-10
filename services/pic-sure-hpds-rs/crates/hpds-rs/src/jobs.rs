@@ -35,6 +35,7 @@ use tokio::sync::Semaphore;
 use crate::config::Config;
 use crate::envelope::{canonical_uuid, random_uuid, read_query};
 use crate::error::{ApiError, SERVER_ERROR_MESSAGE};
+use crate::metrics::label_result_type;
 use crate::state::AppState;
 
 /// Content type of a finished export, as Java's `CsvWriter.getResponseType` gives it.
@@ -221,6 +222,43 @@ pub struct ResultRegistry {
     max_file_bytes: u64,
     memory: Option<Arc<MemoryBudget>>,
     id_batch_size: u64,
+    finished: Arc<FinishedCounters>,
+}
+
+/// How many async queries have finished, by where their result went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FinishedExports {
+    /// Succeeded with the result held in memory.
+    pub memory: u64,
+    /// Succeeded with the result in a file.
+    pub file: u64,
+    /// Ended in ERROR, refusals at submission included.
+    pub error: u64,
+}
+
+#[derive(Debug, Default)]
+struct FinishedCounters {
+    memory: AtomicU64,
+    file: AtomicU64,
+    error: AtomicU64,
+}
+
+impl FinishedCounters {
+    fn count(&self, state: &ResultState) {
+        let counter = match state {
+            ResultState::Success {
+                body: ResultBody::Memory(_),
+                ..
+            } => &self.memory,
+            ResultState::Success {
+                body: ResultBody::File(_),
+                ..
+            } => &self.file,
+            ResultState::Error { .. } => &self.error,
+            ResultState::Pending | ResultState::Running => return,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 impl ResultRegistry {
@@ -254,6 +292,7 @@ impl ResultRegistry {
             memory: (config.result_memory_bytes > 0)
                 .then(|| Arc::new(MemoryBudget::new(config.result_memory_bytes))),
             id_batch_size: config.id_batch_size,
+            finished: Arc::new(FinishedCounters::default()),
         })
     }
 
@@ -300,8 +339,9 @@ impl ResultRegistry {
         };
         remove_files(&removed);
         admitted?;
-        if refusal.is_none() {
-            self.spawn_export(id, engine, query);
+        match refusal {
+            None => self.spawn_export(id, engine, query),
+            Some(message) => self.finished.count(&ResultState::Error { message }),
         }
         Ok(status)
     }
@@ -324,6 +364,7 @@ impl ResultRegistry {
         };
         let file = self.results_dir.join(format!("result-{id}.csv"));
         let memory = self.memory.clone();
+        let finished = Arc::clone(&self.finished);
         tokio::spawn(async move {
             let (Ok(_pool_slot), Ok(_export_slot), Ok(_engine_slot)) = (
                 pool.acquire_owned().await,
@@ -364,6 +405,7 @@ impl ResultRegistry {
                     }
                 }
             };
+            finished.count(&state);
             finish(&entries, &id, state, max_bytes);
         });
     }
@@ -402,6 +444,20 @@ impl ResultRegistry {
     /// Bytes of export results held in memory now, downloads in progress included.
     pub fn memory_bytes(&self) -> u64 {
         self.memory.as_ref().map_or(0, |budget| budget.held())
+    }
+
+    /// The budget of export results held in memory; 0 when every result goes to a file.
+    pub fn memory_budget(&self) -> u64 {
+        self.memory.as_ref().map_or(0, |budget| budget.limit)
+    }
+
+    /// How many async queries have finished, by where their result went.
+    pub fn finished(&self) -> FinishedExports {
+        FinishedExports {
+            memory: self.finished.memory.load(Ordering::Relaxed),
+            file: self.finished.file.load(Ordering::Relaxed),
+            error: self.finished.error.load(Ordering::Relaxed),
+        }
     }
 
     /// Number of results held.
@@ -1043,6 +1099,12 @@ fn not_ready_response(name: &str) -> Response {
 /// those consents select.
 pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
     let query = read_query(&body)?;
+    let result_type = query.expected_result_type;
+    let response = submit_query(&state, query).into_response();
+    Ok(label_result_type(&state, result_type, response))
+}
+
+fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
     match query.expected_result_type {
         ResultType::Patients
         | ResultType::Dataframe

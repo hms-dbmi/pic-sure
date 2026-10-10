@@ -63,6 +63,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_MAX_CROSS_COUNT_ENTRIES` | 5,000,000 | Most entries in a categorical or continuous cross count |
 /// | `HPDS_SYNC_TIMEOUT_SECONDS` | 300 | A sync query running longer is answered 503 |
 /// | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated file there |
+/// | `HPDS_METRICS` | off | `on` serves `GET /metrics` in the Prometheus text format; off, that route is a 404 |
 /// | `SMALL_JOB_LIMIT` | 100 | An export with more `select` paths than this runs on the large pool |
 /// | `SMALL_TASK_THREADS` | 1 | Exports run at once on the small pool |
 /// | `LARGE_TASK_THREADS` | 1 | Exports run at once on the large pool |
@@ -117,6 +118,8 @@ pub struct Config {
     pub max_connections: usize,
     /// Byte bound of the sync result cache; 0 turns it off.
     pub result_cache_bytes: u64,
+    /// Serve `GET /metrics` and count requests.
+    pub metrics: bool,
     /// Settings that were read but have no effect, as messages for the log.
     pub warnings: Vec<String>,
 }
@@ -201,6 +204,10 @@ impl Config {
                 Some(value) => parse_bool("hpds.requireAuthorizationFilter", &value)?,
                 None => true,
             },
+        };
+        let metrics = match lookup("HPDS_METRICS") {
+            Some(value) => parse_switch("HPDS_METRICS", &value)?,
+            None => false,
         };
         let allow_plain = match lookup("HPDS_ALLOW_PLAIN") {
             Some(value) => parse_bool("HPDS_ALLOW_PLAIN", &value)?,
@@ -289,6 +296,7 @@ impl Config {
             blocking_threads,
             max_connections: positive(&lookup, "HPDS_MAX_CONNECTIONS", 512)?,
             result_cache_bytes,
+            metrics,
             warnings,
         })
     }
@@ -346,6 +354,14 @@ fn positive_u64(
     }
 }
 
+fn parse_switch(name: &str, value: &str) -> Result<bool, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        _ => parse_bool(name, value).map_err(|_| format!("{name} must be on or off: {value}")),
+    }
+}
+
 fn parse_bool(name: &str, value: &str) -> Result<bool, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" => Ok(true),
@@ -395,6 +411,7 @@ mod tests {
         assert_eq!(c.result_cache_bytes, 0);
         assert_eq!(c.result_max_file_bytes, 4 << 30);
         assert_eq!(c.result_memory_bytes, 64 << 20);
+        assert!(!c.metrics);
         assert_eq!(c.query_limits, QueryLimits::default());
         assert_eq!(c.query_limits.max_select_paths, 5_000);
         assert_eq!(c.query_limits.max_clause_depth, 64);
@@ -418,6 +435,25 @@ mod tests {
             1 << 20
         );
         assert!(config(&[("HPDS_RESULT_MEMORY_BYTES", "-1")]).is_err());
+    }
+
+    #[test]
+    fn metrics_switch_is_read() {
+        for (value, on) in [
+            ("on", true),
+            ("ON", true),
+            ("true", true),
+            ("off", false),
+            ("0", false),
+        ] {
+            assert_eq!(
+                config(&[("HPDS_METRICS", value)]).unwrap().metrics,
+                on,
+                "{value}"
+            );
+        }
+        let error = config(&[("HPDS_METRICS", "maybe")]).unwrap_err();
+        assert!(error.contains("HPDS_METRICS"), "{error}");
     }
 
     #[test]
