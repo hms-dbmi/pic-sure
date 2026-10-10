@@ -1157,6 +1157,16 @@ fn cli_combine_no_combined_and_remove_concepts_keep_the_combined_store_consisten
     let removed = hpds_etl(&["combine", "--store", path_str(&out), "--remove"]);
     assert!(removed.status.success(), "{removed:?}");
     assert!(!out.join(".combined").exists());
+    let hidden: Vec<String> = std::fs::read_dir(&out)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with('.'))
+        .collect();
+    assert_eq!(
+        hidden,
+        [".generation"],
+        "the moved combined store is deleted"
+    );
     assert_eq!(read_generation(&out), store_ids(&out));
     assert_eq!(read_generation(&out).len(), 4);
 

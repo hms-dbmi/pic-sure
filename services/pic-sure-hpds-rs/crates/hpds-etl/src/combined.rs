@@ -496,16 +496,18 @@ fn refuse_if_changed(
 /// Removes the combined store of the partitioned store `store` (`hpds-etl combine
 /// --remove`) and drops its line from the `.generation` marker, so a query service without
 /// combined store support opens `store` again. The marker is rewritten first, then the
-/// directory moved into a temporary directory and removed, all under `store`'s directory
-/// lock (see [`combine_in_place`]), so a load cannot publish between reading the
-/// partitions' ids and writing the marker. Returns whether there was a combined store or a
-/// marker line to remove.
+/// directory moved into a temporary directory, both under `store`'s directory lock (see
+/// [`combine_in_place`]), so a load cannot publish between reading the partitions' ids and
+/// writing the marker. The moved directory is deleted after the lock is released, so a
+/// load or `combine` waiting on the lock waits only for the moves, not for a recursive
+/// delete of gigabytes of blocks. Returns whether there was a combined store or a marker
+/// line to remove.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when `store` holds no partitions or its marker disagrees with them;
 /// I/O errors.
 pub fn remove_combined(store: &Path, protection: &Protection) -> Result<bool> {
-    let _store_lock = lock_store(store)?;
+    let store_lock = lock_store(store)?;
     let (partitions, records) = checked_partitions(store, protection)?;
     let listed = Generation::read(store)?.is_some_and(|g| g.combined.is_some());
     let present = store.join(COMBINED_DIR_NAME).symlink_metadata().is_ok();
@@ -518,11 +520,17 @@ pub fn remove_combined(store: &Path, protection: &Protection) -> Result<bool> {
                 .map_err(EtlError::io("writing", &marker))
         })?;
     }
-    if present {
+    let removed = if present {
         let trash = TemporaryDir::create(store, "combined.removed")?;
-        let _registered = crate::cleanup::lock();
+        let registered = crate::cleanup::lock();
         replace_combined_dir(store, trash.path(), None)?;
-    }
+        drop(registered);
+        Some(trash)
+    } else {
+        None
+    };
+    drop(store_lock);
+    drop(removed);
     Ok(listed || present)
 }
 
