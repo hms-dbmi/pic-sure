@@ -389,7 +389,9 @@ pub fn with_share(options: PartitionOptions, share: f64) -> PartitionOptions {
 /// Asserts that every selection of a non-empty subset of `partitions` answers, in the store
 /// at `dir` built from all of them and under every one of [`SHARES`], exactly as a store
 /// built from only the selected partitions answers a selection of all of its partitions.
-/// The clauses and `select` list are those of the smaller store's dictionary, so every
+/// Each subset is selected by its names alone and with an unknown consent value added; the
+/// empty consent list selects every partition and is checked against the store of all of
+/// them. The clauses and `select` list are those of the smaller store's dictionary, so every
 /// concept they name is one the selection holds. `adjust` is applied to each smaller store
 /// as [`partitioned_adjusted`] applies it.
 pub fn assert_selections_match_their_partitions(
@@ -415,12 +417,23 @@ pub fn assert_selections_match_their_partitions(
         let select: Vec<String> = dictionary.iter().map(|c| c.name.clone()).collect();
         let clauses = clauses(dictionary);
         let expected = answers_selecting(&alone, &consents, &clauses, &select);
+        let with_unknown: Vec<String> = consents
+            .iter()
+            .cloned()
+            .chain(["phs999999.c9".to_owned()])
+            .collect();
+        let mut lists = vec![consents, with_unknown];
+        if mask == (1u32 << partitions.len()) - 1 {
+            lists.push(Vec::new());
+        }
         for (share, engine) in &engines {
-            assert_eq!(
-                answers_selecting(engine, &consents, &clauses, &select),
-                expected,
-                "{consents:?} at share {share}"
-            );
+            for list in &lists {
+                assert_eq!(
+                    answers_selecting(engine, list, &clauses, &select),
+                    expected,
+                    "{list:?} at share {share}"
+                );
+            }
         }
     }
 }
