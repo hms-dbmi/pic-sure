@@ -4,12 +4,10 @@
 //!
 //! An entry is keyed on everything that decides the answer and nothing else:
 //!
-//! - the store generation (a hash of every opened store's id, the combined store's
-//!   included);
+//! - the store generation (a hash of the store id);
 //! - the result type;
 //! - the partitions the query's consents select, after admission, as a bit per partition,
 //!   so two different consent selections never share an entry;
-//! - whether the selection reads the combined store or its partitions;
 //! - a canonical encoding of the phenotypic clause (every filter field, `not` included,
 //!   floats by their bits), and of `select` for the two types that read it (CROSS_COUNT and
 //!   OBSERVATION_CROSS_COUNT);
@@ -51,10 +49,10 @@ const ENTRY_OVERHEAD: u64 = 128;
 const MAX_ENTRY_SHARE: u64 = 16;
 
 /// Bytes of the shortest key [`key_of`] writes: the generation (16), the result type
-/// `COUNT` behind its length (8 + 5), the routing byte (1), the partition count (8), one
-/// byte of partition bits (at most eight partitions), the no-clause tag (1) and the empty
-/// `authorizationFilters` JSON `[]` behind its length (8 + 2).
-const SHORTEST_KEY: u64 = 16 + 8 + 5 + 1 + 8 + 1 + 1 + 8 + 2;
+/// `COUNT` behind its length (8 + 5), the partition count (8), one byte of partition bits
+/// (at most eight partitions), the no-clause tag (1) and the empty `authorizationFilters`
+/// JSON `[]` behind its length (8 + 2).
+const SHORTEST_KEY: u64 = 16 + 8 + 5 + 8 + 1 + 1 + 8 + 2;
 
 /// The smallest bound under which the cache can store any answer: the lightest possible
 /// entry (the shortest key, a one-byte COUNT body and [`ENTRY_OVERHEAD`]) is then exactly
@@ -209,7 +207,6 @@ pub(crate) fn key_of(checked: &CheckedQuery<'_, '_>, generation: u128) -> Option
     let mut key = KeyWriter::default();
     key.bytes(&generation.to_le_bytes());
     key.text(result_type.java_name());
-    key.byte(u8::from(selection.reads_combined()));
     let mask = selection.mask();
     key.count(mask.len());
     let mut bits = vec![0u8; mask.len().div_ceil(8)];

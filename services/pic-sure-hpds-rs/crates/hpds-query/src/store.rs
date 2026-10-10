@@ -1,5 +1,6 @@
 //! The phenotype store: `pheno.index` held in memory, `pheno.blocks` read on demand into a
-//! byte-bounded cache of decoded blocks, which a [`crate::PartitionSet`] holds.
+//! byte-bounded cache of decoded blocks and their partition views, which a
+//! [`crate::PartitionSet`] holds.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -12,6 +13,7 @@ use moka::sync::Cache;
 use roaring::RoaringBitmap;
 
 use crate::error::{QueryError, Result};
+use crate::view::View;
 
 /// Name of the key file inside the data directory, as the Java service reads
 /// `/opt/local/hpds/encryption_key`.
@@ -20,77 +22,83 @@ pub const KEY_FILE_NAME: &str = "encryption_key";
 /// Default capacity of the decoded block cache: 4 GiB.
 pub const DEFAULT_CACHE_BYTES: u64 = 4 << 30;
 
-/// Decoded blocks, one entry per concept and group: the key is the group
-/// ([`PARTITIONS_GROUP`] or [`COMBINED_GROUP`]) and the concept's position in the index,
-/// so a lookup never allocates, and a read of one concept in many partitions costs one
-/// lookup.
-pub(crate) type BlockCache = Cache<(u32, u32), Arc<ConceptBlocks>>;
+/// Decoded concepts, one entry per concept keyed by its position in the index, so a lookup
+/// never allocates.
+pub(crate) type BlockCache = Cache<u32, Arc<CachedConcept>>;
 
-/// The cache group holding a concept's rows split by partition, one slot per partition
-/// holding it, in partition order: each slot the block a store of that partition alone
-/// would hold, derived from the concept's block.
-pub(crate) const PARTITIONS_GROUP: u32 = 0;
-
-/// The cache group holding a concept's whole block, every partition's rows.
-pub(crate) const COMBINED_GROUP: u32 = 1;
-
-/// Bytes an entry is weighed at beyond its blocks, for its slots.
+/// Bytes an entry is weighed at beyond its block and view.
 const ENTRY_OVERHEAD: usize = 64;
 
-/// A block cache bounded by the summed [`Block::heap_size`] of the blocks its entries hold.
-/// A `moka` weigher returns a `u32`, so an entry heavier than `u32::MAX` bytes (4 GiB) is
+/// A block cache bounded by the summed weight of its entries ([`CachedConcept::weight`]). A
+/// `moka` weigher returns a `u32`, so an entry heavier than `u32::MAX` bytes (4 GiB) is
 /// weighed at `u32::MAX`, under its real size; at the default 4 GiB bound such an entry
 /// already fills the cache on its own.
 pub(crate) fn block_cache(cache_bytes: u64) -> BlockCache {
     Cache::builder()
         .max_capacity(cache_bytes)
-        .weigher(|_: &(u32, u32), blocks: &Arc<ConceptBlocks>| {
-            u32::try_from(blocks.weight()).unwrap_or(u32::MAX)
+        .weigher(|_: &u32, concept: &Arc<CachedConcept>| {
+            u32::try_from(concept.weight()).unwrap_or(u32::MAX)
         })
         .build()
 }
 
-/// One concept's decoded blocks in one group of stores: a slot per store holding the
-/// concept, each filled when its block is first read. The cache weighs an entry when it is
-/// inserted, so a reader that fills slots inserts the entry again to have it reweighed.
+/// One concept's decoded block, every partition's rows, and the view of those rows by
+/// partition that narrow selections read, built on first use. The cache weighs an entry
+/// when it is inserted, so the reader that builds the view inserts the entry again to have
+/// it reweighed.
 #[derive(Debug)]
-pub(crate) struct ConceptBlocks {
-    slots: Box<[OnceLock<Arc<Block>>]>,
+pub(crate) struct CachedConcept {
+    block: Arc<Block>,
+    view: OnceLock<Arc<View>>,
 }
 
-impl ConceptBlocks {
-    /// An entry of `len` empty slots.
-    pub(crate) fn new(len: usize) -> Self {
-        ConceptBlocks {
-            slots: (0..len).map(|_| OnceLock::new()).collect(),
+impl CachedConcept {
+    /// An entry holding `block` and no view yet.
+    pub(crate) fn new(block: Block) -> Self {
+        CachedConcept {
+            block: Arc::new(block),
+            view: OnceLock::new(),
         }
     }
 
-    /// The block in slot `slot`, when it has been read.
-    pub(crate) fn get(&self, slot: usize) -> Option<&Arc<Block>> {
-        self.slots.get(slot).and_then(OnceLock::get)
+    /// The decoded block.
+    pub(crate) fn block(&self) -> &Arc<Block> {
+        &self.block
     }
 
-    /// Fills slot `slot` with `block`, or keeps the block another reader filled it with
-    /// first, and returns the block the slot holds.
-    pub(crate) fn fill(&self, slot: usize, block: Arc<Block>) -> Arc<Block> {
-        Arc::clone(self.slots[slot].get_or_init(|| block))
+    /// The view, when it has been built.
+    pub(crate) fn view(&self) -> Option<&Arc<View>> {
+        self.view.get()
     }
 
-    /// The number of filled slots.
-    pub(crate) fn filled(&self) -> usize {
-        self.slots.iter().filter(|s| s.get().is_some()).count()
+    /// The view, built by `build` when no reader has built it yet, and whether this call
+    /// built it. Concurrent callers wait for one build.
+    ///
+    /// # Errors
+    /// The error of `build`; the next call builds again.
+    pub(crate) fn view_or_build(
+        &self,
+        build: impl FnOnce(&Block) -> Result<View>,
+    ) -> Result<(Arc<View>, bool)> {
+        if let Some(view) = self.view.get() {
+            return Ok((Arc::clone(view), false));
+        }
+        let built = Arc::new(build(&self.block)?);
+        let mut stored = false;
+        let view = self.view.get_or_init(|| {
+            stored = true;
+            built
+        });
+        Ok((Arc::clone(view), stored))
     }
 
-    /// The weight the cache bounds: the summed [`Block::heap_size`] of the filled slots,
-    /// and a small overhead.
-    fn weight(&self) -> usize {
-        self.slots
-            .iter()
-            .filter_map(OnceLock::get)
-            .fold(ENTRY_OVERHEAD, |sum, block| {
-                sum.saturating_add(block.heap_size())
-            })
+    /// The weight the cache bounds: the block's [`Block::heap_size`], the view's
+    /// [`View::heap_size`] once built, and a small overhead.
+    pub(crate) fn weight(&self) -> usize {
+        let view = self.view.get().map_or(0, |view| view.heap_size());
+        ENTRY_OVERHEAD
+            .saturating_add(self.block.heap_size())
+            .saturating_add(view)
     }
 }
 
@@ -127,6 +135,11 @@ pub(crate) struct ConceptEntry {
 }
 
 impl ConceptEntry {
+    /// True when the concept's block records the partition of every row.
+    pub(crate) fn tagged(&self) -> bool {
+        self.tagged
+    }
+
     /// The entry of `concept`.
     pub(crate) fn of(concept: &ConceptView<'_>) -> Self {
         ConceptEntry {

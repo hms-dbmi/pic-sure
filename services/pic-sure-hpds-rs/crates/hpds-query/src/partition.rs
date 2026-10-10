@@ -5,33 +5,36 @@
 //! opens it, keeps its dictionary as one [`SummaryColumnMeta`] per concept, and picks the
 //! partitions a query may read ([`PartitionSet::select`]).
 //!
-//! A query whose consents select every partition reads each concept's whole block. Any
-//! narrower selection, and every selection with [`CombinedMode::Off`], reads each selected
-//! partition's rows on their own: the block a store of that partition alone would hold,
-//! derived from the whole block on first use and cached ([`crate::split`]).
+//! A query whose consents select every partition reads each concept's whole block. A
+//! narrower [`Selection`] reads the same blocks, concept by concept: when its partitions
+//! hold at least [`NARROW_VIEW_SHARE`] of the concept's rows it evaluates the whole block,
+//! and the engine keeps only the patients the selection reaches; below that share it reads
+//! the concept's partition view ([`crate::view`]), built on first use and cached with the
+//! block, so the work follows the selected rows.
 
 use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use hpds_format::{
     Block, ConceptMeta, ConceptType, CryptoKey, INDEX_FILE_NAME, PartitionHolder, Protection,
     java_double_to_string, java_string_cmp,
 };
+use moka::sync::Cache;
 use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 use serde_json::Value;
 
 use crate::error::{QueryError, Result};
 use crate::model::Query;
-use crate::split::partition_block;
 use crate::store::{
-    BlockCache, COMBINED_GROUP, ConceptBlocks, ConceptEntry, KEY_FILE_NAME, PARTITIONS_GROUP,
-    Store, StoreFiles, StoreOptions, block_cache,
+    BlockCache, CachedConcept, ConceptEntry, KEY_FILE_NAME, Store, StoreFiles, StoreOptions,
+    block_cache,
 };
 use crate::validate::ConceptLookup;
+use crate::view::View;
 
 /// Name of the single partition of an unpartitioned data directory. It never matches a
 /// consent, as in Java.
@@ -42,82 +45,41 @@ pub const UNPARTITIONED_NAME: &str = "__unpartitioned__";
 /// must convert first.
 pub const COMBINED_DIR_NAME: &str = ".combined";
 
-/// Whether a [`PartitionSet`] answers selections of every partition from whole blocks
-/// (`HPDS_COMBINED_STORE`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CombinedMode {
-    /// A query that selects every partition of a store with two or more reads each
-    /// concept's whole block.
-    #[default]
-    Auto,
-    /// Every query reads its partitions' rows one partition at a time, as the v2 engine read
-    /// one store per partition. The answers are the same.
-    Off,
-}
+/// The share of a concept's rows below which a narrow selection reads the concept's
+/// partition view instead of its whole block: the selected partitions' rows divided by all
+/// of its rows. At or above it, evaluating the whole block and dropping the patients outside
+/// the selection costs less than reading the selected rows one partition at a time.
+pub const NARROW_VIEW_SHARE: f64 = 0.5;
 
-/// Whether a [`PartitionSet`] may count cross count patients per partition
-/// (`HPDS_PER_PARTITION_COUNTS`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PerPartitionCounts {
-    /// When the partitions are patient-disjoint, a query reads two or more of them one at a
-    /// time, and every one of those carries the ETL's record that its rows hold no patient
-    /// outside its patient set, count a concept's (or a category's) cohort patients in each
-    /// partition and sum the counts, instead of unioning the partitions' patient sets
-    /// first. No patient is then in two of those partitions' rows, so the sum is the count
-    /// of the union.
-    #[default]
-    Auto,
-    /// Always union the partitions' patient sets before counting.
-    Off,
-}
-
-/// Whether an open [`PartitionSet`] answers full selections from whole blocks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CombinedStatus {
-    /// Every query that selects every partition reads whole blocks.
-    InUse,
-    /// The store is unpartitioned or has one partition, whose rows are the whole block.
-    Absent,
-    /// [`CombinedMode::Off`]: full selections read partitions one at a time.
-    Off,
-}
-
-impl CombinedStatus {
-    /// The status as health and the startup log write it: `IN_USE`, `ABSENT` or `OFF`.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CombinedStatus::InUse => "IN_USE",
-            CombinedStatus::Absent => "ABSENT",
-            CombinedStatus::Off => "OFF",
-        }
-    }
-}
+/// Bytes of selection patient sets [`PartitionSet`] keeps for repeated selections.
+const SCOPE_CACHE_BYTES: u64 = 64 << 20;
 
 /// How a [`PartitionSet`] is opened.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PartitionOptions {
-    /// Cache budget and key rules. `cache_bytes` bounds the one block cache.
+    /// Cache budget and key rules. `cache_bytes` bounds the one cache of blocks and their
+    /// partition views.
     pub store: StoreOptions,
     /// The Java property `hpds.requireAuthorizationFilter`. When set, an unpartitioned data
     /// directory is refused at open, and every query must carry at least one consent value.
     /// The [`PartitionSet`] keeps it, and [`crate::Engine::validate`] reads it from there.
     pub require_consents: bool,
-    /// Whether full selections read whole blocks.
-    pub combined: CombinedMode,
-    /// Whether to count cross count patients per partition when the partitions are
-    /// disjoint.
-    pub per_partition_counts: PerPartitionCounts,
+    /// The share of a concept's rows below which a narrow selection reads partition views.
+    /// [`NARROW_VIEW_SHARE`] unless a test or a measurement sets another: 0 reads whole
+    /// blocks for every concept, and any share above 1 reads views for every concept a
+    /// narrow selection does not hold entirely. The answers are the same.
+    #[doc(hidden)]
+    pub narrow_view_share: f64,
 }
 
 impl Default for PartitionOptions {
-    /// The default store options, consents required (the Java default), whole blocks for
-    /// full selections, and per-partition counts when the partitions are disjoint.
+    /// The default store options, consents required (the Java default), and
+    /// [`NARROW_VIEW_SHARE`].
     fn default() -> Self {
         PartitionOptions {
             store: StoreOptions::default(),
             require_consents: true,
-            combined: CombinedMode::Auto,
-            per_partition_counts: PerPartitionCounts::Auto,
+            narrow_view_share: NARROW_VIEW_SHARE,
         }
     }
 }
@@ -136,25 +98,17 @@ pub enum Layout {
 /// [`INDEX_FILE_NAME`] has not been migrated.
 const JAVABIN_FILE_NAMES: [&str; 2] = ["allObservationsStore.javabin", "columnMeta.javabin"];
 
-/// One consent partition. Only its name and record are public; its data is read through
-/// the engine.
+/// One consent partition. Only its name is public; its data is read through the engine.
 #[derive(Debug)]
 pub struct Partition {
     name: String,
     patients: RoaringBitmap,
-    patients_indexed: bool,
 }
 
 impl Partition {
     /// The partition name, or [`UNPARTITIONED_NAME`].
     pub fn name(&self) -> &str {
         &self.name
-    }
-
-    /// True when the index records that every patient with a row in the partition is in
-    /// its patient set.
-    pub fn patients_indexed(&self) -> bool {
-        self.patients_indexed
     }
 }
 
@@ -274,8 +228,8 @@ fn push_json_string(out: &mut String, value: &str) {
     out.push_str(&Value::String(value.to_owned()).to_string());
 }
 
-/// The store of a data directory and its consent partitions, with one block cache. Share it
-/// behind an `Arc`; every method takes `&self`.
+/// The store of a data directory and its consent partitions, with one cache of decoded
+/// blocks and their partition views. Share it behind an `Arc`; every method takes `&self`.
 ///
 /// Its public methods read only the dictionary, the partition names and the cache counters,
 /// for search and health checks. Patient data is read only by the [`crate::Engine`], through
@@ -285,7 +239,7 @@ fn push_json_string(out: &mut String, value: &str) {
 ///
 /// ```compile_fail
 /// fn blocks(selection: &hpds_query::Selection<'_>) {
-///     let _ = selection.blocks("\\a\\");
+///     let _ = selection.entry(&selection.concept("\\a\\").unwrap());
 /// }
 /// ```
 ///
@@ -310,12 +264,14 @@ pub struct PartitionSet {
     holders: Vec<PartitionHolder>,
     index_holders: bool,
     all_patients: RoaringBitmap,
+    overlap: RoaringBitmap,
+    empty: RoaringBitmap,
     store: Store,
-    combined_mode: CombinedMode,
-    disjoint: bool,
-    per_partition_counts: PerPartitionCounts,
+    narrow_view_share: f64,
     evaluating: AtomicUsize,
     cache: BlockCache,
+    scopes: Cache<Box<[u64]>, Arc<Scope>>,
+    tagged_members: Mutex<Option<Arc<Vec<RoaringBitmap>>>>,
     generation: u128,
 }
 
@@ -331,7 +287,7 @@ impl std::fmt::Debug for PartitionSet {
             )
             .field("concepts", &self.dictionary.len())
             .field("patients", &self.all_patients.len())
-            .field("combined", &self.combined_status())
+            .field("overlap", &self.overlap.len())
             .finish_non_exhaustive()
     }
 }
@@ -423,19 +379,15 @@ impl PartitionSet {
                 .map(|p| Partition {
                     name: p.name,
                     patients: p.patients,
-                    patients_indexed: p.patients_indexed,
                 })
                 .collect()
         } else {
             vec![Partition {
                 name: UNPARTITIONED_NAME.to_owned(),
                 patients: store.patients().clone(),
-                patients_indexed: true,
             }]
         };
         let all_patients = store.patients().clone();
-        let summed: u64 = partitions.iter().map(|p| p.patients.len()).sum();
-        let disjoint = summed == all_patients.len();
         let generation = xxhash_rust::xxh3::xxh3_128(store_id.as_bytes());
         Ok(PartitionSet {
             dir: dir.to_path_buf(),
@@ -451,22 +403,19 @@ impl PartitionSet {
             holders,
             index_holders: partitioned,
             all_patients,
+            overlap: table.overlap,
+            empty: RoaringBitmap::new(),
             store,
-            combined_mode: options.combined,
-            disjoint,
-            per_partition_counts: options.per_partition_counts,
+            narrow_view_share: options.narrow_view_share,
             evaluating: AtomicUsize::new(0),
             cache,
+            scopes: Cache::<Box<[u64]>, Arc<Scope>>::builder()
+                .max_capacity(SCOPE_CACHE_BYTES)
+                .weigher(|key, scope| scope_weight(key, scope))
+                .build(),
+            tagged_members: Mutex::new(None),
             generation,
         })
-    }
-
-    /// True when full selections read whole blocks: a partitioned store with two or more
-    /// partitions and [`CombinedMode::Auto`].
-    fn reads_whole_blocks(&self) -> bool {
-        self.layout == Layout::Partitioned
-            && self.partitions.len() > 1
-            && self.combined_mode == CombinedMode::Auto
     }
 
     /// A hash of the store id. Another load of the data directory gives another value.
@@ -474,48 +423,11 @@ impl PartitionSet {
         self.generation
     }
 
-    /// Whether full selections read whole blocks.
-    pub fn combined_status(&self) -> CombinedStatus {
-        if self.layout == Layout::Unpartitioned || self.partitions.len() < 2 {
-            CombinedStatus::Absent
-        } else if self.combined_mode == CombinedMode::Off {
-            CombinedStatus::Off
-        } else {
-            CombinedStatus::InUse
-        }
-    }
-
-    /// True when no patient id is in two partitions: the partitions' patient counts sum to
-    /// the count of their union. Computed at open from the partitions' patient sets.
-    pub fn partitions_disjoint(&self) -> bool {
-        self.disjoint
-    }
-
-    /// True when some query reading two or more partitions one at a time counts cross count
-    /// patients per partition: the partitions' patient sets are disjoint, at least two
-    /// partitions carry the `patients-indexed` record ([`Partition::patients_indexed`]), and
-    /// [`PerPartitionCounts::Off`] was not set. A query does so only when every partition it
-    /// reads carries the record ([`Selection::counts_per_partition`]).
-    pub fn counts_per_partition(&self) -> bool {
-        self.sums_disjoint_partitions() && self.patients_indexed_partitions() > 1
-    }
-
-    /// The number of partitions carrying the `patients-indexed` record.
-    pub fn patients_indexed_partitions(&self) -> usize {
-        self.partitions
-            .iter()
-            .filter(|p| p.patients_indexed)
-            .count()
-    }
-
-    /// The conditions of [`PartitionSet::counts_per_partition`] that do not depend on the
-    /// selection: disjoint patient sets, a partitioned layout, more than one partition, and
-    /// [`PerPartitionCounts::Auto`].
-    fn sums_disjoint_partitions(&self) -> bool {
-        self.disjoint
-            && self.layout == Layout::Partitioned
-            && self.partitions.len() > 1
-            && self.per_partition_counts == PerPartitionCounts::Auto
+    /// The number of patients in the overlap set: patients in two or more partitions'
+    /// patient sets, or with a row in a partition whose set lacks them. Their rows are read
+    /// by partition tag. 0 for an unpartitioned store.
+    pub fn overlap_patients(&self) -> u64 {
+        self.overlap.len()
     }
 
     /// The data directory.
@@ -590,17 +502,13 @@ impl PartitionSet {
         start..start + len
     }
 
-    /// The start in `holders` of the holders of the concept at dictionary position `index`.
-    fn holders_start(&self, index: usize) -> usize {
-        index
-            .checked_sub(1)
-            .map_or(0, |previous| self.holder_ends[previous] as usize)
-    }
-
     /// The partitions holding the concept at dictionary position `index`, in partition
     /// order. An unpartitioned store's one partition holds every concept.
     fn holders_of(&self, index: usize) -> &[PartitionHolder] {
-        &self.holders[self.holders_start(index)..self.holder_ends[index] as usize]
+        let start = index
+            .checked_sub(1)
+            .map_or(0, |previous| self.holder_ends[previous] as usize);
+        &self.holders[start..self.holder_ends[index] as usize]
     }
 
     /// The holders the index records for the concept at `index`, which its block must
@@ -660,11 +568,13 @@ impl PartitionSet {
             .zip(&mask)
             .filter_map(|(partition, &selected)| selected.then_some(partition))
             .collect();
+        let full = members.len() == self.partitions.len();
         Ok(Selection {
             set: self,
             members,
             mask,
-            routed_to_combined: false,
+            full,
+            scope: OnceLock::new(),
         })
     }
 
@@ -680,21 +590,27 @@ impl PartitionSet {
         Ok(())
     }
 
-    /// Number of cached blocks, whole and per partition, after applying the cache's
-    /// pending inserts and evictions.
+    /// Number of cached blocks, after applying the cache's pending inserts and evictions.
     pub fn cached_block_count(&self) -> u64 {
         self.cache.run_pending_tasks();
-        self.cache
-            .iter()
-            .map(|(_, blocks)| blocks.filled() as u64)
-            .sum()
+        self.cache.entry_count()
     }
 
-    /// Summed weight in bytes of the cached blocks, after applying the cache's pending
-    /// inserts and evictions.
+    /// Summed weight in bytes of the cached blocks and partition views, after applying the
+    /// cache's pending inserts and evictions.
     pub fn cached_bytes(&self) -> u64 {
         self.cache.run_pending_tasks();
         self.cache.weighted_size()
+    }
+
+    /// The number of cached partition views and their summed weight in bytes, after
+    /// applying the cache's pending inserts and evictions. Walks the cache.
+    pub fn cached_views(&self) -> (u64, u64) {
+        self.cache.run_pending_tasks();
+        self.cache
+            .iter()
+            .filter_map(|(_, concept)| concept.view().map(|view| view.heap_size() as u64))
+            .fold((0, 0), |(count, bytes), size| (count + 1, bytes + size))
     }
 
     /// Counts a cohort evaluation as running until the guard is dropped, for
@@ -715,10 +631,82 @@ impl PartitionSet {
         (rayon::current_num_threads() / running).max(1)
     }
 
-    /// Drops every cached block.
+    /// Drops every cached block and view.
     pub fn clear_cache(&self) {
         self.cache.invalidate_all();
         self.cache.run_pending_tasks();
+    }
+
+    /// The patients each partition's tagged rows belong to: per partition, every patient
+    /// of the overlap set with a row tagged with it. Built on first use by reading every
+    /// tagged block, outside the block cache, and kept; empty sets when no block is tagged.
+    ///
+    /// # Errors
+    /// [`QueryError::Block`] when a tagged block cannot be read. The next call reads again.
+    fn tagged_members(&self) -> Result<Arc<Vec<RoaringBitmap>>> {
+        let mut built = self
+            .tagged_members
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(members) = built.as_ref() {
+            return Ok(Arc::clone(members));
+        }
+        let tagged: Vec<usize> = (0..self.dictionary.len())
+            .filter(|&index| self.store.entry(index as u32).tagged())
+            .collect();
+        let empty = || vec![RoaringBitmap::new(); self.partitions.len()];
+        let membership = self.store.membership();
+        let members = tagged
+            .par_iter()
+            .map(|&index| {
+                let block = self.read_block(index)?;
+                let mut members = empty();
+                for (patient, partition) in block.rows_by_key(membership) {
+                    if let Some(partition) = partition
+                        && self.overlap.contains(patient)
+                    {
+                        members[usize::from(partition)].insert(patient);
+                    }
+                }
+                Ok(members)
+            })
+            .try_reduce(empty, |mut a, b| {
+                for (into, from) in a.iter_mut().zip(b) {
+                    *into |= from;
+                }
+                Ok(a)
+            })?;
+        let members = Arc::new(members);
+        *built = Some(Arc::clone(&members));
+        Ok(members)
+    }
+
+    /// Reads and checks the block of the concept at `index` from the store, uncached.
+    /// Blocking.
+    fn read_block(&self, index: usize) -> Result<Block> {
+        self.store.read_block(
+            index as u32,
+            &self.dictionary[index].name,
+            self.index_holders_of(index),
+        )
+    }
+
+    /// The cached entry of the concept at `index`, read and cached when missing. Two
+    /// queries missing it at once read it once. Blocking.
+    ///
+    /// # Errors
+    /// [`QueryError::Block`] when the block cannot be read.
+    fn entry_at(&self, index: usize) -> Result<Arc<CachedConcept>> {
+        let key = index as u32;
+        if let Some(entry) = self.cache.get(&key) {
+            return Ok(entry);
+        }
+        self.cache
+            .try_get_with(key, || {
+                self.read_block(index)
+                    .map(|block| Arc::new(CachedConcept::new(block)))
+            })
+            .map_err(|error| (*error).clone())
     }
 }
 
@@ -740,20 +728,87 @@ impl Drop for Evaluating<'_> {
     }
 }
 
+/// The weight of a cached [`Scope`] under `key`: its bitmaps and the key, in bytes.
+fn scope_weight(key: &[u64], scope: &Scope) -> u32 {
+    u32::try_from(key.len() * 8 + scope.heap_size()).unwrap_or(u32::MAX)
+}
+
+/// The patient sets of one narrow selection, cached by [`PartitionSet`] per selection so a
+/// union over many partitions is paid once per distinct selection.
+#[derive(Debug)]
+pub(crate) struct Scope {
+    patients: RoaringBitmap,
+    overlap: Option<(RoaringBitmap, RoaringBitmap)>,
+}
+
+impl Scope {
+    fn new(patients: RoaringBitmap, overlap: &RoaringBitmap) -> Self {
+        let overlap = (!overlap.is_empty()).then(|| (&patients - overlap, &patients | overlap));
+        Scope { patients, overlap }
+    }
+
+    /// `P(S)`: the union of the selected partitions' patient sets.
+    pub(crate) fn patients(&self) -> &RoaringBitmap {
+        &self.patients
+    }
+
+    /// `R(S)`: the selected partitions' patients outside the overlap set, each of whom has
+    /// every row in one selected partition.
+    pub(crate) fn routed(&self) -> &RoaringBitmap {
+        self.overlap
+            .as_ref()
+            .map_or(&self.patients, |(routed, _)| routed)
+    }
+
+    /// `R(S)` together with the whole overlap set: every patient a clause evaluated on the
+    /// selection can match.
+    pub(crate) fn reach(&self) -> &RoaringBitmap {
+        self.overlap
+            .as_ref()
+            .map_or(&self.patients, |(_, reach)| reach)
+    }
+
+    fn heap_size(&self) -> usize {
+        let size = |b: &RoaringBitmap| b.serialized_size();
+        size(&self.patients)
+            + self
+                .overlap
+                .as_ref()
+                .map_or(0, |(routed, reach)| size(routed) + size(reach))
+    }
+}
+
 /// The partitions one query reads, in partition name order. Built only by
 /// [`PartitionSet::select`] and [`PartitionSet::select_consents`]. Publicly it only names
 /// the partitions; the engine reads patient data through it.
-///
-/// A selection reads its partitions' rows one partition at a time. The engine's admission
-/// step alone may route it to whole blocks ([`Selection::routed`]), and a routed selection
-/// reads whole blocks only while it names every partition: [`Selection::combined_store`]
-/// checks that on every read, so no narrower selection can reach another partition's rows.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Selection<'a> {
     set: &'a PartitionSet,
     members: Vec<&'a Partition>,
     mask: Vec<bool>,
-    routed_to_combined: bool,
+    full: bool,
+    scope: OnceLock<Arc<Scope>>,
+}
+
+/// How a selection reads one concept ([`Selection::concept`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReadMode {
+    /// The whole block, whose rows are all in the selected partitions: what it gives is
+    /// exactly the selection's answer.
+    Exact,
+    /// The whole block, holding rows of unselected partitions too: what it gives agrees with
+    /// the selection's answer only on the patients the selection routes, and the overlap
+    /// patients' rows must be filtered by tag.
+    Whole,
+    /// The partition view, read for the selected partitions only: exact.
+    View,
+}
+
+/// One concept a selection reads: its position in the index and how it is read.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ConceptRead {
+    pub(crate) index: usize,
+    pub(crate) mode: ReadMode,
 }
 
 impl<'a> Selection<'a> {
@@ -772,44 +827,52 @@ impl<'a> Selection<'a> {
         &self.mask
     }
 
-    /// True when every partition of the set is selected.
+    /// True when the partition at `partition` in the partition table is selected.
+    pub(crate) fn selects(&self, partition: u16) -> bool {
+        self.mask
+            .get(usize::from(partition))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// True when every partition of the set is selected, which every selection of an
+    /// unpartitioned store does. Such a selection reads whole blocks and every answer
+    /// comes straight from them.
     pub fn is_all(&self) -> bool {
-        self.members.len() == self.set.partitions.len()
-            && self.mask.len() == self.set.partitions.len()
-            && self.mask.iter().all(|&selected| selected)
+        self.full
     }
 
-    /// True when the engine counts this selection's cross count patients per partition and
-    /// sums the counts: the partitions' patient sets are disjoint and
-    /// [`PerPartitionCounts::Off`] was not set ([`PartitionSet::counts_per_partition`]),
-    /// two or more partitions are selected, the selection reads them one at a time, not
-    /// whole blocks, and every selected partition carries the `patients-indexed` record, so
-    /// no patient is in two selected partitions' rows either.
-    pub fn counts_per_partition(&self) -> bool {
-        self.set.sums_disjoint_partitions()
-            && self.members.len() > 1
-            && !self.reads_combined()
-            && self.members.iter().all(|p| p.patients_indexed)
+    /// The overlap set of the store.
+    pub(crate) fn overlap(&self) -> &'a RoaringBitmap {
+        &self.set.overlap
     }
 
-    /// True when this selection reads whole blocks instead of its partitions one at a time.
-    pub fn reads_combined(&self) -> bool {
-        self.combined_store()
+    /// The patient sets of this narrow selection, from the set's cache or built and cached.
+    pub(crate) fn scope(&self) -> &Scope {
+        self.scope.get_or_init(|| {
+            let mut key = vec![0u64; self.mask.len().div_ceil(64)];
+            for (i, _) in self.mask.iter().enumerate().filter(|(_, s)| **s) {
+                key[i / 64] |= 1 << (i % 64);
+            }
+            let set = self.set;
+            set.scopes.get_with(key.into_boxed_slice(), || {
+                let patients = match self.members.as_slice() {
+                    [one] => one.patients.clone(),
+                    many => many.iter().map(|p| &p.patients).union(),
+                };
+                Arc::new(Scope::new(patients, &set.overlap))
+            })
+        })
     }
 
-    /// This selection, routed to whole blocks when it selects every partition and the set
-    /// reads whole blocks for that ([`PartitionSet::combined_status`]). The one place the
-    /// engine decides to read whole blocks; called only by its admission step, after the
-    /// consent checks.
-    pub(crate) fn routed(mut self) -> Self {
-        self.routed_to_combined = self.is_all() && self.set.reads_whole_blocks();
-        self
-    }
-
-    /// True when this selection is routed to whole blocks and still selects every
-    /// partition.
-    fn combined_store(&self) -> bool {
-        self.routed_to_combined && self.is_all()
+    /// `P(S)`, the union of the selected partitions' patient sets, borrowed.
+    pub(crate) fn member_patients(&self) -> &RoaringBitmap {
+        match self.members.as_slice() {
+            _ if self.full => &self.set.all_patients,
+            [] => &self.set.empty,
+            [one] => &one.patients,
+            _ => self.scope().patients(),
+        }
     }
 
     /// The union of the selected partitions' patients
@@ -817,270 +880,164 @@ impl<'a> Selection<'a> {
     /// or every partition is selected.
     pub(crate) fn patients(&self) -> Cow<'a, RoaringBitmap> {
         match self.members.as_slice() {
+            _ if self.full => Cow::Borrowed(&self.set.all_patients),
             [] => Cow::Owned(RoaringBitmap::new()),
             [one] => Cow::Borrowed(&one.patients),
-            _ if self.is_all() => Cow::Borrowed(&self.set.all_patients),
-            many => Cow::Owned(many.iter().map(|p| &p.patients).union()),
+            _ => Cow::Owned(self.scope().patients().clone()),
         }
+    }
+
+    /// The patients of the selection's partitions together with the overlap patients whose
+    /// rows tagged with a selected partition put them in it: every patient a cohort of this
+    /// selection may hold.
+    ///
+    /// # Errors
+    /// [`QueryError::Block`] when a tagged block cannot be read to find those patients.
+    pub(crate) fn check_members(&self, cohort: &RoaringBitmap) -> Result<u64> {
+        let patients = self.member_patients();
+        if cohort.is_subset(patients) {
+            return Ok(0);
+        }
+        let outside = cohort - patients;
+        if !outside.is_subset(&self.set.overlap) {
+            return Ok(outside.len());
+        }
+        let tagged = self.set.tagged_members()?;
+        let reached: RoaringBitmap = tagged
+            .iter()
+            .zip(&self.mask)
+            .filter(|(_, selected)| **selected)
+            .map(|(members, _)| members)
+            .union();
+        Ok(outside.difference_len(&reached))
     }
 
     /// The type of the concept at exactly `path`, or `None` when no selected partition holds
     /// it.
     pub fn concept_type(&self, path: &str) -> Option<ConceptType> {
         let index = self.set.concept_index(path)?;
-        self.selected_requests(index)
-            .next()
-            .map(|_| self.set.dictionary[index].concept_type())
+        self.holds(index)
+            .then(|| self.set.dictionary[index].concept_type())
     }
 
-    /// The block of `path` in each selected partition that holds the concept, in partition
-    /// name order, each holding that partition's rows only. Only the partitions holding the
-    /// concept are visited, through one cache lookup for the concept whatever the number of
-    /// partitions. Blocks not yet cached load on the rayon pool. A selection routed to whole
-    /// blocks returns the one whole block, whose rows are those blocks' rows merged.
-    /// Blocking.
-    ///
-    /// # Errors
-    /// [`QueryError::Block`] when a block cannot be loaded.
-    pub(crate) fn blocks(&self, path: &str) -> Result<Vec<Arc<Block>>> {
-        let Some(index) = self.set.concept_index(path) else {
-            return Ok(Vec::new());
-        };
-        if self.combined_store() {
-            return self.load(
-                COMBINED_GROUP,
-                std::iter::once(BlockRequest::whole(index)),
-                1,
-            );
-        }
-        self.load(
-            PARTITIONS_GROUP,
-            self.selected_requests(index),
-            self.set.holders_of(index).len(),
-        )
+    /// True when a selected partition holds the concept at `index`.
+    fn holds(&self, index: usize) -> bool {
+        self.full
+            || self
+                .set
+                .holders_of(index)
+                .iter()
+                .any(|h| self.selects(h.partition))
     }
 
-    /// The blocks of every concept whose path starts with `prefix` and that has at least one
-    /// observation in a selected partition, the concept at `prefix` included, from every
-    /// selected partition holding it with observations. Other blocks are never loaded.
-    /// Blocking.
-    ///
-    /// # Errors
-    /// [`QueryError::Block`] when a block cannot be loaded.
-    pub(crate) fn blocks_with_prefix(&self, prefix: &str) -> Result<Vec<Arc<Block>>> {
-        let range = self.set.prefix_range(prefix);
-        if self.combined_store() {
-            let capacity = range.len();
-            let requests = range
-                .map(BlockRequest::whole)
-                .filter(|r| self.set.store.entry(r.index as u32).observation_count > 0);
-            return self.load(COMBINED_GROUP, requests, capacity);
+    /// How the concept at exactly `path` is read, or `None` when no selected partition
+    /// holds it, in which case it is unknown to the selection.
+    pub(crate) fn concept(&self, path: &str) -> Option<ConceptRead> {
+        self.read_at(self.set.concept_index(path)?)
+    }
+
+    /// How the concept at `index` is read, or `None` when no selected partition holds it.
+    fn read_at(&self, index: usize) -> Option<ConceptRead> {
+        if self.full {
+            return Some(ConceptRead {
+                index,
+                mode: ReadMode::Exact,
+            });
         }
-        let capacity = if range.is_empty() {
-            0
+        let (mut selected, mut total, mut held) = (0u64, 0u64, false);
+        for holder in self.set.holders_of(index) {
+            let rows = u64::from(holder.observations);
+            total += rows;
+            if self.selects(holder.partition) {
+                selected += rows;
+                held = true;
+            }
+        }
+        let mode = if selected == total {
+            ReadMode::Exact
+        } else if (selected as f64) < self.set.narrow_view_share * total as f64 {
+            ReadMode::View
         } else {
-            self.set.holder_ends[range.end - 1] as usize - self.set.holders_start(range.start)
+            ReadMode::Whole
         };
-        let requests = range
-            .flat_map(|index| self.selected_requests(index))
-            .filter(|r| r.holder.observations > 0);
-        self.load(PARTITIONS_GROUP, requests, capacity)
+        held.then_some(ConceptRead { index, mode })
+    }
+
+    /// How each concept is read whose path starts with `prefix` and that has at least one
+    /// row in a selected partition, the concept at `prefix` included, in index order.
+    pub(crate) fn concepts_with_prefix(&self, prefix: &str) -> Vec<ConceptRead> {
+        self.set
+            .prefix_range(prefix)
+            .filter(|&index| {
+                self.set
+                    .holders_of(index)
+                    .iter()
+                    .any(|h| h.observations > 0 && (self.full || self.selects(h.partition)))
+            })
+            .filter_map(|index| self.read_at(index))
+            .collect()
     }
 
     /// The number of concepts whose path starts with `prefix` that a selected partition
     /// holds, counting no further than `limit`.
     pub(crate) fn count_with_prefix(&self, prefix: &str, limit: usize) -> usize {
         let range = self.set.prefix_range(prefix);
-        if self.is_all() {
+        if self.full {
             return range.len().min(limit);
         }
-        range
-            .filter(|&index| self.selected_requests(index).next().is_some())
-            .take(limit)
-            .count()
+        range.filter(|&index| self.holds(index)).take(limit).count()
     }
 
-    /// The requests for the rows of the concept at dictionary position `index` in the
-    /// selected partitions holding it, in partition order.
-    fn selected_requests(&self, index: usize) -> impl Iterator<Item = BlockRequest> + Clone + '_ {
-        self.set
-            .holders_of(index)
-            .iter()
-            .enumerate()
-            .filter(|(_, h)| self.mask[usize::from(h.partition)])
-            .map(move |(slot, &holder)| BlockRequest {
-                index,
-                slot,
-                holder,
-            })
-    }
-
-    /// The number of slots of the cache entry of the concept at `index` in `group`.
-    fn entry_len(&self, group: u32, index: usize) -> usize {
-        if group == COMBINED_GROUP {
-            1
-        } else {
-            self.set.holders_of(index).len()
-        }
-    }
-
-    /// The blocks `requests` name, in order, from the cache entries of `group`. Looks each
-    /// concept up once, and on the first block not cached hands over to
-    /// [`Selection::load_missing`].
-    fn load(
-        &self,
-        group: u32,
-        requests: impl Iterator<Item = BlockRequest> + Clone,
-        capacity: usize,
-    ) -> Result<Vec<Arc<Block>>> {
-        let mut blocks = Vec::with_capacity(capacity);
-        let mut current: Option<(usize, Arc<ConceptBlocks>)> = None;
-        for request in requests.clone() {
-            let entry = match current {
-                Some((index, ref entry)) if index == request.index => entry,
-                _ => match self.set.cache.get(&(group, request.index as u32)) {
-                    Some(entry) => &current.insert((request.index, entry)).1,
-                    None => return self.load_missing(group, requests, capacity),
-                },
-            };
-            match entry.get(request.slot) {
-                Some(block) => blocks.push(Arc::clone(block)),
-                None => return self.load_missing(group, requests, capacity),
-            }
-        }
-        Ok(blocks)
-    }
-
-    /// The whole block of the concept at `index`, from the cache or read and cached.
-    /// Blocking.
+    /// The cached block and view of the concept `read` names, the block read and cached when
+    /// missing. Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when the block cannot be read.
-    fn whole_block(&self, index: usize) -> Result<Arc<Block>> {
-        let key = (COMBINED_GROUP, index as u32);
-        let entry = self
-            .set
-            .cache
-            .get_with(key, || Arc::new(ConceptBlocks::new(1)));
-        if let Some(block) = entry.get(0) {
-            return Ok(Arc::clone(block));
-        }
-        let block = self.read_whole(index)?;
-        let block = entry.fill(0, Arc::new(block));
-        self.set.cache.insert(key, entry);
-        Ok(block)
+    pub(crate) fn entry(&self, read: &ConceptRead) -> Result<Arc<CachedConcept>> {
+        self.set.entry_at(read.index)
     }
 
-    /// Reads the whole block of the concept at `index` from the store, uncached.
-    fn read_whole(&self, index: usize) -> Result<Block> {
-        self.set.store.read_block(
-            index as u32,
-            &self.set.dictionary[index].name,
-            self.set.index_holders_of(index),
-        )
-    }
-
-    /// The block `request` names: in [`COMBINED_GROUP`] the whole block, read from the
-    /// store; in [`PARTITIONS_GROUP`] the rows of the requested partition, which is the whole
-    /// block when that partition is the concept's only holder, and otherwise derived from
-    /// the whole block ([`partition_block`]), which is read through the cache.
-    fn read_request(&self, group: u32, request: &BlockRequest) -> Result<Block> {
-        if group == COMBINED_GROUP || self.set.holders_of(request.index).len() == 1 {
-            return self.read_whole(request.index);
-        }
-        let whole = self.whole_block(request.index)?;
-        partition_block(
-            &whole,
-            request.holder.partition,
-            self.set.store.membership(),
-            &self.set.dictionary[request.index].name,
-        )
-    }
-
-    /// [`Selection::load`] when some block is not cached: creates the missing cache
-    /// entries, loads every missing block on the rayon pool, and inserts each entry it
-    /// filled again so the cache weighs its new blocks. Two queries missing the same block
-    /// at once may both read it; the first to fill the slot wins.
+    /// The entries of `reads`, in order. Looks each up in the cache, then reads every missing
+    /// block on the rayon pool. Every missing block is attempted; the first failure in
+    /// order is returned. Blocking.
     ///
-    /// Every missing block is attempted. When some fail, the entries the others filled are
-    /// still inserted again, so the cache never holds decoded blocks it weighs as empty,
-    /// and the first failure in request order is returned.
-    fn load_missing(
-        &self,
-        group: u32,
-        requests: impl Iterator<Item = BlockRequest>,
-        capacity: usize,
-    ) -> Result<Vec<Arc<Block>>> {
-        let mut blocks: Vec<Option<Arc<Block>>> = Vec::with_capacity(capacity);
-        let mut missing: Vec<(usize, BlockRequest, Arc<ConceptBlocks>)> = Vec::new();
-        let mut current: Option<(usize, Arc<ConceptBlocks>)> = None;
-        for request in requests {
-            let entry = match current {
-                Some((index, ref entry)) if index == request.index => entry,
-                _ => {
-                    let len = self.entry_len(group, request.index);
-                    let entry = self.set.cache.get_with((group, request.index as u32), || {
-                        Arc::new(ConceptBlocks::new(len))
-                    });
-                    &current.insert((request.index, entry)).1
-                }
-            };
-            match entry.get(request.slot) {
-                Some(block) => blocks.push(Some(Arc::clone(block))),
-                None => {
-                    missing.push((blocks.len(), request, Arc::clone(entry)));
-                    blocks.push(None);
-                }
-            }
-        }
-        let loaded: Vec<Result<Arc<Block>>> = missing
-            .par_iter()
-            .map(|(_, request, entry)| {
-                let block = self.read_request(group, request)?;
-                Ok(entry.fill(request.slot, Arc::new(block)))
-            })
+    /// # Errors
+    /// [`QueryError::Block`] when a block cannot be read.
+    pub(crate) fn entries(&self, reads: &[ConceptRead]) -> Result<Vec<Arc<CachedConcept>>> {
+        let mut entries: Vec<Option<Arc<CachedConcept>>> = reads
+            .iter()
+            .map(|read| self.set.cache.get(&(read.index as u32)))
             .collect();
-        let mut reweighed = None;
-        let mut first_error = None;
-        for ((position, request, entry), block) in missing.iter().zip(loaded) {
-            match block {
-                Ok(block) => blocks[*position] = Some(block),
-                Err(error) => {
-                    first_error.get_or_insert(error);
-                    continue;
-                }
-            }
-            if reweighed != Some(request.index) {
-                self.set
-                    .cache
-                    .insert((group, request.index as u32), Arc::clone(entry));
-                reweighed = Some(request.index);
-            }
+        let missing: Vec<usize> = (0..reads.len()).filter(|&i| entries[i].is_none()).collect();
+        let loaded: Vec<Result<Arc<CachedConcept>>> = if missing.len() < 2 {
+            missing.iter().map(|&i| self.entry(&reads[i])).collect()
+        } else {
+            missing.par_iter().map(|&i| self.entry(&reads[i])).collect()
+        };
+        for (i, entry) in missing.into_iter().zip(loaded) {
+            entries[i] = Some(entry?);
         }
-        match first_error {
-            Some(error) => Err(error),
-            None => Ok(blocks.into_iter().flatten().collect()),
-        }
+        Ok(entries.into_iter().flatten().collect())
     }
-}
 
-/// One block a selection reads: the concept's position `index` in the index, the slot of
-/// its cache entry that holds the block, and the partition holding the rows.
-#[derive(Debug, Clone, Copy)]
-struct BlockRequest {
-    index: usize,
-    slot: usize,
-    holder: PartitionHolder,
-}
-
-impl BlockRequest {
-    /// The request for the whole block of the concept at `index`.
-    fn whole(index: usize) -> Self {
-        BlockRequest {
-            index,
-            slot: 0,
-            holder: PartitionHolder::default(),
+    /// The partition view of the concept `read` names, whose entry is `entry`, built and
+    /// weighed with its block when missing. Blocking.
+    ///
+    /// # Errors
+    /// [`QueryError::StoreInconsistent`] when a row belongs to no holder.
+    pub(crate) fn view(&self, read: &ConceptRead, entry: &Arc<CachedConcept>) -> Result<Arc<View>> {
+        let (view, built) = entry.view_or_build(|block| {
+            View::build(
+                block,
+                self.set.holders_of(read.index),
+                self.set.store.membership(),
+                &self.set.dictionary[read.index].name,
+            )
+        })?;
+        if built {
+            self.set.cache.insert(read.index as u32, Arc::clone(entry));
         }
+        Ok(view)
     }
 }
 

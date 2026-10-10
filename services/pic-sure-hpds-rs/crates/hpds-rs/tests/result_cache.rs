@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 use common::{
     AGE, Fixture, POPULATION, Reply, SEX, consents, envelope, fixture, fixture_with, post,
 };
-use hpds_query::{CombinedMode, ResultCacheStats};
+use hpds_query::{NARROW_VIEW_SHARE, ResultCacheStats};
 use hpds_rs::sync::QUERY_METADATA_HEADER;
 use serde_json::{Value, json};
 
@@ -119,20 +119,14 @@ async fn two_consent_sets_never_share_an_entry() {
 }
 
 #[tokio::test]
-async fn the_full_selection_has_one_entry_per_route() {
-    let combined = cached();
-    let partitions_only = fixture_with(|c| {
-        c.result_cache_bytes = CACHE_BYTES;
-        c.partitions.combined = CombinedMode::Off;
-    });
+async fn the_full_selection_has_one_entry() {
+    let f = cached();
     let query = age_count(35.0, 45.0, None);
-    for f in [&combined, &partitions_only] {
-        for _ in 0..2 {
-            assert_eq!(sync(&f.app, &query).await.body, "562");
-        }
-        let after = stats(f);
-        assert_eq!((after.misses, after.hits, after.entries), (1, 1, 1));
+    for _ in 0..2 {
+        assert_eq!(sync(&f.app, &query).await.body, "562");
     }
+    let after = stats(&f);
+    assert_eq!((after.misses, after.hits, after.entries), (1, 1, 1));
 }
 
 #[tokio::test]
@@ -419,17 +413,17 @@ async fn cached_answers_match_uncached_on_the_golden_fixture() {
             "no {types} case"
         );
     }
-    for combined in [CombinedMode::Auto, CombinedMode::Off] {
-        let uncached = fixture_with(|c| c.partitions.combined = combined);
+    for share in [NARROW_VIEW_SHARE, 0.0, 2.0] {
+        let uncached = fixture_with(|c| c.partitions.narrow_view_share = share);
         let cached = fixture_with(|c| {
-            c.partitions.combined = combined;
+            c.partitions.narrow_view_share = share;
             c.result_cache_bytes = CACHE_BYTES;
         });
         let answered = replay_identical(&uncached, &cached, &queries).await;
         let after = stats(&cached);
         assert!(
             after.hits >= answered,
-            "{combined:?}: {after:?}, {answered} answered"
+            "{share}: {after:?}, {answered} answered"
         );
         assert!(after.entries > 0 && after.entries <= answered, "{after:?}");
     }

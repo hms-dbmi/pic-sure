@@ -90,23 +90,13 @@ pub enum QueryError {
         detail: String,
     },
 
-    /// Two partitions hold the same concept with different types. Java would merge the two
-    /// cubes and fail on the first sort; the partition set refuses to open instead.
-    #[error(
-        "concept {concept_path} is {first_type} in partition {first_partition} but \
-         {second_type} in partition {second_partition}"
-    )]
-    TypeConflict {
-        /// The concept path.
-        concept_path: String,
-        /// The first partition holding the concept, in partition name order.
-        first_partition: String,
-        /// `categorical` or `numeric`: the type in `first_partition`.
-        first_type: &'static str,
-        /// The first later partition whose type differs.
-        second_partition: String,
-        /// The type in `second_partition`.
-        second_type: &'static str,
+    /// A cohort held patients outside the partitions the query's consents select, which
+    /// only a fault in the engine can cause. The query is refused rather than answered from
+    /// another partition's patients. The message counts them and names none.
+    #[error("the cohort holds {patients} patients outside the selected partitions")]
+    CohortOutsideSelection {
+        /// How many patients were outside.
+        patients: u64,
     },
 
     /// A concept's block could not be read, authenticated, or decoded.
@@ -126,13 +116,13 @@ pub enum QueryError {
 
 impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
-    /// variant except [`QueryError::Open`], [`QueryError::TypeConflict`],
+    /// variant except [`QueryError::Open`], [`QueryError::CohortOutsideSelection`],
     /// [`QueryError::Block`], [`QueryError::StoreInconsistent`] and [`QueryError::Task`].
     pub fn is_client_error(&self) -> bool {
         !matches!(
             self,
             QueryError::Open { .. }
-                | QueryError::TypeConflict { .. }
+                | QueryError::CohortOutsideSelection { .. }
                 | QueryError::Block { .. }
                 | QueryError::StoreInconsistent { .. }
                 | QueryError::Task(_)

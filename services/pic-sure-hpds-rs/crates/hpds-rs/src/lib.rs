@@ -17,9 +17,8 @@
 //! | `POST /search` | [`search::search`] |
 //! | `GET /search/values/` (and without the slash) | [`search::search_values`] |
 //!
-//! `GET /actuator/health` is at the root: 200 `{"status":"UP","combinedStore":...}` when the
-//! merged dictionary of the partitions holds a concept, otherwise 503
-//! `{"status":"DOWN","reason":...}`. Every
+//! `GET /actuator/health` is at the root: 200 `{"status":"UP"}` when the merged dictionary of
+//! the partitions holds a concept, otherwise 503 `{"status":"DOWN","reason":...}`. Every
 //! request is logged at info under the `hpds_rs::access` target with its method, path, status
 //! and latency, never its body.
 //!
@@ -107,10 +106,6 @@ pub struct Health {
     /// carries a path or the open error, which go to the log.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<&'static str>,
-    /// When UP, whether queries that select every partition read the combined store:
-    /// `IN_USE`, `ABSENT` or `OFF` ([`hpds_query::CombinedStatus`]). Left out when DOWN.
-    #[serde(rename = "combinedStore", skip_serializing_if = "Option::is_none")]
-    pub combined_store: Option<&'static str>,
 }
 
 async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
@@ -120,10 +115,6 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
             Json(Health {
                 status: "UP",
                 reason: None,
-                combined_store: state
-                    .engine()
-                    .ok()
-                    .map(|engine| engine.partitions().combined_status().as_str()),
             }),
         ),
         Some(reason) => (
@@ -131,7 +122,6 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
             Json(Health {
                 status: "DOWN",
                 reason: Some(reason),
-                combined_store: None,
             }),
         ),
     }

@@ -1,9 +1,23 @@
-//! Cohort evaluation: `PhenotypicQueryExecutor.getPatientSet` over roaring bitmaps, across
+//! Cohort evaluation: `PhenotypicQueryExecutor.getPatientSet` over roaring bitmaps, within
 //! the partitions a query selects.
 //!
-//! Every filter is evaluated in each selected partition and the per-partition patient sets
-//! are ORed, before filters combine. So a patient present in two partitions can satisfy one
-//! filter from each, as in Java, where every store call unions over partitions.
+//! A filter matches a patient who has a row satisfying it in a selected partition, and the
+//! filters' patient sets combine with AND and OR, so a patient in two partitions can satisfy
+//! one filter from each, as in Java, where every store call unions over partitions.
+//!
+//! A selection of every partition evaluates each filter on whole blocks. A narrower one
+//! evaluates each filter as its [`ReadMode`] says. An exact filter gives the selection's
+//! answer. A whole-block filter agrees with it on every patient the selection routes
+//! (`R(S)`, whose rows all lie in one selected partition) and, once the overlap patients'
+//! rows are filtered by tag, on the overlap set; it may also hold patients of unselected
+//! partitions. A clause is combined from its filters' sets and, unless it is exact, is
+//! intersected once with the patients the selection reaches
+//! ([`crate::partition::Scope::reach`]): no clause negates, so every clause is decided
+//! patient by patient and only from that patient's filters, and dropping an unreachable
+//! patient at the end is the same as dropping them from every filter.
+//!
+//! Before anything uses the cohort, it is checked against the selected partitions' members
+//! ([`Selection::check_members`]); a patient outside them fails the query.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -18,7 +32,8 @@ use crate::limits::CheckedQuery;
 use crate::model::{
     Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery,
 };
-use crate::partition::Selection;
+use crate::partition::{ConceptRead, ReadMode, Selection};
+use crate::view::View;
 
 /// The patients matching `checked`'s phenotypic clause within the partitions its consents
 /// select, borrowing the partitions' patient set instead of copying it when there is no
@@ -31,26 +46,100 @@ use crate::partition::Selection;
 /// [`QueryError::FilterWithoutCriteria`], [`QueryError::EmptySubquery`],
 /// [`QueryError::MissingOperator`] and [`QueryError::TypeMismatch`] where Java's executor
 /// throws, [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index,
-/// and [`QueryError::Block`] when a block cannot be loaded.
+/// [`QueryError::Block`] when a block cannot be loaded, and
+/// [`QueryError::CohortOutsideSelection`] when the cohort holds a patient outside the
+/// selected partitions.
 pub(crate) fn evaluate_cohort_cow<'s>(
     checked: &CheckedQuery<'_, 's>,
 ) -> Result<Cow<'s, RoaringBitmap>> {
     let selection = checked.selection();
     let _evaluating = selection.set().begin_evaluation();
-    match &checked.query().phenotypic_clause {
-        None => Ok(selection.patients()),
+    let cohort = match &checked.query().phenotypic_clause {
+        None => selection.patients(),
         Some(clause) => {
             check_structure(selection, clause)?;
-            evaluate_checked(selection, clause).map(|patients| Cow::Owned(patients.into_owned()))
+            let found = evaluate_checked(selection, clause)?;
+            Cow::Owned(within_selection(selection, found))
         }
+    };
+    guard(selection, &cohort)?;
+    Ok(cohort)
+}
+
+/// The cohort of a clause whose patients are `found`: as found when exact, otherwise only
+/// the patients the selection reaches.
+fn within_selection(selection: &Selection<'_>, found: Found) -> RoaringBitmap {
+    if found.exact || fault::skips_reach() {
+        return found.patients.into_owned();
+    }
+    let reach = selection.scope().reach();
+    match found.patients {
+        Patients::Computed(mut patients) => {
+            patients &= reach;
+            patients
+        }
+        borrowed => borrowed.bitmap() & reach,
     }
 }
 
-/// A patient set that either borrows a cached block's patients or was computed for this
-/// query, so unions and intersections over whole concepts read the cached bitmaps instead
-/// of copying them first.
+/// Fails the query when `cohort` holds a patient outside the selected partitions' members,
+/// logging how many without naming any.
+///
+/// # Errors
+/// [`QueryError::CohortOutsideSelection`] for such a cohort, and [`QueryError::Block`]
+/// when the check cannot read a tagged block it needs.
+fn guard(selection: &Selection<'_>, cohort: &RoaringBitmap) -> Result<()> {
+    let outside = selection.check_members(cohort)?;
+    if outside == 0 {
+        return Ok(());
+    }
+    tracing::error!(
+        outside,
+        cohort = cohort.len(),
+        selected_partitions = selection.names().len(),
+        "a cohort holds patients outside the selected partitions; the query is refused"
+    );
+    Err(QueryError::CohortOutsideSelection { patients: outside })
+}
+
+/// Test-only faults that break cohort evaluation on purpose, to show the guard catches
+/// them.
+#[cfg(test)]
+pub(crate) mod fault {
+    use std::cell::Cell;
+
+    thread_local! {
+        static SKIP_REACH: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// True while the calling thread skips the final intersection of a narrow selection's
+    /// inexact clause with the patients it reaches.
+    pub(crate) fn skips_reach() -> bool {
+        SKIP_REACH.with(Cell::get)
+    }
+
+    /// Runs `work` on the calling thread with that intersection skipped.
+    pub(crate) fn skipping_reach<R>(work: impl FnOnce() -> R) -> R {
+        SKIP_REACH.with(|skip| skip.set(true));
+        let result = work();
+        SKIP_REACH.with(|skip| skip.set(false));
+        result
+    }
+}
+
+#[cfg(not(test))]
+mod fault {
+    pub(crate) fn skips_reach() -> bool {
+        false
+    }
+}
+
+/// A patient set that borrows a cached block's or view's patients, or was computed for this
+/// query, so unions and intersections read cached bitmaps instead of copying them first.
 enum Patients {
     Block(Arc<Block>),
+    Slot(Arc<View>, usize),
+    Part(Arc<View>, usize),
     Computed(RoaringBitmap),
 }
 
@@ -59,27 +148,36 @@ impl Patients {
     fn bitmap(&self) -> &RoaringBitmap {
         match self {
             Self::Block(block) => block.all_patients(),
+            Self::Slot(view, slot) => view.patients(*slot),
+            Self::Part(view, part) => view.part(*part).1,
             Self::Computed(bitmap) => bitmap,
         }
     }
 
-    /// The patient bitmap, copied out of the block when it is borrowed.
+    /// The patient bitmap, copied when it is borrowed.
     fn into_owned(self) -> RoaringBitmap {
         match self {
-            Self::Block(block) => block.all_patients().clone(),
             Self::Computed(bitmap) => bitmap,
+            borrowed => borrowed.bitmap().clone(),
         }
     }
+}
 
-    /// The union of `sets`: the empty set for none, the one set as it is, and one
-    /// multi-way union otherwise.
-    fn union(mut sets: Vec<Patients>) -> Patients {
-        if sets.len() <= 1 {
-            return sets
-                .pop()
-                .unwrap_or_else(|| Patients::Computed(RoaringBitmap::new()));
-        }
-        Patients::Computed(sets.iter().map(Patients::bitmap).union())
+/// The patients a filter or clause matched, and whether they are exactly the selection's
+/// answer or may also hold patients of unselected partitions (see the module docs).
+struct Found {
+    patients: Patients,
+    exact: bool,
+}
+
+impl Found {
+    fn new(patients: Patients, exact: bool) -> Self {
+        Found { patients, exact }
+    }
+
+    /// No patient, exactly.
+    fn none() -> Self {
+        Found::new(Patients::Computed(RoaringBitmap::new()), true)
     }
 }
 
@@ -140,7 +238,7 @@ fn check_filter(selection: &Selection<'_>, filter: &PhenotypicFilter) -> Result<
     Ok(())
 }
 
-fn evaluate_checked(selection: &Selection<'_>, clause: &PhenotypicClause) -> Result<Patients> {
+fn evaluate_checked(selection: &Selection<'_>, clause: &PhenotypicClause) -> Result<Found> {
     match clause {
         PhenotypicClause::Filter(filter) => evaluate_filter(selection, filter),
         PhenotypicClause::Subquery(subquery) => {
@@ -152,36 +250,46 @@ fn evaluate_checked(selection: &Selection<'_>, clause: &PhenotypicClause) -> Res
 
 /// Evaluates `clauses` in parallel and combines them with `operator`: one multi-way union
 /// for OR, and for AND one multi-way intersection over the sets ordered smallest first,
-/// which stops once the result is empty. Borrowed block bitmaps are read in place (an AND
-/// copies only its starting operand), and a single clause is returned as it is.
+/// which stops once the result is empty. Borrowed bitmaps are read in place (an AND copies
+/// only its starting operand), and a single clause is returned as it is.
+///
+/// An OR is exact when every operand is. An AND is exact when any operand is: the exact
+/// operand holds only patients the selection reaches, on whom every operand agrees with
+/// the selection's answer.
 fn combine(
     selection: &Selection<'_>,
     clauses: &[PhenotypicClause],
     operator: Operator,
-) -> Result<Patients> {
+) -> Result<Found> {
     let mut sets = fan_out::map(clauses, |clause| evaluate_checked(selection, clause))
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
     if sets.len() <= 1 {
         return sets.pop().ok_or(QueryError::EmptySubquery);
     }
-    let mut bitmaps: Vec<&RoaringBitmap> = sets.iter().map(Patients::bitmap).collect();
-    Ok(Patients::Computed(match operator {
-        Operator::Or => bitmaps.union(),
+    let mut bitmaps: Vec<&RoaringBitmap> = sets.iter().map(|s| s.patients.bitmap()).collect();
+    Ok(match operator {
+        Operator::Or => Found::new(
+            Patients::Computed(bitmaps.union()),
+            sets.iter().all(|s| s.exact),
+        ),
         Operator::And => {
             bitmaps.sort_unstable_by_key(|bitmap| bitmap.len());
-            bitmaps.intersection()
+            Found::new(
+                Patients::Computed(bitmaps.intersection()),
+                sets.iter().any(|s| s.exact),
+            )
         }
-    }))
+    })
 }
 
-fn evaluate_filter(selection: &Selection<'_>, filter: &PhenotypicFilter) -> Result<Patients> {
+fn evaluate_filter(selection: &Selection<'_>, filter: &PhenotypicFilter) -> Result<Found> {
     let path = filter.concept_path.as_str();
     match filter.phenotypic_filter_type {
         PhenotypicFilterType::Required => required_patients(selection, path),
-        PhenotypicFilterType::AnyRecordOf => any_record_of(selection, path).map(Patients::Computed),
+        PhenotypicFilterType::AnyRecordOf => any_record_of(selection, path),
         PhenotypicFilterType::Filter => match &filter.values {
-            Some(values) => patients_with_values(selection, path, values).map(Patients::Computed),
+            Some(values) => patients_with_values(selection, path, values),
             None if filter.min.is_some() || filter.max.is_some() => {
                 range_patients(selection, path, filter.min, filter.max)
             }
@@ -192,138 +300,326 @@ fn evaluate_filter(selection: &Selection<'_>, filter: &PhenotypicFilter) -> Resu
     }
 }
 
-fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Patients> {
-    let blocks = selection.blocks(path)?;
-    Ok(Patients::union(
-        blocks.into_iter().map(Patients::Block).collect(),
-    ))
+/// The view's patients in the selected partitions: borrowed for one partition, unioned for
+/// several. Exact.
+fn selected_slots(selection: &Selection<'_>, view: Arc<View>) -> Found {
+    let slots: Vec<usize> = view.selected_slots(selection.mask()).collect();
+    let patients = match slots.as_slice() {
+        [slot] => Patients::Slot(Arc::clone(&view), *slot),
+        many => Patients::Computed(many.iter().map(|&slot| view.patients(slot)).union()),
+    };
+    Found::new(patients, true)
+}
+
+fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Found> {
+    let Some(read) = selection.concept(path) else {
+        return Ok(Found::none());
+    };
+    let entry = selection.entry(&read)?;
+    let block = Arc::clone(entry.block());
+    Ok(match read.mode {
+        ReadMode::Exact => Found::new(Patients::Block(block), true),
+        ReadMode::Whole if block.partitions().is_tagged() => Found::new(
+            Patients::Computed(with_selected_overlap(
+                selection,
+                &block,
+                block.all_patients(),
+                |_| true,
+            )),
+            false,
+        ),
+        ReadMode::Whole => Found::new(Patients::Block(block), false),
+        ReadMode::View => selected_slots(selection, selection.view(&read, &entry)?),
+    })
 }
 
 /// Patients with any value for any concept whose path starts with `prefix`, the concept at
 /// `prefix` included, in any selected partition (`getChildConceptPaths` over the merged
-/// dictionary, a `String.startsWith` test, then `getAllKeys` for each). Each partition reads
-/// its own concepts under the prefix, which together are the merged dictionary's. Concepts
-/// with no observations are skipped without loading their blocks.
+/// dictionary, a `String.startsWith` test, then `getAllKeys` for each). Concepts with no row
+/// in a selected partition are skipped without loading their blocks.
 ///
 /// # Errors
 /// [`QueryError::Block`] when a block cannot be loaded.
-fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<RoaringBitmap> {
-    let blocks = selection.blocks_with_prefix(prefix)?;
-    Ok(union_of_blocks(
-        &blocks,
-        selection.set().spare_parallelism(),
+fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
+    let reads = selection.concepts_with_prefix(prefix);
+    let entries = selection.entries(&reads)?;
+    let pairs: Vec<(ConceptRead, _)> = reads.into_iter().zip(entries).collect();
+    let views = fan_out::map(&pairs, |(read, entry)| match read.mode {
+        ReadMode::View => selection.view(read, entry).map(Some),
+        _ => Ok(None),
+    })
+    .into_iter()
+    .collect::<Result<Vec<_>>>()?;
+    let mut exact = true;
+    let mut corrected = Vec::new();
+    for (read, entry) in &pairs {
+        let block = entry.block();
+        if read.mode == ReadMode::Whole {
+            exact = false;
+            if block.partitions().is_tagged() {
+                corrected.push(with_selected_overlap(
+                    selection,
+                    block,
+                    block.all_patients(),
+                    |_| true,
+                ));
+            }
+        }
+    }
+    let mut sets: Vec<&RoaringBitmap> = corrected.iter().collect();
+    for ((read, entry), view) in pairs.iter().zip(&views) {
+        let block = entry.block();
+        match (read.mode, view) {
+            (ReadMode::View, Some(view)) => {
+                sets.extend(
+                    view.selected_slots(selection.mask())
+                        .map(|s| view.patients(s)),
+                );
+            }
+            (ReadMode::Whole, _) if block.partitions().is_tagged() => {}
+            _ => sets.push(block.all_patients()),
+        }
+    }
+    Ok(Found::new(
+        Patients::Computed(union_of(&sets, selection.set().spare_parallelism())),
+        exact,
     ))
 }
 
-/// Blocks below which [`union_of_blocks`] unions on the calling thread.
-const PARALLEL_UNION_MIN_BLOCKS: usize = 512;
+/// Sets below which [`union_of`] unions on the calling thread.
+const PARALLEL_UNION_MIN_SETS: usize = 512;
 
-/// The union of the patient sets of `blocks`. A long list (a study-level `ANY_RECORD_OF`
-/// reads thousands to tens of thousands of blocks) is split into up to `chunks` chunks,
-/// each unioned on its own rayon thread, and the chunk results unioned. A short list, or
-/// `chunks` of 1, is unioned in one multi-way union on the calling thread. Pass
+/// The union of `sets`. A long list (a study-level `ANY_RECORD_OF` reads thousands to tens
+/// of thousands of concepts) is split into up to `chunks` chunks, each unioned on its own
+/// rayon thread, and the chunk results unioned. A short list, or `chunks` of 1, is unioned
+/// in one multi-way union on the calling thread. Pass
 /// [`crate::PartitionSet::spare_parallelism`], so a busy service unions on the calling
 /// thread instead of queueing behind other queries for the pool.
-fn union_of_blocks(blocks: &[Arc<Block>], chunks: usize) -> RoaringBitmap {
-    if chunks <= 1 || blocks.len() < PARALLEL_UNION_MIN_BLOCKS {
-        return blocks.iter().map(|block| block.all_patients()).union();
+fn union_of(sets: &[&RoaringBitmap], chunks: usize) -> RoaringBitmap {
+    if chunks <= 1 || sets.len() < PARALLEL_UNION_MIN_SETS {
+        return sets.iter().copied().union();
     }
-    let chunk = blocks.len().div_ceil(chunks);
-    blocks
-        .par_chunks(chunk)
-        .map(|chunk| chunk.iter().map(|block| block.all_patients()).union())
+    let chunk = sets.len().div_ceil(chunks);
+    sets.par_chunks(chunk)
+        .map(|chunk| chunk.iter().copied().union())
         .reduce(RoaringBitmap::new, |a, b| a | b)
 }
 
 /// Patients with at least one of `values` for the categorical concept at `path` in any
 /// selected partition (`PhenoCube.getKeysForValue`, exact match in Java string equality).
-/// Values a partition does not hold contribute nothing; an unknown path or an empty
-/// `values` gives the empty set.
+/// Values the selected partitions do not hold contribute nothing; an unknown path or an
+/// empty `values` gives the empty set.
 ///
 /// # Errors
-/// [`QueryError::StoreInconsistent`] when a block is numeric, which the structure check
-/// has already ruled out through the dictionary, [`QueryError::Block`] when a block cannot
-/// be loaded.
-fn patients_with_values(
-    selection: &Selection<'_>,
-    path: &str,
-    values: &[String],
-) -> Result<RoaringBitmap> {
+/// [`QueryError::StoreInconsistent`] when the block is numeric, which the structure check
+/// has already ruled out through the dictionary, [`QueryError::Block`] when the block
+/// cannot be loaded.
+fn patients_with_values(selection: &Selection<'_>, path: &str, values: &[String]) -> Result<Found> {
     if values.is_empty() {
-        return Ok(RoaringBitmap::new());
+        return Ok(Found::none());
     }
-    let blocks = selection.blocks(path)?;
-    let mut matched: Vec<&RoaringBitmap> = Vec::new();
-    for block in &blocks {
-        match block.as_ref() {
-            Block::Categorical(block) => matched.extend(
-                values
-                    .iter()
-                    .filter_map(|value| block.find_value(value))
-                    .map(|i| block.bitmap(i)),
-            ),
-            Block::Numeric(_) => {
-                return Err(QueryError::StoreInconsistent {
-                    concept_path: path.to_owned(),
-                    detail: "the index says categorical but the block is numeric",
-                });
-            }
-        }
+    let Some(read) = selection.concept(path) else {
+        return Ok(Found::none());
+    };
+    let entry = selection.entry(&read)?;
+    let Block::Categorical(block) = entry.block().as_ref() else {
+        return Err(QueryError::StoreInconsistent {
+            concept_path: path.to_owned(),
+            detail: "the index says categorical but the block is numeric",
+        });
+    };
+    let mut found: Vec<usize> = values.iter().filter_map(|v| block.find_value(v)).collect();
+    found.sort_unstable();
+    found.dedup();
+    if read.mode == ReadMode::View {
+        let view = selection.view(&read, &entry)?;
+        let parts: Vec<usize> = found
+            .iter()
+            .flat_map(|&value| view.parts_of(value))
+            .filter(|&part| selection.selects(view.partition(view.part(part).0)))
+            .collect();
+        let patients = match parts.as_slice() {
+            [part] => Patients::Part(Arc::clone(&view), *part),
+            many => Patients::Computed(many.iter().map(|&part| view.part(part).1).union()),
+        };
+        return Ok(Found::new(patients, true));
     }
-    Ok(matched.union())
+    let matched: RoaringBitmap = found.iter().map(|&value| block.bitmap(value)).union();
+    let whole = entry.block();
+    if read.mode == ReadMode::Whole && whole.partitions().is_tagged() {
+        let indices = block.value_indices();
+        let corrected = with_selected_overlap(selection, whole, &matched, |key| {
+            found.binary_search(&(indices[key] as usize)).is_ok()
+        });
+        return Ok(Found::new(Patients::Computed(corrected), false));
+    }
+    Ok(Found::new(
+        Patients::Computed(matched),
+        read.mode == ReadMode::Exact,
+    ))
 }
 
 /// Patients with at least one value `v` of the numeric concept at `path`, in any selected
 /// partition, such that `min <= v <= max` in Java `Double.compareTo` order
 /// (`PhenoCube.getKeysForRange`). A `None` bound is open. An unknown path gives the empty
-/// set. Borrows a block's patients when one partition holds the concept and the range
-/// covers every value.
+/// set. Borrows the patients of the block or of one partition's view when the range covers
+/// every value.
 ///
 /// Java's seek logic yields the same inclusive bounds, except that it throws where this
 /// returns the empty set: when `min` exceeds every value (or the concept is empty), and
 /// when some value lies strictly between `max` and a larger `min`.
 ///
 /// # Errors
-/// [`QueryError::StoreInconsistent`] when a block is categorical, which the structure check
-/// has already ruled out through the dictionary, [`QueryError::Block`] when a block cannot
-/// be loaded.
+/// [`QueryError::StoreInconsistent`] when the block is categorical, which the structure
+/// check has already ruled out through the dictionary, [`QueryError::Block`] when the block
+/// cannot be loaded.
 fn range_patients(
     selection: &Selection<'_>,
     path: &str,
     min: Option<f64>,
     max: Option<f64>,
-) -> Result<Patients> {
-    let parts = selection
-        .blocks(path)?
-        .into_iter()
-        .map(|block| block_range(path, block, min, max))
-        .collect::<Result<Vec<_>>>()?;
-    Ok(Patients::union(parts))
-}
-
-fn block_range(
-    path: &str,
-    block: Arc<Block>,
-    min: Option<f64>,
-    max: Option<f64>,
-) -> Result<Patients> {
-    match block.as_ref() {
-        Block::Numeric(numeric) => {
-            let range = numeric.value_range(min, max);
-            if range.len() == numeric.len() {
-                return Ok(Patients::Block(block));
-            }
-            let mut patients = numeric.patients()[range].to_vec();
-            patients.sort_unstable();
-            patients.dedup();
-            Ok(Patients::Computed(
-                RoaringBitmap::from_sorted_iter(patients).unwrap_or_default(),
-            ))
-        }
-        Block::Categorical(_) => Err(QueryError::StoreInconsistent {
+) -> Result<Found> {
+    let Some(read) = selection.concept(path) else {
+        return Ok(Found::none());
+    };
+    let entry = selection.entry(&read)?;
+    let Block::Numeric(numeric) = entry.block().as_ref() else {
+        return Err(QueryError::StoreInconsistent {
             concept_path: path.to_owned(),
             detail: "the index says numeric but the block is categorical",
-        }),
+        });
+    };
+    let patients = numeric.patients();
+    let tagged = numeric.partitions().is_tagged();
+    let found = match read.mode {
+        ReadMode::View => {
+            let view = selection.view(&read, &entry)?;
+            let values = numeric.values();
+            let slots: Vec<usize> = view.selected_slots(selection.mask()).collect();
+            let mut covered = true;
+            let mut hits: Vec<u32> = Vec::new();
+            for &slot in &slots {
+                let group = view.group(slot);
+                let range = group_range(group, values, min, max);
+                covered &= range.len() == group.len();
+                hits.extend(group[range].iter().map(|&pos| patients[pos as usize]));
+            }
+            if covered {
+                return Ok(selected_slots(selection, view));
+            }
+            Found::new(Patients::Computed(sorted_patients(hits)), true)
+        }
+        ReadMode::Whole if tagged => {
+            let range = numeric.value_range(min, max);
+            let hits = range
+                .filter(|&pos| {
+                    numeric
+                        .tag_at_value_pos(pos)
+                        .is_some_and(|tag| selection.selects(tag))
+                })
+                .map(|pos| patients[pos])
+                .collect();
+            Found::new(Patients::Computed(sorted_patients(hits)), true)
+        }
+        mode => {
+            let exact = mode == ReadMode::Exact;
+            let range = numeric.value_range(min, max);
+            if range.len() == numeric.len() {
+                return Ok(Found::new(
+                    Patients::Block(Arc::clone(entry.block())),
+                    exact,
+                ));
+            }
+            Found::new(
+                Patients::Computed(sorted_patients(patients[range].to_vec())),
+                exact,
+            )
+        }
+    };
+    Ok(found)
+}
+
+/// The positions in `group` (value positions ascending, so in value order) whose value lies
+/// in `[min, max]` in Java `Double.compareTo` order.
+fn group_range(
+    group: &[u32],
+    values: &[f64],
+    min: Option<f64>,
+    max: Option<f64>,
+) -> std::ops::Range<usize> {
+    let value = |pos: &u32| values[*pos as usize];
+    let start = min.map_or(0, |m| {
+        group.partition_point(|p| hpds_format::java_double_cmp(value(p), m).is_lt())
+    });
+    let end = max.map_or(group.len(), |m| {
+        group.partition_point(|p| !hpds_format::java_double_cmp(value(p), m).is_gt())
+    });
+    start..end.max(start)
+}
+
+fn sorted_patients(mut patients: Vec<u32>) -> RoaringBitmap {
+    patients.sort_unstable();
+    patients.dedup();
+    RoaringBitmap::from_sorted_iter(patients).unwrap_or_default()
+}
+
+/// `matched` with its overlap patients replaced by those holding a row of `block` in a
+/// selected partition that `keep` accepts: the overlap patients' share of a whole-block
+/// answer made exact. `keep` gets the row's value position in a numeric block and its key
+/// position in a categorical one.
+pub(crate) fn with_selected_overlap(
+    selection: &Selection<'_>,
+    block: &Block,
+    matched: &RoaringBitmap,
+    keep: impl Fn(usize) -> bool,
+) -> RoaringBitmap {
+    let overlap = selection.overlap();
+    let mut patients = matched - overlap;
+    let candidates = block.all_patients() & overlap;
+    for_each_row_of(block, &candidates, |patient, position, tag| {
+        if tag.is_some_and(|tag| selection.selects(tag)) && keep(position) {
+            patients.insert(patient);
+        }
+    });
+    patients
+}
+
+/// Calls `f` with the patient, position and tag of every row of `block` whose patient is in
+/// `patients`, patient by patient in key order. The position is the row's value position in
+/// a numeric block and its key position in a categorical one; the tag is `None` in an
+/// untagged block. Seeks each patient's rows, so the cost follows those rows.
+pub(crate) fn for_each_row_of(
+    block: &Block,
+    patients: &RoaringBitmap,
+    mut f: impl FnMut(u32, usize, Option<u16>),
+) {
+    match block {
+        Block::Categorical(b) => {
+            let keys = b.patients();
+            let mut cursor = 0;
+            for patient in patients {
+                cursor += keys[cursor..].partition_point(|&p| p < patient);
+                while keys.get(cursor) == Some(&patient) {
+                    f(patient, cursor, b.tag_at_key_pos(cursor));
+                    cursor += 1;
+                }
+            }
+        }
+        Block::Numeric(b) => {
+            let (by_key, values) = (b.by_key(), b.patients());
+            let mut cursor = 0;
+            for patient in patients {
+                cursor += by_key[cursor..].partition_point(|&i| values[i as usize] < patient);
+                while let Some(&position) = by_key.get(cursor) {
+                    if values[position as usize] != patient {
+                        break;
+                    }
+                    let position = position as usize;
+                    f(patient, position, b.tag_at_value_pos(position));
+                    cursor += 1;
+                }
+            }
+        }
     }
 }
 
@@ -368,25 +664,41 @@ mod tests {
     #[test]
     fn the_parallel_union_equals_the_serial_union() {
         let blocks = synthetic_blocks(1_000);
-        assert!(blocks.len() >= PARALLEL_UNION_MIN_BLOCKS);
-        let serial = union_of_blocks(&blocks, 1);
-        let expected: RoaringBitmap = blocks
-            .iter()
-            .flat_map(|block| block.all_patients().iter())
-            .collect();
+        let sets: Vec<&RoaringBitmap> = blocks.iter().map(|b| b.all_patients()).collect();
+        assert!(sets.len() >= PARALLEL_UNION_MIN_SETS);
+        let serial = union_of(&sets, 1);
+        let expected: RoaringBitmap = sets.iter().flat_map(|set| set.iter()).collect();
         assert_eq!(serial, expected);
         assert!(serial.len() > 1_000);
         for chunks in [2, 3, 7, 64] {
-            assert_eq!(union_of_blocks(&blocks, chunks), serial, "{chunks} chunks");
+            assert_eq!(union_of(&sets, chunks), serial, "{chunks} chunks");
         }
-        let odd = &blocks[..997];
-        let odd_serial = union_of_blocks(odd, 1);
+        let odd = &sets[..997];
+        let odd_serial = union_of(odd, 1);
         for chunks in [2, 3, 7, 64] {
-            assert_eq!(
-                union_of_blocks(odd, chunks),
-                odd_serial,
-                "{chunks} chunks of 997"
-            );
+            assert_eq!(union_of(odd, chunks), odd_serial, "{chunks} chunks of 997");
         }
+    }
+
+    #[test]
+    fn rows_are_visited_patient_by_patient_in_key_order() {
+        let block = block_of(&[9, 3, 3, 7, 1, 9]);
+        let wanted: RoaringBitmap = [1, 3, 8, 9].into_iter().collect();
+        let mut seen = Vec::new();
+        for_each_row_of(&block, &wanted, |patient, position, tag| {
+            seen.push((patient, position, tag));
+        });
+        let Block::Numeric(numeric) = block.as_ref() else {
+            unreachable!()
+        };
+        let patients: Vec<u32> = seen
+            .iter()
+            .map(|&(_, position, _)| numeric.patients()[position])
+            .collect();
+        assert_eq!(patients, [1, 3, 3, 9, 9]);
+        assert!(
+            seen.iter()
+                .all(|&(p, _, tag)| tag.is_none() && wanted.contains(p))
+        );
     }
 }

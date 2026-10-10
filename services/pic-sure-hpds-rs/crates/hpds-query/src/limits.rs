@@ -85,9 +85,7 @@ impl QueryLimits {
     /// an evaluation that reads `select` as `select_use` says, the refusal of unsupported
     /// genomic input ([`check_supported`]), the consent selection
     /// ([`PartitionSet::select`]), and the concept bound over that selection, in that order.
-    /// Then, and only here, a selection of every partition is routed to the combined store
-    /// when the set has one ([`Selection::routed`]); any narrower selection reads its own
-    /// partitions. Returns the receipt every evaluation requires, carrying the selection.
+    /// Returns the receipt every evaluation requires, carrying the selection.
     ///
     /// # Errors
     /// [`QueryError::LimitExceeded`] naming the first bound the query breaks, the errors of
@@ -103,10 +101,7 @@ impl QueryLimits {
         check_supported(query)?;
         let selection = set.select(query)?;
         self.check_concepts(query, &selection)?;
-        Ok(CheckedQuery {
-            query,
-            selection: selection.routed(),
-        })
+        Ok(CheckedQuery { query, selection })
     }
 
     fn check_shape_for(&self, query: &Query, select_use: SelectUse) -> Result<()> {

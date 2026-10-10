@@ -132,10 +132,7 @@ async fn run(config: Config) -> ExitCode {
                 partitions = ?partitions.partition_names().collect::<Vec<_>>(),
                 concepts = partitions.concept_count(),
                 require_consents = partitions.requires_consents(),
-                combined_store = partitions.combined_status().as_str(),
-                partitions_disjoint = partitions.partitions_disjoint(),
-                patients_indexed_partitions = partitions.patients_indexed_partitions(),
-                per_partition_counts = partitions.counts_per_partition(),
+                overlap_patients = partitions.overlap_patients(),
                 result_cache_bytes = config.result_cache_bytes,
                 "store opened"
             );

@@ -8,8 +8,8 @@ use hpds_etl::load::{KeySource, LoadOptions, Mode, load};
 use hpds_etl::merge::{MergeSource, SourceStore, write_store};
 use hpds_format::{CryptoKey, Protection};
 use hpds_query::{
-    Engine, PartitionOptions, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, Query,
-    ResultType, SummaryColumnMeta,
+    Engine, NARROW_VIEW_SHARE, PartitionOptions, PhenotypicClause, PhenotypicFilter,
+    PhenotypicFilterType, Query, ResultType, SummaryColumnMeta,
 };
 use hpds_query::{Operator, PhenotypicSubquery};
 
@@ -371,4 +371,56 @@ pub fn answers_selecting(
         }
     }
     out
+}
+
+/// The shares of a concept's rows below which a narrow selection reads partition views,
+/// under which the tests run narrow selections: the service's, 0 (whole blocks for every
+/// concept) and 2 (views for every concept the selection does not hold entirely).
+pub const SHARES: [f64; 3] = [NARROW_VIEW_SHARE, 0.0, 2.0];
+
+/// `options` with narrow selections reading partition views below `share`.
+pub fn with_share(options: PartitionOptions, share: f64) -> PartitionOptions {
+    PartitionOptions {
+        narrow_view_share: share,
+        ..options
+    }
+}
+
+/// Asserts that every selection of a non-empty subset of `partitions` answers, in the store
+/// at `dir` built from all of them and under every one of [`SHARES`], exactly as a store
+/// built from only the selected partitions answers a selection of all of its partitions.
+/// The clauses and `select` list are those of the smaller store's dictionary, so every
+/// concept they name is one the selection holds. `adjust` is applied to each smaller store
+/// as [`partitioned_adjusted`] applies it.
+pub fn assert_selections_match_their_partitions(
+    dir: &PartitionedDir,
+    partitions: &[(&str, String)],
+    adjust: impl Fn(&str, &Path) -> bool + Copy,
+) {
+    let engines: Vec<(f64, Engine)> = SHARES
+        .iter()
+        .map(|&share| (share, dir.open(&with_share(lenient(), share)).unwrap()))
+        .collect();
+    for mask in 1..(1u32 << partitions.len()) {
+        let chosen: Vec<(&str, String)> = partitions
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| mask & (1 << i) != 0)
+            .map(|(_, (name, text))| (*name, text.clone()))
+            .collect();
+        let consents: Vec<String> = chosen.iter().map(|(name, _)| (*name).to_owned()).collect();
+        let alone = partitioned_adjusted(&chosen, adjust);
+        let alone = alone.open(&lenient()).unwrap();
+        let dictionary = alone.partitions().dictionary();
+        let select: Vec<String> = dictionary.iter().map(|c| c.name.clone()).collect();
+        let clauses = clauses(dictionary);
+        let expected = answers_selecting(&alone, &consents, &clauses, &select);
+        for (share, engine) in &engines {
+            assert_eq!(
+                answers_selecting(engine, &consents, &clauses, &select),
+                expected,
+                "{consents:?} at share {share}"
+            );
+        }
+    }
 }

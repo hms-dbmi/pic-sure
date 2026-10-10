@@ -390,9 +390,7 @@ fn a_missing_shared_key_or_store_refuses_to_open() {
             allow_plain: true,
             ..StoreOptions::default()
         },
-        require_consents: false,
-        combined: hpds_query::CombinedMode::Auto,
-        per_partition_counts: hpds_query::PerPartitionCounts::Auto,
+        ..lenient()
     };
     assert!(d.open(&plain).is_err());
 
@@ -424,7 +422,7 @@ fn block_heap_size(dir: &std::path::Path, path: &str) -> u64 {
 }
 
 #[test]
-fn a_full_selection_caches_one_whole_block_and_a_narrow_one_its_partition() {
+fn every_selection_caches_one_block_and_a_narrow_one_weighs_its_view_with_it() {
     let d = partitioned_rows(&[("p1", numeric_rows(&[1, 2])), ("p2", numeric_rows(&[3, 4]))]);
     let engine = d.open(&lenient()).unwrap();
     let set = engine.partitions();
@@ -444,11 +442,23 @@ fn a_full_selection_caches_one_whole_block_and_a_narrow_one_its_partition() {
         phenotypic_clause: Some(required(CONCEPT)),
         ..Query::with_consents(ResultType::Count, ["p1"])
     };
-    assert_eq!(engine.count(&only_p1).unwrap(), 2);
-    assert_eq!(
-        set.cached_block_count(),
-        2,
-        "the whole block and p1's rows derived from it"
+    let views = d
+        .open(&hpds_query::PartitionOptions {
+            narrow_view_share: 2.0,
+            ..lenient()
+        })
+        .unwrap();
+    for engine in [&engine, &views] {
+        assert_eq!(engine.count(&only_p1).unwrap(), 2);
+        assert_eq!(engine.partitions().cached_block_count(), 1);
+    }
+    assert_eq!(set.cached_views(), (0, 0), "p1 holds half the rows");
+    let (count, bytes) = views.partitions().cached_views();
+    assert_eq!(count, 1, "p1 reads its view below a share of 2");
+    assert!(
+        views.partitions().cached_bytes() >= whole + bytes,
+        "the view is weighed with its block: {} cached, {whole} + {bytes} built",
+        views.partitions().cached_bytes()
     );
 }
 

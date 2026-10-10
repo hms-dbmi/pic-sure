@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use hpds_query::{CombinedMode, PerPartitionCounts};
 use hpds_query::{
     DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_MAX_CLAUSE_DEPTH,
     DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_QUERY_CONCEPTS,
@@ -38,15 +37,14 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 ///
 /// | Variable | Default | Meaning |
 /// |---|---|---|
-/// | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store per consent subdirectory, or one unpartitioned store |
+/// | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store, partitioned by consent or not |
 /// | `SERVER_PORT` | 8080 | Listen port |
 /// | `HPDS_CACHE_BYTES` (or the old name `CACHE_BYTES`, with a warning) | 4 GiB | Byte bound of the decoded block cache |
 /// | `HPDS_RESULT_CACHE_BYTES` | 0 (off) | Byte bound of the cache of COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers |
 /// | `CACHE_SIZE` | ignored | Java's cache size in cubes; logged and ignored |
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
 /// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory |
-/// | `HPDS_COMBINED_STORE` | `auto` | `auto` answers queries that select every partition from whole blocks; `off` reads partitions one at a time |
-/// | `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts cross count patients in each selected partition and sums the counts when the partitions are patient-disjoint and every selected partition carries the `patients-indexed` record in the index; `off` always unions the partitions' patient sets first |
+/// | `HPDS_COMBINED_STORE`, `HPDS_PER_PARTITION_COUNTS` | ignored | Settings of the previous store layout; logged and ignored |
 /// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
 /// | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept; 0 or unset keeps it until evicted |
@@ -134,6 +132,14 @@ impl Config {
     /// settings that conflict (`HPDS_ENGINE_CONCURRENCY` must be below `HPDS_BLOCKING_THREADS`).
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let mut warnings = Vec::new();
+        for retired in ["HPDS_COMBINED_STORE", "HPDS_PER_PARTITION_COUNTS"] {
+            if lookup(retired).is_some() {
+                warnings.push(format!(
+                    "{retired} belongs to the previous store layout and is ignored; every \
+                     query now reads each concept's one block"
+                ));
+            }
+        }
         if lookup("CACHE_SIZE").is_some() {
             warnings.push(
                 "CACHE_SIZE counts cubes in the Java service and is ignored; set HPDS_CACHE_BYTES"
@@ -194,14 +200,6 @@ impl Config {
             Some(value) => parse_bool("HPDS_ALLOW_PLAIN", &value)?,
             None => false,
         };
-        let combined = match lookup("HPDS_COMBINED_STORE") {
-            Some(value) => parse_combined_mode(&value)?,
-            None => CombinedMode::Auto,
-        };
-        let per_partition_counts = match lookup("HPDS_PER_PARTITION_COUNTS") {
-            Some(value) => parse_per_partition_counts(&value)?,
-            None => PerPartitionCounts::Auto,
-        };
         Ok(Config {
             data_dir: PathBuf::from(
                 lookup("HPDS_DATA_DIRECTORY").unwrap_or_else(|| DEFAULT_DATA_DIRECTORY.to_owned()),
@@ -213,8 +211,7 @@ impl Config {
                     allow_plain,
                 },
                 require_consents,
-                combined,
-                per_partition_counts,
+                ..PartitionOptions::default()
             },
             results_dir: PathBuf::from(
                 lookup("HPDS_RESULTS_DIRECTORY")
@@ -335,26 +332,6 @@ fn positive_u64(
     match parse_or(lookup, name, default)? {
         0 => Err(format!("{name} must be at least 1")),
         value => Ok(value),
-    }
-}
-
-fn parse_per_partition_counts(value: &str) -> Result<PerPartitionCounts, String> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "auto" => Ok(PerPartitionCounts::Auto),
-        "off" => Ok(PerPartitionCounts::Off),
-        _ => Err(format!(
-            "HPDS_PER_PARTITION_COUNTS is not valid: {value} (use auto or off)"
-        )),
-    }
-}
-
-fn parse_combined_mode(value: &str) -> Result<CombinedMode, String> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "auto" => Ok(CombinedMode::Auto),
-        "off" => Ok(CombinedMode::Off),
-        _ => Err(format!(
-            "HPDS_COMBINED_STORE is not valid: {value} (use auto or off)"
-        )),
     }
 }
 
@@ -505,6 +482,19 @@ mod tests {
     }
 
     #[test]
+    fn settings_of_the_previous_layout_are_ignored_with_a_warning() {
+        let c = config(&[
+            ("HPDS_COMBINED_STORE", "off"),
+            ("HPDS_PER_PARTITION_COUNTS", "x"),
+        ])
+        .unwrap();
+        assert_eq!(c.partitions, config(&[]).unwrap().partitions);
+        assert_eq!(c.warnings.len(), 2);
+        assert!(c.warnings[0].contains("HPDS_COMBINED_STORE"));
+        assert!(c.warnings[1].contains("HPDS_PER_PARTITION_COUNTS"));
+    }
+
+    #[test]
     fn cache_size_is_ignored_with_a_warning() {
         let c = config(&[("CACHE_SIZE", "1500"), ("HPDS_CACHE_BYTES", "1024")]).unwrap();
         assert_eq!(c.partitions.store.cache_bytes, 1024);
@@ -516,34 +506,6 @@ mod tests {
         assert!(config(&[("SERVER_PORT", "http")]).is_err());
         assert!(config(&[("SMALL_TASK_THREADS", "0")]).is_err());
         assert!(config(&[("HPDS_ALLOW_PLAIN", "maybe")]).is_err());
-        assert_eq!(config(&[]).unwrap().partitions.combined, CombinedMode::Auto);
-        assert_eq!(
-            config(&[("HPDS_COMBINED_STORE", " OFF ")])
-                .unwrap()
-                .partitions
-                .combined,
-            CombinedMode::Off
-        );
-        assert_eq!(
-            config(&[("HPDS_COMBINED_STORE", "auto")])
-                .unwrap()
-                .partitions
-                .combined,
-            CombinedMode::Auto
-        );
-        assert!(config(&[("HPDS_COMBINED_STORE", "on")]).is_err());
-        assert_eq!(
-            config(&[]).unwrap().partitions.per_partition_counts,
-            PerPartitionCounts::Auto
-        );
-        assert_eq!(
-            config(&[("HPDS_PER_PARTITION_COUNTS", " Off ")])
-                .unwrap()
-                .partitions
-                .per_partition_counts,
-            PerPartitionCounts::Off
-        );
-        assert!(config(&[("HPDS_PER_PARTITION_COUNTS", "yes")]).is_err());
         assert!(config(&[("HPDS_SYNC_TIMEOUT_SECONDS", "0")]).is_err());
         assert!(config(&[("HPDS_RESULT_MAX_BYTES", "0")]).is_err());
         for name in [

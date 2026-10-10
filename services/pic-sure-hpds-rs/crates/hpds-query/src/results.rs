@@ -175,61 +175,65 @@ pub struct Dataframe {
 /// Rows of a DATAFRAME export, produced one patient at a time from blocks loaded up front.
 ///
 /// Each row is `[patient id, cell...]` with one cell per `select` path. A cell holds every
-/// value the patient has for that concept, joined with a tab, as
-/// `CsvWriter.writeMultiValueEntity` joins them. The values come partition by partition in
-/// partition name order, and within one partition in `by_key` order (Java's `sortedByKey`:
-/// input order within a patient), which is a k-way merge of the partitions on patient with
-/// ties broken by partition name. Numeric values are written with
-/// [`java_double_to_string`], the `toString` Java applies. A patient with no value, or a
-/// path no selected partition holds, gives an empty cell. CSV quoting is left to the writer.
+/// value the patient has for that concept in a selected partition, joined with a tab, as
+/// `CsvWriter.writeMultiValueEntity` joins them, in the block's key order: partition by
+/// partition in partition name order, and within one partition in input order (Java's
+/// `sortedByKey`), which is a k-way merge of the partitions on patient with ties broken by
+/// partition name. Numeric values are written with [`java_double_to_string`], the
+/// `toString` Java applies. A patient with no value, or a path no selected partition holds,
+/// gives an empty cell. CSV quoting is left to the writer.
 pub struct DataframeRows {
     patients: roaring::bitmap::IntoIter,
-    columns: Vec<Column>,
+    columns: Vec<Option<Part>>,
 }
 
-struct Column {
-    parts: Vec<Part>,
+/// The block one DATAFRAME column reads, and, when some of its rows lie in unselected
+/// partitions and carry tags, the selected partitions as one flag per partition: a row is
+/// written only when its tag's flag is set. A cohort patient outside the overlap set has
+/// every row in a selected partition, so an untagged block needs no filter.
+#[derive(Debug, Clone)]
+pub(crate) struct ColumnBlock {
+    block: Arc<Block>,
+    partitions: Option<Arc<[bool]>>,
 }
 
-/// One block's place in a column: `cursor` indexes its observations in patient order, and
+impl ColumnBlock {
+    /// The column reading `block`, keeping only rows whose tag `partitions` selects when
+    /// given.
+    pub(crate) fn new(block: Arc<Block>, partitions: Option<Arc<[bool]>>) -> Self {
+        ColumnBlock { block, partitions }
+    }
+}
+
+/// One column's place in its block: `cursor` indexes its observations in patient order, and
 /// `next` is the patient there (`u32::MAX` past the end), so a patient the block does not
 /// hold costs one comparison.
 struct Part {
     block: Arc<Block>,
+    partitions: Option<Arc<[bool]>>,
     cursor: usize,
     next: u32,
 }
 
 impl DataframeRows {
-    /// Rows for `cohort`, one column per entry of `columns`: the blocks of that path in each
-    /// selected partition holding it, in partition name order (empty for a path no
-    /// partition holds).
-    pub(crate) fn new(cohort: RoaringBitmap, columns: Vec<Vec<Arc<Block>>>) -> Self {
+    /// Rows for `cohort`, one column per entry of `columns`: the block of that path, or
+    /// `None` for a path no selected partition holds.
+    pub(crate) fn new(cohort: RoaringBitmap, columns: Vec<Option<ColumnBlock>>) -> Self {
         DataframeRows {
             patients: cohort.into_iter(),
             columns: columns
                 .into_iter()
-                .map(|blocks| Column {
-                    parts: blocks.into_iter().map(Part::new).collect(),
-                })
+                .map(|column| column.map(Part::new))
                 .collect(),
         }
     }
 }
 
-impl Column {
-    fn write_cell(&mut self, patient: u32, out: &mut String) {
-        let mut first = true;
-        for part in &mut self.parts {
-            part.write_values(patient, &mut first, out);
-        }
-    }
-}
-
 impl Part {
-    fn new(block: Arc<Block>) -> Self {
+    fn new(column: ColumnBlock) -> Self {
         let mut part = Part {
-            block,
+            block: column.block,
+            partitions: column.partitions,
             cursor: 0,
             next: 0,
         };
@@ -258,7 +262,7 @@ impl Part {
         self.next = self.patient_at(self.cursor);
     }
 
-    fn write_values(&mut self, patient: u32, first: &mut bool, out: &mut String) {
+    fn write_cell(&mut self, patient: u32, out: &mut String) {
         if self.next > patient {
             return;
         }
@@ -268,36 +272,52 @@ impl Part {
                 return;
             }
         }
+        let mut first = true;
         let mut separator = |out: &mut String| {
-            if !std::mem::take(first) {
+            if !std::mem::take(&mut first) {
                 out.push('\t');
             }
         };
+        let selected = self.partitions.as_deref();
+        let mut cursor = self.cursor;
         match self.block.as_ref() {
             Block::Categorical(b) => {
                 let patients = b.patients();
-                while patients.get(self.cursor) == Some(&patient) {
-                    let index = b.value_indices()[self.cursor] as usize;
+                while patients.get(cursor) == Some(&patient) {
+                    let key = cursor;
+                    cursor += 1;
+                    if !writes(selected, || b.tag_at_key_pos(key)) {
+                        continue;
+                    }
+                    let index = b.value_indices()[key] as usize;
                     separator(out);
                     out.push_str(b.dictionary_value(index).unwrap_or_default());
-                    self.cursor += 1;
                 }
             }
             Block::Numeric(b) => {
                 let (by_key, patients) = (b.by_key(), b.patients());
-                while self.cursor < by_key.len()
-                    && patients[by_key[self.cursor] as usize] == patient
-                {
+                while cursor < by_key.len() && patients[by_key[cursor] as usize] == patient {
+                    let position = by_key[cursor] as usize;
+                    cursor += 1;
+                    if !writes(selected, || b.tag_at_value_pos(position)) {
+                        continue;
+                    }
                     separator(out);
-                    out.push_str(&java_double_to_string(
-                        b.values()[by_key[self.cursor] as usize],
-                    ));
-                    self.cursor += 1;
+                    out.push_str(&java_double_to_string(b.values()[position]));
                 }
             }
         }
+        self.cursor = cursor;
         self.next = self.patient_at(self.cursor);
     }
+}
+
+/// True when a row whose tag is `tag` is written: always without a partition filter, and
+/// with one only when the tag names a selected partition.
+fn writes(selected: Option<&[bool]>, tag: impl FnOnce() -> Option<u16>) -> bool {
+    selected.is_none_or(|selected| {
+        tag().is_some_and(|tag| selected.get(usize::from(tag)).copied().unwrap_or(false))
+    })
 }
 
 /// A reusable buffer holding one rendered DATAFRAME row: every field's text back to back
@@ -344,7 +364,9 @@ impl DataframeRows {
         let _ = write!(row.text, "{patient}");
         row.end_field();
         for column in &mut self.columns {
-            column.write_cell(patient, &mut row.text);
+            if let Some(part) = column {
+                part.write_cell(patient, &mut row.text);
+            }
             row.end_field();
         }
         true

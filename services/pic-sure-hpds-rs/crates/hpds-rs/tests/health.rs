@@ -3,7 +3,7 @@ mod common;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use common::{KEY, config, fixture, fixture_with, get, java_fixture_dir, open_engine};
+use common::{KEY, config, fixture, get, java_fixture_dir, open_engine};
 use hpds_query::Engine;
 use hpds_rs::state::NOT_OPENED_REASON;
 use hpds_rs::{AppState, probe_health, router};
@@ -86,15 +86,11 @@ async fn health_is_up_with_a_store() {
     let fixture = fixture();
     let reply = get(&fixture.app, "/actuator/health").await;
     assert_eq!(reply.status, StatusCode::OK);
-    assert_eq!(reply.body, r#"{"status":"UP","combinedStore":"IN_USE"}"#);
+    assert_eq!(reply.body, r#"{"status":"UP"}"#);
 }
 
 #[tokio::test]
-async fn health_says_when_whole_blocks_are_off_or_absent() {
-    let off = fixture_with(|c| c.partitions.combined = hpds_query::CombinedMode::Off);
-    let reply = get(&off.app, "/actuator/health").await;
-    assert_eq!(reply.body, r#"{"status":"UP","combinedStore":"OFF"}"#);
-
+async fn health_is_up_with_a_store_of_one_partition() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("input");
     std::fs::create_dir(&input).unwrap();
@@ -111,10 +107,8 @@ async fn health_says_when_whole_blocks_are_off_or_absent() {
     let engine = open_engine(&store, &config);
     let state = AppState::new(Some(engine), &config).unwrap();
     let reply = get(&router(state), "/actuator/health").await;
-    assert_eq!(
-        reply.body, r#"{"status":"UP","combinedStore":"ABSENT"}"#,
-        "a single partition's rows are its whole blocks"
-    );
+    assert_eq!(reply.status, StatusCode::OK);
+    assert_eq!(reply.body, r#"{"status":"UP"}"#);
 }
 
 #[tokio::test]

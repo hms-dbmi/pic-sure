@@ -9,19 +9,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use hpds_format::{Block, ConceptType, java_double_cmp, java_string_cmp};
 use rayon::prelude::*;
-use roaring::{MultiOps, RoaringBitmap};
+use roaring::RoaringBitmap;
 
-use crate::cohort::evaluate_cohort_cow;
+use crate::cohort::{evaluate_cohort_cow, for_each_row_of};
 use crate::error::{QueryError, Result};
 use crate::fan_out;
 use crate::limits::{CheckedQuery, QueryLimits, SelectUse};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
-use crate::partition::{PartitionOptions, PartitionSet, Selection};
+use crate::partition::{ConceptRead, PartitionOptions, PartitionSet, ReadMode, Selection};
 use crate::result_cache::{self, ResultCache, ResultCacheStats, SyncAnswer};
 use crate::results::{
-    CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,
-    PATIENT_ID_FIELD_NAME, SyncResult,
+    CategoricalCrossCounts, ColumnBlock, ConceptCounts, ContinuousCrossCounts, Dataframe,
+    DataframeRows, PATIENT_ID_FIELD_NAME, SyncResult,
 };
+use crate::store::CachedConcept;
 use crate::validate::{QueryValidator, path_is_variant_spec};
 
 /// Default cap on the summed decoded size of the blocks one DATAFRAME export may hold at
@@ -101,8 +102,9 @@ impl Engine {
     }
 
     /// Sets the cap on the summed decoded size of the blocks one DATAFRAME export holds at
-    /// once ([`DEFAULT_EXPORT_PIN_BYTES`] by default), counted over every partition. An
-    /// export over the cap fails with [`QueryError::ExportTooWide`].
+    /// once ([`DEFAULT_EXPORT_PIN_BYTES`] by default). Each concept's whole block counts,
+    /// every partition's rows, since that is what the export holds. An export over the cap
+    /// fails with [`QueryError::ExportTooWide`].
     #[must_use]
     pub fn with_export_pin_bytes(mut self, bytes: u64) -> Self {
         self.export_pin_bytes = bytes;
@@ -145,8 +147,7 @@ impl Engine {
 
     /// What a computation of `query` would read, decided by the same admission step every
     /// computation goes through (for the select use its declared result type implies): the
-    /// partitions its consents select, and whether it reads the combined store instead of
-    /// them. Reads no block.
+    /// partitions its consents select, and whether that is every partition. Reads no block.
     ///
     /// # Errors
     /// The errors of admission: [`QueryError::LimitExceeded`], [`QueryError::Unsupported`]
@@ -156,8 +157,7 @@ impl Engine {
         let selection = checked.selection();
         Ok(ReadPlan {
             partitions: selection.names().into_iter().map(str::to_owned).collect(),
-            combined: selection.reads_combined(),
-            per_partition_counts: selection.counts_per_partition(),
+            full: selection.is_all(),
         })
     }
 
@@ -194,8 +194,10 @@ impl Engine {
     /// when consents are required and absent, [`QueryError::FilterWithoutCriteria`],
     /// [`QueryError::EmptySubquery`], [`QueryError::MissingOperator`] and
     /// [`QueryError::TypeMismatch`] where Java's executor throws,
-    /// [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index, and
-    /// [`QueryError::Block`] when a block cannot be loaded.
+    /// [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index,
+    /// [`QueryError::Block`] when a block cannot be loaded, and
+    /// [`QueryError::CohortOutsideSelection`] when the cohort holds a patient outside the
+    /// selected partitions, which only a fault in the engine can cause.
     pub fn cohort(&self, query: &Query) -> Result<RoaringBitmap> {
         self.cohort_cow(query).map(Cow::into_owned)
     }
@@ -284,10 +286,14 @@ impl Engine {
         let budget = EntryBudget::new(self.limits.max_cross_count_entries);
         let called_out: Vec<(&str, HashSet<&str>)> = called_out.into_iter().collect();
         let mut concepts = fan_out::map(&called_out, |(path, named)| {
-            let blocks = selection.blocks(path)?;
             let mut tally = budget.tally();
-            let disjoint = selection.counts_per_partition();
-            let counts = category_counts(&blocks, cohort, named, disjoint, &mut tally)?;
+            let counts = match selection.concept(path) {
+                None => Vec::new(),
+                Some(read) => {
+                    let entry = selection.entry(&read)?;
+                    category_counts(selection, &read, &entry, cohort, named, &mut tally)?
+                }
+            };
             tally.settle()?;
             Ok(((*path).to_owned(), counts))
         })
@@ -343,9 +349,14 @@ impl Engine {
         let budget = EntryBudget::new(self.limits.max_cross_count_entries);
         let paths: Vec<&str> = paths.into_iter().collect();
         let mut concepts = fan_out::map(&paths, |path| {
-            let blocks = selection.blocks(path)?;
             let mut tally = budget.tally();
-            let counts = value_counts(&blocks, cohort, &mut tally)?;
+            let counts = match selection.concept(path) {
+                None => Vec::new(),
+                Some(read) => {
+                    let entry = selection.entry(&read)?;
+                    value_counts(selection, &read, &entry, cohort, &mut tally)?
+                }
+            };
             tally.settle()?;
             Ok(((*path).to_owned(), counts))
         })
@@ -473,16 +484,16 @@ impl Engine {
     }
 
     /// DATAFRAME: the header and a streaming iterator over one row per cohort patient,
-    /// ascending (see [`DataframeRows`]). The blocks of every `select` path in every
-    /// selected partition are loaded before this returns and held by the iterator, so
-    /// iteration does no I/O. They are loaded in chunks of paths and the load stops as soon
-    /// as their summed decoded size passes the export cap
-    /// ([`Engine::with_export_pin_bytes`]). Every `select` entry is a column, so repeated
-    /// paths count toward `max_select_paths` whatever result type the query declares.
+    /// ascending (see [`DataframeRows`]). The block of every `select` path a selected
+    /// partition holds is loaded before this returns and held by the iterator, so iteration
+    /// does no I/O. They are loaded in chunks of paths and the load stops as soon as their
+    /// summed decoded size passes the export cap ([`Engine::with_export_pin_bytes`]). Every
+    /// `select` entry is a column, so repeated paths count toward `max_select_paths`
+    /// whatever result type the query declares.
     ///
-    /// A cell merges the patient's values from every selected partition holding the
-    /// concept, partition by partition in name order and in input order within one. Java
-    /// merges cubes in an unspecified partition order.
+    /// A cell holds the patient's values from every selected partition holding the concept,
+    /// partition by partition in name order and in input order within one. Java merges
+    /// cubes in an unspecified partition order.
     ///
     /// # Errors
     /// As for [`Engine::cohort`], [`QueryError::Block`] when a block cannot be loaded, and
@@ -491,19 +502,24 @@ impl Engine {
         let (checked, cohort) = self.prepare(query, SelectUse::EveryEntry)?;
         let selection = checked.selection();
         let cohort = cohort.into_owned();
-        let paths = distinct(&query.select);
-        let mut loaded: HashMap<&str, Vec<Arc<Block>>> = HashMap::with_capacity(paths.len());
+        let paths: Vec<(&str, ConceptRead)> = distinct(&query.select)
+            .into_iter()
+            .filter_map(|path| Some((path, selection.concept(path)?)))
+            .collect();
+        let partitions: Arc<[bool]> = selection.mask().into();
+        let mut loaded: HashMap<&str, ColumnBlock> = HashMap::with_capacity(paths.len());
         let mut pinned: u64 = 0;
         for chunk in paths.chunks(EXPORT_LOAD_CHUNK) {
-            let blocks = chunk
+            let entries = chunk
                 .par_iter()
-                .map(|path| Ok((*path, selection.blocks(path)?)))
+                .map(|(path, read)| Ok((*path, read, selection.entry(read)?)))
                 .collect::<Result<Vec<_>>>()?;
-            for (path, blocks) in blocks {
-                pinned = blocks
-                    .iter()
-                    .fold(pinned, |sum, b| sum.saturating_add(b.heap_size() as u64));
-                loaded.insert(path, blocks);
+            for (path, read, entry) in entries {
+                let block = Arc::clone(entry.block());
+                pinned = pinned.saturating_add(block.heap_size() as u64);
+                let filtered = read.mode != ReadMode::Exact && block.partitions().is_tagged();
+                let column = ColumnBlock::new(block, filtered.then(|| Arc::clone(&partitions)));
+                loaded.insert(path, column);
             }
             if pinned > self.export_pin_bytes {
                 return Err(QueryError::ExportTooWide);
@@ -512,7 +528,7 @@ impl Engine {
         let columns = query
             .select
             .iter()
-            .map(|path| loaded.get(path.as_str()).cloned().unwrap_or_default())
+            .map(|path| loaded.get(path.as_str()).cloned())
             .collect();
         let header = std::iter::once(PATIENT_ID_FIELD_NAME.to_owned())
             .chain(query.select.iter().cloned())
@@ -546,12 +562,9 @@ impl Engine {
 pub struct ReadPlan {
     /// The partitions its consents select, in partition name order.
     pub partitions: Vec<String>,
-    /// True when it reads the combined store instead of those partitions, which happens
-    /// only when they are every partition.
-    pub combined: bool,
-    /// True when its cross counts count patients per partition and sum the counts
-    /// ([`Selection::counts_per_partition`]).
-    pub per_partition_counts: bool,
+    /// True when they are every partition, so every answer comes straight from whole
+    /// blocks.
+    pub full: bool,
 }
 
 const EXPORT_LOAD_CHUNK: usize = 16;
@@ -572,54 +585,77 @@ fn observation_patients(block: &Block) -> &[u32] {
     }
 }
 
-/// The blocks of `path` in the selected partitions, or `None` after logging when one cannot
-/// be loaded: the cross counts then report -1, as Java's catch block writes it.
-fn blocks_or_log(selection: &Selection<'_>, path: &str, what: &str) -> Option<Vec<Arc<Block>>> {
+/// The entry of the concept `read` names, or `None` after logging when its block cannot be
+/// loaded: the cross counts then report -1, as Java's catch block writes it.
+fn entry_or_log(
+    selection: &Selection<'_>,
+    read: &ConceptRead,
+    path: &str,
+    what: &str,
+) -> Option<Arc<CachedConcept>> {
     selection
-        .blocks(path)
+        .entry(read)
         .inspect_err(|e| tracing::warn!(concept = %path, error = %e, "{what} failed"))
         .ok()
+}
+
+/// A predicate on a row's tag: true when the row lies in a selected partition, for a
+/// whole block of a narrow selection whose rows are tagged. Every row of a cohort patient
+/// outside the overlap set lies in a selected partition, so an untagged block, or a block
+/// read exactly, needs no test.
+fn row_filter<'s>(
+    selection: &'s Selection<'_>,
+    read: &ConceptRead,
+    block: &Block,
+) -> impl Fn(Option<u16>) -> bool + 's {
+    let filtered = read.mode != ReadMode::Exact && block.partitions().is_tagged();
+    move |tag| !filtered || tag.is_some_and(|tag| selection.selects(tag))
 }
 
 fn cross_count_in(checked: &CheckedQuery<'_, '_>, cohort: &RoaringBitmap) -> ConceptCounts {
     let selection = checked.selection();
     let paths = distinct(&checked.query().select);
     let entries = fan_out::map(&paths, |path| {
-        let count = match blocks_or_log(selection, path, "cross count").as_deref() {
-            None => -1,
-            Some([]) => 0,
-            Some([one]) => one.all_patients().intersection_len(cohort) as i64,
-            Some(many) if selection.counts_per_partition() => many
-                .iter()
-                .map(|b| b.all_patients().intersection_len(cohort))
-                .sum::<u64>() as i64,
-            Some(many) => cohort_patients_in(many, cohort) as i64,
+        let count = match selection.concept(path) {
+            None => 0,
+            Some(read) => match entry_or_log(selection, &read, path, "cross count") {
+                None => -1,
+                Some(entry) => cohort_patients_in(selection, &read, entry.block(), cohort) as i64,
+            },
         };
         ((*path).to_owned(), count)
     });
     ConceptCounts { entries }
 }
 
-/// The number of `cohort` patients in any of `blocks`. When the cohort is smaller than the
-/// average block, each block is intersected with it first and the small intersections are
-/// unioned; otherwise the blocks are unioned once and the union counted against the cohort,
-/// which allocates one bitmap instead of one per block.
-fn cohort_patients_in(blocks: &[Arc<Block>], cohort: &RoaringBitmap) -> u64 {
-    let observed: u64 = blocks.iter().map(|b| b.all_patients().len()).sum();
-    if cohort.len().saturating_mul(blocks.len() as u64) < observed {
-        blocks
-            .iter()
-            .map(|b| b.all_patients() & cohort)
-            .union()
-            .len()
-    } else {
-        blocks
-            .iter()
-            .map(|b| b.all_patients())
-            .union()
-            .intersection_len(cohort)
+/// The number of `cohort` patients with a row of `block` in a selected partition. A
+/// cohort patient outside the overlap set has every row in a selected partition, so the
+/// block's patients answer for them; an overlap patient of a tagged block counts only with
+/// a row tagged with a selected partition.
+fn cohort_patients_in(
+    selection: &Selection<'_>,
+    read: &ConceptRead,
+    block: &Block,
+    cohort: &RoaringBitmap,
+) -> u64 {
+    let count = block.all_patients().intersection_len(cohort);
+    if read.mode == ReadMode::Exact || !block.partitions().is_tagged() {
+        return count;
     }
+    let overlap_cohort = &(block.all_patients() & cohort) & selection.overlap();
+    let mut held = RoaringBitmap::new();
+    let in_selection = row_filter(selection, read, block);
+    for_each_row_of(block, &overlap_cohort, |patient, _, tag| {
+        if in_selection(tag) {
+            held.insert(patient);
+        }
+    });
+    count - (overlap_cohort.len() - held.len())
 }
+
+/// Cohort patients per block row above which counting a block's cohort rows walks every
+/// row instead of seeking each patient's rows.
+const SEEK_ROWS_PER_PATIENT: usize = 16;
 
 fn observation_cross_count_in(
     checked: &CheckedQuery<'_, '_>,
@@ -628,18 +664,10 @@ fn observation_cross_count_in(
     let selection = checked.selection();
     let paths = distinct(&checked.query().select);
     let mut entries: Vec<(String, i64)> = fan_out::map(&paths, |path| {
-        let count = match blocks_or_log(selection, path, "observation cross count") {
+        let read = selection.concept(path)?;
+        let count = match entry_or_log(selection, &read, path, "observation cross count") {
             None => -1,
-            Some(blocks) if blocks.is_empty() => return None,
-            Some(blocks) => blocks
-                .iter()
-                .map(|block| {
-                    observation_patients(block)
-                        .iter()
-                        .filter(|&&p| cohort.contains(p))
-                        .count() as i64
-                })
-                .sum(),
+            Some(entry) => cohort_rows_in(selection, &read, entry.block(), cohort) as i64,
         };
         Some(((*path).to_owned(), count))
     })
@@ -650,44 +678,96 @@ fn observation_cross_count_in(
     ConceptCounts { entries }
 }
 
-/// Per category held by any of `blocks`, the cohort patients holding it in any of them,
-/// listed when above 0 or `named`, in Java string order. Each listed category is drawn from
-/// `tally` as it is listed, after the partitions' categories are merged.
+/// The number of rows of `block` in a selected partition whose patient is in `cohort`. A
+/// selection of every partition walks every row; a narrower one seeks the rows of the
+/// cohort patients the block holds when they are few, and filters tagged rows by tag.
+fn cohort_rows_in(
+    selection: &Selection<'_>,
+    read: &ConceptRead,
+    block: &Block,
+    cohort: &RoaringBitmap,
+) -> usize {
+    let patients = observation_patients(block);
+    if read.mode == ReadMode::Exact {
+        return patients.iter().filter(|&&p| cohort.contains(p)).count();
+    }
+    let in_selection = row_filter(selection, read, block);
+    let held = block.all_patients() & cohort;
+    if (held.len() as usize).saturating_mul(SEEK_ROWS_PER_PATIENT) < patients.len() {
+        let mut count = 0;
+        for_each_row_of(block, &held, |_, _, tag| {
+            count += usize::from(in_selection(tag))
+        });
+        return count;
+    }
+    match block {
+        Block::Numeric(b) => (0..patients.len())
+            .filter(|&i| held.contains(patients[i]) && in_selection(b.tag_at_value_pos(i)))
+            .count(),
+        Block::Categorical(b) => (0..patients.len())
+            .filter(|&k| held.contains(patients[k]) && in_selection(b.tag_at_key_pos(k)))
+            .count(),
+    }
+}
+
+/// Per category of the categorical block in `entry` held by a selected partition, the
+/// cohort patients holding it in a selected partition, listed when above 0 or `named`, in
+/// Java string order. Each listed category is drawn from `tally` as it is listed.
+///
+/// A category is held by a selected partition when a patient the selection routes holds it
+/// (all their rows lie in a selected partition) or an overlap patient holds it in a row
+/// tagged with a selected partition. For a block read exactly, every category of the block
+/// is held.
 ///
 /// # Errors
 /// [`QueryError::LimitExceeded`] when the shared entry cap is exceeded.
 fn category_counts(
-    blocks: &[Arc<Block>],
+    selection: &Selection<'_>,
+    read: &ConceptRead,
+    entry: &CachedConcept,
     cohort: &RoaringBitmap,
     named: &HashSet<&str>,
-    disjoint: bool,
     tally: &mut EntryTally<'_>,
 ) -> Result<Vec<(String, u64)>> {
-    let mut categories: Vec<(&str, &RoaringBitmap)> = blocks
-        .iter()
-        .filter_map(|block| match block.as_ref() {
-            Block::Categorical(b) => Some(b.dictionary().zip(b.bitmaps())),
-            Block::Numeric(_) => None,
-        })
-        .flatten()
-        .collect();
-    categories.sort_by(|a, b| java_string_cmp(a.0, b.0));
+    let block = entry.block();
+    let Block::Categorical(categorical) = block.as_ref() else {
+        return Ok(Vec::new());
+    };
+    let narrow = read.mode != ReadMode::Exact;
+    let tagged = narrow && block.partitions().is_tagged();
+    let mut overlap_values: HashMap<u32, RoaringBitmap> = HashMap::new();
+    let mut overlap_cohort = RoaringBitmap::new();
+    if tagged {
+        let candidates = block.all_patients() & selection.overlap();
+        let indices = categorical.value_indices();
+        for_each_row_of(block, &candidates, |patient, key, tag| {
+            if tag.is_some_and(|tag| selection.selects(tag)) {
+                overlap_values
+                    .entry(indices[key])
+                    .or_default()
+                    .insert(patient);
+            }
+        });
+        overlap_cohort = &candidates & cohort;
+    }
     let mut counts = Vec::new();
-    for group in categories.chunk_by(|a, b| a.0 == b.0) {
-        let category = group[0].0;
-        let count = match group {
-            [(_, one)] => one.intersection_len(cohort),
-            many if disjoint => many
-                .iter()
-                .map(|(_, bitmap)| bitmap.intersection_len(cohort))
-                .sum(),
-            many => many
-                .iter()
-                .map(|(_, bitmap)| *bitmap)
-                .union()
-                .intersection_len(cohort),
-        };
-        if count > 0 || named.contains(category) {
+    for (value, (category, bitmap)) in categorical
+        .dictionary()
+        .zip(categorical.bitmaps())
+        .enumerate()
+    {
+        let overlap_held = overlap_values.get(&(value as u32));
+        let mut count = bitmap.intersection_len(cohort);
+        if !overlap_cohort.is_empty() {
+            count -= bitmap.intersection_len(&overlap_cohort);
+            count += overlap_held.map_or(0, |held| held.intersection_len(&overlap_cohort));
+        }
+        let listed = count > 0
+            || (named.contains(category)
+                && (!narrow
+                    || !bitmap.is_disjoint(selection.scope().routed())
+                    || overlap_held.is_some_and(|held| !held.is_empty())));
+        if listed {
             tally.take()?;
             counts.push((category.to_owned(), count));
         }
@@ -695,38 +775,64 @@ fn category_counts(
     Ok(counts)
 }
 
-/// Per distinct value held by a cohort patient in any numeric block of `blocks`, the number
-/// of such observations over all of them, in Java `Double.compareTo` order. Every distinct
-/// value is drawn from `tally`: as it is found when one block holds the concept, and after
-/// the merge otherwise. With several blocks, the build also stops as soon as one block alone
-/// holds more distinct values for the cohort than the cap, since the merged list is at least
-/// that long.
+/// Per distinct value held by a cohort patient in a selected partition of the numeric
+/// concept in `entry`, the number of such observations, in Java `Double.compareTo` order.
+/// A block read whole is walked once in value order and each distinct value drawn from
+/// `tally` as it is found. A concept read through its partition view walks each selected
+/// partition's rows in value order and merges them as one block per partition would be
+/// merged: one partition draws as it goes; several stop as soon as one alone holds more
+/// distinct values for the cohort than the cap, and draw after the merge.
 ///
 /// # Errors
-/// [`QueryError::LimitExceeded`] when the shared entry cap is exceeded.
+/// [`QueryError::LimitExceeded`] when the shared entry cap is exceeded, and
+/// [`QueryError::StoreInconsistent`] when a view cannot be built.
 fn value_counts(
-    blocks: &[Arc<Block>],
+    selection: &Selection<'_>,
+    read: &ConceptRead,
+    entry: &Arc<CachedConcept>,
     cohort: &RoaringBitmap,
     tally: &mut EntryTally<'_>,
 ) -> Result<Vec<(f64, u64)>> {
-    let single = blocks.len() <= 1;
-    let cap = tally.limit();
-    let mut counts: Vec<(f64, u64)> = Vec::new();
-    for block in blocks {
-        let Block::Numeric(block) = block.as_ref() else {
-            continue;
-        };
-        let block_start = counts.len();
-        for (&value, &patient) in block.values().iter().zip(block.patients()) {
-            if !cohort.contains(patient) {
+    let Block::Numeric(block) = entry.block().as_ref() else {
+        return Ok(Vec::new());
+    };
+    let (values, patients) = (block.values(), block.patients());
+    if read.mode != ReadMode::View {
+        let in_selection = row_filter(selection, read, entry.block());
+        let mut counts: Vec<(f64, u64)> = Vec::new();
+        for (position, (&value, &patient)) in values.iter().zip(patients).enumerate() {
+            if !cohort.contains(patient) || !in_selection(block.tag_at_value_pos(position)) {
                 continue;
             }
-            match counts[block_start..].last_mut() {
+            match counts.last_mut() {
+                Some((last, count)) if java_double_cmp(*last, value).is_eq() => *count += 1,
+                _ => {
+                    tally.take()?;
+                    counts.push((value, 1));
+                }
+            }
+        }
+        return Ok(counts);
+    }
+    let view = selection.view(read, entry)?;
+    let slots: Vec<usize> = view.selected_slots(selection.mask()).collect();
+    let single = slots.len() <= 1;
+    let cap = tally.limit();
+    let mut counts: Vec<(f64, u64)> = Vec::new();
+    for &slot in &slots {
+        let group_start = counts.len();
+        for &position in view.group(slot) {
+            let position = position as usize;
+            if !cohort.contains(patients[position]) {
+                continue;
+            }
+            let value = values[position];
+            match counts[group_start..].last_mut() {
                 Some((last, count)) if java_double_cmp(*last, value).is_eq() => *count += 1,
                 _ => {
                     if single {
                         tally.take()?;
-                    } else if (counts.len() - block_start) as u64 >= cap {
+                    } else if (counts.len() - group_start) as u64 >= cap {
                         return Err(tally.exceeded());
                     }
                     counts.push((value, 1));
@@ -862,6 +968,128 @@ mod tests {
             .take_while(|_| tally.take().is_ok())
             .count() as u64;
         assert!(taken < ENTRY_SETTLE_BATCH * 3);
+    }
+
+    mod guard {
+        use std::path::PathBuf;
+
+        use hpds_etl::load::{KeySource, LoadOptions, Mode, load};
+        use hpds_etl::merge::{MergeSource, SourceStore, write_store};
+        use hpds_format::{CryptoKey, Protection};
+
+        use crate::cohort::fault;
+        use crate::model::{PhenotypicClause, PhenotypicFilter, PhenotypicFilterType};
+        use crate::{Engine, PartitionOptions, Query, QueryError, ResultType};
+
+        const KEY: &str = "0123456789ABCDEF0123456789ABCDEF";
+
+        /// A store of partitions `p1` (patients 1 and 2) and `p2` (3 and 4), every patient
+        /// with one row of `\a\`, in a directory removed with the returned guard.
+        fn two_partitions() -> (tempfile::TempDir, PathBuf) {
+            let dir = tempfile::tempdir().unwrap();
+            let key_file = dir.path().join("key");
+            std::fs::write(&key_file, KEY).unwrap();
+            let protection =
+                || Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap());
+            let mut sources = Vec::new();
+            for (name, patients) in [("p1", [1, 2]), ("p2", [3, 4])] {
+                let input = dir.path().join(format!("{name}.csv"));
+                let mut text =
+                    String::from("PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME\n");
+                for patient in patients {
+                    text.push_str(&format!("{patient},\"\\a\\\",\"{patient}.0\",\"\",\n"));
+                }
+                std::fs::write(&input, text).unwrap();
+                let part = dir.path().join(name);
+                let mut options = LoadOptions::new(Mode::NewSearch, vec![input], part.clone());
+                options.key = KeySource::File(key_file.clone());
+                options.threads = Some(1);
+                load(&options).unwrap();
+                let store = SourceStore::open(&part, protection()).unwrap();
+                let observed = Some(store.patients().clone());
+                sources.push(MergeSource {
+                    name: name.to_owned(),
+                    store,
+                    observed,
+                });
+            }
+            let out = dir.path().join("data");
+            std::fs::create_dir_all(&out).unwrap();
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(1)
+                .build()
+                .unwrap();
+            write_store(sources, true, &out, &protection(), &pool).unwrap();
+            std::fs::copy(&key_file, out.join("encryption_key")).unwrap();
+            (dir, out)
+        }
+
+        fn engine(out: &std::path::Path, share: f64) -> Engine {
+            let options = PartitionOptions {
+                require_consents: false,
+                narrow_view_share: share,
+                ..PartitionOptions::default()
+            };
+            Engine::open(out, &options).unwrap()
+        }
+
+        fn required_in_p1(result_type: ResultType) -> Query {
+            Query {
+                phenotypic_clause: Some(PhenotypicClause::Filter(PhenotypicFilter::new(
+                    PhenotypicFilterType::Required,
+                    "\\a\\",
+                ))),
+                select: vec!["\\a\\".to_owned()],
+                ..Query::with_consents(result_type, ["p1"])
+            }
+        }
+
+        #[test]
+        fn a_cohort_left_holding_another_partition_fails_every_result_type() {
+            let (_dir, out) = two_partitions();
+            let engine = engine(&out, 0.0);
+            assert_eq!(engine.count(&required_in_p1(ResultType::Count)).unwrap(), 2);
+            for result_type in [
+                ResultType::Count,
+                ResultType::CrossCount,
+                ResultType::CategoricalCrossCount,
+                ResultType::ContinuousCrossCount,
+                ResultType::ObservationCrossCount,
+                ResultType::Patients,
+                ResultType::Dataframe,
+            ] {
+                let query = required_in_p1(result_type);
+                let broken = fault::skipping_reach(|| match result_type {
+                    ResultType::Patients => engine.patients(&query).map(|_| ()),
+                    ResultType::Dataframe => engine.dataframe(&query).map(|_| ()),
+                    _ => engine.answer_sync(&query).map(|_| ()),
+                });
+                let error = broken.unwrap_err();
+                assert!(
+                    matches!(error, QueryError::CohortOutsideSelection { patients: 2 }),
+                    "{result_type:?}: {error}"
+                );
+                assert!(!error.is_client_error());
+                assert!(!error.to_string().contains('3'), "no patient id: {error}");
+            }
+        }
+
+        #[test]
+        fn the_member_check_covers_full_and_narrow_selections() {
+            let (_dir, out) = two_partitions();
+            let engine = engine(&out, crate::NARROW_VIEW_SHARE);
+            let set = engine.partitions();
+            let full = set.select_consents(&[]).unwrap();
+            let mut cohort = full.patients().into_owned();
+            assert_eq!(full.check_members(&cohort).unwrap(), 0);
+            cohort.insert(99);
+            assert_eq!(full.check_members(&cohort).unwrap(), 1);
+            let p1 = set.select_consents(&["p1"]).unwrap();
+            let one_of_each: roaring::RoaringBitmap = [1, 3].into_iter().collect();
+            assert_eq!(p1.check_members(&one_of_each).unwrap(), 1);
+            let both = set.select_consents(&["p1", "p2"]).unwrap();
+            assert_eq!(both.check_members(&one_of_each).unwrap(), 0);
+        }
     }
 
     #[test]

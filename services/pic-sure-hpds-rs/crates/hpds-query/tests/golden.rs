@@ -17,22 +17,18 @@
 //! `/search` cases run against the merged dictionary with the Java match rule and
 //! [`SummaryColumnMeta::write_json`].
 //!
-//! Every corpus runs with full selections reading whole blocks and with them reading the
-//! partitions one at a time, and every case must give byte for byte the same outcome both
-//! ways, so the cases that select every partition answer from whole blocks exactly as from
-//! the partitions.
+//! Every corpus runs with narrow selections reading partition views below the service's
+//! share of a concept's rows, always, and never, and every case must pass and give byte for
+//! byte the same outcome all three ways.
 
 mod common;
 
-use common::{harm_fixture as fixture, lenient, strict, workspace};
+use common::{SHARES, harm_fixture as fixture, lenient, strict, with_share, workspace};
 use hpds_bench::client::{AsyncOutcome, Outcome, SyncOutcome};
 use hpds_bench::corpus::Kind;
 use hpds_bench::golden::GoldenCase;
 use hpds_bench::golden::{GoldenFile, evaluate, read_golden};
-use hpds_query::{
-    CombinedMode, CombinedStatus, Engine, PATIENTS_HEADER, PartitionOptions, Query, QueryError,
-    ResultType, SummaryColumnMeta,
-};
+use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType, SummaryColumnMeta};
 use serde_json::Value;
 
 fn csv_line<S: AsRef<str>>(fields: impl IntoIterator<Item = S>) -> String {
@@ -218,60 +214,58 @@ fn case_outcome(engine: &Engine, case: &GoldenCase) -> Outcome {
     }
 }
 
-/// Runs `file` against the fixture, once reading whole blocks for full selections and once
-/// reading partitions one at a time: both must pass every case, and give the same outcome
-/// for every case. `routes` is whether some case selects every partition and so reads
-/// whole blocks.
-fn assert_golden(file: &str, require_consents: bool, cases: usize, routes: bool) {
+/// Runs `file` against the fixture under every one of [`SHARES`]: each must pass every
+/// case and give the same outcome for every case. `full` is whether some case selects every
+/// partition.
+fn assert_golden(file: &str, require_consents: bool, cases: usize, full: bool) {
     let dir = fixture();
     let base = if require_consents {
         strict()
     } else {
         lenient()
     };
-    let open = |combined| dir.open(&PartitionOptions { combined, ..base }).unwrap();
-    let (auto, off) = (open(CombinedMode::Auto), open(CombinedMode::Off));
-    assert_eq!(auto.partitions().combined_status(), CombinedStatus::InUse);
-    assert_eq!(off.partitions().combined_status(), CombinedStatus::Off);
+    let engines: Vec<(f64, Engine)> = SHARES
+        .iter()
+        .map(|&share| (share, dir.open(&with_share(base, share)).unwrap()))
+        .collect();
     let golden = read_golden(&workspace().join("bench/golden").join(file)).unwrap();
     assert_eq!(golden.cases.len(), cases);
-    for engine in [&auto, &off] {
+    for (share, engine) in &engines {
         assert_eq!(engine.partitions().requires_consents(), require_consents);
         let failures = run_golden(engine, &golden);
         assert!(
             failures.is_empty(),
-            "{} of {} golden cases failed ({:?}):\n{}",
+            "{} of {} golden cases failed at share {share}:\n{}",
             failures.len(),
             golden.cases.len(),
-            engine.partitions().combined_status(),
             failures.join("\n")
         );
     }
-    let mut routed = 0;
+    let (_, first) = &engines[0];
+    let mut whole = 0;
     for case in &golden.cases {
         if case.entry.kind != Kind::Search {
             let query = parse_query(&case.entry.request);
-            if auto.read_plan(&query).is_ok_and(|plan| plan.combined) {
-                routed += 1;
-            }
-            if let Ok(plan) = off.read_plan(&query) {
-                assert!(!plan.combined, "{}", case.entry.name);
+            if first.read_plan(&query).is_ok_and(|plan| plan.full) {
+                whole += 1;
             }
         }
-        assert_eq!(
-            case_outcome(&auto, case),
-            case_outcome(&off, case),
-            "{}: whole blocks answer differently",
-            case.entry.name
-        );
+        for (share, engine) in &engines[1..] {
+            assert_eq!(
+                case_outcome(first, case),
+                case_outcome(engine, case),
+                "{}: share {share} answers differently",
+                case.entry.name
+            );
+        }
     }
     assert_eq!(
-        routed > 0,
-        routes,
-        "{routed} cases of {file} read whole blocks"
+        whole > 0,
+        full,
+        "{whole} cases of {file} select every partition"
     );
     eprintln!(
-        "{file}: {} golden cases passed reading whole blocks and partitions, {routed} of them read whole blocks",
+        "{file}: {} golden cases passed under every share, {whole} of them selecting every partition",
         golden.cases.len()
     );
 }
