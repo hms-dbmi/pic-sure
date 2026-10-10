@@ -39,6 +39,9 @@ pub(crate) const COMBINED_GROUP: u32 = 1;
 const ENTRY_OVERHEAD: usize = 64;
 
 /// A block cache bounded by the summed [`Block::heap_size`] of the blocks its entries hold.
+/// A `moka` weigher returns a `u32`, so an entry heavier than `u32::MAX` bytes (4 GiB) is
+/// weighed at `u32::MAX`, under its real size; at the default 4 GiB bound such an entry
+/// already fills the cache on its own.
 pub(crate) fn block_cache(cache_bytes: u64) -> BlockCache {
     Cache::builder()
         .max_capacity(cache_bytes)
