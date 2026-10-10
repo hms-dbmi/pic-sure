@@ -674,6 +674,12 @@ pub(crate) fn write_index_and_column_meta(
         .map_err(EtlError::io("writing", &csv_path))
 }
 
+/// True when the rows of overlap patients are more than [`OVERLAP_WARNING_SHARE`] of the
+/// rows `report` counts, the case [`write_store`] warns about.
+pub fn overlap_needs_warning(report: &MergeReport) -> bool {
+    report.overlap_share > OVERLAP_WARNING_SHARE
+}
+
 /// Logs what a merge wrote, and warns when the overlap set holds more than
 /// [`OVERLAP_WARNING_SHARE`] of the rows.
 fn log_report(report: &MergeReport) {
@@ -701,7 +707,7 @@ fn log_report(report: &MergeReport) {
             "partitions hold rows of patients missing from their patient sets; those patients are in the overlap set"
         );
     }
-    if report.overlap_share > OVERLAP_WARNING_SHARE {
+    if overlap_needs_warning(report) {
         tracing::warn!(
             overlap_patients = report.overlap_patients,
             share = report.overlap_share,
@@ -713,6 +719,29 @@ fn log_report(report: &MergeReport) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_overlap_warning_starts_above_five_percent() {
+        let report = |overlap_observations: u64, observations: u64| MergeReport {
+            store_id: String::new(),
+            id: StoreId::from_bytes([0; 16]),
+            partitioned: true,
+            partitions: Vec::new(),
+            concepts: 1,
+            observations,
+            patients: 1,
+            overlap_patients: 1,
+            overlap_observations,
+            overlap_share: overlap_observations as f64 / observations as f64,
+            tagged_concepts: 1,
+            blocks_bytes: 0,
+            elapsed_seconds: 0.0,
+        };
+        assert!(!overlap_needs_warning(&report(0, 100)));
+        assert!(!overlap_needs_warning(&report(5, 100)));
+        assert!(overlap_needs_warning(&report(501, 10_000)));
+        assert!(overlap_needs_warning(&report(4970, 62_396)));
+    }
 
     #[test]
     fn distinct_patients_counts_runs() {

@@ -1175,3 +1175,25 @@ fn remove_concepts_runs_only_under_the_store_lock() {
     assert_eq!(remove.join().unwrap().unwrap().removed, 1);
     assert!(open(&out).index.get("\\ds\\e\\shared\\").is_none());
 }
+
+#[test]
+fn column_meta_csv_writes_only_under_the_store_lock() {
+    let (_dir, out) = load_edge(&["edgeB", "edgeC"]);
+    let csv = out.join("columnMeta.csv");
+    let before = std::fs::read_to_string(&csv).unwrap();
+    std::fs::remove_file(&csv).unwrap();
+    let lock = hold_store_lock(&out);
+    let target = out.clone();
+    let regenerate = std::thread::spawn(move || {
+        hpds_etl::store_maintenance::regenerate_column_meta_csv(&target, None, &test_protection())
+    });
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(
+        !regenerate.is_finished(),
+        "column-meta-csv waits for the lock"
+    );
+    assert!(!csv.exists());
+    drop(lock);
+    assert_eq!(regenerate.join().unwrap().unwrap(), 3);
+    assert_eq!(std::fs::read_to_string(&csv).unwrap(), before);
+}

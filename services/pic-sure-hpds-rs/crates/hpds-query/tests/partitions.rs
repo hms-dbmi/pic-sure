@@ -688,3 +688,16 @@ fn cross_counts_agree_for_narrow_and_broad_cohorts_over_shared_patients() {
     q.phenotypic_clause = Some(filter_range(CONCEPT, Some(95.0), None));
     assert_eq!(engine.cross_count(&q).unwrap().get(CONCEPT), Some(6));
 }
+
+#[test]
+fn a_store_of_format_1_is_refused_naming_convert() {
+    let fixture = workspace().join("crates/hpds-etl/tests/fixtures/format-1/unpartitioned");
+    let dir = tempfile::tempdir().unwrap();
+    for file in ["encryption_key", "pheno.index", "pheno.blocks"] {
+        std::fs::copy(fixture.join(file), dir.path().join(file)).unwrap();
+    }
+    let message = Engine::open(dir.path(), &lenient())
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("hpds-etl convert"), "{message}");
+}
