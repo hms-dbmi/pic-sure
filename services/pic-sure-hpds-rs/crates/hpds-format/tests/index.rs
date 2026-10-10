@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
 use hpds_format::{
-    BlockLocation, ConceptMeta, ConceptType, CryptoKey, FormatError, IndexHeader, PhenoIndex,
-    Protection, StoreId, java_string_cmp,
+    BlockLocation, ConceptMeta, ConceptType, CryptoKey, FormatError, IndexBody, IndexHeader,
+    PhenoIndex, Protection, StoreId, java_string_cmp,
 };
 use proptest::prelude::*;
 use roaring::RoaringBitmap;
@@ -157,6 +157,60 @@ proptest! {
             expected.sort();
             actual.sort();
             prop_assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn the_index_body_views_the_same_concepts(
+        list in concepts(),
+        patients in proptest::collection::vec(any::<u32>(), 0..300),
+        encrypted in any::<bool>(),
+        compressed in any::<bool>(),
+    ) {
+        let patients: RoaringBitmap = patients.into_iter().collect();
+        let index = PhenoIndex::new(header(encrypted, compressed), patients.clone(), list).unwrap();
+        let protection = protection(encrypted);
+        let bytes = index.encode(&protection).unwrap();
+        let body = IndexBody::decode(&bytes, &protection).unwrap();
+        prop_assert_eq!(body.header(), index.header());
+        prop_assert_eq!(body.patients(), &patients);
+        prop_assert_eq!(body.concept_count(), index.concepts().len());
+        let views = body.concepts().collect::<Result<Vec<_>, _>>().unwrap();
+        prop_assert_eq!(views.len(), index.concepts().len());
+        for (view, meta) in views.iter().zip(index.concepts()) {
+            prop_assert!(same_meta(&view.to_meta(), meta));
+            prop_assert_eq!(view.max_payload_len(), meta.max_payload_len());
+            prop_assert_eq!(view.is_categorical(), meta.is_categorical());
+        }
+    }
+
+    #[test]
+    fn a_damaged_body_fails_its_concept_views_as_it_fails_decode(
+        list in concepts(),
+        flip in any::<prop::sample::Index>(),
+        mask in 1u8..,
+        cut in any::<prop::sample::Index>(),
+    ) {
+        let index = PhenoIndex::new(header(false, false), RoaringBitmap::from_iter([5u32]), list).unwrap();
+        let bytes = index.encode(&Protection::Plain).unwrap();
+        let body_end = bytes.len() - 8;
+        let preamble_len = PREAMBLE_FIXED + 4 + 8 + 4 + "hpds-etl 0.1.0".len();
+        let body_start = preamble_len + 8;
+        let mut body = bytes[body_start..body_end].to_vec();
+        let i = flip.index(body.len());
+        body[i] ^= mask;
+        body.truncate(cut.index(body.len() + 1));
+        let mut rebuilt = bytes[..preamble_len].to_vec();
+        rebuilt.extend_from_slice(&(body.len() as u64).to_le_bytes());
+        rebuilt.extend_from_slice(&body);
+        let checksum = xxh3_64(&rebuilt);
+        rebuilt.extend_from_slice(&checksum.to_le_bytes());
+        let decoded = PhenoIndex::decode(&rebuilt, &Protection::Plain);
+        let viewed = IndexBody::decode(&rebuilt, &Protection::Plain)
+            .and_then(|body| body.concepts().map(|c| c.map(|c| c.to_meta())).collect::<Result<Vec<_>, _>>());
+        prop_assert_eq!(decoded.is_ok(), viewed.is_ok());
+        if let (Ok(decoded), Ok(viewed)) = (decoded, viewed) {
+            prop_assert_eq!(decoded.concepts().len(), viewed.len());
         }
     }
 

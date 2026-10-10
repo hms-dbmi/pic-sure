@@ -18,8 +18,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use hpds_format::{
-    Block, ConceptMeta, ConceptType, CryptoKey, INDEX_FILE_NAME, Protection, java_double_cmp,
-    java_double_to_string, java_string_cmp,
+    Block, ConceptMeta, ConceptType, ConceptView, CryptoKey, INDEX_FILE_NAME, Protection,
+    java_double_cmp, java_double_to_string, java_string_cmp,
 };
 use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
@@ -27,7 +27,10 @@ use serde_json::Value;
 
 use crate::error::{QueryError, Result};
 use crate::model::Query;
-use crate::store::{BlockCache, KEY_FILE_NAME, Store, StoreOptions, block_cache};
+use crate::store::{
+    BlockCache, ConceptEntry, KEY_FILE_NAME, Store, StoreFiles, StoreOptions, block_cache,
+    read_store_id,
+};
 use crate::validate::ConceptLookup;
 
 /// Name of the single partition of an unpartitioned data directory. It never matches a
@@ -129,14 +132,21 @@ impl Partition {
     }
 }
 
-/// Where one store keeps one concept: the store's slot (a partition's position in
+/// One store's copy of one concept: the store's slot (a partition's position in
 /// [`PartitionSet`] order, or one past the last partition for the combined store) and the
-/// concept's position in that store's index, which together are the block's cache key.
+/// concept's position in that store's index, where the store keeps its
+/// [`ConceptEntry`]. With the concept's position in the shared concept table, the slot is
+/// the block's cache key.
 #[derive(Debug, Clone, Copy)]
 struct Holder {
     slot: u32,
     position: u32,
 }
+
+/// Partitions whose indexes are decoded at once while a [`PartitionSet`] opens. Each body
+/// is merged into the shared concept table and dropped before the next group, which bounds
+/// the memory the open needs on top of what it keeps.
+const OPEN_GROUP: usize = 8;
 
 /// `SummaryColumnMeta`: a concept's metadata merged over every partition that holds it, the
 /// dictionary `/search` and the validators read. Not consent-scoped.
@@ -186,25 +196,6 @@ impl SummaryColumnMeta {
             timestamp_min: concept.timestamp_min,
             timestamp_max: concept.timestamp_max,
         }
-    }
-
-    /// Folds another partition's metadata for the same concept into this one. Category
-    /// values are appended; [`SummaryColumnMeta::finish`] sorts and deduplicates them.
-    fn absorb(&mut self, concept: &ConceptMeta) {
-        self.width_in_bytes = self.width_in_bytes.max(concept.width_in_bytes);
-        self.category_values
-            .extend(concept.category_values.iter().flatten().cloned());
-        self.min = merge_option(self.min, concept.min, java_min);
-        self.max = merge_option(self.max, concept.max, java_max);
-        self.patient_count += u64::from(concept.patient_count);
-        self.has_timestamp |= concept.has_timestamp;
-        self.timestamp_min = merge_option(self.timestamp_min, concept.timestamp_min, i64::min);
-        self.timestamp_max = merge_option(self.timestamp_max, concept.timestamp_max, i64::max);
-    }
-
-    fn finish(&mut self) {
-        self.category_values.sort_by(|a, b| java_string_cmp(a, b));
-        self.category_values.dedup();
     }
 
     /// Numeric or categorical.
@@ -400,13 +391,19 @@ impl PartitionSet {
     /// partitions open as plain stores, and only if `options.store.allow_plain` is set.
     /// Partitions are kept in Java string order of their names.
     ///
+    /// Memory: the partitions' concept tables are merged into one shared table, the merged
+    /// dictionary, holding each path and category value once. Each store keeps only a
+    /// compact entry per concept (observation count, block location and decoded size
+    /// bound). Indexes are decoded a few at a time and each is dropped once merged.
+    ///
     /// # Errors
     /// [`QueryError::Open`] when the directory cannot be listed, holds no store (Java starts
     /// empty instead), holds a subdirectory with a javabin file but no `pheno.index`, holds a
     /// `.generation` file that cannot be read or does not match the opened stores' ids, is
     /// unpartitioned while `options.require_consents` is set, a partition's key file
     /// differs from the shared key, a store cannot be opened (its index or blocks file is
-    /// missing, corrupt, from another store, or protected differently from the key), or the
+    /// missing, corrupt, from another store, or protected differently from the key), a
+    /// partition's index is replaced between the `.generation` check and its decoding, or the
     /// combined store is missing, unlisted or inconsistent as described above.
     /// [`QueryError::TypeConflict`] when two partitions type one concept differently.
     pub fn open(dir: &Path, options: &PartitionOptions) -> Result<Self> {
@@ -427,7 +424,7 @@ impl PartitionSet {
                 ));
             }
         };
-        let (layout, partitions) = if dir.join(INDEX_FILE_NAME).exists() {
+        let (layout, found) = if dir.join(INDEX_FILE_NAME).exists() {
             if options.require_consents {
                 return Err(open_error(
                     dir,
@@ -438,12 +435,10 @@ impl PartitionSet {
                     ),
                 ));
             }
-            let store = Store::open_shared(dir, protection.clone(), cache.clone(), 0)?;
-            let partition = Partition {
-                name: UNPARTITIONED_NAME.to_owned(),
-                store,
-            };
-            (Layout::Unpartitioned, vec![partition])
+            (
+                Layout::Unpartitioned,
+                vec![(UNPARTITIONED_NAME.to_owned(), dir.to_path_buf())],
+            )
         } else {
             let mut found = partition_dirs(dir)?;
             if found.is_empty() {
@@ -456,24 +451,39 @@ impl PartitionSet {
             for (_, path) in &found {
                 check_partition_key(path, root_key.as_deref())?;
             }
-            let partitions = found
-                .into_par_iter()
-                .enumerate()
-                .map(|(slot, (name, path))| {
-                    let store =
-                        Store::open_shared(&path, protection.clone(), cache.clone(), slot as u32)?;
-                    Ok(Partition { name, store })
-                })
-                .collect::<Result<Vec<_>>>()?;
-            (Layout::Partitioned, partitions)
+            (Layout::Partitioned, found)
         };
+        let ids = found
+            .par_iter()
+            .map(|(name, path)| Ok((name.as_str(), read_store_id(path)?)))
+            .collect::<Result<Vec<_>>>()?;
         let generation = read_generation(dir)?;
-        check_generation(dir, &partitions, generation.as_ref())?;
-        let (dictionary, holder_ends, holders) = merge_dictionaries(&partitions)?;
-        let all_patients = partitions
-            .iter()
-            .map(|p| p.store.index().patients())
-            .union();
+        check_generation(dir, &ids, generation.as_ref())?;
+        let mut merger = DictionaryMerger::default();
+        let mut partitions = Vec::with_capacity(found.len());
+        for (group, group_ids) in found.chunks(OPEN_GROUP).zip(ids.chunks(OPEN_GROUP)) {
+            let opened = group
+                .par_iter()
+                .map(|(_, path)| StoreFiles::open(path, protection.clone()))
+                .collect::<Result<Vec<_>>>()?;
+            for (((name, path), (_, id)), files) in group.iter().zip(group_ids).zip(opened) {
+                if files.index().store_id() != *id {
+                    return Err(open_error(
+                        path,
+                        "its index was replaced while the service opened it. Wait for the \
+                         load to finish, or republish it",
+                    ));
+                }
+                let slot = partitions.len() as u32;
+                let entries = merger.add(slot, name, &files)?;
+                partitions.push(Partition {
+                    name: name.clone(),
+                    store: files.into_store(cache.clone(), slot, entries),
+                });
+            }
+        }
+        let (dictionary, holder_ends, holders) = merger.finish();
+        let all_patients = partitions.iter().map(|p| p.store.patients()).union();
         let mut set = PartitionSet {
             dir: dir.to_path_buf(),
             layout,
@@ -550,8 +560,8 @@ impl PartitionSet {
         };
         let slot = u32::try_from(self.partitions.len())
             .map_err(|_| open_error(&self.dir, "too many partitions"))?;
-        let store = Store::open_shared(&combined_dir, protection, self.cache.clone(), slot)?;
-        let opened = store.index().store_id().to_string();
+        let files = StoreFiles::open(&combined_dir, protection)?;
+        let opened = files.index().store_id().to_string();
         if opened != id {
             return Err(open_error(
                 &self.dir,
@@ -562,17 +572,19 @@ impl PartitionSet {
                 ),
             ));
         }
-        self.check_combined(&store)?;
-        Ok(Some(store))
+        let entries = self.check_combined(&files)?;
+        Ok(Some(files.into_store(self.cache.clone(), slot, entries)))
     }
 
     /// Refuses a combined store that does not hold exactly the partitions' data: the merged
     /// dictionary's concepts in the same order, each with the merged type and the summed
     /// observation count of its holders, and the union of the partitions' patients.
+    /// Returns its concepts' entries, which are in dictionary order.
     ///
     /// # Errors
-    /// [`QueryError::Open`] naming the first disagreement.
-    fn check_combined(&self, store: &Store) -> Result<()> {
+    /// [`QueryError::Open`] naming the first disagreement, or a concept table that does not
+    /// parse.
+    fn check_combined(&self, files: &StoreFiles) -> Result<Vec<ConceptEntry>> {
         let refuse = |detail: String| {
             Err(open_error(
                 &self.dir.join(COMBINED_DIR_NAME),
@@ -582,15 +594,18 @@ impl PartitionSet {
                 ),
             ))
         };
-        let concepts = store.index().concepts();
-        if concepts.len() != self.dictionary.len() {
+        let index_body = files.index();
+        if index_body.concept_count() != self.dictionary.len() {
             return refuse(format!(
                 "it holds {} concepts, the partitions {}",
-                concepts.len(),
+                index_body.concept_count(),
                 self.dictionary.len()
             ));
         }
-        for (index, (concept, summary)) in concepts.iter().zip(&self.dictionary).enumerate() {
+        let mut entries = Vec::with_capacity(self.dictionary.len());
+        for (index, concept) in index_body.concepts().enumerate() {
+            let concept = concept.map_err(|e| open_error(files.dir(), e))?;
+            let summary = &self.dictionary[index];
             if concept.path != summary.name {
                 return refuse(format!(
                     "concept {:?} differs in path: the combined store holds {:?} in its \
@@ -610,7 +625,7 @@ impl PartitionSet {
             let summed: u64 = self
                 .holders_of(index)
                 .iter()
-                .map(|h| u64::from(self.partition_concept(*h).observation_count))
+                .map(|h| u64::from(self.entry(*h).observation_count))
                 .sum();
             if u64::from(concept.observation_count) != summed {
                 return refuse(format!(
@@ -618,23 +633,16 @@ impl PartitionSet {
                     summary.name, concept.observation_count
                 ));
             }
+            entries.push(ConceptEntry::of(&concept));
         }
-        if store.index().patients() != &self.all_patients {
+        if index_body.patients() != &self.all_patients {
             return refuse(format!(
                 "it holds {} patients, the partitions {}",
-                store.index().patients().len(),
+                index_body.patients().len(),
                 self.all_patients.len()
             ));
         }
-        Ok(())
-    }
-
-    /// The metadata of a partition's concept.
-    fn partition_concept(&self, holder: Holder) -> &ConceptMeta {
-        &self.partitions[holder.slot as usize]
-            .store
-            .index()
-            .concepts()[holder.position as usize]
+        Ok(entries)
     }
 
     /// The store at `slot`: a partition, or the combined store one past the last partition.
@@ -646,6 +654,11 @@ impl PartitionSet {
                 .as_ref()
                 .unwrap_or_else(|| unreachable!("slot {slot} names no opened store")),
         }
+    }
+
+    /// The entry of the concept `holder` names, in its store.
+    fn entry(&self, holder: Holder) -> ConceptEntry {
+        self.store_at(holder.slot).entry(holder.position)
     }
 
     /// Whether full selections read a combined store.
@@ -870,7 +883,7 @@ impl<'a> Selection<'a> {
 
     /// True when this selection reads the combined store instead of its partitions.
     pub fn reads_combined(&self) -> bool {
-        self.combined_store().is_some()
+        self.combined_slot().is_some()
     }
 
     /// This selection, routed to the combined store when it selects every partition and
@@ -881,16 +894,16 @@ impl<'a> Selection<'a> {
         self
     }
 
-    /// The combined store and its slot, when this selection is routed to it and still
-    /// selects every partition.
-    fn combined_store(&self) -> Option<(&'a Store, u32)> {
+    /// The combined store's slot, when this selection is routed to it and still selects
+    /// every partition. The combined store holds every concept at its dictionary position.
+    fn combined_slot(&self) -> Option<u32> {
         if !self.routed_to_combined || !self.is_all() {
             return None;
         }
         self.set
             .combined
             .as_ref()
-            .map(|store| (store, self.set.partitions.len() as u32))
+            .map(|_| self.set.partitions.len() as u32)
     }
 
     /// The union of the selected partitions' patients
@@ -899,9 +912,9 @@ impl<'a> Selection<'a> {
     pub(crate) fn patients(&self) -> Cow<'a, RoaringBitmap> {
         match self.members.as_slice() {
             [] => Cow::Owned(RoaringBitmap::new()),
-            [one] => Cow::Borrowed(one.store.index().patients()),
+            [one] => Cow::Borrowed(one.store.patients()),
             _ if self.is_all() => Cow::Borrowed(&self.set.all_patients),
-            many => Cow::Owned(many.iter().map(|p| p.store.index().patients()).union()),
+            many => Cow::Owned(many.iter().map(|p| p.store.patients()).union()),
         }
     }
 
@@ -925,10 +938,6 @@ impl<'a> Selection<'a> {
             .filter(|h| self.mask[h.slot as usize])
     }
 
-    fn concept(&self, holder: Holder) -> &'a ConceptMeta {
-        &self.set.store_at(holder.slot).index().concepts()[holder.position as usize]
-    }
-
     /// The block of `path` in each selected partition that holds the concept, in partition
     /// name order. Only the partitions holding the concept are visited. When every block
     /// is cached they are returned without spawning work; otherwise all of them load on the
@@ -942,15 +951,15 @@ impl<'a> Selection<'a> {
         let Some(index) = self.set.concept_index(path) else {
             return Ok(Vec::new());
         };
-        if let Some((_, slot)) = self.combined_store() {
+        if let Some(slot) = self.combined_slot() {
             let holder = Holder {
                 slot,
                 position: index as u32,
             };
-            return self.load(std::iter::once(holder), 1);
+            return self.load(std::iter::once((index, holder)), 1);
         }
         self.load(
-            self.selected_holders(index),
+            self.selected_holders(index).map(|h| (index, h)),
             self.set.holders_of(index).len(),
         )
     }
@@ -964,15 +973,17 @@ impl<'a> Selection<'a> {
     /// [`QueryError::Block`] when a block cannot be loaded.
     pub(crate) fn blocks_with_prefix(&self, prefix: &str) -> Result<Vec<Arc<Block>>> {
         let range = self.set.prefix_range(prefix);
-        if let Some((store, slot)) = self.combined_store() {
-            let concepts = store.index().concepts();
+        if let Some(slot) = self.combined_slot() {
             let capacity = range.len();
             let holders = range
-                .filter(|&index| concepts[index].observation_count > 0)
-                .map(|index| Holder {
-                    slot,
-                    position: index as u32,
-                });
+                .map(|index| {
+                    let holder = Holder {
+                        slot,
+                        position: index as u32,
+                    };
+                    (index, holder)
+                })
+                .filter(|&(_, h)| self.set.entry(h).observation_count > 0);
             return self.load(holders, capacity);
         }
         let capacity = if range.is_empty() {
@@ -981,8 +992,8 @@ impl<'a> Selection<'a> {
             self.set.holder_ends[range.end - 1] as usize - self.set.holders_start(range.start)
         };
         let holders = range
-            .flat_map(|index| self.selected_holders(index))
-            .filter(|&h| self.concept(h).observation_count > 0);
+            .flat_map(|index| self.selected_holders(index).map(move |h| (index, h)))
+            .filter(|&(_, h)| self.set.entry(h).observation_count > 0);
         self.load(holders, capacity)
     }
 
@@ -999,16 +1010,17 @@ impl<'a> Selection<'a> {
             .count()
     }
 
-    /// The blocks at `holders`, in order. Reads the shared cache first, and on the first
+    /// The blocks at `holders`, each a concept's position in the shared concept table and
+    /// one store's copy of it, in order. Reads the shared cache first, and on the first
     /// miss loads every holder on the rayon pool instead.
     fn load(
         &self,
-        holders: impl Iterator<Item = Holder> + Clone,
+        holders: impl Iterator<Item = (usize, Holder)> + Clone,
         capacity: usize,
     ) -> Result<Vec<Arc<Block>>> {
         let mut blocks = Vec::with_capacity(capacity);
-        for holder in holders.clone() {
-            match self.set.cache.get(&(holder.slot, holder.position)) {
+        for (index, holder) in holders.clone() {
+            match self.set.cache.get(&(holder.slot, index as u32)) {
                 Some(block) => blocks.push(block),
                 None => return self.load_all(holders),
             }
@@ -1016,11 +1028,17 @@ impl<'a> Selection<'a> {
         Ok(blocks)
     }
 
-    fn load_all(&self, holders: impl Iterator<Item = Holder>) -> Result<Vec<Arc<Block>>> {
-        let holders: Vec<Holder> = holders.collect();
+    fn load_all(&self, holders: impl Iterator<Item = (usize, Holder)>) -> Result<Vec<Arc<Block>>> {
+        let holders: Vec<(usize, Holder)> = holders.collect();
         holders
             .par_iter()
-            .map(|h| self.set.store_at(h.slot).block_at(h.position as usize))
+            .map(|&(index, h)| {
+                self.set.store_at(h.slot).block(
+                    index as u32,
+                    h.position,
+                    &self.set.dictionary[index].name,
+                )
+            })
             .collect()
     }
 }
@@ -1181,7 +1199,7 @@ fn read_generation(dir: &Path) -> Result<Option<Generation>> {
 /// differ.
 fn check_generation(
     dir: &Path,
-    partitions: &[Partition],
+    partitions: &[(&str, hpds_format::StoreId)],
     generation: Option<&Generation>,
 ) -> Result<()> {
     let Some(generation) = generation else {
@@ -1190,7 +1208,7 @@ fn check_generation(
     let listed = &generation.partitions;
     let opened: std::collections::BTreeMap<String, &str> = partitions
         .iter()
-        .map(|p| (p.store.index().store_id().to_string(), p.name.as_str()))
+        .map(|(name, id)| (id.to_string(), *name))
         .collect();
     let unlisted: Vec<&str> = opened
         .iter()
@@ -1223,55 +1241,211 @@ fn type_name(concept_type: ConceptType) -> &'static str {
 /// position `i` are `holders[ends[i - 1]..ends[i]]` (from 0 for the first), in slot order.
 type MergedDictionary = (Vec<SummaryColumnMeta>, Vec<u32>, Vec<Holder>);
 
-/// The merged dictionary of `partitions` (`createAllPartitionMetaStore`), in Java string
-/// order, with each concept's holders, refusing a concept typed differently in two
-/// partitions.
-fn merge_dictionaries(partitions: &[Partition]) -> Result<MergedDictionary> {
-    let mut merged: Vec<(SummaryColumnMeta, &str, Vec<Holder>)> = Vec::new();
-    let mut positions: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for (slot, partition) in partitions.iter().enumerate() {
-        for (position, concept) in partition.store.index().concepts().iter().enumerate() {
-            let holder = Holder {
-                slot: slot as u32,
-                position: position as u32,
-            };
-            match positions.get(concept.path.as_str()) {
-                Some(&i) => {
-                    let (summary, first_partition, holders) = &mut merged[i];
-                    if summary.concept_type() != concept.concept_type {
+/// One concept of the merged dictionary while the partitions are read.
+struct MergingConcept {
+    first_slot: u32,
+    concept_type: ConceptType,
+    width_in_bytes: i32,
+    values: Vec<String>,
+    min: Option<f64>,
+    max: Option<f64>,
+    patient_count: u64,
+    has_timestamp: bool,
+    timestamp_min: Option<i64>,
+    timestamp_max: Option<i64>,
+    holder_count: u32,
+}
+
+impl MergingConcept {
+    fn new(concept: &ConceptView<'_>, slot: u32) -> Self {
+        MergingConcept {
+            first_slot: slot,
+            concept_type: concept.concept_type,
+            width_in_bytes: concept.width_in_bytes,
+            values: Vec::new(),
+            min: concept.min,
+            max: concept.max,
+            patient_count: u64::from(concept.patient_count),
+            has_timestamp: concept.has_timestamp,
+            timestamp_min: concept.timestamp_min,
+            timestamp_max: concept.timestamp_max,
+            holder_count: 0,
+        }
+    }
+
+    /// Folds another partition's copy of the concept in, by the rules of
+    /// [`SummaryColumnMeta`]. Category values are merged separately by [`merge_values`].
+    fn absorb(&mut self, concept: &ConceptView<'_>) {
+        self.width_in_bytes = self.width_in_bytes.max(concept.width_in_bytes);
+        self.min = merge_option(self.min, concept.min, java_min);
+        self.max = merge_option(self.max, concept.max, java_max);
+        self.patient_count += u64::from(concept.patient_count);
+        self.has_timestamp |= concept.has_timestamp;
+        self.timestamp_min = merge_option(self.timestamp_min, concept.timestamp_min, i64::min);
+        self.timestamp_max = merge_option(self.timestamp_max, concept.timestamp_max, i64::max);
+    }
+
+    fn finish(self, name: String) -> SummaryColumnMeta {
+        SummaryColumnMeta {
+            name,
+            width_in_bytes: self.width_in_bytes,
+            categorical: self.concept_type == ConceptType::Categorical,
+            category_values: self.values,
+            min: self.min,
+            max: self.max,
+            patient_count: self.patient_count,
+            has_timestamp: self.has_timestamp,
+            timestamp_min: self.timestamp_min,
+            timestamp_max: self.timestamp_max,
+        }
+    }
+}
+
+/// Merges `incoming` into `values`, which is distinct and in Java string order and stays
+/// so. Only values not already present are copied, and when every incoming value is
+/// present `values` is left as it is. `incoming` is sorted and deduplicated in place.
+fn merge_values(values: &mut Vec<String>, incoming: &mut Vec<&str>) {
+    incoming.sort_by(|a, b| java_string_cmp(a, b));
+    incoming.dedup();
+    let mut cursor = 0;
+    let mut added = 0;
+    for value in incoming.iter() {
+        while cursor < values.len() && java_string_cmp(&values[cursor], value).is_lt() {
+            cursor += 1;
+        }
+        if values.get(cursor).is_none_or(|present| present != value) {
+            added += 1;
+        }
+    }
+    if added == 0 {
+        return;
+    }
+    let mut merged = Vec::with_capacity(values.len() + added);
+    let mut present = std::mem::take(values).into_iter().peekable();
+    for value in incoming.iter() {
+        while let Some(before) = present.next_if(|p| java_string_cmp(p, value).is_lt()) {
+            merged.push(before);
+        }
+        match present.next_if(|p| p == value) {
+            Some(same) => merged.push(same),
+            None => merged.push((*value).to_owned()),
+        }
+    }
+    merged.extend(present);
+    *values = merged;
+}
+
+/// Builds the merged dictionary (`createAllPartitionMetaStore`) one partition at a time, so
+/// no partition's index body outlives its own merge. Each path and category value is held
+/// once, however many partitions hold it; each partition keeps only its table of
+/// [`ConceptEntry`]s, and [`DictionaryMerger::finish`] links each concept to its holders.
+#[derive(Default)]
+struct DictionaryMerger {
+    positions: std::collections::HashMap<Box<str>, u32>,
+    concepts: Vec<MergingConcept>,
+    partition_names: Vec<String>,
+    concept_ids: Vec<Vec<u32>>,
+}
+
+impl DictionaryMerger {
+    /// Merges the concept table of the partition `name` at `slot`, which must be the next
+    /// slot, and returns its entries in index order.
+    ///
+    /// # Errors
+    /// [`QueryError::TypeConflict`] when it types a concept differently from an earlier
+    /// partition, and [`QueryError::Open`] when its concept table does not parse.
+    fn add(&mut self, slot: u32, name: &str, files: &StoreFiles) -> Result<Vec<ConceptEntry>> {
+        debug_assert_eq!(slot as usize, self.partition_names.len());
+        self.partition_names.push(name.to_owned());
+        let index = files.index();
+        let mut entries = Vec::with_capacity(index.concept_count());
+        let mut ids = Vec::with_capacity(index.concept_count());
+        let mut incoming: Vec<&str> = Vec::new();
+        for concept in index.concepts() {
+            let concept = concept.map_err(|e| open_error(files.dir(), e))?;
+            let id = match self.positions.get(concept.path) {
+                Some(&id) => {
+                    let merging = &mut self.concepts[id as usize];
+                    if merging.concept_type != concept.concept_type {
                         return Err(QueryError::TypeConflict {
-                            concept_path: concept.path.clone(),
-                            first_partition: (*first_partition).to_owned(),
-                            first_type: type_name(summary.concept_type()),
-                            second_partition: partition.name.clone(),
+                            concept_path: concept.path.to_owned(),
+                            first_partition: self.partition_names[merging.first_slot as usize]
+                                .clone(),
+                            first_type: type_name(merging.concept_type),
+                            second_partition: name.to_owned(),
                             second_type: type_name(concept.concept_type),
                         });
                     }
-                    summary.absorb(concept);
-                    holders.push(holder);
+                    merging.absorb(&concept);
+                    id
                 }
                 None => {
-                    positions.insert(&concept.path, merged.len());
-                    merged.push((
-                        SummaryColumnMeta::from_concept(concept),
-                        partition.name.as_str(),
-                        vec![holder],
-                    ));
+                    let id = self.concepts.len() as u32;
+                    self.positions.insert(concept.path.into(), id);
+                    self.concepts.push(MergingConcept::new(&concept, slot));
+                    id
                 }
+            };
+            let merging = &mut self.concepts[id as usize];
+            merging.holder_count += 1;
+            if let Some(values) = concept.category_values {
+                incoming.clear();
+                incoming.extend(values.iter());
+                merge_values(&mut merging.values, &mut incoming);
+            }
+            ids.push(id);
+            entries.push(ConceptEntry::of(&concept));
+        }
+        self.concept_ids.push(ids);
+        Ok(entries)
+    }
+
+    /// The merged dictionary in Java string order of the paths, with each concept's
+    /// holders in slot order.
+    fn finish(self) -> MergedDictionary {
+        let mut names: Vec<(Box<str>, u32)> = self.positions.into_iter().collect();
+        names.sort_by(|a, b| java_string_cmp(&a.0, &b.0));
+        let mut rank = vec![0u32; self.concepts.len()];
+        for (sorted, (_, id)) in names.iter().enumerate() {
+            rank[*id as usize] = sorted as u32;
+        }
+        let mut concepts: Vec<Option<MergingConcept>> =
+            self.concepts.into_iter().map(Some).collect();
+        let mut dictionary = Vec::with_capacity(names.len());
+        let mut ends = Vec::with_capacity(names.len());
+        let mut end = 0u32;
+        for (name, id) in names {
+            let concept = concepts[id as usize]
+                .take()
+                .unwrap_or_else(|| unreachable!("each concept id is named once"));
+            end += concept.holder_count;
+            ends.push(end);
+            dictionary.push(concept.finish(name.into_string()));
+        }
+        drop(concepts);
+        let mut next: Vec<u32> = std::iter::once(0)
+            .chain(ends.iter().copied())
+            .take(ends.len())
+            .collect();
+        let mut holders = vec![
+            Holder {
+                slot: 0,
+                position: 0,
+            };
+            end as usize
+        ];
+        for (slot, ids) in self.concept_ids.iter().enumerate() {
+            for (position, id) in ids.iter().enumerate() {
+                let cursor = &mut next[rank[*id as usize] as usize];
+                holders[*cursor as usize] = Holder {
+                    slot: slot as u32,
+                    position: position as u32,
+                };
+                *cursor += 1;
             }
         }
+        (dictionary, ends, holders)
     }
-    merged.sort_by(|a, b| java_string_cmp(&a.0.name, &b.0.name));
-    let mut dictionary = Vec::with_capacity(merged.len());
-    let mut ends = Vec::with_capacity(merged.len());
-    let mut holders = Vec::new();
-    for (mut summary, _, concept_holders) in merged {
-        summary.finish();
-        dictionary.push(summary);
-        holders.extend(concept_holders);
-        ends.push(holders.len() as u32);
-    }
-    Ok((dictionary, ends, holders))
 }
 
 #[cfg(test)]
@@ -1289,6 +1463,36 @@ mod tests {
         assert_eq!(merge_option(None, Some(3), i64::min), Some(3));
         assert_eq!(merge_option(Some(4), None, i64::min), Some(4));
         assert_eq!(merge_option::<i64>(None, None, i64::min), None);
+    }
+
+    #[test]
+    fn merge_values_keeps_distinct_values_in_java_order_and_copies_only_new_ones() {
+        let mut values = Vec::new();
+        merge_values(&mut values, &mut vec!["b", "a", "b"]);
+        assert_eq!(values, ["a", "b"]);
+        let first = values[0].as_ptr();
+        merge_values(&mut values, &mut vec!["b", "a"]);
+        assert_eq!(values, ["a", "b"]);
+        assert_eq!(
+            values[0].as_ptr(),
+            first,
+            "nothing new leaves the values as they were"
+        );
+        merge_values(
+            &mut values,
+            &mut vec!["c", "\u{e000}", "\u{1f600}", "a", "A"],
+        );
+        assert_eq!(values, ["A", "a", "b", "c", "\u{1f600}", "\u{e000}"]);
+        assert_eq!(
+            values[1].as_ptr(),
+            first,
+            "values already present are moved, not copied"
+        );
+        let mut expected: Vec<String> = values.clone();
+        expected.sort_by(|a, b| java_string_cmp(a, b));
+        assert_eq!(values, expected);
+        merge_values(&mut values, &mut Vec::new());
+        assert_eq!(values.len(), 6);
     }
 
     #[test]

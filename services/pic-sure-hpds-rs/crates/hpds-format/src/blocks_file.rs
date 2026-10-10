@@ -174,13 +174,30 @@ impl BlocksReader {
     /// [`FormatError::StoreMismatch`] when `codec` is for another store, and the errors of
     /// [`BlocksReader::read_stored`] and [`BlockCodec::open`].
     pub fn read_block(&self, codec: &BlockCodec, concept: &ConceptMeta) -> Result<Block> {
+        self.read_block_at(
+            codec,
+            &concept.path,
+            concept.block,
+            concept.max_payload_len(),
+        )
+    }
+
+    /// [`BlocksReader::read_block`] from the three things it reads of the concept: its
+    /// path, its block location and its decoded size bound
+    /// ([`crate::ConceptView::max_payload_len`]).
+    ///
+    /// # Errors
+    /// As for [`BlocksReader::read_block`].
+    pub fn read_block_at(
+        &self,
+        codec: &BlockCodec,
+        concept_path: &str,
+        location: BlockLocation,
+        max_payload_len: u64,
+    ) -> Result<Block> {
         if codec.store_id() != self.store_id {
             return Err(FormatError::StoreMismatch);
         }
-        codec.open(
-            &concept.path,
-            &self.read_stored(concept.block)?,
-            concept.max_payload_len(),
-        )
+        codec.open(concept_path, &self.read_stored(location)?, max_payload_len)
     }
 }
