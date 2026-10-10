@@ -49,6 +49,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
 | `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts a CROSS_COUNT concept's or a CATEGORICAL_CROSS_COUNT category's cohort patients in each partition a query reads from its own store and sums the counts, when no patient id is in two partitions (see [Partition layout](#partition-layout)); `off` always unions the partitions' patient sets before counting, as v2 did. The answers are the same either way. |
+| `HPDS_RESULT_CACHE_BYTES` | `0` (off) | Byte bound of the sync result cache, which holds COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers (see [Result cache](#result-cache)). `0` turns it off. |
 | `HPDS_COMBINED_STORE` | `auto` | `auto` answers a query whose consents select every partition from the data directory's combined store, when it has a valid one (see [Combined store](#combined-store)); `off` ignores the combined store and its `.generation` line, so every query reads its partitions as before. |
 | `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name (the Rust name wins when both are set). Despite the name it gates `userConsents`, not authorization filters: when true, every query on `/query/sync` and `POST /query` needs at least one non-null `userConsents` value and is otherwise a 400 "User consents are required for this query", and an unpartitioned data directory is refused at startup. When false, a query without consent values reads every partition. `authorizationFilters` are validated on `POST /query` but never applied, in either mode, as on the Java branch. An open (non-auth) backend must run with it false, since the query service sends that backend no consents. |
 | `ID_BATCH_SIZE` | `0` | Java's export switch. `0` ends every DATAFRAME export in ERROR with "exports are disabled (ID_BATCH_SIZE=0)"; any larger value enables exports (the batch size itself does not change the algorithm). PATIENTS is unaffected. |
@@ -176,6 +177,42 @@ bench corpora:
   the cap through the partitions can fit through the combined store.
 - An older binary (v2) refuses a data directory that has a combined store; see
   [Consent-partitioned stores](#consent-partitioned-stores).
+
+### Result cache
+
+An opt-in cache of sync answers, off unless `HPDS_RESULT_CACHE_BYTES` is above 0.
+
+- **What it holds.** The rendered answers of COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT and
+  OBSERVATION_CROSS_COUNT on `POST /query/sync`. Not CATEGORICAL_CROSS_COUNT, exports
+  (`POST /query`), async results, errors, or a cross count holding -1 for a block that
+  could not be loaded.
+- **When it is read.** Only after the query passes every check a computed query passes:
+  limits, genomic input, then consents. A query that would be refused is refused with the
+  same message whether or not an answer to a similar query is cached. A hit skips the
+  engine queue and answers at once.
+- **Keying.** An entry is keyed on the store generation (a hash of every opened store's id,
+  the combined store's included), the result type, the partitions the consents select after
+  admission, whether that selection reads the combined store or its partitions, and the
+  fields that decide the answer: the phenotypic clause, and `select` for CROSS_COUNT and
+  OBSERVATION_CROSS_COUNT. The key holds the whole encoding, not a hash of it. `id`,
+  `picsureId`, `authorizationFilters` (never applied) and the consent values themselves are
+  not in it, so two queries whose consents select different partitions never share an
+  entry, while consent lists that select the same partitions (reordered, repeated, or with
+  unknown values) do.
+- **Answers.** A cached answer is the same bytes with the same `Content-Type`, and a fresh
+  `queryMetadata` UUID as every answer gets.
+- **Bound.** The entries' summed weight (key, body and 128 bytes of overhead each) is kept
+  within `HPDS_RESULT_CACHE_BYTES` by the same `moka` TinyLFU policy as the block cache,
+  which applies evictions in batches, so the total can pass the bound briefly between
+  them. An answer heavier than a sixteenth of the bound is not cached.
+- **Counters.** With the cache on, the `hpds_rs::result_cache` log target reports hits,
+  misses, the hit rate, entries, bytes and the bound every 60 seconds in which a lookup
+  happened, and once at shutdown. Health does not report them.
+- **What to expect.** An ordinary query already answers in well under a millisecond on a
+  warm block cache, so a hit mostly saves heavy entries (study-level `ANY_RECORD_OF`, wide
+  cross counts). The `hpds-bench` corpora replay about a hundred distinct sync queries in a
+  loop, so their hit rate converges on 100%; treat cache-on benchmark numbers as a best
+  case, not a forecast for real traffic.
 
 ### Routes
 
