@@ -41,7 +41,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store per consent subdirectory, or one unpartitioned store |
 /// | `SERVER_PORT` | 8080 | Listen port |
 /// | `HPDS_CACHE_BYTES` (or the old name `CACHE_BYTES`, with a warning) | 4 GiB | Byte bound of the decoded block cache |
-/// | `HPDS_RESULT_CACHE_BYTES` | 0 (off) | Byte bound of the cache of COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers |
+/// | `HPDS_RESULT_CACHE_BYTES` | 0 (off) | Byte bound of the cache of COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers |
 /// | `CACHE_SIZE` | ignored | Java's cache size in cubes; logged and ignored |
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
 /// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory |

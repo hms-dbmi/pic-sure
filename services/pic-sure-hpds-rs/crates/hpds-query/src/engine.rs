@@ -85,8 +85,9 @@ impl Engine {
     }
 
     /// Turns on the result cache, bounded at `bytes`, or leaves it off when `bytes` is 0
-    /// (the default). It holds the answers of COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT and
-    /// OBSERVATION_CROSS_COUNT for [`Engine::cached_sync`] and [`Engine::answer_sync`]; see
+    /// (the default). It holds the answers of COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT,
+    /// CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT for [`Engine::cached_sync`] and
+    /// [`Engine::answer_sync`]; see
     /// [`Engine::cached_sync`] for how entries are keyed.
     #[must_use]
     pub fn with_result_cache_bytes(mut self, bytes: u64) -> Self {

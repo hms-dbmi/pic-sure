@@ -1,5 +1,6 @@
-//! The opt-in result cache: rendered answers of COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT
-//! and OBSERVATION_CROSS_COUNT, bounded in bytes.
+//! The opt-in result cache: rendered answers of COUNT, CROSS_COUNT,
+//! CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT, bounded in
+//! bytes.
 //!
 //! An entry is keyed on everything that decides the answer and nothing else:
 //!
@@ -15,8 +16,9 @@
 //!
 //! Left out because they never change an answer: `id`, `picSureId`, the consent values
 //! themselves (the selection replaces them, so unknown values and their order do not
-//! matter), `authorizationFilters` (validated, never applied), and `select` for COUNT and
-//! CONTINUOUS_CROSS_COUNT. `genomicFilters` is always empty here, since admission refuses
+//! matter), `authorizationFilters` (validated, never applied), and `select` for COUNT,
+//! CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT. CATEGORICAL_CROSS_COUNT reads the
+//! concepts and values of the clause's filters, which the clause encoding covers. `genomicFilters` is always empty here, since admission refuses
 //! any.
 //!
 //! The key is the full encoding, not a hash of it, so two queries share an entry only when
@@ -154,6 +156,7 @@ pub(crate) fn is_cacheable(result_type: ResultType) -> bool {
         result_type,
         ResultType::Count
             | ResultType::CrossCount
+            | ResultType::CategoricalCrossCount
             | ResultType::ContinuousCrossCount
             | ResultType::ObservationCrossCount
     )
@@ -166,8 +169,9 @@ pub(crate) fn is_storable(result: &SyncResult) -> bool {
         SyncResult::CrossCount(counts) | SyncResult::ObservationCrossCount(counts) => {
             counts.entries.iter().all(|(_, count)| *count >= 0)
         }
-        SyncResult::Count(_) | SyncResult::ContinuousCrossCount(_) => true,
-        SyncResult::CategoricalCrossCount(_) => false,
+        SyncResult::Count(_)
+        | SyncResult::CategoricalCrossCount(_)
+        | SyncResult::ContinuousCrossCount(_) => true,
     }
 }
 

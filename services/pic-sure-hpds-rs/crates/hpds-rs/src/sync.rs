@@ -48,8 +48,9 @@ const NO_VARIANT_FILTERS_BODY: &str =
 ///   engine. Structural failures the engine raises while evaluating (a FILTER without
 ///   criteria, an empty subquery) are 400 text errors, where Java answers 500 or an empty
 ///   200.
-/// - With `HPDS_RESULT_CACHE_BYTES` above 0, a COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT or
-///   OBSERVATION_CROSS_COUNT that passes every check above is looked up in the result cache
+/// - With `HPDS_RESULT_CACHE_BYTES` above 0, a COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT,
+///   CONTINUOUS_CROSS_COUNT or OBSERVATION_CROSS_COUNT that passes every check above is
+///   looked up in the result cache
 ///   ([`hpds_query::Engine::cached_sync`]) and a hit is answered at once, with the same
 ///   body and headers as a computed answer. A miss is computed and stored.
 /// - At most `HPDS_ENGINE_CONCURRENCY` engine computations run at once; the rest wait. A query

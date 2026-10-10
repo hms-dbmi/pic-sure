@@ -233,6 +233,7 @@ async fn replay_identical(
     let cacheable = [
         "COUNT",
         "CROSS_COUNT",
+        "CATEGORICAL_CROSS_COUNT",
         "CONTINUOUS_CROSS_COUNT",
         "OBSERVATION_CROSS_COUNT",
     ];
@@ -257,6 +258,7 @@ async fn cached_answers_match_uncached_on_the_golden_fixture() {
     for types in [
         "COUNT",
         "CROSS_COUNT",
+        "CATEGORICAL_CROSS_COUNT",
         "CONTINUOUS_CROSS_COUNT",
         "OBSERVATION_CROSS_COUNT",
     ] {
@@ -319,4 +321,31 @@ async fn only_fields_that_change_the_answer_split_entries() {
     let two = sync(&f.app, &cross(json!([SEX, AGE]))).await;
     assert_ne!(one.body, two.body);
     assert_eq!(stats(&f).entries, 4, "select splits a CROSS_COUNT");
+}
+
+#[tokio::test]
+async fn categorical_cross_counts_are_cached_per_selection() {
+    let f = cached();
+    let uncached = fixture();
+    let categorical = |values: &[&str]| {
+        json!({"expectedResultType": "CATEGORICAL_CROSS_COUNT",
+            "userConsents": consents(values),
+            "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": SEX,
+                "values": ["male", "female"]}})
+    };
+    let selections: [&[&str]; 2] = [&["partition1"], &["partition2", "partition3"]];
+    for round in 0..2 {
+        for values in selections {
+            let query = categorical(values);
+            let expected = sync(&uncached.app, &query).await;
+            let got = sync(&f.app, &query).await;
+            assert_eq!(got.status, StatusCode::OK, "{}", got.body);
+            assert_same_response(&format!("round {round}, {values:?}"), &expected, &got);
+        }
+    }
+    let after = stats(&f);
+    assert_eq!((after.misses, after.hits, after.entries), (2, 2, 2));
+    let one = sync(&f.app, &categorical(selections[0])).await;
+    let two = sync(&f.app, &categorical(selections[1])).await;
+    assert_ne!(one.body, two.body, "the selections answer differently");
 }
