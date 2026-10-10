@@ -465,6 +465,18 @@ fn subdirectories_without_a_store_are_not_partitions() {
     assert_eq!(engine.count(&all).unwrap(), 0);
 }
 
+/// The decoded size ([`hpds_format::Block::heap_size`]) of the block of `path` in the
+/// store in `dir`, read with the ETL's reader, outside the engine.
+fn block_heap_size(dir: &std::path::Path, path: &str) -> u64 {
+    let store = hpds_etl::store::OpenStore::open(dir, protection()).unwrap();
+    let concept = store.index.get(path).unwrap();
+    store
+        .reader
+        .read_block(&store.codec, concept)
+        .unwrap()
+        .heap_size() as u64
+}
+
 #[test]
 fn partitions_share_one_cache_budget() {
     let d = partitioned_rows(&[("p1", numeric_rows(&[1, 2])), ("p2", numeric_rows(&[3, 4]))]);
@@ -483,6 +495,32 @@ fn partitions_share_one_cache_budget() {
     };
     engine.count(&only_p1).unwrap();
     assert_eq!(set.cached_block_count(), 1);
+}
+
+#[test]
+fn a_failed_block_load_still_weighs_the_blocks_it_read() {
+    let d = partitioned_rows(&[("p1", numeric_rows(&[1, 2])), ("p2", numeric_rows(&[3, 4]))]);
+    let engine = d.open(&lenient()).unwrap();
+    let blocks = d.out.join("p2").join(hpds_format::BLOCKS_FILE_NAME);
+    let len = std::fs::metadata(&blocks).unwrap().len();
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&blocks)
+        .unwrap();
+    std::os::unix::fs::FileExt::write_all_at(&file, &[0xff; 8], len - 8).unwrap();
+    drop(file);
+    let set = engine.partitions();
+    let error = engine
+        .count(&query(ResultType::Count, Some(required(CONCEPT))))
+        .unwrap_err();
+    assert!(matches!(error, QueryError::Block { .. }), "{error}");
+    assert_eq!(set.cached_block_count(), 1, "p1's block was read");
+    let p1 = block_heap_size(&d.out.join("p1"), CONCEPT);
+    assert!(
+        set.cached_bytes() >= p1,
+        "p1's block is weighed: {} cached, {p1} read",
+        set.cached_bytes()
+    );
 }
 
 #[test]

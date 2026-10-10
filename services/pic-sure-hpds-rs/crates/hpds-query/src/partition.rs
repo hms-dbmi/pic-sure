@@ -1204,6 +1204,10 @@ impl<'a> Selection<'a> {
     /// entries, loads every missing block on the rayon pool, and inserts each entry it
     /// filled again so the cache weighs its new blocks. Two queries missing the same block
     /// at once may both read it; the first to fill the slot wins.
+    ///
+    /// Every missing block is attempted. When some fail, the entries the others filled are
+    /// still inserted again, so the cache never holds decoded blocks it weighs as empty,
+    /// and the first failure in request order is returned.
     fn load_missing(
         &self,
         group: u32,
@@ -1232,7 +1236,7 @@ impl<'a> Selection<'a> {
                 }
             }
         }
-        let loaded = missing
+        let loaded: Vec<Result<Arc<Block>>> = missing
             .par_iter()
             .map(|(_, request, entry)| {
                 let block = self.set.store_at(request.holder.slot).read_block(
@@ -1241,10 +1245,17 @@ impl<'a> Selection<'a> {
                 )?;
                 Ok(entry.fill(request.slot, Arc::new(block)))
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect();
         let mut reweighed = None;
+        let mut first_error = None;
         for ((position, request, entry), block) in missing.iter().zip(loaded) {
-            blocks[*position] = Some(block);
+            match block {
+                Ok(block) => blocks[*position] = Some(block),
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                    continue;
+                }
+            }
             if reweighed != Some(request.index) {
                 self.set
                     .cache
@@ -1252,7 +1263,10 @@ impl<'a> Selection<'a> {
                 reweighed = Some(request.index);
             }
         }
-        Ok(blocks.into_iter().flatten().collect())
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(blocks.into_iter().flatten().collect()),
+        }
     }
 }
 
