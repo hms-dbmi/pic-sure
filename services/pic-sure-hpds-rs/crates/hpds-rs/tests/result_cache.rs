@@ -299,7 +299,7 @@ async fn cached_answers_match_uncached_on_the_strict_golden_fixture() {
 }
 
 #[tokio::test]
-async fn only_fields_that_change_the_answer_split_entries() {
+async fn only_fields_that_change_the_answer_or_could_split_entries() {
     let f = cached();
     let base = age_count(35.0, 45.0, None);
     let mut with_ids = base.clone();
@@ -321,6 +321,36 @@ async fn only_fields_that_change_the_answer_split_entries() {
     let two = sync(&f.app, &cross(json!([SEX, AGE]))).await;
     assert_ne!(one.body, two.body);
     assert_eq!(stats(&f).entries, 4, "select splits a CROSS_COUNT");
+
+    let mut authorized = base.clone();
+    authorized["authorizationFilters"] = json!([
+        {"conceptPath": SEX, "values": ["male", "female"]},
+        {"conceptPath": AGE, "values": null},
+    ]);
+    assert_eq!(sync(&f.app, &authorized).await.body, "562");
+    assert_eq!(
+        stats(&f).entries,
+        5,
+        "authorization filters split entries, though never applied"
+    );
+    let mut reordered = base.clone();
+    reordered["authorizationFilters"] = json!([
+        {"conceptPath": AGE, "values": null},
+        {"conceptPath": SEX, "values": ["female", "male", "female"]},
+        {"conceptPath": AGE, "values": null},
+    ]);
+    let hits = stats(&f).hits;
+    assert_eq!(sync(&f.app, &reordered).await.body, "562");
+    assert_eq!(
+        (stats(&f).entries, stats(&f).hits),
+        (5, hits + 1),
+        "order and repetition do not split them"
+    );
+    let mut narrower_authorization = base.clone();
+    narrower_authorization["authorizationFilters"] =
+        json!([{"conceptPath": SEX, "values": ["male"]}, {"conceptPath": AGE, "values": null}]);
+    sync(&f.app, &narrower_authorization).await;
+    assert_eq!(stats(&f).entries, 6);
 }
 
 #[tokio::test]

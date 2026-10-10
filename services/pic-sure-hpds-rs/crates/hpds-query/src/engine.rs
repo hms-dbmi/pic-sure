@@ -393,9 +393,10 @@ impl Engine {
     /// refused here with the same error, warm cache or not. The key is the store
     /// generation, the result type, the partitions the consents select after admission,
     /// whether that selection reads the combined store, and a canonical form of the fields
-    /// that decide the answer: the phenotypic clause, and `select` for CROSS_COUNT and
-    /// OBSERVATION_CROSS_COUNT. Ids, the consent values themselves and
-    /// `authorizationFilters` are not in it. So two queries whose consents select different
+    /// that decide the answer: the phenotypic clause, `select` for CROSS_COUNT and
+    /// OBSERVATION_CROSS_COUNT, and `authorizationFilters` (never applied, but keyed so the
+    /// key stays correct if they ever are). Ids and the consent
+    /// values themselves are not in it. So two queries whose consents select different
     /// partitions never share an entry, and one answer serves every request that selects
     /// the same partitions. Each lookup of a cacheable query counts a hit or a miss.
     ///

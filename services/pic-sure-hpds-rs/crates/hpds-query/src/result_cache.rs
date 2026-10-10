@@ -12,11 +12,15 @@
 //! - whether the selection reads the combined store or its partitions;
 //! - a canonical encoding of the phenotypic clause (every filter field, `not` included,
 //!   floats by their bits), and of `select` for the two types that read it (CROSS_COUNT and
-//!   OBSERVATION_CROSS_COUNT).
+//!   OBSERVATION_CROSS_COUNT);
+//! - `authorizationFilters` in a canonical form: each filter's values sorted and
+//!   deduplicated, the filters sorted and deduplicated. They are validated and never
+//!   applied, so today they only split entries that share an answer, but the key stays
+//!   correct if they are ever applied.
 //!
 //! Left out because they never change an answer: `id`, `picSureId`, the consent values
 //! themselves (the selection replaces them, so unknown values and their order do not
-//! matter), `authorizationFilters` (validated, never applied), and `select` for COUNT,
+//! matter), and `select` for COUNT,
 //! CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT. CATEGORICAL_CROSS_COUNT reads the
 //! concepts and values of the clause's filters, which the clause encoding covers. `genomicFilters` is always empty here, since admission refuses
 //! any.
@@ -30,7 +34,7 @@ use bytes::Bytes;
 use moka::sync::Cache;
 
 use crate::limits::CheckedQuery;
-use crate::model::{PhenotypicClause, PhenotypicFilter, ResultType};
+use crate::model::{AuthorizationFilter, PhenotypicClause, PhenotypicFilter, ResultType};
 use crate::results::SyncResult;
 
 /// Bytes charged to each entry on top of its key and body, for the cache's own bookkeeping.
@@ -211,6 +215,7 @@ pub(crate) fn key_of(checked: &CheckedQuery<'_, '_>, generation: u128) -> Option
             key.clause(clause);
         }
     }
+    key.authorization_filters(&query.authorization_filters);
     Some(key.finish())
 }
 
@@ -282,6 +287,40 @@ impl KeyWriter {
                     stack.extend(subquery.phenotypic_clauses.iter().rev());
                 }
             }
+        }
+    }
+
+    /// Writes `filters` so that lists differing only in order or repetition encode the
+    /// same: each filter as its concept path and its values sorted and deduplicated (a
+    /// filter accepts any of its values; `null` stays distinct from an empty list), then the
+    /// encoded filters sorted and deduplicated (every filter must hold), behind their count.
+    fn authorization_filters(&mut self, filters: &[AuthorizationFilter]) {
+        let mut encoded: Vec<Vec<u8>> = filters
+            .iter()
+            .map(|filter| {
+                let mut one = KeyWriter::default();
+                one.text(&filter.concept_path);
+                match &filter.values {
+                    None => one.byte(0),
+                    Some(values) => {
+                        let mut values: Vec<&str> = values.iter().map(String::as_str).collect();
+                        values.sort_unstable();
+                        values.dedup();
+                        one.byte(1);
+                        one.count(values.len());
+                        for value in values {
+                            one.text(value);
+                        }
+                    }
+                }
+                one.out
+            })
+            .collect();
+        encoded.sort_unstable();
+        encoded.dedup();
+        self.count(encoded.len());
+        for filter in &encoded {
+            self.bytes(filter);
         }
     }
 
