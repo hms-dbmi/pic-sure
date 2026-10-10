@@ -121,9 +121,12 @@ partition reads one block per concept instead of one per partition, and gets the
   shape, consent and concept checks. A query reads the combined store only when its consents
   select every partition: every partition named (unknown values beside them are skipped as
   ever), or no consent value with `HPDS_REQUIRE_AUTHORIZATION_FILTER` false. Any narrower
-  selection, one partition short included, reads exactly its own partitions, as before. Each
-  read of a combined block checks again that the selection covers every partition. A query
-  with no consent value while consents are required is refused before routing, as before.
+  selection, one partition short included, reads exactly its own partitions, as before. A
+  query with no consent value while consents are required is refused before routing, as
+  before. Each read of a combined block also checks that the selection covers every
+  partition. That check is defensive: a selection cannot change once built, so after the
+  routing decision it cannot fail. It is there so that a later change that builds a
+  narrower selection some other way still cannot reach the combined rows.
 - **What does not change.** `/search`, validation, `ANY_RECORD_OF` expansion, the
   `HPDS_MAX_QUERY_CONCEPTS` count and health read the partitions' merged dictionary. The
   combined store's blocks share the one `HPDS_CACHE_BYTES` cache with partition blocks, so a
@@ -331,8 +334,11 @@ rows. The directory name starts with `.`, so no command and no query service tak
 partition, and a partition file prefix starting with `.` (`.combined` included) is refused.
 When two partitions type one concept differently, no block can hold both types: the load logs
 a warning and writes no combined store (and removes an old one), and the query service refuses
-that store anyway. On the V2-6 bench input (40 partitions, 250 M rows) it adds 2.48 GB of
-blocks and 1 MB of index, about 11 s of build and about 9 s of wall time to a 20 s load.
+that store anyway. On the 40-partition bench input (250 M rows) it adds 2.48 GB of blocks
+and 1 MB of index. The build starts only after every partition is complete, so all of it is
+on the load's critical path: its report gives 11 s, and the whole load took about 9 s longer
+than with `--no-combined` (about 31 s against 21 s; the partition phase varies by a few
+seconds from run to run).
 
 **Older binaries.** A query service without combined store support (v2) reads the first token
 of every `.generation` line as a partition id, never opens `.combined` (its rule ignores names
