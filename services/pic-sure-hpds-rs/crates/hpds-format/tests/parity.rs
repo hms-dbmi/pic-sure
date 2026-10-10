@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use hpds_format::{
     canonical_nan, java_double_cmp, java_double_to_string, java_string_cmp, java_trim,
-    parse_java_double,
+    parse_java_double, push_decimal_u32, push_java_double,
 };
 use proptest::prelude::*;
 
@@ -233,5 +233,142 @@ fn java_double_to_string_matches_jdk() {
     ];
     for (value, expected) in cases {
         assert_eq!(java_double_to_string(value), expected, "{value:e}");
+    }
+}
+
+fn pushed_double(value: f64) -> String {
+    let mut out = b"prefix".to_vec();
+    push_java_double(value, &mut out);
+    String::from_utf8(out).unwrap().split_off(6)
+}
+
+fn pushed_u32(value: u32) -> String {
+    let mut out = b"prefix".to_vec();
+    push_decimal_u32(value, &mut out);
+    String::from_utf8(out).unwrap().split_off(6)
+}
+
+/// Every value next to a decimal layout or digit-count boundary: zeros, the infinities, NaN
+/// payloads, the subnormal range, every power of ten and its neighbours (which cover the
+/// `1e-3` and `1e7` switches between plain and scientific notation), whole numbers around
+/// `1e7`, and the extremes.
+fn double_edges() -> Vec<f64> {
+    let mut values = vec![
+        0.0,
+        -0.0,
+        f64::NAN,
+        -f64::NAN,
+        f64::from_bits(0x7ff0_0000_0000_0001),
+        f64::from_bits(0xfff8_0000_0000_1234),
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::MIN_POSITIVE,
+        f64::MAX,
+        f64::MIN,
+        f64::EPSILON,
+        f64::from_bits(1),
+        f64::from_bits(2),
+        f64::from_bits(3),
+        f64::from_bits(0x000f_ffff_ffff_ffff),
+        f64::from_bits(0x0008_0000_0000_0000),
+        1e23,
+        9_999_999.0,
+        9_999_999.5,
+        10_000_001.0,
+        4_294_967_295.0,
+        4_294_967_296.0,
+        0.1,
+        0.2,
+        0.3,
+        2.0 / 3.0,
+        5e-324,
+        1.7976931348623157e308,
+    ];
+    for exponent in -325..=309 {
+        let power: f64 = format!("1e{exponent}").parse().unwrap();
+        for value in [
+            power,
+            power.next_up(),
+            power.next_down(),
+            5.0 * power,
+            9.5 * power,
+        ] {
+            values.push(value);
+        }
+    }
+    for whole in (0..2_000).chain(9_998_000..10_002_000) {
+        values.push(f64::from(whole));
+        values.push(f64::from(whole) + 0.5);
+    }
+    let negated: Vec<f64> = values.iter().map(|v| -v).collect();
+    values.extend(negated);
+    values
+}
+
+#[test]
+fn push_java_double_matches_java_double_to_string_on_edges() {
+    for value in double_edges() {
+        assert_eq!(
+            pushed_double(value),
+            java_double_to_string(value),
+            "bits {:#x}",
+            value.to_bits()
+        );
+    }
+}
+
+#[test]
+fn push_decimal_u32_matches_to_string_on_edges() {
+    let mut values = vec![
+        0,
+        1,
+        9,
+        10,
+        11,
+        99,
+        100,
+        101,
+        999,
+        1_000,
+        u32::MAX,
+        u32::MAX - 1,
+    ];
+    for digits in 1..10 {
+        let power = 10u32.pow(digits);
+        values.extend([power - 1, power, power + 1]);
+    }
+    for value in values {
+        assert_eq!(pushed_u32(value), value.to_string());
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(20_000))]
+
+    #[test]
+    fn push_java_double_matches_java_double_to_string(bits in any::<u64>()) {
+        let value = f64::from_bits(bits);
+        prop_assert_eq!(pushed_double(value), java_double_to_string(value));
+    }
+
+    #[test]
+    fn push_java_double_matches_on_whole_and_short_values(
+        whole in -20_000_000i64..20_000_000,
+        scale in 0u32..12,
+    ) {
+        let value = whole as f64 / 10f64.powi(scale as i32);
+        prop_assert_eq!(pushed_double(value), java_double_to_string(value));
+    }
+
+    #[test]
+    fn push_java_double_matches_on_subnormals(fraction in 1u64..(1u64 << 52), negative: bool) {
+        let bits = fraction | if negative { 1 << 63 } else { 0 };
+        let value = f64::from_bits(bits);
+        prop_assert_eq!(pushed_double(value), java_double_to_string(value));
+    }
+
+    #[test]
+    fn push_decimal_u32_matches_to_string(value in any::<u32>()) {
+        prop_assert_eq!(pushed_u32(value), value.to_string());
     }
 }

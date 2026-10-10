@@ -206,7 +206,7 @@ pub use index::{
 pub use membership::Membership;
 pub use parity::{
     canonical_nan, java_double_cmp, java_double_to_string, java_string_cmp, java_trim,
-    parse_java_double,
+    parse_java_double, push_decimal_u32, push_java_double,
 };
 pub use protection::{Protection, STORE_ID_LEN, StoreId};
 

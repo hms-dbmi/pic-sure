@@ -115,6 +115,186 @@ pub fn java_double_to_string(value: f64) -> String {
     out
 }
 
+const DIGIT_PAIRS: &[u8; 200] = b"0001020304050607080910111213141516171819\
+2021222324252627282930313233343536373839\
+4041424344454647484950515253545556575859\
+6061626364656667686970717273747576777879\
+8081828384858687888990919293949596979899";
+
+/// Appends the decimal digits of `value` to `out`, the bytes `value.to_string()` gives,
+/// without going through `core::fmt`.
+pub fn push_decimal_u32(value: u32, out: &mut Vec<u8>) {
+    let mut buffer = [0u8; 10];
+    let mut start = buffer.len();
+    let mut rest = value;
+    while rest >= 100 {
+        let pair = (rest % 100) as usize * 2;
+        rest /= 100;
+        start -= 2;
+        buffer[start..start + 2].copy_from_slice(&DIGIT_PAIRS[pair..pair + 2]);
+    }
+    if rest >= 10 {
+        let pair = rest as usize * 2;
+        start -= 2;
+        buffer[start..start + 2].copy_from_slice(&DIGIT_PAIRS[pair..pair + 2]);
+    } else {
+        start -= 1;
+        buffer[start] = b'0' + rest as u8;
+    }
+    out.extend_from_slice(&buffer[start..]);
+}
+
+/// A fixed buffer on the stack that `core::fmt` writes into, long enough for any `{:e}`
+/// rendering of a finite double (at most 17 digits, a point, `e` and a four-character
+/// exponent).
+struct StackText {
+    bytes: [u8; 32],
+    len: usize,
+}
+
+impl StackText {
+    fn render(args: std::fmt::Arguments<'_>) -> Self {
+        use std::fmt::Write;
+        let mut text = StackText {
+            bytes: [0; 32],
+            len: 0,
+        };
+        let _ = text.write_fmt(args);
+        text
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..self.len]
+    }
+}
+
+impl std::fmt::Write for StackText {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        let end = self.len + s.len();
+        let target = self.bytes.get_mut(self.len..end).ok_or(std::fmt::Error)?;
+        target.copy_from_slice(s.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+/// The significant digits of a `{:e}` rendering without trailing zeros, and its decimal
+/// exponent, as [`scientific_digits`] splits them, held on the stack.
+struct Scientific {
+    digits: [u8; 24],
+    len: usize,
+    exponent: i32,
+}
+
+impl Scientific {
+    fn parse(rendered: &[u8]) -> Self {
+        let split = rendered
+            .iter()
+            .position(|&b| b == b'e')
+            .unwrap_or(rendered.len());
+        let mut parsed = Scientific {
+            digits: [0; 24],
+            len: 0,
+            exponent: 0,
+        };
+        for &b in rendered[..split].iter().filter(|&&b| b != b'.') {
+            if let Some(slot) = parsed.digits.get_mut(parsed.len) {
+                *slot = b;
+                parsed.len += 1;
+            }
+        }
+        while parsed.len > 1 && parsed.digits[parsed.len - 1] == b'0' {
+            parsed.len -= 1;
+        }
+        let exponent = rendered.get(split + 1..).unwrap_or_default();
+        parsed.exponent = std::str::from_utf8(exponent)
+            .ok()
+            .and_then(|e| e.parse().ok())
+            .unwrap_or(0);
+        parsed
+    }
+
+    fn digits(&self) -> &[u8] {
+        &self.digits[..self.len]
+    }
+}
+
+/// Appends [`java_double_to_string`]`(value)` to `out` without allocating: the same digits
+/// and layout, rendered on the stack. Whole magnitudes in `[1, 1e7)` skip `core::fmt`
+/// entirely, since their shortest decimal is the integer itself.
+pub fn push_java_double(value: f64, out: &mut Vec<u8>) {
+    if value.is_nan() {
+        out.extend_from_slice(b"NaN");
+        return;
+    }
+    if value.is_infinite() {
+        out.extend_from_slice(if value > 0.0 {
+            b"Infinity"
+        } else {
+            b"-Infinity"
+        });
+        return;
+    }
+    if value == 0.0 {
+        out.extend_from_slice(if value.is_sign_negative() {
+            b"-0.0"
+        } else {
+            b"0.0"
+        });
+        return;
+    }
+    let magnitude = value.abs();
+    if value < 0.0 {
+        out.push(b'-');
+    }
+    if (1.0..1e7).contains(&magnitude) && magnitude.fract() == 0.0 {
+        push_decimal_u32(magnitude as u32, out);
+        out.extend_from_slice(b".0");
+        return;
+    }
+    let mut scientific =
+        Scientific::parse(StackText::render(format_args!("{magnitude:e}")).as_bytes());
+    if scientific.len == 1 {
+        let two = StackText::render(format_args!("{magnitude:.1e}"));
+        let round_trips = std::str::from_utf8(two.as_bytes())
+            .ok()
+            .and_then(|t| t.parse::<f64>().ok())
+            == Some(magnitude);
+        if round_trips {
+            scientific = Scientific::parse(two.as_bytes());
+        }
+    }
+    let digits = scientific.digits();
+    let exponent = scientific.exponent;
+    if (-3..7).contains(&exponent) {
+        if exponent >= 0 {
+            let int_len = exponent as usize + 1;
+            if digits.len() <= int_len {
+                out.extend_from_slice(digits);
+                out.resize(out.len() + int_len - digits.len(), b'0');
+                out.extend_from_slice(b".0");
+            } else {
+                out.extend_from_slice(&digits[..int_len]);
+                out.push(b'.');
+                out.extend_from_slice(&digits[int_len..]);
+            }
+        } else {
+            out.extend_from_slice(b"0.");
+            out.resize(out.len() + (-exponent - 1) as usize, b'0');
+            out.extend_from_slice(digits);
+        }
+    } else {
+        out.extend_from_slice(&digits[..1]);
+        out.push(b'.');
+        out.extend_from_slice(if digits.len() > 1 { &digits[1..] } else { b"0" });
+        out.push(b'E');
+        if exponent < 0 {
+            out.push(b'-');
+        }
+        push_decimal_u32(exponent.unsigned_abs(), out);
+    }
+}
+
 /// Removes leading and trailing characters at or below U+0020, as Java `String.trim` does.
 ///
 /// This differs from Rust `str::trim`, which removes Unicode whitespace (including U+00A0)
