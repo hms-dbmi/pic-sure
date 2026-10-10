@@ -229,6 +229,9 @@ pub struct MigrateReport {
     pub encrypted: bool,
     /// The store id written into the index and blocks.
     pub store_id: String,
+    /// The store id, for publishing; [`MigrateReport::store_id`] is its text.
+    #[serde(skip)]
+    pub id: StoreId,
     /// Metastore entries read from the export.
     pub exported_concepts: u64,
     /// Concepts in the store.
@@ -285,7 +288,7 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
         &pool,
         options.skip_inconsistent,
     )?;
-    staging.publish(&options.out, &report.store_id)?;
+    staging.publish(&options.out, report.id)?;
     tracing::info!(
         out = %options.out.display(),
         concepts = report.concepts,
@@ -385,7 +388,7 @@ pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrat
     let json = serde_json::to_vec_pretty(&report)
         .map_err(|e| EtlError::io("encoding", &report_path)(e.into()))?;
     private_fs::write_file(&report_path, &json).map_err(EtlError::io("writing", &report_path))?;
-    staging.publish(&options.out, &report.store.store_id)?;
+    staging.publish(&options.out, report.store.id)?;
     tracing::info!(
         out = %options.out.display(),
         partitions = report.partitions.len(),
@@ -510,6 +513,7 @@ fn migrate_into(
         export: export.to_path_buf(),
         encrypted: protection.is_encrypted(),
         store_id: store_id.to_string(),
+        id: store_id,
         exported_concepts,
         concepts: metas.len() as u64,
         numeric_concepts: metas.iter().filter(|m| !m.is_categorical()).count() as u64,

@@ -227,6 +227,9 @@ pub struct LoadReport {
     pub encrypted: bool,
     /// The store id written into the index and blocks.
     pub store_id: String,
+    /// The store id, for publishing; [`LoadReport::store_id`] is its text.
+    #[serde(skip)]
+    pub id: StoreId,
     /// Row and concept counts.
     pub counts: LoadCounts,
     /// Size of `pheno.blocks` in bytes.
@@ -276,7 +279,7 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
     let staging = Staging::create(&options.out)?;
     let pool = thread_pool(options.threads)?;
     let report = pool.install(|| build_store(staging.path(), &inputs, &settings))?;
-    staging.publish(&options.out, &report.store_id)?;
+    staging.publish(&options.out, report.id)?;
     tracing::info!(out = %options.out.display(), blocks_bytes = report.blocks_bytes, seconds = report.elapsed_seconds, "store written");
     Ok(report)
 }
@@ -459,6 +462,7 @@ pub(crate) fn build_store(
         rollup: settings.rollup,
         encrypted: settings.protection.is_encrypted(),
         store_id: store_id.to_string(),
+        id: store_id,
         counts,
         blocks_bytes,
         elapsed_seconds: started.elapsed().as_secs_f64(),
@@ -775,7 +779,7 @@ impl Staging {
         Ok(())
     }
 
-    /// Moves the staged store, whose id is `store_id`, to `out`, and writes its
+    /// Moves the staged store, whose id is `id`, to `out`, and writes its
     /// [`crate::store::GENERATION_FILE_NAME`] marker. Every staged file is already synced.
     ///
     /// When `out` does not exist the marker is staged too, and the staging directory is
@@ -789,8 +793,7 @@ impl Staging {
     ///
     /// # Errors
     /// I/O errors syncing, renaming or writing the marker.
-    pub(crate) fn publish(mut self, out: &Path, store_id: &str) -> Result<()> {
-        let id = parse_store_id(store_id)?;
+    pub(crate) fn publish(mut self, out: &Path, id: StoreId) -> Result<()> {
         let staged = self.dir.path().to_path_buf();
         let store_lock = if out.exists() {
             Some(lock_store(out)?)
@@ -822,22 +825,6 @@ impl Staging {
         drop(store_lock);
         published
     }
-}
-
-/// The store id written as `text`, 32 hex digits.
-///
-/// # Errors
-/// [`EtlError::Usage`] when `text` is not a store id.
-fn parse_store_id(text: &str) -> Result<StoreId> {
-    let mut bytes = [0u8; hpds_format::STORE_ID_LEN];
-    if text.len() != 2 * bytes.len() {
-        return Err(EtlError::Usage(format!("{text:?} is not a store id")));
-    }
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&text[2 * i..2 * i + 2], 16)
-            .map_err(|_| EtlError::Usage(format!("{text:?} is not a store id")))?;
-    }
-    Ok(StoreId::from_bytes(bytes))
 }
 
 fn parent_dir(path: &Path) -> PathBuf {

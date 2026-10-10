@@ -171,6 +171,9 @@ pub struct PartitionSummary {
 pub struct MergeReport {
     /// The store id, as 32 lowercase hex digits.
     pub store_id: String,
+    /// The store id, for publishing; [`MergeReport::store_id`] is its text.
+    #[serde(skip)]
+    pub id: StoreId,
     /// True for a partitioned store.
     pub partitioned: bool,
     /// The partitions in Java string order of their names; empty when unpartitioned.
@@ -316,6 +319,7 @@ pub fn write_store(
 
     let report = MergeReport {
         store_id: store_id.to_string(),
+        id: store_id,
         partitioned,
         partitions: summaries,
         concepts: metas.len() as u64,
