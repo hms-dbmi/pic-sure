@@ -504,9 +504,13 @@ fn refuse_if_changed(
 /// line to remove.
 ///
 /// # Errors
-/// [`EtlError::Usage`] when `store` holds no partitions or its marker disagrees with them;
-/// I/O errors.
+/// [`EtlError::Usage`] when `store` does not exist or holds no partitions (checked before
+/// the lock is taken, so a missing directory says so rather than failing to open it) or
+/// its marker disagrees with them; I/O errors.
 pub fn remove_combined(store: &Path, protection: &Protection) -> Result<bool> {
+    if partition_dirs(store)?.is_empty() {
+        return Err(no_partitions(store));
+    }
     let store_lock = lock_store(store)?;
     let (partitions, records) = checked_partitions(store, protection)?;
     let listed = Generation::read(store)?.is_some_and(|g| g.combined.is_some());
@@ -534,6 +538,14 @@ pub fn remove_combined(store: &Path, protection: &Protection) -> Result<bool> {
     Ok(listed || present)
 }
 
+/// The error for a `store` that does not exist or holds no partitions.
+fn no_partitions(store: &Path) -> EtlError {
+    EtlError::Usage(format!(
+        "{} holds no partitions; a combined store belongs to a partitioned store",
+        store.display()
+    ))
+}
+
 /// The partitions of `store` and their records by name, after checking that a
 /// `.generation` marker, when there is one, lists exactly their store ids. A partition's
 /// record carries [`crate::partitions::PATIENTS_INDEXED_TAG`] over from the marker line of
@@ -549,10 +561,7 @@ fn checked_partitions(
 ) -> Result<(Vec<Partition>, BTreeMap<String, PartitionRecord>)> {
     let partitions = partition_dirs(store)?;
     if partitions.is_empty() {
-        return Err(EtlError::Usage(format!(
-            "{} holds no partitions; a combined store belongs to a partitioned store",
-            store.display()
-        )));
+        return Err(no_partitions(store));
     }
     let store_ids = partitions
         .iter()

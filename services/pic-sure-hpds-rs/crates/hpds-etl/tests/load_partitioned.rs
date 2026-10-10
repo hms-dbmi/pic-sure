@@ -1154,6 +1154,12 @@ fn cli_combine_no_combined_and_remove_concepts_keep_the_combined_store_consisten
     assert!(open(&out.join(".combined")).index.get(&path).is_none());
     assert_eq!(read_generation(&out), store_ids(&out));
 
+    for missing in [dir.path().join("missing"), dir.path().join("key")] {
+        let error = hpds_etl::combined::remove_combined(&missing, &test_protection())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("holds no partitions"), "{error}");
+    }
     let removed = hpds_etl(&["combine", "--store", path_str(&out), "--remove"]);
     assert!(removed.status.success(), "{removed:?}");
     assert!(!out.join(".combined").exists());
