@@ -45,7 +45,7 @@ pub use model::{
 };
 pub use partition::{
     COMBINED_DIR_NAME, CombinedMode, CombinedStatus, Layout, Partition, PartitionOptions,
-    PartitionSet, Selection, SummaryColumnMeta, UNPARTITIONED_NAME,
+    PartitionSet, PerPartitionCounts, Selection, SummaryColumnMeta, UNPARTITIONED_NAME,
 };
 pub use results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,

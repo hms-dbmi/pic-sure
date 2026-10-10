@@ -131,6 +131,8 @@ async fn run(config: Config) -> ExitCode {
                 concepts = partitions.concept_count(),
                 require_consents = partitions.requires_consents(),
                 combined_store = partitions.combined_status().as_str(),
+                partitions_disjoint = partitions.partitions_disjoint(),
+                per_partition_counts = partitions.counts_per_partition(),
                 "store opened"
             );
             Some(Arc::new(engine))

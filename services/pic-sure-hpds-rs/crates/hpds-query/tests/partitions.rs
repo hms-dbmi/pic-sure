@@ -442,6 +442,7 @@ fn a_missing_shared_key_or_store_refuses_to_open() {
         },
         require_consents: false,
         combined: hpds_query::CombinedMode::Auto,
+        per_partition_counts: hpds_query::PerPartitionCounts::Auto,
     };
     assert!(d.open(&plain).is_err());
 

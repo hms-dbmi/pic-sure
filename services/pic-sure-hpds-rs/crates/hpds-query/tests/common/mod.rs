@@ -8,7 +8,7 @@ use hpds_etl::load::{KeySource, LoadOptions, Mode, load};
 use hpds_format::{CryptoKey, Protection};
 use hpds_query::{
     Engine, PartitionOptions, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, Query,
-    ResultType,
+    ResultType, SummaryColumnMeta,
 };
 use hpds_query::{Operator, PhenotypicSubquery};
 
@@ -229,4 +229,117 @@ pub fn partitioned_texts(texts: &[(String, String)]) -> PartitionedDir {
 /// is prepended. No combined store.
 pub fn harm_fixture() -> PartitionedDir {
     partitioned_texts(&fixture_texts())
+}
+
+/// Every consent list the routing must handle on `partitions`: each subset (the empty one
+/// included), each full set with an unknown consent added, a list of only unknown
+/// consents, and no consents at all.
+pub fn consent_lists(partitions: &[&str]) -> Vec<Vec<String>> {
+    let mut lists = Vec::new();
+    for mask in 0..(1u32 << partitions.len()) {
+        lists.push(
+            partitions
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| mask & (1 << i) != 0)
+                .map(|(_, p)| (*p).to_owned())
+                .collect::<Vec<_>>(),
+        );
+    }
+    let mut with_unknown: Vec<String> = partitions.iter().map(|p| (*p).to_owned()).collect();
+    with_unknown.insert(1, "phs999999.c9".to_owned());
+    lists.push(with_unknown);
+    lists.push(vec![
+        "phs999999.c9".to_owned(),
+        "not-a-partition".to_owned(),
+    ]);
+    lists.retain(|l| !l.is_empty());
+    lists.push(Vec::new());
+    lists
+}
+
+/// The clauses exercised on a store: per concept a REQUIRED filter, a value filter on its
+/// first category or a range over the middle of its values, an `ANY_RECORD_OF` on the
+/// concept's first path segment, and their AND and OR.
+pub fn clauses(dictionary: &[SummaryColumnMeta]) -> Vec<Option<PhenotypicClause>> {
+    let mut out = vec![None];
+    for concept in dictionary {
+        out.push(Some(required(&concept.name)));
+        let filter = if concept.categorical {
+            let values: Vec<&str> = concept.category_values.iter().map(String::as_str).collect();
+            filter_values(&concept.name, &values[..values.len().min(1)])
+        } else {
+            match (concept.min, concept.max) {
+                (Some(min), Some(max)) => {
+                    let mid = min + (max - min) / 2.0;
+                    filter_range(&concept.name, Some(mid), None)
+                }
+                _ => filter_range(&concept.name, None, Some(0.0)),
+            }
+        };
+        out.push(Some(filter.clone()));
+        out.push(Some(subquery(
+            Operator::And,
+            vec![filter.clone(), required(&concept.name)],
+        )));
+        out.push(Some(subquery(
+            Operator::Or,
+            vec![filter, required(&dictionary[0].name)],
+        )));
+    }
+    let mut prefixes: Vec<String> = dictionary
+        .iter()
+        .filter_map(|c| c.name.get(..c.name[1..].find('\\')? + 2).map(str::to_owned))
+        .collect();
+    prefixes.dedup();
+    out.extend(prefixes.iter().map(|p| Some(any_record_of(p))));
+    out.push(Some(any_record_of("\\")));
+    out
+}
+
+/// Every answer `engine` gives for `consents`: each sync result type's body, the PATIENTS
+/// ids and every DATAFRAME row, for a sample of the clauses of [`clauses`], or the error.
+pub fn answers(
+    engine: &Engine,
+    consents: &[String],
+    clauses: &[Option<PhenotypicClause>],
+) -> Vec<String> {
+    let dictionary = engine.partitions().dictionary();
+    let select: Vec<String> = dictionary.iter().map(|c| c.name.clone()).collect();
+    let mut out = Vec::new();
+    for (i, clause) in clauses.iter().enumerate() {
+        for result_type in [
+            ResultType::Count,
+            ResultType::CrossCount,
+            ResultType::CategoricalCrossCount,
+            ResultType::ContinuousCrossCount,
+            ResultType::ObservationCrossCount,
+            ResultType::Patients,
+            ResultType::Dataframe,
+        ] {
+            if result_type == ResultType::Dataframe && i % 5 != 0 {
+                continue;
+            }
+            let query = Query {
+                phenotypic_clause: clause.clone(),
+                select: select.clone(),
+                ..Query::with_consents(result_type, consents.iter().map(String::as_str))
+            };
+            let answer = match result_type {
+                ResultType::Patients => engine
+                    .patients(&query)
+                    .map(|p| format!("{:?}", p.iter().collect::<Vec<_>>())),
+                ResultType::Dataframe => engine.dataframe(&query).map(|frame| {
+                    let rows: Vec<String> = frame.rows.map(|row| row.join(",")).collect();
+                    format!("{}\n{}", frame.header.join(","), rows.join("\n"))
+                }),
+                _ => engine.run_sync(&query).map(|r| r.body()),
+            };
+            out.push(format!(
+                "{i} {result_type:?}: {}",
+                answer.unwrap_or_else(|e| format!("error {e}"))
+            ));
+        }
+    }
+    out
 }

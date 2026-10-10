@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use hpds_query::CombinedMode;
+use hpds_query::{CombinedMode, PerPartitionCounts};
 use hpds_query::{
     DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_MAX_CLAUSE_DEPTH,
     DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_QUERY_CONCEPTS,
@@ -45,6 +45,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
 /// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory |
 /// | `HPDS_COMBINED_STORE` | `auto` | `auto` answers queries that select every partition from the combined store when the data directory has a valid one; `off` ignores it |
+/// | `HPDS_PER_PARTITION_COUNTS` | `auto` | `auto` counts cross count patients in each selected partition and sums the counts when the partitions are patient-disjoint; `off` always unions the partitions' patient sets first |
 /// | `HPDS_RESULTS_DIRECTORY` | `/tmp/hpds-rs-results` | Where export results are written |
 /// | `HPDS_RESULT_LIMIT` | 1000 | Most async results held at once |
 /// | `HPDS_RESULT_MAX_AGE_SECONDS` | unlimited | How long a finished result is kept; 0 or unset keeps it until evicted |
@@ -184,6 +185,10 @@ impl Config {
             Some(value) => parse_combined_mode(&value)?,
             None => CombinedMode::Auto,
         };
+        let per_partition_counts = match lookup("HPDS_PER_PARTITION_COUNTS") {
+            Some(value) => parse_per_partition_counts(&value)?,
+            None => PerPartitionCounts::Auto,
+        };
         Ok(Config {
             data_dir: PathBuf::from(
                 lookup("HPDS_DATA_DIRECTORY").unwrap_or_else(|| DEFAULT_DATA_DIRECTORY.to_owned()),
@@ -196,6 +201,7 @@ impl Config {
                 },
                 require_consents,
                 combined,
+                per_partition_counts,
             },
             results_dir: PathBuf::from(
                 lookup("HPDS_RESULTS_DIRECTORY")
@@ -315,6 +321,16 @@ fn positive_u64(
     match parse_or(lookup, name, default)? {
         0 => Err(format!("{name} must be at least 1")),
         value => Ok(value),
+    }
+}
+
+fn parse_per_partition_counts(value: &str) -> Result<PerPartitionCounts, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "auto" => Ok(PerPartitionCounts::Auto),
+        "off" => Ok(PerPartitionCounts::Off),
+        _ => Err(format!(
+            "HPDS_PER_PARTITION_COUNTS is not valid: {value} (use auto or off)"
+        )),
     }
 }
 
@@ -478,6 +494,18 @@ mod tests {
             CombinedMode::Auto
         );
         assert!(config(&[("HPDS_COMBINED_STORE", "on")]).is_err());
+        assert_eq!(
+            config(&[]).unwrap().partitions.per_partition_counts,
+            PerPartitionCounts::Auto
+        );
+        assert_eq!(
+            config(&[("HPDS_PER_PARTITION_COUNTS", " Off ")])
+                .unwrap()
+                .partitions
+                .per_partition_counts,
+            PerPartitionCounts::Off
+        );
+        assert!(config(&[("HPDS_PER_PARTITION_COUNTS", "yes")]).is_err());
         assert!(config(&[("HPDS_SYNC_TIMEOUT_SECONDS", "0")]).is_err());
         assert!(config(&[("HPDS_RESULT_MAX_BYTES", "0")]).is_err());
         for name in [

@@ -137,6 +137,7 @@ impl Engine {
         Ok(ReadPlan {
             partitions: selection.names().into_iter().map(str::to_owned).collect(),
             combined: selection.reads_combined(),
+            per_partition_counts: selection.counts_per_partition(),
         })
     }
 
@@ -266,7 +267,8 @@ impl Engine {
             .map(|(path, named)| {
                 let blocks = selection.blocks(path)?;
                 let mut tally = budget.tally();
-                let counts = category_counts(&blocks, cohort, named, &mut tally)?;
+                let disjoint = selection.counts_per_partition();
+                let counts = category_counts(&blocks, cohort, named, disjoint, &mut tally)?;
                 tally.settle()?;
                 Ok(((*path).to_owned(), counts))
             })
@@ -465,6 +467,9 @@ pub struct ReadPlan {
     /// True when it reads the combined store instead of those partitions, which happens
     /// only when they are every partition.
     pub combined: bool,
+    /// True when its cross counts count patients per partition and sum the counts
+    /// ([`Selection::counts_per_partition`]).
+    pub per_partition_counts: bool,
 }
 
 const EXPORT_LOAD_CHUNK: usize = 16;
@@ -504,6 +509,11 @@ fn cross_count_in(checked: &CheckedQuery<'_, '_>, cohort: &RoaringBitmap) -> Con
                 None => -1,
                 Some([]) => 0,
                 Some([one]) => one.all_patients().intersection_len(cohort) as i64,
+                Some(many) if selection.counts_per_partition() => {
+                    many.iter()
+                        .map(|b| b.all_patients().intersection_len(cohort))
+                        .sum::<u64>() as i64
+                }
                 Some(many) => cohort_patients_in(many, cohort) as i64,
             };
             ((*path).to_owned(), count)
@@ -571,6 +581,7 @@ fn category_counts(
     blocks: &[Arc<Block>],
     cohort: &RoaringBitmap,
     named: &HashSet<&str>,
+    disjoint: bool,
     tally: &mut EntryTally<'_>,
 ) -> Result<Vec<(String, u64)>> {
     let mut categories: Vec<(&str, &RoaringBitmap)> = blocks
@@ -587,6 +598,10 @@ fn category_counts(
         let category = group[0].0;
         let count = match group {
             [(_, one)] => one.intersection_len(cohort),
+            many if disjoint => many
+                .iter()
+                .map(|(_, bitmap)| bitmap.intersection_len(cohort))
+                .sum(),
             many => many
                 .iter()
                 .map(|(_, bitmap)| *bitmap)

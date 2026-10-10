@@ -58,6 +58,20 @@ pub enum CombinedMode {
     Off,
 }
 
+/// Whether a [`PartitionSet`] may count cross count patients per partition
+/// (`HPDS_PER_PARTITION_COUNTS`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PerPartitionCounts {
+    /// When the partitions are patient-disjoint and a query reads two or more of them from
+    /// their own stores, count a concept's (or a category's) cohort patients in each
+    /// partition and sum the counts, instead of unioning the partitions' patient sets
+    /// first. No patient is in two partitions, so the sum is the count of the union.
+    #[default]
+    Auto,
+    /// Always union the partitions' patient sets before counting.
+    Off,
+}
+
 /// Whether an open [`PartitionSet`] answers full selections from a combined store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CombinedStatus {
@@ -91,16 +105,20 @@ pub struct PartitionOptions {
     pub require_consents: bool,
     /// Whether to use the combined store. Its blocks share the one cache.
     pub combined: CombinedMode,
+    /// Whether to count cross count patients per partition when the partitions are
+    /// disjoint.
+    pub per_partition_counts: PerPartitionCounts,
 }
 
 impl Default for PartitionOptions {
-    /// The default store options, consents required (the Java default), and the combined
-    /// store used when present.
+    /// The default store options, consents required (the Java default), the combined
+    /// store used when present, and per-partition counts when the partitions are disjoint.
     fn default() -> Self {
         PartitionOptions {
             store: StoreOptions::default(),
             require_consents: true,
             combined: CombinedMode::Auto,
+            per_partition_counts: PerPartitionCounts::Auto,
         }
     }
 }
@@ -330,6 +348,8 @@ pub struct PartitionSet {
     all_patients: RoaringBitmap,
     combined: Option<Store>,
     combined_mode: CombinedMode,
+    disjoint: bool,
+    per_partition_counts: PerPartitionCounts,
     evaluating: AtomicUsize,
     cache: BlockCache,
 }
@@ -485,6 +505,8 @@ impl PartitionSet {
         }
         let (dictionary, holder_ends, holders) = merger.finish();
         let all_patients = partitions.iter().map(|p| p.store.patients()).union();
+        let summed: u64 = partitions.iter().map(|p| p.store.patients().len()).sum();
+        let disjoint = summed == all_patients.len();
         let mut set = PartitionSet {
             dir: dir.to_path_buf(),
             layout,
@@ -496,6 +518,8 @@ impl PartitionSet {
             all_patients,
             combined: None,
             combined_mode: options.combined,
+            disjoint,
+            per_partition_counts: options.per_partition_counts,
             evaluating: AtomicUsize::new(0),
             cache,
         };
@@ -672,6 +696,22 @@ impl PartitionSet {
         }
     }
 
+    /// True when no patient id is in two partitions: the partitions' patient counts sum to
+    /// the count of their union. Computed at open from the partitions' patient sets.
+    pub fn partitions_disjoint(&self) -> bool {
+        self.disjoint
+    }
+
+    /// True when queries reading two or more partitions from their own stores count cross
+    /// count patients per partition: the partitions are disjoint, there is more than one,
+    /// and [`PerPartitionCounts::Off`] was not set.
+    pub fn counts_per_partition(&self) -> bool {
+        self.disjoint
+            && self.layout == Layout::Partitioned
+            && self.partitions.len() > 1
+            && self.per_partition_counts == PerPartitionCounts::Auto
+    }
+
     /// The data directory.
     pub fn dir(&self) -> &Path {
         &self.dir
@@ -796,7 +836,7 @@ impl PartitionSet {
                 .map(|p| sorted.binary_search(&p.name.as_str()).is_ok())
                 .collect()
         };
-        let members = self
+        let members: Vec<&Partition> = self
             .partitions
             .iter()
             .zip(&mask)
@@ -914,6 +954,14 @@ impl<'a> Selection<'a> {
         self.members.len() == self.set.partitions.len()
             && self.mask.len() == self.set.partitions.len()
             && self.mask.iter().all(|&selected| selected)
+    }
+
+    /// True when the engine counts this selection's cross count patients per partition and
+    /// sums the counts: the set counts per partition
+    /// ([`PartitionSet::counts_per_partition`]), two or more partitions are selected, and
+    /// the selection reads them, not the combined store.
+    pub fn counts_per_partition(&self) -> bool {
+        self.set.counts_per_partition() && self.members.len() > 1 && !self.reads_combined()
     }
 
     /// True when this selection reads the combined store instead of its partitions.

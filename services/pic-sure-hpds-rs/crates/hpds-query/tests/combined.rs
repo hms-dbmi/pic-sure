@@ -11,13 +11,12 @@ mod common;
 use std::path::Path;
 
 use common::{
-    PartitionedDir, Row, add_combined, any_record_of, csv, filter_range, filter_values,
-    fixture_texts, harm_fixture, lenient, partitioned_rows, partitioned_texts, required, strict,
-    subquery,
+    PartitionedDir, Row, add_combined, answers, clauses, consent_lists, csv, fixture_texts,
+    harm_fixture, lenient, partitioned_rows, partitioned_texts, required, strict,
 };
 use hpds_query::{
-    COMBINED_DIR_NAME, CombinedMode, CombinedStatus, Engine, Operator, PartitionOptions,
-    PhenotypicClause, Query, QueryError, ResultType, SummaryColumnMeta,
+    COMBINED_DIR_NAME, CombinedMode, CombinedStatus, Engine, PartitionOptions, Query, QueryError,
+    ResultType,
 };
 
 const FIXTURE_PARTITIONS: [&str; 4] = ["partition1", "partition2", "partition3", "partition4"];
@@ -47,121 +46,8 @@ fn generation(dir: &Path) -> String {
     std::fs::read_to_string(dir.join(".generation")).unwrap()
 }
 
-/// Every consent list the routing must handle on `partitions`: each subset (the empty one
-/// included), each full set with an unknown consent added, a list of only unknown
-/// consents, and no consents at all.
-fn consent_lists(partitions: &[&str]) -> Vec<Vec<String>> {
-    let mut lists = Vec::new();
-    for mask in 0..(1u32 << partitions.len()) {
-        lists.push(
-            partitions
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| mask & (1 << i) != 0)
-                .map(|(_, p)| (*p).to_owned())
-                .collect::<Vec<_>>(),
-        );
-    }
-    let mut with_unknown: Vec<String> = partitions.iter().map(|p| (*p).to_owned()).collect();
-    with_unknown.insert(1, "phs999999.c9".to_owned());
-    lists.push(with_unknown);
-    lists.push(vec![
-        "phs999999.c9".to_owned(),
-        "not-a-partition".to_owned(),
-    ]);
-    lists.retain(|l| !l.is_empty());
-    lists.push(Vec::new());
-    lists
-}
-
 fn selects_all(consents: &[String], partitions: &[&str]) -> bool {
     consents.is_empty() || partitions.iter().all(|p| consents.iter().any(|c| c == p))
-}
-
-/// The clauses exercised on a store: per concept a REQUIRED filter, a value filter on its
-/// first category or a range over the middle of its values, an `ANY_RECORD_OF` on the
-/// concept's first path segment, and their AND and OR.
-fn clauses(dictionary: &[SummaryColumnMeta]) -> Vec<Option<PhenotypicClause>> {
-    let mut out = vec![None];
-    for concept in dictionary {
-        out.push(Some(required(&concept.name)));
-        let filter = if concept.categorical {
-            let values: Vec<&str> = concept.category_values.iter().map(String::as_str).collect();
-            filter_values(&concept.name, &values[..values.len().min(1)])
-        } else {
-            match (concept.min, concept.max) {
-                (Some(min), Some(max)) => {
-                    let mid = min + (max - min) / 2.0;
-                    filter_range(&concept.name, Some(mid), None)
-                }
-                _ => filter_range(&concept.name, None, Some(0.0)),
-            }
-        };
-        out.push(Some(filter.clone()));
-        out.push(Some(subquery(
-            Operator::And,
-            vec![filter.clone(), required(&concept.name)],
-        )));
-        out.push(Some(subquery(
-            Operator::Or,
-            vec![filter, required(&dictionary[0].name)],
-        )));
-    }
-    let mut prefixes: Vec<String> = dictionary
-        .iter()
-        .filter_map(|c| c.name.get(..c.name[1..].find('\\')? + 2).map(str::to_owned))
-        .collect();
-    prefixes.dedup();
-    out.extend(prefixes.iter().map(|p| Some(any_record_of(p))));
-    out.push(Some(any_record_of("\\")));
-    out
-}
-
-/// Every answer `engine` gives for `consents`: each sync result type's body, the PATIENTS
-/// ids and every DATAFRAME row, for a sample of the clauses of [`clauses`], or the error.
-fn answers(
-    engine: &Engine,
-    consents: &[String],
-    clauses: &[Option<PhenotypicClause>],
-) -> Vec<String> {
-    let dictionary = engine.partitions().dictionary();
-    let select: Vec<String> = dictionary.iter().map(|c| c.name.clone()).collect();
-    let mut out = Vec::new();
-    for (i, clause) in clauses.iter().enumerate() {
-        for result_type in [
-            ResultType::Count,
-            ResultType::CrossCount,
-            ResultType::CategoricalCrossCount,
-            ResultType::ContinuousCrossCount,
-            ResultType::ObservationCrossCount,
-            ResultType::Patients,
-            ResultType::Dataframe,
-        ] {
-            if result_type == ResultType::Dataframe && i % 5 != 0 {
-                continue;
-            }
-            let query = Query {
-                phenotypic_clause: clause.clone(),
-                select: select.clone(),
-                ..Query::with_consents(result_type, consents.iter().map(String::as_str))
-            };
-            let answer = match result_type {
-                ResultType::Patients => engine
-                    .patients(&query)
-                    .map(|p| format!("{:?}", p.iter().collect::<Vec<_>>())),
-                ResultType::Dataframe => engine.dataframe(&query).map(|frame| {
-                    let rows: Vec<String> = frame.rows.map(|row| row.join(",")).collect();
-                    format!("{}\n{}", frame.header.join(","), rows.join("\n"))
-                }),
-                _ => engine.run_sync(&query).map(|r| r.body()),
-            };
-            out.push(format!(
-                "{i} {result_type:?}: {}",
-                answer.unwrap_or_else(|e| format!("error {e}"))
-            ));
-        }
-    }
-    out
 }
 
 /// The CSV text of `text` with every numeric value raised by 1000 and every text value
