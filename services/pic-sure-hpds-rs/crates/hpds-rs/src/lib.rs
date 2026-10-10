@@ -235,6 +235,59 @@ pub fn spawn_result_reaper(state: AppState, period: Duration) -> tokio::task::Jo
     })
 }
 
+/// Log target of the result cache's counters.
+pub const RESULT_CACHE_LOG_TARGET: &str = "hpds_rs::result_cache";
+
+/// Logs the result cache's counters at info under [`RESULT_CACHE_LOG_TARGET`]: hits, misses,
+/// the hit rate in percent, entries, bytes held and the byte bound. Logs nothing when the
+/// cache is off.
+pub fn log_result_cache_stats(engine: &hpds_query::Engine) {
+    let Some(stats) = engine.result_cache_stats() else {
+        return;
+    };
+    let lookups = stats.hits + stats.misses;
+    let hit_rate = if lookups == 0 {
+        0.0
+    } else {
+        stats.hits as f64 * 100.0 / lookups as f64
+    };
+    tracing::info!(
+        target: RESULT_CACHE_LOG_TARGET,
+        hits = stats.hits,
+        misses = stats.misses,
+        hit_rate = format!("{hit_rate:.1}"),
+        entries = stats.entries,
+        bytes = stats.bytes,
+        capacity = stats.capacity,
+        "result cache"
+    );
+}
+
+/// Logs the result cache's counters ([`log_result_cache_stats`]) every `period` in which a
+/// lookup happened, until the runtime shuts down. Returns `None` and starts nothing when
+/// the cache is off.
+pub fn spawn_result_cache_reporter(
+    engine: Arc<hpds_query::Engine>,
+    period: Duration,
+) -> Option<tokio::task::JoinHandle<()>> {
+    engine.result_cache_stats()?;
+    Some(tokio::spawn(async move {
+        let mut ticks = tokio::time::interval(period);
+        ticks.tick().await;
+        let mut logged_lookups = 0;
+        loop {
+            ticks.tick().await;
+            let lookups = engine
+                .result_cache_stats()
+                .map_or(0, |stats| stats.hits + stats.misses);
+            if lookups != logged_lookups {
+                logged_lookups = lookups;
+                log_result_cache_stats(&engine);
+            }
+        }
+    }))
+}
+
 /// Serves `app` on `listener` until `shutdown` completes, then stops accepting, lets open
 /// connections finish for at most `timeouts.shutdown_grace`, and returns.
 ///

@@ -41,6 +41,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store per consent subdirectory, or one unpartitioned store |
 /// | `SERVER_PORT` | 8080 | Listen port |
 /// | `HPDS_CACHE_BYTES` (or the old name `CACHE_BYTES`, with a warning) | 4 GiB | Byte bound of the decoded block cache |
+/// | `HPDS_RESULT_CACHE_BYTES` | 0 (off) | Byte bound of the cache of COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers |
 /// | `CACHE_SIZE` | ignored | Java's cache size in cubes; logged and ignored |
 /// | `HPDS_ALLOW_PLAIN` | false | Open a store without a key file (benchmarks only) |
 /// | `HPDS_REQUIRE_AUTHORIZATION_FILTER` or `hpds.requireAuthorizationFilter` | true | Refuse every sync and async query without a `userConsents` value, and refuse to open an unpartitioned data directory |
@@ -110,6 +111,8 @@ pub struct Config {
     pub blocking_threads: usize,
     /// Most connections served at once.
     pub max_connections: usize,
+    /// Byte bound of the sync result cache; 0 turns it off.
+    pub result_cache_bytes: u64,
     /// Settings that were read but have no effect, as messages for the log.
     pub warnings: Vec<String>,
 }
@@ -267,6 +270,7 @@ impl Config {
             engine_concurrency,
             blocking_threads,
             max_connections: positive(&lookup, "HPDS_MAX_CONNECTIONS", 512)?,
+            result_cache_bytes: parse_or(&lookup, "HPDS_RESULT_CACHE_BYTES", 0)?,
             warnings,
         })
     }
@@ -390,6 +394,7 @@ mod tests {
         assert_eq!(c.result_limit, 1000);
         assert!(c.engine_concurrency < c.blocking_threads);
         assert_eq!(c.max_connections, 512);
+        assert_eq!(c.result_cache_bytes, 0);
         assert_eq!(c.result_max_file_bytes, 4 << 30);
         assert_eq!(c.query_limits, QueryLimits::default());
         assert_eq!(c.query_limits.max_select_paths, 5_000);
@@ -397,6 +402,13 @@ mod tests {
         assert_eq!(c.query_limits.max_clause_nodes, 10_000);
         assert_eq!(c.query_limits.max_query_concepts, 20_000);
         assert!(config(&[("HPDS_MAX_CONNECTIONS", "0")]).is_err());
+    }
+
+    #[test]
+    fn result_cache_bytes_is_read() {
+        let c = config(&[("HPDS_RESULT_CACHE_BYTES", "268435456")]).unwrap();
+        assert_eq!(c.result_cache_bytes, 256 << 20);
+        assert!(config(&[("HPDS_RESULT_CACHE_BYTES", "lots")]).is_err());
     }
 
     #[test]

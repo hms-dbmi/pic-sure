@@ -91,14 +91,15 @@ pub fn build_store(dir: &Path) -> PathBuf {
     out
 }
 
-/// Opens `store` as `main` does, with the partition options, limits and export cap of
-/// `config`.
+/// Opens `store` as `main` does, with the partition options, limits, export cap and result
+/// cache bound of `config`.
 pub fn open_engine(store: &Path, config: &Config) -> Arc<Engine> {
     Arc::new(
         Engine::open(store, &config.partitions)
             .unwrap()
             .with_export_pin_bytes(config.export_pin_bytes)
-            .with_limits(config.query_limits),
+            .with_limits(config.query_limits)
+            .with_result_cache_bytes(config.result_cache_bytes),
     )
 }
 

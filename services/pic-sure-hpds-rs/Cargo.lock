@@ -801,6 +801,7 @@ dependencies = [
 name = "hpds-query"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "csv",
  "hpds-bench",
  "hpds-etl",
@@ -815,6 +816,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "xxhash-rust",
 ]
 
 [[package]]

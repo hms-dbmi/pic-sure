@@ -352,6 +352,7 @@ pub struct PartitionSet {
     per_partition_counts: PerPartitionCounts,
     evaluating: AtomicUsize,
     cache: BlockCache,
+    generation: u128,
 }
 
 impl std::fmt::Debug for PartitionSet {
@@ -522,10 +523,17 @@ impl PartitionSet {
             per_partition_counts: options.per_partition_counts,
             evaluating: AtomicUsize::new(0),
             cache,
+            generation: 0,
         };
         if options.combined == CombinedMode::Auto {
             set.combined = set.open_combined(generation.as_ref(), protection)?;
         }
+        let combined_id = set
+            .combined
+            .as_ref()
+            .and(generation.as_ref())
+            .and_then(|g| g.combined.as_deref());
+        set.generation = generation_hash(&ids, combined_id);
         Ok(set)
     }
 
@@ -685,6 +693,13 @@ impl PartitionSet {
     /// The entry of the concept `holder` names, in its store.
     fn entry(&self, holder: Holder) -> ConceptEntry {
         self.store_at(holder.slot).entry(holder.position)
+    }
+
+    /// A hash of the opened stores' ids: every partition's in partition order, then the
+    /// combined store's when one is in use. Another load of the data directory gives
+    /// another value.
+    pub(crate) fn generation(&self) -> u128 {
+        self.generation
     }
 
     /// Whether full selections read a combined store.
@@ -947,6 +962,11 @@ impl<'a> Selection<'a> {
     /// The selected partition names, in order.
     pub fn names(&self) -> Vec<&'a str> {
         self.members.iter().map(|p| p.name.as_str()).collect()
+    }
+
+    /// One flag per partition of the set, in partition order: true when it is selected.
+    pub(crate) fn mask(&self) -> &[bool] {
+        &self.mask
     }
 
     /// True when every partition of the set is selected.
@@ -1298,6 +1318,20 @@ fn partition_dirs(dir: &Path) -> Result<Vec<(String, PathBuf)>> {
         found.push((name, path));
     }
     Ok(found)
+}
+
+/// The hash [`PartitionSet::generation`] returns, over the partitions' store ids in
+/// partition order and the combined store's id when one is in use.
+fn generation_hash(ids: &[(&str, hpds_format::StoreId)], combined: Option<&str>) -> u128 {
+    let mut bytes = Vec::with_capacity(ids.len() * 16 + 33);
+    for (_, id) in ids {
+        bytes.extend_from_slice(id.as_bytes());
+    }
+    if let Some(combined) = combined {
+        bytes.push(b'+');
+        bytes.extend_from_slice(combined.as_bytes());
+    }
+    xxhash_rust::xxh3::xxh3_128(&bytes)
 }
 
 /// Name of the file the ETL writes last into a data directory, listing the store ids of the

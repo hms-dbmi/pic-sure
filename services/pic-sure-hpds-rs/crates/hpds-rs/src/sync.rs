@@ -4,6 +4,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
+use hpds_query::SyncAnswer;
 
 use crate::envelope::{random_uuid, read_query};
 use crate::error::ApiError;
@@ -47,6 +48,10 @@ const NO_VARIANT_FILTERS_BODY: &str =
 ///   engine. Structural failures the engine raises while evaluating (a FILTER without
 ///   criteria, an empty subquery) are 400 text errors, where Java answers 500 or an empty
 ///   200.
+/// - With `HPDS_RESULT_CACHE_BYTES` above 0, a COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT or
+///   OBSERVATION_CROSS_COUNT that passes every check above is looked up in the result cache
+///   ([`hpds_query::Engine::cached_sync`]) and a hit is answered at once, with the same
+///   body and headers as a computed answer. A miss is computed and stored.
 /// - At most `HPDS_ENGINE_CONCURRENCY` engine computations run at once; the rest wait. A query
 ///   that has not answered within `HPDS_SYNC_TIMEOUT_SECONDS`, waiting included, is a 503; its
 ///   computation finishes in the background and releases its slot then.
@@ -76,18 +81,21 @@ pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Re
         )
             .into_response());
     }
+    if let Some(answer) = engine.cached_sync(&query)? {
+        return Ok(respond(&answer));
+    }
     let timeout = state.sync_timeout();
     let computation = async {
         let slot = state.engine_slot().await;
         engine
             .run_blocking(move |e| {
                 let _slot = slot;
-                e.run_sync(&query)
+                e.answer_sync(&query)
             })
             .await
     };
-    let result = match tokio::time::timeout(timeout, computation).await {
-        Ok(result) => result?,
+    let answer = match tokio::time::timeout(timeout, computation).await {
+        Ok(answer) => answer?,
         Err(_) => {
             return Err(ApiError::unavailable(format!(
                 "the query did not finish within {} seconds",
@@ -95,12 +103,18 @@ pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Re
             )));
         }
     };
-    Ok((
+    Ok(respond(&answer))
+}
+
+/// A 200 carrying `answer` with its content type and a fresh `queryMetadata` UUID, built
+/// the same way whether the answer was computed or came from the result cache.
+fn respond(answer: &SyncAnswer) -> Response {
+    (
         [
-            (CONTENT_TYPE.as_str(), result.content_type().to_owned()),
+            (CONTENT_TYPE.as_str(), answer.content_type().to_owned()),
             (QUERY_METADATA_HEADER, random_uuid()),
         ],
-        result.body(),
+        answer.body().clone(),
     )
-        .into_response())
+        .into_response()
 }

@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use hpds_query::Engine;
 use hpds_rs::{
-    AppState, Config, ServerTimeouts, port_from_env, probe_health, router, serve,
-    spawn_result_reaper,
+    AppState, Config, ServerTimeouts, log_result_cache_stats, port_from_env, probe_health, router,
+    serve, spawn_result_cache_reporter, spawn_result_reaper,
 };
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -14,6 +14,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
 
 const REAPER_PERIOD: Duration = Duration::from_secs(60);
+const RESULT_CACHE_REPORT_PERIOD: Duration = Duration::from_secs(60);
 const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Starts logging to a non-blocking stdout writer and, when `directory` is given, to a daily
@@ -123,7 +124,8 @@ async fn run(config: Config) -> ExitCode {
         Ok(engine) => {
             let engine = engine
                 .with_export_pin_bytes(config.export_pin_bytes)
-                .with_limits(config.query_limits);
+                .with_limits(config.query_limits)
+                .with_result_cache_bytes(config.result_cache_bytes);
             let partitions = engine.partitions();
             tracing::info!(
                 layout = ?partitions.layout(),
@@ -133,6 +135,7 @@ async fn run(config: Config) -> ExitCode {
                 combined_store = partitions.combined_status().as_str(),
                 partitions_disjoint = partitions.partitions_disjoint(),
                 per_partition_counts = partitions.counts_per_partition(),
+                result_cache_bytes = config.result_cache_bytes,
                 "store opened"
             );
             Some(Arc::new(engine))
@@ -142,7 +145,10 @@ async fn run(config: Config) -> ExitCode {
             None
         }
     };
-    let state = match AppState::new(engine, &config) {
+    if let Some(engine) = &engine {
+        spawn_result_cache_reporter(Arc::clone(engine), RESULT_CACHE_REPORT_PERIOD);
+    }
+    let state = match AppState::new(engine.clone(), &config) {
         Ok(state) => state,
         Err(error) => {
             tracing::error!(%error, dir = %config.results_dir.display(), "cannot prepare the results directory");
@@ -170,6 +176,9 @@ async fn run(config: Config) -> ExitCode {
     .await;
     match served {
         Ok(()) => {
+            if let Some(engine) = &engine {
+                log_result_cache_stats(engine);
+            }
             tracing::info!("hpds-rs stopped");
             ExitCode::SUCCESS
         }

@@ -13,6 +13,7 @@ name = "hpds_query"
 tokio = ["dep:tokio"]
 
 [dependencies]
+bytes = "1"
 hpds-format.workspace = true
 moka.workspace = true
 rayon.workspace = true
@@ -22,6 +23,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, optional = true, features = ["rt"] }
 tracing.workspace = true
+xxhash-rust.workspace = true
 
 [dev-dependencies]
 hpds-bench = { path = "../hpds-bench" }

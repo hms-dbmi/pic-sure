@@ -17,6 +17,7 @@ use crate::fan_out;
 use crate::limits::{CheckedQuery, QueryLimits, SelectUse};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{PartitionOptions, PartitionSet, Selection};
+use crate::result_cache::{self, ResultCache, ResultCacheStats, SyncAnswer};
 use crate::results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,
     PATIENT_ID_FIELD_NAME, SyncResult,
@@ -61,6 +62,7 @@ pub struct Engine {
     partitions: PartitionSet,
     export_pin_bytes: u64,
     limits: QueryLimits,
+    result_cache: Option<ResultCache>,
 }
 
 impl Engine {
@@ -78,7 +80,23 @@ impl Engine {
             partitions,
             export_pin_bytes: DEFAULT_EXPORT_PIN_BYTES,
             limits: QueryLimits::default(),
+            result_cache: None,
         }
+    }
+
+    /// Turns on the result cache, bounded at `bytes`, or leaves it off when `bytes` is 0
+    /// (the default). It holds the answers of COUNT, CROSS_COUNT, CONTINUOUS_CROSS_COUNT and
+    /// OBSERVATION_CROSS_COUNT for [`Engine::cached_sync`] and [`Engine::answer_sync`]; see
+    /// [`Engine::cached_sync`] for how entries are keyed.
+    #[must_use]
+    pub fn with_result_cache_bytes(mut self, bytes: u64) -> Self {
+        self.result_cache = (bytes > 0).then(|| ResultCache::new(bytes));
+        self
+    }
+
+    /// The result cache's counters, or `None` when the cache is off.
+    pub fn result_cache_stats(&self) -> Option<ResultCacheStats> {
+        self.result_cache.as_ref().map(ResultCache::stats)
     }
 
     /// Sets the cap on the summed decoded size of the blocks one DATAFRAME export holds at
@@ -363,17 +381,78 @@ impl Engine {
             return Err(QueryError::NotSync(result_type));
         }
         let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
+        self.sync_result_in(&checked, &cohort)
+    }
+
+    /// The cached answer to `query`, when the result cache is on, the query's result type is
+    /// one it holds, and an entry matches. Reads no block.
+    ///
+    /// The lookup runs only after `query` passes the same admission step as every
+    /// computation (limits, genomic input, consents), so a query that would be refused is
+    /// refused here with the same error, warm cache or not. The key is the store
+    /// generation, the result type, the partitions the consents select after admission,
+    /// whether that selection reads the combined store, and a canonical form of the fields
+    /// that decide the answer: the phenotypic clause, and `select` for CROSS_COUNT and
+    /// OBSERVATION_CROSS_COUNT. Ids, the consent values themselves and
+    /// `authorizationFilters` are not in it. So two queries whose consents select different
+    /// partitions never share an entry, and one answer serves every request that selects
+    /// the same partitions. Each lookup of a cacheable query counts a hit or a miss.
+    ///
+    /// # Errors
+    /// The errors of admission, as for [`Engine::run_sync`].
+    pub fn cached_sync(&self, query: &Query) -> Result<Option<SyncAnswer>> {
+        let Some(cache) = &self.result_cache else {
+            return Ok(None);
+        };
+        if !result_cache::is_cacheable(query.expected_result_type) {
+            return Ok(None);
+        }
+        let checked = self.admit(query, SelectUse::Distinct)?;
+        Ok(result_cache::key_of(&checked, self.partitions.generation())
+            .and_then(|key| cache.get(&key)))
+    }
+
+    /// [`Engine::run_sync`], rendered as the HTTP layer sends it. When the result cache is
+    /// on, a cacheable answer is stored for [`Engine::cached_sync`]; errors are not, and
+    /// neither is a cross count holding -1 for a block that could not be loaded. Does not
+    /// look the cache up itself.
+    ///
+    /// # Errors
+    /// As for [`Engine::run_sync`].
+    pub fn answer_sync(&self, query: &Query) -> Result<SyncAnswer> {
+        let result_type = query.expected_result_type;
+        if !result_type.is_sync() {
+            return self.run_sync(query).map(|result| SyncAnswer::of(&result));
+        }
+        let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
+        let result = self.sync_result_in(&checked, &cohort)?;
+        let answer = SyncAnswer::of(&result);
+        if let Some(cache) = &self.result_cache
+            && result_cache::is_storable(&result)
+            && let Some(key) = result_cache::key_of(&checked, self.partitions.generation())
+        {
+            cache.insert(key, answer.clone());
+        }
+        Ok(answer)
+    }
+
+    fn sync_result_in(
+        &self,
+        checked: &CheckedQuery<'_, '_>,
+        cohort: &RoaringBitmap,
+    ) -> Result<SyncResult> {
+        let result_type = checked.query().expected_result_type;
         match result_type {
             ResultType::Count => Ok(SyncResult::Count(cohort.len())),
-            ResultType::CrossCount => Ok(SyncResult::CrossCount(cross_count_in(&checked, &cohort))),
+            ResultType::CrossCount => Ok(SyncResult::CrossCount(cross_count_in(checked, cohort))),
             ResultType::CategoricalCrossCount => self
-                .categorical_cross_count_in(&checked, &cohort)
+                .categorical_cross_count_in(checked, cohort)
                 .map(SyncResult::CategoricalCrossCount),
             ResultType::ContinuousCrossCount => self
-                .continuous_cross_count_in(&checked, &cohort)
+                .continuous_cross_count_in(checked, cohort)
                 .map(SyncResult::ContinuousCrossCount),
             ResultType::ObservationCrossCount => Ok(SyncResult::ObservationCrossCount(
-                observation_cross_count_in(&checked, &cohort),
+                observation_cross_count_in(checked, cohort),
             )),
             other => Err(QueryError::NotSync(other)),
         }
