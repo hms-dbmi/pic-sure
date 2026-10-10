@@ -573,10 +573,8 @@ mod tests {
     }
 
     fn load_plain(out: &Path) {
-        let mut options = crate::load::PartitionedLoadOptions::new(
-            harmonization_inputs(),
-            out.to_path_buf(),
-        );
+        let mut options =
+            crate::load::PartitionedLoadOptions::new(harmonization_inputs(), out.to_path_buf());
         options.no_config = true;
         options.key = crate::load::KeySource::Plain;
         options.threads = Some(2);

@@ -581,7 +581,10 @@ fn a_single_partition_ignores_a_combined_store() {
     )
     .unwrap();
     let engine = open(&d.out, CombinedMode::Auto);
-    assert_eq!(engine.partitions().combined_status(), CombinedStatus::Absent);
+    assert_eq!(
+        engine.partitions().combined_status(),
+        CombinedStatus::Absent
+    );
     assert_eq!(engine.count(&Query::new(ResultType::Count)).unwrap(), 2);
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(1)
