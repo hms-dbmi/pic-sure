@@ -53,6 +53,7 @@ use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::sync::{Semaphore, TryAcquireError};
 
 pub mod config;
+pub mod encoding;
 pub mod envelope;
 pub mod error;
 pub mod jobs;

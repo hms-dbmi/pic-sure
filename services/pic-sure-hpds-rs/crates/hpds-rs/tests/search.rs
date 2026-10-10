@@ -372,3 +372,129 @@ async fn bodies_equal_the_reference_rendering() {
 fn json_body(term: &str) -> String {
     serde_json::json!({ "query": term }).to_string()
 }
+
+fn gunzip(bytes: &[u8]) -> Vec<u8> {
+    use std::io::Read;
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(bytes)
+        .read_to_end(&mut out)
+        .unwrap();
+    out
+}
+
+fn header_names(response: &axum::http::Response<axum::body::Bytes>) -> Vec<String> {
+    let mut names: Vec<String> = response.headers().keys().map(|k| k.to_string()).collect();
+    names.sort();
+    names
+}
+
+/// Terms whose answers are at least the compression threshold: the stored null and empty
+/// answers, and two matched on the fly.
+const LARGE_TERMS: [(&str, Option<&str>); 4] = [
+    (r#"{"query":null}"#, None),
+    (r#"{"query":""}"#, Some("")),
+    (r#"{"query":"1000genomes"}"#, Some("1000genomes")),
+    (r#"{"query":"data"}"#, Some("data")),
+];
+
+#[tokio::test]
+async fn without_accept_encoding_the_answer_is_unchanged() {
+    let f = fixture();
+    for (body, term) in LARGE_TERMS {
+        let response = search_raw(&f.app, body, None).await;
+        assert_eq!(
+            header_names(&response),
+            ["content-length", "content-type"],
+            "{body}"
+        );
+        assert_eq!(response.headers()["content-type"], "application/json");
+        assert_eq!(response.body().as_ref(), reference_body(&f, term), "{body}");
+        assert!(
+            response.body().len() >= hpds_rs::encoding::MIN_GZIP_BYTES,
+            "{body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn gzip_is_sent_only_when_accept_encoding_allows_it() {
+    let f = fixture();
+    let cases: [(&str, bool); 12] = [
+        ("gzip", true),
+        ("GZIP", true),
+        ("Gzip, Deflate", true),
+        ("gzip, deflate, x-gzip", true),
+        ("x-gzip", true),
+        ("*", true),
+        ("br;q=1, gzip;q=0.2", true),
+        ("gzip;q=0", false),
+        ("gzip;Q=0, *", false),
+        ("identity", false),
+        ("deflate, br", false),
+        ("", false),
+    ];
+    for (body, term) in LARGE_TERMS {
+        let identity = reference_body(&f, term);
+        for (accept, compressed) in cases {
+            let response = search_raw(&f.app, body, Some(accept)).await;
+            assert_eq!(response.status(), StatusCode::OK, "{body} {accept}");
+            assert_eq!(response.headers()["content-type"], "application/json");
+            assert_eq!(
+                response.headers().get("vary").map(|v| v.to_str().unwrap()),
+                Some("Accept-Encoding"),
+                "{body} {accept}"
+            );
+            assert_eq!(
+                response.headers()["content-length"],
+                response.body().len().to_string()
+            );
+            if compressed {
+                assert_eq!(
+                    response.headers()["content-encoding"],
+                    "gzip",
+                    "{body} {accept}"
+                );
+                assert!(response.body().len() < identity.len(), "{body} {accept}");
+                assert_eq!(gunzip(response.body()), identity, "{body} {accept}");
+            } else {
+                assert!(
+                    response.headers().get("content-encoding").is_none(),
+                    "{body} {accept}"
+                );
+                assert_eq!(response.body().as_ref(), identity, "{body} {accept}");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn stored_answers_are_compressed_once_and_reused() {
+    let f = fixture();
+    for (body, _) in &LARGE_TERMS[..2] {
+        let first = search_raw(&f.app, body, Some("gzip")).await;
+        let second = search_raw(&f.app, body, Some("gzip")).await;
+        assert_eq!(first.body(), second.body(), "{body}");
+    }
+}
+
+#[tokio::test]
+async fn small_answers_are_never_compressed() {
+    let f = fixture();
+    let body = json_body("no-such-concept");
+    let response = search_raw(&f.app, &body, Some("gzip")).await;
+    assert!(response.body().len() < hpds_rs::encoding::MIN_GZIP_BYTES);
+    assert_eq!(header_names(&response), ["content-length", "content-type"]);
+    assert_eq!(
+        response.body().as_ref(),
+        reference_body(&f, Some("no-such-concept"))
+    );
+}
+
+#[tokio::test]
+async fn error_answers_are_never_compressed() {
+    let f = fixture();
+    let error = search_raw(&f.app, "nope", Some("gzip")).await;
+    assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+    assert!(error.headers().get("content-encoding").is_none());
+    assert!(error.headers().get("vary").is_none());
+}
