@@ -140,7 +140,7 @@ partitions.
   so that is the same as intersecting every filter.
 - **Concept by concept.** When the selected partitions hold every row of a concept, its
   block is read as for a full selection. When they hold at least `NARROW_VIEW_SHARE` of its
-  rows (0.5), the block is evaluated whole. Below that share the concept's partition view
+  rows (0.75), the block is evaluated whole. Below that share the concept's partition view
   is read: the block's rows grouped by partition (value positions per partition for a
   numeric concept, patients per partition, and patients per category and partition), built
   from the block on first use and cached with it, so the work follows the selected rows. A
