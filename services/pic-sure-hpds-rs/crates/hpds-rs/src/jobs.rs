@@ -26,10 +26,10 @@ use axum::extract::{Path as PathParam, State};
 use axum::http::StatusCode;
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
+use bytes::BytesMut;
 use hpds_format::push_decimal_u32;
 use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType, check_supported};
 use serde::Serialize;
-use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
 
 use crate::config::Config;
@@ -53,7 +53,8 @@ pub const MEMORY_RESULT_MAX_BYTES: usize = 256 << 10;
 /// this many bytes.
 const WRITE_BUFFER_BYTES: usize = 1 << 20;
 
-const READ_CHUNK_BYTES: usize = 64 * 1024;
+/// Bytes read from an export file per hop to the blocking pool while it is downloaded.
+const DOWNLOAD_CHUNK_BYTES: usize = 1 << 20;
 
 const _: () = assert!(MEMORY_RESULT_MAX_BYTES <= WRITE_BUFFER_BYTES);
 
@@ -1094,17 +1095,14 @@ pub async fn result(
             return Err(ApiError::internal());
         }
     };
-    let file = tokio::fs::File::from_std(file);
-    let chunks = futures_util::stream::unfold(Some(file), |file| async move {
-        let mut file = file?;
-        let mut buffer = vec![0u8; READ_CHUNK_BYTES];
-        match file.read(&mut buffer).await {
-            Ok(0) => None,
-            Ok(read) => {
-                buffer.truncate(read);
-                Some((Ok(Bytes::from(buffer)), Some(file)))
-            }
-            Err(error) => Some((Err::<Bytes, io::Error>(error), None)),
+    let chunks = futures_util::stream::unfold(Some((file, BytesMut::new())), |state| async move {
+        let (file, buffer) = state?;
+        let read = tokio::task::spawn_blocking(move || read_chunk(file, buffer)).await;
+        match read {
+            Ok(Ok((_, _, chunk))) if chunk.is_empty() => None,
+            Ok(Ok((file, buffer, chunk))) => Some((Ok(chunk), Some((file, buffer)))),
+            Ok(Err(error)) => Some((Err(error), None)),
+            Err(join) => Some((Err(io::Error::other(join)), None)),
         }
     });
     Ok(result_response(size, Body::from_stream(chunks)))
@@ -1120,6 +1118,27 @@ fn result_response(size: u64, body: Body) -> Response {
         body,
     )
         .into_response()
+}
+
+/// Reads up to [`DOWNLOAD_CHUNK_BYTES`] from `file`, filling the chunk unless the file ends,
+/// and returns the file, the buffer for the next read and the chunk, empty at the end. The
+/// buffer's memory is reused once the previous chunk has been sent and dropped.
+fn read_chunk(mut file: File, mut buffer: BytesMut) -> io::Result<(File, BytesMut, Bytes)> {
+    use std::io::Read;
+    buffer.clear();
+    buffer.resize(DOWNLOAD_CHUNK_BYTES, 0);
+    let mut filled = 0;
+    while filled < buffer.len() {
+        match file.read(&mut buffer[filled..]) {
+            Ok(0) => break,
+            Ok(read) => filled += read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    buffer.truncate(filled);
+    let chunk = buffer.split().freeze();
+    Ok((file, buffer, chunk))
 }
 
 /// `POST /query/{id}/signed-url`: S3 upload is out of scope, so a held id is a 400 JSON error
@@ -1363,6 +1382,31 @@ mod tests {
         });
         assert_eq!(granted, budget.held());
         assert!(granted <= 1_000 && granted > 1_000 - 7);
+    }
+
+    #[test]
+    fn download_chunks_fill_up_and_end_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("result.csv");
+        let content: Vec<u8> = (0..DOWNLOAD_CHUNK_BYTES * 2 + 17)
+            .map(|i| (i % 251) as u8)
+            .collect();
+        std::fs::write(&path, &content).unwrap();
+        let mut file = File::open(&path).unwrap();
+        let mut buffer = BytesMut::new();
+        let mut read = Vec::new();
+        let mut sizes = Vec::new();
+        loop {
+            let (next, reused, chunk) = read_chunk(file, buffer).unwrap();
+            if chunk.is_empty() {
+                break;
+            }
+            sizes.push(chunk.len());
+            read.extend_from_slice(&chunk);
+            (file, buffer) = (next, reused);
+        }
+        assert_eq!(sizes, [DOWNLOAD_CHUNK_BYTES, DOWNLOAD_CHUNK_BYTES, 17]);
+        assert_eq!(read, content);
     }
 
     #[test]
