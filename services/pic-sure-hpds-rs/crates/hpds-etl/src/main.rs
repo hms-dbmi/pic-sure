@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use hpds_etl::convert::ConvertOptions;
 use hpds_etl::load::{
     KeySource, LEGACY_COMBINED_DIR_NAME, LoadOptions, Mode, PartitionedLoadOptions,
 };
@@ -28,12 +29,31 @@ enum Command {
     /// Build a new store from a javabin store exported by the Java ExportForMigration loader,
     /// or a consent-partitioned store from a directory of per-partition exports.
     Migrate(MigrateArgs),
+    /// Build a new store from a store written by Rust HPDS v1 to v3 (format 1), one store
+    /// per partition directory or one unpartitioned store.
+    Convert(ConvertArgs),
     /// Remove the concepts named in a file from a store, as RemoveConceptFromMetadata does.
     RemoveConcepts(RemoveConceptsArgs),
     /// Regenerate a store's columnMeta.csv from its index.
     ColumnMetaCsv(ColumnMetaCsvArgs),
     /// Write a store as canonical CSV in DumpSourceCSV layout and order, or its patient IDs.
     Dump(DumpArgs),
+}
+
+#[derive(Args)]
+struct ConvertArgs {
+    /// The format 1 store directory to read. It is never changed, and its combined store is
+    /// never read.
+    #[arg(long)]
+    store: PathBuf,
+    /// Store directory to create or replace. Not the store itself or inside it.
+    #[arg(long)]
+    out: PathBuf,
+    /// Worker threads for reading and sealing blocks.
+    #[arg(long)]
+    threads: Option<usize>,
+    #[command(flatten)]
+    key: KeyArgs,
 }
 
 #[derive(Args)]
@@ -293,6 +313,7 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Command::Load(args) => run_load(args),
         Command::Migrate(args) => run_migrate(args),
+        Command::Convert(args) => run_convert(args),
         Command::RemoveConcepts(args) => run_remove_concepts(args),
         Command::ColumnMetaCsv(args) => run_column_meta_csv(args),
         Command::Dump(args) => run_dump(args),
@@ -369,6 +390,17 @@ fn run_migrate(args: MigrateArgs) -> Result<()> {
             print_json(&hpds_etl::migrate::migrate_partitioned(&options)?)
         }
     }
+    Ok(())
+}
+
+fn run_convert(args: ConvertArgs) -> Result<()> {
+    let options = ConvertOptions {
+        key: args.key.source(KeySource::StoreDirectory),
+        store: args.store,
+        out: args.out,
+        threads: args.threads,
+    };
+    print_json(&hpds_etl::convert::convert(&options)?);
     Ok(())
 }
 

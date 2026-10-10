@@ -3,7 +3,8 @@
 //! [`load`] turns phenotype CSV into a store, reproducing the Java loaders' rules, and
 //! [`migrate`] turns a javabin store exported by the Java `ExportForMigration` loader into
 //! one. A consent-partitioned load or migration builds each partition on its own and
-//! [`merge`] writes them into one store whose blocks hold every partition's rows. [`dump`] writes a
+//! [`merge`] writes them into one store whose blocks hold every partition's rows;
+//! [`convert`] does the same from a store of format 1 (Rust HPDS v1 to v3). [`dump`] writes a
 //! store as canonical CSV, and [`store_maintenance`] removes concepts and regenerates
 //! `columnMeta.csv`. [`java`] holds the JDK and library behavior those rules depend on,
 //! [`column_meta_csv`] writes `columnMeta.csv` byte for byte as Java does, and [`store`] opens
@@ -14,6 +15,7 @@
 
 pub mod cleanup;
 pub mod column_meta_csv;
+pub mod convert;
 pub mod dump;
 mod error;
 pub mod java;
