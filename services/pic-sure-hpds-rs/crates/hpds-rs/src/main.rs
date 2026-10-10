@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use hpds_query::Engine;
 use hpds_rs::{
-    AppState, Config, ServerTimeouts, log_result_cache_stats, port_from_env, probe_health, router,
-    serve, spawn_result_cache_reporter, spawn_result_reaper,
+    AppState, Config, ServerTimeouts, log_block_cache_stats, log_result_cache_stats, port_from_env,
+    probe_health, router, serve, spawn_result_cache_reporter, spawn_result_reaper,
 };
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -176,6 +176,7 @@ async fn run(config: Config) -> ExitCode {
         Ok(()) => {
             if let Some(engine) = &engine {
                 log_result_cache_stats(engine);
+                log_block_cache_stats(engine);
             }
             tracing::info!("hpds-rs stopped");
             ExitCode::SUCCESS

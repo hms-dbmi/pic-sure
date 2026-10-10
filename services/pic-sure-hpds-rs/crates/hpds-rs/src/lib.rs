@@ -253,6 +253,21 @@ pub fn log_result_cache_stats(engine: &hpds_query::Engine) {
     );
 }
 
+/// Logs at info what the block cache holds: decoded blocks, the partition views built for
+/// narrow selections, and the bytes each takes. Walks the cache, so it is meant for
+/// shutdown rather than a hot path.
+pub fn log_block_cache_stats(engine: &hpds_query::Engine) {
+    let partitions = engine.partitions();
+    let (views, view_bytes) = partitions.cached_views();
+    tracing::info!(
+        blocks = partitions.cached_block_count(),
+        bytes = partitions.cached_bytes(),
+        views,
+        view_bytes,
+        "block cache"
+    );
+}
+
 /// Logs the result cache's counters ([`log_result_cache_stats`]) every `period` in which a
 /// lookup happened, until the runtime shuts down. Returns `None` and starts nothing when
 /// the cache is off.
