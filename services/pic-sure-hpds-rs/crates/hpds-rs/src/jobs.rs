@@ -44,9 +44,8 @@ pub const RESULT_CONTENT_TYPE: &str = "text/plain";
 pub const EXPORTS_DISABLED_MESSAGE: &str = "exports are disabled (ID_BATCH_SIZE=0)";
 
 /// Largest export held in memory instead of a file, 256 KiB. Creating, writing, reopening,
-/// reading and removing a file costs about 0.1 to 0.2 ms whatever its size, which is most of
-/// the work of a small export: on the export corpus it was 14 to 47% of the service time of
-/// exports up to this size, and 87% of exports are this size or smaller.
+/// reading and removing a file costs about 0.1 to 0.2 ms whatever its size, which is a large
+/// share of the work of a small export and a small one of a large export.
 pub const MEMORY_RESULT_MAX_BYTES: usize = 256 << 10;
 
 /// Rows are rendered into a buffer that is written to the export file each time it holds
