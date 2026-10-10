@@ -256,7 +256,7 @@ the blocking pool.
 | `hpds_block_cache_evictions_total` | counter | Entries dropped (or never admitted) to stay within `HPDS_CACHE_BYTES` |
 | `hpds_block_cache_entries`, `hpds_block_cache_bytes`, `hpds_block_cache_capacity_bytes` | gauge | Concepts and bytes held, blocks and views, and the bound |
 | `hpds_block_cache_views`, `hpds_block_cache_view_bytes` | gauge | Partition views held and their bytes, part of the above |
-| `hpds_block_loads_total`, `hpds_block_load_seconds_total` | counter | Blocks read from the store, authenticated and decoded, and the seconds spent, summed over threads |
+| `hpds_block_loads_total`, `hpds_block_load_failures_total`, `hpds_block_load_seconds_total` | counter | Blocks read from the store, authenticated and decoded into the cache; block reads that failed; and the seconds spent on both, summed over threads |
 | `hpds_cohort_guard_refusals_total` | counter | Queries refused by the cohort check (see [Narrow selections](#narrow-selections)) |
 | `hpds_result_cache_hits_total`, `_misses_total`, `_evictions_total` | counter | Result cache lookups and evictions; only with `HPDS_RESULT_CACHE_BYTES` above 0 |
 | `hpds_result_cache_entries`, `_bytes`, `_capacity_bytes` | gauge | What the result cache holds, and its bound; only when it is on |

@@ -64,13 +64,20 @@ pub(crate) struct BlockCacheCounters {
     pub(crate) misses: StripedCounter,
     pub(crate) evictions: AtomicU64,
     pub(crate) loads: AtomicU64,
+    pub(crate) load_failures: AtomicU64,
     pub(crate) load_nanos: AtomicU64,
 }
 
 impl BlockCacheCounters {
-    /// Counts one block read from the store into the cache, taking `elapsed`.
-    pub(crate) fn record_load(&self, elapsed: Duration) {
-        self.loads.fetch_add(1, Ordering::Relaxed);
+    /// Counts one block read from the store, taking `elapsed`: a load when `succeeded`, a
+    /// failed load otherwise.
+    pub(crate) fn record_load(&self, elapsed: Duration, succeeded: bool) {
+        let counter = if succeeded {
+            &self.loads
+        } else {
+            &self.load_failures
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
         self.load_nanos.fetch_add(
             u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX),
             Ordering::Relaxed,
@@ -89,7 +96,11 @@ pub struct BlockCacheStats {
     pub evictions: u64,
     /// Blocks read from the store, authenticated and decoded into the cache.
     pub loads: u64,
-    /// Seconds spent on those reads, summed over the threads that ran them.
+    /// Block reads that failed: unreadable, not authentic, undecodable or disagreeing with
+    /// the index. Nothing is cached for them.
+    pub load_failures: u64,
+    /// Seconds spent on every block read, failed ones included, summed over the threads
+    /// that ran them.
     pub load_seconds: f64,
     /// Entries held: one per concept, its block and any partition view.
     pub entries: u64,

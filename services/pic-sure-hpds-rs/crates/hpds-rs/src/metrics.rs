@@ -489,9 +489,15 @@ fn render_block_cache(family: &mut Family<'_>, stats: &BlockCacheStats) {
         stats.loads,
     );
     family.single(
+        "hpds_block_load_failures_total",
+        "counter",
+        "Block reads that failed; nothing was cached for them.",
+        stats.load_failures,
+    );
+    family.single(
         "hpds_block_load_seconds_total",
         "counter",
-        "Seconds spent reading blocks into the cache, summed over threads.",
+        "Seconds spent reading blocks, failed reads included, summed over threads.",
         stats.load_seconds,
     );
 }

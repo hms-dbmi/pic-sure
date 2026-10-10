@@ -654,6 +654,7 @@ impl PartitionSet {
             misses: counters.misses.get(),
             evictions: counters.evictions.load(Ordering::Relaxed),
             loads: counters.loads.load(Ordering::Relaxed),
+            load_failures: counters.load_failures.load(Ordering::Relaxed),
             load_seconds: counters.load_nanos.load(Ordering::Relaxed) as f64 / 1e9,
             entries: self.cache.entry_count(),
             bytes: self.cache.weighted_size(),
@@ -743,7 +744,8 @@ impl PartitionSet {
             .try_get_with(index as u32, || {
                 let started = Instant::now();
                 let block = self.read_block(index);
-                self.cache_counters.record_load(started.elapsed());
+                self.cache_counters
+                    .record_load(started.elapsed(), block.is_ok());
                 block.map(|block| Arc::new(CachedConcept::new(block)))
             })
             .map_err(|error| (*error).clone())

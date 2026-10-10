@@ -558,6 +558,7 @@ fn block_cache_stats_count_lookups_loads_evictions_and_views() {
     roomy.count(&only_p1).unwrap();
     let stats = roomy.partitions().block_cache_stats();
     assert_eq!(stats.loads, 2, "{stats:?}");
+    assert_eq!(stats.load_failures, 0, "{stats:?}");
     assert_eq!(stats.misses, 2, "{stats:?}");
     assert!(stats.hits >= 2, "{stats:?}");
     assert!(stats.load_seconds > 0.0, "{stats:?}");
@@ -613,6 +614,8 @@ fn a_failed_block_load_still_weighs_the_blocks_it_read() {
         1,
         "the first concept's block was read"
     );
+    let stats = set.block_cache_stats();
+    assert_eq!((stats.loads, stats.load_failures), (1, 1), "{stats:?}");
     let first = block_heap_size(&d.out, CONCEPT);
     assert!(
         set.cached_bytes() >= first,
