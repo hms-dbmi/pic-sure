@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use hpds_etl::load::{KeySource, LoadOptions, Mode, load};
+use hpds_etl::merge::{MergeSource, SourceStore, write_store};
 use hpds_format::{CryptoKey, Protection};
 use hpds_query::{
     Engine, PartitionOptions, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, Query,
@@ -87,8 +88,8 @@ pub fn load_file(dir: tempfile::TempDir, input: &Path) -> TestStore {
     TestStore { dir, out, engine }
 }
 
-/// A partitioned data directory: one store per `(name, csv text)` under `<out>/<name>`, and
-/// the shared key at `<out>/encryption_key`. Not opened.
+/// A partitioned data directory: one store with a partition per `(name, csv text)`, and
+/// the key at `<out>/encryption_key`. Not opened.
 pub struct PartitionedDir {
     pub dir: tempfile::TempDir,
     pub out: PathBuf,
@@ -102,19 +103,49 @@ impl PartitionedDir {
 }
 
 /// Builds a partitioned data directory from `(name, csv text)` pairs, each text with a
-/// header line.
+/// header line: each partition loaded with the new-search loader into a store of its own,
+/// then merged into one store at `<dir>/data` as a partitioned load merges its partitions.
 pub fn partitioned(partitions: &[(&str, String)]) -> PartitionedDir {
+    partitioned_adjusted(partitions, |_, _| false)
+}
+
+/// [`partitioned`], calling `adjust` with each partition's name and the directory of its
+/// own store before the merge. When `adjust` returns true it changed the store, and the
+/// merge reads the partition's observed patients from its blocks instead of taking its
+/// patient set for them, as `convert` does.
+pub fn partitioned_adjusted(
+    partitions: &[(&str, String)],
+    adjust: impl Fn(&str, &Path) -> bool,
+) -> PartitionedDir {
     let dir = tempfile::tempdir().unwrap();
     let key_file = dir.path().join("key");
     std::fs::write(&key_file, KEY).unwrap();
+    let parts = dir.path().join("parts");
+    let mut sources = Vec::new();
+    for (i, (name, text)) in partitions.iter().enumerate() {
+        let input = dir.path().join(format!("{i}-allConcepts.csv"));
+        std::fs::write(&input, text).unwrap();
+        let part = parts.join(i.to_string());
+        load_into(&input, &key_file, &part);
+        let adjusted = adjust(name, &part);
+        let store = SourceStore::open(&part, protection()).unwrap();
+        let observed = (!adjusted).then(|| store.patients().clone());
+        sources.push(MergeSource {
+            name: (*name).to_owned(),
+            store,
+            observed,
+        });
+    }
     let out = dir.path().join("data");
     std::fs::create_dir_all(&out).unwrap();
-    for (name, text) in partitions {
-        let input = dir.path().join(format!("{name}-allConcepts.csv"));
-        std::fs::write(&input, text).unwrap();
-        load_into(&input, &key_file, &out.join(name));
-    }
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+    let report = write_store(sources, true, &out, &protection(), &pool).unwrap();
+    std::fs::remove_dir_all(&parts).unwrap();
     std::fs::copy(&key_file, out.join("encryption_key")).unwrap();
+    std::fs::write(out.join(".generation"), format!("{}\n", report.store_id)).unwrap();
     PartitionedDir { dir, out }
 }
 
@@ -182,35 +213,6 @@ pub fn protection() -> Protection {
     Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap())
 }
 
-/// Builds the combined store of the partitioned directory `out` in place, as `hpds-etl
-/// combine` does, and returns its store id.
-pub fn add_combined(out: &Path) -> String {
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(2)
-        .build()
-        .unwrap();
-    hpds_etl::combined::combine_in_place(out, &protection(), &pool)
-        .unwrap()
-        .store_id
-}
-
-/// Writes the partitioned directory `out`'s `.generation` as the partitioned loader would:
-/// every partition's store id with the `patients-indexed` record, in name order. Partitions
-/// built one at a time with [`load_into`] are loaded stores, so the record holds for them.
-pub fn mark_patients_indexed(out: &Path) {
-    let text: String = hpds_etl::partitions::partition_dirs(out)
-        .unwrap()
-        .iter()
-        .map(|p| {
-            let id = hpds_etl::store::read_index(&p.dir, &protection())
-                .unwrap()
-                .store_id();
-            format!("{id} {}\n", hpds_etl::partitions::PATIENTS_INDEXED_TAG)
-        })
-        .collect();
-    std::fs::write(out.join(".generation"), text).unwrap();
-}
-
 /// The workspace root.
 pub fn workspace() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -243,7 +245,7 @@ pub fn partitioned_texts(texts: &[(String, String)]) -> PartitionedDir {
 }
 
 /// The four fixture partitions, each loaded with the new-search loader after a header line
-/// is prepended. No combined store.
+/// is prepended, merged into one store.
 pub fn harm_fixture() -> PartitionedDir {
     partitioned_texts(&fixture_texts())
 }
@@ -323,6 +325,16 @@ pub fn answers(
 ) -> Vec<String> {
     let dictionary = engine.partitions().dictionary();
     let select: Vec<String> = dictionary.iter().map(|c| c.name.clone()).collect();
+    answers_selecting(engine, consents, clauses, &select)
+}
+
+/// [`answers`] with `select` as every query's select list.
+pub fn answers_selecting(
+    engine: &Engine,
+    consents: &[String],
+    clauses: &[Option<PhenotypicClause>],
+    select: &[String],
+) -> Vec<String> {
     let mut out = Vec::new();
     for (i, clause) in clauses.iter().enumerate() {
         for result_type in [
@@ -339,7 +351,7 @@ pub fn answers(
             }
             let query = Query {
                 phenotypic_clause: clause.clone(),
-                select: select.clone(),
+                select: select.to_vec(),
                 ..Query::with_consents(result_type, consents.iter().map(String::as_str))
             };
             let answer = match result_type {

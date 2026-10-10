@@ -1,15 +1,15 @@
-//! Per-partition counts: on patient-disjoint partitions that carry the ETL's
+//! Per-partition counts: on patient-disjoint partitions that carry the index's
 //! `patients-indexed` record, cross counts over two or more partitions sum each
 //! partition's count instead of counting the union. Every answer must be the answer of the
 //! union (`HPDS_PER_PARTITION_COUNTS=off`), and partitions that share a patient, or whose
-//! blocks may hold a patient outside their patient set, must keep counting the union.
+//! rows may hold a patient outside their patient set, must keep counting the union.
 
 mod common;
 
 use std::path::Path;
 
 use common::{
-    add_combined, answers, clauses, consent_lists, harm_fixture, lenient, mark_patients_indexed,
+    answers, clauses, consent_lists, csv, harm_fixture, lenient, partitioned_adjusted,
     partitioned_rows, protection, required,
 };
 use hpds_query::{CombinedMode, Engine, PartitionOptions, PerPartitionCounts, Query, ResultType};
@@ -37,7 +37,6 @@ fn selected(consents: &[String]) -> usize {
 #[test]
 fn disjoint_partitions_answer_the_same_with_and_without_per_partition_counts() {
     let dir = harm_fixture();
-    mark_patients_indexed(&dir.out);
     let auto = Engine::open(&dir.out, &options(PerPartitionCounts::Auto)).unwrap();
     let off = Engine::open(&dir.out, &options(PerPartitionCounts::Off)).unwrap();
     assert!(auto.partitions().partitions_disjoint());
@@ -48,8 +47,8 @@ fn disjoint_partitions_answer_the_same_with_and_without_per_partition_counts() {
         let query = Query::with_consents(ResultType::Count, consents.iter().map(String::as_str));
         assert_eq!(
             auto.read_plan(&query).unwrap().per_partition_counts,
-            selected(&consents) > 1,
-            "{consents:?}"
+            selected(&consents) > 1 && selected(&consents) < FIXTURE_PARTITIONS.len(),
+            "{consents:?}: a full selection reads whole blocks instead"
         );
         assert!(!off.read_plan(&query).unwrap().per_partition_counts);
         assert_eq!(
@@ -61,10 +60,8 @@ fn disjoint_partitions_answer_the_same_with_and_without_per_partition_counts() {
 }
 
 #[test]
-fn a_full_selection_reads_the_combined_store_instead() {
+fn a_full_selection_reads_whole_blocks_instead() {
     let dir = harm_fixture();
-    mark_patients_indexed(&dir.out);
-    add_combined(&dir.out);
     let engine = Engine::open(
         &dir.out,
         &PartitionOptions {
@@ -102,7 +99,6 @@ fn partitions_sharing_a_patient_keep_counting_the_union() {
         ),
     ];
     let dir = partitioned_rows(&rows);
-    mark_patients_indexed(&dir.out);
     let auto = Engine::open(&dir.out, &options(PerPartitionCounts::Auto)).unwrap();
     let off = Engine::open(&dir.out, &options(PerPartitionCounts::Off)).unwrap();
     assert!(!auto.partitions().partitions_disjoint());
@@ -132,42 +128,9 @@ fn partitions_sharing_a_patient_keep_counting_the_union() {
     }
 }
 
-#[test]
-fn a_store_without_the_record_keeps_counting_the_union() {
-    let dir = harm_fixture();
-    let engine = Engine::open(&dir.out, &options(PerPartitionCounts::Auto)).unwrap();
-    assert!(engine.partitions().partitions_disjoint());
-    assert_eq!(engine.partitions().patients_indexed_partitions(), 0);
-    assert!(!engine.partitions().counts_per_partition());
-    let two = Query::with_consents(ResultType::Count, ["partition1", "partition3"]);
-    assert!(!engine.read_plan(&two).unwrap().per_partition_counts);
-}
-
-#[test]
-fn the_record_counts_only_on_a_line_of_exactly_two_tokens() {
-    let dir = harm_fixture();
-    mark_patients_indexed(&dir.out);
-    let marker = dir.out.join(".generation");
-    let text = std::fs::read_to_string(&marker).unwrap();
-    let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
-    lines[0].push_str(" extra");
-    std::fs::write(&marker, lines.join("\n") + "\n").unwrap();
-    let engine = Engine::open(&dir.out, &options(PerPartitionCounts::Auto)).unwrap();
-    assert_eq!(engine.partitions().patients_indexed_partitions(), 3);
-    let with_first = Query::with_consents(ResultType::Count, ["partition1", "partition3"]);
-    assert!(!engine.read_plan(&with_first).unwrap().per_partition_counts);
-    let without_first = Query::with_consents(ResultType::Count, ["partition2", "partition3"]);
-    assert!(
-        engine
-            .read_plan(&without_first)
-            .unwrap()
-            .per_partition_counts
-    );
-}
-
-/// Rewrites the index of the store in `dir` with `patients` as its patient set, keeping its
-/// store id, concepts and blocks, as a migrated store whose exported patient list misses a
-/// patient its observations hold.
+/// Rewrites the index of the unpartitioned store in `dir` with `patients` as its patient
+/// set, keeping its store id, concepts and blocks, as a migrated store whose exported
+/// patient list misses a patient its observations hold.
 fn replace_patient_set(dir: &Path, patients: &[u32]) {
     let index = hpds_etl::store::read_index(dir, &protection()).unwrap();
     let rewritten = hpds_format::PhenoIndex::new(
@@ -185,7 +148,7 @@ fn replace_patient_set(dir: &Path, patients: &[u32]) {
 
 #[test]
 fn a_block_patient_missing_from_its_patient_set_keeps_counting_the_union() {
-    let rows = vec![
+    let rows = [
         (
             "p1",
             vec![
@@ -203,27 +166,22 @@ fn a_block_patient_missing_from_its_patient_set_keeps_counting_the_union() {
             ],
         ),
     ];
-    let dir = partitioned_rows(&rows);
-    replace_patient_set(&dir.out.join("p2"), &[3]);
-    let p1_id = hpds_etl::store::read_index(&dir.out.join("p1"), &protection())
-        .unwrap()
-        .store_id();
-    let p2_id = hpds_etl::store::read_index(&dir.out.join("p2"), &protection())
-        .unwrap()
-        .store_id();
-    std::fs::write(
-        dir.out.join(".generation"),
-        format!("{p1_id} patients-indexed\n{p2_id}\n"),
-    )
-    .unwrap();
+    let texts: Vec<(&str, String)> = rows.iter().map(|(n, r)| (*n, csv(r))).collect();
+    let dir = partitioned_adjusted(&texts, |name, part| {
+        if name == "p2" {
+            replace_patient_set(part, &[3]);
+        }
+        name == "p2"
+    });
     let auto = Engine::open(&dir.out, &options(PerPartitionCounts::Auto)).unwrap();
     let off = Engine::open(&dir.out, &options(PerPartitionCounts::Off)).unwrap();
     let set = auto.partitions();
     assert!(
         set.partitions_disjoint(),
-        "the patient sets are disjoint, the blocks are not"
+        "the patient sets are disjoint, the rows are not"
     );
     assert_eq!(set.patients_indexed_partitions(), 1);
+    assert!(!set.partition("p2").unwrap().patients_indexed());
     assert!(!set.counts_per_partition());
     let both = |result_type| Query {
         select: vec!["\\a\\".to_owned(), "\\b\\".to_owned()],
@@ -245,7 +203,7 @@ fn a_block_patient_missing_from_its_patient_set_keeps_counting_the_union() {
     assert_eq!(
         auto.run_sync(&both(ResultType::CrossCount)).unwrap().body(),
         r#"{"\\a\\":2,"\\b\\":2}"#,
-        "patient 1 is in both partitions' blocks and counts once"
+        "patient 1 has rows in both partitions and counts once"
     );
     let clauses = clauses(set.dictionary());
     for consents in [vec!["p1".to_owned(), "p2".to_owned()], Vec::new()] {

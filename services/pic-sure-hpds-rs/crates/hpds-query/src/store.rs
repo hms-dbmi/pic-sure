@@ -1,14 +1,12 @@
 //! The phenotype store: `pheno.index` held in memory, `pheno.blocks` read on demand into a
-//! byte-bounded cache of decoded blocks. Stores opened together by a
-//! [`crate::PartitionSet`] share one cache and so one byte budget.
+//! byte-bounded cache of decoded blocks, which a [`crate::PartitionSet`] holds.
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 use hpds_format::{
-    BLOCKS_FILE_NAME, Block, BlockCodec, BlockLocation, BlocksReader, ConceptView, INDEX_FILE_NAME,
-    IndexBody, PhenoIndex, Protection, StoreId,
+    BLOCKS_FILE_NAME, Block, BlockCodec, BlockLocation, BlocksReader, ConceptView, ExpectedBlock,
+    INDEX_FILE_NAME, IndexBody, Membership, PartitionHolder, PartitionTable, Protection,
 };
 use moka::sync::Cache;
 use roaring::RoaringBitmap;
@@ -22,17 +20,18 @@ pub const KEY_FILE_NAME: &str = "encryption_key";
 /// Default capacity of the decoded block cache: 4 GiB.
 pub const DEFAULT_CACHE_BYTES: u64 = 4 << 30;
 
-/// Decoded blocks, one entry per concept and group of stores: the key is the group
-/// ([`PARTITIONS_GROUP`] or [`COMBINED_GROUP`]) and the concept's position in the
-/// partition set's shared concept table, so a lookup never allocates, and a read of one
-/// concept in many partitions costs one lookup.
+/// Decoded blocks, one entry per concept and group: the key is the group
+/// ([`PARTITIONS_GROUP`] or [`COMBINED_GROUP`]) and the concept's position in the index,
+/// so a lookup never allocates, and a read of one concept in many partitions costs one
+/// lookup.
 pub(crate) type BlockCache = Cache<(u32, u32), Arc<ConceptBlocks>>;
 
-/// The cache group holding a concept's blocks in the partitions, one slot per partition
-/// holding it, in slot order.
+/// The cache group holding a concept's rows split by partition, one slot per partition
+/// holding it, in partition order: each slot the block a store of that partition alone
+/// would hold, derived from the concept's block.
 pub(crate) const PARTITIONS_GROUP: u32 = 0;
 
-/// The cache group holding a concept's one block in the combined store.
+/// The cache group holding a concept's whole block, every partition's rows.
 pub(crate) const COMBINED_GROUP: u32 = 1;
 
 /// Bytes an entry is weighed at beyond its blocks, for its slots.
@@ -95,7 +94,7 @@ impl ConceptBlocks {
     }
 }
 
-/// How the partition stores are opened.
+/// How the store is opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreOptions {
     /// Upper bound on the summed [`Block::heap_size`] of cached blocks, in bytes.
@@ -115,15 +114,16 @@ impl Default for StoreOptions {
     }
 }
 
-/// All a store's index says about one of its concepts that the engine reads: the
-/// observation count, where the block is and the bound on its decoded size. The path, which
-/// the block's authentication also binds, and the rest of the metadata live once in the
-/// partition set's merged dictionary.
+/// All the index says about one concept that reading its block needs: the observation
+/// count, where the block is, the bound on its decoded size, and whether it is tagged. The
+/// path, which the block's authentication also binds, and the rest of the metadata live in
+/// the partition set's dictionary, and the holders in its holder table.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ConceptEntry {
     pub(crate) observation_count: u32,
     location: BlockLocation,
     max_payload_len: u64,
+    tagged: bool,
 }
 
 impl ConceptEntry {
@@ -133,32 +133,14 @@ impl ConceptEntry {
             observation_count: concept.observation_count,
             location: concept.block,
             max_payload_len: concept.max_payload_len(),
+            tagged: concept.tagged,
         }
     }
 }
 
-/// The store id in the plain header of the index in `dir`, read without verifying the
-/// index. [`StoreFiles::open`] verifies it later; this lets a caller compare ids before it
-/// decodes any index.
-///
-/// # Errors
-/// [`QueryError::Open`] when the file cannot be read or its header does not parse.
-pub(crate) fn read_store_id(dir: &Path) -> Result<StoreId> {
-    let path = dir.join(INDEX_FILE_NAME);
-    let mut head = Vec::with_capacity(HEADER_READ_LEN);
-    std::fs::File::open(&path)
-        .and_then(|file| file.take(HEADER_READ_LEN as u64).read_to_end(&mut head))
-        .map_err(|e| open_error(dir, e))?;
-    PhenoIndex::decode_header(&head)
-        .map(|header| header.store_id)
-        .map_err(|e| open_error(dir, e))
-}
-
-/// Bytes read from the start of an index for [`read_store_id`], far more than any header.
-const HEADER_READ_LEN: usize = 64 << 10;
-
 /// A store's files, opened and its index verified, before its concept table is read.
-/// [`StoreFiles::into_store`] then keeps only the patient set of the index.
+/// [`StoreFiles::into_store`] then keeps only the patient set and the partition table of the
+/// index.
 pub(crate) struct StoreFiles {
     dir: PathBuf,
     index: IndexBody,
@@ -189,42 +171,42 @@ impl StoreFiles {
         })
     }
 
-    /// The store directory.
-    pub(crate) fn dir(&self) -> &Path {
-        &self.dir
-    }
-
     /// The verified index, whose concept table the caller reads.
     pub(crate) fn index(&self) -> &IndexBody {
         &self.index
     }
 
-    /// The open store, with `entries` its concepts' entries in index order. The index body
-    /// is dropped; only its patient set is kept.
-    pub(crate) fn into_store(self, entries: Vec<ConceptEntry>) -> Store {
-        Store {
+    /// The open store, with `entries` its concepts' entries in index order, and its
+    /// partition table. The index body is dropped.
+    pub(crate) fn into_store(self, entries: Vec<ConceptEntry>) -> (Store, PartitionTable) {
+        let (patients, table) = self.index.into_parts();
+        let membership = table.membership();
+        let store = Store {
             dir: self.dir,
             entries,
-            patients: self.index.into_patients(),
+            patients,
             reader: self.reader,
             codec: self.codec,
-        }
+            membership,
+        };
+        (store, table)
     }
 }
 
-/// One open store. Every method takes `&self` and is safe to call from many threads.
+/// The open store. Every method takes `&self` and is safe to call from many threads.
 /// Crate-private: patient data is read through the engine, scoped by consent.
 ///
-/// Of its index it keeps one [`ConceptEntry`] per concept, in index order; paths and the
-/// other metadata live once in the [`crate::PartitionSet`]'s merged dictionary. Block loads
-/// are blocking (a positioned read, then decryption and decompression on the calling
-/// thread).
+/// Of its index it keeps one [`ConceptEntry`] per concept, in index order, and the routing
+/// of patients to partitions; paths and the other metadata live once in the
+/// [`crate::PartitionSet`]'s dictionary. Block loads are blocking (a positioned read, then
+/// decryption and decompression on the calling thread).
 pub(crate) struct Store {
     dir: PathBuf,
     entries: Vec<ConceptEntry>,
     patients: RoaringBitmap,
     reader: BlocksReader,
     codec: BlockCodec,
+    membership: Membership,
 }
 
 impl std::fmt::Debug for Store {
@@ -248,15 +230,40 @@ impl Store {
         self.entries[position as usize]
     }
 
+    /// The routing of patients to partitions.
+    pub(crate) fn membership(&self) -> &Membership {
+        &self.membership
+    }
+
     /// Reads and decodes the block of the concept at `position` in this store's index,
-    /// whose path is `path`. Uncached: the caller caches it. Blocking.
+    /// whose path is `path` and whose holders the index records as `holders` (empty in an
+    /// unpartitioned store), checked against them and the store's partitions. Uncached: the
+    /// caller caches it. Blocking.
     ///
     /// # Errors
-    /// [`QueryError::Block`] when the block cannot be read, authenticated or decoded.
-    pub(crate) fn read_block(&self, position: u32, path: &str) -> Result<Block> {
+    /// [`QueryError::Block`] when the block cannot be read, authenticated or decoded, or
+    /// disagrees with the index.
+    pub(crate) fn read_block(
+        &self,
+        position: u32,
+        path: &str,
+        holders: &[PartitionHolder],
+    ) -> Result<Block> {
         let entry = self.entry(position);
+        let expected = ExpectedBlock {
+            observation_count: entry.observation_count,
+            holders,
+            tagged: entry.tagged,
+            membership: &self.membership,
+        };
         self.reader
-            .read_block_at(&self.codec, path, entry.location, entry.max_payload_len)
+            .read_block_at(
+                &self.codec,
+                path,
+                entry.location,
+                entry.max_payload_len,
+                &expected,
+            )
             .map_err(|source| QueryError::Block {
                 concept_path: path.to_owned(),
                 source: Arc::new(source),

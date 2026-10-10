@@ -3,14 +3,14 @@
 //! computations. No HTTP: the `hpds-rs` crate serves this.
 //!
 //! - The [`model`] module holds [`Query`] and its parts, deserialized as Jackson reads them.
-//! - A [`PartitionSet`] is `PartitionedPhenotypicObservationStore`: one store per consent
-//!   partition (`pheno.index` in memory, blocks read on demand) sharing one key and one
-//!   byte-bounded cache of decoded blocks, the merged [`SummaryColumnMeta`] dictionary, and
-//!   the choice of partitions a query's `userConsents` grant ([`Selection`]). Its public
-//!   surface is that dictionary and the partition names; patient data is read only by the
-//!   [`Engine`], within a query's consents. A query whose consents select every partition
-//!   reads the combined store instead, when the data directory has one
-//!   ([`CombinedStatus`]).
+//! - A [`PartitionSet`] is `PartitionedPhenotypicObservationStore`: the one store of a data
+//!   directory (`pheno.index` in memory, blocks read on demand into a byte-bounded cache of
+//!   decoded blocks) with its consent partitions inside each block, the merged
+//!   [`SummaryColumnMeta`] dictionary, and the choice of partitions a query's `userConsents`
+//!   grant ([`Selection`]). Its public surface is that dictionary and the partition names;
+//!   patient data is read only by the [`Engine`], within a query's consents. A query whose
+//!   consents select every partition reads whole blocks; a narrower one reads its partitions'
+//!   rows one partition at a time ([`CombinedStatus`]).
 //! - Cohort evaluation, `PhenotypicQueryExecutor.getPatientSet`, runs only inside the
 //!   [`Engine`], after the query passes its [`QueryLimits`] and its consents select the
 //!   partitions; each filter is evaluated per selected partition and the results ORed.
@@ -32,6 +32,7 @@ pub mod model;
 mod partition;
 mod result_cache;
 mod results;
+mod split;
 mod store;
 pub mod validate;
 

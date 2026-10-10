@@ -380,56 +380,6 @@ fn the_merged_dictionary_follows_summary_column_meta() {
 }
 
 #[test]
-fn a_concept_typed_differently_in_two_partitions_refuses_to_open() {
-    let mixed = "\\mixed\\";
-    let d = partitioned_rows(&[
-        ("p1", vec![(1, mixed, Some(5.0), None)]),
-        ("p0", vec![(2, AGE, Some(1.0), None)]),
-        ("p2", vec![(2, mixed, None, Some("y"))]),
-    ]);
-    let error = d.open(&lenient()).unwrap_err();
-    match &error {
-        QueryError::TypeConflict {
-            concept_path,
-            first_partition,
-            first_type,
-            second_partition,
-            second_type,
-        } => {
-            assert_eq!(concept_path, mixed);
-            assert_eq!((first_partition.as_str(), *first_type), ("p1", "numeric"));
-            assert_eq!(
-                (second_partition.as_str(), *second_type),
-                ("p2", "categorical")
-            );
-        }
-        other => panic!("expected TypeConflict, got {other:?}"),
-    }
-    assert!(!error.is_client_error());
-    assert_eq!(
-        error.to_string(),
-        "concept \\mixed\\ is numeric in partition p1 but categorical in partition p2"
-    );
-}
-
-#[test]
-fn partition_key_files_must_match_the_shared_key() {
-    let d = partitioned_rows(&[("p1", numeric_rows(&[1])), ("p2", numeric_rows(&[2]))]);
-    std::fs::write(d.out.join("p1").join("encryption_key"), format!("{KEY}\n")).unwrap();
-    d.open(&lenient()).unwrap();
-    std::fs::write(
-        d.out.join("p2").join("encryption_key"),
-        "FEDCBA9876543210FEDCBA9876543210",
-    )
-    .unwrap();
-    let error = d.open(&lenient()).unwrap_err();
-    assert!(
-        error.to_string().contains("differs from the shared key"),
-        "{error}"
-    );
-}
-
-#[test]
 fn a_missing_shared_key_or_store_refuses_to_open() {
     let d = partitioned_rows(&[("p1", numeric_rows(&[1]))]);
     std::fs::remove_file(d.out.join("encryption_key")).unwrap();
@@ -465,32 +415,27 @@ fn subdirectories_without_a_store_are_not_partitions() {
     assert_eq!(engine.count(&all).unwrap(), 0);
 }
 
-/// The decoded size ([`hpds_format::Block::heap_size`]) of the block of `path` in the
-/// store in `dir`, read with the ETL's reader, outside the engine.
+/// The decoded size ([`hpds_format::Block::heap_size`]) of the whole block of `path` in
+/// the store in `dir`, read with the ETL's reader, outside the engine.
 fn block_heap_size(dir: &std::path::Path, path: &str) -> u64 {
     let store = hpds_etl::store::OpenStore::open(dir, protection()).unwrap();
     let concept = store.index.get(path).unwrap();
-    store
-        .reader
-        .read_block(&store.codec, concept)
-        .unwrap()
-        .heap_size() as u64
+    store.read_block(concept).unwrap().heap_size() as u64
 }
 
 #[test]
-fn partitions_share_one_cache_budget() {
+fn a_full_selection_caches_one_whole_block_and_a_narrow_one_its_partition() {
     let d = partitioned_rows(&[("p1", numeric_rows(&[1, 2])), ("p2", numeric_rows(&[3, 4]))]);
     let engine = d.open(&lenient()).unwrap();
     let set = engine.partitions();
     engine
         .count(&query(ResultType::Count, Some(required(CONCEPT))))
         .unwrap();
-    assert_eq!(set.cached_block_count(), 2);
-    let loaded =
-        block_heap_size(&d.out.join("p1"), CONCEPT) + block_heap_size(&d.out.join("p2"), CONCEPT);
+    assert_eq!(set.cached_block_count(), 1);
+    let whole = block_heap_size(&d.out, CONCEPT);
     assert!(
-        set.cached_bytes() >= loaded,
-        "the entry is weighed with both blocks: {} cached, {loaded} loaded",
+        set.cached_bytes() >= whole,
+        "the whole block is weighed: {} cached, {whole} loaded",
         set.cached_bytes()
     );
     set.clear_cache();
@@ -499,12 +444,16 @@ fn partitions_share_one_cache_budget() {
         phenotypic_clause: Some(required(CONCEPT)),
         ..Query::with_consents(ResultType::Count, ["p1"])
     };
-    engine.count(&only_p1).unwrap();
-    assert_eq!(set.cached_block_count(), 1);
+    assert_eq!(engine.count(&only_p1).unwrap(), 2);
+    assert_eq!(
+        set.cached_block_count(),
+        2,
+        "the whole block and p1's rows derived from it"
+    );
 }
 
 #[test]
-fn a_small_cache_evicts_after_a_multi_partition_read() {
+fn a_small_cache_evicts_after_reading_whole_blocks() {
     const HEIGHT: &str = "\\demographics\\HEIGHT\\";
     let rows = |patients: &[u32]| -> Vec<Row<'static>> {
         numeric_rows(patients)
@@ -519,9 +468,10 @@ fn a_small_cache_evicts_after_a_multi_partition_read() {
     let patients: Vec<u32> = (1..=400).collect();
     let (first, second) = patients.split_at(200);
     let d = partitioned_rows(&[("p1", rows(first)), ("p2", rows(second))]);
-    let entry =
-        |path| block_heap_size(&d.out.join("p1"), path) + block_heap_size(&d.out.join("p2"), path);
-    let (age, height) = (entry(CONCEPT), entry(HEIGHT));
+    let (age, height) = (
+        block_heap_size(&d.out, CONCEPT),
+        block_heap_size(&d.out, HEIGHT),
+    );
     let capacity = age.max(height) + age.min(height) / 2;
     let options = hpds_query::PartitionOptions {
         store: StoreOptions {
@@ -544,16 +494,23 @@ fn a_small_cache_evicts_after_a_multi_partition_read() {
     );
     assert_eq!(
         set.cached_block_count(),
-        2,
-        "one concept's two blocks were evicted or never admitted"
+        1,
+        "one concept's block was evicted or never admitted"
     );
 }
 
 #[test]
 fn a_failed_block_load_still_weighs_the_blocks_it_read() {
-    let d = partitioned_rows(&[("p1", numeric_rows(&[1, 2])), ("p2", numeric_rows(&[3, 4]))]);
+    const LATER: &str = "\\demographics\\ZZZ\\";
+    let rows = |patients: &[u32]| -> Vec<Row<'static>> {
+        numeric_rows(patients)
+            .into_iter()
+            .chain(patients.iter().map(|&p| (p, LATER, Some(1.0), None)))
+            .collect()
+    };
+    let d = partitioned_rows(&[("p1", rows(&[1, 2])), ("p2", rows(&[3, 4]))]);
     let engine = d.open(&lenient()).unwrap();
-    let blocks = d.out.join("p2").join(hpds_format::BLOCKS_FILE_NAME);
+    let blocks = d.out.join(hpds_format::BLOCKS_FILE_NAME);
     let len = std::fs::metadata(&blocks).unwrap().len();
     let file = std::fs::OpenOptions::new()
         .write(true)
@@ -563,14 +520,21 @@ fn a_failed_block_load_still_weighs_the_blocks_it_read() {
     drop(file);
     let set = engine.partitions();
     let error = engine
-        .count(&query(ResultType::Count, Some(required(CONCEPT))))
+        .count(&query(
+            ResultType::Count,
+            Some(any_record_of("\\demographics\\")),
+        ))
         .unwrap_err();
     assert!(matches!(error, QueryError::Block { .. }), "{error}");
-    assert_eq!(set.cached_block_count(), 1, "p1's block was read");
-    let p1 = block_heap_size(&d.out.join("p1"), CONCEPT);
+    assert_eq!(
+        set.cached_block_count(),
+        1,
+        "the first concept's block was read"
+    );
+    let first = block_heap_size(&d.out, CONCEPT);
     assert!(
-        set.cached_bytes() >= p1,
-        "p1's block is weighed: {} cached, {p1} read",
+        set.cached_bytes() >= first,
+        "the block read is weighed: {} cached, {first} read",
         set.cached_bytes()
     );
 }
@@ -620,11 +584,12 @@ fn a_type_mismatch_is_raised_only_when_a_selected_partition_holds_the_concept() 
 #[test]
 fn a_half_migrated_partition_refuses_to_open() {
     for javabin in ["allObservationsStore.javabin", "columnMeta.javabin"] {
-        let d = partitioned_rows(&[("p1", numeric_rows(&[1]))]);
-        let half = d.out.join("phs000002.c1");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("encryption_key"), KEY).unwrap();
+        let half = dir.path().join("phs000002.c1");
         std::fs::create_dir(&half).unwrap();
         std::fs::write(half.join(javabin), b"java").unwrap();
-        let error = d.open(&lenient()).unwrap_err();
+        let error = Engine::open(dir.path(), &lenient()).unwrap_err();
         let message = error.to_string();
         assert!(matches!(error, QueryError::Open { .. }), "{message}");
         assert!(message.contains("phs000002.c1"), "{message}");
@@ -634,15 +599,14 @@ fn a_half_migrated_partition_refuses_to_open() {
 }
 
 #[test]
-fn partition_discovery_ignores_dot_directories_and_reads_one_level() {
+fn a_store_ignores_its_subdirectories() {
     let d = partitioned_rows(&[("p1", numeric_rows(&[1]))]);
-    let hidden = d.out.join(".staging");
-    std::fs::create_dir(&hidden).unwrap();
-    std::fs::write(hidden.join("columnMeta.javabin"), b"java").unwrap();
-    let nested = d.out.join("group").join("p2");
-    std::fs::create_dir_all(&nested).unwrap();
-    std::fs::write(nested.join("columnMeta.javabin"), b"java").unwrap();
-    std::fs::write(d.out.join("p1").join("columnMeta.javabin"), b"java").unwrap();
+    let java = d.out.join("phs000002.c1");
+    std::fs::create_dir(&java).unwrap();
+    std::fs::write(java.join("columnMeta.javabin"), b"java").unwrap();
+    let old = d.out.join("p2");
+    std::fs::create_dir(&old).unwrap();
+    std::fs::write(old.join(hpds_format::INDEX_FILE_NAME), b"old").unwrap();
     let engine = d.open(&lenient()).unwrap();
     assert_eq!(
         engine.partitions().partition_names().collect::<Vec<_>>(),
@@ -650,10 +614,30 @@ fn partition_discovery_ignores_dot_directories_and_reads_one_level() {
     );
 }
 
-fn store_id(d: &PartitionedDir, name: &str) -> String {
+#[test]
+fn a_partitioned_store_of_format_1_is_refused_naming_convert() {
+    for marker in ["p1", ".combined"] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("encryption_key"), KEY).unwrap();
+        std::fs::create_dir(dir.path().join(marker)).unwrap();
+        if marker == "p1" {
+            std::fs::write(
+                dir.path().join(marker).join(hpds_format::INDEX_FILE_NAME),
+                b"x",
+            )
+            .unwrap();
+        }
+        let message = Engine::open(dir.path(), &lenient())
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("hpds-etl convert"), "{marker}: {message}");
+    }
+}
+
+fn store_id(d: &PartitionedDir) -> String {
     let key = hpds_format::CryptoKey::load(d.out.join("encryption_key")).unwrap();
     let index = hpds_format::PhenoIndex::read_file(
-        d.out.join(name).join(hpds_format::INDEX_FILE_NAME),
+        d.out.join(hpds_format::INDEX_FILE_NAME),
         &hpds_format::Protection::Encrypted(key),
     )
     .unwrap();
@@ -661,11 +645,11 @@ fn store_id(d: &PartitionedDir, name: &str) -> String {
 }
 
 #[test]
-fn a_generation_file_must_list_exactly_the_opened_stores() {
+fn a_generation_file_must_name_exactly_the_store() {
     let d = partitioned_rows(&[("p1", numeric_rows(&[1])), ("p2", numeric_rows(&[2]))]);
-    let (p1, p2) = (store_id(&d, "p1"), store_id(&d, "p2"));
+    let id = store_id(&d);
     let generation = d.out.join(".generation");
-    std::fs::write(&generation, format!("{p1}\n\n{} p2\n", p2.to_uppercase())).unwrap();
+    std::fs::write(&generation, format!("\n{}\n", id.to_uppercase())).unwrap();
     assert_eq!(
         d.open(&lenient())
             .unwrap()
@@ -673,20 +657,16 @@ fn a_generation_file_must_list_exactly_the_opened_stores() {
             .unwrap(),
         2
     );
-
-    std::fs::write(&generation, format!("{p1}\n")).unwrap();
-    let message = d.open(&lenient()).unwrap_err().to_string();
-    assert!(message.contains("partially published"), "{message}");
-    assert!(message.contains("p2"), "{message}");
-
-    std::fs::write(&generation, format!("{p1}\n{p2}\n{}\n", "0".repeat(32))).unwrap();
-    let message = d.open(&lenient()).unwrap_err().to_string();
-    assert!(message.contains("partially published"), "{message}");
-
-    std::fs::write(&generation, "not-an-id\n").unwrap();
-    let message = d.open(&lenient()).unwrap_err().to_string();
-    assert!(message.contains("not a store id"), "{message}");
-
+    for stale in [
+        format!("{}\n", "0".repeat(32)),
+        format!("{id}\n{}\n", "0".repeat(32)),
+        format!("{id} patients-indexed\n"),
+        "not-an-id\n".to_owned(),
+    ] {
+        std::fs::write(&generation, stale).unwrap();
+        let message = d.open(&lenient()).unwrap_err().to_string();
+        assert!(message.contains("partially published"), "{message}");
+    }
     std::fs::remove_file(&generation).unwrap();
     d.open(&lenient()).unwrap();
 }

@@ -3,7 +3,7 @@ mod common;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use common::{KEY, config, fixture, fixture_with, get, open_engine};
+use common::{KEY, config, fixture, fixture_with, get, java_fixture_dir, open_engine};
 use hpds_query::Engine;
 use hpds_rs::state::NOT_OPENED_REASON;
 use hpds_rs::{AppState, probe_health, router};
@@ -46,11 +46,24 @@ async fn a_data_directory_with_no_partitions_is_refused_and_serves_down() {
 #[tokio::test]
 async fn an_unpartitioned_store_is_refused_while_consents_are_required() {
     let fixture = common::fixture();
-    let unpartitioned = fixture.store().join("partition1");
+    let input = fixture.dir.path().join("allConcepts.csv");
+    std::fs::write(
+        &input,
+        "PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME\n1,\\a\\,1,,\n",
+    )
+    .unwrap();
+    let unpartitioned = fixture.dir.path().join("unpartitioned");
+    std::fs::create_dir(&unpartitioned).unwrap();
     std::fs::copy(
         fixture.store().join("encryption_key"),
         unpartitioned.join("encryption_key"),
     )
+    .unwrap();
+    hpds_etl::load::load(&hpds_etl::load::LoadOptions::new(
+        hpds_etl::load::Mode::NewSearch,
+        vec![input],
+        unpartitioned.clone(),
+    ))
     .unwrap();
     let mut settings = config(fixture.dir.path());
     settings.results_dir = fixture.dir.path().join("unpartitioned-results");
@@ -77,25 +90,31 @@ async fn health_is_up_with_a_store() {
 }
 
 #[tokio::test]
-async fn health_says_when_the_combined_store_is_off_or_absent() {
+async fn health_says_when_whole_blocks_are_off_or_absent() {
     let off = fixture_with(|c| c.partitions.combined = hpds_query::CombinedMode::Off);
     let reply = get(&off.app, "/actuator/health").await;
     assert_eq!(reply.body, r#"{"status":"UP","combinedStore":"OFF"}"#);
 
-    let absent = fixture();
-    let store = absent.store();
-    let removed = hpds_etl::combined::remove_combined(
-        &store,
-        &hpds_format::Protection::Encrypted(
-            hpds_format::CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap(),
-        ),
-    )
-    .unwrap();
-    assert!(removed);
-    let engine = open_engine(&store, &absent.config);
-    let state = AppState::new(Some(engine), &absent.config).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input");
+    std::fs::create_dir(&input).unwrap();
+    let file = "partition1-allConcepts.csv";
+    std::fs::copy(java_fixture_dir().join(file), input.join(file)).unwrap();
+    let key_file = dir.path().join("key");
+    std::fs::write(&key_file, KEY).unwrap();
+    let store = dir.path().join("store");
+    let mut options = hpds_etl::load::PartitionedLoadOptions::new(input, store.clone());
+    options.key = hpds_etl::load::KeySource::File(key_file);
+    options.no_config = true;
+    hpds_etl::load::load_partitioned(&options).unwrap();
+    let config = config(dir.path());
+    let engine = open_engine(&store, &config);
+    let state = AppState::new(Some(engine), &config).unwrap();
     let reply = get(&router(state), "/actuator/health").await;
-    assert_eq!(reply.body, r#"{"status":"UP","combinedStore":"ABSENT"}"#);
+    assert_eq!(
+        reply.body, r#"{"status":"UP","combinedStore":"ABSENT"}"#,
+        "a single partition's rows are its whole blocks"
+    );
 }
 
 #[tokio::test]

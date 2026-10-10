@@ -17,13 +17,14 @@
 //! `/search` cases run against the merged dictionary with the Java match rule and
 //! [`SummaryColumnMeta::write_json`].
 //!
-//! The store also gets a combined store. Every corpus runs with it in use and with it off,
-//! and every case must give byte for byte the same outcome both ways, so the cases that
-//! select every partition answer from the combined store exactly as from the partitions.
+//! Every corpus runs with full selections reading whole blocks and with them reading the
+//! partitions one at a time, and every case must give byte for byte the same outcome both
+//! ways, so the cases that select every partition answer from whole blocks exactly as from
+//! the partitions.
 
 mod common;
 
-use common::{add_combined, harm_fixture as fixture, lenient, strict, workspace};
+use common::{harm_fixture as fixture, lenient, strict, workspace};
 use hpds_bench::client::{AsyncOutcome, Outcome, SyncOutcome};
 use hpds_bench::corpus::Kind;
 use hpds_bench::golden::GoldenCase;
@@ -217,12 +218,12 @@ fn case_outcome(engine: &Engine, case: &GoldenCase) -> Outcome {
     }
 }
 
-/// Runs `file` against the fixture with a combined store, once with it in use and once
-/// with it off: both must pass every case, and give the same outcome for every case.
-/// `routes` is whether some case selects every partition and so reads the combined store.
+/// Runs `file` against the fixture, once reading whole blocks for full selections and once
+/// reading partitions one at a time: both must pass every case, and give the same outcome
+/// for every case. `routes` is whether some case selects every partition and so reads
+/// whole blocks.
 fn assert_golden(file: &str, require_consents: bool, cases: usize, routes: bool) {
     let dir = fixture();
-    add_combined(&dir.out);
     let base = if require_consents {
         strict()
     } else {
@@ -260,17 +261,17 @@ fn assert_golden(file: &str, require_consents: bool, cases: usize, routes: bool)
         assert_eq!(
             case_outcome(&auto, case),
             case_outcome(&off, case),
-            "{}: the combined store answers differently",
+            "{}: whole blocks answer differently",
             case.entry.name
         );
     }
     assert_eq!(
         routed > 0,
         routes,
-        "{routed} cases of {file} read the combined store"
+        "{routed} cases of {file} read whole blocks"
     );
     eprintln!(
-        "{file}: {} golden cases passed with the combined store in use and off, {routed} of them read it",
+        "{file}: {} golden cases passed reading whole blocks and partitions, {routed} of them read whole blocks",
         golden.cases.len()
     );
 }
