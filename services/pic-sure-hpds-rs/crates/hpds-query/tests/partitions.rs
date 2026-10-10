@@ -486,7 +486,13 @@ fn partitions_share_one_cache_budget() {
         .count(&query(ResultType::Count, Some(required(CONCEPT))))
         .unwrap();
     assert_eq!(set.cached_block_count(), 2);
-    assert!(set.cached_bytes() > 0);
+    let loaded =
+        block_heap_size(&d.out.join("p1"), CONCEPT) + block_heap_size(&d.out.join("p2"), CONCEPT);
+    assert!(
+        set.cached_bytes() >= loaded,
+        "the entry is weighed with both blocks: {} cached, {loaded} loaded",
+        set.cached_bytes()
+    );
     set.clear_cache();
     assert_eq!(set.cached_block_count(), 0);
     let only_p1 = Query {
@@ -495,6 +501,52 @@ fn partitions_share_one_cache_budget() {
     };
     engine.count(&only_p1).unwrap();
     assert_eq!(set.cached_block_count(), 1);
+}
+
+#[test]
+fn a_small_cache_evicts_after_a_multi_partition_read() {
+    const HEIGHT: &str = "\\demographics\\HEIGHT\\";
+    let rows = |patients: &[u32]| -> Vec<Row<'static>> {
+        numeric_rows(patients)
+            .into_iter()
+            .chain(
+                patients
+                    .iter()
+                    .map(|&p| (p, HEIGHT, Some(f64::from(p) + 0.5), None)),
+            )
+            .collect()
+    };
+    let patients: Vec<u32> = (1..=400).collect();
+    let (first, second) = patients.split_at(200);
+    let d = partitioned_rows(&[("p1", rows(first)), ("p2", rows(second))]);
+    let entry =
+        |path| block_heap_size(&d.out.join("p1"), path) + block_heap_size(&d.out.join("p2"), path);
+    let (age, height) = (entry(CONCEPT), entry(HEIGHT));
+    let capacity = age.max(height) + age.min(height) / 2;
+    let options = hpds_query::PartitionOptions {
+        store: StoreOptions {
+            cache_bytes: capacity,
+            ..StoreOptions::default()
+        },
+        ..lenient()
+    };
+    let engine = d.open(&options).unwrap();
+    let set = engine.partitions();
+    for path in [CONCEPT, HEIGHT] {
+        engine
+            .count(&query(ResultType::Count, Some(required(path))))
+            .unwrap();
+    }
+    assert!(
+        set.cached_bytes() <= capacity,
+        "{} cached, {capacity} allowed",
+        set.cached_bytes()
+    );
+    assert_eq!(
+        set.cached_block_count(),
+        2,
+        "one concept's two blocks were evicted or never admitted"
+    );
 }
 
 #[test]
