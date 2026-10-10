@@ -53,8 +53,10 @@ pub const MEMORY_RESULT_MAX_BYTES: usize = 256 << 10;
 /// this many bytes.
 const WRITE_BUFFER_BYTES: usize = 1 << 20;
 
-/// Bytes read from an export file per hop to the blocking pool while it is downloaded.
-const DOWNLOAD_CHUNK_BYTES: usize = 1 << 20;
+/// Most bytes read from an export file per hop to the blocking pool while it is downloaded.
+/// Each download holds at most one chunk being read and one being sent, so this bounds the
+/// memory of many slow downloads at once.
+const DOWNLOAD_CHUNK_BYTES: usize = 256 << 10;
 
 const _: () = assert!(MEMORY_RESULT_MAX_BYTES <= WRITE_BUFFER_BYTES);
 
@@ -1095,12 +1097,16 @@ pub async fn result(
             return Err(ApiError::internal());
         }
     };
-    let chunks = futures_util::stream::unfold(Some((file, BytesMut::new())), |state| async move {
-        let (file, buffer) = state?;
-        let read = tokio::task::spawn_blocking(move || read_chunk(file, buffer)).await;
+    let start = Some((file, BytesMut::new(), size));
+    let chunks = futures_util::stream::unfold(start, |state| async move {
+        let (file, buffer, remaining) = state?;
+        let read = tokio::task::spawn_blocking(move || read_chunk(file, buffer, remaining)).await;
         match read {
             Ok(Ok((_, _, chunk))) if chunk.is_empty() => None,
-            Ok(Ok((file, buffer, chunk))) => Some((Ok(chunk), Some((file, buffer)))),
+            Ok(Ok((file, buffer, chunk))) => {
+                let left = remaining.saturating_sub(chunk.len() as u64);
+                Some((Ok(chunk), Some((file, buffer, left))))
+            }
             Ok(Err(error)) => Some((Err(error), None)),
             Err(join) => Some((Err(io::Error::other(join)), None)),
         }
@@ -1120,13 +1126,21 @@ fn result_response(size: u64, body: Body) -> Response {
         .into_response()
 }
 
-/// Reads up to [`DOWNLOAD_CHUNK_BYTES`] from `file`, filling the chunk unless the file ends,
-/// and returns the file, the buffer for the next read and the chunk, empty at the end. The
-/// buffer's memory is reused once the previous chunk has been sent and dropped.
-fn read_chunk(mut file: File, mut buffer: BytesMut) -> io::Result<(File, BytesMut, Bytes)> {
+/// Reads the next chunk of `file`, of which `remaining` bytes are still to be sent: up to
+/// [`DOWNLOAD_CHUNK_BYTES`] and never more than `remaining`, so a small file is read into a
+/// buffer of its own size. Fills the chunk unless the file ends, and returns the file, the
+/// buffer for the next read and the chunk, empty at the end. The buffer's memory is reused
+/// once the previous chunk has been sent and dropped.
+fn read_chunk(
+    mut file: File,
+    mut buffer: BytesMut,
+    remaining: u64,
+) -> io::Result<(File, BytesMut, Bytes)> {
     use std::io::Read;
+    let want = usize::try_from(remaining)
+        .map_or(DOWNLOAD_CHUNK_BYTES, |left| left.min(DOWNLOAD_CHUNK_BYTES));
     buffer.clear();
-    buffer.resize(DOWNLOAD_CHUNK_BYTES, 0);
+    buffer.resize(want, 0);
     let mut filled = 0;
     while filled < buffer.len() {
         match file.read(&mut buffer[filled..]) {
@@ -1394,19 +1408,34 @@ mod tests {
         std::fs::write(&path, &content).unwrap();
         let mut file = File::open(&path).unwrap();
         let mut buffer = BytesMut::new();
+        let mut remaining = content.len() as u64;
         let mut read = Vec::new();
         let mut sizes = Vec::new();
         loop {
-            let (next, reused, chunk) = read_chunk(file, buffer).unwrap();
+            let (next, reused, chunk) = read_chunk(file, buffer, remaining).unwrap();
             if chunk.is_empty() {
                 break;
             }
             sizes.push(chunk.len());
+            remaining -= chunk.len() as u64;
             read.extend_from_slice(&chunk);
             (file, buffer) = (next, reused);
         }
         assert_eq!(sizes, [DOWNLOAD_CHUNK_BYTES, DOWNLOAD_CHUNK_BYTES, 17]);
         assert_eq!(read, content);
+    }
+
+    #[test]
+    fn a_small_download_reads_into_a_buffer_of_its_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("result.csv");
+        std::fs::write(&path, b"PATIENT_NUM\n7\n").unwrap();
+        let file = File::open(&path).unwrap();
+        let (file, buffer, chunk) = read_chunk(file, BytesMut::new(), 14).unwrap();
+        assert_eq!(&chunk[..], b"PATIENT_NUM\n7\n");
+        assert!(buffer.capacity() < 1024);
+        let (_, _, end) = read_chunk(file, buffer, 0).unwrap();
+        assert!(end.is_empty());
     }
 
     #[test]
