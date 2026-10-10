@@ -346,6 +346,13 @@ an exclusive `flock` on a `.lock` file inside it, and a run removes a leftover o
 that lock, so concurrent runs in other containers sharing the parent directory never lose a
 live one. The lock file is removed before a staging directory is moved into place.
 
+Every `flock` here serializes processes under one kernel only: processes on one host,
+containers sharing that host's kernel included. It does not serialize processes on
+different hosts, nor on a network filesystem (NFS, EFS, SMB), where a lock taken on one
+client may not be seen on another. A host ETL and a container ETL on a Docker Desktop bind
+mount also run under different kernels. Running two loads against one store from
+different kernels is not supported.
+
 Memory: the spill routing pass holds the concept and path dictionaries. The build pass runs
 `--threads` workers (one per core by default), each holding one spill file plus 40 bytes per
 row of it, so peak memory is about `threads` times the largest spill files.
@@ -395,8 +402,8 @@ partitions are replaced one after another (each partition's `pheno.index` last),
 combined store is moved out and the new one, if any, moved in, so a reader can briefly see old
 and new stores side by side. Those moves and the marker write below hold an exclusive `flock`
 on the `<out>` directory itself (no lock file), which `hpds-etl combine` takes too, so the two
-never interleave, also from separate containers sharing the directory; a publish waits while
-the other holds it. The last step writes `<out>/.generation` (mode `0600`, through a
+never interleave, also from separate containers sharing the directory (on one kernel, see
+above); a publish waits while the other holds it. The last step writes `<out>/.generation` (mode `0600`, through a
 temporary file renamed into place): one line per partition, in partition name order, holding
 the store id of its `pheno.index` as 32 lowercase hex digits followed by ` patients-indexed`
 (every patient with a row is in the partition's patient set, see
