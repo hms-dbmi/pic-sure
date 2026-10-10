@@ -267,3 +267,108 @@ async fn malformed_search_bodies_are_400() {
     assert_eq!(reply.content_type(), Some("text/plain; charset=utf-8"));
     assert!(!reply.body.is_empty());
 }
+
+/// The body as the service rendered it before answers were built at startup: the whole
+/// dictionary for a null term, otherwise every concept whose lowercased path contains the
+/// lowercased term or whose category values hold it, each written by `write_json` with the
+/// timestamps left null.
+fn reference_body(f: &common::Fixture, term: Option<&str>) -> Vec<u8> {
+    let member = |concept: &hpds_query::SummaryColumnMeta| {
+        let mut out = serde_json::Value::String(concept.name.clone()).to_string();
+        out.push(':');
+        hpds_query::SummaryColumnMeta {
+            timestamp_min: None,
+            timestamp_max: None,
+            ..concept.clone()
+        }
+        .write_json(&mut out);
+        out
+    };
+    let dictionary = f.engine.partitions().dictionary();
+    let (phenotypes, query) = match term {
+        None => {
+            let items: Vec<String> = dictionary
+                .iter()
+                .map(|c| format!("{{{}}}", member(c)))
+                .collect();
+            (format!("[{}]", items.join(",")), String::new())
+        }
+        Some(term) => {
+            let needle = term.to_lowercase();
+            let items: Vec<String> = dictionary
+                .iter()
+                .filter(|c| {
+                    c.name.to_lowercase().contains(&needle)
+                        || (c.categorical
+                            && c.category_values.iter().any(|v| v.to_lowercase() == needle))
+                })
+                .map(member)
+                .collect();
+            (format!("{{{}}}", items.join(",")), term.to_owned())
+        }
+    };
+    format!(
+        r#"{{"results":{{"phenotypes":{phenotypes},"info":{{}}}},"searchQuery":{}}}"#,
+        serde_json::Value::String(query)
+    )
+    .into_bytes()
+}
+
+async fn search_raw(
+    app: &axum::Router,
+    body: &str,
+    accept_encoding: Option<&str>,
+) -> axum::http::Response<axum::body::Bytes> {
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    let mut request =
+        axum::http::Request::post("/PIC-SURE/v3/search").header("content-type", "application/json");
+    if let Some(value) = accept_encoding {
+        request = request.header("accept-encoding", value);
+    }
+    let response = app
+        .clone()
+        .oneshot(
+            request
+                .body(axum::body::Body::from(body.to_owned()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (parts, body) = response.into_parts();
+    axum::http::Response::from_parts(parts, body.collect().await.unwrap().to_bytes())
+}
+
+#[tokio::test]
+async fn bodies_equal_the_reference_rendering() {
+    let f = fixture();
+    let mut terms: Vec<(String, Option<&str>)> = vec![
+        (r#"{}"#.to_owned(), None),
+        (r#"{"query":null}"#.to_owned(), None),
+    ];
+    for term in [
+        "",
+        "1000genomes",
+        "data",
+        "male",
+        "SYNTHETIC_AGE",
+        "no-such-concept",
+        "\\",
+        "\"quoted\"",
+    ] {
+        terms.push((json_body(term), Some(term)));
+    }
+    for (body, term) in &terms {
+        let response = search_raw(&f.app, body, None).await;
+        assert_eq!(response.status(), StatusCode::OK, "{body}");
+        assert_eq!(
+            response.body().as_ref(),
+            reference_body(&f, *term),
+            "{body}"
+        );
+    }
+}
+
+fn json_body(term: &str) -> String {
+    serde_json::json!({ "query": term }).to_string()
+}

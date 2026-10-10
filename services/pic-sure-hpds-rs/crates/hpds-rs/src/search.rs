@@ -1,6 +1,7 @@
 //! `POST /search` and `GET /search/values/`.
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 
 use axum::body::Bytes;
@@ -17,9 +18,13 @@ use crate::state::AppState;
 
 const JSON: &str = "application/json";
 
+const BODY_START: &str = r#"{"results":{"phenotypes":"#;
+const BODY_INFO: &str = r#","info":{}},"searchQuery":"#;
+
 /// The merged dictionary prepared for search once at startup: lowercase copies of every
-/// concept path and categorical value, so a search compares without allocating, and each
-/// concept's rendered `"<path>":<SummaryColumnMeta>` member, so a search only concatenates.
+/// concept path and categorical value, so a search compares without allocating, and the two
+/// answers that match every concept, rendered whole, from which every other answer copies
+/// its concepts.
 ///
 /// Java lowercases the path and the term with `Locale.ENGLISH` and the category values with
 /// `String.toLowerCase()`, which uses the JVM's default locale. This uses Rust's
@@ -28,54 +33,90 @@ const JSON: &str = "application/json";
 /// therefore agree with Java except under a default locale with its own rules for `I` and
 /// `i`: Turkish or Azerbaijani map `I` to the dotless `ı`, and Lithuanian adds combining
 /// dots. A container normally runs with an English or root default locale.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SearchIndex {
     entries: Vec<SearchEntry>,
+    every_concept: Bytes,
+    whole_dictionary: Bytes,
 }
 
 #[derive(Debug)]
 struct SearchEntry {
     path: String,
     categories: Vec<String>,
-    member: String,
+    member: Range<usize>,
+}
+
+impl Default for SearchIndex {
+    fn default() -> Self {
+        SearchIndex::build(&[])
+    }
 }
 
 impl SearchIndex {
     /// The index over `dictionary`, in the same order.
     ///
-    /// Each concept is rendered by [`SummaryColumnMeta::write_json`] with `timestampMin` and
-    /// `timestampMax` written as `null`. No Java loader sets a concept's timestamps, so the
-    /// Java service always writes them as `null`; the Rust loaders record them, and writing
-    /// them would make every concept with a `DATETIME` column differ from Java.
+    /// Each concept is rendered once, as `"<path>":<SummaryColumnMeta>` by
+    /// [`SummaryColumnMeta::write_json`] with `timestampMin` and `timestampMax` written as
+    /// `null`. No Java loader sets a concept's timestamps, so the Java service always writes
+    /// them as `null`; the Rust loaders record them, and writing them would make every
+    /// concept with a `DATETIME` column differ from Java. The rendered concepts are kept
+    /// only inside the answer to the empty term, which holds them all in order.
     pub fn build(dictionary: &[SummaryColumnMeta]) -> Self {
-        let entries = dictionary
-            .iter()
-            .map(|concept| {
-                let mut member = String::new();
-                push_string(&mut member, &concept.name);
-                member.push(':');
-                SummaryColumnMeta {
-                    timestamp_min: None,
-                    timestamp_max: None,
-                    ..concept.clone()
-                }
-                .write_json(&mut member);
-                SearchEntry {
-                    path: concept.name.to_lowercase(),
-                    categories: if concept.categorical {
-                        concept
-                            .category_values
-                            .iter()
-                            .map(|value| value.to_lowercase())
-                            .collect()
-                    } else {
-                        Vec::new()
-                    },
-                    member,
-                }
-            })
-            .collect();
-        SearchIndex { entries }
+        let mut every_concept = String::from(BODY_START);
+        every_concept.push('{');
+        let mut entries = Vec::with_capacity(dictionary.len());
+        for (i, concept) in dictionary.iter().enumerate() {
+            if i > 0 {
+                every_concept.push(',');
+            }
+            let start = every_concept.len();
+            push_string(&mut every_concept, &concept.name);
+            every_concept.push(':');
+            SummaryColumnMeta {
+                timestamp_min: None,
+                timestamp_max: None,
+                ..concept.clone()
+            }
+            .write_json(&mut every_concept);
+            entries.push(SearchEntry {
+                path: concept.name.to_lowercase(),
+                categories: if concept.categorical {
+                    concept
+                        .category_values
+                        .iter()
+                        .map(|value| value.to_lowercase())
+                        .collect()
+                } else {
+                    Vec::new()
+                },
+                member: start..every_concept.len(),
+            });
+        }
+        every_concept.push('}');
+        every_concept.push_str(BODY_INFO);
+        every_concept.push_str(r#""""#);
+        every_concept.push('}');
+        let mut whole_dictionary = String::with_capacity(every_concept.len() + 2 * entries.len());
+        whole_dictionary.push_str(BODY_START);
+        whole_dictionary.push('[');
+        for (i, entry) in entries.iter().enumerate() {
+            if i > 0 {
+                whole_dictionary.push(',');
+            }
+            whole_dictionary.push('{');
+            whole_dictionary.push_str(&every_concept[entry.member.clone()]);
+            whole_dictionary.push('}');
+        }
+        whole_dictionary.push(']');
+        whole_dictionary.push_str(BODY_INFO);
+        whole_dictionary.push_str(r#""""#);
+        whole_dictionary.push('}');
+        SearchIndex {
+            entries,
+            every_concept: Bytes::from(every_concept),
+            whole_dictionary: Bytes::from(whole_dictionary),
+        }
     }
 
     fn matches(entry: &SearchEntry, needle: &str) -> bool {
@@ -83,43 +124,40 @@ impl SearchIndex {
     }
 
     /// The `SearchResults` body of [`search`] for `term`, `None` for a null or missing
-    /// `query`.
-    pub fn render(&self, term: Option<String>) -> String {
-        let mut out = String::from(r#"{"results":{"phenotypes":"#);
-        let search_query = match term {
-            None => {
-                out.push('[');
-                for (i, entry) in self.entries.iter().enumerate() {
-                    if i > 0 {
-                        out.push(',');
-                    }
-                    out.push('{');
-                    out.push_str(&entry.member);
-                    out.push('}');
-                }
-                out.push(']');
-                String::new()
+    /// `query`. The answers to `None` and to the empty term are the ones built at startup,
+    /// shared rather than copied.
+    pub fn render(&self, term: Option<String>) -> Bytes {
+        match term {
+            None => self.whole_dictionary.clone(),
+            Some(term) if term.is_empty() => self.every_concept.clone(),
+            Some(term) => Bytes::from(self.render_matches(&term)),
+        }
+    }
+
+    fn render_matches(&self, term: &str) -> Vec<u8> {
+        let needle = term.to_lowercase();
+        let matching: Vec<&SearchEntry> = self
+            .entries
+            .iter()
+            .filter(|entry| Self::matches(entry, &needle))
+            .collect();
+        let mut query = String::new();
+        push_string(&mut query, term);
+        let members: usize = matching.iter().map(|entry| entry.member.len() + 1).sum();
+        let mut out =
+            Vec::with_capacity(BODY_START.len() + BODY_INFO.len() + members + query.len() + 3);
+        out.extend_from_slice(BODY_START.as_bytes());
+        out.push(b'{');
+        for (i, entry) in matching.iter().enumerate() {
+            if i > 0 {
+                out.push(b',');
             }
-            Some(term) => {
-                let needle = term.to_lowercase();
-                out.push('{');
-                let matching = self
-                    .entries
-                    .iter()
-                    .filter(|entry| Self::matches(entry, &needle));
-                for (i, entry) in matching.enumerate() {
-                    if i > 0 {
-                        out.push(',');
-                    }
-                    out.push_str(&entry.member);
-                }
-                out.push('}');
-                term
-            }
-        };
-        out.push_str(r#","info":{}},"searchQuery":"#);
-        push_string(&mut out, &search_query);
-        out.push('}');
+            out.extend_from_slice(&self.every_concept[entry.member.clone()]);
+        }
+        out.push(b'}');
+        out.extend_from_slice(BODY_INFO.as_bytes());
+        out.extend_from_slice(query.as_bytes());
+        out.push(b'}');
         out
     }
 }
