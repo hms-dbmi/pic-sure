@@ -103,7 +103,10 @@ directory itself) as `PartitionedPhenotypicObservationStore` serves its partitio
   and patient counts, and each partition's patient set. A patient in exactly one partition's
   set decides the partition of all their rows; the patients that do not (in two or more
   sets, or with a row in a partition whose set lacks them) form the overlap set, and every
-  block holding one of their rows records each row's partition. A block whose partition
+  block holding one of their rows records each row's partition. A patient with rows but in
+  no partition's set (a migrated partition whose Java patient list misses them) is in the
+  overlap set but not in the store's patients, which stay the union of the partition sets,
+  as Java's patient ids do. A block whose partition
   record disagrees with the index or the patient sets refuses to load (`QueryError::Block`).
 - A store of format 1, written by Rust HPDS v1 to v3, is refused naming
   `hpds-etl convert` (see [Converting a store of format 1](#converting-a-store-of-format-1)):
@@ -437,5 +440,7 @@ Every block of every partition is read once to learn which patients have rows in
 `patients-indexed`, and that patient goes into the overlap set. The `patients-indexed` tags of
 the old `.generation` are not trusted. A source whose `.generation` does not list exactly its
 partitions' store ids (a publish under way or interrupted) is refused, and so are a source
-already in the current format and a `--out` that is or lies inside the source. The source is
-never changed; the new store is published as a load publishes one, under the store lock.
+already in the current format and a `--out` that is, lies inside or contains the source. The
+source is never changed: it is read under a shared `flock` on its directory, the lock the v3
+ETL held while publishing, so no load publishes into it during the read. The new store is
+published as a load publishes one, under the store lock.
