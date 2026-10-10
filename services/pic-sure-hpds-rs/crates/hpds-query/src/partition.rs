@@ -585,10 +585,20 @@ impl PartitionSet {
         }
         for (index, (concept, summary)) in concepts.iter().zip(&self.dictionary).enumerate() {
             if concept.path != summary.name {
-                return refuse(format!("concept {} differs in path", index + 1));
+                return refuse(format!(
+                    "concept {:?} differs in path: the combined store holds {:?} in its \
+                     place",
+                    summary.name, concept.path
+                ));
             }
             if concept.concept_type != summary.concept_type() {
-                return refuse(format!("concept {} differs in type", index + 1));
+                return refuse(format!(
+                    "concept {:?} differs in type: {} in the combined store, {} in the \
+                     partitions",
+                    summary.name,
+                    type_name(concept.concept_type),
+                    type_name(summary.concept_type())
+                ));
             }
             let summed: u64 = self
                 .holders_of(index)
@@ -597,9 +607,8 @@ impl PartitionSet {
                 .sum();
             if u64::from(concept.observation_count) != summed {
                 return refuse(format!(
-                    "concept {} has {} observations, the partitions {summed}",
-                    index + 1,
-                    concept.observation_count
+                    "concept {:?} has {} observations, the partitions {summed}",
+                    summary.name, concept.observation_count
                 ));
             }
         }

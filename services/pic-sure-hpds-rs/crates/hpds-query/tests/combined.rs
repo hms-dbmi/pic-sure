@@ -453,7 +453,17 @@ fn an_inconsistent_combined_store_refuses_the_open() {
             small_with_planted(|rows| rows[0].1.push((1, "\\c\\", Some(5.0), None))),
         ),
         (
-            "differs in type",
+            "concept \"\\\\b\\\\\" differs in path: the combined store holds \"\\\\c\\\\\"",
+            small_with_planted(|rows| {
+                for (_, partition) in rows.iter_mut() {
+                    for row in partition.iter_mut().filter(|r| r.1 == "\\b\\") {
+                        row.1 = "\\c\\";
+                    }
+                }
+            }),
+        ),
+        (
+            "concept \"\\\\a\\\\\" differs in type",
             small_with_planted(|rows| {
                 for (_, partition) in rows.iter_mut() {
                     for row in partition.iter_mut().filter(|r| r.1 == "\\a\\") {
@@ -463,7 +473,7 @@ fn an_inconsistent_combined_store_refuses_the_open() {
             }),
         ),
         (
-            "observations",
+            "concept \"\\\\a\\\\\" has 4 observations, the partitions 3",
             small_with_planted(|rows| rows[1].1.push((3, "\\a\\", Some(9.0), None))),
         ),
         (
