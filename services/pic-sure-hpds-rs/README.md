@@ -214,6 +214,9 @@ An opt-in cache of sync answers, off unless `HPDS_RESULT_CACHE_BYTES` is above 0
   in it, so two queries whose consents select different partitions never share an entry,
   while consent lists that select the same partitions (reordered, repeated, or with
   unknown values) do.
+- **Lifetime.** The cache is in the process's memory and dies with it. The service opens
+  its stores only at startup, so a new load is served only after a restart, which starts
+  with an empty cache.
 - **Answers.** A cached answer is the same bytes with the same `Content-Type`, and a fresh
   `queryMetadata` UUID as every answer gets.
 - **Bound.** The entries' summed weight (key, body and 128 bytes of overhead each) is kept

@@ -5,7 +5,7 @@
 //! An entry is keyed on everything that decides the answer and nothing else:
 //!
 //! - the store generation (a hash of every opened store's id, the combined store's
-//!   included), so entries never outlive the data they were computed from;
+//!   included);
 //! - the result type;
 //! - the partitions the query's consents select, after admission, as a bit per partition,
 //!   so two different consent selections never share an entry;
@@ -21,13 +21,18 @@
 //!
 //! Left out because they never change an answer: `id`, `picSureId`, the consent values
 //! themselves (the selection replaces them, so unknown values and their order do not
-//! matter), and `select` for COUNT,
-//! CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT. CATEGORICAL_CROSS_COUNT reads the
-//! concepts and values of the clause's filters, which the clause encoding covers. `genomicFilters` is always empty here, since admission refuses
-//! any.
+//! matter), and `select` for COUNT, CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT.
+//! CATEGORICAL_CROSS_COUNT reads the concepts and values of the clause's filters, which
+//! the clause encoding covers. `genomicFilters` is always empty here, since admission
+//! refuses any.
 //!
 //! The key is the full encoding, not a hash of it, so two queries share an entry only when
 //! they encode identically.
+//!
+//! The cache lives in the process's memory and dies with it. The service opens its stores
+//! once, at startup, so a new load is served only after a restart, which starts with an
+//! empty cache. The generation in the key does not expire anything; it only ties each
+//! entry to the stores it was computed from.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
