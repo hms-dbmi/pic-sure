@@ -10,7 +10,7 @@ contract; the ETL parity harness compares the stores the two ETLs build.
 | `divergences.json` | Accepted differences between Java and Rust, applied by `compare --divergences` |
 | `golden/1000genomes.json` | Expected answers for the fixture, checked by `compare --golden` |
 | `baseline.sh`, `docker-compose.yml` | Java baseline stack and profiling matrix |
-| `arms.sh` | Java as-is, Java on the new layout and `hpds-rs` (encrypted or plain), measured one at a time: ETL, cold and warm load, exports, memory at rest |
+| `arms.sh` | Java as-is, Java on the new layout and `hpds-rs` (encrypted or plain), measured one at a time: ETL, cold and warm load, exports, memory at rest. With `BENCH_NETWORK` the load client runs in a container on that Docker network, so no measured request passes through Docker Desktop's port forwarding |
 | `etl-parity.sh`, `etl-parity-compare.py` | Java ETL vs `hpds-etl` on the same inputs, see [ETL parity](#etl-parity) |
 | `etl-parity-partitioned.sh` | Java `CSVLoader` vs `hpds-etl load --mode partitioned`, partition by partition, see [Partitioned ETL parity](#partitioned-etl-parity) |
 | `etl-divergences.json` | Accepted differences between the Java and Rust stores, each citing the spec |

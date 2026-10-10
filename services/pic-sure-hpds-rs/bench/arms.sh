@@ -51,13 +51,25 @@
 # rust (hms-dbmi/pic-sure-hpds-rs on an encrypted store, partitioned or not), rust-plain (the
 # same on a plain store, HPDS_ALLOW_PLAIN=true).
 #
+# With BENCH_NETWORK set to a Docker network name, every service container joins that network
+# and every load run (cold, warm, rest and exports) runs hpds-bench in a container on it
+# (BENCH_IMAGE, default RUST_ETL_IMAGE, which ships hpds-bench), addressing the service by
+# container name. No measured request then passes through Docker Desktop's port forwarding,
+# which caps throughput on small answers and bandwidth on large ones. The port is still
+# published on 127.0.0.1 for health polling and compare. The corpus directory is mounted read
+# only at the same path.
+#
 # Env: BENCH_BIN, ETL_BIN, HOST_PORT (18091), HOST_PORT_B (18092), DURATION (60s), LEAD_IN
 #      (10s), CONCURRENCIES ("1 8 32"), EXPORT_CONCURRENCIES ("1 4"), EXCLUDE (result types
 #      left out, comma separated, default none), JAVA_OPTS (-Xmx16g), CACHE_BYTES (4 GiB),
 #      MEM_LIMIT (container memory limit, default none), TIMEOUT (120s), KEEP_RUNNING (0),
 #      CONTAINER_PREFIX (bench-arm; every container this script starts is named after it),
 #      JAVA_HARM_IMAGE, JAVA_ETL_IMAGE, RUST_HPDS_IMAGE, RUST_ETL_IMAGE, HEAPSIZE (Java ETL heap
-#      in MiB, 9000), ETL_MEM_LIMIT (11g), ETL_THREADS (hpds-etl --threads, default its own).
+#      in MiB, 9000), ETL_MEM_LIMIT (11g), ETL_THREADS (hpds-etl --threads, default its own),
+#      BENCH_NETWORK (default none, see above), BENCH_IMAGE, EXTRA_ENV (space-separated
+#      KEY=VALUE pairs added to the service container's environment, for example
+#      HPDS_RESULT_CACHE_BYTES=268435456), ETL_ARGS (extra arguments to the rust ETL engine,
+#      for example --no-combined).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -81,6 +93,10 @@ RUST_ETL_IMAGE="${RUST_ETL_IMAGE:-hms-dbmi/pic-sure-hpds-rs-etl:LATEST}"
 HEAPSIZE="${HEAPSIZE:-9000}"
 ETL_MEM_LIMIT="${ETL_MEM_LIMIT:-11g}"
 ETL_THREADS="${ETL_THREADS:-}"
+BENCH_NETWORK="${BENCH_NETWORK:-}"
+BENCH_IMAGE="${BENCH_IMAGE:-$RUST_ETL_IMAGE}"
+EXTRA_ENV="${EXTRA_ENV:-}"
+ETL_ARGS="${ETL_ARGS:-}"
 
 log() {
   printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >&2
@@ -149,9 +165,36 @@ start_arm() {
   local args=()
   while IFS= read -r a; do args+=("$a"); done < <(arm_env "$arm")
   [[ -n "$MEM_LIMIT" ]] && args+=(--memory "$MEM_LIMIT" --memory-swap "$MEM_LIMIT")
+  [[ -n "$BENCH_NETWORK" ]] && args+=(--network "$BENCH_NETWORK")
+  local pair
+  for pair in $EXTRA_ENV; do args+=(-e "$pair"); done
   docker run -d --name "$name" -p "127.0.0.1:$port:8080" -v "$data:/opt/local/hpds" \
     "${args[@]}" "$(image_of "$arm")" >/dev/null
   wait_healthy "$port" "$name"
+}
+
+# The base URL load runs use against arm $1: the container by name on BENCH_NETWORK, or the
+# published port.
+bench_url() {
+  if [[ -n "$BENCH_NETWORK" ]]; then
+    echo "http://$(container_of "$1"):8080/PIC-SURE"
+  else
+    echo "http://127.0.0.1:$HOST_PORT/PIC-SURE"
+  fi
+}
+
+# Runs hpds-bench with the given arguments: in a container on BENCH_NETWORK with the corpus
+# directory $1 mounted read only, or as BENCH_BIN on the host.
+run_bench() {
+  local corpus="$1"
+  shift
+  if [[ -n "$BENCH_NETWORK" ]]; then
+    docker rm -f "$CONTAINER_PREFIX-client" >/dev/null 2>&1 || true
+    docker run --rm --name "$CONTAINER_PREFIX-client" --network "$BENCH_NETWORK" \
+      -v "$corpus:$corpus:ro" --entrypoint /usr/local/bin/hpds-bench "$BENCH_IMAGE" "$@"
+  else
+    "$BENCH_BIN" "$@"
+  fi
 }
 
 # Prints the anon memory of container $1 in MiB, from its cgroup v2 memory.stat.
@@ -187,11 +230,11 @@ load_once() {
     log "$arm $name skipped: container is not running"
     return 1
   fi
-  local args=(--url "http://127.0.0.1:$HOST_PORT/PIC-SURE" --corpus "$corpus" --timeout "$TIMEOUT")
+  local args=(--url "$(bench_url "$arm")" --corpus "$corpus" --timeout "$TIMEOUT")
   [[ -n "$EXCLUDE" ]] && args+=(--exclude "$EXCLUDE")
   sample_stats "$container" "$dir/$name.stats" &
   sampler=$!
-  "$BENCH_BIN" load "${args[@]}" "$@" > "$dir/$name.json" || status=$?
+  run_bench "$corpus" load "${args[@]}" "$@" > "$dir/$name.json" || status=$?
   kill "$sampler" 2>/dev/null || true
   wait "$sampler" 2>/dev/null || true
   local load1 peak avg peak_anon avg_anon cpu oom running errors result
@@ -254,9 +297,9 @@ run_cold() {
 run_warm() {
   local arm="$1" corpus="$2" label="$3" dir="$4"
   init_dir "$dir"
-  local args=(--url "http://127.0.0.1:$HOST_PORT/PIC-SURE" --corpus "$corpus" --timeout "$TIMEOUT" --only sync)
+  local args=(--url "$(bench_url "$arm")" --corpus "$corpus" --timeout "$TIMEOUT" --only sync)
   [[ -n "$EXCLUDE" ]] && args+=(--exclude "$EXCLUDE")
-  "$BENCH_BIN" load "${args[@]}" --concurrency 8 --passes 1 > "$dir/$arm-$label-warmup.json"
+  run_bench "$corpus" load "${args[@]}" --concurrency 8 --passes 1 > "$dir/$arm-$label-warmup.json"
   local c
   for c in $CONCURRENCIES; do
     load_once "$arm" "$corpus" "$arm-$label-c$c" "$dir" --only sync --concurrency "$c" \
@@ -307,14 +350,14 @@ run_rest() {
   t1=$(now)
   sleep 2
   {
-    echo "arm=$arm image=$(image_of "$arm") java_opts=$JAVA_OPTS cache_bytes=$CACHE_BYTES mem_limit=$MEM_LIMIT"
+    echo "arm=$arm image=$(image_of "$arm") java_opts=$JAVA_OPTS cache_bytes=$CACHE_BYTES mem_limit=$MEM_LIMIT extra_env=$EXTRA_ENV bench_network=${BENCH_NETWORK:-none}"
     awk -v a="$t0" -v b="$t1" 'BEGIN {printf "startup_s=%.2f\n", b - a}'
     echo "start_host_load1=$(sysctl -n vm.loadavg | awk '{print $2}')"
     echo "rest_cold $(rest_point "$container")"
   } > "$out"
-  local args=(--url "http://127.0.0.1:$HOST_PORT/PIC-SURE" --corpus "$corpus" --timeout "$TIMEOUT" --only sync)
+  local args=(--url "$(bench_url "$arm")" --corpus "$corpus" --timeout "$TIMEOUT" --only sync)
   [[ -n "$EXCLUDE" ]] && args+=(--exclude "$EXCLUDE")
-  "$BENCH_BIN" load "${args[@]}" --concurrency 1 --passes 1 > "$dir/$arm-rest-pass.json"
+  run_bench "$corpus" load "${args[@]}" --concurrency 1 --passes 1 > "$dir/$arm-rest-pass.json"
   echo "after_pass usage=$(mem_now "$container") anon_mib=$(anon_mib "$container") host_load1=$(sysctl -n vm.loadavg | awk '{print $2}')" >> "$out"
   sleep 30
   echo "rest_warm $(rest_point "$container")" >> "$out"
@@ -405,12 +448,13 @@ run_etl_docker() {
         --user "$(id -u):$(id -g)" -e LOADER_NAME=CSVLoader -e "HEAPSIZE=$HEAPSIZE" \
         -v "$out:/opt/local/hpds" "$JAVA_ETL_IMAGE" >/dev/null ;;
     rust)
-      local threads=()
+      local threads=() extra=()
       [[ -n "$ETL_THREADS" ]] && threads=(--threads "$ETL_THREADS")
+      read -r -a extra <<< "$ETL_ARGS"
       docker run -d --name "$name" --memory "$ETL_MEM_LIMIT" --memory-swap "$ETL_MEM_LIMIT" \
         --user "$(id -u):$(id -g)" -v "$input:/input:ro" -v "$(dirname "$out"):/work" "$RUST_ETL_IMAGE" \
         load --mode partitioned --no-config --input-dir /input --out "/work/$(basename "$out")" \
-        "${threads[@]}" >/dev/null ;;
+        "${threads[@]}" "${extra[@]}" >/dev/null ;;
     *) echo "unknown ETL engine $engine" >&2; return 2 ;;
   esac
   local stats="$out.etl.stats" peak=0 p a
@@ -426,7 +470,7 @@ run_etl_docker() {
   code=$(docker inspect -f '{{.State.ExitCode}} oom={{.State.OOMKilled}}' "$name")
   docker logs "$name" > "$out.etl.log" 2>&1 || true
   {
-    echo "engine=$engine image=$(docker inspect -f '{{.Config.Image}}' "$name") mem_limit=$ETL_MEM_LIMIT heapsize_mib=$HEAPSIZE threads=${ETL_THREADS:-default}"
+    echo "engine=$engine image=$(docker inspect -f '{{.Config.Image}}' "$name") mem_limit=$ETL_MEM_LIMIT heapsize_mib=$HEAPSIZE threads=${ETL_THREADS:-default} etl_args=${ETL_ARGS:-none}"
     echo "exit=$code"
     echo "wall_s=$(container_run_seconds "$name")"
     awk '$NF ~ /^[0-9]+$/ {printf "memory_peak_mib=%.0f\n", $NF / 1048576}' "$stats" | tail -1
