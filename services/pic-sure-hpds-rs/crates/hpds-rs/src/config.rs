@@ -63,7 +63,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_MAX_CROSS_COUNT_ENTRIES` | 5,000,000 | Most entries in a categorical or continuous cross count |
 /// | `HPDS_SYNC_TIMEOUT_SECONDS` | 300 | A sync query running longer is answered 503 |
 /// | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated file there |
-/// | `HPDS_SEARCH_GZIP` | on | `off` never compresses `/search` answers, whatever the request accepts |
+/// | `HPDS_SEARCH_GZIP` | off | `on` compresses `/search` answers for requests that accept gzip |
 /// | `HPDS_METRICS` | off | `on` serves `GET /metrics` in the Prometheus text format; off, that route is a 404 |
 /// | `SMALL_JOB_LIMIT` | 100 | An export with more `select` paths than this runs on the large pool |
 /// | `SMALL_TASK_THREADS` | 1 | Exports run at once on the small pool |
@@ -214,7 +214,7 @@ impl Config {
         };
         let search_gzip = match lookup("HPDS_SEARCH_GZIP") {
             Some(value) => parse_switch("HPDS_SEARCH_GZIP", &value)?,
-            None => true,
+            None => false,
         };
         let allow_plain = match lookup("HPDS_ALLOW_PLAIN") {
             Some(value) => parse_bool("HPDS_ALLOW_PLAIN", &value)?,
@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(c.result_max_file_bytes, 4 << 30);
         assert_eq!(c.result_memory_bytes, 64 << 20);
         assert!(!c.metrics);
-        assert!(c.search_gzip);
+        assert!(!c.search_gzip);
         assert_eq!(c.query_limits, QueryLimits::default());
         assert_eq!(c.query_limits.max_select_paths, 5_000);
         assert_eq!(c.query_limits.max_clause_depth, 64);
@@ -464,6 +464,7 @@ mod tests {
         let error = config(&[("HPDS_METRICS", "maybe")]).unwrap_err();
         assert!(error.contains("HPDS_METRICS"), "{error}");
         assert!(!config(&[("HPDS_SEARCH_GZIP", "off")]).unwrap().search_gzip);
+        assert!(config(&[("HPDS_SEARCH_GZIP", "on")]).unwrap().search_gzip);
         assert!(config(&[("HPDS_SEARCH_GZIP", "sometimes")]).is_err());
     }
 

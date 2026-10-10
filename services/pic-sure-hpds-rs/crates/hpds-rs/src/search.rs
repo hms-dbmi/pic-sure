@@ -226,8 +226,8 @@ impl SearchIndex {
 /// iteration order changes with every JVM start, the matches are collected into a `HashMap`,
 /// and the category values are a `HashSet`.
 ///
-/// While `HPDS_SEARCH_GZIP` is on (the default), a request whose `Accept-Encoding` accepts
-/// gzip ([`accepts_gzip`]) gets a body of at least [`MIN_GZIP_BYTES`] gzipped, with
+/// While `HPDS_SEARCH_GZIP` is on (it is off by default), a request whose `Accept-Encoding`
+/// accepts gzip ([`accepts_gzip`]) gets a body of at least [`MIN_GZIP_BYTES`] gzipped, with
 /// `Content-Encoding: gzip`, and a request that sends `Accept-Encoding` gets
 /// `Vary: Accept-Encoding` on any body of that size, compressed or not. A request without
 /// `Accept-Encoding`, or any request while the setting is off, gets the same bytes and

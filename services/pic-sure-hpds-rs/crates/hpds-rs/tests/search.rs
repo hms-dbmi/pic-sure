@@ -388,6 +388,11 @@ fn header_names(response: &axum::http::Response<axum::body::Bytes>) -> Vec<Strin
     names
 }
 
+/// The fixture with `HPDS_SEARCH_GZIP=on`.
+fn gzip_on() -> common::Fixture {
+    common::fixture_with(|c| c.search_gzip = true)
+}
+
 /// Terms whose answers are at least the compression threshold: the stored null and empty
 /// answers, and two matched on the fly.
 const LARGE_TERMS: [(&str, Option<&str>); 4] = [
@@ -399,7 +404,7 @@ const LARGE_TERMS: [(&str, Option<&str>); 4] = [
 
 #[tokio::test]
 async fn without_accept_encoding_the_answer_is_unchanged() {
-    let f = fixture();
+    let f = gzip_on();
     for (body, term) in LARGE_TERMS {
         let response = search_raw(&f.app, body, None).await;
         assert_eq!(
@@ -418,7 +423,7 @@ async fn without_accept_encoding_the_answer_is_unchanged() {
 
 #[tokio::test]
 async fn gzip_is_sent_only_when_accept_encoding_allows_it() {
-    let f = fixture();
+    let f = gzip_on();
     let cases: [(&str, bool); 12] = [
         ("gzip", true),
         ("GZIP", true),
@@ -469,11 +474,26 @@ async fn gzip_is_sent_only_when_accept_encoding_allows_it() {
 
 #[tokio::test]
 async fn stored_answers_are_compressed_once_and_reused() {
-    let f = fixture();
+    let f = gzip_on();
     for (body, _) in &LARGE_TERMS[..2] {
         let first = search_raw(&f.app, body, Some("gzip")).await;
         let second = search_raw(&f.app, body, Some("gzip")).await;
         assert_eq!(first.body(), second.body(), "{body}");
+    }
+}
+
+#[tokio::test]
+async fn by_default_a_gzip_request_gets_identity_bytes_and_no_vary() {
+    let f = fixture();
+    assert!(!f.config.search_gzip);
+    for (body, term) in LARGE_TERMS {
+        let response = search_raw(&f.app, body, Some("gzip")).await;
+        assert_eq!(
+            header_names(&response),
+            ["content-length", "content-type"],
+            "{body}"
+        );
+        assert_eq!(response.body().as_ref(), reference_body(&f, term), "{body}");
     }
 }
 
@@ -495,7 +515,7 @@ async fn search_gzip_off_answers_every_request_as_without_accept_encoding() {
 
 #[tokio::test]
 async fn small_answers_are_never_compressed() {
-    let f = fixture();
+    let f = gzip_on();
     let body = json_body("no-such-concept");
     let response = search_raw(&f.app, &body, Some("gzip")).await;
     assert!(response.body().len() < hpds_rs::encoding::MIN_GZIP_BYTES);
@@ -508,7 +528,7 @@ async fn small_answers_are_never_compressed() {
 
 #[tokio::test]
 async fn error_answers_are_never_compressed() {
-    let f = fixture();
+    let f = gzip_on();
     let error = search_raw(&f.app, "nope", Some("gzip")).await;
     assert_eq!(error.status(), StatusCode::BAD_REQUEST);
     assert!(error.headers().get("content-encoding").is_none());
