@@ -377,7 +377,9 @@ impl PartitionSet {
     /// load was in place. It lists the store id of each partition of that load, one per
     /// line as 32 lowercase hex digits ([`hpds_format::StoreId`]'s display form); blank
     /// lines are skipped. A line whose second token is `.combined` lists the combined
-    /// store; otherwise only the first token of a line is read. Every opened partition's id
+    /// store; a line with any other second token starting with `.` refuses the open, in
+    /// either combined mode, as a store kind this service does not know; otherwise only the
+    /// first token of a line is read. Every opened partition's id
     /// must be listed and every listed partition id must belong to an opened partition, or
     /// the open is refused as a partially published load. Without the file the stores open
     /// as found.
@@ -1119,7 +1121,8 @@ struct Generation {
 ///
 /// # Errors
 /// [`QueryError::Open`] when the file cannot be read, a line's first token is not a store
-/// id, or two lines are tagged `.combined`.
+/// id, two lines are tagged `.combined`, or a line carries another second token starting
+/// with `.` (a store kind this service does not know).
 fn read_generation(dir: &Path) -> Result<Option<Generation>> {
     let path = dir.join(GENERATION_FILE_NAME);
     let text = match std::fs::read_to_string(&path) {
@@ -1140,12 +1143,25 @@ fn read_generation(dir: &Path) -> Result<Option<Generation>> {
             ));
         }
         let id = token.to_ascii_lowercase();
-        if tokens.next() == Some(COMBINED_GENERATION_TAG) {
-            if generation.combined.replace(id).is_some() {
-                return Err(open_error(&path, "it lists more than one combined store"));
+        match tokens.next() {
+            Some(COMBINED_GENERATION_TAG) => {
+                if generation.combined.replace(id).is_some() {
+                    return Err(open_error(&path, "it lists more than one combined store"));
+                }
             }
-        } else {
-            generation.partitions.insert(id);
+            Some(tag) if tag.starts_with('.') => {
+                return Err(open_error(
+                    &path,
+                    format!(
+                        "it tags store id {id} with {tag:?}, a store this service does not \
+                         know (only {COMBINED_GENERATION_TAG:?} is). The store was written by \
+                         a newer ETL; serve it with a matching service"
+                    ),
+                ));
+            }
+            _ => {
+                generation.partitions.insert(id);
+            }
         }
     }
     Ok(Some(generation))

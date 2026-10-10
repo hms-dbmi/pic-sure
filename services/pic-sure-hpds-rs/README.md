@@ -143,7 +143,9 @@ partition reads one block per concept instead of one per partition, and gets the
   - the directory is unpartitioned and a combined store is listed or present.
 
   `HPDS_COMBINED_STORE=off` skips all of these and reads partitions only. The partitions'
-  own `.generation` check applies either way.
+  own `.generation` check applies either way, and so does one more: a `.generation` line
+  whose second token starts with `.` but is not `.combined` names a store kind this service
+  does not know (a newer ETL wrote it), and the open is refused saying so.
 - **Health.** `GET /actuator/health` answers `{"status":"UP","combinedStore":"IN_USE"}`
   (or `ABSENT`, `OFF`) when UP.
 

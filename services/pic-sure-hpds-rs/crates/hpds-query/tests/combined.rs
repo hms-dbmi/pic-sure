@@ -546,6 +546,22 @@ fn a_missing_unlisted_or_mismatched_combined_store_refuses_the_open() {
 }
 
 #[test]
+fn an_unknown_store_tag_in_the_generation_refuses_the_open() {
+    let (d, _) = small();
+    let saved = generation(&d.out);
+    let tagged = format!("{saved}{} .combined2\n", "0".repeat(32));
+    std::fs::write(d.out.join(".generation"), tagged).unwrap();
+    for mode in [CombinedMode::Auto, CombinedMode::Off] {
+        let message = open_error(&d.out, with_mode(lenient(), mode));
+        assert!(
+            message.contains("\".combined2\", a store this service does not know"),
+            "{message}"
+        );
+        assert!(!message.contains("partially published"), "{message}");
+    }
+}
+
+#[test]
 fn a_stale_partition_still_refuses_with_a_combined_store() {
     let (d, rows) = small();
     let fresh = partitioned_rows(&rows);
