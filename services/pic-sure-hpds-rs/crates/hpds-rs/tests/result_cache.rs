@@ -314,6 +314,25 @@ async fn an_answer_over_a_sixteenth_of_the_bound_is_not_stored() {
 }
 
 #[tokio::test]
+async fn the_smallest_bound_stores_the_lightest_answer() {
+    let min = hpds_query::MIN_RESULT_CACHE_BYTES;
+    let lightest =
+        json!({"expectedResultType": "COUNT", "userConsents": consents(&["unknown.c9"])});
+    for (capacity, stored) in [(min - 1, 0), (min, 1)] {
+        let f = fixture_with(|c| c.result_cache_bytes = capacity);
+        for _ in 0..2 {
+            assert_eq!(sync(&f.app, &lightest).await.body, "0");
+        }
+        let after = stats(&f);
+        assert_eq!(
+            (after.entries, after.hits),
+            (stored, stored),
+            "bound {capacity}: {after:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn the_byte_bound_is_honored() {
     let capacity = 16 << 10;
     let f = fixture_with(|c| c.result_cache_bytes = capacity);

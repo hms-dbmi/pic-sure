@@ -45,6 +45,18 @@ const ENTRY_OVERHEAD: u64 = 128;
 /// evict most of the others.
 const MAX_ENTRY_SHARE: u64 = 16;
 
+/// Bytes of the shortest key [`key_of`] writes: the generation (16), the result type
+/// `COUNT` behind its length (8 + 5), the routing byte (1), the partition count (8), one
+/// byte of partition bits (at most eight partitions), the no-clause tag (1) and the empty
+/// `authorizationFilters` JSON `[]` behind its length (8 + 2).
+const SHORTEST_KEY: u64 = 16 + 8 + 5 + 1 + 8 + 1 + 1 + 8 + 2;
+
+/// The smallest bound under which the cache can store any answer: the lightest possible
+/// entry (the shortest key, a one-byte COUNT body and [`ENTRY_OVERHEAD`]) is then exactly
+/// the largest share one entry may take. A smaller nonzero bound turns the cache on but
+/// stores nothing.
+pub const MIN_RESULT_CACHE_BYTES: u64 = MAX_ENTRY_SHARE * (SHORTEST_KEY + 1 + ENTRY_OVERHEAD);
+
 /// A sync answer as the HTTP layer sends it: the content type and the body bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncAnswer {

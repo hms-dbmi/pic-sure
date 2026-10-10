@@ -49,7 +49,7 @@ pub use partition::{
     COMBINED_DIR_NAME, CombinedMode, CombinedStatus, Layout, Partition, PartitionOptions,
     PartitionSet, PerPartitionCounts, Selection, SummaryColumnMeta, UNPARTITIONED_NAME,
 };
-pub use result_cache::{ResultCacheStats, SyncAnswer};
+pub use result_cache::{MIN_RESULT_CACHE_BYTES, ResultCacheStats, SyncAnswer};
 pub use results::{
     CategoricalCrossCounts, ConceptCounts, ContinuousCrossCounts, Dataframe, DataframeRows,
     PATIENT_ID_FIELD_NAME, PATIENTS_HEADER, RowBuffer, SyncResult,

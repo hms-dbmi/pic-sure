@@ -156,6 +156,16 @@ impl Config {
             }
             (None, None) => DEFAULT_CACHE_BYTES,
         };
+        let result_cache_bytes = parse_or(&lookup, "HPDS_RESULT_CACHE_BYTES", 0)?;
+        if result_cache_bytes > 0 && result_cache_bytes < hpds_query::MIN_RESULT_CACHE_BYTES {
+            warnings.push(format!(
+                "HPDS_RESULT_CACHE_BYTES={result_cache_bytes} is below {}, the smallest bound \
+                 under which the result cache can store an answer (one answer may take at \
+                 most a sixteenth of it), so the cache is on but stores nothing; set 0 to \
+                 turn it off or a larger bound",
+                hpds_query::MIN_RESULT_CACHE_BYTES
+            ));
+        }
         let engine_concurrency = positive(&lookup, "HPDS_ENGINE_CONCURRENCY", cpu_count())?;
         let blocking_threads = positive(
             &lookup,
@@ -270,7 +280,7 @@ impl Config {
             engine_concurrency,
             blocking_threads,
             max_connections: positive(&lookup, "HPDS_MAX_CONNECTIONS", 512)?,
-            result_cache_bytes: parse_or(&lookup, "HPDS_RESULT_CACHE_BYTES", 0)?,
+            result_cache_bytes,
             warnings,
         })
     }
@@ -409,6 +419,22 @@ mod tests {
         let c = config(&[("HPDS_RESULT_CACHE_BYTES", "268435456")]).unwrap();
         assert_eq!(c.result_cache_bytes, 256 << 20);
         assert!(config(&[("HPDS_RESULT_CACHE_BYTES", "lots")]).is_err());
+        assert!(c.warnings.is_empty());
+    }
+
+    #[test]
+    fn a_result_cache_bound_too_small_to_store_anything_is_warned_about() {
+        let min = hpds_query::MIN_RESULT_CACHE_BYTES;
+        for (bytes, warned) in [(0, false), (1, true), (min - 1, true), (min, false)] {
+            let c = config(&[("HPDS_RESULT_CACHE_BYTES", &bytes.to_string())]).unwrap();
+            assert_eq!(c.result_cache_bytes, bytes);
+            assert_eq!(
+                c.warnings.len(),
+                usize::from(warned),
+                "{bytes}: {:?}",
+                c.warnings
+            );
+        }
     }
 
     #[test]
