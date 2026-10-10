@@ -469,6 +469,7 @@ fn existing_output_directory_keeps_its_key_and_gets_a_fresh_store() {
     assert_eq!(
         names,
         [
+            ".generation",
             "columnMeta.csv",
             "encryption_key",
             "etl-report.json",

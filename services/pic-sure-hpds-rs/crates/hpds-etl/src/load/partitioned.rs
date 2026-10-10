@@ -1,13 +1,15 @@
 //! `hpds-etl load --mode partitioned`: a directory of `<partition>-allConcepts.csv` files to
-//! one store per partition, as the harmonization branch's `CSVLoader` builds javabin
-//! partitions.
+//! one store with a consent partition per file, from the rows the harmonization branch's
+//! `CSVLoader` puts in each javabin partition.
 //!
 //! `CSVLoader.main` walks its base directory recursively, takes every regular file whose
 //! path ends in `allConcepts.csv`, names its partition by the file name up to the first
 //! `-`, and loads each file sequentially into `<file's directory>/<partition>/` with the
 //! one key in `<base>/encryption_key`. This loader takes the same files and the same
-//! partition names, builds the partitions in parallel into `<out>/<partition>/`, and differs
-//! where Java would crash, overwrite, or write a partition the service cannot see:
+//! partition names, builds each partition in parallel with `CSVLoader`'s rules (its type
+//! fixed by its own first row, its own drops and rollup) into a staged store, then merges
+//! the staged stores into one store ([`crate::merge`]), and differs where Java would crash,
+//! overwrite, or write a partition the service cannot see:
 //!
 //! - A file whose name has no `-` before `allConcepts.csv` (a bare `allConcepts.csv`),
 //!   or whose prefix is empty or `.`/`..`, is refused. Java names the partition after the
@@ -18,12 +20,13 @@
 //! - A matching file in a subdirectory is refused. Java writes its partition beside it,
 //!   nested where the service, which lists only immediate subdirectories, never reads it.
 //!
-//! Every partition is staged beside `out` and nothing is published until all are complete;
-//! a failure in any partition publishes none. Unless [`PartitionedLoadOptions::combined`]
-//! is off, the combined store of every partition is then built from the staged partitions
-//! ([`crate::combined`]) and published with them. Into a new `out` the set appears at once;
-//! into an existing one the partitions are replaced one after another and the
-//! `.generation` marker is written last (see [`PartitionedStaging::publish`]).
+//! - A concept typed numeric in one partition and categorical in another fails the load,
+//!   naming the concept and both partitions; one block cannot hold both. Java loads both
+//!   and throws when a query reads the concept.
+//!
+//! The partitions are staged beside `out`, merged, and removed; nothing is published until
+//! the merged store is complete, and a failure in any partition publishes nothing. The
+//! store is published as [`crate::load::load`] publishes one.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -33,15 +36,15 @@ use rayon::prelude::*;
 use serde::Serialize;
 
 use super::{
-    CONFIG_FILE_NAME, InputFile, KeySource, LoadOptions, LoadReport, Mode, StoreSettings,
-    build_store, resolve_config, thread_pool, warn_without_all_concepts_entry,
+    CONFIG_FILE_NAME, InputFile, KeySource, LoadOptions, LoadReport, Mode, REPORT_FILE_NAME,
+    Staging, StoreSettings, build_store, check_output, resolve_config, thread_pool,
+    warn_without_all_concepts_entry,
 };
-use crate::combined::CombinedReport;
+use crate::cleanup::TemporaryDir;
 use crate::error::{EtlError, Result};
-use crate::partitions::{
-    PartitionRecord, PartitionedStaging, check_partition_name, check_partitioned_output,
-    resolve_shared_key,
-};
+use crate::merge::{MergeReport, MergeSource, SourceStore, write_store};
+use crate::partitions::{check_partition_name, resolve_shared_key};
+use crate::private_fs;
 
 /// The suffix `CSVLoader` selects input files by.
 pub const PARTITION_FILE_SUFFIX: &str = "allConcepts.csv";
@@ -54,7 +57,7 @@ pub const PARTITION_CONFIG_KEY: &str = "allConcepts";
 pub struct PartitionedLoadOptions {
     /// Directory holding the `<partition>-allConcepts.csv` files.
     pub input_dir: PathBuf,
-    /// The directory to write `<partition>/` stores into.
+    /// The store directory to create or replace.
     pub out: PathBuf,
     /// Where the key comes from. [`KeySource::File`] also installs a copy as
     /// `<out>/encryption_key`; [`KeySource::OutputDirectoryKeyFile`] reads that file.
@@ -73,9 +76,6 @@ pub struct PartitionedLoadOptions {
     pub threads: Option<usize>,
     /// Directory for the spill files; `None` uses each partition's staging directory.
     pub tmp: Option<PathBuf>,
-    /// Also write the combined store of every partition (`--no-combined` turns it off).
-    /// Off, an existing combined store in `out` is removed by the publish.
-    pub combined: bool,
 }
 
 impl PartitionedLoadOptions {
@@ -90,19 +90,19 @@ impl PartitionedLoadOptions {
             spill_partitions: None,
             threads: None,
             tmp: None,
-            combined: true,
         }
     }
 }
 
-/// What a partitioned load did: one [`LoadReport`] per partition, also written to that
-/// partition's `etl-report.json`.
+/// What a partitioned load did, written to the store's `etl-report.json`: one
+/// [`LoadReport`] per partition, for the staged store it was built in, and what the merge
+/// into one store did.
 #[derive(Clone, Debug, Serialize)]
 pub struct PartitionedLoadReport {
     /// Partition name to its report, in byte order of the names.
     pub partitions: BTreeMap<String, LoadReport>,
-    /// What building the combined store did, when one was built.
-    pub combined: Option<CombinedReport>,
+    /// What merging the partitions into the store did, its id and overlap counts among it.
+    pub store: MergeReport,
     /// Wall time in seconds.
     pub elapsed_seconds: f64,
 }
@@ -210,24 +210,23 @@ fn walk(dir: &Path, found: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-/// Loads every partition file in `options.input_dir` into `<options.out>/<partition>/`
-/// with `CSVLoader`'s rules ([`Mode::Partitioned`]), all under one key.
+/// Loads every partition file in `options.input_dir` into one store at `options.out`, a
+/// consent partition per file, with `CSVLoader`'s rules ([`Mode::Partitioned`]).
 ///
 /// Inputs, output, key and config are checked before anything is written. The partitions
-/// build in parallel on one thread pool into a staging directory beside `out`, then their
-/// combined store when [`PartitionedLoadOptions::combined`] is set, and the set is published
-/// once every store is complete, as [`PartitionedStaging::publish`] describes. Every
-/// partition's `.generation` line carries [`crate::partitions::PATIENTS_INDEXED_TAG`]: a
-/// loaded store's patient set is the set of patients its rows hold.
+/// build in parallel on one thread pool into staged stores inside the staging directory,
+/// are merged into the store there ([`write_store`]) and removed, and the store is published
+/// as [`crate::load::load`] publishes one. [`KeySource::File`] also installs a copy of the
+/// key as `<out>/encryption_key`.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when neither `config` nor `no_config` is set; everything
-/// [`discover_partition_inputs`] and [`check_partitioned_output`] refuse; a key
-/// that cannot be read, a missing `<out>/encryption_key`, or an `--key-file` that differs
-/// from an existing `<out>/encryption_key`; [`EtlError::InvalidPatient`] for the first row
-/// of a partition whose patient number Java would fail on, or that is negative; the errors
-/// of [`crate::combined::build_combined`], a concept typed differently in two partitions
-/// among them; I/O, CSV, config and format errors.
+/// [`discover_partition_inputs`] and [`check_output`] refuse; a key that cannot be read, a
+/// missing `<out>/encryption_key`, or an `--key-file` that differs from an existing
+/// `<out>/encryption_key`; [`EtlError::InvalidPatient`] for the first row of a partition
+/// whose patient number Java would fail on, or that is negative; the errors of
+/// [`write_store`], a concept typed differently in two partitions among them; I/O, CSV,
+/// config and format errors.
 pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedLoadReport> {
     let started = Instant::now();
     if options.config.is_none() && !options.no_config {
@@ -237,7 +236,7 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
     }
     let inputs = discover_partition_inputs(&options.input_dir)?;
     let names: Vec<String> = inputs.iter().map(|i| i.name.clone()).collect();
-    check_partitioned_output(&options.out, &names)?;
+    check_output(&options.out, &options.key)?;
     let (protection, install_key) = resolve_shared_key(&options.key, &options.out)?;
     let configs = resolve_config(&LoadOptions {
         config: options.config.clone(),
@@ -265,7 +264,8 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
         "loading partitions"
     );
 
-    let mut staging = PartitionedStaging::create(&options.out, &names, options.combined)?;
+    let mut staging = Staging::create(&options.out)?;
+    let parts = TemporaryDir::create(staging.path(), "partitions")?;
     let pool = thread_pool(options.threads)?;
     let reports: Vec<LoadReport> = pool.install(|| {
         inputs
@@ -275,7 +275,9 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
                     path: input.path.clone(),
                     config_key: PARTITION_CONFIG_KEY.into(),
                 };
-                let report = build_store(&staging.partition_dir(&input.name), &[file], &settings)?;
+                let dir = parts.path().join(&input.name);
+                private_fs::create_dir(&dir).map_err(EtlError::io("creating", &dir))?;
+                let report = build_store(&dir, &[file], &settings)?;
                 tracing::info!(
                     partition = %input.name,
                     concepts = report.counts.concepts,
@@ -287,36 +289,38 @@ pub fn load_partitioned(options: &PartitionedLoadOptions) -> Result<PartitionedL
             })
             .collect::<Result<Vec<_>>>()
     })?;
-    let combined = staging.build_combined(&protection, &pool)?;
+    let sources = names
+        .iter()
+        .map(|name| {
+            let store = SourceStore::open(&parts.path().join(name), protection.clone())?;
+            let observed = store.patients().clone();
+            Ok(MergeSource {
+                name: name.clone(),
+                store,
+                observed: Some(observed),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let merged = write_store(sources, true, staging.path(), &protection, &pool)?;
+    drop(parts);
     if let Some(key) = install_key {
         staging.stage_key(&key)?;
     }
-    let partitions: BTreeMap<String, LoadReport> = names.into_iter().zip(reports).collect();
-    let records = partitions
-        .iter()
-        .map(|(name, report)| {
-            let record = PartitionRecord {
-                store_id: report.store_id.clone(),
-                patients_indexed: true,
-            };
-            (name.clone(), record)
-        })
-        .collect();
-    staging.publish(
-        &options.out,
-        &records,
-        combined.as_ref().map(|c| c.store_id.as_str()),
-    )?;
     let report = PartitionedLoadReport {
-        partitions,
-        combined,
+        partitions: names.into_iter().zip(reports).collect(),
+        store: merged,
         elapsed_seconds: started.elapsed().as_secs_f64(),
     };
+    let report_path = staging.path().join(REPORT_FILE_NAME);
+    let json = serde_json::to_vec_pretty(&report)
+        .map_err(|e| EtlError::io("encoding", &report_path)(e.into()))?;
+    private_fs::write_file(&report_path, &json).map_err(EtlError::io("writing", &report_path))?;
+    staging.publish(&options.out, &report.store.store_id)?;
     tracing::info!(
         out = %options.out.display(),
         partitions = report.partitions.len(),
         seconds = report.elapsed_seconds,
-        "partitions written"
+        "partitioned store written"
     );
     Ok(report)
 }

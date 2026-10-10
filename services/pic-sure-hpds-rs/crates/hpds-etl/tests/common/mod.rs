@@ -51,7 +51,7 @@ impl Store {
         let ts = |t: i64| (t != NO_TIMESTAMP).then_some(t);
         match self
             .reader
-            .read_block(&self.codec, self.meta(path))
+            .read_block(&self.codec, self.meta(path), &self.index.membership())
             .unwrap()
         {
             Block::Numeric(b) => b

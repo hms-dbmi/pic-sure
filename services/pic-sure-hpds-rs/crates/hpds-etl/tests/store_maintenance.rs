@@ -44,11 +44,7 @@ fn run_hpds_etl(args: &[&str]) -> std::process::Output {
 /// The rows of `path` read from an opened store, in the shape of [`Store::rows`].
 fn open_store_rows(store: &OpenStore, path: &str) -> Vec<common::Row> {
     let ts = |t: i64| (t != NO_TIMESTAMP).then_some(t);
-    match store
-        .reader
-        .read_block(&store.codec, store.index.get(path).unwrap())
-        .unwrap()
-    {
+    match store.read_block(store.index.get(path).unwrap()).unwrap() {
         Block::Numeric(b) => b
             .by_key()
             .iter()
@@ -151,7 +147,7 @@ fn remove_concepts_without_compaction_drops_exact_lines_from_the_index_only() {
         blocks_before
     );
     for concept in after.index.concepts() {
-        after.reader.read_block(&after.codec, concept).unwrap();
+        after.read_block(concept).unwrap();
     }
     let mut csv = Vec::new();
     write_column_meta_csv(&mut csv, after.index.concepts()).unwrap();
@@ -344,7 +340,7 @@ fn dump_and_patients_through_the_binary() {
     let opened = OpenStore::open(&store.out, protection()).unwrap();
     let mut patients = Vec::new();
     assert_eq!(
-        dump_patients(&opened, &mut patients).unwrap(),
+        dump_patients(opened.index.patients(), &mut patients).unwrap(),
         store.patients().len() as u64
     );
 }

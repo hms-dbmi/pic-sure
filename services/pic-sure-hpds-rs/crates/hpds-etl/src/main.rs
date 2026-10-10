@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use hpds_etl::load::COLUMN_META_CSV_NAME;
-use hpds_etl::load::{KeySource, LoadOptions, Mode, PartitionedLoadOptions};
+use hpds_etl::load::{
+    KeySource, LEGACY_COMBINED_DIR_NAME, LoadOptions, Mode, PartitionedLoadOptions,
+};
 use hpds_etl::migrate::{EXPORT_CONCEPTS_FILE, MigrateOptions};
 use hpds_etl::output;
-use hpds_etl::partitions::StoreLayout;
+use hpds_etl::partitions::{StoreLayout, partition_dirs};
 use hpds_etl::store::{OpenStore, resolve_protection};
 use hpds_etl::{EtlError, Result};
 use hpds_format::{INDEX_FILE_NAME, Protection};
@@ -25,7 +26,7 @@ enum Command {
     /// Load phenotype CSV into a new store, following one of the Java loaders.
     Load(LoadArgs),
     /// Build a new store from a javabin store exported by the Java ExportForMigration loader,
-    /// or one store per partition from a directory of per-partition exports.
+    /// or a consent-partitioned store from a directory of per-partition exports.
     Migrate(MigrateArgs),
     /// Remove the concepts named in a file from a store, as RemoveConceptFromMetadata does.
     RemoveConcepts(RemoveConceptsArgs),
@@ -33,24 +34,6 @@ enum Command {
     ColumnMetaCsv(ColumnMetaCsvArgs),
     /// Write a store as canonical CSV in DumpSourceCSV layout and order, or its patient IDs.
     Dump(DumpArgs),
-    /// Build, rebuild or remove the combined store of a partitioned store in place.
-    Combine(CombineArgs),
-}
-
-#[derive(Args)]
-struct CombineArgs {
-    /// Partitioned store directory. Its partitions are read, never changed.
-    #[arg(long)]
-    store: PathBuf,
-    /// Remove the combined store and its .generation line instead of building one, so a
-    /// query service without combined store support opens the store again.
-    #[arg(long)]
-    remove: bool,
-    /// Worker threads for merging blocks.
-    #[arg(long)]
-    threads: Option<usize>,
-    #[command(flatten)]
-    key: KeyArgs,
 }
 
 #[derive(Args)]
@@ -78,7 +61,8 @@ impl KeyArgs {
 #[derive(Args)]
 struct MigrateArgs {
     /// Directory holding the export's concepts.bin and patients.txt, or one such directory
-    /// per partition, named after the partition, which migrates into <out>/<partition>/.
+    /// per partition, named after the partition, which becomes a consent partition of the
+    /// store.
     #[arg(long)]
     export: PathBuf,
     /// Store directory to create or replace.
@@ -95,16 +79,11 @@ struct MigrateArgs {
     /// list them in etl-report.json, instead of stopping.
     #[arg(long)]
     skip_inconsistent: bool,
-    /// Partitioned exports only: do not write the combined store of every partition, and
-    /// remove one that <out> already has.
-    #[arg(long)]
-    no_combined: bool,
 }
 
 #[derive(Args)]
 struct RemoveConceptsArgs {
-    /// Store directory to change in place. A partitioned store has every partition changed,
-    /// then its combined store.
+    /// Store directory to change in place, under its store lock.
     #[arg(long)]
     store: PathBuf,
     /// File naming one concept path per line (conceptsToRemove.txt).
@@ -119,18 +98,16 @@ struct RemoveConceptsArgs {
 
 #[derive(Args)]
 struct ColumnMetaCsvArgs {
-    /// Store directory to read. A partitioned store has each partition's columnMeta.csv
-    /// regenerated in place; its combined store is left as it is.
+    /// Store directory to read. For a partitioned store, each concept's row combines its
+    /// metadata across partitions (counts summed, category values unioned), as the query
+    /// service's /search does; no per-partition file is written.
     #[arg(long)]
     store: PathBuf,
-    /// File to write. Defaults to columnMeta.csv in the store directory. For a partitioned
-    /// store, only with --merged.
+    /// File to write. Defaults to columnMeta.csv in the store directory.
     #[arg(long)]
     out: Option<PathBuf>,
-    /// Partitioned stores only: write one columnMeta.csv with one row per concept, its
-    /// metadata combined across partitions (counts summed, category values unioned), for
-    /// dictionary hydration. Java produces no such file. Unlike dump --concat, which only
-    /// concatenates the partitions' rows.
+    /// Partitioned stores only, and the default for them: kept so earlier invocations run
+    /// unchanged.
     #[arg(long)]
     merged: bool,
     #[command(flatten)]
@@ -139,8 +116,7 @@ struct ColumnMetaCsvArgs {
 
 #[derive(Args)]
 struct DumpArgs {
-    /// Store directory to read. A partitioned store's combined store is never read, since
-    /// it repeats the partitions' rows.
+    /// Store directory to read.
     #[arg(long)]
     store: PathBuf,
     /// File to write, mode 0600. Defaults to standard output. For a partitioned store
@@ -173,7 +149,7 @@ enum ModeArg {
     /// SequentialLoader on CSV input (LowRAMMultiCSVLoader): one or more files, rollup on.
     Sequential,
     /// CSVLoader on the harmonization branch: every <partition>-allConcepts.csv in
-    /// --input-dir to its own store in <out>/<partition>/, headerless, rollup always on.
+    /// --input-dir to a consent partition of the store, headerless, rollup always on.
     Partitioned,
 }
 
@@ -189,8 +165,7 @@ struct LoadArgs {
     /// Partitioned mode: directory holding the <partition>-allConcepts.csv files.
     #[arg(long, conflicts_with = "inputs")]
     input_dir: Option<PathBuf>,
-    /// Store directory to create or replace. In partitioned mode, the directory the
-    /// <partition>/ stores and the shared encryption_key go into.
+    /// Store directory to create or replace.
     #[arg(long)]
     out: PathBuf,
     /// Key file, read with Crypto.loadKey rules. Defaults to <out>/encryption_key.
@@ -229,10 +204,6 @@ struct LoadArgs {
     /// Sequential mode only: chunk size in GiB, as Java's MAX_CHUNK_SIZE.
     #[arg(long)]
     max_chunk_gib: Option<f64>,
-    /// Partitioned mode only: do not write the combined store of every partition, and
-    /// remove one that <out> already has.
-    #[arg(long)]
-    no_combined: bool,
 }
 
 impl LoadArgs {
@@ -268,7 +239,6 @@ impl LoadArgs {
         options.spill_partitions = self.spill_partitions;
         options.threads = self.threads;
         options.tmp = self.tmp;
-        options.combined = !self.no_combined;
         Ok(options)
     }
 }
@@ -326,7 +296,6 @@ fn main() -> ExitCode {
         Command::RemoveConcepts(args) => run_remove_concepts(args),
         Command::ColumnMetaCsv(args) => run_column_meta_csv(args),
         Command::Dump(args) => run_dump(args),
-        Command::Combine(args) => run_combine(args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -364,18 +333,12 @@ fn run_load(args: LoadArgs) -> Result<()> {
             .iter()
             .map(|(name, partition)| (name.as_str(), &partition.counts))
             .collect();
-        print_json(&counts);
+        print_json(&serde_json::json!({ "partitions": counts, "store": report.store }));
         return Ok(());
     }
     if args.input_dir.is_some() {
         return Err(EtlError::Usage(
             "--input-dir is for partitioned mode; use --input".into(),
-        ));
-    }
-    if args.no_combined {
-        return Err(EtlError::Usage(
-            "--no-combined is for partitioned mode, the only one that writes a combined store"
-                .into(),
         ));
     }
     let report = hpds_etl::load::load(&args.into())?;
@@ -399,15 +362,8 @@ fn run_migrate(args: MigrateArgs) -> Result<()> {
         },
         threads: args.threads,
         skip_inconsistent: args.skip_inconsistent,
-        combined: !args.no_combined,
     };
     match StoreLayout::detect(&options.export, EXPORT_CONCEPTS_FILE)? {
-        StoreLayout::Root if args.no_combined => {
-            return Err(EtlError::Usage(
-                "--no-combined is for a partitioned export, the only one that gets a combined store"
-                    .into(),
-            ));
-        }
         StoreLayout::Root => print_json(&hpds_etl::migrate::migrate(&options)?),
         StoreLayout::Partitioned(_) => {
             print_json(&hpds_etl::migrate::migrate_partitioned(&options)?)
@@ -416,118 +372,122 @@ fn run_migrate(args: MigrateArgs) -> Result<()> {
     Ok(())
 }
 
-/// The layout of the store a maintenance command reads, and the protection its key
-/// selects: for a partitioned store the key defaults to the root encryption_key.
-fn open_layout(store: &Path, key: &KeyArgs) -> Result<(StoreLayout, Protection)> {
-    let layout = StoreLayout::detect(store, INDEX_FILE_NAME)?;
-    let protection = resolve_protection(&key.source(KeySource::StoreDirectory), store)?;
-    Ok((layout, protection))
+/// Checks that `store` holds a store a maintenance command can read, and resolves the
+/// protection its key selects (the key defaults to the store's `encryption_key`). A
+/// directory holding a partitioned store of format 1 (no root `pheno.index`, but partition
+/// directories or a combined store) is refused naming `hpds-etl convert`; a format 1 root
+/// index is refused when it is read.
+///
+/// # Errors
+/// [`EtlError::Usage`] for a missing or format 1 partitioned store, and key errors.
+fn open_layout(store: &Path, key: &KeyArgs) -> Result<Protection> {
+    if !store.join(INDEX_FILE_NAME).is_file() {
+        let old = store.is_dir()
+            && (store.join(LEGACY_COMBINED_DIR_NAME).exists()
+                || !partition_dirs(store)?.is_empty());
+        return Err(EtlError::Usage(if old {
+            format!(
+                "{} holds a partitioned store of format 1 (one store per partition directory), which only hpds-etl convert reads; convert it with hpds-etl convert --store {} --out <dir>",
+                store.display(),
+                store.display()
+            )
+        } else {
+            format!("{} holds no {INDEX_FILE_NAME}", store.display())
+        }));
+    }
+    resolve_protection(&key.source(KeySource::StoreDirectory), store)
 }
 
 fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
-    let (layout, protection) = open_layout(&args.store, &args.key)?;
-    match layout {
-        StoreLayout::Root => print_json(&hpds_etl::store_maintenance::remove_concepts(
-            &args.store,
-            &args.concepts,
-            &protection,
-            !args.no_compact,
-        )?),
-        StoreLayout::Partitioned(partitions) => {
-            print_json(&hpds_etl::store_maintenance::remove_concepts_partitioned(
-                &partitions,
-                hpds_etl::combined::existing_combined_dir(&args.store).as_deref(),
-                &args.concepts,
-                &protection,
-                !args.no_compact,
-            )?)
-        }
-    }
+    let protection = open_layout(&args.store, &args.key)?;
+    print_json(&hpds_etl::store_maintenance::remove_concepts(
+        &args.store,
+        &args.concepts,
+        &protection,
+        !args.no_compact,
+    )?);
     Ok(())
 }
 
 fn run_column_meta_csv(args: ColumnMetaCsvArgs) -> Result<()> {
-    let (layout, protection) = open_layout(&args.store, &args.key)?;
-    match layout {
-        StoreLayout::Root if args.merged => {
-            return Err(EtlError::Usage(format!(
-                "--merged needs a partitioned store; {} is not partitioned",
-                args.store.display()
-            )));
-        }
-        StoreLayout::Root => {
-            let rows = hpds_etl::store_maintenance::regenerate_column_meta_csv(
-                &args.store,
-                args.out.as_deref(),
-                &protection,
-            )?;
-            tracing::info!(rows, "columnMeta.csv written");
-        }
-        StoreLayout::Partitioned(partitions) if args.merged => {
-            let dirs: Vec<(String, PathBuf)> =
-                partitions.into_iter().map(|p| (p.name, p.dir)).collect();
-            let target = args
-                .out
-                .unwrap_or_else(|| args.store.join(COLUMN_META_CSV_NAME));
-            let rows = hpds_etl::store_maintenance::write_merged_column_meta_csv(
-                &dirs,
-                &target,
-                &protection,
-            )?;
-            tracing::info!(rows, out = %target.display(), "merged columnMeta.csv written");
-        }
-        StoreLayout::Partitioned(partitions) => {
-            if args.out.is_some() {
-                return Err(EtlError::Usage(
-                    "--out takes the merged file; without --merged each partition's columnMeta.csv is regenerated in place".into(),
-                ));
-            }
-            for partition in partitions {
-                let rows = hpds_etl::store_maintenance::regenerate_column_meta_csv(
-                    &partition.dir,
-                    None,
-                    &protection,
-                )?;
-                tracing::info!(partition = %partition.name, rows, "columnMeta.csv written");
-            }
-        }
+    let protection = open_layout(&args.store, &args.key)?;
+    if args.merged && !hpds_etl::store::read_index(&args.store, &protection)?.is_partitioned() {
+        return Err(EtlError::Usage(format!(
+            "--merged needs a partitioned store; {} is not partitioned",
+            args.store.display()
+        )));
     }
+    let rows = hpds_etl::store_maintenance::regenerate_column_meta_csv(
+        &args.store,
+        args.out.as_deref(),
+        &protection,
+    )?;
+    tracing::info!(rows, "columnMeta.csv written");
     Ok(())
 }
 
 fn run_dump(args: DumpArgs) -> Result<()> {
-    let (layout, protection) = open_layout(&args.store, &args.key)?;
-    let partitions = match layout {
-        StoreLayout::Root if args.concat => {
+    let protection = open_layout(&args.store, &args.key)?;
+    if let Some(out) = &args.out {
+        output::check_outside_stores(out, &[&args.store])?;
+    }
+    let store = OpenStore::open(&args.store, protection)?;
+    let table = store.index.partition_table();
+    if table.is_empty() {
+        if args.concat {
             return Err(EtlError::Usage(format!(
                 "--concat needs a partitioned store; {} is not partitioned",
                 args.store.display()
             )));
         }
-        StoreLayout::Root => {
-            if let Some(out) = &args.out {
-                output::check_outside_stores(out, &[&args.store])?;
+        return write_to(args.out.as_deref(), args.force, |out| {
+            if args.patients {
+                let count = hpds_etl::dump::dump_patients(store.index.patients(), out)?;
+                tracing::info!(patients = count, "patient IDs written");
+            } else {
+                let counts = hpds_etl::dump::dump(&store, out)?;
+                tracing::info!(
+                    concepts = counts.concepts,
+                    observations = counts.observations,
+                    "dump written"
+                );
             }
-            let store = OpenStore::open(&args.store, protection)?;
+            Ok(())
+        });
+    }
+    let mut names: Vec<(usize, &str)> = table
+        .partitions
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (i, p.name.as_str()))
+        .collect();
+    names.sort_by(|a, b| a.1.cmp(b.1));
+    if args.concat {
+        if args.patients {
             return write_to(args.out.as_deref(), args.force, |out| {
-                write_dump(std::slice::from_ref(&store), args.patients, out)
+                let count = hpds_etl::dump::dump_patients(store.index.patients(), out)?;
+                tracing::info!(patients = count, "patient IDs written");
+                Ok(())
             });
         }
-        StoreLayout::Partitioned(partitions) => partitions,
-    };
-    let protected: Vec<&Path> = std::iter::once(args.store.as_path())
-        .chain(partitions.iter().map(|p| p.dir.as_path()))
-        .collect();
-    if let Some(out) = &args.out {
-        output::check_outside_stores(out, &protected)?;
-    }
-    if args.concat {
-        let stores = partitions
-            .iter()
-            .map(|p| OpenStore::open(&p.dir, protection.clone()))
-            .collect::<Result<Vec<_>>>()?;
+        let parent = match &args.out {
+            Some(out) => out
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map_or_else(|| PathBuf::from("."), Path::to_path_buf),
+            None => std::env::temp_dir(),
+        };
+        let split = hpds_etl::dump::split_by_partition(&store, &parent)?;
+        let ordered: Vec<&hpds_etl::dump::PartitionRows> =
+            names.iter().map(|(i, _)| &split.partitions[*i]).collect();
         return write_to(args.out.as_deref(), args.force, |out| {
-            write_dump(&stores, args.patients, out)
+            let counts = hpds_etl::dump::write_partition_dumps(&ordered, out)?;
+            tracing::info!(
+                concepts = counts.concepts,
+                observations = counts.observations,
+                "dump written"
+            );
+            Ok(())
         });
     }
     let Some(dir) = args.out else {
@@ -536,38 +496,29 @@ fn run_dump(args: DumpArgs) -> Result<()> {
         ));
     };
     output::prepare_output_dir(&dir)?;
-    for partition in partitions {
-        let store = OpenStore::open(&partition.dir, protection.clone())?;
-        let path = dir.join(format!("{}.csv", partition.name));
-        write_to(Some(&path), args.force, |out| {
-            write_dump(std::slice::from_ref(&store), args.patients, out)
-        })?;
-    }
-    Ok(())
-}
-
-fn run_combine(args: CombineArgs) -> Result<()> {
-    let (layout, protection) = open_layout(&args.store, &args.key)?;
-    if layout == StoreLayout::Root {
-        return Err(EtlError::Usage(format!(
-            "{} is not partitioned; only a partitioned store has a combined store",
-            args.store.display()
-        )));
-    }
-    if args.remove {
-        let removed = hpds_etl::combined::remove_combined(&args.store, &protection)?;
-        tracing::info!(removed, store = %args.store.display(), "combined store removed");
+    if args.patients {
+        for (i, name) in &names {
+            let path = dir.join(format!("{name}.csv"));
+            write_to(Some(&path), args.force, |out| {
+                hpds_etl::dump::dump_patients(&table.partitions[*i].patients, out).map(|_| ())
+            })?;
+        }
         return Ok(());
     }
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(args.threads.unwrap_or(0))
-        .build()
-        .map_err(|e| EtlError::ThreadPool(e.to_string()))?;
-    print_json(&hpds_etl::combined::combine_in_place(
-        &args.store,
-        &protection,
-        &pool,
-    )?);
+    let split = hpds_etl::dump::split_by_partition(&store, &dir)?;
+    for (i, name) in &names {
+        let path = dir.join(format!("{name}.csv"));
+        write_to(Some(&path), args.force, |out| {
+            let counts = hpds_etl::dump::write_partition_dumps(&[&split.partitions[*i]], out)?;
+            tracing::info!(
+                partition = %name,
+                concepts = counts.concepts,
+                observations = counts.observations,
+                "dump written"
+            );
+            Ok(())
+        })?;
+    }
     Ok(())
 }
 
@@ -582,19 +533,4 @@ fn write_to(
         Some(path) => output::write_output_file(path, force, write),
         None => write(&mut std::io::stdout().lock()),
     }
-}
-
-fn write_dump(stores: &[OpenStore], patients: bool, out: &mut dyn Write) -> Result<()> {
-    if patients {
-        let count = hpds_etl::dump::dump_patients_merged(stores, out)?;
-        tracing::info!(patients = count, "patient IDs written");
-    } else {
-        let counts = hpds_etl::dump::dump_merged(stores, out)?;
-        tracing::info!(
-            concepts = counts.concepts,
-            observations = counts.observations,
-            "dump written"
-        );
-    }
-    Ok(())
 }

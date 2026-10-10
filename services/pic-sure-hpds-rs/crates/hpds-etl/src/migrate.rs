@@ -31,30 +31,27 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use hpds_format::{
     BLOCKS_FILE_NAME, Block, BlockCodec, BlockLocation, BlocksReader, BlocksWriter, CategoricalRow,
-    ConceptMeta, ConceptType, CryptoKey, FormatError, IndexHeader, NO_TIMESTAMP,
-    NumericObservation, PhenoIndex, Protection, StoreId, decrypt_java_block,
-    encode_interned_categorical_payload, encode_numeric_payload, encrypt_java_block,
-    java_string_cmp,
+    ConceptMeta, ConceptType, CryptoKey, FormatError, Membership, NO_TIMESTAMP, NumericObservation,
+    PhenoIndex, Protection, StoreId, decrypt_java_block, encode_interned_categorical_payload,
+    encode_numeric_payload, encrypt_java_block, java_string_cmp,
 };
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use crate::combined::CombinedReport;
+use crate::cleanup::TemporaryDir;
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
-use crate::load::{
-    DEFAULT_KEY_NAME, KeySource, REPORT_FILE_NAME, Staging, check_output, thread_pool,
-    write_index_and_column_meta,
+use crate::load::{KeySource, REPORT_FILE_NAME, Staging, check_output, thread_pool};
+use crate::merge::{
+    MergeReport, MergeSource, SourceStore, store_header, write_index_and_column_meta, write_store,
 };
-use crate::partitions::{
-    PartitionRecord, PartitionedStaging, StoreLayout, check_partitioned_output, resolve_shared_key,
-};
+use crate::partitions::{StoreLayout, resolve_shared_key};
 use crate::private_fs;
 use crate::store::resolve_protection;
 
@@ -192,9 +189,6 @@ pub struct MigrateOptions {
     /// Leave out a concept whose recorded metadata disagrees with its observations, and list
     /// it in the report, instead of stopping the migration.
     pub skip_inconsistent: bool,
-    /// For a partitioned export, also write the combined store of every partition
-    /// (`--no-combined` turns it off). Not used for an unpartitioned export.
-    pub combined: bool,
 }
 
 /// Two raw keys that strip to the same path. The later one in raw key order is kept.
@@ -284,14 +278,14 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
     let protection = resolve_protection(&options.key, &options.out)?;
     let pool = thread_pool(options.threads)?;
     let staging = Staging::create(&options.out)?;
-    let report = migrate_into(
+    let (report, _) = migrate_into(
         &options.export,
         staging.path(),
         &protection,
         &pool,
         options.skip_inconsistent,
     )?;
-    staging.publish(&options.out)?;
+    staging.publish(&options.out, &report.store_id)?;
     tracing::info!(
         out = %options.out.display(),
         concepts = report.concepts,
@@ -305,37 +299,38 @@ pub fn migrate(options: &MigrateOptions) -> Result<MigrateReport> {
     Ok(report)
 }
 
-/// What a partitioned migration did: one [`MigrateReport`] per partition, also written to
-/// that partition's `etl-report.json`.
+/// What a partitioned migration did, written to the store's `etl-report.json`: one
+/// [`MigrateReport`] per partition, for the staged store it was migrated into, and what the
+/// merge into one store did.
 #[derive(Clone, Debug, Serialize)]
 pub struct PartitionedMigrateReport {
     /// Partition name to its report, in byte order of the names.
     pub partitions: BTreeMap<String, MigrateReport>,
-    /// What building the combined store did, when one was built.
-    pub combined: Option<CombinedReport>,
+    /// What merging the partitions into the store did, its id and overlap counts among it.
+    pub store: MergeReport,
     /// Wall time in seconds.
     pub elapsed_seconds: f64,
 }
 
-/// Migrates a partitioned export into `<options.out>/<partition>/`, one store per
-/// partition, all under one key.
+/// Migrates a partitioned export into one store at `options.out`, a consent partition per
+/// exported partition, all under one key.
 ///
 /// The export at `options.export` holds one export directory per partition, each named
 /// after its partition (`bin/migrate-javabins` runs `ExportForMigration` once for each
 /// partition of a partitioned javabin directory). [`KeySource::File`] also installs a copy
-/// of the key as `<out>/encryption_key`. Every partition is staged beside `out`, then their
-/// combined store when [`MigrateOptions::combined`] is set, and the set is published once
-/// every store is complete, as [`crate::load::load_partitioned`] does (see
-/// [`PartitionedStaging::publish`]). A partition's `.generation` line carries
-/// [`crate::partitions::PATIENTS_INDEXED_TAG`] only when every patient with an observation
-/// is in its exported patient list (its report's `observed_patients_missing_from_set` is
-/// 0).
+/// of the key as `<out>/encryption_key`. Every partition is migrated into a staged store
+/// beside `out`, the staged stores are merged into one ([`write_store`]) and removed, and
+/// the store is published as [`migrate`] publishes one. A partition carries the
+/// `patients-indexed` flag only when every patient with an observation is in its exported
+/// patient list (its report's `observed_patients_missing_from_set` is 0); the other
+/// patients go into the overlap set.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when the export is not partitioned, for a partition name that
-/// cannot be a directory, an output [`check_partitioned_output`] refuses, a plain key
-/// source, an unreadable key, or a key file that differs from an existing
-/// `<out>/encryption_key`; every error of [`migrate`] for each partition.
+/// cannot be one, an output [`check_output`] refuses, a plain key source, an unreadable
+/// key, or a key file that differs from an existing `<out>/encryption_key`; every error of
+/// [`migrate`] for each partition; the errors of [`write_store`], a concept typed
+/// differently in two partitions among them.
 pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrateReport> {
     let started = Instant::now();
     let StoreLayout::Partitioned(partitions) =
@@ -348,49 +343,49 @@ pub fn migrate_partitioned(options: &MigrateOptions) -> Result<PartitionedMigrat
     };
     for partition in &partitions {
         check_export_files(&partition.dir)?;
+        crate::partitions::check_partition_name(&partition.name)?;
     }
     refuse_plain(&options.key)?;
-    let names: Vec<String> = partitions.iter().map(|p| p.name.clone()).collect();
-    check_partitioned_output(&options.out, &names)?;
+    check_output(&options.out, &options.key)?;
     let (protection, install_key) = resolve_shared_key(&options.key, &options.out)?;
     let pool = thread_pool(options.threads)?;
-    let mut staging = PartitionedStaging::create(&options.out, &names, options.combined)?;
+    let mut staging = Staging::create(&options.out)?;
+    let parts = TemporaryDir::create(staging.path(), "partitions")?;
     let mut reports = BTreeMap::new();
+    let mut sources = Vec::with_capacity(partitions.len());
     for partition in &partitions {
         tracing::info!(partition = %partition.name, "migrating partition");
-        let report = migrate_into(
+        let dir = parts.path().join(&partition.name);
+        private_fs::create_dir(&dir).map_err(EtlError::io("creating", &dir))?;
+        let (report, observed) = migrate_into(
             &partition.dir,
-            &staging.partition_dir(&partition.name),
+            &dir,
             &protection,
             &pool,
             options.skip_inconsistent,
         )?;
         reports.insert(partition.name.clone(), report);
+        sources.push(MergeSource {
+            name: partition.name.clone(),
+            store: SourceStore::open(&dir, protection.clone())?,
+            observed: Some(observed),
+        });
     }
-    let combined = staging.build_combined(&protection, &pool)?;
+    let merged = write_store(sources, true, staging.path(), &protection, &pool)?;
+    drop(parts);
     if let Some(key) = install_key {
         staging.stage_key(&key)?;
     }
-    let records = reports
-        .iter()
-        .map(|(name, report): (&String, &MigrateReport)| {
-            let record = PartitionRecord {
-                store_id: report.store_id.clone(),
-                patients_indexed: report.observed_patients_missing_from_set == 0,
-            };
-            (name.clone(), record)
-        })
-        .collect();
-    staging.publish(
-        &options.out,
-        &records,
-        combined.as_ref().map(|c| c.store_id.as_str()),
-    )?;
     let report = PartitionedMigrateReport {
         partitions: reports,
-        combined,
+        store: merged,
         elapsed_seconds: started.elapsed().as_secs_f64(),
     };
+    let report_path = staging.path().join(REPORT_FILE_NAME);
+    let json = serde_json::to_vec_pretty(&report)
+        .map_err(|e| EtlError::io("encoding", &report_path)(e.into()))?;
+    private_fs::write_file(&report_path, &json).map_err(EtlError::io("writing", &report_path))?;
+    staging.publish(&options.out, &report.store.store_id)?;
     tracing::info!(
         out = %options.out.display(),
         partitions = report.partitions.len(),
@@ -423,7 +418,8 @@ fn refuse_plain(key: &KeySource) -> Result<()> {
 }
 
 /// Migrates the export in `export` into the existing, empty directory `dir`: `pheno.blocks`,
-/// `pheno.index`, `columnMeta.csv` and `etl-report.json`, each synced.
+/// `pheno.index`, `columnMeta.csv` and `etl-report.json`, each synced, an unpartitioned
+/// store. Returns the report and the set of patients with an observation in the store.
 ///
 /// # Errors
 /// [`EtlError::Usage`] for a plain `protection`; [`EtlError::Export`] for an export that
@@ -436,7 +432,7 @@ fn migrate_into(
     protection: &Protection,
     pool: &rayon::ThreadPool,
     skip_inconsistent: bool,
-) -> Result<MigrateReport> {
+) -> Result<(MigrateReport, RoaringBitmap)> {
     let started = Instant::now();
     let concepts_path = export.join(EXPORT_CONCEPTS_FILE);
     let patients_path = export.join(EXPORT_PATIENTS_FILE);
@@ -541,13 +537,14 @@ fn migrate_into(
             "metastore entries whose ColumnMeta.name differs from the key; the store uses the key"
         );
     }
-    write_index_and_csv(dir, store_id, patients, metas, protection)?;
+    let index = PhenoIndex::new(store_header(protection, store_id), patients, metas)?;
+    write_index_and_column_meta(dir, &index, protection)?;
     report.elapsed_seconds = started.elapsed().as_secs_f64();
     let report_path = dir.join(REPORT_FILE_NAME);
     let json = serde_json::to_vec_pretty(&report)
         .map_err(|e| EtlError::io("encoding", &report_path)(e.into()))?;
     private_fs::write_file(&report_path, &json).map_err(EtlError::io("writing", &report_path))?;
-    Ok(report)
+    Ok((report, observed))
 }
 
 /// The patients the kept concepts cover, read back from the staged blocks. Used only when
@@ -559,42 +556,16 @@ fn observed_patients(
     metas: &[ConceptMeta],
 ) -> Result<RoaringBitmap> {
     let reader = BlocksReader::open(blocks_path, store_id)?;
+    let membership = Membership::unpartitioned();
     let mut observed = RoaringBitmap::new();
     for meta in metas {
-        let patients = match reader.read_block(codec, meta)? {
+        let patients = match reader.read_block(codec, meta, &membership)? {
             Block::Numeric(block) => block.patients().to_vec(),
             Block::Categorical(block) => block.patients().to_vec(),
         };
         observed.extend(patients);
     }
     Ok(observed)
-}
-
-fn write_index_and_csv(
-    dir: &Path,
-    store_id: StoreId,
-    patients: RoaringBitmap,
-    metas: Vec<ConceptMeta>,
-    protection: &Protection,
-) -> Result<()> {
-    let header = IndexHeader {
-        format_version: hpds_format::FORMAT_VERSION,
-        encrypted: protection.is_encrypted(),
-        compressed: true,
-        key_name: if protection.is_encrypted() {
-            DEFAULT_KEY_NAME.into()
-        } else {
-            String::new()
-        },
-        created_at_millis: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as i64)
-            .unwrap_or(0),
-        etl_version: crate::banner(),
-        store_id,
-    };
-    let index = PhenoIndex::new(header, patients, metas)?;
-    write_index_and_column_meta(dir, &index, protection)
 }
 
 /// Reads the patient ID set and the export id of [`EXPORT_PATIENTS_FILE`].
@@ -1033,6 +1004,8 @@ fn build_concept(concept: &ExportedConcept, export_path: &Path) -> Result<BuiltC
         width_in_bytes: meta.width_in_bytes,
         column_offset: meta.column_offset,
         block: BlockLocation::default(),
+        holders: Vec::new(),
+        tagged: false,
     };
     Ok(Ok((concept_meta, patients, payload)))
 }

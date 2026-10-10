@@ -1,41 +1,33 @@
-//! Consent-partitioned stores: one complete store per partition, in a subdirectory named
-//! after the partition, all sharing the `encryption_key` at the root.
+//! Partition directories: the per-partition exports `migrate` reads (one export directory
+//! per partition) and the stores of format 1 that `convert` reads (one store per partition
+//! directory, all sharing the `encryption_key` at the root), and the rules for partition
+//! names.
 //!
 //! ```text
 //! <dir>/
 //!   encryption_key
-//!   <partition>/pheno.index
+//!   <partition>/pheno.index        or concepts.bin and patients.txt for an export
 //!   <partition>/pheno.blocks
-//!   <partition>/columnMeta.csv
-//!   <partition>/etl-report.json
 //! ```
 //!
-//! This is the layout the harmonization branch's `CSVLoader` writes with javabin files and
-//! `PartitionedPhenotypicObservationStore` reads: each immediate subdirectory is a store,
-//! and the service picks the ones whose names match the caller's consents. Every partition
-//! has its own store id, and `<dir>/.generation` lists them once a publish is complete (see
-//! [`GENERATION_FILE_NAME`]). A load may also write the combined store in
-//! `<dir>/.combined/` ([`crate::combined`]), which is never a partition. [`partition_dirs`]
-//! holds the partition-directory rule, [`StoreLayout::detect`] tells a partitioned
-//! directory from an ordinary one, and [`PartitionedStaging`] writes a set of partitions,
-//! and optionally their combined store, and moves them into place.
+//! This is the layout the harmonization branch's `CSVLoader` writes with javabin files:
+//! each immediate subdirectory is a partition named after it. [`partition_dirs_marked_by`]
+//! holds the partition-directory rule and [`StoreLayout::detect`] tells a partitioned
+//! directory from an ordinary one. A store of this format is never laid out this way: its
+//! partitions live inside its one index and blocks file.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use hpds_format::{BLOCKS_FILE_NAME, CryptoKey, INDEX_FILE_NAME, Protection};
 
-use crate::cleanup::{self, TemporaryDir};
-use crate::combined::{COMBINED_DIR_NAME, CombinedReport, build_combined, generation_line};
 use crate::error::{EtlError, Result};
 use crate::load::{
-    COLUMN_META_CSV_NAME, DEFAULT_KEY_FILE_NAME, JAVA_STORE_FILE_NAMES, KeySource, REPORT_FILE_NAME,
+    COLUMN_META_CSV_NAME, DEFAULT_KEY_FILE_NAME, JAVA_STORE_FILE_NAMES, KeySource,
+    LEGACY_COMBINED_DIR_NAME, REPORT_FILE_NAME,
 };
 use crate::private_fs;
-use crate::store::replace_file;
 
 /// One partition of a partitioned store or export: its name and its directory.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -79,9 +71,9 @@ impl StoreLayout {
     }
 }
 
-/// The partitions of the store directory `dir`, in byte order of their names: the
+/// The partitions of the format 1 store directory `dir`, in byte order of their names: the
 /// partition-directory rule of [`partition_dirs_marked_by`] with `pheno.index` as the
-/// marker. The query engine applies the same rule when it opens a partitioned store.
+/// marker.
 ///
 /// # Errors
 /// As [`partition_dirs_marked_by`].
@@ -153,9 +145,10 @@ pub fn partition_dirs_marked_by(dir: &Path, marker: &str) -> Result<Vec<Partitio
     Ok(partitions)
 }
 
-/// Checks that `name` can be a partition directory: not empty, not `.` or `..`, not
-/// hidden, and without a path separator. Refusing every name that starts with `.` also
-/// refuses the combined store's directory name ([`COMBINED_DIR_NAME`]) and the
+/// Checks that `name` can be a partition name: not empty, not `.` or `..`, not hidden, and
+/// without a path separator, so it can also name the partition's directory of an export,
+/// its dump file, and the input file it is loaded from. Refusing every name that starts
+/// with `.` also refuses the combined store directory name of format 1 stores and the
 /// `.generation` marker's.
 ///
 /// # Errors
@@ -165,7 +158,7 @@ pub fn check_partition_name(name: &str) -> Result<()> {
         "is empty"
     } else if name == "." || name == ".." {
         "is a relative directory name"
-    } else if name == COMBINED_DIR_NAME {
+    } else if name == LEGACY_COMBINED_DIR_NAME {
         "is the combined store's directory name"
     } else if name.starts_with('.') {
         "starts with '.', which hides the partition"
@@ -179,74 +172,8 @@ pub fn check_partition_name(name: &str) -> Result<()> {
     )))
 }
 
-/// Refuses an output directory that a set of partitions must not be written into: one that
-/// is not a directory, holds an unpartitioned Rust or Java store at its root, breaks the
-/// partition-directory rule (see [`partition_dirs_marked_by`]), holds partitions this
-/// write would not replace (they would be served beside the new ones), or holds a
-/// [`COMBINED_DIR_NAME`] that is not a directory, and a partition subdirectory that holds a
-/// Java store or is not a directory.
-///
-/// # Errors
-/// [`EtlError::Usage`] naming what makes `out` unsuitable.
-pub fn check_partitioned_output(out: &Path, names: &[String]) -> Result<()> {
-    if !out.exists() {
-        return Ok(());
-    }
-    if !out.is_dir() {
-        return Err(EtlError::Usage(format!(
-            "{} exists and is not a directory",
-            out.display()
-        )));
-    }
-    for name in [INDEX_FILE_NAME].into_iter().chain(JAVA_STORE_FILE_NAMES) {
-        if out.join(name).exists() {
-            return Err(EtlError::Usage(format!(
-                "{} holds an unpartitioned store ({name}); write the partitions to another directory",
-                out.display()
-            )));
-        }
-    }
-    let combined = out.join(COMBINED_DIR_NAME);
-    if combined.symlink_metadata().is_ok_and(|m| !m.is_dir()) {
-        return Err(EtlError::Usage(format!(
-            "{} exists and is not a directory; it is where the combined store goes",
-            combined.display()
-        )));
-    }
-    let stale: Vec<String> = partition_dirs(out)?
-        .into_iter()
-        .map(|p| p.name)
-        .filter(|name| !names.contains(name))
-        .collect();
-    if !stale.is_empty() {
-        return Err(EtlError::Usage(format!(
-            "{} holds partitions this run does not write ({}), which would be served beside the new ones; remove them or write to another directory",
-            out.display(),
-            stale.join(", ")
-        )));
-    }
-    for name in names {
-        let dir = out.join(name);
-        if dir.exists() && !dir.is_dir() {
-            return Err(EtlError::Usage(format!(
-                "{} exists and is not a directory",
-                dir.display()
-            )));
-        }
-        for java in JAVA_STORE_FILE_NAMES {
-            if dir.join(java).exists() {
-                return Err(EtlError::Usage(format!(
-                    "{} holds a Java store ({java}); write the Rust store to another directory",
-                    dir.display()
-                )));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Resolves the key every partition of `out` is encrypted with, and the key file to install
-/// as `<out>/encryption_key` because it is not there yet.
+/// Resolves the key the store in `out` is encrypted with, and the key file to install as
+/// `<out>/encryption_key` because it is not there yet.
 ///
 /// [`KeySource::File`] loads the named file, which must equal an existing
 /// `<out>/encryption_key` byte for byte, and is installed when there is none.
@@ -283,7 +210,7 @@ pub fn resolve_shared_key(key: &KeySource, out: &Path) -> Result<(Protection, Op
                 == std::fs::read(&installed).map_err(EtlError::io("reading", &installed))?;
             if !same {
                 return Err(EtlError::Usage(format!(
-                    "{} differs from the existing {}; every partition shares the root key",
+                    "{} differs from the existing {}; the store keeps the key it has",
                     path.display(),
                     installed.display()
                 )));
@@ -294,377 +221,6 @@ pub fn resolve_shared_key(key: &KeySource, out: &Path) -> Result<(Protection, Op
         _ => None,
     };
     Ok((Protection::Encrypted(loaded), install))
-}
-
-/// Name of the generation marker of a partitioned store: one line per partition, in byte
-/// order of the partition names, holding the store id of its `pheno.index` as 32 lowercase
-/// hex digits, followed by [`PATIENTS_INDEXED_TAG`] when the partition carries that record,
-/// then, when the store has a combined store, its id and the tag `.combined` on a last line
-/// ([`generation_line`]). It is written last, atomically and mode `0600`, so its ids match
-/// the stores' indexes only once a publish is complete; the query engine refuses to open a
-/// store where they differ.
-pub const GENERATION_FILE_NAME: &str = ".generation";
-
-/// The second token of a partition's line in the [`GENERATION_FILE_NAME`] marker, after its
-/// store id, recording that every patient with an observation in that store's blocks is in
-/// its index's patient set. `load` writes it for every partition, since it builds the
-/// patient set from the observations; `migrate` writes it only for a partition whose
-/// observed patients are all in the exported patient list. The query engine sums cross
-/// counts per partition only over partitions that carry it. The tag is on the line of the
-/// store id it describes, so it cannot outlive that store: another store in its place has
-/// another id, which the marker must list before the engine opens it. It does not start
-/// with `.`, so a query service that does not know it reads the line as a plain partition
-/// line.
-pub const PATIENTS_INDEXED_TAG: &str = "patients-indexed";
-
-/// One partition's store as the [`GENERATION_FILE_NAME`] marker lists it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PartitionRecord {
-    /// The store id of its `pheno.index`, as 32 lowercase hex digits.
-    pub store_id: String,
-    /// True when every patient with an observation in the store's blocks is in its index's
-    /// patient set, written as [`PATIENTS_INDEXED_TAG`].
-    pub patients_indexed: bool,
-}
-
-/// The store ids of a partitioned store as its [`GENERATION_FILE_NAME`] marker lists them.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Generation {
-    /// The partitions' store ids, lowercase, in file order.
-    pub partitions: Vec<String>,
-    /// The partition store ids, lowercase, whose line carries [`PATIENTS_INDEXED_TAG`].
-    pub patients_indexed: BTreeSet<String>,
-    /// The combined store's id, lowercase, when a line is tagged `.combined`.
-    pub combined: Option<String>,
-}
-
-impl Generation {
-    /// Reads `<dir>/.generation`, or `None` when there is none. A second token other than
-    /// `.combined` and [`PATIENTS_INDEXED_TAG`] is ignored. The tag counts only on a line of
-    /// exactly two tokens, the store id and the tag, as the query engine reads it; a line
-    /// with anything after the tag lists the partition without the record.
-    ///
-    /// # Errors
-    /// [`EtlError::Usage`] when a line's first token is not 32 hex digits or two lines are
-    /// tagged `.combined`; I/O errors reading the file.
-    pub fn read(dir: &Path) -> Result<Option<Self>> {
-        let path = dir.join(GENERATION_FILE_NAME);
-        let text = match std::fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(EtlError::io("reading", &path)(e)),
-        };
-        let mut generation = Generation::default();
-        for line in text.lines() {
-            let mut tokens = line.split_whitespace();
-            let Some(id) = tokens.next() else {
-                continue;
-            };
-            if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
-                return Err(EtlError::Usage(format!(
-                    "{}: {id:?} is not a store id of 32 hex digits",
-                    path.display()
-                )));
-            }
-            let id = id.to_ascii_lowercase();
-            match tokens.next() {
-                Some(crate::combined::COMBINED_GENERATION_TAG) => {
-                    if generation.combined.replace(id).is_some() {
-                        return Err(EtlError::Usage(format!(
-                            "{} lists more than one combined store",
-                            path.display()
-                        )));
-                    }
-                }
-                Some(PATIENTS_INDEXED_TAG) if tokens.next().is_none() => {
-                    generation.patients_indexed.insert(id.clone());
-                    generation.partitions.push(id);
-                }
-                _ => generation.partitions.push(id),
-            }
-        }
-        Ok(Some(generation))
-    }
-}
-
-/// An exclusive `flock` on a partitioned store's directory itself, held while a command
-/// changes which stores the directory holds or rewrites its [`GENERATION_FILE_NAME`]
-/// marker: the publish of a partitioned load or migration, and `hpds-etl combine` and
-/// `combine --remove`. Two such commands, in this process or in another container sharing
-/// the directory, never interleave their moves and marker writes. The lock is on the
-/// directory's inode, so no lock file is left in it, and it is released when dropped.
-pub(crate) struct StoreLock {
-    _dir: std::fs::File,
-}
-
-/// Takes the [`StoreLock`] of the partitioned store directory `dir`, waiting while another
-/// command holds it.
-///
-/// # Errors
-/// I/O errors opening or locking the directory.
-pub(crate) fn lock_store(dir: &Path) -> Result<StoreLock> {
-    let file = std::fs::File::open(dir).map_err(EtlError::io("opening", dir))?;
-    file.lock().map_err(EtlError::io("locking", dir))?;
-    Ok(StoreLock { _dir: file })
-}
-
-/// A directory beside the output in which every partition, and optionally their combined
-/// store, is built and from which the set is published. Removed on drop, and on SIGTERM or
-/// SIGINT, unless published.
-pub struct PartitionedStaging {
-    dir: TemporaryDir,
-    names: Vec<String>,
-    key: bool,
-    combined: bool,
-}
-
-impl PartitionedStaging {
-    /// Creates the staging directory for `out` (`.<out name>.staging-<unique>` beside it,
-    /// mode `0700`) with one empty subdirectory per name, and an empty
-    /// [`COMBINED_DIR_NAME`] when `combined` is set, first removing any staging directory
-    /// a killed run left beside `out`.
-    ///
-    /// # Errors
-    /// [`EtlError::Usage`] when `out` has no name, a name is not a valid partition name, or
-    /// `out`, one of its partition directories or its combined store directory is on
-    /// another filesystem than the staging directory (see [`check_same_filesystem`]); I/O
-    /// errors.
-    pub fn create(out: &Path, names: &[String], combined: bool) -> Result<Self> {
-        let name = out
-            .file_name()
-            .ok_or_else(|| EtlError::Usage(format!("{} has no directory name", out.display())))?
-            .to_string_lossy()
-            .into_owned();
-        for partition in names {
-            check_partition_name(partition)?;
-        }
-        let parent = parent_dir(out);
-        let targets: Vec<PathBuf> = std::iter::once(out.to_path_buf())
-            .chain(names.iter().map(|n| out.join(n)))
-            .chain(std::iter::once(out.join(COMBINED_DIR_NAME)))
-            .collect();
-        check_same_filesystem(&parent, &targets)?;
-        let dir = TemporaryDir::create(&parent, &format!("{name}.staging"))?;
-        for partition in names
-            .iter()
-            .map(String::as_str)
-            .chain(combined.then_some(COMBINED_DIR_NAME))
-        {
-            let path = dir.path().join(partition);
-            private_fs::create_dir(&path).map_err(EtlError::io("creating", &path))?;
-        }
-        Ok(PartitionedStaging {
-            dir,
-            names: names.to_vec(),
-            key: false,
-            combined,
-        })
-    }
-
-    /// The staging directory of partition `name`.
-    pub fn partition_dir(&self, name: &str) -> PathBuf {
-        self.dir.path().join(name)
-    }
-
-    /// Builds the combined store of the staged partitions into the staged
-    /// [`COMBINED_DIR_NAME`] (see [`build_combined`]), when the staging was created with
-    /// one. Call it once every partition is complete. When [`build_combined`] writes none
-    /// (a single partition, or two partitions typing a concept differently), the staged
-    /// directory is removed and the publish then removes any combined store `out` has, as
-    /// with `--no-combined`.
-    ///
-    /// # Errors
-    /// The errors of [`build_combined`], and I/O errors removing the staged directory.
-    pub fn build_combined(
-        &mut self,
-        protection: &Protection,
-        pool: &rayon::ThreadPool,
-    ) -> Result<Option<CombinedReport>> {
-        if !self.combined {
-            return Ok(None);
-        }
-        let partitions: Vec<Partition> = self
-            .names
-            .iter()
-            .map(|name| Partition {
-                name: name.clone(),
-                dir: self.partition_dir(name),
-            })
-            .collect();
-        let dir = self.dir.path().join(COMBINED_DIR_NAME);
-        let report = build_combined(&partitions, &dir, protection, pool)?;
-        if report.is_none() {
-            std::fs::remove_dir_all(&dir).map_err(EtlError::io("removing", &dir))?;
-            self.combined = false;
-        }
-        Ok(report)
-    }
-
-    /// Stages a copy of the key file `source` as the root `encryption_key`, mode `0600`, to
-    /// be published with the partitions.
-    ///
-    /// # Errors
-    /// I/O errors reading or writing the key.
-    pub fn stage_key(&mut self, source: &Path) -> Result<()> {
-        let bytes = std::fs::read(source).map_err(EtlError::io("reading", source))?;
-        let target = self.dir.path().join(DEFAULT_KEY_FILE_NAME);
-        private_fs::write_file(&target, &bytes).map_err(EtlError::io("writing", &target))?;
-        self.key = true;
-        Ok(())
-    }
-
-    /// Moves every staged partition, the staged combined store, and the staged key, into
-    /// `out`, and writes the [`GENERATION_FILE_NAME`] marker from `records` (partition
-    /// name to its store id and record) and `combined_id`, the combined store's id when one
-    /// was built.
-    ///
-    /// When `out` does not exist the marker is staged too, and the staging directory is
-    /// synced and renamed to `out`, so the whole set appears at once. When it does, the
-    /// publish is not atomic across partitions: each partition directory that `out` lacks
-    /// is renamed into it, and each that `out` already has gets its files renamed over the
-    /// old ones with `pheno.index` last, as [`crate::load`] replaces a single store, one
-    /// partition after another; then an old combined store is moved out into the staging
-    /// directory (removed with it) and the new one, if any, renamed into place; then the
-    /// key, and the marker last, replacing the old one. Until then a reader can see old and
-    /// new stores side by side, which the marker's ids reveal. An interrupt waits until the
-    /// moves are done. Into an existing `out` the moves and the marker write hold its
-    /// [`StoreLock`], so `hpds-etl combine` never publishes in the middle of them; a new
-    /// `out` appears with one rename, and nothing else can publish into it before.
-    ///
-    /// # Errors
-    /// [`EtlError::Usage`] when `combined_id` is given without a staged combined store or
-    /// the other way round; I/O errors syncing, renaming or writing the marker.
-    pub fn publish(
-        mut self,
-        out: &Path,
-        records: &BTreeMap<String, PartitionRecord>,
-        combined_id: Option<&str>,
-    ) -> Result<()> {
-        if self.combined != combined_id.is_some() {
-            return Err(EtlError::Usage(
-                "a combined store id is published exactly when a combined store was staged".into(),
-            ));
-        }
-        let staged = self.dir.path().to_path_buf();
-        for name in self
-            .names
-            .iter()
-            .map(String::as_str)
-            .chain(self.combined.then_some(COMBINED_DIR_NAME))
-        {
-            let dir = staged.join(name);
-            private_fs::sync_dir(&dir).map_err(EtlError::io("syncing", &dir))?;
-        }
-        let generation = generation_text(&self.names, records, combined_id)?;
-        let store_lock = if out.exists() {
-            Some(lock_store(out)?)
-        } else {
-            None
-        };
-        let mut registered = cleanup::lock();
-        if store_lock.is_none() {
-            let marker = staged.join(GENERATION_FILE_NAME);
-            private_fs::write_file(&marker, generation.as_bytes())
-                .map_err(EtlError::io("writing", &marker))?;
-            self.dir.release_lock()?;
-            private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
-            std::fs::rename(&staged, out).map_err(EtlError::io("moving the store to", out))?;
-            self.dir.disarm(&mut registered);
-            drop(registered);
-            let parent = parent_dir(out);
-            return private_fs::sync_dir(&parent).map_err(EtlError::io("syncing", &parent));
-        }
-        private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
-        for name in &self.names {
-            let target = out.join(name);
-            if target.exists() {
-                replace_store_files(&staged.join(name), &target)?;
-            } else {
-                std::fs::rename(staged.join(name), &target)
-                    .map_err(EtlError::io("moving the partition to", &target))?;
-            }
-        }
-        replace_combined_dir(
-            out,
-            &staged,
-            self.combined.then(|| staged.join(COMBINED_DIR_NAME)),
-        )?;
-        if self.key {
-            let target = out.join(DEFAULT_KEY_FILE_NAME);
-            std::fs::rename(staged.join(DEFAULT_KEY_FILE_NAME), &target)
-                .map_err(EtlError::io("moving into place", &target))?;
-        }
-        private_fs::sync_dir(out).map_err(EtlError::io("syncing", out))?;
-        let marker = out.join(GENERATION_FILE_NAME);
-        let written = replace_file(&marker, |file| {
-            file.write_all(generation.as_bytes())
-                .map_err(EtlError::io("writing", &marker))
-        });
-        drop(registered);
-        drop(store_lock);
-        written
-    }
-}
-
-/// The content of the [`GENERATION_FILE_NAME`] marker for the partitions `names`, each line
-/// tagged [`PATIENTS_INDEXED_TAG`] when its record says so, and, when given, the combined
-/// store `combined_id`, whose line comes last.
-///
-/// # Errors
-/// [`EtlError::Usage`] when `records` lacks one of `names`.
-pub(crate) fn generation_text(
-    names: &[String],
-    records: &BTreeMap<String, PartitionRecord>,
-    combined_id: Option<&str>,
-) -> Result<String> {
-    let mut sorted: Vec<&String> = names.iter().collect();
-    sorted.sort();
-    let mut text = sorted
-        .into_iter()
-        .map(|name| {
-            records
-                .get(name)
-                .map(|record| {
-                    if record.patients_indexed {
-                        format!("{} {PATIENTS_INDEXED_TAG}\n", record.store_id)
-                    } else {
-                        format!("{}\n", record.store_id)
-                    }
-                })
-                .ok_or_else(|| EtlError::Usage(format!("partition {name} has no store id")))
-        })
-        .collect::<Result<String>>()?;
-    if let Some(id) = combined_id {
-        text.push_str(&generation_line(id));
-    }
-    Ok(text)
-}
-
-/// Replaces `<out>/.combined` with the store in `new`, or removes it when `new` is `None`.
-/// An existing combined store is renamed into `trash_parent` (a temporary directory on the
-/// same filesystem, removed with it) before the new one is renamed into place, then `out`
-/// is synced.
-///
-/// # Errors
-/// I/O errors renaming or syncing.
-pub(crate) fn replace_combined_dir(
-    out: &Path,
-    trash_parent: &Path,
-    new: Option<PathBuf>,
-) -> Result<()> {
-    let target = out.join(COMBINED_DIR_NAME);
-    if target.symlink_metadata().is_ok() {
-        let trash = trash_parent.join(format!("{COMBINED_DIR_NAME}-replaced"));
-        std::fs::rename(&target, &trash).map_err(EtlError::io(
-            "moving the old combined store out of",
-            &target,
-        ))?;
-    }
-    if let Some(new) = new {
-        std::fs::rename(&new, &target)
-            .map_err(EtlError::io("moving the combined store to", &target))?;
-    }
-    private_fs::sync_dir(out).map_err(EtlError::io("syncing", out))
 }
 
 /// Refuses to stage a store in `staging_parent` when any existing path in `targets` (the
@@ -700,7 +256,7 @@ pub(crate) fn check_same_filesystem(staging_parent: &Path, targets: &[PathBuf]) 
 /// Renames the store files of the staged store in `staged` over those in the existing
 /// directory `out`: `pheno.blocks`, `columnMeta.csv` and `etl-report.json` first and
 /// `pheno.index` last, so a reader that finds the new index finds the new blocks, then
-/// syncs `out`.
+/// syncs `out`. The caller holds the store lock.
 ///
 /// # Errors
 /// I/O errors renaming or syncing.
@@ -716,13 +272,6 @@ pub(crate) fn replace_store_files(staged: &Path, out: &Path) -> Result<()> {
             .map_err(EtlError::io("moving into place", &target))?;
     }
     private_fs::sync_dir(out).map_err(EtlError::io("syncing", out))
-}
-
-fn parent_dir(path: &Path) -> PathBuf {
-    match path.parent() {
-        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
-        _ => PathBuf::from("."),
-    }
 }
 
 #[cfg(test)]
@@ -804,7 +353,6 @@ mod tests {
             "{message}"
         );
         assert!(StoreLayout::detect(dir.path(), INDEX_FILE_NAME).is_err());
-        assert!(check_partitioned_output(dir.path(), &["p1".into(), "p2".into()]).is_err());
 
         let export = partition_dirs_marked_by(dir.path(), "concepts.bin")
             .unwrap_err()
@@ -827,67 +375,5 @@ mod tests {
             message.contains("/dev is on another filesystem"),
             "{message}"
         );
-    }
-
-    #[test]
-    fn the_generation_marker_lists_every_partition_in_name_order() {
-        let ids: BTreeMap<String, PartitionRecord> = [("b", "22", true), ("a", "11", false)]
-            .into_iter()
-            .map(|(n, i, patients_indexed)| {
-                (
-                    n.to_string(),
-                    PartitionRecord {
-                        store_id: i.to_string(),
-                        patients_indexed,
-                    },
-                )
-            })
-            .collect();
-        assert_eq!(
-            generation_text(&["b".into(), "a".into()], &ids, None).unwrap(),
-            "11\n22 patients-indexed\n"
-        );
-        assert_eq!(
-            generation_text(&["b".into(), "a".into()], &ids, Some("33")).unwrap(),
-            "11\n22 patients-indexed\n33 .combined\n"
-        );
-        assert!(generation_text(&["c".into()], &ids, None).is_err());
-    }
-
-    #[test]
-    fn the_patients_indexed_tag_counts_only_on_a_line_of_two_tokens() {
-        let dir = tempfile::tempdir().unwrap();
-        let [a, b, c, d] = ["a", "b", "c", "d"].map(|digit| digit.repeat(32));
-        std::fs::write(
-            dir.path().join(GENERATION_FILE_NAME),
-            format!("{a} patients-indexed\n{b} patients-indexed extra\n{c}\n{d} other\n"),
-        )
-        .unwrap();
-        let generation = Generation::read(dir.path()).unwrap().unwrap();
-        assert_eq!(generation.partitions, [a.clone(), b, c, d]);
-        assert_eq!(generation.patients_indexed, BTreeSet::from([a]));
-    }
-
-    #[test]
-    fn output_with_other_partitions_or_a_root_store_is_refused() {
-        let dir = tempfile::tempdir().unwrap();
-        let out = dir.path().join("out");
-        let names = vec!["p1".to_string()];
-        assert!(check_partitioned_output(&out, &names).is_ok());
-        std::fs::create_dir_all(out.join("p1")).unwrap();
-        std::fs::write(out.join("p1").join(INDEX_FILE_NAME), b"x").unwrap();
-        assert!(check_partitioned_output(&out, &names).is_ok());
-        std::fs::create_dir_all(out.join("old")).unwrap();
-        std::fs::write(out.join("old").join(INDEX_FILE_NAME), b"x").unwrap();
-        let message = check_partitioned_output(&out, &names)
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("(old)"), "{message}");
-        std::fs::remove_dir_all(out.join("old")).unwrap();
-        std::fs::write(out.join("p1").join("columnMeta.javabin"), b"x").unwrap();
-        assert!(check_partitioned_output(&out, &names).is_err());
-        std::fs::remove_file(out.join("p1").join("columnMeta.javabin")).unwrap();
-        std::fs::write(out.join(INDEX_FILE_NAME), b"x").unwrap();
-        assert!(check_partitioned_output(&out, &names).is_err());
     }
 }

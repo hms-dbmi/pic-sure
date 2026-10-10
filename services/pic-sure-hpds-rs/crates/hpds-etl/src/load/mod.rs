@@ -4,8 +4,9 @@
 //! [`Mode::NewSearch`] follows `CSVLoaderNewSearch` ("Load HPDS Data From CSV").
 //! [`Mode::Sequential`] follows `SequentialLoader` ("Load HPDS Data From Multiple Files"),
 //! which for an all-CSV input set runs `LowRAMMultiCSVLoader`. [`Mode::Partitioned`]
-//! follows the harmonization branch's `CSVLoader`, one store per
-//! `<partition>-allConcepts.csv`, through [`load_partitioned`]. The rules both share, and
+//! follows the harmonization branch's `CSVLoader`, one consent partition per
+//! `<partition>-allConcepts.csv`, through [`load_partitioned`], into one store whose blocks
+//! hold every partition's rows. The rules both share, and
 //! the places they differ, are in [`rules`]. Where reproducing Java would reproduce a
 //! defect, the loader does the correct thing instead:
 //!
@@ -28,7 +29,7 @@
 //! The pipeline streams the inputs once into spill files partitioned by concept, builds
 //! the partitions in parallel, then writes `pheno.blocks`, `pheno.index`, `columnMeta.csv`
 //! and `etl-report.json` into a staging directory beside the output and moves them into
-//! place.
+//! place, writing the `.generation` marker last.
 //!
 //! Every directory the loader creates is mode `0700` and every file `0600` (see
 //! [`crate::private_fs`]). Error messages and logs name a file, a record and line number,
@@ -41,14 +42,14 @@ mod spill;
 mod spill_route;
 
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::BufWriter;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use hpds_format::{
-    BLOCKS_FILE_NAME, BlockCodec, BlocksWriter, CryptoKey, INDEX_FILE_NAME, IndexHeader,
-    PhenoIndex, Protection, StoreId, java_string_cmp,
+    BLOCKS_FILE_NAME, BlockCodec, BlocksWriter, CryptoKey, INDEX_FILE_NAME, PhenoIndex, Protection,
+    StoreId, java_string_cmp,
 };
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
@@ -63,9 +64,10 @@ pub use self::rules::{ConfigMap, CsvConfig, Mode};
 pub(crate) use self::spill_route::InputFile;
 use self::spill_route::{SpillRouteSettings, route_to_spills};
 use crate::cleanup::{self, TemporaryDir};
-use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
+use crate::merge::{store_header, write_index_and_column_meta};
 use crate::private_fs;
+use crate::store::{lock_store, write_generation};
 
 /// Name of the CSV the loader writes for dictionary hydration.
 pub const COLUMN_META_CSV_NAME: &str = "columnMeta.csv";
@@ -82,6 +84,9 @@ pub const DEFAULT_KEY_NAME: &str = "DEFAULT";
 /// Name of the CSV config file looked for beside the inputs, as Java reads
 /// `/opt/local/hpds_input/config.json`.
 pub const CONFIG_FILE_NAME: &str = "config.json";
+
+/// Name of the combined store directory a format 1 partitioned store may hold.
+pub const LEGACY_COMBINED_DIR_NAME: &str = ".combined";
 
 /// Files whose presence marks a directory as a Java javabin store, which a Rust store must
 /// never be written into.
@@ -271,7 +276,7 @@ pub fn load(options: &LoadOptions) -> Result<LoadReport> {
     let staging = Staging::create(&options.out)?;
     let pool = thread_pool(options.threads)?;
     let report = pool.install(|| build_store(staging.path(), &inputs, &settings))?;
-    staging.publish(&options.out)?;
+    staging.publish(&options.out, &report.store_id)?;
     tracing::info!(out = %options.out.display(), blocks_bytes = report.blocks_bytes, seconds = report.elapsed_seconds, "store written");
     Ok(report)
 }
@@ -504,56 +509,28 @@ fn write_store(
         .sync_all()
         .map_err(EtlError::io("writing", &blocks_path))?;
 
-    let header = IndexHeader {
-        format_version: hpds_format::FORMAT_VERSION,
-        encrypted: protection.is_encrypted(),
-        compressed: true,
-        key_name: if protection.is_encrypted() {
-            DEFAULT_KEY_NAME.into()
-        } else {
-            String::new()
-        },
-        created_at_millis: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as i64)
-            .unwrap_or(0),
-        etl_version: crate::banner(),
-        store_id,
-    };
-    let index = PhenoIndex::new(header, patients, metas)?;
+    let index = PhenoIndex::new(store_header(protection, store_id), patients, metas)?;
     write_index_and_column_meta(dir, &index, protection)?;
     Ok(blocks_bytes)
 }
 
-/// Writes `pheno.index` and `columnMeta.csv` for `index` into `dir`, each mode `0600` and
-/// synced to disk.
-///
-/// # Errors
-/// Encoding and I/O errors.
-pub(crate) fn write_index_and_column_meta(
-    dir: &Path,
-    index: &PhenoIndex,
-    protection: &Protection,
-) -> Result<()> {
-    let index_path = dir.join(INDEX_FILE_NAME);
-    private_fs::write_file(&index_path, &index.encode(protection)?)
-        .map_err(EtlError::io("writing", &index_path))?;
-    let csv_path = dir.join(COLUMN_META_CSV_NAME);
-    let file = private_fs::create_file(&csv_path).map_err(EtlError::io("creating", &csv_path))?;
-    let mut out = BufWriter::new(file);
-    write_column_meta_csv(&mut out, index.concepts())
-        .and_then(|()| out.flush())
-        .and_then(|()| out.get_ref().sync_all())
-        .map_err(EtlError::io("writing", &csv_path))
-}
-
 /// Refuses an output directory the loaders must not write into: one holding a Java store
-/// (`columnMeta.javabin` or `allObservationsStore.javabin`), and, for a plain store, one
-/// holding an `encryption_key`.
+/// (`columnMeta.javabin` or `allObservationsStore.javabin`), one holding a partitioned store
+/// of format 1 (a store per partition directory, or a combined store), and, for a plain
+/// store, one holding an `encryption_key`.
 ///
 /// # Errors
-/// [`EtlError::Usage`] naming the file that makes `out` unsuitable.
+/// [`EtlError::Usage`] naming what makes `out` unsuitable.
 pub(crate) fn check_output(out: &Path, key: &KeySource) -> Result<()> {
+    if out.exists() && !out.join(INDEX_FILE_NAME).exists() {
+        let old_partitions = crate::partitions::partition_dirs(out)?;
+        if !old_partitions.is_empty() || out.join(LEGACY_COMBINED_DIR_NAME).exists() {
+            return Err(EtlError::Usage(format!(
+                "{} holds a partitioned store of format 1 (one store per partition directory); write the new store to another directory, or convert the old one with hpds-etl convert",
+                out.display()
+            )));
+        }
+    }
     for name in JAVA_STORE_FILE_NAMES {
         if out.join(name).exists() {
             return Err(EtlError::Usage(format!(
@@ -750,6 +727,7 @@ fn resolve_protection(options: &LoadOptions) -> Result<Protection> {
 /// SIGTERM or SIGINT, unless published.
 pub(crate) struct Staging {
     dir: TemporaryDir,
+    key: bool,
 }
 
 impl Staging {
@@ -775,6 +753,7 @@ impl Staging {
         crate::partitions::check_same_filesystem(&parent, &[out.to_path_buf()])?;
         Ok(Staging {
             dir: TemporaryDir::create(&parent, &format!("{name}.staging"))?,
+            key: false,
         })
     }
 
@@ -783,32 +762,82 @@ impl Staging {
         self.dir.path()
     }
 
-    /// Moves the staged store to `out`. Every staged file is already synced. When `out`
-    /// does not exist the staging directory is synced and renamed to it. When it does,
-    /// `pheno.blocks`, `columnMeta.csv` and `etl-report.json` are renamed over the old
-    /// files and `pheno.index` last, so a reader that finds the new index finds the new
-    /// blocks; until then the old index refuses the new blocks by store id. The directory
-    /// that received the names is synced afterwards. An interrupt waits until the move is
-    /// done.
+    /// Stages a copy of the key file `source` as the store's `encryption_key`, mode `0600`,
+    /// to be published with it.
     ///
     /// # Errors
-    /// I/O errors syncing or renaming.
-    pub(crate) fn publish(mut self, out: &Path) -> Result<()> {
+    /// I/O errors reading or writing the key.
+    pub(crate) fn stage_key(&mut self, source: &Path) -> Result<()> {
+        let bytes = std::fs::read(source).map_err(EtlError::io("reading", source))?;
+        let target = self.dir.path().join(DEFAULT_KEY_FILE_NAME);
+        private_fs::write_file(&target, &bytes).map_err(EtlError::io("writing", &target))?;
+        self.key = true;
+        Ok(())
+    }
+
+    /// Moves the staged store, whose id is `store_id`, to `out`, and writes its
+    /// [`crate::store::GENERATION_FILE_NAME`] marker. Every staged file is already synced.
+    ///
+    /// When `out` does not exist the marker is staged too, and the staging directory is
+    /// synced and renamed to `out`, so the whole store appears at once. When it does, the
+    /// publish holds the store lock ([`lock_store`]): `pheno.blocks`, `columnMeta.csv` and
+    /// `etl-report.json` are renamed over the old files and `pheno.index` last, so a reader
+    /// that finds the new index finds the new blocks (until then the old index refuses the
+    /// new blocks by store id), then the staged key, and the marker is replaced last. A
+    /// reader sees the marker name the old id until the new store is complete. An interrupt
+    /// waits until the moves are done.
+    ///
+    /// # Errors
+    /// I/O errors syncing, renaming or writing the marker.
+    pub(crate) fn publish(mut self, out: &Path, store_id: &str) -> Result<()> {
+        let id = parse_store_id(store_id)?;
         let staged = self.dir.path().to_path_buf();
-        private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
+        let store_lock = if out.exists() {
+            Some(lock_store(out)?)
+        } else {
+            None
+        };
         let mut registered = cleanup::lock();
-        if !out.exists() {
+        if store_lock.is_none() {
+            write_generation(&staged, id)?;
             self.dir.release_lock()?;
+            private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
             std::fs::rename(&staged, out).map_err(EtlError::io("moving the store to", out))?;
             self.dir.disarm(&mut registered);
             drop(registered);
             let parent = parent_dir(out);
             return private_fs::sync_dir(&parent).map_err(EtlError::io("syncing", &parent));
         }
-        let replaced = crate::partitions::replace_store_files(&staged, out);
+        private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
+        let published = crate::partitions::replace_store_files(&staged, out).and_then(|()| {
+            if self.key {
+                let target = out.join(DEFAULT_KEY_FILE_NAME);
+                std::fs::rename(staged.join(DEFAULT_KEY_FILE_NAME), &target)
+                    .map_err(EtlError::io("moving into place", &target))?;
+                private_fs::sync_dir(out).map_err(EtlError::io("syncing", out))?;
+            }
+            write_generation(out, id)
+        });
         drop(registered);
-        replaced
+        drop(store_lock);
+        published
     }
+}
+
+/// The store id written as `text`, 32 hex digits.
+///
+/// # Errors
+/// [`EtlError::Usage`] when `text` is not a store id.
+fn parse_store_id(text: &str) -> Result<StoreId> {
+    let mut bytes = [0u8; hpds_format::STORE_ID_LEN];
+    if text.len() != 2 * bytes.len() {
+        return Err(EtlError::Usage(format!("{text:?} is not a store id")));
+    }
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&text[2 * i..2 * i + 2], 16)
+            .map_err(|_| EtlError::Usage(format!("{text:?} is not a store id")))?;
+    }
+    Ok(StoreId::from_bytes(bytes))
 }
 
 fn parent_dir(path: &Path) -> PathBuf {

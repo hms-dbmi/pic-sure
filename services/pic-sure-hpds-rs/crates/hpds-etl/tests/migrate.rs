@@ -198,7 +198,6 @@ fn options(export: PathBuf, out: PathBuf, key: KeySource) -> MigrateOptions {
         key,
         threads: Some(2),
         skip_inconsistent: false,
-        combined: true,
     }
 }
 
@@ -239,7 +238,11 @@ fn run_export(
 fn rows(store: &OpenStore, path: &str) -> Vec<Row> {
     let meta = store.index.get(path).unwrap();
     let ts = |t: i64| (t != NO_TIMESTAMP).then_some(t);
-    match store.reader.read_block(&store.codec, meta).unwrap() {
+    match store
+        .reader
+        .read_block(&store.codec, meta, &store.index.membership())
+        .unwrap()
+    {
         Block::Numeric(b) => b
             .by_key()
             .iter()
@@ -727,6 +730,7 @@ fn migrate_replaces_an_existing_store_and_leaves_the_export_alone() {
     assert_eq!(
         names,
         [
+            ".generation",
             "columnMeta.csv",
             "encryption_key",
             "etl-report.json",
@@ -763,16 +767,37 @@ fn a_partition_with_observed_patients_missing_from_its_list_is_not_recorded_as_i
         report.partitions["complete"].observed_patients_missing_from_set,
         0
     );
-    let marker = std::fs::read_to_string(out.join(".generation")).unwrap();
-    let lines: Vec<&str> = marker.lines().collect();
+    let store = OpenStore::open(&out, Protection::Encrypted(crypto_key())).unwrap();
+    let table = store.index.partition_table();
+    let flags: Vec<(&str, bool, Vec<u32>)> = table
+        .partitions
+        .iter()
+        .map(|p| {
+            (
+                p.name.as_str(),
+                p.patients_indexed,
+                p.patients.iter().collect(),
+            )
+        })
+        .collect();
     assert_eq!(
-        lines[..2],
-        [
-            format!(
-                "{} patients-indexed",
-                report.partitions["complete"].store_id
-            ),
-            short.store_id.clone(),
-        ]
+        flags,
+        [("complete", true, vec![1, 2]), ("short", false, vec![3])]
     );
+    assert_eq!(
+        table.overlap.iter().collect::<Vec<_>>(),
+        [1],
+        "patient 1 has a row in short, whose set lacks it"
+    );
+    assert!(store.index.get("\\a\\").unwrap().tagged);
+    assert_eq!(store.index.patients().iter().collect::<Vec<_>>(), [1, 2, 3]);
+    let summaries: Vec<(&str, u64)> = report
+        .store
+        .partitions
+        .iter()
+        .map(|p| (p.name.as_str(), p.observed_patients_missing_from_set))
+        .collect();
+    assert_eq!(summaries, [("complete", 0), ("short", 1)]);
+    assert_eq!(report.store.overlap_observations, 2);
+    store.read_block(store.index.get("\\a\\").unwrap()).unwrap();
 }

@@ -1,12 +1,13 @@
-//! Opening an existing store and replacing its files in place, shared by the commands that
-//! work on a store after it is built.
+//! Opening an existing store, its lock, its `.generation` marker, and replacing its files in
+//! place, shared by the commands that work on a store after it is built.
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use hpds_format::{
-    BLOCKS_FILE_NAME, BlockCodec, BlocksReader, CryptoKey, INDEX_FILE_NAME, PhenoIndex, Protection,
+    BLOCKS_FILE_NAME, Block, BlockCodec, BlocksReader, ConceptMeta, CryptoKey, INDEX_FILE_NAME,
+    Membership, PhenoIndex, Protection, StoreId,
 };
 
 use crate::error::{EtlError, Result};
@@ -37,7 +38,8 @@ pub fn resolve_protection(key: &KeySource, dir: &Path) -> Result<Protection> {
         })
 }
 
-/// A store opened for reading: its index, its blocks file and the codec for its blocks.
+/// A store opened for reading: its index, its blocks file, the codec for its blocks and
+/// its routing of patients to partitions.
 pub struct OpenStore {
     /// The decoded `pheno.index`.
     pub index: PhenoIndex,
@@ -45,6 +47,8 @@ pub struct OpenStore {
     pub reader: BlocksReader,
     /// The codec the blocks were sealed with.
     pub codec: BlockCodec,
+    /// The routing of patients to partitions the index gives.
+    pub membership: Membership,
 }
 
 impl OpenStore {
@@ -57,12 +61,98 @@ impl OpenStore {
         let index = read_index(dir, &protection)?;
         let reader = BlocksReader::open(dir.join(BLOCKS_FILE_NAME), index.store_id())?;
         let codec = index.block_codec(protection)?;
+        let membership = index.membership();
         Ok(OpenStore {
             index,
             reader,
             codec,
+            membership,
         })
     }
+
+    /// Reads the block of `concept`, one of the index's concepts, verified and checked
+    /// against the index and the store's partitions.
+    ///
+    /// # Errors
+    /// [`EtlError::Format`] when the block cannot be read, authenticated or decoded, or
+    /// disagrees with the index.
+    pub fn read_block(&self, concept: &ConceptMeta) -> Result<Block> {
+        Ok(self
+            .reader
+            .read_block(&self.codec, concept, &self.membership)?)
+    }
+}
+
+/// Name of the generation marker of a store: one line, the store id of its `pheno.index`
+/// as 32 lowercase hex digits. It is written last when a store is published, atomically
+/// and mode `0600`, so it names the store's id only once the publish is complete; the query
+/// service refuses a directory whose marker names another id.
+pub const GENERATION_FILE_NAME: &str = ".generation";
+
+/// The content of the [`GENERATION_FILE_NAME`] marker of the store `store_id`.
+pub fn generation_text(store_id: &str) -> String {
+    format!("{store_id}\n")
+}
+
+/// The store id the [`GENERATION_FILE_NAME`] marker in `dir` names, lowercase, or `None`
+/// when there is no marker.
+///
+/// # Errors
+/// [`EtlError::Usage`] when the marker does not hold exactly one store id of 32 hex digits;
+/// I/O errors reading it.
+pub fn read_generation(dir: &Path) -> Result<Option<String>> {
+    let path = dir.join(GENERATION_FILE_NAME);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(EtlError::io("reading", &path)(e)),
+    };
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    match tokens.as_slice() {
+        [id] if id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()) => {
+            Ok(Some(id.to_ascii_lowercase()))
+        }
+        _ => Err(EtlError::Usage(format!(
+            "{} does not hold one store id of 32 hex digits; it was written by an earlier ETL or damaged",
+            path.display()
+        ))),
+    }
+}
+
+/// Writes the [`GENERATION_FILE_NAME`] marker of the store `store_id` into `dir`, replacing
+/// any marker there atomically.
+///
+/// # Errors
+/// I/O errors writing, syncing or renaming the marker.
+pub(crate) fn write_generation(dir: &Path, store_id: StoreId) -> Result<()> {
+    let marker = dir.join(GENERATION_FILE_NAME);
+    replace_file(&marker, |file| {
+        file.write_all(generation_text(&store_id.to_string()).as_bytes())
+            .map_err(EtlError::io("writing", &marker))
+    })
+}
+
+/// An exclusive `flock` on a store's directory itself, held by every command that writes
+/// the store: the publish of `load`, `migrate` and `convert` into an existing directory,
+/// `remove-concepts`, and `column-meta-csv` writing into the store. Two such commands, in
+/// this process or in another container sharing the directory, never interleave their
+/// writes. The lock is on the directory's inode, so no lock file is left in it, and it is
+/// released when dropped. `flock` serializes processes on one kernel only, so a host
+/// process and a container on another kernel (Docker Desktop's virtual machine) do not see
+/// each other's lock.
+pub struct StoreLock {
+    _dir: File,
+}
+
+/// Takes the [`StoreLock`] of the store directory `dir`, waiting while another command
+/// holds it.
+///
+/// # Errors
+/// I/O errors opening or locking the directory.
+pub fn lock_store(dir: &Path) -> Result<StoreLock> {
+    let file = File::open(dir).map_err(EtlError::io("opening", dir))?;
+    file.lock().map_err(EtlError::io("locking", dir))?;
+    Ok(StoreLock { _dir: file })
 }
 
 /// Reads and verifies `<dir>/pheno.index`.

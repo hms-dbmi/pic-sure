@@ -297,5 +297,7 @@ fn concept_meta(
         width_in_bytes,
         column_offset: 0,
         block: BlockLocation::default(),
+        holders: Vec::new(),
+        tagged: false,
     }
 }

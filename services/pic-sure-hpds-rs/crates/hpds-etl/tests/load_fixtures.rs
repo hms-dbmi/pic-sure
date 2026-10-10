@@ -42,7 +42,10 @@ fn assert_consistent(store: &Store) {
     let mut patients = roaring::RoaringBitmap::new();
     let mut observations = 0u64;
     for meta in store.index.concepts() {
-        let block = store.reader.read_block(&store.codec, meta).unwrap();
+        let block = store
+            .reader
+            .read_block(&store.codec, meta, &store.index.membership())
+            .unwrap();
         assert_eq!(block.len() as u32, meta.observation_count, "{}", meta.path);
         assert_eq!(
             block.all_patients().len() as u32,

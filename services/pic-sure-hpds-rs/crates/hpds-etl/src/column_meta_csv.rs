@@ -61,7 +61,10 @@ fn needs_quotes(field: &str, first_in_record: bool) -> bool {
 /// `String.valueOf` prints a null `Double`.
 ///
 /// Java writes the javabin offset and end position in fields 8 and 9; this writes the
-/// block offset and length in `pheno.blocks`.
+/// block offset and length in `pheno.blocks`. In a partitioned store the observation count
+/// covers every partition and the patient count is the sum of the partitions' patient
+/// counts ([`ConceptMeta::summed_patient_count`]), as Java's `SummaryColumnMeta` merges
+/// the per-partition `columnMeta` a partitioned javabin store holds.
 pub fn column_meta_fields(concept: &ConceptMeta) -> [String; 11] {
     let double =
         |value: Option<f64>| value.map_or_else(|| "null".to_string(), java_double_to_string);
@@ -80,7 +83,7 @@ pub fn column_meta_fields(concept: &ConceptMeta) -> [String; 11] {
         concept.block.offset.to_string(),
         concept.block.length.to_string(),
         concept.observation_count.to_string(),
-        concept.patient_count.to_string(),
+        concept.summed_patient_count().to_string(),
     ]
 }
 

@@ -8,6 +8,12 @@
 //! the test key. `fixtures/partitioned/harm-fixture/` holds, for the four partition files of
 //! the HPDS integration fixture, a per-concept digest of the Java dumps, Java's
 //! `columnMeta.csv` files and the patient sets as count, min, max and sum.
+//!
+//! A partitioned load writes one store; each partition's rows are read back with
+//! [`split_by_partition`], which gives the dump a store of that partition alone would.
+//! Partition `edgeA` types `\ds\e\first\` numeric and `edgeB` categorical, so they cannot
+//! share a store: the edge tests load `edgeA` alone and `edgeB` with `edgeC`, which share
+//! patient 3, the overlap case.
 
 mod common;
 
@@ -16,13 +22,22 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use hpds_etl::EtlError;
-use hpds_etl::dump::{dump, dump_patients};
+use hpds_etl::dump::{split_by_partition, write_partition_dumps};
 use hpds_etl::load::{KeySource, PartitionedLoadOptions, load_partitioned};
 use hpds_etl::migrate::{MigrateOptions, migrate_partitioned};
 use hpds_etl::store::OpenStore;
-use hpds_format::{CryptoKey, Protection};
+use hpds_format::{CryptoKey, Protection, java_string_cmp};
 
 const EDGE_PARTITIONS: [&str; 3] = ["edgeA", "edgeB", "edgeC"];
+
+/// The edge input files of each partition.
+fn edge_file(partition: &str) -> &'static str {
+    match partition {
+        "edgeA" => "edgeA-allConcepts.csv",
+        "edgeB" => "edgeB-allConcepts.csv",
+        _ => "edgeC-extra-allConcepts.csv",
+    }
+}
 
 /// `columnMeta.csv` rows where the Rust loader deliberately differs from Java: Java
 /// starts max at `Double.MIN_VALUE` and min at `Double.MAX_VALUE`, so an all-negative
@@ -64,13 +79,31 @@ fn options(input_dir: PathBuf, out: PathBuf) -> PartitionedLoadOptions {
     options
 }
 
+/// A copy of the edge input holding only `partitions`' files and the config, in a new
+/// directory under `dir`.
+fn edge_input(dir: &Path, partitions: &[&str]) -> PathBuf {
+    let input = dir.join(format!("input-{}", partitions.join("-")));
+    std::fs::create_dir(&input).unwrap();
+    std::fs::copy(fixture("input/config.json"), input.join("config.json")).unwrap();
+    for partition in partitions {
+        let file = edge_file(partition);
+        std::fs::copy(fixture(&format!("input/{file}")), input.join(file)).unwrap();
+    }
+    input
+}
+
 /// Loads `input_dir` into `<tmp>/out` with the test key given as `--key-file`.
 fn load(input_dir: &Path) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("out");
+    load_into(input_dir, &dir, &out);
+    (dir, out)
+}
+
+fn load_into(input_dir: &Path, dir: &tempfile::TempDir, out: &Path) {
     let key = dir.path().join("key");
     write_key(&key);
-    let out = dir.path().join("out");
-    let mut options = options(input_dir.to_path_buf(), out.clone());
+    let mut options = options(input_dir.to_path_buf(), out.to_path_buf());
     options.key = KeySource::File(key);
     options.threads = Some(4);
     load_partitioned(&options).unwrap();
@@ -78,85 +111,48 @@ fn load(input_dir: &Path) -> (tempfile::TempDir, PathBuf) {
         !out.join(".lock").exists(),
         "the staging lock file is not published"
     );
+}
+
+/// Loads the edge partitions `partitions` into `<tmp>/out`.
+fn load_edge(partitions: &[&str]) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let input = edge_input(dir.path(), partitions);
+    let out = dir.path().join("out");
+    load_into(&input, &dir, &out);
     (dir, out)
 }
 
-/// The `.generation` marker of the partitioned store `out`, one store id per line.
-fn read_generation(out: &Path) -> Vec<String> {
-    std::fs::read_to_string(out.join(".generation"))
-        .unwrap()
-        .lines()
-        .map(str::to_string)
-        .collect()
-}
-
-/// True when every patient with an observation in a block of the store in `dir` is in its
-/// index's patient set, read back from every block.
-fn observed_patients_indexed(dir: &Path) -> bool {
-    let store = open(dir);
-    let mut observed = roaring::RoaringBitmap::new();
-    for concept in store.index.concepts() {
-        observed |= store
-            .reader
-            .read_block(&store.codec, concept)
-            .unwrap()
-            .all_patients();
-    }
-    observed.is_subset(store.index.patients())
-}
-
-/// The store id of each partition of `out`, in partition name order, as 32 lowercase hex
-/// digits, followed by ` patients-indexed` when every patient its blocks hold is in its
-/// index, then the combined store's id and its tag when `out` has one: the lines
-/// `.generation` should hold.
-fn store_ids(out: &Path) -> Vec<String> {
-    let id_of = |dir: &Path| {
-        let id = open(dir).index.store_id().to_string();
-        assert!(
-            id.len() == 32
-                && id
-                    .bytes()
-                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        );
-        id
-    };
-    hpds_etl::partitions::partition_dirs(out)
-        .unwrap()
-        .into_iter()
-        .map(|p| {
-            if observed_patients_indexed(&p.dir) {
-                format!("{} patients-indexed", id_of(&p.dir))
-            } else {
-                id_of(&p.dir)
-            }
-        })
-        .chain(
-            hpds_etl::combined::existing_combined_dir(out)
-                .map(|dir| format!("{} .combined", id_of(&dir))),
-        )
-        .collect()
+/// The `.generation` marker of the store `out`.
+fn read_generation(out: &Path) -> String {
+    std::fs::read_to_string(out.join(".generation")).unwrap()
 }
 
 fn open(dir: &Path) -> OpenStore {
     OpenStore::open(dir, test_protection()).unwrap()
 }
 
-/// The store's dump without its header line, as bytes.
-fn dump_body(store: &OpenStore) -> Vec<u8> {
-    let mut out = Vec::new();
-    dump(store, &mut out).unwrap();
-    let header_end = out.windows(2).position(|w| w == b"\r\n").unwrap() + 2;
-    out.split_off(header_end)
+/// Each partition's dump body (no header line), by partition name.
+fn partition_dumps(store: &OpenStore) -> BTreeMap<String, String> {
+    let tmp = tempfile::tempdir().unwrap();
+    let split = split_by_partition(store, tmp.path()).unwrap();
+    split
+        .partitions
+        .iter()
+        .map(|partition| {
+            let mut out = Vec::new();
+            write_partition_dumps(&[partition], &mut out).unwrap();
+            let text = String::from_utf8(out).unwrap();
+            let body = text.split_once("\r\n").unwrap().1.to_string();
+            (partition.name.clone(), body)
+        })
+        .collect()
 }
 
-fn patients(store: &OpenStore) -> Vec<u32> {
-    let mut out = Vec::new();
-    dump_patients(store, &mut out).unwrap();
-    String::from_utf8(out)
-        .unwrap()
-        .lines()
-        .map(|l| l.parse().unwrap())
-        .collect()
+/// The patient set of partition `name`.
+fn patients(store: &OpenStore, name: &str) -> Vec<u32> {
+    let table = store.index.partition_table();
+    let position = table.position(name).unwrap();
+    table.partitions[position].patients.iter().collect()
 }
 
 fn csv_records(text: &str) -> Vec<Vec<String>> {
@@ -168,21 +164,67 @@ fn csv_records(text: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Compares two `columnMeta.csv` files field by field, skipping the block offset and
-/// length (fields 8 and 9), and returns the paths of rows that differ elsewhere.
-fn column_meta_differences(java: &str, rust: &str) -> Vec<(String, Vec<String>)> {
-    let java = csv_records(java);
+/// Merges per-partition `columnMeta.csv` files as Java's `SummaryColumnMeta` merges them:
+/// the widest width, the first column offset, the union of category values in Java string
+/// order, the smallest min and largest max (`null` skipped), and summed counts. The block
+/// fields are left empty.
+fn merge_java_column_meta(files: &[String]) -> Vec<Vec<String>> {
+    let mut merged: Vec<Vec<String>> = Vec::new();
+    let number = |text: &str| (text != "null").then(|| text.parse::<f64>().unwrap());
+    for text in files {
+        for row in csv_records(text) {
+            let Some(into) = merged.iter_mut().find(|m| m[0] == row[0]) else {
+                let mut start = row.clone();
+                start[7].clear();
+                start[8].clear();
+                merged.push(start);
+                continue;
+            };
+            let width = into[1].parse::<i32>().unwrap().max(row[1].parse().unwrap());
+            into[1] = width.to_string();
+            let mut values: Vec<String> = into[4]
+                .split('µ')
+                .chain(row[4].split('µ'))
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+                .collect();
+            values.sort_by(|a, b| java_string_cmp(a, b));
+            values.dedup();
+            into[4] = values.join("µ");
+            for (column, keep_lower) in [(5, true), (6, false)] {
+                match (number(&into[column]), number(&row[column])) {
+                    (None, Some(_)) => into[column] = row[column].clone(),
+                    (Some(a), Some(b)) if (b < a) == keep_lower && b != a => {
+                        into[column] = row[column].clone();
+                    }
+                    _ => {}
+                }
+            }
+            for column in [9, 10] {
+                let sum: u64 =
+                    into[column].parse::<u64>().unwrap() + row[column].parse::<u64>().unwrap();
+                into[column] = sum.to_string();
+            }
+        }
+    }
+    merged.sort_by(|a, b| java_string_cmp(&a[0], &b[0]));
+    merged
+}
+
+/// Compares the expected rows with a store's `columnMeta.csv`, skipping the block offset
+/// and length (fields 8 and 9), and returns the paths of rows that differ elsewhere.
+fn column_meta_differences(expected: &[Vec<String>], rust: &str) -> Vec<(String, Vec<String>)> {
     let rust = csv_records(rust);
-    assert_eq!(java.len(), rust.len(), "row count");
+    assert_eq!(expected.len(), rust.len(), "row count");
     let mut differences = Vec::new();
-    for (j, r) in java.iter().zip(&rust) {
-        assert_eq!(j[0], r[0], "concept order");
+    for (e, r) in expected.iter().zip(&rust) {
+        assert_eq!(e[0], r[0], "concept order");
         let strip = |row: &Vec<String>| {
             let mut row = row.clone();
             row.drain(7..9);
             row
         };
-        if strip(j) != strip(r) {
+        if strip(e) != strip(r) {
             differences.push((r[0].clone(), r.clone()));
         }
     }
@@ -197,10 +239,9 @@ fn fnv(hash: u64, bytes: &[u8]) -> u64 {
 
 /// Per concept, in dump order: the path, its observation count, and the FNV-1a 64 hash of
 /// its dump lines with their `\r\n` terminators.
-fn dump_digest(body: &[u8]) -> Vec<(String, u64, String)> {
+fn dump_digest(body: &str) -> Vec<(String, u64, String)> {
     let mut digest: Vec<(String, u64, u64)> = Vec::new();
-    let text = std::str::from_utf8(body).unwrap();
-    for line in text.split_terminator("\r\n") {
+    for line in body.split_terminator("\r\n") {
         let concept = csv_records(line).remove(0).remove(1);
         if digest.last().is_none_or(|d| d.0 != concept) {
             digest.push((concept, 0, 0xcbf2_9ce4_8422_2325));
@@ -213,6 +254,10 @@ fn dump_digest(body: &[u8]) -> Vec<(String, u64, String)> {
         .into_iter()
         .map(|(c, n, h)| (c, n, format!("{h:016x}")))
         .collect()
+}
+
+fn report(out: &Path) -> serde_json::Value {
+    serde_json::from_slice(&std::fs::read(out.join("etl-report.json")).unwrap()).unwrap()
 }
 
 #[test]
@@ -232,20 +277,16 @@ fn harmonization_fixture_matches_java_csv_loader() {
     }
     let patient_text = std::fs::read_to_string(fixture("harm-fixture/patients.tsv")).unwrap();
     assert_eq!(expected.len(), 4);
+    let store = open(&out);
+    let dumps = partition_dumps(&store);
+    let mut java_metas = Vec::new();
     for (partition, java_digest) in &expected {
-        let store = open(&out.join(partition));
-        assert_eq!(&dump_digest(&dump_body(&store)), java_digest, "{partition}");
-        let java_meta =
+        assert_eq!(&dump_digest(&dumps[*partition]), java_digest, "{partition}");
+        java_metas.push(
             std::fs::read_to_string(fixture(&format!("harm-fixture/{partition}.columnMeta.csv")))
-                .unwrap();
-        let rust_meta =
-            std::fs::read_to_string(out.join(partition).join("columnMeta.csv")).unwrap();
-        assert_eq!(
-            column_meta_differences(&java_meta, &rust_meta),
-            Vec::new(),
-            "{partition}"
+                .unwrap(),
         );
-        let ids = patients(&store);
+        let ids = patients(&store, partition);
         let stats = format!(
             "{partition}\t{}\t{}\t{}\t{}",
             ids.len(),
@@ -255,6 +296,11 @@ fn harmonization_fixture_matches_java_csv_loader() {
         );
         assert!(patient_text.lines().any(|l| l == stats), "{stats}");
     }
+    let rust_meta = std::fs::read_to_string(out.join("columnMeta.csv")).unwrap();
+    assert_eq!(
+        column_meta_differences(&merge_java_column_meta(&java_metas), &rust_meta),
+        Vec::new()
+    );
     let mut names: Vec<String> = std::fs::read_dir(&out)
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
@@ -263,66 +309,101 @@ fn harmonization_fixture_matches_java_csv_loader() {
     assert_eq!(
         names,
         [
-            ".combined",
             ".generation",
+            "columnMeta.csv",
             "encryption_key",
-            "partition1",
-            "partition2",
-            "partition3",
-            "partition4"
+            "etl-report.json",
+            "pheno.blocks",
+            "pheno.index",
         ]
     );
-    assert_eq!(read_generation(&out), store_ids(&out));
+    assert_eq!(
+        read_generation(&out),
+        format!("{}\n", store.index.store_id())
+    );
     assert_eq!(
         std::fs::read_to_string(out.join("encryption_key")).unwrap(),
         common::KEY
+    );
+    let report = report(&out);
+    assert_eq!(report["store"]["overlap_patients"], 0);
+    assert_eq!(report["store"]["tagged_concepts"], 0);
+    assert_eq!(report["store"]["patients"], 4978);
+    assert!(
+        store
+            .index
+            .partition_table()
+            .partitions
+            .iter()
+            .all(|p| p.patients_indexed)
     );
 }
 
 #[test]
 fn edge_partitions_match_java_csv_loader_except_min_and_max() {
-    let (_dir, out) = load(&fixture("input"));
-    for partition in EDGE_PARTITIONS {
-        let store = open(&out.join(partition));
-        let java_dump = std::fs::read(fixture(&format!("java/{partition}.dump.csv"))).unwrap();
-        assert_eq!(
-            String::from_utf8(dump_body(&store)).unwrap(),
-            String::from_utf8(java_dump).unwrap(),
-            "{partition}"
-        );
-        let java_meta =
-            std::fs::read_to_string(fixture(&format!("java/{partition}.columnMeta.csv"))).unwrap();
-        let rust_meta =
-            std::fs::read_to_string(out.join(partition).join("columnMeta.csv")).unwrap();
-        let differences = column_meta_differences(&java_meta, &rust_meta);
-        let expected: Vec<(String, Vec<String>)> = if partition == "edgeA" {
-            EDGE_MIN_MAX_DIVERGENCES
-                .iter()
-                .map(|(path, _, _)| {
-                    let row = differences
-                        .iter()
-                        .find(|d| d.0 == *path)
-                        .unwrap_or_else(|| panic!("{path} should differ"));
-                    (path.to_string(), row.1.clone())
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-        assert_eq!(differences, expected, "{partition}");
-        for (path, min, max) in EDGE_MIN_MAX_DIVERGENCES {
-            if let Some((_, row)) = differences.iter().find(|d| d.0 == path) {
+    for group in [&["edgeA"][..], &["edgeB", "edgeC"]] {
+        let (_dir, out) = load_edge(group);
+        let store = open(&out);
+        let dumps = partition_dumps(&store);
+        let mut java_metas = Vec::new();
+        for partition in group {
+            let java_dump =
+                std::fs::read_to_string(fixture(&format!("java/{partition}.dump.csv"))).unwrap();
+            assert_eq!(dumps[*partition], java_dump, "{partition}");
+            java_metas.push(
+                std::fs::read_to_string(fixture(&format!("java/{partition}.columnMeta.csv")))
+                    .unwrap(),
+            );
+            let java_patients: Vec<u32> =
+                std::fs::read_to_string(fixture(&format!("java/{partition}.patients.txt")))
+                    .unwrap()
+                    .lines()
+                    .map(|l| l.parse().unwrap())
+                    .collect();
+            assert_eq!(patients(&store, partition), java_patients, "{partition}");
+        }
+        let rust_meta = std::fs::read_to_string(out.join("columnMeta.csv")).unwrap();
+        let differences = column_meta_differences(&merge_java_column_meta(&java_metas), &rust_meta);
+        if group == ["edgeA"] {
+            let paths: Vec<&str> = differences.iter().map(|d| d.0.as_str()).collect();
+            assert_eq!(
+                paths,
+                EDGE_MIN_MAX_DIVERGENCES
+                    .iter()
+                    .map(|d| d.0)
+                    .collect::<Vec<_>>()
+            );
+            for (path, min, max) in EDGE_MIN_MAX_DIVERGENCES {
+                let row = &differences.iter().find(|d| d.0 == path).unwrap().1;
                 assert_eq!((row[5].as_str(), row[6].as_str()), (min, max), "{path}");
             }
+        } else {
+            assert_eq!(differences, Vec::new());
         }
-        let java_patients: Vec<u32> =
-            std::fs::read_to_string(fixture(&format!("java/{partition}.patients.txt")))
-                .unwrap()
-                .lines()
-                .map(|l| l.parse().unwrap())
-                .collect();
-        assert_eq!(patients(&store), java_patients, "{partition}");
     }
+}
+
+#[test]
+fn a_concept_typed_differently_in_two_partitions_fails_the_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("out");
+    let key = dir.path().join("key");
+    write_key(&key);
+    let mut options = options(fixture("input"), out.clone());
+    options.key = KeySource::File(key);
+    let error = load_partitioned(&options).unwrap_err().to_string();
+    assert!(
+        error.contains(
+            "concept \"\\\\ds\\\\e\\\\first\\\\\" is numeric in partition edgeA and categorical in partition edgeB"
+        ),
+        "{error}"
+    );
+    assert!(!out.exists());
+    assert_eq!(
+        std::fs::read_dir(dir.path()).unwrap().count(),
+        1,
+        "no staging left"
+    );
 }
 
 #[test]
@@ -348,69 +429,43 @@ fn edge_load_counts_drops_instead_of_aborting() {
 }
 
 #[test]
-fn overlapping_patients_and_type_conflicts_load_into_their_partitions() {
-    let (_dir, out) = load(&fixture("input"));
-    let a = open(&out.join("edgeA"));
-    let b = open(&out.join("edgeB"));
-    let c = open(&out.join("edgeC"));
-    let first = "\\ds\\e\\first\\";
-    assert!(!a.index.get(first).unwrap().is_categorical());
-    assert!(b.index.get(first).unwrap().is_categorical());
-    assert_eq!(patients(&b), [1, 2, 3, 40]);
-    assert_eq!(patients(&c), [3, 50]);
-
-    let mut merged = Vec::new();
-    hpds_etl::dump::dump_patients_merged(&[a, b, c], &mut merged).unwrap();
-    let merged: Vec<u32> = String::from_utf8(merged)
-        .unwrap()
-        .lines()
-        .map(|l| l.parse().unwrap())
-        .collect();
-    assert_eq!(merged.len(), 32);
-    assert!(merged.windows(2).all(|w| w[0] < w[1]));
-    assert!(merged.contains(&40) && merged.contains(&50) && merged.contains(&3));
-
-    let dirs: Vec<(String, PathBuf)> = EDGE_PARTITIONS
-        .iter()
-        .map(|p| (p.to_string(), out.join(p)))
-        .collect();
-    let target = out.join("columnMeta.csv");
-    let error = hpds_etl::store_maintenance::write_merged_column_meta_csv(
-        &dirs,
-        &target,
-        &test_protection(),
-    )
-    .unwrap_err()
-    .to_string();
+fn a_patient_in_two_partitions_goes_into_the_overlap_set_and_tags_its_blocks() {
+    let (_dir, out) = load_edge(&["edgeB", "edgeC"]);
+    let store = open(&out);
+    let table = store.index.partition_table();
+    assert_eq!(patients(&store, "edgeB"), [1, 2, 3, 40]);
+    assert_eq!(patients(&store, "edgeC"), [3, 50]);
+    assert_eq!(table.overlap.iter().collect::<Vec<_>>(), [3]);
     assert_eq!(
-        error,
-        "concept \"\\\\ds\\\\e\\\\first\\\\\" is numeric in partition edgeA and categorical in partition edgeB"
+        store.index.patients().iter().collect::<Vec<_>>(),
+        [1, 2, 3, 40, 50]
     );
-    assert!(!target.exists());
-}
-
-#[test]
-fn merged_column_meta_sums_counts_and_unions_values() {
-    let (_dir, out) = load(&fixture("input"));
-    let dirs: Vec<(String, PathBuf)> = ["edgeB", "edgeC"]
-        .iter()
-        .map(|p| (p.to_string(), out.join(p)))
-        .collect();
-    let target = out.join("merged.csv");
-    let rows = hpds_etl::store_maintenance::write_merged_column_meta_csv(
-        &dirs,
-        &target,
-        &test_protection(),
-    )
-    .unwrap();
-    assert_eq!(rows, 3);
+    let shared = store.index.get("\\ds\\e\\shared\\").unwrap();
+    assert!(shared.tagged);
+    assert_eq!(shared.observation_count, 4);
+    assert_eq!(shared.patient_count, 3);
+    assert_eq!(shared.summed_patient_count(), 4);
+    assert!(!store.index.get("\\ds\\e\\only_c\\").unwrap().tagged);
+    assert!(!store.index.get("\\ds\\e\\first\\").unwrap().tagged);
+    let report = report(&out);
+    assert_eq!(report["store"]["overlap_patients"], 1);
+    assert_eq!(report["store"]["overlap_observations"], 2);
+    assert_eq!(report["store"]["tagged_concepts"], 1);
     assert_eq!(
-        std::fs::read_to_string(&target).unwrap(),
-        concat!(
-            "\\ds\\e\\first\\,4,0,true,moreµtext,null,null,0,0,2,2\r\n",
-            "\\ds\\e\\only_c\\,1,0,true,x,null,null,0,0,1,1\r\n",
-            "\\ds\\e\\shared\\,8,0,false,,4.0,9.0,0,0,4,4\r\n",
-        )
+        std::fs::read_to_string(out.join("columnMeta.csv"))
+            .unwrap()
+            .lines()
+            .map(|line| {
+                let mut fields: Vec<&str> = line.split(',').collect();
+                fields.drain(7..9);
+                fields.join(",")
+            })
+            .collect::<Vec<_>>(),
+        [
+            "\\ds\\e\\first\\,4,0,true,moreµtext,null,null,2,2",
+            "\\ds\\e\\only_c\\,1,0,true,x,null,null,1,1",
+            "\\ds\\e\\shared\\,8,0,false,,4.0,9.0,4,4",
+        ]
     );
 }
 
@@ -453,7 +508,7 @@ fn a_duplicate_prefix_is_refused_before_anything_is_written() {
 }
 
 #[test]
-fn a_failing_partition_publishes_none() {
+fn a_failing_partition_publishes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("input");
     std::fs::create_dir(&input).unwrap();
@@ -484,7 +539,7 @@ fn a_failing_partition_publishes_none() {
 }
 
 #[test]
-fn reloading_replaces_partitions_and_refuses_stale_ones() {
+fn reloading_replaces_the_whole_store() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("input");
     std::fs::create_dir(&input).unwrap();
@@ -494,7 +549,7 @@ fn reloading_replaces_partitions_and_refuses_stale_ones() {
     write_key(&out.join("encryption_key"));
     let options = options(input.clone(), out.clone());
     load_partitioned(&options).unwrap();
-    let first_id = open(&out.join("p1")).index.store_id();
+    let first_id = open(&out).index.store_id();
 
     std::fs::write(
         input.join("p1-allConcepts.csv"),
@@ -503,16 +558,25 @@ fn reloading_replaces_partitions_and_refuses_stale_ones() {
     .unwrap();
     std::fs::write(input.join("p2-allConcepts.csv"), "3,\\a\\,1,,\n").unwrap();
     load_partitioned(&options).unwrap();
-    let p1 = open(&out.join("p1"));
-    assert_ne!(p1.index.store_id(), first_id);
-    assert_eq!(patients(&p1), [1, 2]);
-    assert_ne!(open(&out.join("p2")).index.store_id(), p1.index.store_id());
+    let store = open(&out);
+    assert_ne!(store.index.store_id(), first_id);
+    assert_eq!(patients(&store, "p1"), [1, 2]);
+    assert_eq!(patients(&store, "p2"), [3]);
 
     std::fs::remove_file(input.join("p2-allConcepts.csv")).unwrap();
-    let error = load_partitioned(&options).unwrap_err().to_string();
-    assert!(
-        error.contains("partitions this run does not write (p2)"),
-        "{error}"
+    load_partitioned(&options).unwrap();
+    let store = open(&out);
+    let names: Vec<&str> = store
+        .index
+        .partition_table()
+        .partitions
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect();
+    assert_eq!(names, ["p1"]);
+    assert_eq!(
+        read_generation(&out),
+        format!("{}\n", store.index.store_id())
     );
 }
 
@@ -528,21 +592,16 @@ fn a_key_file_that_differs_from_the_installed_key_is_refused() {
     .unwrap();
     let key = dir.path().join("key");
     write_key(&key);
-    let mut options = options(fixture("input"), out);
+    let mut options = options(edge_input(dir.path(), &["edgeA"]), out);
     options.key = KeySource::File(key);
     let error = load_partitioned(&options).unwrap_err().to_string();
-    assert!(
-        error.contains("every partition shares the root key"),
-        "{error}"
-    );
+    assert!(error.contains("the store keeps the key it has"), "{error}");
 }
 
-/// Copies the Java edge export into a fresh directory, migrates it, and returns the
-/// temporary directory and the output.
-fn migrate_edge_export() -> (tempfile::TempDir, PathBuf) {
-    let dir = tempfile::tempdir().unwrap();
-    let export = dir.path().join("export");
-    for partition in EDGE_PARTITIONS {
+/// Copies the Java edge export of `partitions` into a fresh directory.
+fn edge_export(dir: &Path, partitions: &[&str]) -> PathBuf {
+    let export = dir.join("export");
+    for partition in partitions {
         std::fs::create_dir_all(export.join(partition)).unwrap();
         for file in ["concepts.bin", "patients.txt"] {
             std::fs::copy(
@@ -552,46 +611,77 @@ fn migrate_edge_export() -> (tempfile::TempDir, PathBuf) {
             .unwrap();
         }
     }
-    let out = dir.path().join("out");
-    let report = migrate_partitioned(&MigrateOptions {
+    export
+}
+
+fn migrate_options(export: PathBuf, out: PathBuf) -> MigrateOptions {
+    MigrateOptions {
         export,
-        out: out.clone(),
+        out,
         key: KeySource::File(fixture("java-export/encryption_key")),
         threads: Some(2),
         skip_inconsistent: false,
-        combined: true,
-    })
-    .unwrap();
-    assert_eq!(
-        report.partitions.keys().collect::<Vec<_>>(),
-        EDGE_PARTITIONS.iter().collect::<Vec<_>>()
-    );
-    (dir, out)
+    }
 }
 
 #[test]
 fn migrating_the_java_partitioned_store_reproduces_its_dumps() {
-    let (_dir, out) = migrate_edge_export();
-    assert_eq!(read_generation(&out), store_ids(&out));
-    assert_eq!(
-        std::fs::read(out.join("encryption_key")).unwrap(),
-        std::fs::read(fixture("java-export/encryption_key")).unwrap()
-    );
-    for partition in EDGE_PARTITIONS {
-        let store = open(&out.join(partition));
+    for group in [&["edgeA"][..], &["edgeB", "edgeC"]] {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let report = migrate_partitioned(&migrate_options(
+            edge_export(dir.path(), group),
+            out.clone(),
+        ))
+        .unwrap();
         assert_eq!(
-            String::from_utf8(dump_body(&store)).unwrap(),
-            std::fs::read_to_string(fixture(&format!("java/{partition}.dump.csv"))).unwrap(),
-            "{partition}"
+            report
+                .partitions
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            group
         );
-        let java_patients: Vec<u32> =
-            std::fs::read_to_string(fixture(&format!("java/{partition}.patients.txt")))
-                .unwrap()
-                .lines()
-                .map(|l| l.parse().unwrap())
-                .collect();
-        assert_eq!(patients(&store), java_patients, "{partition}");
+        let store = open(&out);
+        assert_eq!(
+            read_generation(&out),
+            format!("{}\n", store.index.store_id())
+        );
+        assert_eq!(report.store.store_id, store.index.store_id().to_string());
+        assert_eq!(
+            std::fs::read(out.join("encryption_key")).unwrap(),
+            std::fs::read(fixture("java-export/encryption_key")).unwrap()
+        );
+        let dumps = partition_dumps(&store);
+        for partition in group {
+            assert_eq!(
+                dumps[*partition],
+                std::fs::read_to_string(fixture(&format!("java/{partition}.dump.csv"))).unwrap(),
+                "{partition}"
+            );
+            let java_patients: Vec<u32> =
+                std::fs::read_to_string(fixture(&format!("java/{partition}.patients.txt")))
+                    .unwrap()
+                    .lines()
+                    .map(|l| l.parse().unwrap())
+                    .collect();
+            assert_eq!(patients(&store, partition), java_patients, "{partition}");
+        }
     }
+}
+
+#[test]
+fn migrating_partitions_that_type_a_concept_differently_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("out");
+    let error = migrate_partitioned(&migrate_options(
+        edge_export(dir.path(), &EDGE_PARTITIONS),
+        out.clone(),
+    ))
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("is numeric in partition edgeA"), "{error}");
+    assert!(!out.exists());
 }
 
 fn hpds_etl(args: &[&str]) -> std::process::Output {
@@ -609,6 +699,7 @@ fn path_str(path: &Path) -> &str {
 #[test]
 fn cli_loads_migrates_and_dumps_per_partition() {
     let dir = tempfile::tempdir().unwrap();
+    let input = edge_input(dir.path(), &["edgeB", "edgeC"]);
     let out = dir.path().join("out");
     std::fs::create_dir(&out).unwrap();
     write_key(&out.join("encryption_key"));
@@ -617,20 +708,21 @@ fn cli_loads_migrates_and_dumps_per_partition() {
         "--mode",
         "partitioned",
         "--input-dir",
-        path_str(&fixture("input")),
+        path_str(&input),
         "--config",
-        path_str(&fixture("input/config.json")),
+        path_str(&input.join("config.json")),
         "--out",
         path_str(&out),
     ]);
     assert!(loaded.status.success(), "{loaded:?}");
     let counts: serde_json::Value = serde_json::from_slice(&loaded.stdout).unwrap();
-    assert_eq!(counts["edgeB"]["accepted"], 5);
+    assert_eq!(counts["partitions"]["edgeB"]["accepted"], 5);
+    assert_eq!(counts["store"]["overlap_patients"], 1);
 
     let dumps = dir.path().join("dumps");
     let dumped = hpds_etl(&["dump", "--store", path_str(&out), "--out", path_str(&dumps)]);
     assert!(dumped.status.success(), "{dumped:?}");
-    for partition in EDGE_PARTITIONS {
+    for partition in ["edgeB", "edgeC"] {
         let text = std::fs::read_to_string(dumps.join(format!("{partition}.csv"))).unwrap();
         let body = text.split_once("\r\n").unwrap().1;
         assert_eq!(
@@ -642,7 +734,7 @@ fn cli_loads_migrates_and_dumps_per_partition() {
     assert!(merged.status.success(), "{merged:?}");
     let mut expected =
         String::from("PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,TIMESTAMP\r\n");
-    for partition in EDGE_PARTITIONS {
+    for partition in ["edgeB", "edgeC"] {
         expected.push_str(
             &std::fs::read_to_string(fixture(&format!("java/{partition}.dump.csv"))).unwrap(),
         );
@@ -653,14 +745,14 @@ fn cli_loads_migrates_and_dumps_per_partition() {
     assert!(!no_out.status.success());
     assert!(String::from_utf8_lossy(&no_out.stderr).contains("--out <directory>"));
 
-    let conflict = hpds_etl(&["column-meta-csv", "--store", path_str(&out), "--merged"]);
-    assert!(!conflict.status.success());
-    assert!(String::from_utf8_lossy(&conflict.stderr).contains("is numeric in partition edgeA"));
+    let regenerated = hpds_etl(&["column-meta-csv", "--store", path_str(&out), "--merged"]);
+    assert!(regenerated.status.success(), "{regenerated:?}");
 }
 
 #[test]
-fn cli_maintenance_commands_act_on_every_partition() {
-    let (_dir, out) = load(&fixture("input"));
+fn cli_maintenance_commands_change_the_one_store() {
+    let (_dir, out) = load_edge(&["edgeB", "edgeC"]);
+    let id = open(&out).index.store_id();
     let concepts = out.join("conceptsToRemove.txt");
     std::fs::write(&concepts, "\\ds\\e\\shared\\\n").unwrap();
     let removed = hpds_etl(&[
@@ -672,47 +764,45 @@ fn cli_maintenance_commands_act_on_every_partition() {
     ]);
     assert!(removed.status.success(), "{removed:?}");
     let report: serde_json::Value = serde_json::from_slice(&removed.stdout).unwrap();
-    assert_eq!(report["edgeA"]["removed"], 0);
-    assert_eq!(report["edgeB"]["removed"], 1);
-    assert_eq!(report["edgeC"]["removed"], 1);
-    for partition in ["edgeB", "edgeC"] {
-        let store = open(&out.join(partition));
-        assert!(store.index.get("\\ds\\e\\shared\\").is_none());
-        let csv = std::fs::read_to_string(out.join(partition).join("columnMeta.csv")).unwrap();
-        assert!(!csv.contains("shared"), "{partition}");
-    }
+    assert_eq!(report["removed"], 1);
+    let store = open(&out);
+    assert!(store.index.get("\\ds\\e\\shared\\").is_none());
+    assert_eq!(store.index.store_id(), id);
+    assert_eq!(
+        store
+            .index
+            .partition_table()
+            .overlap
+            .iter()
+            .collect::<Vec<_>>(),
+        [3],
+        "the partition table is kept"
+    );
+    let csv_path = out.join("columnMeta.csv");
+    let before = std::fs::read_to_string(&csv_path).unwrap();
+    assert!(!before.contains("shared"));
+    assert_eq!(read_generation(&out), format!("{id}\n"));
 
-    let edge_c_meta = out.join("edgeC").join("columnMeta.csv");
-    let before = std::fs::read_to_string(&edge_c_meta).unwrap();
-    std::fs::remove_file(&edge_c_meta).unwrap();
+    std::fs::remove_file(&csv_path).unwrap();
     let regenerated = hpds_etl(&["column-meta-csv", "--store", path_str(&out)]);
     assert!(regenerated.status.success(), "{regenerated:?}");
-    assert_eq!(std::fs::read_to_string(&edge_c_meta).unwrap(), before);
+    assert_eq!(std::fs::read_to_string(&csv_path).unwrap(), before);
+    let elsewhere = out.parent().unwrap().join("x.csv");
     let with_out = hpds_etl(&[
         "column-meta-csv",
         "--store",
         path_str(&out),
         "--out",
-        path_str(&out.join("x.csv")),
+        path_str(&elsewhere),
     ]);
-    assert!(!with_out.status.success());
+    assert!(with_out.status.success(), "{with_out:?}");
+    assert_eq!(std::fs::read_to_string(&elsewhere).unwrap(), before);
 }
 
 #[test]
 fn cli_migrate_detects_a_partitioned_export() {
     let dir = tempfile::tempdir().unwrap();
-    let export = dir.path().join("export");
-    std::fs::create_dir(&export).unwrap();
-    for partition in ["edgeB", "edgeC"] {
-        std::fs::create_dir(export.join(partition)).unwrap();
-        for file in ["concepts.bin", "patients.txt"] {
-            std::fs::copy(
-                fixture(&format!("java-export/{partition}/{file}")),
-                export.join(partition).join(file),
-            )
-            .unwrap();
-        }
-    }
+    let export = edge_export(dir.path(), &["edgeB", "edgeC"]);
     let out = dir.path().join("out");
     let migrated = hpds_etl(&[
         "migrate",
@@ -727,13 +817,16 @@ fn cli_migrate_detects_a_partitioned_export() {
     let report: serde_json::Value = serde_json::from_slice(&migrated.stdout).unwrap();
     assert_eq!(report["partitions"]["edgeB"]["observations"], 5);
     assert_eq!(report["partitions"]["edgeC"]["patients"], 2);
-    let rows = hpds_etl(&["column-meta-csv", "--store", path_str(&out), "--merged"]);
-    assert!(rows.status.success(), "{rows:?}");
-    assert!(
-        std::fs::read_to_string(out.join("columnMeta.csv"))
-            .unwrap()
-            .contains("\\ds\\e\\shared\\,8,0,false,,4.0,9.0,0,0,4,4\r\n")
-    );
+    assert_eq!(report["store"]["overlap_patients"], 1);
+    let shared = std::fs::read_to_string(out.join("columnMeta.csv"))
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("\\ds\\e\\shared\\"))
+        .unwrap()
+        .to_string();
+    let mut fields: Vec<&str> = shared.split(',').collect();
+    fields.drain(7..9);
+    assert_eq!(fields.join(","), "\\ds\\e\\shared\\,8,0,false,,4.0,9.0,4,4");
 }
 
 fn mode_bits(path: &Path) -> u32 {
@@ -838,27 +931,20 @@ fn the_generation_marker_follows_every_publish() {
     let out = dir.path().join("out");
     let mut options = options(input, out.clone());
     options.key = KeySource::File(key);
-    load_partitioned(&options).unwrap();
-    let first = read_generation(&out);
-    assert_eq!(first, store_ids(&out));
+    let first = load_partitioned(&options).unwrap();
+    assert_eq!(read_generation(&out), format!("{}\n", first.store.store_id));
     assert_eq!(mode_bits(&out.join(".generation")), 0o600);
-    load_partitioned(&options).unwrap();
-    let second = read_generation(&out);
-    assert_eq!(second, store_ids(&out));
-    assert_ne!(first, second);
-    assert_eq!(second.len(), 3);
-    assert!(second[2].ends_with(" .combined"), "{second:?}");
-    options.combined = false;
-    load_partitioned(&options).unwrap();
-    let third = read_generation(&out);
-    assert_eq!(third, store_ids(&out));
-    assert_eq!(third.len(), 2);
-    assert!(!out.join(".combined").exists());
+    let second = load_partitioned(&options).unwrap();
+    assert_eq!(
+        read_generation(&out),
+        format!("{}\n", second.store.store_id)
+    );
+    assert_ne!(first.store.store_id, second.store.store_id);
     let leftovers: Vec<String> = std::fs::read_dir(&out)
         .unwrap()
         .chain(std::fs::read_dir(dir.path()).unwrap())
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-        .filter(|n| n.contains("tmp") || n.contains("staging"))
+        .filter(|n| n.contains("tmp") || n.contains("staging") || n.contains("partitions"))
         .collect();
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }
@@ -893,127 +979,68 @@ fn a_byte_order_mark_and_text_after_a_closing_quote_are_counted() {
         ),
         (0, 0)
     );
-    let written: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(out.join("p1").join("etl-report.json")).unwrap())
-            .unwrap();
-    assert_eq!(written["counts"]["inputs_with_byte_order_mark"], 1);
+    let written = self::report(&out);
     assert_eq!(
-        written["counts"]["records_with_text_after_closing_quote"],
+        written["partitions"]["p1"]["counts"]["inputs_with_byte_order_mark"],
+        1
+    );
+    assert_eq!(
+        written["partitions"]["p1"]["counts"]["records_with_text_after_closing_quote"],
         2
     );
-    assert_eq!(patients(&open(&out.join("p1"))), [1, 2, 3, 4]);
+    assert_eq!(patients(&open(&out), "p1"), [1, 2, 3, 4]);
+}
+
+/// Writes a format 1 partitioned layout into `dir`: one partition directory holding a
+/// `pheno.index` (its content does not matter to the layout check).
+fn write_format_1_layout(dir: &Path) {
+    std::fs::create_dir_all(dir.join("p1")).unwrap();
+    std::fs::write(dir.join("p1").join("pheno.index"), b"x").unwrap();
 }
 
 #[test]
-fn unconverted_or_broken_java_partitions_are_refused_and_others_ignored() {
-    let (_dir, out) = load(&fixture("input"));
-    let concepts = out.join("concepts.txt");
-    std::fs::write(&concepts, "\\nothing\\\n").unwrap();
-    let commands: [Vec<&str>; 3] = [
-        vec!["dump", "--store", path_str(&out), "--concat"],
+fn a_format_1_partitioned_store_is_refused_naming_convert() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    write_format_1_layout(&old);
+    write_key(&old.join("encryption_key"));
+    let concepts = dir.path().join("concepts.txt");
+    std::fs::write(&concepts, "\\a\\\n").unwrap();
+    let dumps = dir.path().join("dumps");
+    let commands: [Vec<&str>; 4] = [
+        vec!["dump", "--store", path_str(&old), "--out", path_str(&dumps)],
         vec![
             "remove-concepts",
             "--store",
-            path_str(&out),
+            path_str(&old),
             "--concepts",
             path_str(&concepts),
         ],
-        vec!["column-meta-csv", "--store", path_str(&out)],
+        vec!["column-meta-csv", "--store", path_str(&old)],
+        vec!["dump", "--store", path_str(&old), "--concat"],
     ];
-    for (name, content) in [(".hidden", "x"), ("notes", "x")] {
-        std::fs::create_dir(out.join(name)).unwrap();
-        std::fs::write(out.join(name).join("columnMeta.javabin"), content).unwrap();
-        if name == "notes" {
-            std::fs::remove_file(out.join(name).join("columnMeta.javabin")).unwrap();
-            std::fs::write(out.join(name).join("readme.txt"), content).unwrap();
-        }
-    }
-    for command in &commands[..1] {
-        let ran = hpds_etl(command);
-        assert!(ran.status.success(), "{ran:?}");
-    }
-    let java = out.join("unconverted");
-    std::fs::create_dir(&java).unwrap();
-    std::fs::write(java.join("columnMeta.javabin"), "x").unwrap();
     for command in &commands {
         let ran = hpds_etl(command);
         assert!(!ran.status.success(), "{command:?}");
         assert!(
-            stderr(&ran).contains("unconverted holds columnMeta.javabin but not the other"),
+            stderr(&ran).contains("hpds-etl convert"),
             "{}",
             stderr(&ran)
         );
     }
-    std::fs::write(java.join("allObservationsStore.javabin"), "x").unwrap();
-    for command in &commands {
-        let ran = hpds_etl(command);
-        assert!(!ran.status.success(), "{command:?}");
-        assert!(
-            stderr(&ran).contains("holds a Java partition (javabin files) but no pheno.index"),
-            "{}",
-            stderr(&ran)
-        );
-    }
-    let mut options = options(fixture("input"), out.clone());
+    let mut options = options(edge_input(dir.path(), &["edgeA"]), old.clone());
     options.key = KeySource::OutputDirectoryKeyFile;
     let error = load_partitioned(&options).unwrap_err().to_string();
-    assert!(error.contains("unconverted"), "{error}");
-}
-
-#[test]
-fn remove_concepts_names_the_partitions_changed_before_a_failure_and_reruns_cleanly() {
-    let (_dir, out) = load(&fixture("input"));
-    let concepts = out.join("conceptsToRemove.txt");
-    std::fs::write(&concepts, "\\ds\\e\\shared\\\n").unwrap();
-    let edge_c_index = out.join("edgeC").join("pheno.index");
-    let saved = std::fs::read(&edge_c_index).unwrap();
-    std::fs::write(&edge_c_index, b"not an index").unwrap();
-    let partitions = hpds_etl::partitions::partition_dirs(&out).unwrap();
-    let error = hpds_etl::store_maintenance::remove_concepts_partitioned(
-        &partitions,
-        None,
-        &concepts,
-        &test_protection(),
-        true,
-    )
-    .unwrap_err();
-    let EtlError::PartitionFailed {
-        partition, changed, ..
-    } = &error
-    else {
-        panic!("{error}");
-    };
-    assert_eq!(partition, "edgeC");
-    assert_eq!(changed, &["edgeA", "edgeB"]);
-    let message = error.to_string();
-    assert!(
-        message.contains("partitions already changed: edgeA, edgeB"),
-        "{message}"
-    );
-    assert!(
-        open(&out.join("edgeB"))
-            .index
-            .get("\\ds\\e\\shared\\")
-            .is_none()
-    );
-
-    std::fs::write(&edge_c_index, saved).unwrap();
-    let reports = hpds_etl::store_maintenance::remove_concepts_partitioned(
-        &partitions,
-        None,
-        &concepts,
-        &test_protection(),
-        true,
-    )
-    .unwrap();
-    assert_eq!(reports["edgeB"].removed, 0);
-    assert_eq!(reports["edgeB"].not_found, ["\\ds\\e\\shared\\"]);
-    assert_eq!(reports["edgeC"].removed, 1);
+    assert!(error.contains("hpds-etl convert"), "{error}");
+    std::fs::remove_dir_all(old.join("p1")).unwrap();
+    std::fs::create_dir(old.join(".combined")).unwrap();
+    let error = load_partitioned(&options).unwrap_err().to_string();
+    assert!(error.contains("hpds-etl convert"), "{error}");
 }
 
 #[test]
 fn dump_outputs_are_private_new_and_outside_the_store() {
-    let (dir, out) = load(&fixture("input"));
+    let (dir, out) = load_edge(&["edgeB", "edgeC"]);
     let dumps = dir.path().join("dumps");
     let dump = |extra: &[&str]| {
         let mut args = vec!["dump", "--store", path_str(&out)];
@@ -1023,9 +1050,14 @@ fn dump_outputs_are_private_new_and_outside_the_store() {
     let written = dump(&["--out", path_str(&dumps)]);
     assert!(written.status.success(), "{written:?}");
     assert_eq!(mode_bits(&dumps), 0o700);
-    for partition in EDGE_PARTITIONS {
+    for partition in ["edgeB", "edgeC"] {
         assert_eq!(mode_bits(&dumps.join(format!("{partition}.csv"))), 0o600);
     }
+    let names: Vec<String> = std::fs::read_dir(&dumps)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(names.len(), 2, "no split rows are left: {names:?}");
 
     let again = dump(&["--out", path_str(&dumps)]);
     assert!(!again.status.success());
@@ -1048,17 +1080,21 @@ fn dump_outputs_are_private_new_and_outside_the_store() {
         let ran = dump(&[flag, "--patients", "--out", path_str(&concat), "--force"]);
         assert!(ran.status.success(), "{flag}: {ran:?}");
         assert_eq!(mode_bits(&concat), 0o600);
+        assert_eq!(
+            std::fs::read_to_string(&concat).unwrap(),
+            "1\n2\n3\n40\n50\n"
+        );
     }
+    let concat_rows = dump(&["--concat", "--out", path_str(&concat), "--force"]);
+    assert!(concat_rows.status.success(), "{concat_rows:?}");
+    let leftovers: Vec<String> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("hpds-etl-dump"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
 
-    let elsewhere = dir.path().join("elsewhere");
-    std::fs::create_dir(&elsewhere).unwrap();
-    std::fs::rename(out.join("edgeC"), elsewhere.join("edgeC")).unwrap();
-    std::os::unix::fs::symlink(elsewhere.join("edgeC"), out.join("edgeC")).unwrap();
-    for target in [
-        out.join("dumps"),
-        out.join("edgeA").join("x.csv"),
-        elsewhere.join("edgeC").join("x.csv"),
-    ] {
+    for target in [out.join("dumps"), out.join("x.csv")] {
         let concat = dump(&["--concat", "--out", path_str(&target)]);
         assert!(!concat.status.success(), "{}", target.display());
         assert!(
@@ -1072,146 +1108,6 @@ fn dump_outputs_are_private_new_and_outside_the_store() {
     }
 }
 
-#[test]
-fn the_edge_partitions_get_no_combined_store_because_of_their_type_conflict() {
-    let (_dir, out) = load(&fixture("input"));
-    assert!(!out.join(".combined").exists());
-    assert_eq!(read_generation(&out), store_ids(&out));
-    assert_eq!(read_generation(&out).len(), EDGE_PARTITIONS.len());
-}
-
-#[test]
-fn cli_combine_no_combined_and_remove_concepts_keep_the_combined_store_consistent() {
-    let dir = tempfile::tempdir().unwrap();
-    let key = dir.path().join("key");
-    write_key(&key);
-    let out = dir.path().join("out");
-    let loaded = hpds_etl(&[
-        "load",
-        "--mode",
-        "partitioned",
-        "--input-dir",
-        path_str(&harmonization_inputs()),
-        "--no-config",
-        "--key-file",
-        path_str(&key),
-        "--out",
-        path_str(&out),
-        "--no-combined",
-    ]);
-    assert!(loaded.status.success(), "{loaded:?}");
-    assert!(!out.join(".combined").exists());
-    assert_eq!(read_generation(&out).len(), 4);
-
-    let combined = hpds_etl(&["combine", "--store", path_str(&out)]);
-    assert!(combined.status.success(), "{combined:?}");
-    let report: serde_json::Value = serde_json::from_slice(&combined.stdout).unwrap();
-    assert_eq!(report["patients"], 4978);
-    assert_eq!(report["partitions_disjoint"], true);
-    assert_eq!(read_generation(&out), store_ids(&out));
-    assert_eq!(read_generation(&out).len(), 5);
-    let combined_store = open(&out.join(".combined"));
-    assert_eq!(combined_store.index.patients().len(), 4978);
-    let partition_rows: u64 = hpds_etl::partitions::partition_dirs(&out)
-        .unwrap()
-        .iter()
-        .flat_map(|p| open(&p.dir).index.concepts().to_vec())
-        .map(|c| u64::from(c.observation_count))
-        .sum();
-    let combined_rows: u64 = combined_store
-        .index
-        .concepts()
-        .iter()
-        .map(|c| u64::from(c.observation_count))
-        .sum();
-    assert_eq!(partition_rows, combined_rows);
-    assert_eq!(mode_bits(&out.join(".combined")), 0o700);
-    assert_eq!(
-        mode_bits(&out.join(".combined").join("pheno.blocks")),
-        0o600
-    );
-
-    let dumped = hpds_etl(&["dump", "--store", path_str(&out), "--concat", "--patients"]);
-    assert!(dumped.status.success(), "{dumped:?}");
-    assert_eq!(
-        String::from_utf8(dumped.stdout).unwrap().lines().count(),
-        4978
-    );
-
-    let path = combined_store.index.concepts()[0].path.clone();
-    let concepts = dir.path().join("remove.txt");
-    std::fs::write(&concepts, format!("{path}\n")).unwrap();
-    let removed = hpds_etl(&[
-        "remove-concepts",
-        "--store",
-        path_str(&out),
-        "--concepts",
-        path_str(&concepts),
-    ]);
-    assert!(removed.status.success(), "{removed:?}");
-    let report: serde_json::Value = serde_json::from_slice(&removed.stdout).unwrap();
-    assert_eq!(report[".combined"]["removed"], 1);
-    assert!(open(&out.join(".combined")).index.get(&path).is_none());
-    assert_eq!(read_generation(&out), store_ids(&out));
-
-    for missing in [dir.path().join("missing"), dir.path().join("key")] {
-        let error = hpds_etl::combined::remove_combined(&missing, &test_protection())
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("holds no partitions"), "{error}");
-    }
-    let removed = hpds_etl(&["combine", "--store", path_str(&out), "--remove"]);
-    assert!(removed.status.success(), "{removed:?}");
-    assert!(!out.join(".combined").exists());
-    let hidden: Vec<String> = std::fs::read_dir(&out)
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-        .filter(|name| name.starts_with('.'))
-        .collect();
-    assert_eq!(
-        hidden,
-        [".generation"],
-        "the moved combined store is deleted"
-    );
-    assert_eq!(read_generation(&out), store_ids(&out));
-    assert_eq!(read_generation(&out).len(), 4);
-
-    std::fs::write(out.join(".combined"), b"not a directory").unwrap();
-    let mut options = options(harmonization_inputs(), out.clone());
-    options.key = KeySource::File(key.clone());
-    let error = load_partitioned(&options).unwrap_err().to_string();
-    assert!(error.contains("where the combined store goes"), "{error}");
-
-    let root = hpds_etl(&[
-        "load",
-        "--mode",
-        "new-search",
-        "--input",
-        path_str(&key),
-        "--out",
-        path_str(&dir.path().join("root")),
-        "--no-combined",
-    ]);
-    assert!(!root.status.success());
-    assert!(stderr(&root).contains("--no-combined is for partitioned mode"));
-}
-
-/// Loads the harmonization fixture into `<tmp>/out` without a combined store.
-fn load_harmonization_without_combined() -> (tempfile::TempDir, PathBuf, PartitionedLoadOptions) {
-    let dir = tempfile::tempdir().unwrap();
-    let key = dir.path().join("key");
-    write_key(&key);
-    let out = dir.path().join("out");
-    let mut options = options(harmonization_inputs(), out.clone());
-    options.no_config = true;
-    options.config = None;
-    options.key = KeySource::File(key);
-    options.threads = Some(2);
-    options.combined = false;
-    load_partitioned(&options).unwrap();
-    (dir, out, options)
-}
-
 /// Waits up to a minute for `ready` to hold, then a little longer, so a thread that got
 /// that far without blocking would have finished.
 fn wait_until(mut ready: impl FnMut() -> bool) {
@@ -1223,7 +1119,8 @@ fn wait_until(mut ready: impl FnMut() -> bool) {
     std::thread::sleep(std::time::Duration::from_millis(500));
 }
 
-/// Takes the exclusive `flock` on the directory `dir` that the ETL's publishes take.
+/// Takes the exclusive `flock` on the directory `dir` that every command writing the store
+/// takes.
 fn hold_store_lock(dir: &Path) -> std::fs::File {
     let file = std::fs::File::open(dir).unwrap();
     file.lock().unwrap();
@@ -1238,49 +1135,43 @@ fn staged(parent: &Path, prefix: &str, file: &str) -> bool {
 }
 
 #[test]
-fn combine_publishes_only_under_the_store_lock() {
-    let (_dir, out, _) = load_harmonization_without_combined();
-    let before = read_generation(&out);
-    let lock = hold_store_lock(&out);
-    let target = out.clone();
-    let combine = std::thread::spawn(move || {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(2)
-            .build()
-            .unwrap();
-        hpds_etl::combined::combine_in_place(&target, &test_protection(), &pool)
-    });
-    wait_until(|| {
-        combine.is_finished() || staged(&out, ".combined.staging-", ".combined/pheno.index")
-    });
-    assert!(!combine.is_finished(), "combine waits for the lock");
-    assert!(!out.join(".combined").exists());
-    assert_eq!(read_generation(&out), before);
-    drop(lock);
-    combine.join().unwrap().unwrap();
-    assert!(out.join(".combined").join("pheno.index").exists());
-    assert_eq!(read_generation(&out), store_ids(&out));
-}
-
-#[test]
 fn a_load_publishes_into_an_existing_store_only_under_the_store_lock() {
-    let (dir, out, options) = load_harmonization_without_combined();
+    let dir = tempfile::tempdir().unwrap();
+    let key = dir.path().join("key");
+    write_key(&key);
+    let out = dir.path().join("out");
+    let mut options = options(harmonization_inputs(), out.clone());
+    options.key = KeySource::File(key);
+    options.threads = Some(2);
+    load_partitioned(&options).unwrap();
     let before = read_generation(&out);
     let lock = hold_store_lock(&out);
     let load = std::thread::spawn(move || load_partitioned(&options).map(|_| ()));
     let parent = dir.path().to_path_buf();
-    wait_until(|| {
-        load.is_finished()
-            || hpds_etl::partitions::partition_dirs(&out)
-                .unwrap()
-                .iter()
-                .all(|p| staged(&parent, ".out.staging-", &format!("{}/pheno.index", p.name)))
-    });
+    wait_until(|| load.is_finished() || staged(&parent, ".out.staging-", "etl-report.json"));
     assert!(!load.is_finished(), "the publish waits for the lock");
     assert_eq!(read_generation(&out), before);
     drop(lock);
     load.join().unwrap().unwrap();
     let after = read_generation(&out);
     assert_ne!(after, before);
-    assert_eq!(after, store_ids(&out));
+    assert_eq!(after, format!("{}\n", open(&out).index.store_id()));
+}
+
+#[test]
+fn remove_concepts_runs_only_under_the_store_lock() {
+    let (dir, out) = load_edge(&["edgeB", "edgeC"]);
+    let concepts = dir.path().join("remove.txt");
+    std::fs::write(&concepts, "\\ds\\e\\shared\\\n").unwrap();
+    let lock = hold_store_lock(&out);
+    let target = out.clone();
+    let remove = std::thread::spawn(move || {
+        hpds_etl::store_maintenance::remove_concepts(&target, &concepts, &test_protection(), true)
+    });
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(!remove.is_finished(), "remove-concepts waits for the lock");
+    assert!(open(&out).index.get("\\ds\\e\\shared\\").is_some());
+    drop(lock);
+    assert_eq!(remove.join().unwrap().unwrap().removed, 1);
+    assert!(open(&out).index.get("\\ds\\e\\shared\\").is_none());
 }
