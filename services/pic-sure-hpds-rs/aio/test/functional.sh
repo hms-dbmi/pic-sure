@@ -18,6 +18,9 @@
 #                      digits and hyphens only
 #   FIXTURE            javabin store the migrate step copies (bench/data/1000genomes)
 #   SOURCE_CSV         allConcepts.csv the csv load step reads (the phenotype test resource)
+#   PARTITIONED_FIXTURE  consent-partitioned javabin store the partitioned migrate step reads
+#                      (bench/data/harm-fixture, built by bench/harm-fixture.sh build): one
+#                      encryption_key and one subdirectory per partition
 set -euo pipefail
 
 HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -25,13 +28,15 @@ AIO="$(cd -P "$HERE/.." && pwd -P)"
 RS_ROOT="$(cd -P "$AIO/.." && pwd -P)"
 FIXTURE="${FIXTURE:-$RS_ROOT/bench/data/1000genomes}"
 SOURCE_CSV="${SOURCE_CSV:-$RS_ROOT/../pic-sure-hpds/service/src/test/resources/phenotypic/allConcepts.csv}"
+PARTITIONED_FIXTURE="${PARTITIONED_FIXTURE:-$RS_ROOT/bench/data/harm-fixture}"
 PREFIX="${FUNCTIONAL_PREFIX:-}"
 if [[ ! "$PREFIX" =~ ^[a-z0-9-]*$ ]]; then
   echo "FUNCTIONAL_PREFIX may hold only lowercase letters, digits and hyphens" >&2
   exit 2
 fi
-for required in "$FIXTURE/encryption_key" "$FIXTURE/columnMeta.javabin" "$FIXTURE/allObservationsStore.javabin" "$SOURCE_CSV"; do
-  [[ -f "$required" ]] || { echo "missing $required; set FIXTURE or SOURCE_CSV" >&2; exit 2; }
+for required in "$FIXTURE/encryption_key" "$FIXTURE/columnMeta.javabin" "$FIXTURE/allObservationsStore.javabin" "$SOURCE_CSV" \
+  "$PARTITIONED_FIXTURE/encryption_key" "$PARTITIONED_FIXTURE/partition1/allObservationsStore.javabin"; do
+  [[ -f "$required" ]] || { echo "missing $required; set FIXTURE, SOURCE_CSV or PARTITIONED_FIXTURE" >&2; exit 2; }
 done
 PICSURE_T="${PREFIX}picsure-t"
 HPDS_T="${PREFIX}hpds-t"
@@ -42,6 +47,7 @@ PROBE_T="${PREFIX}probe-t"
 QS_IMAGE="${PREFIX}aio-test-qs-t"
 QS_ALIAS="${PREFIX}qs-alias-t"
 QS_HPDS_ALIAS="${PREFIX}qs-hpds-alias-t"
+PART_T="${PREFIX}hpds-rs-part-t"
 
 export PICSURE_NETWORK=${PICSURE_T}
 export HPDS_NETWORK=${HPDS_T}
@@ -63,7 +69,7 @@ expect_equal() {
 }
 
 cleanup() {
-  docker rm -f ${QS_T} ${QS_T}-switch-new ${QS_T}-switch-old ${RS_T} ${RS_T}-new ${RS_T}-old ${JAVA_T} ${PROBE_T} >/dev/null 2>&1 || true
+  docker rm -f ${QS_T} ${QS_T}-switch-new ${QS_T}-switch-old ${RS_T} ${RS_T}-new ${RS_T}-old ${JAVA_T} ${PROBE_T} ${PART_T} >/dev/null 2>&1 || true
   docker network rm ${PICSURE_T} ${HPDS_T} >/dev/null 2>&1 || true
   docker rmi ${QS_IMAGE} >/dev/null 2>&1 || true
   rm -rf "$WORK"
@@ -226,6 +232,48 @@ rs_before="$(docker container inspect -f '{{.Id}}' ${RS_T})"
 expect_equal "hpds-rs healthy after migrate" "$(docker container inspect -f '{{.State.Health.Status}}' ${RS_T})" healthy
 expect_equal "migrate key mode" "$(stat -f '%Lp' "$DOCKER_CONFIG_DIR/hpds-rs/encryption_key")" 600
 "$AIO/status.sh"
+
+echo "--- partitioned migrate writes one store the service opens"
+part_out="$WORK/partitioned"
+partition_count="$(find "$PARTITIONED_FIXTURE" -mindepth 2 -maxdepth 2 -name allObservationsStore.javabin | wc -l | tr -d ' ')"
+if "$RS_ROOT/bin/migrate-javabins" "$PARTITIONED_FIXTURE" "$part_out" > "$WORK/partitioned.log" 2>&1; then
+  pass "partitioned migrate succeeded"
+else
+  check_failed "partitioned migrate succeeded"; tail -5 "$WORK/partitioned.log"
+fi
+[[ -f "$part_out/pheno.index" && -f "$part_out/.generation" ]] && pass "one store with its marker" || check_failed "one store with its marker"
+expect_equal "no partition directories in the output" "$(find "$part_out" -mindepth 1 -maxdepth 1 -type d ! -name '.*' | wc -l | tr -d ' ')" 0
+expect_equal "partitioned key mode" "$(stat -f '%Lp' "$part_out/encryption_key")" 600
+docker run -d --name ${PART_T} --network ${PICSURE_T} -v "$part_out:/opt/local/hpds:ro" \
+  -e HPDS_REQUIRE_AUTHORIZATION_FILTER=true "${HPDS_RS_IMAGE:-hms-dbmi/pic-sure-hpds-rs:LATEST}" >/dev/null
+waited=0
+until [[ "$(docker container inspect -f '{{.State.Health.Status}}' ${PART_T})" == healthy || "$waited" -ge 60 ]]; do
+  sleep 1
+  waited=$((waited + 1))
+done
+expect_equal "partitioned store healthy" "$(docker container inspect -f '{{.State.Health.Status}}' ${PART_T})" healthy
+count_in() {
+  local consents="$1"
+  docker exec ${PROBE_T} wget -q -T 10 -O - --header 'Content-Type: application/json' \
+    --post-data "{\"query\":{\"expectedResultType\":\"COUNT\",\"select\":[],\"userConsents\":[$consents]}}" \
+    "http://${PART_T}:8080/PIC-SURE/query/sync" 2>&1
+}
+all_consents="$(find "$PARTITIONED_FIXTURE" -mindepth 2 -maxdepth 2 -name allObservationsStore.javabin \
+  | sed 's|/allObservationsStore.javabin$||; s|.*/||; s|.*|{"value":"&"}|' | paste -sd, -)"
+one="$(count_in '{"value":"partition1"}')"
+every="$(count_in "$all_consents")"
+[[ "$one" =~ ^[0-9]+$ && "$every" =~ ^[0-9]+$ && "$one" -gt 0 && "$every" -gt "$one" ]] \
+  && pass "consents select partitions ($one of $every patients in partition1, $partition_count partitions)" \
+  || check_failed "consents select partitions (partition1 '$one', all '$every')"
+docker rm -f ${PART_T} >/dev/null
+mkdir -p "$WORK/format1/partition1"
+touch "$WORK/format1/partition1/pheno.index"
+if FORCE=1 "$RS_ROOT/bin/migrate-javabins" "$PARTITIONED_FIXTURE" "$WORK/format1" > "$WORK/format1.log" 2>&1; then
+  check_failed "a format 1 partition layout is refused"
+else
+  pass "a format 1 partition layout is refused"
+fi
+expect_equal "the refused directory is unchanged" "$(find "$WORK/format1" | sort | xargs)" "$WORK/format1 $WORK/format1/partition1 $WORK/format1/partition1/pheno.index"
 
 echo "--- up keeps the old hpds-rs when the new one is unhealthy"
 old_rs_id="$(docker container inspect -f '{{.Id}}' ${RS_T})"

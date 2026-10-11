@@ -111,7 +111,11 @@ It tests the `LATEST` images unless `HPDS_RS_IMAGE` and `RUST_ETL_IMAGE` name ot
 `FUNCTIONAL_PREFIX` puts a prefix on every container, network and test image it creates, so a
 run against a tagged build (`FUNCTIONAL_PREFIX=v4-` with the `:v4` images) keeps its own names.
 `FIXTURE` and `SOURCE_CSV` point it at the 1000 Genomes javabin store and `allConcepts.csv`
-when the checkout lacks them, as a consent-partitioned branch does.
+when the checkout lacks them, as a consent-partitioned branch does. It also migrates the
+consent-partitioned javabin store in `PARTITIONED_FIXTURE` (`bench/data/harm-fixture`, from
+`bench/harm-fixture.sh build`) through `bin/migrate-javabins`, checks that the result is one
+store the service opens and whose consents select partitions, and that the script refuses a
+directory holding partition stores written by Rust HPDS v1 to v3.
 
 ## Things to know
 
