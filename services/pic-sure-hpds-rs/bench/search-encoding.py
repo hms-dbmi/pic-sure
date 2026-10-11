@@ -35,17 +35,26 @@ class Client:
 
     def search(self, port, body, accept=None):
         """POSTs `body` to `/PIC-SURE/search`, sending Accept-Encoding only when `accept` is
-        not None, and returns (status, sorted headers without Date, body bytes)."""
-        conn = self.conns.setdefault(port, http.client.HTTPConnection(self.host, port, timeout=120))
+        not None, and returns (status, sorted headers without Date, body bytes). A kept-alive
+        connection the server has dropped is reopened once; a second failure raises."""
         data = body.encode()
-        conn.putrequest("POST", "/PIC-SURE/search", skip_accept_encoding=True)
-        conn.putheader("Content-Type", "application/json")
-        conn.putheader("Content-Length", str(len(data)))
-        if accept is not None:
-            conn.putheader("Accept-Encoding", accept)
-        conn.endheaders(data)
-        resp = conn.getresponse()
-        payload = resp.read()
+        for attempt in range(2):
+            conn = self.conns.setdefault(port, http.client.HTTPConnection(self.host, port, timeout=120))
+            try:
+                conn.putrequest("POST", "/PIC-SURE/search", skip_accept_encoding=True)
+                conn.putheader("Content-Type", "application/json")
+                conn.putheader("Content-Length", str(len(data)))
+                if accept is not None:
+                    conn.putheader("Accept-Encoding", accept)
+                conn.endheaders(data)
+                resp = conn.getresponse()
+                payload = resp.read()
+                break
+            except (http.client.HTTPException, ConnectionError):
+                conn.close()
+                self.conns.pop(port, None)
+                if attempt == 1:
+                    raise
         headers = sorted((k.lower(), v) for k, v in resp.getheaders() if k.lower() != "date")
         return resp.status, headers, payload
 

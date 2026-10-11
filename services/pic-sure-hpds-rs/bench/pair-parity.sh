@@ -22,12 +22,19 @@
 # An entry that agreed only after a retry is counted as flaky on its compare line: a
 # nondeterministic answer is a finding even when the retry matched.
 #
+# The run exits 1 when any check fails: an entry that differs, a flaky entry, an async or
+# search check that fails (a timeout on either side included), a golden file that the two
+# sides fail on different entries, or a WARN or ERROR line in B's log. Golden failures
+# both sides share (Java behaviour a golden file records and Rust differs from by design)
+# are reported but do not fail the run.
+#
 # A side whose health answers DOWN (a store it refuses) ends the run at once with status 1.
 #
 # Writes compare-<corpus>-p<pass>.txt, async-<corpus>-p<pass>.txt, search-<corpus>.txt, both
 # service logs and, when B serves /metrics, metrics-b.txt into <out-dir>. Prints one line per
 # check with its exit status, then the number of WARN and ERROR lines in B's log (colour
-# codes stripped first, since the service colours its level names). Both
+# codes stripped first, since the service colours its level names, and the level field
+# matched, not a word anywhere in a message), then the number of failed checks. Both
 # services are stopped on exit. Result directories live under <out-dir>.
 set -uo pipefail
 
@@ -41,6 +48,8 @@ base=${PORT_BASE:-18900}
 passes=${PASSES:-1}
 port_a=$((base + 1)); port_b=$((base + 2))
 pids=()
+failures=0
+failed() { failures=$((failures + 1)); echo "FAILED $*"; }
 stop_all() { [[ ${#pids[@]} -gt 0 ]] && kill "${pids[@]}" 2>/dev/null; wait 2>/dev/null; }
 trap stop_all EXIT
 
@@ -58,34 +67,47 @@ serve() {
 }
 
 wait_up() {
-  local port=$1 i health
+  local port=$1 pid=$2 i health=""
   for i in $(seq 1 2400); do
     health=$(curl -s "127.0.0.1:$port/actuator/health" 2>/dev/null)
     [[ "$health" == *'"UP"'* || "$health" == *'"DOWN"'* ]] && break
+    kill -0 "$pid" 2>/dev/null || { health="the process exited"; break; }
     sleep 0.25
   done
   echo "port $port health: $health"
   [[ "$health" == *'"UP"'* ]] || { echo "port $port is not UP; see the service logs in $out" >&2; exit 1; }
 }
 
+level_lines() {
+  sed $'s/\x1b\\[[0-9;]*m//g' "$1" | grep -cE '^[^ ]+ +(ERROR|WARN) '
+}
+
 serve "$A_BIN" "$A_STORE" "$port_a" "$out/serve-a.log" "${A_ENV:-}"
 serve "$B_BIN" "$B_STORE" "$port_b" "$out/serve-b.log" "${B_ENV:-}"
-wait_up "$port_a"; wait_up "$port_b"
+wait_up "$port_a" "${pids[0]}"; wait_up "$port_b" "${pids[1]}"
 url_a="http://127.0.0.1:$port_a/PIC-SURE"; url_b="http://127.0.0.1:$port_b/PIC-SURE"
 
 for corpus in "$@"; do
   c=$(basename "$corpus")
   for p in $(seq 1 "$passes"); do
     "$bench" compare --a "$url_a" --b "$url_b" --corpus "$corpus" --concurrency 4 --retries 1 > "$out/compare-$c-p$p.txt" 2>&1
-    echo "compare $c pass $p exit=$? $(grep -E '^compare:' "$out/compare-$c-p$p.txt" | tr '\n' ' ')flaky: $(grep -c '^FLAKY' "$out/compare-$c-p$p.txt")"
+    status=$?
+    flaky=$(grep -c '^FLAKY' "$out/compare-$c-p$p.txt")
+    echo "compare $c pass $p exit=$status $(grep -E '^compare:' "$out/compare-$c-p$p.txt" | tr '\n' ' ')flaky: $flaky"
+    [[ "$status" == 0 ]] || failed "compare $c pass $p"
+    [[ "$flaky" == 0 ]] || failed "compare $c pass $p: $flaky flaky"
     if grep -lq '"kind": *"async"' "$corpus"/*.json 2>/dev/null; then
       python3 -I "$HERE/async-compare.py" "$port_a" "$port_b" "$corpus" > "$out/async-$c-p$p.txt" 2>&1
-      echo "async $c pass $p exit=$? $(head -1 "$out/async-$c-p$p.txt")"
+      status=$?
+      echo "async $c pass $p exit=$status $(head -1 "$out/async-$c-p$p.txt")"
+      [[ "$status" == 0 ]] || failed "async $c pass $p"
     fi
   done
   if grep -lq '"kind": *"search"' "$corpus"/*.json 2>/dev/null; then
     python3 -I "$HERE/search-encoding.py" --gzip "${SEARCH_GZIP:-off}" "$port_a" "$port_b" "$corpus" > "$out/search-$c.txt" 2>&1
-    echo "search $c exit=$? $(tail -1 "$out/search-$c.txt")"
+    status=$?
+    echo "search $c exit=$status $(tail -1 "$out/search-$c.txt")"
+    [[ "$status" == 0 ]] || failed "search $c"
   fi
 done
 
@@ -95,6 +117,9 @@ for golden in ${GOLDEN:-}; do
   echo "golden $g A exit=$? $(tail -1 "$out/golden-$g-a.txt")"
   "$bench" compare --a "$url_b" --golden "$golden" > "$out/golden-$g-b.txt" 2>&1
   echo "golden $g B exit=$? $(tail -1 "$out/golden-$g-b.txt")"
+  if ! diff <(grep -E '^[A-Z]+ ' "$out/golden-$g-a.txt") <(grep -E '^[A-Z]+ ' "$out/golden-$g-b.txt") >/dev/null; then
+    failed "golden $g: A and B fail different entries"
+  fi
 done
 
 if curl -sf "127.0.0.1:$port_b/metrics" > "$out/metrics-b.txt" 2>/dev/null; then
@@ -104,4 +129,8 @@ else
 fi
 stop_all
 pids=()
-echo "B log WARN and ERROR lines: $(sed $'s/\x1b\\[[0-9;]*m//g' "$out/serve-b.log" | grep -cE ' (ERROR|WARN) ')"
+warnings=$(level_lines "$out/serve-b.log")
+echo "B log WARN and ERROR lines: $warnings"
+[[ "$warnings" == 0 ]] || failed "B log has $warnings WARN or ERROR lines"
+echo "pair parity: $failures failed checks"
+[[ "$failures" == 0 ]]

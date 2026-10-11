@@ -9,7 +9,10 @@ pins their order and every byte.
 
 Usage: async-compare.py [--host HOST] <port-a> <port-b> <corpus-dir>...
 
-Prints one line per corpus and up to five differing entries; exits 1 when any entry differs.
+An entry still PENDING or RUNNING on either side after DEADLINE_SECONDS, or whose requests
+time out, fails even when both sides agree, so a hung query is never counted as a match.
+
+Prints one line per corpus and up to five failing entries; exits 1 when any entry fails.
 Connections are kept alive per worker thread, so the 2 ms status poll does not exhaust the
 host's ephemeral ports.
 """
@@ -76,6 +79,8 @@ def run(port, request):
         time.sleep(POLL_SECONDS)
         _, _, data = call(port, f"/PIC-SURE/query/{rid}/status", "{}")
         state = json.loads(data)
+    if state.get("resourceStatus") in ("PENDING", "RUNNING"):
+        return {"timeout": f"still {state.get('resourceStatus')} after {DEADLINE_SECONDS} s"}
     out = {
         "status": state.get("status"),
         "resourceStatus": state.get("resourceStatus"),
@@ -101,10 +106,18 @@ def entries(corpus):
             yield entry["name"], entry["request"]
 
 
+def run_or_timeout(port, request):
+    """`run`, with a request that times out reported as a timeout of this side."""
+    try:
+        return run(port, request)
+    except (TimeoutError, OSError) as error:
+        return {"timeout": f"request failed: {error}"}
+
+
 def compare(args):
     """Runs one entry on both sides and returns (name, side a, side b)."""
     port_a, port_b, name, request = args
-    return name, run(port_a, request), run(port_b, request)
+    return name, run_or_timeout(port_a, request), run_or_timeout(port_b, request)
 
 
 def main():
@@ -121,7 +134,7 @@ def main():
         differ, success, memory_sized, total_bytes = [], 0, 0, 0
         with concurrent.futures.ThreadPoolExecutor(4) as pool:
             for name, a, b in pool.map(compare, work):
-                if a != b:
+                if a != b or "timeout" in a or "timeout" in b:
                     differ.append((name, a, b))
                 if a.get("resourceStatus") == "SUCCESS":
                     success += 1
@@ -130,7 +143,7 @@ def main():
                         memory_sized += 1
         total_differ += len(differ)
         print(
-            f"async-compare {os.path.basename(corpus)}: {len(differ)} of {len(work)} async entries differ; "
+            f"async-compare {os.path.basename(corpus)}: {len(differ)} of {len(work)} async entries differ or time out; "
             f"{success} SUCCESS, {memory_sized} at most 256 KiB, {total_bytes} bytes"
         )
         for name, a, b in differ[:5]:

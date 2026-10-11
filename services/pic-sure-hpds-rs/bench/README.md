@@ -143,8 +143,11 @@ nondeterministic answer is a finding), then two checks `compare` cannot make:
   and `Vary` and `Content-Length` must be right.
 
 `RESULT_CACHE_BYTES` with `PASSES=2` runs every corpus twice against warm result caches.
-`GOLDEN` checks golden files against both sides. The run ends with the number of WARN and ERROR
-lines in B's log, which should be 0. The usage text in the script lists every setting.
+`GOLDEN` checks golden files against both sides. The run exits 1 on any differing or flaky
+entry, any failed async or search check (a timeout on either side included), a golden file
+the two sides fail on different entries, or a WARN or ERROR line in B's log; a side that
+exits or reports DOWN before it is UP stops the run at once. The usage text in the script
+lists every setting.
 
 ## ETL parity
 
