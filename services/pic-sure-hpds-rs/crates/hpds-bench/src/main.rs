@@ -137,7 +137,28 @@ enum Command {
         /// hang whatever the concurrency; Java baselines exclude it.
         #[arg(long, value_delimiter = ',')]
         exclude: Vec<String>,
+        /// Extra request header as `Name: value`, sent on every request. Repeat for more, for
+        /// example `--header 'Accept-Encoding: gzip, deflate, x-gzip'` to send what the query
+        /// service's HTTP client sends. Bodies are not decoded, so bytes are counted as sent.
+        #[arg(long = "header")]
+        headers: Vec<String>,
     },
+}
+
+/// Parses `Name: value` pairs into a header map.
+fn parse_headers(raw: &[String]) -> Result<reqwest::header::HeaderMap> {
+    let mut map = reqwest::header::HeaderMap::new();
+    for pair in raw {
+        let (name, value) = pair
+            .split_once(':')
+            .ok_or_else(|| BenchError::Invalid(format!("header {pair:?} is not Name: value")))?;
+        let name = reqwest::header::HeaderName::from_bytes(name.trim().as_bytes())
+            .map_err(|e| BenchError::Invalid(format!("header name {name:?}: {e}")))?;
+        let value = reqwest::header::HeaderValue::from_str(value.trim())
+            .map_err(|e| BenchError::Invalid(format!("header value {value:?}: {e}")))?;
+        map.append(name, value);
+    }
+    Ok(map)
 }
 
 fn report(title: &str, mismatches: &[Mismatch], total: usize) -> bool {
@@ -284,7 +305,9 @@ async fn run(cli: Cli) -> Result<bool> {
             only,
             timeout,
             exclude,
+            headers,
         } => {
+            let headers = parse_headers(&headers)?;
             let timeout = parse_duration(&timeout)?;
             let config = LoadConfig {
                 concurrency,
@@ -296,7 +319,7 @@ async fn run(cli: Cli) -> Result<bool> {
                 poll_interval: parse_duration(&poll_interval)?,
                 timeout,
             };
-            let client = Client::new(&url, timeout, concurrency)?;
+            let client = Client::with_headers(&url, timeout, concurrency, &headers)?;
             let loaded = run_load(&client, read_corpus(&corpus)?, &config).await?;
             eprint!("{}", render_table(&loaded));
             println!(
@@ -317,5 +340,27 @@ async fn main() -> ExitCode {
             eprintln!("error: {e}");
             ExitCode::from(2)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_headers;
+
+    #[test]
+    fn headers_parse_name_and_value() {
+        let map = parse_headers(&[
+            "Accept-Encoding: gzip, deflate, x-gzip".to_owned(),
+            "X-Extra:1".to_owned(),
+        ])
+        .expect("valid headers");
+        assert_eq!(map["accept-encoding"], "gzip, deflate, x-gzip");
+        assert_eq!(map["x-extra"], "1");
+    }
+
+    #[test]
+    fn headers_without_a_colon_are_refused() {
+        assert!(parse_headers(&["Accept-Encoding gzip".to_owned()]).is_err());
+        assert!(parse_headers(&["Bad Name: x".to_owned()]).is_err());
     }
 }

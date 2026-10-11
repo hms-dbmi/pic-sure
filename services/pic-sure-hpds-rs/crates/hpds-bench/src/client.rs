@@ -167,10 +167,12 @@ fn build_http(
     max_idle: usize,
     timeout: Duration,
     system_roots: bool,
+    headers: &HeaderMap,
 ) -> Result<reqwest::Client, reqwest::Error> {
     let builder = reqwest::Client::builder()
         .pool_max_idle_per_host(max_idle.max(1))
-        .timeout(timeout);
+        .timeout(timeout)
+        .default_headers(headers.clone());
     let builder = if system_roots {
         builder
     } else {
@@ -195,9 +197,25 @@ impl Client {
     /// first, and the roots bundled in the binary are used when the system has none, so plain
     /// HTTP targets work in images without CA certificates.
     pub fn new(base: &str, poll_timeout: Duration, max_idle: usize) -> crate::Result<Self> {
+        Self::with_headers(base, poll_timeout, max_idle, &HeaderMap::new())
+    }
+
+    /// Builds a client as [`Client::new`] does that also sends `headers` on every request, for
+    /// example the `Accept-Encoding` a particular caller sends. Bodies are never decoded, so
+    /// byte counts are what crossed the wire.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the HTTP client cannot be constructed.
+    pub fn with_headers(
+        base: &str,
+        poll_timeout: Duration,
+        max_idle: usize,
+        headers: &HeaderMap,
+    ) -> crate::Result<Self> {
         let timeout = Duration::from_secs(300).max(poll_timeout);
-        let http = build_http(max_idle, timeout, true)
-            .or_else(|_| build_http(max_idle, timeout, false))?;
+        let http = build_http(max_idle, timeout, true, headers)
+            .or_else(|_| build_http(max_idle, timeout, false, headers))?;
         Ok(Self {
             http,
             base: base.trim_end_matches('/').to_owned(),
@@ -473,7 +491,7 @@ mod tests {
     #[test]
     fn client_builds_with_bundled_roots_only() {
         let timeout = Duration::from_secs(5);
-        build_http(2, timeout, false).expect("bundled roots build");
+        build_http(2, timeout, false, &HeaderMap::new()).expect("bundled roots build");
         Client::new("http://example.invalid/PIC-SURE", timeout, 2).expect("client");
     }
 
