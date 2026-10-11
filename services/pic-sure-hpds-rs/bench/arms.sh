@@ -69,7 +69,8 @@
 #      BENCH_NETWORK (default none, see above), BENCH_IMAGE, EXTRA_ENV (space-separated
 #      KEY=VALUE pairs added to the service container's environment, for example
 #      HPDS_RESULT_CACHE_BYTES=268435456), ETL_ARGS (extra arguments to the rust ETL engine,
-#      for example --threads 4).
+#      for example --threads 4), LOAD_HEADER (one "Name: value" request header every load run
+#      sends, for example "Accept-Encoding: gzip, deflate, x-gzip" as the query service does).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -97,6 +98,7 @@ BENCH_NETWORK="${BENCH_NETWORK:-}"
 BENCH_IMAGE="${BENCH_IMAGE:-$RUST_ETL_IMAGE}"
 EXTRA_ENV="${EXTRA_ENV:-}"
 ETL_ARGS="${ETL_ARGS:-}"
+LOAD_HEADER="${LOAD_HEADER:-}"
 
 log() {
   printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >&2
@@ -232,6 +234,7 @@ load_once() {
   fi
   local args=(--url "$(bench_url "$arm")" --corpus "$corpus" --timeout "$TIMEOUT")
   [[ -n "$EXCLUDE" ]] && args+=(--exclude "$EXCLUDE")
+  [[ -n "$LOAD_HEADER" ]] && args+=(--header "$LOAD_HEADER")
   sample_stats "$container" "$dir/$name.stats" &
   sampler=$!
   run_bench "$corpus" load "${args[@]}" "$@" > "$dir/$name.json" || status=$?
@@ -299,6 +302,7 @@ run_warm() {
   init_dir "$dir"
   local args=(--url "$(bench_url "$arm")" --corpus "$corpus" --timeout "$TIMEOUT" --only sync)
   [[ -n "$EXCLUDE" ]] && args+=(--exclude "$EXCLUDE")
+  [[ -n "$LOAD_HEADER" ]] && args+=(--header "$LOAD_HEADER")
   run_bench "$corpus" load "${args[@]}" --concurrency 8 --passes 1 > "$dir/$arm-$label-warmup.json"
   local c
   for c in $CONCURRENCIES; do
@@ -357,6 +361,7 @@ run_rest() {
   } > "$out"
   local args=(--url "$(bench_url "$arm")" --corpus "$corpus" --timeout "$TIMEOUT" --only sync)
   [[ -n "$EXCLUDE" ]] && args+=(--exclude "$EXCLUDE")
+  [[ -n "$LOAD_HEADER" ]] && args+=(--header "$LOAD_HEADER")
   run_bench "$corpus" load "${args[@]}" --concurrency 1 --passes 1 > "$dir/$arm-rest-pass.json"
   echo "after_pass usage=$(mem_now "$container") anon_mib=$(anon_mib "$container") host_load1=$(sysctl -n vm.loadavg | awk '{print $2}')" >> "$out"
   sleep 30
