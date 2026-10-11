@@ -11,6 +11,7 @@ contract; the ETL parity harness compares the stores the two ETLs build.
 | `golden/1000genomes.json` | Expected answers for the fixture, checked by `compare --golden` |
 | `baseline.sh`, `docker-compose.yml` | Java baseline stack and profiling matrix |
 | `arms.sh` | Java as-is, Java on the new layout and `hpds-rs` (encrypted or plain), measured one at a time: ETL, cold and warm load, exports, memory at rest. With `BENCH_NETWORK` the load client runs in a container on that Docker network, so no measured request passes through Docker Desktop's port forwarding |
+| `pair-parity.sh`, `async-compare.py`, `search-encoding.py` | Two `hpds-rs` builds on their own stores, answer for answer, export bytes and search encodings included, see [Pair parity](#pair-parity) |
 | `etl-parity.sh`, `etl-parity-compare.py` | Java ETL vs `hpds-etl` on the same inputs, see [ETL parity](#etl-parity) |
 | `etl-parity-partitioned.sh` | Java `CSVLoader` vs `hpds-etl load --mode partitioned`, partition by partition, see [Partitioned ETL parity](#partitioned-etl-parity) |
 | `etl-divergences.json` | Accepted differences between the Java and Rust stores, each citing the spec |
@@ -116,6 +117,34 @@ applied. Tail percentiles are therefore a lower bound on what independent client
   The top-level `overall` and `per_type` then cover all passes together.
 - Async `picsureId` values are derived from the worker index, so they are unique among in-flight
   requests while the Java result map stays bounded.
+
+## Pair parity
+
+`pair-parity.sh` checks that two `hpds-rs` builds answer alike, for example a release against
+the one before it on the store each reads, or one build on a store loaded from CSV against the
+same data converted:
+
+```bash
+A_BIN=old/hpds-rs A_STORE=/stores/old B_BIN=target/release/hpds-rs B_STORE=/stores/new \
+  BENCH=target/release/hpds-bench bench/pair-parity.sh /tmp/pair-out /tmp/corpus-1 /tmp/corpus-2
+```
+
+Both builds are started natively on `127.0.0.1` with the same settings. On every corpus it runs
+`hpds-bench compare` (entries that agree only after a retry are counted as flaky, since a
+nondeterministic answer is a finding), then two checks `compare` cannot make:
+
+- `async-compare.py` runs every async entry on both and compares the final status,
+  `sizeInBytes` and error, the `/result` status and headers except `Date`, and the body by
+  SHA-256. `compare` reads CSV rows as a multiset; this check pins their order and every byte.
+- `search-encoding.py` sends every search entry to A with no `Accept-Encoding` header, then to
+  B with none and with eight values. With `SEARCH_GZIP=off` every B answer must equal A's
+  exactly; with `SEARCH_GZIP=on` (and `HPDS_SEARCH_GZIP=on` in `B_ENV`) the gunzipped body
+  must equal A's, gzip must be used exactly when accepted on bodies of at least 1,400 bytes,
+  and `Vary` and `Content-Length` must be right.
+
+`RESULT_CACHE_BYTES` with `PASSES=2` runs every corpus twice against warm result caches.
+`GOLDEN` checks golden files against both sides. The run ends with the number of WARN and ERROR
+lines in B's log, which should be 0. The usage text in the script lists every setting.
 
 ## ETL parity
 
