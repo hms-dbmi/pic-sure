@@ -29,10 +29,19 @@
 # directory or around it. A non-empty output directory is refused unless FORCE=1.
 #
 # The new store is staged in <out-dir>/.next and its files are renamed into <out-dir> only
-# once hpds-etl migrate has succeeded, in the order hpds-etl publishes a store: pheno.blocks,
-# columnMeta.csv and etl-report.json, then pheno.index, then the key, and the .generation
-# marker naming the new store last. A failed run removes .next (and <out-dir> itself when
-# this run created it), so <out-dir> is left as it was.
+# once hpds-etl migrate has succeeded and, for a partitioned store, its etl-report.json names
+# exactly the partitions exported. They move in this order: pheno.blocks, columnMeta.csv,
+# etl-report.json, the key, pheno.index, and the .generation marker naming the new store
+# last, so a reader that finds the new index finds the new blocks. An interrupt during the
+# moves waits until they are done; afterwards everything is flushed with sync. A run that
+# fails before the moves removes .next (and <out-dir> itself when this run created it), so
+# <out-dir> is left as it was; one that fails during them says the store is partially
+# published and is rerun with FORCE=1.
+#
+# An existing EXPORT_DIR must not hold another export: a partitioned run refuses one with a
+# concepts.bin or patients.txt at its root, and any run refuses a subdirectory holding a
+# concepts.bin that is not a partition being exported. Nothing in it is removed to make
+# room.
 #
 # The export holds every observation, encrypted with the javabin store's key, in a
 # directory of mode 0700. It is removed when the script exits, on success and on failure:
@@ -154,6 +163,21 @@ if [[ -n "$export_dir" ]]; then
   within "$out_dir" "$export_dir" && fail "the output directory $out_dir is inside the export directory $export_dir"
 fi
 
+if [[ -n "$export_dir" && -d "$export_dir" ]]; then
+  if [[ ${#partitions[@]} -gt 0 ]]; then
+    for name in concepts.bin patients.txt; do
+      [[ -e "$export_dir/$name" ]] && fail "$export_dir holds $name of an unpartitioned export; empty it or choose another EXPORT_DIR"
+    done
+  fi
+  for dir in "$export_dir"/*/; do
+    [[ -e "$dir/concepts.bin" ]] || continue
+    dir="${dir%/}"
+    known=0
+    for name in ${partitions[@]+"${partitions[@]}"}; do [[ "$name" == "${dir##*/}" ]] && known=1; done
+    [[ "$known" == "1" ]] || fail "$export_dir holds ${dir##*/}/concepts.bin, an export of a partition this run does not export; empty it or choose another EXPORT_DIR"
+  done
+fi
+
 if [[ -e "$out_dir" ]]; then
   [[ -d "$out_dir" ]] || fail "$out_dir exists and is not a directory"
   if [[ -n "$(ls -A "$out_dir" | grep -vx '\.next' || true)" && "${FORCE:-0}" != "1" ]]; then
@@ -232,7 +256,7 @@ if [[ "$dry_run" == "1" ]]; then
     echo "  $next_dir -> /work"
   fi
   echo "key: install -m 600 $source_dir/encryption_key $next_dir/store/encryption_key"
-  echo "then the store files move from $next_dir/store into $out_dir: pheno.blocks, columnMeta.csv, etl-report.json, pheno.index, the key, and .generation last"
+  echo "then the store files move from $next_dir/store into $out_dir: pheno.blocks, columnMeta.csv, etl-report.json, the key, pheno.index, and .generation last"
   exit 0
 fi
 
@@ -261,6 +285,8 @@ cleanup() {
   fi
   if [[ "$status" -ne 0 && "$staged" == "0" ]]; then
     echo "migrate-javabins: failed; $out_dir is unchanged" >&2
+  elif [[ "$status" -ne 0 && "$staged" == "1" ]]; then
+    echo "migrate-javabins: failed while moving the store into $out_dir, which is now partially published; rerun with FORCE=1" >&2
   fi
   exit "$status"
 }
@@ -326,14 +352,27 @@ else
     "$rust_image" migrate --export /export --out /work/store
 fi
 
-store_files=(pheno.blocks columnMeta.csv etl-report.json pheno.index encryption_key .generation)
+store_files=(pheno.blocks columnMeta.csv etl-report.json encryption_key pheno.index .generation)
 for name in "${store_files[@]}"; do
   [[ -f "$next_dir/store/$name" ]] || fail "hpds-etl migrate did not write $name"
 done
+if [[ ${#partitions[@]} -gt 0 ]]; then
+  command -v jq >/dev/null || fail "jq is needed to check the partitions hpds-etl migrate wrote"
+  expected="$(printf '%s\n' "${partitions[@]}" | LC_ALL=C sort)"
+  reported="$(jq -r '.partitions | keys[]' "$next_dir/store/etl-report.json" | LC_ALL=C sort)" \
+    || fail "cannot read the partitions of $next_dir/store/etl-report.json"
+  [[ "$reported" == "$expected" ]] \
+    || fail "hpds-etl migrate wrote partitions $(echo $reported) where $(echo $expected) were exported"
+fi
+trap '' INT TERM
 staged=1
 for name in "${store_files[@]}"; do
   mv -f "$next_dir/store/$name" "$out_dir/$name"
 done
+staged=2
+trap 'exit 130' INT
+trap 'exit 143' TERM
+sync
 if [[ ${#partitions[@]} -gt 0 ]]; then
   echo "migrated ${#partitions[@]} partitions into one store in $out_dir"
 else
