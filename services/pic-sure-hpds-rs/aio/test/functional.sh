@@ -97,7 +97,8 @@ env_of() {
   docker container inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1"
 }
 
-if docker network inspect ${PICSURE_T} >/dev/null 2>&1 || docker container inspect ${QS_T} >/dev/null 2>&1; then
+if docker network inspect ${PICSURE_T} >/dev/null 2>&1 || docker container inspect ${QS_T} >/dev/null 2>&1 \
+  || docker container inspect ${PART_T} >/dev/null 2>&1; then
   echo "refusing to run: leftover test network or container exists" >&2
   trap - EXIT
   rm -rf "$WORK"
@@ -235,8 +236,13 @@ expect_equal "migrate key mode" "$(stat -f '%Lp' "$DOCKER_CONFIG_DIR/hpds-rs/enc
 
 echo "--- partitioned migrate writes one store the service opens"
 part_out="$WORK/partitioned"
+java_etl="$(bash -c 'source "$1/lib.sh" && find_java_etl_image' find-java-etl "$AIO")"
+[[ -n "$java_etl" ]] && pass "Java ETL image found as load.sh finds it ($java_etl)" || check_failed "Java ETL image found as load.sh finds it"
+migrate_partitioned() {
+  JAVA_ETL_IMAGE="$java_etl" CONTAINER_PREFIX="${PREFIX}etl-mig-t" "$RS_ROOT/bin/migrate-javabins" "$PARTITIONED_FIXTURE" "$@"
+}
 partition_count="$(find "$PARTITIONED_FIXTURE" -mindepth 2 -maxdepth 2 -name allObservationsStore.javabin | wc -l | tr -d ' ')"
-if "$RS_ROOT/bin/migrate-javabins" "$PARTITIONED_FIXTURE" "$part_out" > "$WORK/partitioned.log" 2>&1; then
+if migrate_partitioned "$part_out" > "$WORK/partitioned.log" 2>&1; then
   pass "partitioned migrate succeeded"
 else
   check_failed "partitioned migrate succeeded"; tail -5 "$WORK/partitioned.log"
@@ -268,7 +274,7 @@ every="$(count_in "$all_consents")"
 docker rm -f ${PART_T} >/dev/null
 mkdir -p "$WORK/format1/partition1"
 touch "$WORK/format1/partition1/pheno.index"
-if FORCE=1 "$RS_ROOT/bin/migrate-javabins" "$PARTITIONED_FIXTURE" "$WORK/format1" > "$WORK/format1.log" 2>&1; then
+if FORCE=1 migrate_partitioned "$WORK/format1" > "$WORK/format1.log" 2>&1; then
   check_failed "a format 1 partition layout is refused"
 else
   pass "a format 1 partition layout is refused"
