@@ -22,6 +22,8 @@
 # An entry that agreed only after a retry is counted as flaky on its compare line: a
 # nondeterministic answer is a finding even when the retry matched.
 #
+# A side whose health answers DOWN (a store it refuses) ends the run at once with status 1.
+#
 # Writes compare-<corpus>-p<pass>.txt, async-<corpus>-p<pass>.txt, search-<corpus>.txt, both
 # service logs and, when B serves /metrics, metrics-b.txt into <out-dir>. Prints one line per
 # check with its exit status, then the number of WARN and ERROR lines in B's log (colour
@@ -56,12 +58,14 @@ serve() {
 }
 
 wait_up() {
-  local port=$1 i
+  local port=$1 i health
   for i in $(seq 1 2400); do
-    curl -sf "127.0.0.1:$port/actuator/health" >/dev/null 2>&1 && break
+    health=$(curl -s "127.0.0.1:$port/actuator/health" 2>/dev/null)
+    [[ "$health" == *'"UP"'* || "$health" == *'"DOWN"'* ]] && break
     sleep 0.25
   done
-  echo "port $port health: $(curl -s "127.0.0.1:$port/actuator/health")"
+  echo "port $port health: $health"
+  [[ "$health" == *'"UP"'* ]] || { echo "port $port is not UP; see the service logs in $out" >&2; exit 1; }
 }
 
 serve "$A_BIN" "$A_STORE" "$port_a" "$out/serve-a.log" "${A_ENV:-}"
