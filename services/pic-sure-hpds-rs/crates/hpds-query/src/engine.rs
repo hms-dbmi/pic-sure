@@ -1130,6 +1130,36 @@ mod tests {
             }
         }
 
+        /// A COUNT of `ANY_RECORD_OF` on `\a\` under consent `p1`.
+        fn any_record_in_p1() -> Query {
+            Query {
+                phenotypic_clause: Some(PhenotypicClause::Filter(PhenotypicFilter::new(
+                    PhenotypicFilterType::AnyRecordOf,
+                    "\\a\\",
+                ))),
+                ..Query::with_consents(ResultType::Count, ["p1"])
+            }
+        }
+
+        #[test]
+        fn any_record_of_uses_a_view_another_query_builds_between_its_reads() {
+            let (_dir, out) = two_partitions();
+            let engine = engine(&out, 2.0);
+            let counted = fault::building_views_between_reads(|| engine.count(&any_record_in_p1()));
+            assert_eq!(counted.unwrap(), 10);
+            assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
+        }
+
+        #[test]
+        fn any_record_of_without_a_view_stays_within_the_selection() {
+            let (_dir, out) = two_partitions();
+            let engine = engine(&out, 2.0);
+            let counted = fault::forgetting_views(|| engine.count(&any_record_in_p1()));
+            assert_eq!(counted.unwrap(), 10);
+            assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
+            assert_eq!(engine.count(&any_record_in_p1()).unwrap(), 10);
+        }
+
         #[test]
         fn a_cohort_left_holding_another_partition_fails_every_result_type() {
             let (_dir, out) = two_partitions();

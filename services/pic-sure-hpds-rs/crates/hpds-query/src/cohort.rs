@@ -96,13 +96,30 @@ fn guard(selection: &Selection<'_>, cohort: &RoaringBitmap) -> Result<()> {
 }
 
 /// Test-only faults that break cohort evaluation on purpose, to show the guard catches
-/// them.
+/// them, and that force interleavings concurrent queries produce only by chance.
 #[cfg(test)]
 pub(crate) mod fault {
     use std::cell::Cell;
+    use std::thread::LocalKey;
 
     thread_local! {
         static SKIP_REACH: Cell<bool> = const { Cell::new(false) };
+        static VIEWS_BETWEEN_READS: Cell<bool> = const { Cell::new(false) };
+        static FORGET_VIEWS: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Runs `work` on the calling thread with `flag` set, and clears it when `work` returns
+    /// or panics.
+    fn with_flag<R>(flag: &'static LocalKey<Cell<bool>>, work: impl FnOnce() -> R) -> R {
+        struct Clear(&'static LocalKey<Cell<bool>>);
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                self.0.with(|f| f.set(false));
+            }
+        }
+        flag.with(|f| f.set(true));
+        let _clear = Clear(flag);
+        work()
     }
 
     /// True while the calling thread skips the final intersection of a narrow selection's
@@ -111,24 +128,47 @@ pub(crate) mod fault {
         SKIP_REACH.with(Cell::get)
     }
 
-    /// Runs `work` on the calling thread with that intersection skipped, and clears the
-    /// fault when `work` returns or panics.
+    /// Runs `work` on the calling thread with that intersection skipped.
     pub(crate) fn skipping_reach<R>(work: impl FnOnce() -> R) -> R {
-        struct Clear;
-        impl Drop for Clear {
-            fn drop(&mut self) {
-                SKIP_REACH.with(|skip| skip.set(false));
-            }
-        }
-        SKIP_REACH.with(|skip| skip.set(true));
-        let _clear = Clear;
-        work()
+        with_flag(&SKIP_REACH, work)
+    }
+
+    /// True while the calling thread builds every missing partition view of an
+    /// `ANY_RECORD_OF` right after the evaluation has looked at which are built, as a
+    /// concurrent query finishing those builds at that moment would.
+    pub(crate) fn builds_views_between_reads() -> bool {
+        VIEWS_BETWEEN_READS.with(Cell::get)
+    }
+
+    /// Runs `work` on the calling thread with those views built between the reads.
+    pub(crate) fn building_views_between_reads<R>(work: impl FnOnce() -> R) -> R {
+        with_flag(&VIEWS_BETWEEN_READS, work)
+    }
+
+    /// True while the calling thread drops every partition view an `ANY_RECORD_OF` has
+    /// gathered before it unions them, so the evaluation meets a view-mode concept with no
+    /// view.
+    pub(crate) fn forgets_views() -> bool {
+        FORGET_VIEWS.with(Cell::get)
+    }
+
+    /// Runs `work` on the calling thread with those views dropped.
+    pub(crate) fn forgetting_views<R>(work: impl FnOnce() -> R) -> R {
+        with_flag(&FORGET_VIEWS, work)
     }
 }
 
 #[cfg(not(test))]
 mod fault {
     pub(crate) fn skips_reach() -> bool {
+        false
+    }
+
+    pub(crate) fn builds_views_between_reads() -> bool {
+        false
+    }
+
+    pub(crate) fn forgets_views() -> bool {
         false
     }
 }
@@ -337,8 +377,15 @@ fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Found> {
 /// dictionary, a `String.startsWith` test, then `getAllKeys` for each). Concepts with no row
 /// in a selected partition are skipped without loading their blocks.
 ///
+/// Each concept's cached view is looked at once, and the views missing then are built from
+/// that same snapshot, so a view another query finishes in between is never lost. The
+/// answer is exact only when every concept contributes exactly its selected partitions'
+/// patients: a concept whose whole block's patients are taken while some of its holders are
+/// unselected makes it inexact, so the final intersection with the selection always runs.
+///
 /// # Errors
-/// [`QueryError::Block`] when a block cannot be loaded.
+/// [`QueryError::Block`] when a block cannot be loaded, and
+/// [`QueryError::StoreInconsistent`] when a view cannot be built.
 fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
     let reads = selection.concepts_with_prefix(prefix);
     let entries = selection.entries(&reads)?;
@@ -350,29 +397,32 @@ fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
             _ => None,
         })
         .collect();
+    if fault::builds_views_between_reads() {
+        for (read, entry) in pairs.iter().filter(|(read, _)| read.mode == ReadMode::View) {
+            selection.view(read, entry)?;
+        }
+    }
     let unbuilt: Vec<usize> = (0..pairs.len())
-        .filter(|&i| pairs[i].1.view().is_none() && pairs[i].0.mode == ReadMode::View)
+        .filter(|&i| views[i].is_none() && pairs[i].0.mode == ReadMode::View)
         .collect();
     let built = fan_out::map(&unbuilt, |&i| selection.view(&pairs[i].0, &pairs[i].1));
     for (i, view) in unbuilt.into_iter().zip(built) {
         views[i] = Some(view?);
     }
-    let mut exact = true;
-    let mut corrected = Vec::new();
-    for (read, entry) in &pairs {
-        let block = entry.block();
-        if read.mode == ReadMode::Whole {
-            exact = false;
-            if block.partitions().is_tagged() {
-                corrected.push(with_selected_overlap(
-                    selection,
-                    block,
-                    block.all_patients(),
-                    |_| true,
-                ));
-            }
-        }
+    if fault::forgets_views() {
+        views.iter_mut().for_each(|view| *view = None);
     }
+    let corrected: Vec<RoaringBitmap> = pairs
+        .iter()
+        .filter(|(read, entry)| {
+            read.mode == ReadMode::Whole && entry.block().partitions().is_tagged()
+        })
+        .map(|(_, entry)| {
+            let block = entry.block();
+            with_selected_overlap(selection, block, block.all_patients(), |_| true)
+        })
+        .collect();
+    let mut exact = true;
     let mut sets: Vec<&RoaringBitmap> = corrected.iter().collect();
     for ((read, entry), view) in pairs.iter().zip(&views) {
         let block = entry.block();
@@ -383,8 +433,12 @@ fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
                         .map(|s| view.patients(s)),
                 );
             }
-            (ReadMode::Whole, _) if block.partitions().is_tagged() => {}
-            _ => sets.push(block.all_patients()),
+            (ReadMode::Exact, _) => sets.push(block.all_patients()),
+            (ReadMode::Whole, _) if block.partitions().is_tagged() => exact = false,
+            (ReadMode::Whole | ReadMode::View, _) => {
+                exact = false;
+                sets.push(block.all_patients());
+            }
         }
     }
     Ok(Found::new(
