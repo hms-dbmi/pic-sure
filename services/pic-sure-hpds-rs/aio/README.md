@@ -107,6 +107,12 @@ query service and a scratch `DOCKER_CONFIG_DIR`. It checks that `docker inspect`
 service is identical before and after a switch except for the environment and ids, and that a
 rejected or unhealthy replacement leaves the original running and `query.env` unchanged, that `up.sh` keeps the old `hpds-rs` when the new one is unhealthy, and that `down.sh` restores the file with no query service container. It removes everything it creates.
 
+It tests the `LATEST` images unless `HPDS_RS_IMAGE` and `RUST_ETL_IMAGE` name others, and
+`FUNCTIONAL_PREFIX` puts a prefix on every container, network and test image it creates, so a
+run against a tagged build (`FUNCTIONAL_PREFIX=v4-` with the `:v4` images) keeps its own names.
+`FIXTURE` and `SOURCE_CSV` point it at the 1000 Genomes javabin store and `allConcepts.csv`
+when the checkout lacks them, as a consent-partitioned branch does.
+
 ## Things to know
 
 - **The "Load HPDS Data From CSV" Jenkins job moves `hpds.env` out of `hpds/`** and replaces the
