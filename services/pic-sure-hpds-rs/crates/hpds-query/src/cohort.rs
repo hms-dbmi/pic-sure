@@ -106,6 +106,7 @@ pub(crate) mod fault {
         static SKIP_REACH: Cell<bool> = const { Cell::new(false) };
         static VIEWS_BETWEEN_READS: Cell<bool> = const { Cell::new(false) };
         static FORGET_VIEWS: Cell<bool> = const { Cell::new(false) };
+        static VIEW_FALLBACKS: Cell<usize> = const { Cell::new(0) };
     }
 
     /// Runs `work` on the calling thread with `flag` set, and clears it when `work` returns
@@ -156,6 +157,20 @@ pub(crate) mod fault {
     pub(crate) fn forgetting_views<R>(work: impl FnOnce() -> R) -> R {
         with_flag(&FORGET_VIEWS, work)
     }
+
+    /// Records that an `ANY_RECORD_OF` on the calling thread read a view-mode concept from
+    /// its whole block because it had no view.
+    pub(crate) fn note_view_fallback() {
+        VIEW_FALLBACKS.with(|count| count.set(count.get() + 1));
+    }
+
+    /// Runs `work` on the calling thread and returns its result with the number of view
+    /// fallbacks it recorded.
+    pub(crate) fn counting_view_fallbacks<R>(work: impl FnOnce() -> R) -> (R, usize) {
+        VIEW_FALLBACKS.with(|count| count.set(0));
+        let result = work();
+        (result, VIEW_FALLBACKS.with(Cell::get))
+    }
 }
 
 #[cfg(not(test))]
@@ -171,6 +186,8 @@ mod fault {
     pub(crate) fn forgets_views() -> bool {
         false
     }
+
+    pub(crate) fn note_view_fallback() {}
 }
 
 /// A patient set that borrows a cached block's or view's patients, or was computed for this
@@ -378,10 +395,11 @@ fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Found> {
 /// in a selected partition are skipped without loading their blocks.
 ///
 /// Each concept's cached view is looked at once, and the views missing then are built from
-/// that same snapshot, so a view another query finishes in between is never lost. The
-/// answer is exact only when every concept contributes exactly its selected partitions'
-/// patients: a concept whose whole block's patients are taken while some of its holders are
-/// unselected makes it inexact, so the final intersection with the selection always runs.
+/// that same snapshot, so a view another query finishes in between is never lost. A concept
+/// read from its whole block while some of its holders are unselected (read whole, or a
+/// view-mode concept left without a view) contributes the block's patients with its overlap
+/// patients corrected by tag when the block is tagged, as [`with_selected_overlap`] does,
+/// and makes the answer inexact, so the final intersection with the selection always runs.
 ///
 /// # Errors
 /// [`QueryError::Block`] when a block cannot be loaded, and
@@ -412,33 +430,37 @@ fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
     if fault::forgets_views() {
         views.iter_mut().for_each(|view| *view = None);
     }
+    let from_block = |i: usize| match (pairs[i].0.mode, &views[i]) {
+        (ReadMode::Exact, _) | (ReadMode::View, Some(_)) => false,
+        (ReadMode::Whole, _) => true,
+        (ReadMode::View, None) => {
+            fault::note_view_fallback();
+            true
+        }
+    };
+    let whole: Vec<bool> = (0..pairs.len()).map(from_block).collect();
     let corrected: Vec<RoaringBitmap> = pairs
         .iter()
-        .filter(|(read, entry)| {
-            read.mode == ReadMode::Whole && entry.block().partitions().is_tagged()
-        })
-        .map(|(_, entry)| {
+        .zip(&whole)
+        .filter(|((_, entry), whole)| **whole && entry.block().partitions().is_tagged())
+        .map(|((_, entry), _)| {
             let block = entry.block();
             with_selected_overlap(selection, block, block.all_patients(), |_| true)
         })
         .collect();
-    let mut exact = true;
+    let exact = !whole.contains(&true);
     let mut sets: Vec<&RoaringBitmap> = corrected.iter().collect();
-    for ((read, entry), view) in pairs.iter().zip(&views) {
+    for (((read, entry), view), whole) in pairs.iter().zip(&views).zip(&whole) {
         let block = entry.block();
         match (read.mode, view) {
-            (ReadMode::View, Some(view)) => {
+            (ReadMode::View, Some(view)) if !whole => {
                 sets.extend(
                     view.selected_slots(selection.mask())
                         .map(|s| view.patients(s)),
                 );
             }
-            (ReadMode::Exact, _) => sets.push(block.all_patients()),
-            (ReadMode::Whole, _) if block.partitions().is_tagged() => exact = false,
-            (ReadMode::Whole | ReadMode::View, _) => {
-                exact = false;
-                sets.push(block.all_patients());
-            }
+            _ if *whole && block.partitions().is_tagged() => {}
+            _ => sets.push(block.all_patients()),
         }
     }
     Ok(Found::new(

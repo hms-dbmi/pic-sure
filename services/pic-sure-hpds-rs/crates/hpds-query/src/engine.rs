@@ -1072,18 +1072,30 @@ mod tests {
         /// `\a\` in each partition listing them, in a directory removed with the returned
         /// guard.
         fn store_of(partitions: &[(&str, Vec<u32>)]) -> (tempfile::TempDir, PathBuf) {
+            let rows: Vec<(&str, Vec<(u32, &str)>)> = partitions
+                .iter()
+                .map(|(name, patients)| (*name, patients.iter().map(|&p| (p, "\\a\\")).collect()))
+                .collect();
+            store_with_rows(&rows)
+        }
+
+        /// A store holding each `(name, rows)` partition, one row per `(patient, concept)`
+        /// with the patient's id as its value, in a directory removed with the returned guard.
+        fn store_with_rows(
+            partitions: &[(&str, Vec<(u32, &str)>)],
+        ) -> (tempfile::TempDir, PathBuf) {
             let dir = tempfile::tempdir().unwrap();
             let key_file = dir.path().join("key");
             std::fs::write(&key_file, KEY).unwrap();
             let protection =
                 || Protection::Encrypted(CryptoKey::from_key_file_bytes(KEY.as_bytes()).unwrap());
             let mut sources = Vec::new();
-            for (name, patients) in partitions {
+            for (name, rows) in partitions {
                 let input = dir.path().join(format!("{name}.csv"));
                 let mut text =
                     String::from("PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME\n");
-                for patient in patients {
-                    text.push_str(&format!("{patient},\"\\a\\\",\"{patient}.0\",\"\",\n"));
+                for (patient, concept) in rows {
+                    text.push_str(&format!("{patient},\"{concept}\",\"{patient}.0\",\"\",\n"));
                 }
                 std::fs::write(&input, text).unwrap();
                 let part = dir.path().join(name);
@@ -1141,23 +1153,61 @@ mod tests {
             }
         }
 
+        /// A COUNT of `ANY_RECORD_OF` on `\a\` under the one consent `consent`.
+        fn any_record_in(consent: &str) -> Query {
+            Query {
+                phenotypic_clause: Some(PhenotypicClause::Filter(PhenotypicFilter::new(
+                    PhenotypicFilterType::AnyRecordOf,
+                    "\\a\\",
+                ))),
+                ..Query::with_consents(ResultType::Count, [consent])
+            }
+        }
+
         #[test]
         fn any_record_of_uses_a_view_another_query_builds_between_its_reads() {
             let (_dir, out) = two_partitions();
             let engine = engine(&out, 2.0);
-            let counted = fault::building_views_between_reads(|| engine.count(&any_record_in_p1()));
+            let (counted, fallbacks) = fault::counting_view_fallbacks(|| {
+                fault::building_views_between_reads(|| engine.count(&any_record_in_p1()))
+            });
             assert_eq!(counted.unwrap(), 10);
+            assert_eq!(fallbacks, 0, "the view built between the reads is used");
             assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
         }
 
         #[test]
         fn any_record_of_without_a_view_stays_within_the_selection() {
             let (_dir, out) = two_partitions();
-            let engine = engine(&out, 2.0);
-            let counted = fault::forgetting_views(|| engine.count(&any_record_in_p1()));
+            let two = engine(&out, 2.0);
+            let (counted, fallbacks) = fault::counting_view_fallbacks(|| {
+                fault::forgetting_views(|| two.count(&any_record_in_p1()))
+            });
             assert_eq!(counted.unwrap(), 10);
-            assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
-            assert_eq!(engine.count(&any_record_in_p1()).unwrap(), 10);
+            assert_eq!(fallbacks, 1);
+            assert_eq!(two.partitions().cohort_guard_refusals(), 0);
+            assert_eq!(two.count(&any_record_in_p1()).unwrap(), 10);
+
+            let a = |p| (p, "\\a\\");
+            let b = |p| (p, "\\b\\");
+            let outside: Vec<(u32, &str)> = (21..=29).map(a).collect();
+            let member: Vec<(u32, &str)> = outside.iter().copied().chain([b(30)]).collect();
+            for (case, c_rows) in [("30 outside c", outside), ("30 a member of c", member)] {
+                let (_dir, out) = store_with_rows(&[
+                    ("a", (1..=10).chain([30]).map(a).collect()),
+                    ("b", (11..=20).chain([30]).map(a).collect()),
+                    ("c", c_rows),
+                ]);
+                let engine = engine(&out, 2.0);
+                assert_eq!(engine.partitions().overlap_patients(), 1, "{case}");
+                let (counted, fallbacks) = fault::counting_view_fallbacks(|| {
+                    fault::forgetting_views(|| engine.count(&any_record_in("c")))
+                });
+                assert_eq!(counted.unwrap(), 9, "{case}: 30 has no \\a\\ row in c");
+                assert_eq!(fallbacks, 1, "{case}");
+                assert_eq!(engine.count(&any_record_in("c")).unwrap(), 9, "{case}");
+                assert_eq!(engine.partitions().cohort_guard_refusals(), 0, "{case}");
+            }
         }
 
         #[test]
