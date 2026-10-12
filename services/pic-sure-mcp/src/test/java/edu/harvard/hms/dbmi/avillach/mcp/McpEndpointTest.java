@@ -65,12 +65,18 @@ class McpEndpointTest {
             assertThat(tool.path("outputSchema").path("properties").isEmpty()).isFalse();
         }
         JsonNode getConcept = null;
+        JsonNode searchConcepts = null;
         for (JsonNode tool : tools) {
             if ("get_concept".equals(tool.path("name").asText())) {
                 getConcept = tool;
+            } else if ("search_concepts".equals(tool.path("name").asText())) {
+                searchConcepts = tool;
             }
         }
         assertThat(getConcept).isNotNull();
+        assertThat(searchConcepts).isNotNull();
+        assertThat(searchConcepts.path("outputSchema").path("required")).extracting(JsonNode::asText).contains("concepts")
+            .doesNotContain("termTotals");
         assertThat(getConcept.path("outputSchema").path("required")).extracting(JsonNode::asText).contains("conceptPath")
             .doesNotContain("min", "max", "values", "valuesOmitted", "meta", "name");
     }

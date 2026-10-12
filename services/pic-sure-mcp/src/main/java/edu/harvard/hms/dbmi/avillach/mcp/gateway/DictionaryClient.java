@@ -42,14 +42,15 @@ public class DictionaryClient {
      * Searches concepts by free text.
      *
      * @param search the free-text search
+     * @param facets the facets to narrow by, or null for none
      * @param pageNumber the zero-based page
      * @param pageSize the page size
      * @param caller the caller's headers to replay
      * @return the page of concepts
      */
-    public DictionaryPage searchConcepts(String search, int pageNumber, int pageSize, CallerHeaders caller) {
+    public DictionaryPage searchConcepts(String search, List<FacetFilter> facets, int pageNumber, int pageSize, CallerHeaders caller) {
         return restClient.post().uri(CONCEPTS_PATH + "?page_number={p}&page_size={s}", pageNumber, pageSize).headers(caller::applyTo)
-            .contentType(MediaType.APPLICATION_JSON).body(DictionaryFilter.open(search)).retrieve().body(DictionaryPage.class);
+            .contentType(MediaType.APPLICATION_JSON).body(DictionaryFilter.open(search, facets)).retrieve().body(DictionaryPage.class);
     }
 
     /**

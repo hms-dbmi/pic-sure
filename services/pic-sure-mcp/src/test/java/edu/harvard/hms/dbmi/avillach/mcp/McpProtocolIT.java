@@ -159,7 +159,7 @@ class McpProtocolIT {
     void searchConceptsReturnsTheMappedPage() throws Exception {
         GATEWAY.stubFor(
             post(urlPathEqualTo("/dictionary/concepts")).withQueryParam("page_number", equalTo("0"))
-                .withQueryParam("page_size", equalTo("10")).withRequestBody(matchingJsonPath("$.search", equalTo("sex")))
+                .withQueryParam("page_size", equalTo("25")).withRequestBody(matchingJsonPath("$.search", equalTo("sex")))
                 .willReturn(okJson("""
                     {"content":[
                       {"type":"Categorical","conceptPath":"\\\\phs999999\\\\demographics\\\\sex\\\\","name":"sex","display":"Sex",
@@ -177,10 +177,31 @@ class McpProtocolIT {
         assertThat(structured.path("concepts")).hasSize(2);
         JsonNode sex = structured.path("concepts").path(0);
         assertThat(sex.path("conceptPath").asText()).isEqualTo("\\phs999999\\demographics\\sex\\");
-        assertThat(sex.path("dataset").asText()).isEqualTo("phs999999");
+        assertThat(sex.has("dataset")).as("dataset repeats the path's first segment").isFalse();
+        assertThat(sex.path("display").asText()).as("display differs from the path's last segment").isEqualTo("Sex");
         assertThat(sex.path("type").asText()).isEqualTo("categorical");
         assertThat(sex.path("values")).extracting(JsonNode::asText).containsExactly("Female", "Male");
         assertThat(structured.path("concepts").path(1).path("max").asDouble()).isEqualTo(90.5);
+        assertLoopBackCarriesCallerHeaders();
+    }
+
+    @Test
+    @Order(5)
+    void searchConceptsNarrowsByFacetsSentAsJson() throws Exception {
+        GATEWAY.stubFor(
+            post(urlPathEqualTo("/dictionary/concepts")).withRequestBody(matchingJsonPath("$.search", equalTo("cholesterol")))
+                .withRequestBody(matchingJsonPath("$.facets.length()", equalTo("1")))
+                .withRequestBody(matchingJsonPath("$.facets[0].category", equalTo("dataset_id")))
+                .withRequestBody(matchingJsonPath("$.facets[0].name", equalTo("Nhanes")))
+                .willReturn(okJson("""
+                    {"content":[{"type":"Continuous","conceptPath":"\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Cholesterol (mg per dL)\\\\"}],
+                     "totalElements":6}"""))
+        );
+
+        JsonNode structured = successfulCall("search_concepts", """
+            {"query":"cholesterol","facets":[{"category":"dataset_id","name":"Nhanes"}]}""");
+
+        assertThat(structured.path("total").asLong()).isEqualTo(6);
         assertLoopBackCarriesCallerHeaders();
     }
 

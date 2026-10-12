@@ -88,7 +88,7 @@ class InstructionsTest {
         Map<String, String> descriptions = descriptions();
 
         assertThat(descriptions.get("search_concepts")).contains("open-access dictionary metadata only, never participant data")
-            .contains("up to 20 values", "valuesOmitted", "at most 25", "get_adapter_code");
+            .contains("up to 20 values", "valuesOmitted", "at most 50", "get_adapter_code");
         assertThat(descriptions.get("list_facets")).contains("open-access dictionary metadata only, never participant data")
             .contains("At most 25 categories and 25 facets per category", "categoriesOmitted", "facetsOmitted");
         assertThat(descriptions.get("get_concept")).contains("open-access dictionary metadata only, never participant data")

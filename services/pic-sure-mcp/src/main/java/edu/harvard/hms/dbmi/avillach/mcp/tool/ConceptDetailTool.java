@@ -45,7 +45,7 @@ public class ConceptDetailTool {
     @McpTool(
         name = "get_concept", description = """
             Get one variable (concept) from the PIC-SURE data dictionary by dataset and conceptPath, both exactly as \
-            search_concepts returned them. Returns open-access dictionary metadata only, never participant data: display name, \
+            search_concepts returned them; when a search result has no dataset, use the conceptPath's first segment. Returns open-access dictionary metadata only, never participant data: display name, \
             description, type, up to 20 categorical values with valuesOmitted for the rest, min and max for continuous \
             concepts, and up to 10 metadata entries with each value cut at 300 characters. Call search_concepts first to find \
             valid paths.""", generateOutputSchema = true,
@@ -54,7 +54,7 @@ public class ConceptDetailTool {
         )
     )
     public ConceptSummary getConcept(
-        McpTransportContext context, @McpToolParam(description = "Dataset the concept belongs to", required = true) String dataset,
+        McpTransportContext context, @McpToolParam(description = "Dataset the concept belongs to: the search result's dataset, or the conceptPath's first segment when it has none", required = true) String dataset,
         @McpToolParam(description = "Concept path as returned by search_concepts", required = true) String conceptPath
     ) {
         String datasetName = ToolArguments.requireText("dataset", dataset, MAX_DATASET_LENGTH);

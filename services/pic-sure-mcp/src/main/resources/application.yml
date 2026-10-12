@@ -12,6 +12,7 @@ spring:
 
           Which tool to use:
           To find variables or browse studies and facets, use search_concepts, list_facets, and get_concept.
+          To narrow a search to one study, dataset or data type, call list_facets and pass the facets it returns, as {category, name} pairs, to search_concepts.
           For a rough cohort size or a feasibility check, use count_participants or cross_count.
           For exact counts under the user's own consents, use get_adapter_code with resultType count.
           For participant rows, timestamps, or an export, use get_adapter_code with resultType participant or timestamp.

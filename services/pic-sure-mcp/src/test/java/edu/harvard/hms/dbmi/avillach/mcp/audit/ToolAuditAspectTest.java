@@ -100,10 +100,10 @@ class ToolAuditAspectTest {
 
     @Test
     void searchConceptsSendsOneSearchEventWithTheAllowListedFields() {
-        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
+        when(dictionary.searchConcepts(any(), any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
             .thenReturn(new DictionaryPage(List.of(), 0L, null));
 
-        search.searchConcepts(context, "blood pressure", 2, 15);
+        search.searchConcepts(context, "blood pressure", 2, 15, null);
 
         LoggingEvent event = onlyEvent();
         assertThat(event.getEventType()).isEqualTo("SEARCH");
@@ -142,7 +142,7 @@ class ToolAuditAspectTest {
 
     @Test
     void aToolFailureIsAFailureEventThatKeepsTheActionAndRethrows() {
-        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null)).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'query' is required.");
 
         LoggingEvent event = onlyEvent();
@@ -229,12 +229,12 @@ class ToolAuditAspectTest {
 
     @Test
     void noCredentialAppearsInAnyEvent() throws Exception {
-        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
+        when(dictionary.searchConcepts(any(), any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
             .thenReturn(new DictionaryPage(List.of(), 0L, null));
         when(openQuery.querySync(any(), any())).thenReturn("12 ±3");
         List<String> tokens = List.of(BEARER, API_KEY, MCP_TOKEN);
 
-        search.searchConcepts(context, "sex", null, null);
+        search.searchConcepts(context, "sex", null, null, null);
         count.handle(context, Map.of("query", Map.of("phenotypicClause", filter(BODY_PATH))));
         assertThatThrownBy(() -> count.handle(context, Map.of("query", Map.of("bogus", MCP_TOKEN)))).isInstanceOf(ToolFailure.class);
 
@@ -263,7 +263,7 @@ class ToolAuditAspectTest {
         when(dictionary.listFacets(any(), any())).thenReturn(List.of());
 
         assertThat(facets.listFacets(context, "sex")).isNotNull();
-        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null)).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Argument 'query' is required.");
     }
 
@@ -293,7 +293,7 @@ class ToolAuditAspectTest {
 
     @Test
     void theMdcIsClearAfterAFailedCall() {
-        assertThatThrownBy(() -> search.searchConcepts(context, "", null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "", null, null, null)).isInstanceOf(ToolFailure.class);
 
         assertThat(MDC.get(CallerHeaders.MDC_KEY)).isNull();
     }

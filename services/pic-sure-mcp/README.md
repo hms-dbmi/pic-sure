@@ -6,6 +6,9 @@
 
 The service only ever reads the open, obfuscated view of the data. Query calls go to `/hpds/open/query/sync` and nowhere else: no client method exists for `/hpds/auth` or for the async query endpoints, and no setting or tool argument can select another channel. Only the four result types the open channel obfuscates are allowed (COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT). The dictionary search and facet calls send an empty consent list, the same view the open UI gets, and the concept detail lookups carry no consents field.
 
+`search_concepts` takes an optional `facets` list of `{category, name}` pairs, copied from `list_facets`, and sends them to the dictionary with the search; the dictionary needs only those two fields per facet (the UI sends more). With facets and no query it browses everything in those facets (the dictionary takes an empty search); without facets the query is still required. Each facet narrows every term of an OR search, and the per-term `termTotals` use the same facets. At most 10 facets, each part at most 200 characters.
+
+
 ## Adapter code
 
 `get_adapter_code` returns Python, R, or bash code that the user runs in their own environment with their own token, read from `PICSURE_TOKEN`. That code returns exact counts, participant rows, or timestamps filtered by the user's consents. The Python and R code use the `picsure` adapters. The bash script calls the authorized REST path with curl and jq, and that path appears in the script only as text: this service never calls it. `MCP_ADAPTER_BASE_URL` must be the bare site URL over `https` (plain `http` only on `localhost` or `127.0.0.1`), with no path, query, fragment, or user info, and startup fails otherwise.
