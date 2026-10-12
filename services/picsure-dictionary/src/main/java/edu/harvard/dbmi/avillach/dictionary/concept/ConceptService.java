@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptMatch;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
@@ -50,6 +51,22 @@ public class ConceptService {
     @Cacheable("concepts_count")
     public long countConcepts(Filter filter) {
         return conceptRepository.countConcepts(filter);
+    }
+
+    @Cacheable("concepts_term_totals")
+    public Map<String, Long> countConceptsByTerm(Filter filter, List<String> terms) {
+        return conceptRepository.countConceptsByTerm(filter, terms);
+    }
+
+    /**
+     * Which terms of the filter's search match each concept of a page.
+     *
+     * @param concepts the concepts of the page
+     * @param terms the terms of the search, in the order to report them
+     * @return one match per concept, in page order
+     */
+    public List<ConceptMatch> conceptMatches(List<Concept> concepts, List<String> terms) {
+        return conceptRepository.getConceptMatches(concepts, terms);
     }
 
     public Optional<Concept> conceptDetail(String dataset, String conceptPath) {
