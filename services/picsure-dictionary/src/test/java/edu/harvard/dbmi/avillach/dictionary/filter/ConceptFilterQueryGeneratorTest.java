@@ -16,7 +16,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Testcontainers
 @SpringBootTest
@@ -105,6 +107,33 @@ class ConceptFilterQueryGeneratorTest {
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
 
         Assertions.assertFalse(actual.isEmpty(), "Single-word search should return results");
+    }
+
+    @Test
+    void shouldReturnUnionForOrSearch() {
+        List<Integer> origin = conceptIds("origin");
+        List<Integer> respiratory = conceptIds("respiratory diseases");
+
+        List<Integer> actual = conceptIds("origin|respiratory diseases");
+
+        Set<Integer> union = new HashSet<>(origin);
+        union.addAll(respiratory);
+
+        Assertions.assertFalse(origin.isEmpty());
+        Assertions.assertFalse(respiratory.isEmpty());
+        Assertions.assertEquals(union, new HashSet<>(actual));
+        Assertions.assertEquals(union.size(), actual.size(), "OR search should not repeat a concept");
+    }
+
+    @Test
+    void shouldReturnOtherTermsWhenOneOrTermHasNoMatch() {
+        Assertions.assertEquals(conceptIds("gremlin"), conceptIds("gremlin|zzznotaword"));
+    }
+
+    private List<Integer> conceptIds(String search) {
+        QueryParamPair pair = subject.generateFilterQuery(new Filter(List.of(), search, List.of()), Pageable.unpaged());
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
+        return template.queryForList(query, pair.params(), Integer.class);
     }
 
     @Test
