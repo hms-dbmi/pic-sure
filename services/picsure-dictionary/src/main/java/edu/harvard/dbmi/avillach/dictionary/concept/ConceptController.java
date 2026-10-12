@@ -65,6 +65,10 @@ public class ConceptController {
 
     private static final String PAGE_SIZE = "Concepts per page, 1 or more. Defaults to 10. A size below 1 answers 500.";
 
+    private static final String TERM_BREAKDOWN =
+        "With a search of several |-separated terms, add termTotals and matches to the page: how many "
+            + "concepts each term matches on its own, and which terms match each concept. Ignored without a search.";
+
     private static final String DUMP_PAGE_SIZE =
         "Concepts per page, 1 or more. Defaults to 10. Every concept comes with its full detail, so keep pages modest. A size below 1 answers 500.";
 
@@ -203,9 +207,9 @@ public class ConceptController {
         ) @RequestBody Filter filter,
         @Parameter(description = PAGE_NUMBER) @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @Parameter(description = PAGE_SIZE) @RequestParam(name = "page_size", defaultValue = "10", required = false) int size,
-        @Parameter(
-            description = "With a search of several |-separated terms, add termTotals and matches to the page: how many concepts each term matches on its own, and which terms match each concept. Ignored without a search."
-        ) @RequestParam(name = "term_breakdown", defaultValue = "false", required = false) boolean termBreakdown
+        @Parameter(description = TERM_BREAKDOWN) @RequestParam(
+            name = "term_breakdown", defaultValue = "false", required = false
+        ) boolean termBreakdown
     ) {
         PageRequest pagination = PageRequest.of(page, size);
         List<String> terms = termBreakdown ? FilterProcessor.searchTerms(filter.search()) : List.of();

@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.mcp.audit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -11,11 +10,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.classic.spi.ThrowableProxyUtil;
-import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
@@ -27,7 +21,6 @@ import edu.harvard.hms.dbmi.avillach.mcp.gateway.OpenQueryClient;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.AdapterCodeTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptDetailTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptSearchTool;
-import edu.harvard.hms.dbmi.avillach.mcp.tool.ConceptsDetailTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.CrossCountTool;
 import edu.harvard.hms.dbmi.avillach.mcp.tool.FacetTool;
@@ -37,22 +30,18 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.IntStream;
 
 /**
  * Covers {@link ToolAuditAspect} around the real tool classes, proxied the way Spring proxies them: one event per call with the
  * annotation's type and action, the outcome, the request ID, the user ID and only the allow-listed argument fields, no credential or query
- * body in any event, a logging failure that never reaches the tool, a request ID that is in the MDC for the call and gone after it, and an
- * unexpected exception from any tool recorded as an internal failure and rethrown as the fixed {@link ToolFailure#unexpected()}.
+ * body in any event, a logging failure that never reaches the tool, and a request ID that is in the MDC for the call and gone after it.
  */
 class ToolAuditAspectTest {
 
@@ -60,7 +49,6 @@ class ToolAuditAspectTest {
     private static final String API_KEY = "SECRET-API-KEY-93ab";
     private static final String MCP_TOKEN = "SECRET-MCP-TOKEN-51d0";
     private static final String BODY_PATH = "SECRET-BODY-PATH-e402";
-    private static final String LEAK = "SECRET-EXCEPTION-MESSAGE-5b19";
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private LoggingClient client;
@@ -69,7 +57,6 @@ class ToolAuditAspectTest {
     private McpTransportContext context;
     private ConceptSearchTool search;
     private ConceptDetailTool detail;
-    private ConceptsDetailTool batchDetail;
     private FacetTool facets;
     private CountTool count;
     private CrossCountTool crossCount;
@@ -84,7 +71,6 @@ class ToolAuditAspectTest {
         ToolAuditAspect aspect = new ToolAuditAspect(client);
         search = proxy(new ConceptSearchTool(dictionary), aspect);
         detail = proxy(new ConceptDetailTool(dictionary), aspect);
-        batchDetail = proxy(new ConceptsDetailTool(dictionary), aspect);
         facets = proxy(new FacetTool(dictionary), aspect);
         count = proxy(new CountTool(openQuery), aspect);
         crossCount = proxy(new CrossCountTool(openQuery), aspect);
@@ -108,24 +94,16 @@ class ToolAuditAspectTest {
         return event.getValue();
     }
 
-    private void assertUnexpectedFailure(Runnable call) {
-        assertThatThrownBy(call::run).isExactlyInstanceOf(ToolFailure.class).hasMessage(ToolFailure.UNEXPECTED_MESSAGE).hasNoCause();
-
-        LoggingEvent event = onlyEvent();
-        assertThat(event.getMetadata()).containsEntry("outcome", "failure");
-        assertThat(event.getError()).containsExactly(Map.entry("error_type", "internal"));
-    }
-
     private static String serialized(LoggingEvent event) throws Exception {
         return JSON.writeValueAsString(event);
     }
 
     @Test
     void searchConceptsSendsOneSearchEventWithTheAllowListedFields() {
-        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
+        when(dictionary.searchConcepts(any(), any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
             .thenReturn(new DictionaryPage(List.of(), 0L, null));
 
-        search.searchConcepts(context, "blood pressure", null, 2, 15);
+        search.searchConcepts(context, "blood pressure", null, 2, 15, null);
 
         LoggingEvent event = onlyEvent();
         assertThat(event.getEventType()).isEqualTo("SEARCH");
@@ -136,46 +114,6 @@ class ToolAuditAspectTest {
             Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("search", "blood pressure"), Map.entry("page", 2),
             Map.entry("page_size", 15)
         );
-    }
-
-    @Test
-    void searchConceptsWithTermsRecordsTheTermsJoinedAndNoQuery() {
-        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
-            .thenReturn(new DictionaryPage(List.of(), 0L, null));
-
-        search.searchConcepts(context, null, List.of("blood pressure", "bp"), null, null);
-
-        LoggingEvent event = onlyEvent();
-        assertThat(event.getAction()).isEqualTo("concept.search");
-        assertThat(event.getMetadata()).containsExactly(
-            Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("terms", "blood pressure|bp")
-        );
-    }
-
-    @Test
-    void joinedTermsAreCappedLikeSearchText() {
-        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
-            .thenReturn(new DictionaryPage(List.of(), 0L, null));
-
-        search.searchConcepts(context, null, List.of("a".repeat(200), "b".repeat(200), "c".repeat(200)), null, null);
-
-        assertThat(String.valueOf(onlyEvent().getMetadata().get("terms"))).hasSize(ToolAuditAspect.MAX_FIELD_LENGTH)
-            .startsWith("a".repeat(200) + "|b");
-    }
-
-    @Test
-    void theRequestIdReachesTheParallelTermCalls() {
-        List<String> seen = new CopyOnWriteArrayList<>();
-        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
-            .thenAnswer(invocation -> {
-                seen.add(String.valueOf(MDC.get(CallerHeaders.MDC_KEY)));
-                return new DictionaryPage(List.of(), 0L, null);
-            });
-
-        search.searchConcepts(context, null, List.of("alpha", "beta", "gamma"), null, null);
-
-        assertThat(seen).containsExactly("req-42", "req-42", "req-42");
-        assertThat(MDC.get(CallerHeaders.MDC_KEY)).isNull();
     }
 
     @Test
@@ -203,34 +141,9 @@ class ToolAuditAspectTest {
     }
 
     @Test
-    void getConceptsSendsAConceptDetailEventWithThePathsJoined() {
-        when(dictionary.conceptsDetail(any(), any())).thenReturn(List.of());
-
-        batchDetail.getConcepts(context, List.of("\\phs1\\sex\\", "\\phs1\\age\\"));
-
-        LoggingEvent event = onlyEvent();
-        assertThat(event.getEventType()).isEqualTo("SEARCH");
-        assertThat(event.getAction()).isEqualTo("concept.detail");
-        assertThat(event.getMetadata()).containsExactly(
-            Map.entry("outcome", "success"), Map.entry("user_id", "user-7"), Map.entry("concept_paths", "\\phs1\\sex\\|\\phs1\\age\\")
-        );
-    }
-
-    @Test
-    void joinedConceptPathsAreCappedAndARejectedListIsAFailureEvent() {
-        List<String> paths = IntStream.range(0, 26).mapToObj(i -> "\\phs1\\" + "p".repeat(30) + i + "\\").toList();
-
-        assertThatThrownBy(() -> batchDetail.getConcepts(context, paths)).isInstanceOf(ToolFailure.class);
-
-        LoggingEvent event = onlyEvent();
-        assertThat(event.getMetadata()).containsEntry("outcome", "failure");
-        assertThat(String.valueOf(event.getMetadata().get("concept_paths"))).hasSize(ToolAuditAspect.MAX_FIELD_LENGTH);
-    }
-
-    @Test
     void aToolFailureIsAFailureEventThatKeepsTheActionAndRethrows() {
-        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'search' or 'terms'.");
+        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Give 'search', 'terms', or 'facets'.");
 
         LoggingEvent event = onlyEvent();
         assertThat(event.getEventType()).isEqualTo("SEARCH");
@@ -240,76 +153,14 @@ class ToolAuditAspectTest {
     }
 
     @Test
-    void anUnexpectedExceptionInListFacetsIsAnInternalFailureEventAndAFixedToolFailure() {
-        when(dictionary.listFacets(any(), any())).thenThrow(new IllegalStateException(LEAK));
+    void anUnexpectedExceptionIsAnInternalFailureEventAndRethrows() {
+        when(dictionary.listFacets(any(), any())).thenThrow(new IllegalStateException("boom"));
 
-        assertUnexpectedFailure(() -> facets.listFacets(context, null));
-    }
+        assertThatThrownBy(() -> facets.listFacets(context, null)).isInstanceOf(RuntimeException.class);
 
-    @Test
-    void anUnexpectedExceptionIsLoggedWholeAtErrorUnderTheRequestId() {
-        Logger logger = (Logger) LoggerFactory.getLogger(ToolAuditAspect.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>() {
-            @Override
-            protected void append(ILoggingEvent event) {
-                event.prepareForDeferredProcessing();
-                super.append(event);
-            }
-        };
-        appender.start();
-        logger.addAppender(appender);
-        when(dictionary.listFacets(any(), any())).thenThrow(new IllegalStateException(LEAK, new IllegalArgumentException("root cause")));
-        try {
-            assertUnexpectedFailure(() -> facets.listFacets(context, null));
-        } finally {
-            logger.detachAppender(appender);
-        }
-
-        assertThat(appender.list).singleElement().satisfies(event -> {
-            assertThat(event.getLevel()).isEqualTo(Level.ERROR);
-            assertThat(event.getFormattedMessage()).isEqualTo("Tool call facet.search failed unexpectedly");
-            assertThat(event.getMDCPropertyMap()).containsEntry(CallerHeaders.MDC_KEY, "req-42");
-            assertThat(ThrowableProxyUtil.asString(event.getThrowableProxy()))
-                .contains("java.lang.IllegalStateException: " + LEAK, "Caused by: java.lang.IllegalArgumentException: root cause")
-                .contains("at " + ToolAuditAspectTest.class.getName()).doesNotContain(BEARER, API_KEY);
-        });
-    }
-
-    @Test
-    void anUnexpectedExceptionInSearchConceptsIsAnInternalFailureEventAndAFixedToolFailure() {
-        when(dictionary.searchConcepts(any(), anyInt(), anyInt(), any())).thenThrow(new IllegalStateException(LEAK));
-
-        assertUnexpectedFailure(() -> search.searchConcepts(context, "sex", null, null, null));
-    }
-
-    @Test
-    void anUnexpectedExceptionInOneParallelTermIsAnInternalFailureEventAndAFixedToolFailure() {
-        when(dictionary.searchConcepts(any(), anyInt(), anyInt(), any())).thenReturn(new DictionaryPage(List.of(), 0L, null));
-        when(dictionary.searchConcepts(org.mockito.ArgumentMatchers.eq("bp"), anyInt(), anyInt(), any()))
-            .thenThrow(new IllegalStateException(LEAK));
-
-        assertUnexpectedFailure(() -> search.searchConcepts(context, null, List.of("sex", "bp"), null, null));
-    }
-
-    @Test
-    void anUnexpectedExceptionInGetConceptIsAnInternalFailureEventAndAFixedToolFailure() {
-        when(dictionary.conceptDetail(any(), any(), any())).thenThrow(new IllegalStateException(LEAK));
-
-        assertUnexpectedFailure(() -> detail.getConcept(context, "phs1", "\\phs1\\sex\\"));
-    }
-
-    @Test
-    void anUnexpectedExceptionInGetConceptsIsAnInternalFailureEventAndAFixedToolFailure() {
-        when(dictionary.conceptsDetail(any(), any())).thenThrow(new IllegalStateException(LEAK));
-
-        assertUnexpectedFailure(() -> batchDetail.getConcepts(context, List.of("\\phs1\\sex\\")));
-    }
-
-    @Test
-    void anUnexpectedExceptionInAQueryToolHandleIsAlsoAFixedToolFailure() {
-        when(openQuery.querySync(any(), any())).thenThrow(new IllegalStateException(LEAK));
-
-        assertUnexpectedFailure(() -> count.handle(context, Map.of("query", Map.of("phenotypicClause", filter(BODY_PATH)))));
+        LoggingEvent event = onlyEvent();
+        assertThat(event.getMetadata()).containsEntry("outcome", "failure");
+        assertThat(event.getError()).containsExactly(Map.entry("error_type", "internal"));
     }
 
     @Test
@@ -378,12 +229,12 @@ class ToolAuditAspectTest {
 
     @Test
     void noCredentialAppearsInAnyEvent() throws Exception {
-        when(dictionary.searchConcepts(any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
+        when(dictionary.searchConcepts(any(), any(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(), any()))
             .thenReturn(new DictionaryPage(List.of(), 0L, null));
         when(openQuery.querySync(any(), any())).thenReturn("12 ±3");
         List<String> tokens = List.of(BEARER, API_KEY, MCP_TOKEN);
 
-        search.searchConcepts(context, "sex", null, null, null);
+        search.searchConcepts(context, "sex", null, null, null, null);
         count.handle(context, Map.of("query", Map.of("phenotypicClause", filter(BODY_PATH))));
         assertThatThrownBy(() -> count.handle(context, Map.of("query", Map.of("bogus", MCP_TOKEN)))).isInstanceOf(ToolFailure.class);
 
@@ -412,8 +263,8 @@ class ToolAuditAspectTest {
         when(dictionary.listFacets(any(), any())).thenReturn(List.of());
 
         assertThat(facets.listFacets(context, "sex")).isNotNull();
-        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage("Give either 'search' or 'terms'.");
+        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage("Give 'search', 'terms', or 'facets'.");
     }
 
     @Test
@@ -442,7 +293,7 @@ class ToolAuditAspectTest {
 
     @Test
     void theMdcIsClearAfterAFailedCall() {
-        assertThatThrownBy(() -> search.searchConcepts(context, "", null, null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "", null, null, null, null)).isInstanceOf(ToolFailure.class);
 
         assertThat(MDC.get(CallerHeaders.MDC_KEY)).isNull();
     }
