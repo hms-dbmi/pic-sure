@@ -3,6 +3,9 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 import edu.harvard.dbmi.avillach.dictionary.AuditAttributes;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptPage;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.TermBreakdown;
+import edu.harvard.dbmi.avillach.dictionary.filter.FilterProcessor;
+import io.swagger.v3.oas.annotations.Parameter;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,6 +24,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -55,17 +59,27 @@ public class ConceptController {
     @PostMapping(path = "/concepts")
     public ResponseEntity<ConceptPage> listConcepts(
         @RequestBody Filter filter, @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
-        @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
+        @RequestParam(name = "page_size", defaultValue = "10", required = false) int size,
+        @Parameter(
+            description = "With a search of several |-separated terms, add termTotals and matches to the page: how many concepts each term matches on its own, and which terms match each concept. Ignored without a search."
+        ) @RequestParam(name = "term_breakdown", defaultValue = "false", required = false) boolean termBreakdown
     ) {
         PageRequest pagination = PageRequest.of(page, size);
+        List<String> terms = termBreakdown ? FilterProcessor.searchTerms(filter.search()) : List.of();
 
         // Run count and list in parallel — both are independent and cached separately
         long count;
         List<Concept> concepts;
+        Map<String, Long> termTotals = Map.of();
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<Long> countFuture = executor.submit(() -> conceptService.countConcepts(filter));
             Future<List<Concept>> conceptsFuture = executor.submit(() -> conceptService.listConcepts(filter, pagination));
+            Future<Map<String, Long>> totalsFuture =
+                terms.isEmpty() ? null : executor.submit(() -> conceptService.countConceptsByTerm(filter, terms));
             count = countFuture.get();
+            if (totalsFuture != null) {
+                termTotals = totalsFuture.get();
+            }
             concepts = conceptsFuture.get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -79,7 +93,11 @@ public class ConceptController {
         AuditAttributes.putMetadata(httpRequest, "search_term", filter.search() != null ? filter.search() : "");
         AuditAttributes.putMetadata(httpRequest, "result_count", String.valueOf(count));
 
-        return ResponseEntity.ok(ConceptPage.from(pageResp));
+        ConceptPage body = ConceptPage.from(pageResp);
+        if (!terms.isEmpty()) {
+            body = body.withBreakdown(new TermBreakdown(termTotals, conceptService.conceptMatches(concepts, terms)));
+        }
+        return ResponseEntity.ok(body);
     }
 
     @Operation(summary = "Page through every concept without a filter")

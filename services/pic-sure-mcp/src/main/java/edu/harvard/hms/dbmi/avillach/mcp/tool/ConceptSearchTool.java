@@ -58,10 +58,12 @@ public class ConceptSearchTool {
      */
     @AuditEvent(type = "SEARCH", action = "concept.search")
     @McpTool(
-        name = "search_concepts", description = """
+        name = "search_concepts",
+        description = """
             Search the PIC-SURE data dictionary for variables (concepts) by free text, for example \
-            "systolic blood pressure" or "sex". Returns open-access dictionary metadata only, never participant data. \
-            Each result has a conceptPath and a dataset. The conceptPath is the identifier get_concept, the count tools, and \
+            "systolic blood pressure" or "sex". Matching is on the text, so an abbreviation such as "BMI" can return no \
+            results while "body mass index" matches. If total is 0, retry with the spelled-out term or a synonym. Returns \
+            open-access dictionary metadata only, never participant data. Each result has a conceptPath and a dataset. The conceptPath is the identifier get_concept, the count tools, and \
             get_adapter_code take. Categorical concepts list up to 20 values and report valuesOmitted when there are more, and \
             continuous concepts give min and max. Results are paged, 10 per page by default and at most 25, so request the next \
             page when total exceeds what you have. \
@@ -70,7 +72,8 @@ public class ConceptSearchTool {
             abbreviations as separate terms, which the terms argument does in one call. Give either search or terms (up to 5), \
             not both. With terms, each concept lists the matchedTerms that returned it, total is the sum of the per-term totals, \
             page and pageSize apply to each term, at most 25 concepts come back with truncated true when more matched, and a \
-            term whose search failed is named in warnings.""", generateOutputSchema = true,
+            term whose search failed is named in warnings.""",
+        generateOutputSchema = true,
         annotations = @McpTool.McpAnnotations(
             title = "Search concepts", readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false
         )

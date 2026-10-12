@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptPage;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptMatch;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
@@ -53,10 +54,43 @@ class ConceptControllerTest {
         Mockito.when(conceptService.listConcepts(filter, Pageable.ofSize(10).withPage(1))).thenReturn(expected);
         Mockito.when(conceptService.countConcepts(filter)).thenReturn(100L);
 
-        ConceptPage actual = subject.listConcepts(filter, 1, 10).getBody();
+        ConceptPage actual = subject.listConcepts(filter, 1, 10, false).getBody();
 
         Assertions.assertEquals(expected, actual.content());
         Assertions.assertEquals(100L, actual.totalElements());
+    }
+
+    @Test
+    void shouldAddTheTermBreakdownOnlyWhenAsked() {
+        List<Concept> concepts =
+            List.of(new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", "foo!", List.of(), true, "", null, Map.of()));
+        Filter filter = new Filter(List.of(), "foo|bar", List.of());
+        List<String> terms = List.of("foo", "bar");
+        List<ConceptMatch> matches = List.of(new ConceptMatch("my_dataset", "/foo", List.of("foo")));
+        Mockito.when(conceptService.listConcepts(filter, Pageable.ofSize(10))).thenReturn(concepts);
+        Mockito.when(conceptService.countConcepts(filter)).thenReturn(7L);
+        Mockito.when(conceptService.countConceptsByTerm(filter, terms)).thenReturn(Map.of("foo", 5L, "bar", 2L));
+        Mockito.when(conceptService.conceptMatches(concepts, terms)).thenReturn(matches);
+
+        ConceptPage plain = subject.listConcepts(filter, 0, 10, false).getBody();
+        ConceptPage broken = subject.listConcepts(filter, 0, 10, true).getBody();
+
+        Assertions.assertNull(plain.termTotals());
+        Assertions.assertNull(plain.matches());
+        Assertions.assertEquals(Map.of("foo", 5L, "bar", 2L), broken.termTotals());
+        Assertions.assertEquals(matches, broken.matches());
+    }
+
+    @Test
+    void shouldSkipTheBreakdownWithoutASearch() {
+        Filter filter = new Filter(List.of(), "", List.of());
+        Mockito.when(conceptService.listConcepts(filter, Pageable.ofSize(10))).thenReturn(List.of());
+
+        ConceptPage actual = subject.listConcepts(filter, 0, 10, true).getBody();
+
+        Assertions.assertNull(actual.termTotals());
+        Assertions.assertNull(actual.matches());
+        Mockito.verify(conceptService, Mockito.never()).countConceptsByTerm(Mockito.any(), Mockito.any());
     }
 
     @Test
