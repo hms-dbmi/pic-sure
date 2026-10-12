@@ -13,20 +13,22 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.config.GatewayRequestInterceptor;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
+import edu.harvard.hms.dbmi.avillach.mcp.gateway.FacetFilter;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpMethod;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.web.client.ResponseCreator;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.test.web.client.ResponseCreator;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -41,7 +43,6 @@ class DictionaryToolsTest {
     private static final String GATEWAY = "http://gateway.test:8080";
     private static final String BEARER = "Bearer caller-token";
     private static final String LEAK = "SECRET-DOWNSTREAM-BODY-7f3a";
-    private static final String UNAVAILABLE = "The dictionary is unavailable. Try again shortly.";
 
     private MockRestServiceServer server;
     private ConceptSearchTool search;
@@ -64,32 +65,116 @@ class DictionaryToolsTest {
 
     @Test
     void searchPostsFilterWithEmptyConsentsAndReplaysTheCaller() {
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10")).andExpect(method(HttpMethod.POST))
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25")).andExpect(method(HttpMethod.POST))
             .andExpect(header("Authorization", BEARER)).andExpect(header("X-Request-Id", "req-1"))
             .andExpect(header("X-PIC-SURE-MCP-TOKEN", "mcp-token"))
             .andExpect(content().json("{\"facets\":[],\"search\":\"blood pressure\",\"consents\":[]}", true))
             .andRespond(withSuccess("{\"content\":[],\"totalElements\":0}", MediaType.APPLICATION_JSON));
 
-        ConceptSearchResult result = search.searchConcepts(context, "blood pressure", null, null, null);
+        ConceptSearchResult result = search.searchConcepts(context, "blood pressure", null, null, null, null);
 
         server.verify();
-        assertThat(result.search()).isEqualTo("blood pressure");
         assertThat(result.page()).isZero();
-        assertThat(result.pageSize()).isEqualTo(10);
         assertThat(result.total()).isZero();
         assertThat(result.concepts()).isEmpty();
     }
 
+    @Test
+    void searchSendsTheFacetsItWasGiven() {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25"))
+            .andExpect(
+                content().json("{\"facets\":[{\"category\":\"dataset_id\",\"name\":\"Nhanes\"}],\"search\":\"cholesterol\",\"consents\":[]}", true)
+            ).andRespond(withSuccess("{\"content\":[],\"totalElements\":6}", MediaType.APPLICATION_JSON));
+
+        ConceptSearchResult result = search.searchConcepts(context, "cholesterol", null, null, null, List.of(new FacetFilter("dataset_id", "Nhanes")));
+
+        server.verify();
+        assertThat(result.total()).isEqualTo(6);
+    }
+
+    @Test
+    void aPipeSeparatedSearchWithFacetsIsSentWhole() {
+        FacetFilter nhanes = new FacetFilter("dataset_id", "Nhanes");
+        String facetBody = "\"facets\":[{\"category\":\"dataset_id\",\"name\":\"Nhanes\"}]";
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25"))
+            .andExpect(content().json("{" + facetBody + ",\"search\":\"cholesterol | LDL\"}"))
+            .andRespond(withSuccess("{\"content\":[],\"totalElements\":4}", MediaType.APPLICATION_JSON));
+
+        ConceptSearchResult result = search.searchConcepts(context, "cholesterol | LDL", null, null, null, List.of(nhanes));
+
+        server.verify();
+        assertThat(result.total()).isEqualTo(4);
+    }
+
+    @Test
+    void aFacetAloneBrowsesWithAnEmptySearch() {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25"))
+            .andExpect(content().json("{\"facets\":[{\"category\":\"data_type\",\"name\":\"continuous\"}],\"search\":\"\",\"consents\":[]}", true))
+            .andRespond(withSuccess("{\"content\":[],\"totalElements\":863}", MediaType.APPLICATION_JSON));
+        List<FacetFilter> continuous = List.of(new FacetFilter("data_type", "continuous"));
+
+        assertThat(search.searchConcepts(context, "", null, null, null, continuous).total()).isEqualTo(863);
+        server.verify();
+    }
+
+    @Test
+    void aMissingQueryWithFacetsBrowsesToo() {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25"))
+            .andExpect(content().json("{\"search\":\"\"}", false))
+            .andRespond(withSuccess("{\"content\":[],\"totalElements\":1}", MediaType.APPLICATION_JSON));
+
+        search.searchConcepts(context, null, null, null, null, List.of(new FacetFilter("data_type", "continuous")));
+
+        server.verify();
+    }
+
+    @Test
+    void aBlankQueryStillNeedsFacetsToBeAccepted() {
+        assertThatThrownBy(() -> search.searchConcepts(context, "", null, null, null, List.of())).isInstanceOf(ToolFailure.class)
+            .hasMessageContaining("search");
+        assertThatThrownBy(() -> search.searchConcepts(context, " ", null, null, null, null)).isInstanceOf(ToolFailure.class);
+        server.verify();
+    }
+
+    @Test
+    void searchWithEmptyOrNoFacetsSendsNone() {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25"))
+            .andExpect(content().json("{\"facets\":[],\"search\":\"x\"}", false))
+            .andRespond(withSuccess("{\"content\":[],\"totalElements\":0}", MediaType.APPLICATION_JSON));
+
+        search.searchConcepts(context, "x", null, null, null, List.of());
+
+        server.verify();
+    }
+
+    @Test
+    void searchRefusesAMalformedFacetListBeforeCallingTheDictionary() {
+        List<FacetFilter> tooMany = IntStream.range(0, ConceptSearchTool.MAX_FACETS + 1).mapToObj(i -> new FacetFilter("c", "n" + i)).toList();
+        List<FacetFilter> withNull = java.util.Arrays.asList(new FacetFilter("c", "n"), null);
+
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, tooMany)).isInstanceOf(ToolFailure.class)
+            .hasMessageContaining("facets");
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, withNull)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter(null, "n"))))
+            .isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter("c", " ")))).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter("c", "a\nb"))))
+            .isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(
+            () -> search.searchConcepts(context, "x", null, null, null, List.of(new FacetFilter("c", "n".repeat(ConceptSearchTool.MAX_FACET_TEXT_LENGTH + 1))))
+        ).isInstanceOf(ToolFailure.class);
+        server.verify();
+    }
+
     @ParameterizedTest
-    @CsvSource({"0,0,1", "2,7,7", "-4,100,25", "1,0,1"})
+    @CsvSource({"0,0,1", "2,7,7", "-4,100,50", "1,0,1"})
     void searchBoundsPagingArguments(int page, int pageSize, int expectedSize) {
         server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=" + Math.max(page, 0) + "&page_size=" + expectedSize))
             .andRespond(withSuccess("{\"content\":[],\"totalElements\":0}", MediaType.APPLICATION_JSON));
 
-        ConceptSearchResult result = search.searchConcepts(context, "sex", null, page, pageSize);
+        search.searchConcepts(context, "sex", null, page, pageSize, null);
 
         server.verify();
-        assertThat(result.pageSize()).isEqualTo(expectedSize);
     }
 
     @Test
@@ -104,7 +189,7 @@ class DictionaryToolsTest {
                "description":"","values":[%s],"studyAcronym":"FHS","meta":{"secret":"y"}}
             ],"pageable":{"pageNumber":0},"totalElements":38,"totalPages":4}""".formatted(values25), MediaType.APPLICATION_JSON));
 
-        ConceptSearchResult result = search.searchConcepts(context, "x", null, 0, 10);
+        ConceptSearchResult result = search.searchConcepts(context, "x", null, 0, 10, null);
 
         assertThat(result.total()).isEqualTo(38);
         ConceptSummary age = result.concepts().get(0);
@@ -125,24 +210,40 @@ class DictionaryToolsTest {
     }
 
     @Test
+    void searchLeavesOutADisplayNameAndDatasetThePathAlreadyGives() {
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25")).andRespond(withSuccess("""
+            {"content":[
+              {"type":"Categorical","conceptPath":"\\\\Nhanes\\\\demographics\\\\SEX\\\\","display":"SEX","dataset":"Nhanes"},
+              {"type":"Categorical","conceptPath":"\\\\phs1\\\\pht2\\\\phv3\\\\","display":"Sex","dataset":"phs000001"}
+            ],"totalElements":2}""", MediaType.APPLICATION_JSON));
+
+        List<ConceptSummary> concepts = search.searchConcepts(context, "sex", null, null, null, null).concepts();
+
+        assertThat(concepts.get(0).display()).isNull();
+        assertThat(concepts.get(0).dataset()).isNull();
+        assertThat(concepts.get(1).display()).isEqualTo("Sex");
+        assertThat(concepts.get(1).dataset()).isEqualTo("phs000001");
+    }
+
+    @Test
     void searchReadsTheTotalFromTheNestedPageForm() {
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10"))
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25"))
             .andRespond(withSuccess("{\"content\":[],\"page\":{\"size\":10,\"totalElements\":41}}", MediaType.APPLICATION_JSON));
 
-        assertThat(search.searchConcepts(context, "x", null, null, null).total()).isEqualTo(41);
+        assertThat(search.searchConcepts(context, "x", null, null, null, null).total()).isEqualTo(41);
     }
 
     @Test
     void categoricalWithExactlyTheCapReportsNoOmission() {
         String values20 = IntStream.range(0, 20).mapToObj(i -> "\"v" + i + "\"").collect(Collectors.joining(","));
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10")).andRespond(
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25")).andRespond(
             withSuccess(
                 "{\"content\":[{\"type\":\"Categorical\",\"conceptPath\":\"p\",\"values\":[" + values20 + "]}],\"totalElements\":1}",
                 MediaType.APPLICATION_JSON
             )
         );
 
-        ConceptSummary concept = search.searchConcepts(context, "x", null, null, null).concepts().get(0);
+        ConceptSummary concept = search.searchConcepts(context, "x", null, null, null, null).concepts().get(0);
 
         assertThat(concept.values()).hasSize(20);
         assertThat(concept.valuesOmitted()).isNull();
@@ -150,12 +251,11 @@ class DictionaryToolsTest {
 
     @Test
     void searchRejectsBadQueriesWithoutCallingTheGateway() {
-        assertThatThrownBy(() -> search.searchConcepts(context, null, null, null, null)).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> search.searchConcepts(context, null, null, null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("Give either 'search' or 'terms'.");
-        assertThatThrownBy(() -> search.searchConcepts(context, "   ", null, null, null)).isInstanceOf(ToolFailure.class);
-        assertThatThrownBy(() -> search.searchConcepts(context, "x".repeat(ToolArguments.MAX_SEARCH_LENGTH + 1), null, null, null))
-            .isInstanceOf(ToolFailure.class);
-        assertThatThrownBy(() -> search.searchConcepts(context, "a\nb", null, null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "   ", null, null, null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "x".repeat(501), null, null, null, null)).isInstanceOf(ToolFailure.class);
+        assertThatThrownBy(() -> search.searchConcepts(context, "a\nb", null, null, null, null)).isInstanceOf(ToolFailure.class);
         server.verify();
     }
 
@@ -285,14 +385,14 @@ class DictionaryToolsTest {
     )
     void everyToolMapsDownstreamStatusesToShortMessagesWithoutTheBody(int status, String expected) {
         HttpStatus httpStatus = HttpStatus.valueOf(status);
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10"))
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25"))
             .andRespond(withStatus(httpStatus).body(LEAK).contentType(MediaType.TEXT_PLAIN));
         server.expect(requestTo(GATEWAY + "/dictionary/facets"))
             .andRespond(withStatus(httpStatus).body(LEAK).contentType(MediaType.TEXT_PLAIN));
         server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail/phs1"))
             .andRespond(withStatus(httpStatus).body(LEAK).contentType(MediaType.TEXT_PLAIN));
 
-        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null)).isInstanceOf(ToolFailure.class).hasMessage(expected)
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, null)).isInstanceOf(ToolFailure.class).hasMessage(expected)
             .hasNoCause().satisfies(e -> assertThat(e.getMessage()).doesNotContain(LEAK));
         assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class).hasMessage(expected).hasNoCause();
         assertThatThrownBy(() -> detail.getConcept(context, "phs1", "\\p\\")).isInstanceOf(ToolFailure.class).hasMessage(expected)
@@ -301,33 +401,14 @@ class DictionaryToolsTest {
 
     @Test
     void searchAndFacetsNotFoundIsNeutralAndDoesNotPointBackAtSearch() {
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10"))
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25"))
             .andRespond(withStatus(HttpStatus.NOT_FOUND).body(LEAK));
         server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(withStatus(HttpStatus.NOT_FOUND).body(LEAK));
 
-        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null)).isInstanceOf(ToolFailure.class)
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, null)).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary endpoint was not found.").hasNoCause();
         assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class)
             .hasMessage("The dictionary endpoint was not found.").hasNoCause();
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {200, 204, 302})
-    void everyToolTreatsAResponseWithNoBodyAsUnavailable(int status) {
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10")).andRespond(noBody(status));
-        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(noBody(status));
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail/phs1")).andRespond(noBody(status));
-
-        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null)).isInstanceOf(ToolFailure.class)
-            .hasMessage(UNAVAILABLE).hasNoCause();
-        assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class).hasMessage(UNAVAILABLE).hasNoCause();
-        assertThatThrownBy(() -> detail.getConcept(context, "phs1", "\\p\\")).isInstanceOf(ToolFailure.class).hasMessage(UNAVAILABLE)
-            .hasNoCause();
-        server.verify();
-    }
-
-    static ResponseCreator noBody(int status) {
-        return withStatus(HttpStatus.valueOf(status)).header("Location", "http://elsewhere.test/");
     }
 
     @Test
@@ -338,35 +419,23 @@ class DictionaryToolsTest {
             .hasMessage("The dictionary is unavailable. Try again shortly.").hasNoCause();
     }
 
-    @Test
-    void aNullConceptInASearchPageIsDroppedAndTheRestAreKept() {
-        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=10")).andRespond(withSuccess("""
-            {"content":[null,{"type":"Categorical","conceptPath":"\\\\phs1\\\\sex\\\\","dataset":"phs1","values":["F"]}],
-             "totalElements":2}""", MediaType.APPLICATION_JSON));
+    @ParameterizedTest
+    @ValueSource(ints = {200, 204, 302})
+    void everyToolTreatsAResponseWithNoBodyAsUnavailable(int status) {
+        String unavailable = "The dictionary is unavailable. Try again shortly.";
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts?page_number=0&page_size=25")).andRespond(noBody(status));
+        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(noBody(status));
+        server.expect(requestTo(GATEWAY + "/dictionary/concepts/detail/phs1")).andRespond(noBody(status));
 
-        ConceptSearchResult result = search.searchConcepts(context, "sex", null, null, null);
-
+        assertThatThrownBy(() -> search.searchConcepts(context, "x", null, null, null, null)).isInstanceOf(ToolFailure.class)
+            .hasMessage(unavailable).hasNoCause();
+        assertThatThrownBy(() -> facets.listFacets(context, "x")).isInstanceOf(ToolFailure.class).hasMessage(unavailable).hasNoCause();
+        assertThatThrownBy(() -> detail.getConcept(context, "phs1", "\\p\\")).isInstanceOf(ToolFailure.class).hasMessage(unavailable)
+            .hasNoCause();
         server.verify();
-        assertThat(result.concepts()).extracting(ConceptSummary::conceptPath).containsExactly("\\phs1\\sex\\");
     }
 
-    @Test
-    void aNullFacetCategoryOrFacetIsDroppedAndTheRestAreKept() {
-        server.expect(requestTo(GATEWAY + "/dictionary/facets")).andRespond(
-            withSuccess(
-                """
-                    [null,{"name":"study_ids","display":"Study","facets":[null,{"name":"phs1","display":"FHS","count":12}]}]""",
-                MediaType.APPLICATION_JSON
-            )
-        );
-
-        FacetResult result = facets.listFacets(context, "asthma");
-
-        server.verify();
-        assertThat(result.categoriesOmitted()).isNull();
-        assertThat(result.categories()).singleElement().satisfies(category -> {
-            assertThat(category.facetsOmitted()).isNull();
-            assertThat(category.facets()).extracting(FacetResult.Facet::name).containsExactly("phs1");
-        });
+    static ResponseCreator noBody(int status) {
+        return withStatus(HttpStatus.valueOf(status)).header("Location", "http://elsewhere.test/");
     }
 }

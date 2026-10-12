@@ -45,7 +45,7 @@ public class CountTool {
             {"operator":"OR","phenotypicClauses":[\
             {"phenotypicFilterType":"FILTER","conceptPath":"\\\\phs999999\\\\age\\\\","min":40,"max":65},\
             {"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\phs999999\\\\bmi\\\\"}]}]}}}
-        """;
+            """;
 
     private final OpenQueryClient client;
 
