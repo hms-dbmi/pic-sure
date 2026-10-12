@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.mcp.tool;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.mcp.caller.CallerHeaders;
 import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryClient;
-import edu.harvard.hms.dbmi.avillach.mcp.gateway.DictionaryConcept;
 import edu.harvard.hms.dbmi.avillach.mcp.query.QueryInput;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.springaicommunity.mcp.annotation.McpTool;
@@ -41,8 +40,8 @@ public class ConceptDetailTool {
     @McpTool(
         name = "get_concept", description = """
             Get one variable (concept) from the PIC-SURE data dictionary by dataset and conceptPath, both exactly as \
-            search_concepts returned them. Returns open-access dictionary metadata only, never participant data. The metadata is the \
-            display name, description, type, up to 20 categorical values with valuesOmitted for the rest, min and max for continuous \
+            search_concepts returned them; when a search result has no dataset, use the conceptPath's first segment. Returns open-access dictionary metadata only, never participant data: display name, \
+            description, type, up to 20 categorical values with valuesOmitted for the rest, min and max for continuous \
             concepts, and up to 10 metadata entries with each value cut at 300 characters. Call search_concepts first to find \
             valid paths.""", generateOutputSchema = true,
         annotations = @McpTool.McpAnnotations(
@@ -50,7 +49,7 @@ public class ConceptDetailTool {
         )
     )
     public ConceptSummary getConcept(
-        McpTransportContext context, @McpToolParam(description = "Dataset the concept belongs to", required = true) String dataset,
+        McpTransportContext context, @McpToolParam(description = "Dataset the concept belongs to: the search result's dataset, or the conceptPath's first segment when it has none", required = true) String dataset,
         @McpToolParam(description = "Concept path as returned by search_concepts", required = true) String conceptPath
     ) {
         String datasetName = ToolArguments.requireText("dataset", dataset, MAX_DATASET_LENGTH);
@@ -58,9 +57,7 @@ public class ConceptDetailTool {
             throw new ToolFailure("Argument 'dataset' is not a valid dataset name.");
         }
         String path = ToolArguments.requireText("conceptPath", conceptPath, QueryInput.MAX_CONCEPT_PATH_LENGTH);
-        DictionaryConcept concept = DictionaryCalls
-            .lookup(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptDetail(datasetName, path, CallerHeaders.from(context)))
-            .orElseThrow(ToolFailure::conceptNotFound);
-        return ConceptSummary.detail(concept);
+        return DictionaryCalls.lookup(DictionaryClient.DETAIL_PATH, () -> dictionary.conceptDetail(datasetName, path, CallerHeaders.from(context)))
+            .map(ConceptSummary::detail).orElseThrow(ToolFailure::conceptNotFound);
     }
 }
