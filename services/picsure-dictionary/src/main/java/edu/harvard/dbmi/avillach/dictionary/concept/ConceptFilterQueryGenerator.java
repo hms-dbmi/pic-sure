@@ -15,6 +15,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -193,7 +194,27 @@ public class ConceptFilterQueryGenerator {
      * with concept_node as the driving table, which enables parallel execution and leverages idx_fcn_concept_node_id.
      */
     public QueryParamPair generateCountQuery(Filter filter) {
+        return countQuery(filter, "count(*)", new MapSqlParameterSource());
+    }
+
+    /**
+     * Counts the concepts the filter matches, and for each term of its search how many of those match that term alone, in one pass. The
+     * columns are the total followed by one per term in the order given. Each term is a sanitized alternative of the filter's search, so
+     * the total is the number of concepts matching any of them.
+     *
+     * @param filter the filter, whose search holds the terms joined by {@code |}
+     * @param terms the terms, as {@link edu.harvard.dbmi.avillach.dictionary.filter.FilterProcessor#searchTerms} returns them
+     */
+    public QueryParamPair generateTermCountQuery(Filter filter, List<String> terms) {
         MapSqlParameterSource params = new MapSqlParameterSource();
+        String columns = IntStream.range(0, terms.size()).mapToObj(i -> {
+            params.addValue("term_" + i, terms.get(i));
+            return "count(*) FILTER (WHERE concept_node.searchable_fields @@ " + QueryUtility.tsqueryExpr("term_" + i) + ")";
+        }).collect(Collectors.joining(", "));
+        return countQuery(filter, "count(*), " + columns, params);
+    }
+
+    private QueryParamPair countQuery(Filter filter, String select, MapSqlParameterSource params) {
         String searchCondition = "";
         if (StringUtils.hasLength(filter.search())) {
             params.addValue("search", filter.search().trim());
@@ -208,13 +229,13 @@ public class ConceptFilterQueryGenerator {
         if (CollectionUtils.isEmpty(filter.facets())) {
             // No facets: count all queryable concepts matching search/consents
             String sql = """
-                SELECT count(*)
+                SELECT %s
                 FROM concept_node
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                 WHERE %s
                 %s
                 %s
-                """.formatted(schemaDetector.conceptNodeQueryableClause("concept_node"), searchCondition, consentCondition);
+                """.formatted(select, schemaDetector.conceptNodeQueryableClause("concept_node"), searchCondition, consentCondition);
             return new QueryParamPair(sql, params);
         }
 
@@ -241,7 +262,7 @@ public class ConceptFilterQueryGenerator {
         String existsWhere = String.join(" AND ", existsClauses);
 
         String sql = """
-            SELECT count(*)
+            SELECT %s
             FROM concept_node cn
             LEFT JOIN dataset ON cn.dataset_id = dataset.dataset_id
             WHERE %s
@@ -249,7 +270,7 @@ public class ConceptFilterQueryGenerator {
             %s
             %s
             """.formatted(
-            schemaDetector.conceptNodeQueryableClause("cn"), existsWhere, searchCondition.replace("concept_node.", "cn."), consentCondition
+            select.replace("concept_node.", "cn."), schemaDetector.conceptNodeQueryableClause("cn"), existsWhere, searchCondition.replace("concept_node.", "cn."), consentCondition
         );
         return new QueryParamPair(sql, params);
     }

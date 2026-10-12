@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptMatch;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
@@ -451,4 +452,33 @@ class ConceptRepositoryTest {
         }
     }
 
+
+    @Test
+    void shouldCountEachTermOfAnOrSearchOnItsOwn() {
+        List<String> terms = List.of("asthma", "blood");
+        Filter either = new Filter(List.of(), "asthma|blood", List.of());
+
+        Map<String, Long> totals = subject.countConceptsByTerm(either, terms);
+
+        assertEquals(terms, List.copyOf(totals.keySet()));
+        for (String term : terms) {
+            assertEquals(subject.countConcepts(new Filter(List.of(), term, List.of())), totals.get(term));
+        }
+        assertTrue(totals.values().stream().allMatch(total -> total <= subject.countConcepts(either)));
+    }
+
+    @Test
+    void shouldNameTheTermsThatMatchEachConceptOfAPage() {
+        List<String> terms = List.of("asthma", "blood");
+        List<Concept> page = subject.getConcepts(new Filter(List.of(), "asthma|blood", List.of()), Pageable.unpaged());
+
+        List<ConceptMatch> matches = subject.getConceptMatches(page, terms);
+
+        assertEquals(page.stream().map(Concept::conceptPath).toList(), matches.stream().map(ConceptMatch::conceptPath).toList());
+        assertTrue(matches.stream().noneMatch(match -> match.terms().isEmpty()));
+        for (String term : terms) {
+            long expected = subject.countConcepts(new Filter(List.of(), term, List.of()));
+            assertEquals(expected, matches.stream().filter(match -> match.terms().contains(term)).count());
+        }
+    }
 }

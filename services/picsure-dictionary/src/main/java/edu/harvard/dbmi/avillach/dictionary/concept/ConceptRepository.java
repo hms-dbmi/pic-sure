@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptMatch;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
@@ -15,10 +16,15 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 
 @Repository
@@ -89,6 +95,68 @@ public class ConceptRepository {
         QueryParamPair pair = filterGen.generateCountQuery(filter);
         Long count = template.queryForObject(pair.query(), pair.params(), Long.class);
         return count == null ? 0 : count;
+    }
+
+    /**
+     * Counts, for each term of the filter's search, the concepts the whole filter matches that also match that term, in one statement.
+     *
+     * @param filter the filter, whose search holds the terms joined by {@code |}
+     * @param terms the terms of that search, in the order to report them
+     * @return each term's count in the order given
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Long> countConceptsByTerm(Filter filter, List<String> terms) {
+        template.getJdbcTemplate().execute("SET LOCAL work_mem = '64MB'");
+        QueryParamPair pair = filterGen.generateTermCountQuery(filter, terms);
+        return template.query(pair.query(), pair.params(), rs -> {
+            Map<String, Long> totals = new LinkedHashMap<>();
+            if (rs.next()) {
+                // column 1 is the overall count, which the page already carries
+                for (int i = 0; i < terms.size(); i++) {
+                    totals.put(terms.get(i), rs.getLong(i + 2));
+                }
+            }
+            return totals;
+        });
+    }
+
+    /**
+     * Finds which terms match each of the given concepts.
+     *
+     * @param concepts the concepts of a page
+     * @param terms the terms of the search, in the order to report them
+     * @return one match per concept, in the order given; a concept that is gone matches no term
+     */
+    @Transactional(readOnly = true)
+    public List<ConceptMatch> getConceptMatches(List<Concept> concepts, List<String> terms) {
+        if (concepts.isEmpty()) {
+            return List.of();
+        }
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        params.addValue("pairs", concepts.stream().map(c -> new Object[] {c.dataset(), c.conceptPath()}).toList());
+        String flags = IntStream.range(0, terms.size()).mapToObj(i -> {
+            params.addValue("term_" + i, terms.get(i));
+            return "(cn.searchable_fields @@ " + QueryUtility.tsqueryExpr("term_" + i) + ") AS m" + i;
+        }).collect(Collectors.joining(", "));
+        String sql = """
+            SELECT ds.REF AS dataset, cn.concept_path AS concept_path, %s
+            FROM concept_node cn
+            JOIN dataset ds ON cn.dataset_id = ds.dataset_id
+            WHERE (ds.REF, cn.concept_path) IN (:pairs)
+            """.formatted(flags);
+        Map<List<String>, List<String>> matched = new HashMap<>();
+        template.query(sql, params, rs -> {
+            List<String> hits = new ArrayList<>();
+            for (int i = 0; i < terms.size(); i++) {
+                if (rs.getBoolean("m" + i)) {
+                    hits.add(terms.get(i));
+                }
+            }
+            matched.put(List.of(rs.getString("dataset"), rs.getString("concept_path")), hits);
+        });
+        return concepts.stream()
+            .map(c -> new ConceptMatch(c.dataset(), c.conceptPath(), matched.getOrDefault(List.of(c.dataset(), c.conceptPath()), List.of())))
+            .toList();
     }
 
     public Optional<Concept> getConcept(String dataset, String conceptPath) {

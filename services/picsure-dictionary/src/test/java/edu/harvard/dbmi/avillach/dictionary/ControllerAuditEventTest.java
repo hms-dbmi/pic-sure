@@ -29,7 +29,7 @@ class ControllerAuditEventTest {
     @Test
     void conceptController() throws Exception {
         Class<?> c = ConceptController.class;
-        assertAuditEvent(c, "listConcepts", new Class[] {Filter.class, int.class, int.class}, "SEARCH", "concept.search");
+        assertAuditEvent(c, "listConcepts", new Class[] {Filter.class, int.class, int.class, boolean.class}, "SEARCH", "concept.search");
         assertAuditEvent(c, "dumpConcepts", new Class[] {int.class, int.class}, "DATA_ACCESS", "concept.dump");
         assertAuditEvent(c, "conceptDetail", new Class[] {String.class, String.class}, "SEARCH", "concept.detail");
         assertAuditEvent(c, "conceptsDetail", new Class[] {List.class}, "SEARCH", "concept.detail");
