@@ -66,6 +66,26 @@
       "description": "Number of days a platform API key is valid when minted without an explicit expiry and without the neverExpires flag. Must be positive or the service fails to start. Set from API_KEY_PLATFORM_TTL_DAYS."
     },
     {
+      "name": "api.key.session.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables open-access sessions: POST /open/session issues each anonymous browser a short-lived signed token to send as its API key. When off, that endpoint answers 404. Set from API_KEY_SESSION_ENABLED."
+    },
+    {
+      "name": "api.key.session.max.lifetime.hours",
+      "type": "java.lang.Long",
+      "description": "Hours a session can last across refreshes, after which the browser starts a new one. Must cover at least api.key.session.ttl.minutes or the service fails to start. Set from API_KEY_SESSION_MAX_LIFETIME_HOURS."
+    },
+    {
+      "name": "api.key.session.signing.secret",
+      "type": "java.lang.String",
+      "description": "Base64 HS256 key that signs session tokens. Required when sessions are enabled; must decode to at least 32 bytes and must not give the same key as application.client.secret, or the service fails to start. Rotating it ends every session. Set from API_KEY_SESSION_SIGNING_SECRET."
+    },
+    {
+      "name": "api.key.session.ttl.minutes",
+      "type": "java.lang.Long",
+      "description": "Minutes a session token is valid. A token past half its TTL is refreshed on /open/validate. Must be positive or the service fails to start. Set from API_KEY_SESSION_TTL_MINUTES."
+    },
+    {
       "name": "api.key.user.ttl.days",
       "type": "java.lang.Long",
       "description": "Number of days a self-service user API key remains valid. Must be positive or the service fails to start. Set from API_KEY_USER_TTL_DAYS."

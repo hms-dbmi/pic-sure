@@ -15,10 +15,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
-import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
 
 @Service
 public class ConsentAuthorizationService {

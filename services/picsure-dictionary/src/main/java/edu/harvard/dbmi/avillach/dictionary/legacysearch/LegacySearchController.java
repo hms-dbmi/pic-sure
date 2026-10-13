@@ -11,8 +11,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.io.IOException;
 
@@ -35,7 +35,7 @@ public class LegacySearchController {
     @Operation(summary = "Search in the legacy request and response shape")
     @ApiResponse(responseCode = "200", description = "Search results in the legacy response shape")
     @AuditEvent(type = "SEARCH", action = "search.legacy")
-    @RequestMapping(path = "/search")
+    @PostMapping(path = "/search")
     public ResponseEntity<LegacyResponse> legacySearch(@RequestBody String jsonString) throws IOException {
         LegacySearchQuery legacySearchQuery = legacySearchQueryMapper.mapFromJson(jsonString);
         AuditAttributes.putMetadata(

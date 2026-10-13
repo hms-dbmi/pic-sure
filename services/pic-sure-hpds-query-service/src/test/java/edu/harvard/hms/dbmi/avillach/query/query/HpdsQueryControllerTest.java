@@ -35,12 +35,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
-import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
-import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
-import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
 
 /**
  * Full-context MockMvc coverage of the sole query lifecycle ingress at {@code /hpds/{backend}/query/**}. It exercises
