@@ -2,13 +2,16 @@ package edu.harvard.hms.dbmi.avillach.query.error;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -25,9 +28,10 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
  * resolves the most specific handler for its own {@link #unknown} catch-all, regardless of whichever advice bean Spring happens to consult
  * first. {@code GatewayExceptionAdvice}'s equivalent handler, if consulted first, produces the identical response.
  *
- * <p>Adds four mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 because HPDS is upstream
- * infrastructure, {@link NoResourceFoundException} -&gt; 404 for route absence, {@link HttpMessageNotReadableException} -&gt; 400 for a
- * body that cannot be read, and any other unmapped exception -&gt; 500. All share the same commons error body shape.
+ * <p>Adds five mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 because HPDS is upstream
+ * infrastructure, {@link NoResourceFoundException} -&gt; 404 for route absence, {@link HttpRequestMethodNotSupportedException} -&gt; 405
+ * for a method the route does not serve, {@link HttpMessageNotReadableException} -&gt; 400 for a body that cannot be read, and any other
+ * unmapped exception -&gt; 500. All share the same commons error body shape.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -66,6 +70,23 @@ public class GlobalExceptionHandler {
         return body(HttpStatus.NOT_FOUND, "not_found", "No such resource: " + e.getResourcePath());
     }
 
+    /**
+     * A method the route does not serve answers 405 rather than falling into the {@link #unknown} 500 catch-all, with an {@code Allow}
+     * header naming the methods it does serve.
+     *
+     * @param e the exception carrying the refused method and the methods the route supports
+     * @return 405 with the {@code Allow} header and the commons error body
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> methodNotAllowed(HttpRequestMethodNotSupportedException e) {
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        Set<HttpMethod> supported = e.getSupportedHttpMethods();
+        if (supported != null) {
+            response.allow(supported.toArray(HttpMethod[]::new));
+        }
+        return response.body(errorBody("method_not_allowed", "Method " + e.getMethod() + " is not allowed"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> unknown(Exception e) {
         logger.error("Unhandled exception", e);
@@ -73,10 +94,14 @@ public class GlobalExceptionHandler {
     }
 
     private static ResponseEntity<Map<String, Object>> body(HttpStatus status, String errorType, String message) {
+        return ResponseEntity.status(status).body(errorBody(errorType, message));
+    }
+
+    private static Map<String, Object> errorBody(String errorType, String message) {
         Map<String, Object> b = new LinkedHashMap<>();
         b.put("errorType", errorType);
         b.put("message", message);
         b.put("requestId", MDC.get("requestId"));
-        return ResponseEntity.status(status).body(b);
+        return b;
     }
 }

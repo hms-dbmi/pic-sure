@@ -2,18 +2,22 @@ package edu.harvard.hms.dbmi.avillach.query.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 
 /**
- * Unit tests for {@link GlobalExceptionHandler}: HPDS upstream failures map to 502, {@link PicsureException} maps to its carried status,
- * and any other unmapped exception maps to 500. All three share the commons {@code {errorType,message,requestId}} body shape.
+ * Unit tests for {@link GlobalExceptionHandler}: HPDS upstream failures map to 502, {@link PicsureException} maps to its carried status, an
+ * unsupported HTTP method maps to 405, and any other unmapped exception maps to 500. All share the commons
+ * {@code {errorType,message,requestId}} body shape.
  */
 class GlobalExceptionHandlerTest {
 
@@ -50,6 +54,17 @@ class GlobalExceptionHandlerTest {
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(resp.getBody()).containsEntry("errorType", "bad_request").containsEntry("message", "Malformed request body")
+            .containsKey("requestId");
+    }
+
+    @Test
+    void mapsUnsupportedMethodTo405WithTheAllowedMethods() {
+        ResponseEntity<Map<String, Object>> resp =
+            handler.methodNotAllowed(new HttpRequestMethodNotSupportedException("POST", List.of("GET")));
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(resp.getHeaders().getFirst(HttpHeaders.ALLOW)).isEqualTo("GET");
+        assertThat(resp.getBody()).containsEntry("errorType", "method_not_allowed").containsEntry("message", "Method POST is not allowed")
             .containsKey("requestId");
     }
 }

@@ -7,6 +7,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,10 +41,10 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 
 /**
- * Reproduces every 403, 502, and 504 the OpenAPI document declares, one case per endpoint, through the real controllers, services, and HTTP
- * clients. A single WireMock server stands in for HPDS ({@code /PIC-SURE}), the aggregate open backend ({@code /OPEN}), PSAMA's consent
- * lookup, and operations-service's internal query store, so each status comes from the production throw site rather than a mocked bean. The
- * 503 cases need an unconfigured backend and live in {@link UnconfiguredBackendResponsesTest}.
+ * Reproduces every 403, 405, 502, and 504 the OpenAPI document declares, one case per endpoint, through the real controllers, services, and
+ * HTTP clients. A single WireMock server stands in for HPDS ({@code /PIC-SURE}), the aggregate open backend ({@code /OPEN}), PSAMA's
+ * consent lookup, and operations-service's internal query store, so each status comes from the production throw site rather than a mocked
+ * bean. The 503 cases need an unconfigured backend and live in {@link UnconfiguredBackendResponsesTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -244,6 +245,13 @@ class DocumentedErrorResponsesTest {
 
         mockMvc.perform(request.build(storedId)).andExpect(status().isGatewayTimeout())
             .andExpect(jsonPath("$.errorType").value("gateway_timeout"));
+    }
+
+    @Test
+    void postToAGetOnlyRouteIs405WithAnAllowHeader() throws Exception {
+        mockMvc.perform(identified(post("/hpds/auth/search/values")).param("genomicConceptPath", "\\gene\\"))
+            .andExpect(status().isMethodNotAllowed()).andExpect(header().string(HttpHeaders.ALLOW, "GET"))
+            .andExpect(jsonPath("$.errorType").value("method_not_allowed"));
     }
 
     /** Builds one request against the stored query id the test stubbed. */
