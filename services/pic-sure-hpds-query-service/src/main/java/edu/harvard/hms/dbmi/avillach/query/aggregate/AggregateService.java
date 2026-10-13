@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.query.aggregate;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -57,17 +58,17 @@ public class AggregateService {
     private final ObfuscationService obfuscation;
     private final AggregateProperties props;
     private final QueryService queryService;
-    private final ChartRangeResolver chartRanges;
+    private final ConceptMetadataLookup conceptMetadata;
 
     public AggregateService(
         AggregateBackendClient backend, ObfuscationService obfuscation, AggregateProperties props, QueryService queryService,
-        ChartRangeResolver chartRanges
+        ConceptMetadataLookup conceptMetadata
     ) {
         this.backend = backend;
         this.obfuscation = obfuscation;
         this.props = props;
         this.queryService = queryService;
-        this.chartRanges = chartRanges;
+        this.conceptMetadata = conceptMetadata;
     }
 
     // ---- async open submit ----
@@ -136,7 +137,8 @@ public class AggregateService {
                 case "CROSS_COUNT":
                     return objectMapper.writeValueAsString(obfuscation.processCrossCounts(entityString));
                 case "CATEGORICAL_CROSS_COUNT":
-                    return obfuscation.processCategoricalCrossCounts(entityString, getCrossCountForQuery(req, variant));
+                    return obfuscation
+                        .processCategoricalCrossCounts(entityString, getCrossCountForQuery(req, variant), categoryValuesFor(entityString));
                 case "CONTINUOUS_CROSS_COUNT":
                     return processContinuousCrossCounts(entityString, getCrossCountForQuery(req, variant), req, variant);
                 default:
@@ -145,6 +147,16 @@ public class AggregateService {
         } catch (IOException e) {
             throw new UncheckedIOException("Error processing aggregate response", e);
         }
+    }
+
+    /** Dataset-wide values of each concept in a categorical result, so a chart naming all of them can omit the empty grouped bucket. */
+    private Map<String, Set<String>> categoryValuesFor(String categoricalJson) throws IOException {
+        if (categoricalJson == null) {
+            return Map.of();
+        }
+        Set<String> concepts = new LinkedHashSet<>();
+        objectMapper.readTree(categoricalJson).fieldNames().forEachRemaining(concepts::add);
+        return conceptMetadata.categoryValues(concepts);
     }
 
     /** No matter the type, fetch the CROSS_COUNT incl. ALL study consents (used for chart suppression). */
@@ -181,7 +193,7 @@ public class AggregateService {
     private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(
         Map<String, Map<String, Integer>> continuous, AggregateVariant variant, int maxBins
     ) throws IOException {
-        Map<String, ChartRange> ranges = chartRanges.resolve(continuous.keySet());
+        Map<String, ChartRange> ranges = conceptMetadata.overallRanges(continuous.keySet());
         continuous.keySet().retainAll(ranges.keySet());
         String binResponse = backend.binContinuous(new ContinuousBinningRequest(continuous, ranges, maxBins), variant);
         return objectMapper.readValue(binResponse, new TypeReference<>() {});

@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Privacy-critical obfuscation for open (aggregate) v1 and v3 requests.
@@ -185,6 +186,13 @@ public class ObfuscationService {
     /** CATEGORICAL case: null when either input is missing or the cohort is too small, otherwise bucketed and obfuscated. */
     public String processCategoricalCrossCounts(String categoricalEntityString, String crossCountEntityString)
         throws JsonProcessingException {
+        return processCategoricalCrossCounts(categoricalEntityString, crossCountEntityString, Map.of());
+    }
+
+    /** @param categoryValues every value each concept has in the dataset; a concept missing from it keeps its grouped bucket */
+    public String processCategoricalCrossCounts(
+        String categoricalEntityString, String crossCountEntityString, Map<String, Set<String>> categoryValues
+    ) throws JsonProcessingException {
         if (categoricalEntityString == null || crossCountEntityString == null) {
             return null;
         }
@@ -199,7 +207,9 @@ public class ObfuscationService {
         }
         for (Map.Entry<String, Map<String, Object>> entry : categorical.entrySet()) {
             if (visualizationFormatter.skipKey(entry.getKey())) continue;
-            categorical.put(entry.getKey(), visualizationFormatter.processResults(entry.getValue(), chartThreshold));
+            categorical.put(
+                entry.getKey(), visualizationFormatter.processResults(entry.getValue(), chartThreshold, categoryValues.get(entry.getKey()))
+            );
         }
         return objectMapper.writeValueAsString(obfuscateChartCounts(categorical));
     }

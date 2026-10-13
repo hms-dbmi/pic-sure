@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -71,5 +72,40 @@ class VisualizationFormatterTest {
     void namedCategoriesAreOrderedByLabelWithTheGroupedBucketLast() {
         Map<String, Object> out = fmt.processResults(axis("b", 50, "c", 11, "a", 30), 10);
         assertThat(out.keySet()).containsExactly("a", "b", "c", GROUPED);
+    }
+
+    @Test
+    void omitsTheGroupedBucketWhenEveryPossibleValueIsNamed() {
+        Map<String, Object> out = fmt.processResults(axis("Female", 212, "Male", 190), 10, Set.of("Female", "Male"));
+        assertThat(out).containsOnlyKeys("Female", "Male");
+    }
+
+    @Test
+    void keepsTheGroupedBucketWhenAPossibleValueIsNotNamed() {
+        // Unknown has 0 or 1..9 patients here; either way it is not named, so the grouped bucket stays
+        for (int unknown = 0; unknown < 10; unknown++) {
+            Map<String, Object> out =
+                fmt.processResults(axis("Female", 212, "Male", 190, "Unknown", unknown), 10, Set.of("Female", "Male", "Unknown"));
+            assertThat(out.keySet()).containsExactly("Female", "Male", GROUPED);
+        }
+    }
+
+    @Test
+    void keepsTheGroupedBucketWhenValuesAreUnknownOrDataHasExtraValues() {
+        assertThat(fmt.processResults(axis("Female", 212, "Male", 190), 10, null)).containsKey(GROUPED);
+        assertThat(fmt.processResults(axis("Female", 212, "Male", 190), 10, Set.of())).containsKey(GROUPED);
+        // a value missing from the metadata still lands in the bucket, so it is shown
+        assertThat(fmt.processResults(axis("Female", 212, "Male", 190, "x", 3), 10, Set.of("Female", "Male"))).containsEntry(GROUPED, 3);
+    }
+
+    @Test
+    void keepsTheGroupedBucketWhenTheTopSevenLimitFoldsNamedValues() {
+        Map<String, Object> axis = new LinkedHashMap<>();
+        java.util.Set<String> possible = new java.util.HashSet<>();
+        for (int i = 0; i < 9; i++) {
+            axis.put("cat" + i, 20 + i);
+            possible.add("cat" + i);
+        }
+        assertThat(fmt.processResults(axis, 10, possible)).containsKey(GROUPED).hasSize(8);
     }
 }

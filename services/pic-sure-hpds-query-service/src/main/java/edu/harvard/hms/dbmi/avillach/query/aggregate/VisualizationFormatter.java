@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -33,10 +34,16 @@ public class VisualizationFormatter {
 
     /**
      * Groups an open categorical chart's categories. A category below {@code foldBelow}, or beyond the {@value #LIMIT_SIZE} largest, is
-     * folded into {@link #GROUPED_KEY}, which is always present so its presence reveals nothing. Named categories are ordered by label, not
-     * count, so their order reveals nothing about counts that obfuscation rounds together.
+     * folded into {@link #GROUPED_KEY}, which is present so its presence reveals nothing. The one exception: when every value the concept
+     * can have ({@code possibleValues}, from dataset-wide metadata) is already named, the bucket is necessarily empty and is left out,
+     * which anyone could work out from public information. Named categories are ordered by label, not count, so their order reveals nothing
+     * about counts that obfuscation rounds together.
      */
     public Map<String, Object> processResults(Map<String, Object> axisMap, int foldBelow) {
+        return processResults(axisMap, foldBelow, null);
+    }
+
+    public Map<String, Object> processResults(Map<String, Object> axisMap, int foldBelow, Set<String> possibleValues) {
         Map<String, Integer> named = new HashMap<>();
         int grouped = 0;
         for (Map.Entry<String, Object> entry : axisMap.entrySet()) {
@@ -63,7 +70,10 @@ public class VisualizationFormatter {
         }
 
         Map<String, Object> result = new LinkedHashMap<>(new TreeMap<>(limitKeySize(kept)));
-        result.put(GROUPED_KEY, grouped);
+        boolean everyValueNamed = possibleValues != null && !possibleValues.isEmpty() && kept.keySet().containsAll(possibleValues);
+        if (grouped > 0 || !everyValueNamed) {
+            result.put(GROUPED_KEY, grouped);
+        }
         return result;
     }
 

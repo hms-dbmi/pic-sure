@@ -38,7 +38,7 @@ class AggregateServiceTest {
 
     /** obfuscation-path tests don't exercise persistence; a throwaway QueryService mock keeps their construction terse. */
     private AggregateService service(AggregateBackendClient backend, AggregateProperties props) {
-        return new AggregateService(backend, obfuscation(), props, mock(QueryService.class), new ChartRangeResolver(backend));
+        return new AggregateService(backend, obfuscation(), props, mock(QueryService.class), new ConceptMetadataLookup(backend));
     }
 
     private QueryRequest sync(String expectedResultType) {
@@ -163,6 +163,26 @@ class AggregateServiceTest {
     }
 
     @Test
+    void categoricalChartOmitsTheGroupedBucketWhenEveryValueIsNamed() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenAnswer(inv -> {
+            QueryRequest req = inv.getArgument(0);
+            if ("\\sex\\".equals(req.getQuery())) {
+                return new SearchResults()
+                    .setResults(Map.of("phenotypes", Map.of("\\sex\\", Map.of("categoryValues", List.of("Female", "Male")))));
+            }
+            return consentsSearch();
+        });
+        when(backend.querySync(any(), eq(AggregateVariant.V1)))
+            .thenReturn(ResponseEntity.ok("{\"\\\\sex\\\\\":{\"Female\":212,\"Male\":190}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+
+        ResponseEntity<String> out =
+            service(backend, new AggregateProperties()).querySync(sync("CATEGORICAL_CROSS_COUNT"), AggregateVariant.V1);
+        assertThat(out.getBody()).contains("Female").contains("Male").doesNotContain("Other (grouped)");
+    }
+
+    @Test
     void categoricalCrossCountSuppressedWhenCohortBelowFifty() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
@@ -282,7 +302,7 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ChartRangeResolver(backend));
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend));
 
         svc.query(sync("CROSS_COUNT"), AggregateVariant.V1);
 
@@ -301,7 +321,7 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ChartRangeResolver(backend));
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend));
 
         svc.query(sync("CROSS_COUNT"), AggregateVariant.V3);
 
@@ -318,7 +338,7 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ChartRangeResolver(backend));
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend));
 
         svc.query(sync("OBSERVATION_COUNT"), AggregateVariant.V1);
 
@@ -337,7 +357,7 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         QueryService queryService = mock(QueryService.class);
         AggregateService svc =
-            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ChartRangeResolver(backend));
+            new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService, new ConceptMetadataLookup(backend));
 
         QueryRequest noErt = new GeneralQueryRequest().setQuery(Map.of("fields", "x"));
         assertThatThrownBy(() -> svc.query(noErt, AggregateVariant.V1)).isInstanceOf(PicsureException.class);
