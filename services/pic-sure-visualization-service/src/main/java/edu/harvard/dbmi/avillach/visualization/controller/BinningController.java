@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.controller;
 
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningResponse;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
 import edu.harvard.dbmi.avillach.visualization.model.ContinuousBinningRequest;
@@ -15,8 +16,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @RestController
 @Tag(name = "Binning", description = "Bin continuous values for charting")
 public class BinningController {
@@ -27,6 +26,14 @@ public class BinningController {
         this.visualizationService = visualizationService;
     }
 
+    /**
+     * Groups each concept's raw value counts into chart bins and answers with the bins wrapped in a {@link ContinuousBinningResponse}. The
+     * query service's open aggregate path is the only caller, and it reads the same record.
+     *
+     * @param request the raw counts to bin, keyed by concept path and then by numeric value
+     * @param servletRequest the current request, which collects the audit metadata for this call
+     * @return the binned counts for every concept in the request, in request order
+     */
     @Operation(summary = "Bin continuous values into chart buckets")
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "Binned counts for each concept"),
@@ -34,12 +41,12 @@ public class BinningController {
     )
     @AuditEvent(type = "QUERY", action = "visualization.bin_continuous")
     @PostMapping({"/bin/continuous", "/v3/bin/continuous"})
-    public ResponseEntity<Map<String, Map<String, Integer>>> binContinuous(
+    public ResponseEntity<ContinuousBinningResponse> binContinuous(
         @Valid @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
     ) {
         AuditLoggingContext.addBinningRequestMetadata(servletRequest, request.query());
-        Map<String, Map<String, Integer>> response = visualizationService.binContinuousData(request.query());
-        AuditLoggingContext.addBinningResponseMetadata(servletRequest, response);
+        ContinuousBinningResponse response = new ContinuousBinningResponse(visualizationService.binContinuousData(request.query()));
+        AuditLoggingContext.addBinningResponseMetadata(servletRequest, response.bins());
         return ResponseEntity.ok(response);
     }
 }

@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
@@ -198,10 +199,9 @@ class VisualizationIntegrationTest {
             .perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody)))
             .andExpect(status().isOk()).andReturn();
 
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Object>> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
-        assertTrue(response.containsKey("\\measurements\\bmi\\"));
-        assertFalse(response.get("\\measurements\\bmi\\").isEmpty());
+        JsonNode bins = objectMapper.readTree(result.getResponse().getContentAsString()).path("bins");
+        assertTrue(bins.has("\\measurements\\bmi\\"));
+        assertFalse(bins.path("\\measurements\\bmi\\").isEmpty());
     }
 
     @Test
@@ -215,10 +215,9 @@ class VisualizationIntegrationTest {
             post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody))
         ).andExpect(status().isOk()).andReturn();
 
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Object>> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
-        assertTrue(response.containsKey("\\measurements\\bmi\\"));
-        assertFalse(response.get("\\measurements\\bmi\\").isEmpty());
+        JsonNode bins = objectMapper.readTree(result.getResponse().getContentAsString()).path("bins");
+        assertTrue(bins.has("\\measurements\\bmi\\"));
+        assertFalse(bins.path("\\measurements\\bmi\\").isEmpty());
     }
 
     @Test

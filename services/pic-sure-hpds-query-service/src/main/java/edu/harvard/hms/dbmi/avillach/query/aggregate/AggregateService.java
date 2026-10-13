@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import edu.harvard.dbmi.avillach.domain.ContinuousBinningResponse;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
@@ -26,6 +27,7 @@ import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
+import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 
 /**
@@ -172,14 +174,25 @@ public class AggregateService {
         }
     }
 
-    /** Sends continuous results to the configured visualization URL for binning. */
+    /**
+     * Sends continuous results to the configured visualization URL for binning and reads the bins out of the
+     * {@link ContinuousBinningResponse} it answers with. Concept order and bin order are kept as the visualization service sent them. A
+     * body that carries no {@code bins}, which is what a visualization service older than the record answers with, is treated as a failed
+     * upstream call and never as an empty result.
+     */
     private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(
         Map<String, Map<String, Integer>> continuous, AggregateVariant variant
     ) throws IOException {
         QueryRequest vizRequest = new GeneralQueryRequest();
         vizRequest.setQuery(continuous);
         String binResponse = backend.binContinuous(vizRequest, variant);
-        return objectMapper.readValue(binResponse, new TypeReference<>() {});
+        ContinuousBinningResponse binned = objectMapper.readValue(binResponse, ContinuousBinningResponse.class);
+        if (binned == null || binned.bins() == null) {
+            throw new HpdsCommunicationException("Visualization bin/continuous response carried no bins");
+        }
+        Map<String, Map<String, Object>> bins = new LinkedHashMap<>();
+        binned.bins().forEach((conceptPath, counts) -> bins.put(conceptPath, new LinkedHashMap<>(counts)));
+        return bins;
     }
 
     // ---- query mutation (variant-aware) ----
