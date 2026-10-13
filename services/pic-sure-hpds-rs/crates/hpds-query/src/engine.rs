@@ -1081,7 +1081,7 @@ mod tests {
 
         /// A store holding each `(name, rows)` partition, one row per `(patient, concept)`
         /// with the patient's id as its value, in a directory removed with the returned guard.
-        fn store_with_rows(
+        pub(super) fn store_with_rows(
             partitions: &[(&str, Vec<(u32, &str)>)],
         ) -> (tempfile::TempDir, PathBuf) {
             let dir = tempfile::tempdir().unwrap();
@@ -1300,5 +1300,141 @@ mod tests {
         }
         assert!(first.settle().is_ok());
         assert!(is_limit(second.settle()));
+    }
+
+    /// The table of recent block cache entries under study-level reads: it serves only
+    /// entries the cache holds, keeps views, and lets every concept reach the cache.
+    mod recent_entries {
+        use std::path::PathBuf;
+
+        use super::guard::store_with_rows;
+        use crate::cohort::fault;
+        use crate::model::{PhenotypicClause, PhenotypicFilter, PhenotypicFilterType};
+        use crate::{Engine, PartitionOptions, Query, ResultType, StoreOptions};
+
+        /// Concept paths `\<study>\c<n>\` for `n` below `count`.
+        fn paths(study: &str, count: usize) -> Vec<String> {
+            (0..count)
+                .map(|n| format!("\\{study}\\c{n:02}\\"))
+                .collect()
+        }
+
+        /// A store of partitions `p1` (patients 1 to 10) and `p2` (11 to 20), every patient
+        /// with a row of every path in `paths`.
+        fn store(paths: &[String]) -> (tempfile::TempDir, PathBuf) {
+            let rows = |patients: std::ops::RangeInclusive<u32>| -> Vec<(u32, &str)> {
+                paths
+                    .iter()
+                    .flat_map(|path| patients.clone().map(move |p| (p, path.as_str())))
+                    .collect()
+            };
+            store_with_rows(&[("p1", rows(1..=10)), ("p2", rows(11..=20))])
+        }
+
+        fn engine(out: &std::path::Path, cache_bytes: u64, share: f64) -> Engine {
+            let options = PartitionOptions {
+                require_consents: false,
+                narrow_view_share: share,
+                store: StoreOptions {
+                    cache_bytes,
+                    ..StoreOptions::default()
+                },
+            };
+            Engine::open(out, &options).unwrap()
+        }
+
+        /// A COUNT of `ANY_RECORD_OF` on `prefix`, under `consents` or every partition.
+        fn any_record_of(prefix: &str, consents: &[&str]) -> Query {
+            Query {
+                phenotypic_clause: Some(PhenotypicClause::Filter(PhenotypicFilter::new(
+                    PhenotypicFilterType::AnyRecordOf,
+                    prefix,
+                ))),
+                ..Query::with_consents(ResultType::Count, consents.iter().copied())
+            }
+        }
+
+        /// The bytes one cached concept of `paths` weighs, read from a roomy cache.
+        fn entry_weight(out: &std::path::Path, count: usize) -> u64 {
+            let roomy = engine(out, 1 << 30, 0.5);
+            roomy.count(&any_record_of("\\s\\", &[])).unwrap();
+            roomy.partitions().cached_bytes() / count as u64
+        }
+
+        #[test]
+        fn concurrent_study_level_reads_on_a_small_cache_serve_only_cached_entries() {
+            let concepts = 40;
+            let (_dir, out) = store(&paths("s", concepts));
+            let weight = entry_weight(&out, concepts);
+            let engine = engine(&out, weight * 3, 0.5);
+            let (served, uncached) = fault::checking_recent_hits(|| {
+                std::thread::scope(|scope| {
+                    for consents in [&[][..], &["p1"][..]] {
+                        let engine = &engine;
+                        scope.spawn(move || {
+                            let expected = if consents.is_empty() { 20 } else { 10 };
+                            for _ in 0..200 {
+                                let query = any_record_of("\\s\\", consents);
+                                assert_eq!(engine.count(&query).unwrap(), expected);
+                            }
+                        });
+                    }
+                });
+            });
+            let set = engine.partitions();
+            assert!(set.cached_bytes() <= weight * 3, "{}", set.cached_bytes());
+            assert!(set.block_cache_stats().evictions > 0);
+            assert!(
+                uncached * 100 <= served.max(1),
+                "{uncached} of {served} table hits were entries the cache did not hold"
+            );
+        }
+
+        #[test]
+        fn a_view_built_by_one_read_is_served_with_its_entry_to_the_next() {
+            let (_dir, out) = store(&paths("s", 1));
+            let engine = engine(&out, 1 << 30, 2.0);
+            let narrow = any_record_of("\\s\\", &["p1"]);
+            for _ in 0..5 {
+                assert_eq!(engine.count(&narrow).unwrap(), 10);
+            }
+            let set = engine.partitions();
+            let (views, view_bytes) = set.cached_views();
+            assert_eq!(views, 1);
+            assert!(view_bytes > 0);
+            let stats = set.block_cache_stats();
+            assert_eq!(
+                (stats.loads, stats.misses, stats.hits),
+                (1, 1, 4),
+                "{stats:?}"
+            );
+            assert!(
+                set.cached_bytes() > view_bytes,
+                "the view is weighed with its block: {} cached, view {view_bytes}",
+                set.cached_bytes()
+            );
+        }
+
+        #[test]
+        fn alternating_study_level_reads_send_every_concept_through_the_cache() {
+            let per_study = 6;
+            let mut all = paths("x", per_study);
+            all.extend(paths("y", per_study));
+            let (_dir, out) = store(&all);
+            let engine = engine(&out, 1 << 30, 0.5);
+            let (x, y) = (any_record_of("\\x\\", &[]), any_record_of("\\y\\", &[]));
+            engine.count(&x).unwrap();
+            engine.count(&y).unwrap();
+            let ((), looked_up) = fault::recording_cache_lookups(|| {
+                for _ in 0..1_000 {
+                    engine.count(&x).unwrap();
+                    engine.count(&y).unwrap();
+                }
+            });
+            let mut reached: Vec<usize> = looked_up;
+            reached.sort_unstable();
+            reached.dedup();
+            assert_eq!(reached, (0..2 * per_study).collect::<Vec<_>>());
+        }
     }
 }

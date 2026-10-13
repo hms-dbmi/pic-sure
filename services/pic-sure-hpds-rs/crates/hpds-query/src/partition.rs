@@ -743,20 +743,29 @@ impl PartitionSet {
     }
 
     /// The cached entries of the concepts at `indexes`, in order, counting a hit or a miss
-    /// for each. On each call the concepts whose index falls on this call's turn (one in
-    /// [`RECORD_EVERY`]) are looked up in the cache; the others come from
-    /// [`RecentEntries`] when it still holds them, and from the cache otherwise. Every
-    /// entry found in the cache is remembered there.
+    /// for each. Each call draws a turn ([`turn_of`]); the concepts whose index falls on it
+    /// (one in [`RECORD_EVERY`]) are looked up in the cache, the others come from
+    /// [`RecentEntries`] when it holds them, and from the cache otherwise. Every entry
+    /// found in the cache is remembered there.
     fn cached_entries(&self, indexes: &[usize]) -> Vec<Option<Arc<CachedConcept>>> {
-        let turn = self.turns.fetch_add(1, Ordering::Relaxed) % RECORD_EVERY;
+        let turn = turn_of(self.turns.fetch_add(1, Ordering::Relaxed));
         let mut entries = self.recent.get_all(indexes.iter().copied(), |index| {
             index % RECORD_EVERY == turn
         });
+        if crate::cohort::fault::checks_recent_hits() {
+            for (entry, &index) in entries.iter().zip(indexes) {
+                if entry.is_some() {
+                    let cached = self.cache.contains_key(&(index as u32));
+                    crate::cohort::fault::note_recent_hit(cached);
+                }
+            }
+        }
         let recent_hits = entries.iter().filter(|entry| entry.is_some()).count();
         self.cache_counters.hits.add(recent_hits as u64);
         let mut looked_up = Vec::new();
         for (position, entry) in entries.iter_mut().enumerate() {
             if entry.is_none() {
+                crate::cohort::fault::note_cache_lookup(indexes[position]);
                 *entry = self.cached_entry(indexes[position]);
                 if entry.is_some() {
                     looked_up.push(position);
@@ -806,6 +815,19 @@ impl Drop for Evaluating<'_> {
     fn drop(&mut self) {
         self.count.fetch_sub(1, Ordering::Relaxed);
     }
+}
+
+/// The turn of the `call`th multi-concept read: which residue modulo [`RECORD_EVERY`] of
+/// the concept indexes it sends through the block cache. A plain `call % RECORD_EVERY`
+/// would give a workload that repeats every few calls the same turns for the same read, so
+/// some of its concepts would never reach the cache; scrambling the call number
+/// (the `splitmix64` finalizer) spreads every read's turns over all residues.
+fn turn_of(call: usize) -> usize {
+    let mut x = (call as u64).wrapping_add(0x9e37_79b9_7f4a_7c15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    x ^= x >> 31;
+    (x % RECORD_EVERY as u64) as usize
 }
 
 /// The weight of a cached [`Scope`] under `key`: its bitmaps and the key, in bytes.
@@ -1202,7 +1224,9 @@ impl<'a> Selection<'a> {
     }
 
     /// The partition view of the concept `read` names, whose entry is `entry`, built and
-    /// weighed with its block when missing. Blocking.
+    /// weighed with its block when missing. An entry the cache has dropped meanwhile is not
+    /// put back: the view serves this read, and the next read loads the concept again.
+    /// Blocking.
     ///
     /// # Errors
     /// [`QueryError::StoreInconsistent`] when a row belongs to no holder.
@@ -1215,7 +1239,7 @@ impl<'a> Selection<'a> {
                 &self.set.dictionary[read.index].name,
             )
         })?;
-        if built {
+        if built && !entry.is_dropped() {
             self.set.cache.insert(read.index as u32, Arc::clone(entry));
         }
         Ok(view)

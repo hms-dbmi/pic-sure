@@ -3,7 +3,7 @@
 //! [`crate::PartitionSet`] holds.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError, RwLock, Weak};
 
 use hpds_format::{
@@ -37,7 +37,8 @@ const ENTRY_OVERHEAD: usize = 64;
 /// weighed at `u32::MAX`, under its real size; at the default 4 GiB bound such an entry
 /// already fills the cache on its own. Every entry dropped to keep the bound is counted in
 /// `counters.evictions`; an entry replaced by its reweighed self is not. Every entry the
-/// cache drops for any other reason than being replaced is also forgotten by `recent`.
+/// cache drops for any other reason than being replaced is marked dropped
+/// ([`CachedConcept::is_dropped`]) and forgotten by `recent`.
 pub(crate) fn block_cache(
     cache_bytes: u64,
     counters: Arc<BlockCacheCounters>,
@@ -53,6 +54,7 @@ pub(crate) fn block_cache(
                 counters.evictions.fetch_add(1, Ordering::Relaxed);
             }
             if cause != RemovalCause::Replaced {
+                concept.mark_dropped();
                 recent.forget(*index as usize, &concept);
             }
         })
@@ -71,14 +73,21 @@ pub(crate) const RECORD_EVERY: usize = 64;
 /// thousands of cached concepts (a study-level `ANY_RECORD_OF`) can skip most of its
 /// `moka` lookups, which in a Linux container cost several times a lookup here.
 ///
-/// A slot never keeps an entry alive: it upgrades only while the cache or a running query
-/// holds the entry, and the cache's eviction listener clears it when the cache drops the
-/// entry. A query that found an entry just before the cache dropped it can remember it
-/// again; the slot then serves that entry until no query holds it, or until the next
-/// lookup through the cache misses and remembers the reloaded one. The answers are the
-/// same either way, since a store's blocks never change while it is open. A slot of a
-/// dropped entry that nothing read again keeps only the entry's small allocation, not its
-/// block or view.
+/// The table serves only entries the cache has not dropped. The cache's eviction listener
+/// marks every entry it drops ([`CachedConcept::mark_dropped`]) before it clears the
+/// entry's slot, the table never remembers a marked entry, and it never serves one.
+/// Whichever comes first, the drop or a read remembering the entry it loaded, the entry is
+/// not served after the drop: a read that loads a block can see the cache drop it during
+/// the same load (the cache housekeeps on the inserting thread), and the mark is on the
+/// entry itself, so it holds however the remember and the listener interleave. The one gap
+/// is the instant between the cache removing an entry and its listener marking it, in
+/// which a lookup through the cache could have returned the entry too. A slot holds its
+/// entry weakly, so it never keeps a block or view alive.
+///
+/// Memory outside the byte bound: a slot whose entry was dropped without the listener
+/// clearing it keeps that entry's small allocation (the struct, about 100 bytes, not its
+/// block or view) until the concept is remembered again. That is at most one per concept,
+/// a few MB on a dictionary of tens of thousands of concepts.
 #[derive(Debug)]
 pub(crate) struct RecentEntries {
     slots: RwLock<Box<[Weak<CachedConcept>]>>,
@@ -107,22 +116,28 @@ impl RecentEntries {
                 if skip(index) {
                     None
                 } else {
-                    slots.get(index).and_then(Weak::upgrade)
+                    slots
+                        .get(index)
+                        .and_then(Weak::upgrade)
+                        .filter(|entry| !entry.is_dropped())
                 }
             })
             .collect()
     }
 
-    /// Remembers each `(index, entry)` as the entry of the concept at `index`. Takes the
-    /// table's lock for writing only when some entry is new to it.
+    /// Remembers each `(index, entry)` as the entry of the concept at `index`, except an
+    /// entry the cache has already dropped. Takes the table's lock for writing only when
+    /// some entry is new to it, and checks the drop mark under that lock, which the
+    /// eviction listener also takes after marking.
     pub(crate) fn remember_all<'a>(
         &self,
         entries: impl Iterator<Item = (usize, &'a Arc<CachedConcept>)> + Clone,
     ) {
         let differs = |slots: &[Weak<CachedConcept>], index: usize, entry: &Arc<CachedConcept>| {
-            slots
-                .get(index)
-                .is_some_and(|held| !std::ptr::eq(held.as_ptr(), Arc::as_ptr(entry)))
+            !entry.is_dropped()
+                && slots
+                    .get(index)
+                    .is_some_and(|held| !std::ptr::eq(held.as_ptr(), Arc::as_ptr(entry)))
         };
         {
             let slots = self.slots.read().unwrap_or_else(PoisonError::into_inner);
@@ -151,7 +166,9 @@ impl RecentEntries {
         }
     }
 
-    /// Forgets every entry.
+    /// Forgets every entry. A read running across the clear may remember the entries it
+    /// loads afterwards; those are new entries the cache holds, while every entry from
+    /// before the clear is marked dropped by the cache's listener and never served again.
     pub(crate) fn clear(&self) {
         let mut slots = self.slots.write().unwrap_or_else(PoisonError::into_inner);
         slots.iter_mut().for_each(|held| *held = Weak::new());
@@ -167,6 +184,7 @@ pub(crate) struct CachedConcept {
     block: Arc<Block>,
     view: OnceLock<Arc<View>>,
     building: Mutex<()>,
+    dropped: AtomicBool,
 }
 
 impl CachedConcept {
@@ -176,7 +194,20 @@ impl CachedConcept {
             block: Arc::new(block),
             view: OnceLock::new(),
             building: Mutex::new(()),
+            dropped: AtomicBool::new(false),
         }
+    }
+
+    /// Marks the entry as dropped by the block cache, for good: [`RecentEntries`] never
+    /// serves or remembers it again, and a reader that builds its view does not put it back
+    /// into the cache.
+    pub(crate) fn mark_dropped(&self) {
+        self.dropped.store(true, Ordering::Release);
+    }
+
+    /// Whether the block cache has dropped the entry ([`CachedConcept::mark_dropped`]).
+    pub(crate) fn is_dropped(&self) -> bool {
+        self.dropped.load(Ordering::Acquire)
     }
 
     /// The decoded block.
@@ -524,5 +555,34 @@ mod tests {
             get(&recent, index).is_some(),
             "an entry replaced by itself, as a reweigh does, is still remembered"
         );
+    }
+
+    #[test]
+    fn an_entry_the_cache_drops_while_a_read_loads_is_never_served() {
+        let concepts = 200;
+        let weight = empty_entry().weight() as u64;
+        let recent = Arc::new(RecentEntries::new(concepts));
+        let counters = Arc::new(BlockCacheCounters::default());
+        let cache = block_cache(weight * 3, counters, Arc::clone(&recent));
+        let held: Vec<Arc<CachedConcept>> = (0..concepts as u32)
+            .map(|index| cache.get_with(index, empty_entry))
+            .collect();
+        recent.remember_all(held.iter().enumerate());
+        cache.run_pending_tasks();
+        let uncached: Vec<usize> = (0..concepts)
+            .filter(|&index| {
+                get(&recent, index).is_some_and(|served| {
+                    !cache
+                        .get(&(index as u32))
+                        .is_some_and(|cached| Arc::ptr_eq(&cached, &served))
+                })
+            })
+            .collect();
+        assert!(
+            uncached.is_empty(),
+            "{} of {concepts} concepts served while the cache does not hold them",
+            uncached.len()
+        );
+        drop(held);
     }
 }

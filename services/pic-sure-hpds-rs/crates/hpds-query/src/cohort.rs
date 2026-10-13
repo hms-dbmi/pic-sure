@@ -107,6 +107,8 @@ pub(crate) mod fault {
         static VIEWS_BETWEEN_READS: Cell<bool> = const { Cell::new(false) };
         static FORGET_VIEWS: Cell<bool> = const { Cell::new(false) };
         static VIEW_FALLBACKS: Cell<usize> = const { Cell::new(0) };
+        static CACHE_LOOKUPS: std::cell::RefCell<Option<Vec<usize>>> =
+            const { std::cell::RefCell::new(None) };
     }
 
     /// Runs `work` on the calling thread with `flag` set, and clears it when `work` returns
@@ -164,6 +166,59 @@ pub(crate) mod fault {
         VIEW_FALLBACKS.with(|count| count.set(count.get() + 1));
     }
 
+    static CHECK_RECENT_HITS: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+    static RECENT_HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static RECENT_HITS_UNCACHED: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+
+    /// True while [`checking_recent_hits`] runs: every concept a multi-concept read takes
+    /// from its table of recent entries is then checked against the block cache.
+    pub(crate) fn checks_recent_hits() -> bool {
+        CHECK_RECENT_HITS.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Records one concept taken from the table of recent entries, and whether the block
+    /// cache held its key at that moment.
+    pub(crate) fn note_recent_hit(cached: bool) {
+        RECENT_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if !cached {
+            RECENT_HITS_UNCACHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    /// Runs `work`, on any number of threads, with recent-entry hits checked, and returns
+    /// how many concepts were taken from the table and how many of those the block cache
+    /// did not hold.
+    pub(crate) fn checking_recent_hits(work: impl FnOnce()) -> (usize, usize) {
+        use std::sync::atomic::Ordering::SeqCst;
+        RECENT_HITS.store(0, SeqCst);
+        RECENT_HITS_UNCACHED.store(0, SeqCst);
+        CHECK_RECENT_HITS.store(true, SeqCst);
+        work();
+        CHECK_RECENT_HITS.store(false, SeqCst);
+        (RECENT_HITS.load(SeqCst), RECENT_HITS_UNCACHED.load(SeqCst))
+    }
+
+    /// Records that a multi-concept read on the calling thread looked the concept at
+    /// `index` up in the block cache instead of in its table of recent entries.
+    pub(crate) fn note_cache_lookup(index: usize) {
+        CACHE_LOOKUPS.with(|lookups| {
+            if let Some(lookups) = lookups.borrow_mut().as_mut() {
+                lookups.push(index);
+            }
+        });
+    }
+
+    /// Runs `work` on the calling thread and returns its result with the concept indexes
+    /// its multi-concept reads looked up in the block cache, in order.
+    pub(crate) fn recording_cache_lookups<R>(work: impl FnOnce() -> R) -> (R, Vec<usize>) {
+        CACHE_LOOKUPS.with(|lookups| *lookups.borrow_mut() = Some(Vec::new()));
+        let result = work();
+        let recorded = CACHE_LOOKUPS.with(|lookups| lookups.borrow_mut().take());
+        (result, recorded.unwrap_or_default())
+    }
+
     /// Runs `work` on the calling thread and returns its result with the number of view
     /// fallbacks it recorded.
     pub(crate) fn counting_view_fallbacks<R>(work: impl FnOnce() -> R) -> (R, usize) {
@@ -174,7 +229,7 @@ pub(crate) mod fault {
 }
 
 #[cfg(not(test))]
-mod fault {
+pub(crate) mod fault {
     pub(crate) fn skips_reach() -> bool {
         false
     }
@@ -188,6 +243,14 @@ mod fault {
     }
 
     pub(crate) fn note_view_fallback() {}
+
+    pub(crate) fn note_cache_lookup(_index: usize) {}
+
+    pub(crate) fn checks_recent_hits() -> bool {
+        false
+    }
+
+    pub(crate) fn note_recent_hit(_cached: bool) {}
 }
 
 /// A patient set that borrows a cached block's or view's patients, or was computed for this
