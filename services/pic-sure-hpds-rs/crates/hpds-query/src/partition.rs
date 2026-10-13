@@ -32,8 +32,8 @@ use crate::counters::{BlockCacheCounters, BlockCacheStats};
 use crate::error::{QueryError, Result};
 use crate::model::Query;
 use crate::store::{
-    BlockCache, CachedConcept, ConceptEntry, KEY_FILE_NAME, Store, StoreFiles, StoreOptions,
-    block_cache,
+    BlockCache, CachedConcept, ConceptEntry, KEY_FILE_NAME, RECORD_EVERY, RecentEntries, Store,
+    StoreFiles, StoreOptions, block_cache,
 };
 use crate::validate::ConceptLookup;
 use crate::view::View;
@@ -291,6 +291,8 @@ pub struct PartitionSet {
     narrow_view_share: f64,
     evaluating: AtomicUsize,
     cache: BlockCache,
+    recent: Arc<RecentEntries>,
+    turns: AtomicUsize,
     cache_capacity: u64,
     cache_counters: Arc<BlockCacheCounters>,
     guard_refusals: AtomicU64,
@@ -340,8 +342,6 @@ impl PartitionSet {
     /// store whose index or blocks file is missing, corrupt, from another store, or
     /// protected differently from the key.
     pub fn open(dir: &Path, options: &PartitionOptions) -> Result<Self> {
-        let cache_counters = Arc::new(BlockCacheCounters::default());
-        let cache = block_cache(options.store.cache_bytes, Arc::clone(&cache_counters));
         if !dir.join(INDEX_FILE_NAME).exists() {
             return Err(refuse_without_index(dir)?);
         }
@@ -417,6 +417,8 @@ impl PartitionSet {
         };
         let all_patients = store.patients().clone();
         let generation = xxhash_rust::xxh3::xxh3_128(store_id.as_bytes());
+        let cache_counters = Arc::new(BlockCacheCounters::default());
+        let recent = Arc::new(RecentEntries::new(dictionary.len()));
         Ok(PartitionSet {
             dir: dir.to_path_buf(),
             layout: if partitioned {
@@ -426,6 +428,13 @@ impl PartitionSet {
             },
             require_consents: options.require_consents,
             partitions,
+            cache: block_cache(
+                options.store.cache_bytes,
+                Arc::clone(&cache_counters),
+                Arc::clone(&recent),
+            ),
+            recent,
+            turns: AtomicUsize::new(0),
             dictionary,
             holder_ends,
             holders,
@@ -436,7 +445,6 @@ impl PartitionSet {
             store,
             narrow_view_share: options.narrow_view_share,
             evaluating: AtomicUsize::new(0),
-            cache,
             cache_capacity: options.store.cache_bytes,
             cache_counters,
             guard_refusals: AtomicU64::new(0),
@@ -697,6 +705,7 @@ impl PartitionSet {
     pub fn clear_cache(&self) {
         self.cache.invalidate_all();
         self.cache.run_pending_tasks();
+        self.recent.clear();
     }
 
     /// Reads and checks the block of the concept at `index` from the store, uncached.
@@ -731,6 +740,33 @@ impl PartitionSet {
         };
         counter.add(1);
         found
+    }
+
+    /// The cached entries of the concepts at `indexes`, in order, counting a hit or a miss
+    /// for each. On each call the concepts whose index falls on this call's turn (one in
+    /// [`RECORD_EVERY`]) are looked up in the cache; the others come from
+    /// [`RecentEntries`] when it still holds them, and from the cache otherwise. Every
+    /// entry found in the cache is remembered there.
+    fn cached_entries(
+        &self,
+        indexes: impl Iterator<Item = usize>,
+    ) -> Vec<Option<Arc<CachedConcept>>> {
+        let turn = self.turns.fetch_add(1, Ordering::Relaxed) % RECORD_EVERY;
+        indexes
+            .map(|index| {
+                if index % RECORD_EVERY != turn
+                    && let Some(entry) = self.recent.get(index)
+                {
+                    self.cache_counters.hits.add(1);
+                    return Some(entry);
+                }
+                let found = self.cached_entry(index);
+                if let Some(entry) = &found {
+                    self.recent.remember(index, entry);
+                }
+                found
+            })
+            .collect()
     }
 
     /// The entry of the concept at `index` after a miss: read from the store and cached,
@@ -1130,17 +1166,15 @@ impl<'a> Selection<'a> {
         self.set.entry_at(read.index)
     }
 
-    /// The entries of `reads`, in order. Looks each up in the cache, then reads every missing
-    /// block on the rayon pool. Every missing block is attempted; the first failure in
-    /// order is returned. Blocking.
+    /// The entries of `reads`, in order. Looks each up in the cache (most of them through
+    /// [`RecentEntries`], see [`PartitionSet::cached_entries`]), then reads every missing
+    /// block on the rayon pool and remembers it. Every missing block is attempted; the
+    /// first failure in order is returned. Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be read.
     pub(crate) fn entries(&self, reads: &[ConceptRead]) -> Result<Vec<Arc<CachedConcept>>> {
-        let mut entries: Vec<Option<Arc<CachedConcept>>> = reads
-            .iter()
-            .map(|read| self.set.cached_entry(read.index))
-            .collect();
+        let mut entries = self.set.cached_entries(reads.iter().map(|read| read.index));
         let missing: Vec<usize> = (0..reads.len()).filter(|&i| entries[i].is_none()).collect();
         let loaded: Vec<Result<Arc<CachedConcept>>> = if missing.len() < 2 {
             missing
@@ -1154,7 +1188,9 @@ impl<'a> Selection<'a> {
                 .collect()
         };
         for (i, entry) in missing.into_iter().zip(loaded) {
-            entries[i] = Some(entry?);
+            let entry = entry?;
+            self.set.recent.remember(reads[i].index, &entry);
+            entries[i] = Some(entry);
         }
         Ok(entries.into_iter().flatten().collect())
     }

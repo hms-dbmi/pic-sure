@@ -786,3 +786,83 @@ fn a_store_of_format_1_is_refused_naming_convert() {
         .to_string();
     assert!(message.contains("hpds-etl convert"), "{message}");
 }
+
+/// The paths of `concepts` concepts under `\study\`.
+fn study_paths(concepts: u32) -> Vec<String> {
+    (0..concepts)
+        .map(|c| format!("\\study\\variable_{c:03}\\"))
+        .collect()
+}
+
+/// Two partitions holding every path of `paths`: concept `c` has patients `100 + 10c + 1`
+/// to `+ 5` in `p1` and `+ 6` to `+ 9` in `p2`, so no patient is in both.
+fn study_partitions(paths: &[String]) -> PartitionedDir {
+    let rows = |offsets: std::ops::RangeInclusive<u32>| -> Vec<Row<'_>> {
+        paths
+            .iter()
+            .zip(0u32..)
+            .flat_map(|(path, c)| {
+                offsets
+                    .clone()
+                    .map(move |o| (100 + 10 * c + o, path.as_str(), Some(f64::from(o)), None))
+            })
+            .collect()
+    };
+    partitioned_rows(&[("p1", rows(1..=5)), ("p2", rows(6..=9))])
+}
+
+#[test]
+fn a_study_level_read_answers_the_same_and_counts_every_lookup_through_recent_entries() {
+    let paths = study_paths(40);
+    let d = study_partitions(&paths);
+    let engine = d.open(&lenient()).unwrap();
+    let all = query(ResultType::Count, Some(any_record_of("\\study\\")));
+    let only_p1 = Query {
+        phenotypic_clause: Some(any_record_of("\\study\\")),
+        ..Query::with_consents(ResultType::Count, ["p1"])
+    };
+    let runs = 40;
+    for _ in 0..runs {
+        assert_eq!(engine.count(&all).unwrap(), 40 * 9);
+        assert_eq!(engine.count(&only_p1).unwrap(), 40 * 5);
+    }
+    let stats = engine.partitions().block_cache_stats();
+    assert_eq!((stats.loads, stats.misses), (40, 40), "{stats:?}");
+    assert_eq!(stats.hits + stats.misses, 40 * 2 * runs, "{stats:?}");
+    engine.partitions().clear_cache();
+    assert_eq!(engine.count(&only_p1).unwrap(), 40 * 5);
+    assert_eq!(engine.partitions().block_cache_stats().loads, 80);
+}
+
+#[test]
+fn a_study_level_read_never_keeps_an_entry_the_cache_dropped() {
+    let paths = study_paths(8);
+    let d = study_partitions(&paths);
+    let largest = paths
+        .iter()
+        .map(|path| block_heap_size(&d.out, path))
+        .max()
+        .unwrap();
+    let capacity = largest * 3;
+    let engine = d
+        .open(&hpds_query::PartitionOptions {
+            store: StoreOptions {
+                cache_bytes: capacity,
+                ..StoreOptions::default()
+            },
+            ..lenient()
+        })
+        .unwrap();
+    let all = query(ResultType::Count, Some(any_record_of("\\study\\")));
+    let set = engine.partitions();
+    for _ in 0..40 {
+        assert_eq!(engine.count(&all).unwrap(), 8 * 9);
+        let cached = set.cached_bytes();
+        assert!(cached <= capacity, "{cached} cached");
+    }
+    let stats = set.block_cache_stats();
+    assert!(
+        stats.loads > 8,
+        "blocks the cache dropped are read again, not served from elsewhere: {stats:?}"
+    );
+}

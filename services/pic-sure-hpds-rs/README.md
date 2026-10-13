@@ -45,7 +45,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 |---|---|---|
 | `HPDS_DATA_DIRECTORY` | `/opt/local/hpds/` | Data directory: one store, partitioned by consent inside its blocks or unpartitioned (see [Partition layout](#partition-layout)). Matches the Java service; the all-in-one stack bind-mounts the hpds-rs host directory here. |
 | `SERVER_PORT` | `8080` | Listen port on `0.0.0.0`. |
-| `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's block and, once a narrow selection has read the concept through it, its partition view (see [Narrow selections](#narrow-selections)), weighed together, so a read of one concept costs one lookup whatever the selection. The old name `CACHE_BYTES` is still read, with a warning. |
+| `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's block and, once a narrow selection has read the concept through it, its partition view (see [Narrow selections](#narrow-selections)), weighed together, so a read of one concept costs one lookup whatever the selection. A read of many concepts (a study-level `ANY_RECORD_OF`) sends one concept in 16 through the cache on each query, in rotation, and takes the others from a table of the entries it last found there. The table holds entries weakly and forgets every entry the cache drops, so the bound holds, and the cache still sees which concepts are read. The old name `CACHE_BYTES` is still read, with a warning. |
 | `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
 | `HPDS_RESULT_CACHE_BYTES` | `0` (off) | Byte bound of the sync result cache, which holds COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers (see [Result cache](#result-cache)). `0` turns it off. A bound above 0 but below 2,864 bytes can store no answer, since one answer may take at most a sixteenth of it; startup logs a warning saying so. |
@@ -255,7 +255,7 @@ runs on the blocking pool.
 | `hpds_http_request_duration_seconds{route}` | histogram | Time from receiving a request to sending its response head; a streamed download's body is not timed. Bounds 0.5 ms to 60 s |
 | `hpds_http_errors_total{kind}` | counter | 4xx and 5xx answers: `bad_request`, `not_found`, `request_timeout`, `payload_too_large`, `internal`, `unavailable`, `other_client`, `other_server` |
 | `hpds_connections_refused_total` | counter | Connections refused at `HPDS_MAX_CONNECTIONS`, answered 503 when possible (closed at once when as many refusals are already being answered) |
-| `hpds_block_cache_hits_total`, `hpds_block_cache_misses_total` | counter | Block cache lookups, one per concept read |
+| `hpds_block_cache_hits_total`, `hpds_block_cache_misses_total` | counter | Block cache lookups, one per concept read; a concept a study-level `ANY_RECORD_OF` takes from its table of recent entries (see `HPDS_CACHE_BYTES`) counts as a hit |
 | `hpds_block_cache_evictions_total` | counter | Entries dropped (or never admitted) to stay within `HPDS_CACHE_BYTES` |
 | `hpds_block_cache_entries`, `hpds_block_cache_bytes`, `hpds_block_cache_capacity_bytes` | gauge | Concepts and bytes held, blocks and views, and the bound |
 | `hpds_block_cache_views`, `hpds_block_cache_view_bytes` | gauge | Partition views held and their bytes, part of the above |
