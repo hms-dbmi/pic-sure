@@ -165,8 +165,8 @@ class HpdsQueryControllerTest {
 
         mockMvc
             .perform(
-                post("/hpds/auth/query/{id}/status", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                    .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+                get("/hpds/auth/query/{id}/status", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                    .header("Authorization", "Bearer caller-token")
             ).andExpect(status().isOk()).andExpect(jsonPath("$.picsureResultId").value(id.toString()))
             .andExpect(jsonPath("$.resourceResultId").value("rr-new"));
 
@@ -185,8 +185,8 @@ class HpdsQueryControllerTest {
         );
 
         mockMvc.perform(
-            post("/hpds/auth/query/{id}/result", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+            get("/hpds/auth/query/{id}/result", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token")
         ).andExpect(status().isOk());
 
         verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
@@ -206,8 +206,8 @@ class HpdsQueryControllerTest {
         );
 
         mockMvc.perform(
-            post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+            get("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token")
         ).andExpect(status().isOk());
 
         verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
@@ -221,8 +221,8 @@ class HpdsQueryControllerTest {
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{\"query\":\"not an object\"}", "rr-old", "AVAILABLE", null, null));
 
         mockMvc.perform(
-            post("/hpds/auth/query/{id}/result", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+            get("/hpds/auth/query/{id}/result", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token")
         ).andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.errorType").value("untranslatable_query"));
 
         verify(operationsClient, never()).update(any(), any());
@@ -240,8 +240,8 @@ class HpdsQueryControllerTest {
         );
 
         mockMvc.perform(
-            post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+            get("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token")
         ).andExpect(status().isOk());
 
         verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
@@ -295,8 +295,8 @@ class HpdsQueryControllerTest {
 
         mockMvc
             .perform(
-                post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                    .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+                get("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                    .header("Authorization", "Bearer caller-token")
             ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON)).andExpect(content().string(fromHpds))
             .andExpect(header().doesNotExist("Matched-Stub-Id"));
     }
@@ -311,8 +311,8 @@ class HpdsQueryControllerTest {
         );
 
         mockMvc.perform(
-            post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+            get("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token")
         ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Status : RUNNING"));
     }
 
@@ -353,7 +353,7 @@ class HpdsQueryControllerTest {
 
     @Test
     void resultWithoutGatewayIdentityIsRejected() throws Exception {
-        mockMvc.perform(post("/hpds/auth/query/{id}/result", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mockMvc.perform(get("/hpds/auth/query/{id}/result", UUID.randomUUID()))
             .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 }

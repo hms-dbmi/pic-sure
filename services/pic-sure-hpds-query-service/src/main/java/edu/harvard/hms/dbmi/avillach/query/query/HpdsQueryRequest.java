@@ -9,8 +9,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.StrictQueryDeserializer;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * Request body of the query endpoints under {@code /hpds/{backend}/query} and {@code /hpds/open/query}: a v3 query under the {@code query}
- * key.
+ * Request body of the submit and sync endpoints, {@code /hpds/{backend}/query} and {@code /hpds/{backend}/query/sync}: a v3 query under the
+ * {@code query} key. Status, result and signed-url take no body.
  *
  * <p>The envelope ignores members it does not know, so a body that still carries {@code resourceUUID}, {@code resourceCredentials} or
  * {@code @type} binds, and those members are dropped. The query itself is read through {@link StrictQueryDeserializer}, so a member outside
@@ -25,9 +25,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
         + "its clauses or its filters do not define, such as the v1 fields or numericFilters, is answered with 400."
 )
 public record HpdsQueryRequest(
-    @JsonDeserialize(using = StrictQueryDeserializer.class) @Schema(
-        description = "The v3 query. Submit and sync need it. Status, result and signed-url read the stored query and accept an empty object."
-    ) Query query
+    @JsonDeserialize(using = StrictQueryDeserializer.class) @Schema(description = "The v3 query. Submit and sync need it.") Query query
 ) {
 
     /**

@@ -92,9 +92,9 @@ class UnconfiguredBackendResponsesTest {
         return Stream.of(
             endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
             endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
-            endpoint("status", id -> authorized(post("/hpds/open/query/{id}/status", id)).content("{}")),
-            endpoint("result", id -> authorized(post("/hpds/open/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/open/query/{id}/signed-url", id)).content("{}")),
+            endpoint("status", id -> authorized(get("/hpds/open/query/{id}/status", id))),
+            endpoint("result", id -> authorized(get("/hpds/open/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(get("/hpds/open/query/{id}/signed-url", id))),
             endpoint("search", id -> authorized(post("/hpds/open/search")).content("{\"query\":\"age\"}")),
             endpoint("search values", id -> identified(get("/hpds/open/search/values")).param("genomicConceptPath", "\\gene\\")),
             endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY))

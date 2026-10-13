@@ -11,7 +11,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -29,6 +31,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -47,10 +50,10 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * Posts each client's exact request body at the query lifecycle endpoints and checks that it binds to the strict v3 {@link Query}, and that
- * a v1 body answers 400 on every endpoint that binds {@link HpdsQueryRequest}. WireMock stands in for HPDS and a Mockito
- * {@link OperationsClient} for the operations service. Consent authorization is off so the query HPDS receives is the query the client
- * sent, with nothing added.
+ * Posts each client's exact request body at the submit and sync endpoints and checks that it binds to the strict v3 {@link Query}, and that
+ * a v1 body answers 400 on every endpoint that binds {@link HpdsQueryRequest}. Status, result and signed-url bind no body: a GET without
+ * one reaches HPDS, and a POST answers 405. WireMock stands in for HPDS and a Mockito {@link OperationsClient} for the operations service.
+ * Consent authorization is off so the query HPDS receives is the query the client sent, with nothing added.
  *
  * <p>The frontend body is what {@code getQueryRequestV3} in {@code src/lib/utilities/QueryBuilder.ts} produces after
  * {@code serializeQueryV3} strips each clause's {@code type} key: all seven query members, and {@code not} on every clause. The Python body
@@ -135,6 +138,10 @@ class HpdsQueryRequestBindingTest {
             WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/status"))
                 .willReturn(okJson("{\"resourceResultId\":\"rr-1\",\"status\":\"AVAILABLE\"}"))
         );
+        hpds.stubFor(WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/result")).willReturn(aResponse().withStatus(200).withBody("a,b")));
+        hpds.stubFor(
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).willReturn(okJson("{\"signedUrl\":\"https://s3/x\"}"))
+        );
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
         when(operationsClient.get(storedId)).thenReturn(new StoredQuery(storedId, "{}", "rr-1", "AVAILABLE", "3", null));
     }
@@ -161,13 +168,6 @@ class HpdsQueryRequestBindingTest {
         mockMvc.perform(identified(post("/hpds/auth/query/sync")).content(body)).andExpect(status().isOk());
 
         assertThat(queryReceivedAt("/PIC-SURE/v3/query/sync")).isEqualTo(canonical(body));
-    }
-
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("clientBodies")
-    void clientBodyBindsOnStatus(String name, String body) throws Exception {
-        mockMvc.perform(identified(post("/hpds/auth/query/{id}/status", storedId)).content(body)).andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("AVAILABLE"));
     }
 
     @Test
@@ -197,12 +197,7 @@ class HpdsQueryRequestBindingTest {
     }
 
     static Stream<Arguments> endpointsThatBindAQuery() {
-        UUID id = UUID.randomUUID();
-        return Stream.of(
-            Arguments.of("submit", "/hpds/auth/query"), Arguments.of("sync", "/hpds/auth/query/sync"),
-            Arguments.of("status", "/hpds/auth/query/" + id + "/status"), Arguments.of("result", "/hpds/auth/query/" + id + "/result"),
-            Arguments.of("signed-url", "/hpds/auth/query/" + id + "/signed-url")
-        );
+        return Stream.of(Arguments.of("submit", "/hpds/auth/query"), Arguments.of("sync", "/hpds/auth/query/sync"));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -210,6 +205,30 @@ class HpdsQueryRequestBindingTest {
     void v1BodyIsRefusedWith400BeforeAnythingRuns(String name, String path) throws Exception {
         mockMvc.perform(identified(post(path)).content(V1_BODY)).andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errorType").value("bad_request")).andExpect(jsonPath("$.message").value("Malformed request body"));
+
+        verifyNoInteractions(operationsClient);
+        hpds.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    static Stream<Arguments> storedQueryReads() {
+        return Stream.of(Arguments.of("status"), Arguments.of("result"), Arguments.of("signed-url"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("storedQueryReads")
+    void getWithNoBodyReadsTheStoredQuery(String endpoint) throws Exception {
+        mockMvc.perform(get("/hpds/auth/query/{id}/" + endpoint, storedId).header(GatewayUserResolver.HEADER_USER_ID, USER))
+            .andExpect(status().isOk());
+
+        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/rr-1/" + endpoint)));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("storedQueryReads")
+    void postIsRefusedWith405BeforeAnythingRuns(String endpoint) throws Exception {
+        mockMvc.perform(identified(post("/hpds/auth/query/{id}/" + endpoint, storedId)).content("{}"))
+            .andExpect(status().isMethodNotAllowed()).andExpect(header().string(HttpHeaders.ALLOW, "GET"))
+            .andExpect(jsonPath("$.errorType").value("method_not_allowed"));
 
         verifyNoInteractions(operationsClient);
         hpds.verify(0, anyRequestedFor(anyUrl()));

@@ -117,8 +117,8 @@ class DocumentedErrorResponsesTest {
         return Stream.of(
             endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
             endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
-            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
+            endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id))),
             endpoint("metadata", id -> authorized(get("/hpds/auth/query/{id}/metadata", id)))
         );
     }
@@ -146,9 +146,9 @@ class DocumentedErrorResponsesTest {
         return Stream.of(
             endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
             endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
-            endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id)).content("{}")),
-            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
+            endpoint("status", id -> authorized(get("/hpds/auth/query/{id}/status", id))),
+            endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id))),
             endpoint("search", id -> authorized(post("/hpds/auth/search")).content("{\"query\":\"age\"}")),
             endpoint("search values", id -> identified(get("/hpds/auth/search/values")).param("genomicConceptPath", "\\gene\\")),
             endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY))
@@ -181,9 +181,9 @@ class DocumentedErrorResponsesTest {
     /** Endpoints that load the stored query from operations-service before doing anything else. */
     static Stream<Arguments> storedQueryReads() {
         return Stream.of(
-            endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id)).content("{}")),
-            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
+            endpoint("status", id -> authorized(get("/hpds/auth/query/{id}/status", id))),
+            endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id))),
             endpoint("metadata", id -> authorized(get("/hpds/auth/query/{id}/metadata", id)))
         );
     }
@@ -212,7 +212,7 @@ class DocumentedErrorResponsesTest {
     void statusUpdateFailureIs502() throws Exception {
         downstream.stubFor(WireMock.patch(urlPathMatching(QUERIES + "/.*")).willReturn(aResponse().withStatus(500)));
 
-        mockMvc.perform(authorized(post("/hpds/auth/query/{id}/status", storedId)).content("{}")).andExpect(status().isBadGateway())
+        mockMvc.perform(authorized(get("/hpds/auth/query/{id}/status", storedId))).andExpect(status().isBadGateway())
             .andExpect(jsonPath("$.errorType").value("bad_gateway"));
     }
 
