@@ -156,10 +156,6 @@ public class UserService {
         return this.userRepository.findAll();
     }
 
-    public List<User> addUser(List<User> users) {
-        return this.userRepository.saveAll(users);
-    }
-
     /**
      * This check is to prevent non-super-admin user to create/remove a super admin role against a user(include themselves). Only super
      * admin user could perform such actions.
@@ -206,49 +202,6 @@ public class UserService {
             .anyMatch(privilege -> AuthNaming.AuthRoleNaming.SUPER_ADMIN.equals(privilege.getName()));
     }
 
-    @Transactional
-    public List<User> addUsers(List<User> users) {
-        SecurityContext securityContext = SecurityContextHolder.getContext();
-        CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
-        if (customUserDetails == null || customUserDetails.getUser() == null && customUserDetails.getUser().getUuid() == null) {
-            logger.error("Security context didn't have a user stored.");
-            return null;
-        }
-
-        User currentUser = customUserDetails.getUser();
-        checkAssociation(users);
-        for (User user : users) {
-            logger.debug("Adding User {}", user);
-            if (!allowUpdateSuperAdminRole(currentUser, user, null)) {
-                logger.error(
-                    "updateUser() user - {} - with roles [{}] - is not allowed to grant " + AuthNaming.AuthRoleNaming.SUPER_ADMIN
-                        + " role when adding a user.",
-                    currentUser.getUuid(), currentUser.getRoleString()
-                );
-                throw new IllegalArgumentException(
-                    "Not allowed to add a user with a " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege associated."
-                );
-            }
-
-            if (user.getEmail() == null) {
-                try {
-                    logger.info("Parsing metadata for email address");
-                    HashMap<String, String> metadata =
-                        new HashMap<String, String>(new ObjectMapper().readValue(user.getGeneralMetadata(), Map.class));
-                    List<String> emailKeys = metadata.keySet().stream().filter((key) -> key.toLowerCase().contains("email")).toList();
-                    if (!emailKeys.isEmpty()) {
-                        user.setEmail(metadata.get(emailKeys.getFirst()));
-                    }
-                } catch (IOException e) {
-                    logger.error("Failed to parse metadata for email address", e);
-                }
-            }
-        }
-
-        users = addUser(users);
-        return users;
-    }
-
     /**
      * Check all referenced fields if they are already in a database. If they are in the database, then retrieve it by id and attach it to a
      * user object.
@@ -284,7 +237,7 @@ public class UserService {
     public List<User> updateUser(List<User> users) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
-        if (customUserDetails == null || customUserDetails.getUser() == null && customUserDetails.getUser().getUuid() == null) {
+        if (customUserDetails == null || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null) {
             logger.error("Security context didn't have a user stored.");
             return null;
         }
@@ -322,8 +275,8 @@ public class UserService {
      *
      * @param requests the users to create
      * @return the persisted users, or {@code null} when the security context holds no user
-     * @throws IllegalArgumentException if a request names no role or an unknown role, or grants {@code SUPER_ADMIN} without the caller
-     *         holding it
+     * @throws IllegalArgumentException if a request names no role, an unknown role or an unknown connection, or grants {@code SUPER_ADMIN}
+     *         without the caller holding it
      */
     @Transactional
     public List<User> createFrom(List<UserCreateRequest> requests) {
@@ -367,8 +320,8 @@ public class UserService {
      *
      * @param requests the users to update, each named by UUID
      * @return the persisted users, or {@code null} when the security context holds no user
-     * @throws IllegalArgumentException if a request names a user or role that does not exist, or changes whether the user holds
-     *         {@code SUPER_ADMIN} without the caller holding it
+     * @throws IllegalArgumentException if a request names a user, role or connection that does not exist, or changes whether the user
+     *         holds {@code SUPER_ADMIN} without the caller holding it
      */
     @Transactional
     public List<User> updateFrom(List<UserUpdateRequest> requests) {
@@ -415,7 +368,7 @@ public class UserService {
     private User currentUserOrNull() {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
-        if (customUserDetails == null || customUserDetails.getUser() == null && customUserDetails.getUser().getUuid() == null) {
+        if (customUserDetails == null || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null) {
             logger.error("Security context didn't have a user stored.");
             return null;
         }
@@ -451,7 +404,8 @@ public class UserService {
         if (connectionRef == null) {
             return current;
         }
-        return this.connectionRepository.findById(connectionRef.id()).orElse(null);
+        return this.connectionRepository.findById(connectionRef.id())
+            .orElseThrow(() -> new IllegalArgumentException("Cannot find connection by input id: " + connectionRef.id()));
     }
 
     public String sendUserUpdateEmailsFromResponse(List<User> addedUsers) {

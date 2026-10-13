@@ -67,15 +67,6 @@ public class PrivilegeService {
         return this.getPrivilegesAll();
     }
 
-    public List<Privilege> updatePrivileges(List<Privilege> privileges) {
-        this.privilegeRepository.saveAll(privileges);
-        return this.getPrivilegesAll();
-    }
-
-    public List<Privilege> addPrivileges(List<Privilege> privileges) {
-        return this.privilegeRepository.saveAll(privileges);
-    }
-
     /**
      * Creates privileges from request records. The owning application and any access rules are resolved from storage by UUID, so a request
      * body cannot attach its own copy of either; the identifier is generated on persist.

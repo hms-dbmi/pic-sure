@@ -44,12 +44,6 @@ public class RoleService {
         return roleRepository.findAll();
     }
 
-    @Transactional
-    public List<Role> addRoles(List<Role> roles) {
-        checkPrivilegeAssociation(roles);
-        return roleRepository.saveAll(roles);
-    }
-
     /**
      * Creates roles from request records. Privileges are resolved from storage by UUID; the identifier is generated on persist.
      *
@@ -109,34 +103,6 @@ public class RoleService {
             );
         }
         return privileges;
-    }
-
-    /**
-     * check if the privileges under role is in the database or not, then retrieve it from database and attach it to role object
-     *
-     * @param roles list of roles
-     */
-    private void checkPrivilegeAssociation(List<Role> roles) throws RuntimeException {
-        for (Role role : roles) {
-            if (role.getPrivileges() != null) {
-                Set<Privilege> privileges = new HashSet<>();
-                for (Privilege p : role.getPrivileges()) {
-                    Optional<Privilege> privilege = this.privilegeService.findById(p.getUuid());
-                    if (privilege.isEmpty()) {
-                        throw new RuntimeException("Privilege not found - uuid: " + p.getUuid().toString());
-                    }
-                    privileges.add(privilege.get());
-                }
-                role.setPrivileges(privileges);
-            }
-        }
-
-    }
-
-    @Transactional
-    public List<Role> updateRoles(List<Role> roles) {
-        checkPrivilegeAssociation(roles);
-        return roleRepository.saveAll(roles);
     }
 
     @Transactional

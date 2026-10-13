@@ -70,19 +70,6 @@ public class ApplicationService implements UserDetailsService {
         return this.applicationRepo.findAll();
     }
 
-    @Transactional
-    public List<Application> addNewApplications(List<Application> applications) {
-        checkAssociation(applications);
-        List<Application> appEntities = this.applicationRepo.saveAll(applications);
-        for (Application application : appEntities) {
-            application.setToken(
-                    generateApplicationToken(application)
-            );
-        }
-
-        return this.applicationRepo.saveAll(appEntities);
-    }
-
     /**
      * Creates applications from request records. The identifier is generated on persist and the bearer token is minted afterwards, so a
      * request body can choose neither.
@@ -170,12 +157,6 @@ public class ApplicationService implements UserDetailsService {
         return this.applicationRepo.findAll();
     }
 
-    @Transactional
-    public List<Application> updateApplications(List<Application> applications) {
-        checkAssociation(applications);
-        return this.applicationRepo.saveAll(applications);
-    }
-
     public String refreshApplicationToken(String applicationId) throws NullPointerException, IllegalArgumentException {
         Optional<Application> application = applicationRepo.findById(UUID.fromString(applicationId));
 
@@ -193,26 +174,6 @@ public class ApplicationService implements UserDetailsService {
         application.get().setToken(newApplicationToken);
         this.applicationRepo.save(application.get());
         return newApplicationToken;
-    }
-
-    private void checkAssociation(List<Application> applications) {
-        for (Application application : applications) {
-            if (application.getPrivileges() != null) {
-                Set<Privilege> privileges = new HashSet<>();
-                application.getPrivileges().forEach(p -> {
-                    Optional<Privilege> optionalPrivilege = privilegeRepo.findById(p.getUuid());
-                    if (optionalPrivilege.isPresent()) {
-                        Privilege privilege = optionalPrivilege.get();
-                        privilege.setApplication(application);
-                        privileges.add(privilege);
-                    } else {
-                        logger.error("Didn't find privilege by uuid: {}", p.getUuid());
-                    }
-                });
-
-                application.setPrivileges(privileges);
-            }
-        }
     }
 
     public String generateApplicationToken(Application application) {

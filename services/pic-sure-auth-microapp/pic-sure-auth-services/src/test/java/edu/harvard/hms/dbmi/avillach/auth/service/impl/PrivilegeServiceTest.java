@@ -94,32 +94,6 @@ public class PrivilegeServiceTest {
     }
 
     @Test
-    public void testUpdatePrivileges() {
-        List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
-
-        when(privilegeRepository.saveAll(privileges)).thenReturn(privileges);
-        when(privilegeRepository.findAll()).thenReturn(privileges);
-
-        List<Privilege> result = privilegeService.updatePrivileges(privileges);
-
-        assertEquals(privileges, result);
-        verify(privilegeRepository, times(1)).saveAll(privileges);
-        verify(privilegeRepository, times(1)).findAll();
-    }
-
-    @Test
-    public void testAddPrivileges() {
-        List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
-
-        when(privilegeRepository.saveAll(privileges)).thenReturn(privileges);
-
-        List<Privilege> result = privilegeService.addPrivileges(privileges);
-
-        assertEquals(privileges, result);
-        verify(privilegeRepository, times(1)).saveAll(privileges);
-    }
-
-    @Test
     public void testGetPrivilegesAll() {
         List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
 
