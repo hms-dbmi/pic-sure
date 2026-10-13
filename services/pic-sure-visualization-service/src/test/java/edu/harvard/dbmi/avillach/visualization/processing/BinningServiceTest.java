@@ -319,4 +319,45 @@ class BinningServiceTest {
         String last = binningService.bucketData(ages(30, 40)).keySet().stream().reduce((a, b) -> b).orElseThrow();
         assertTrue(last.endsWith(" +"), last);
     }
+
+    // ---- caller-supplied ranges cannot force a huge bin count ----
+
+    @Test
+    void bucketData_hugeRangeWithoutMaxBins_isCappedAndDoesNotOverflow() {
+        Map<String, Integer> result = assertTimeoutPreemptively(
+            java.time.Duration.ofSeconds(5), () -> binningService.bucketData(Map.of("50", 1, "51", 1), new BinRange(0, 1e10), null)
+        );
+        assertEquals(BinningService.MAX_BINS_FOR_RANGE, result.size());
+        assertEquals(2, result.values().stream().mapToInt(Integer::intValue).sum());
+    }
+
+    @Test
+    void bucketData_withRange_ignoresMaxBinsAboveTheHardCap() {
+        assertEquals(
+            BinningService.MAX_BINS_FOR_RANGE,
+            binningService.bucketData(Map.of("50", 1, "51", 1), new BinRange(0, 1e10), Integer.MAX_VALUE).size()
+        );
+    }
+
+    @Test
+    void bucketData_withRange_invalidMaxBinsFallsBackToTheHardCap() {
+        assertEquals(
+            BinningService.MAX_BINS_FOR_RANGE, binningService.bucketData(Map.of("50", 1, "51", 1), new BinRange(0, 1e10), 0).size()
+        );
+        assertEquals(
+            BinningService.MAX_BINS_FOR_RANGE, binningService.bucketData(Map.of("50", 1, "51", 1), new BinRange(0, 1e10), -5).size()
+        );
+    }
+
+    @Test
+    void bucketData_invertedRange_isASingleBinWithAllCounts() {
+        Map<String, Integer> result = binningService.bucketData(ages(30, 40), new BinRange(65, 18), null);
+        assertEquals(1, result.size());
+        assertEquals(33, result.values().iterator().next());
+    }
+
+    @Test
+    void bucketData_withoutRange_isUnchangedByTheHardCap() {
+        assertEquals(binningService.bucketData(ages(30, 40)), binningService.bucketData(ages(30, 40), null, Integer.MAX_VALUE));
+    }
 }

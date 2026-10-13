@@ -10,6 +10,11 @@ import java.util.*;
 public class BinningService {
 
     private static final double THIRD = 1.0 / 3.0;
+    /**
+     * Hard limit on bins whenever a range is supplied. A wide range around tightly clustered values would otherwise yield an enormous bin
+     * count, and the caller-supplied {@code maxBins} cannot be trusted to prevent that.
+     */
+    static final int MAX_BINS_FOR_RANGE = 50;
 
     public Map<String, Map<String, Integer>> binContinuousData(Map<String, Map<String, Integer>> continuousDataMap) {
         return binContinuousData(continuousDataMap, Map.of(), null);
@@ -53,13 +58,11 @@ public class BinningService {
         double max = range != null ? range.max() : data.keySet().stream().max(Double::compareTo).orElse(0.0);
         boolean isSameMinMax = min == max;
 
-        int numBins = calcNumBins(data, min, max);
-        if (maxBins != null && maxBins > 0) {
-            numBins = Math.min(numBins, maxBins);
+        int binCap = maxBins != null && maxBins > 0 ? maxBins : Integer.MAX_VALUE;
+        if (range != null) {
+            binCap = Math.min(binCap, MAX_BINS_FOR_RANGE);
         }
-        if (numBins <= 0) {
-            numBins = 1;
-        }
+        int numBins = calcNumBins(data, min, max, binCap);
 
         double binSize = (max - min) / numBins;
         if (binSize <= 0.0) {
@@ -81,14 +84,19 @@ public class BinningService {
         return createLabelsForBins(results, ranges, isSameMinMax, range == null);
     }
 
-    /** Bin width comes from the spread of the observed values; the number of bins is how many of those fit in {@code min..max}. */
-    private static int calcNumBins(Map<Double, Integer> countMap, double min, double max) {
+    /**
+     * Bin width comes from the spread of the observed values; the number of bins is how many of those fit in {@code min..max}, between 1
+     * and {@code binCap}. Clamped before narrowing to int so a huge ratio cannot overflow.
+     */
+    private static int calcNumBins(Map<Double, Integer> countMap, double min, double max, int binCap) {
         if (min == max || countMap.size() < 2) return 1;
         double[] keys = countMap.keySet().stream().mapToDouble(Double::doubleValue).toArray();
         DescriptiveStatistics da = new DescriptiveStatistics(keys);
         double binWidth = (3.5 * da.getStandardDeviation()) / Math.pow(countMap.size(), THIRD);
-        if (binWidth <= 0.0) return 1;
-        return (int) Math.round((max - min) / binWidth);
+        if (!(binWidth > 0.0)) return 1;
+        double bins = Math.rint((max - min) / binWidth);
+        if (!(bins >= 1.0)) return 1;
+        return (int) Math.min(bins, binCap);
     }
 
     private static Map<Integer, Integer> createBinsAndMergeCounts(Map<Double, Integer> data, int numBins, double min, double binSize) {
