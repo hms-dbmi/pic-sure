@@ -61,8 +61,11 @@ pub(crate) fn block_cache(
 
 /// A multi-concept read sends a concept's lookup through the block cache on one call in
 /// this many, and takes it from [`RecentEntries`] on the others, so the cache keeps
-/// seeing how often and how recently each concept is read.
-pub(crate) const RECORD_EVERY: usize = 16;
+/// seeing how often and how recently each concept is read, at this fraction of the reads.
+/// A lookup through the cache costs such a read about 2 to 3 µs in a Linux container, so
+/// one in 16 still slowed a thousand-concept read by about 5%; one in 64 does not
+/// measurably.
+pub(crate) const RECORD_EVERY: usize = 64;
 
 /// The block cache entry last found for each concept, held weakly, so that a read of
 /// thousands of cached concepts (a study-level `ANY_RECORD_OF`) can skip most of its
@@ -78,55 +81,80 @@ pub(crate) const RECORD_EVERY: usize = 16;
 /// block or view.
 #[derive(Debug)]
 pub(crate) struct RecentEntries {
-    slots: Box<[RwLock<Weak<CachedConcept>>]>,
+    slots: RwLock<Box<[Weak<CachedConcept>]>>,
 }
 
 impl RecentEntries {
     /// An empty table for `concepts` concepts.
     pub(crate) fn new(concepts: usize) -> Self {
         RecentEntries {
-            slots: (0..concepts).map(|_| RwLock::new(Weak::new())).collect(),
+            slots: RwLock::new((0..concepts).map(|_| Weak::new()).collect()),
         }
     }
 
-    /// The entry remembered for the concept at `index`, while the cache or a query still
-    /// holds it.
-    pub(crate) fn get(&self, index: usize) -> Option<Arc<CachedConcept>> {
-        self.slots
-            .get(index)?
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .upgrade()
+    /// For each of `indexes`, in order, the entry remembered for that concept while the
+    /// cache or a query still holds it, or `None`; also `None` for every index `skip`
+    /// names. Takes the table's lock once, and releases it before returning, so the
+    /// caller may go on to the cache, whose eviction listener locks the table.
+    pub(crate) fn get_all(
+        &self,
+        indexes: impl Iterator<Item = usize>,
+        skip: impl Fn(usize) -> bool,
+    ) -> Vec<Option<Arc<CachedConcept>>> {
+        let slots = self.slots.read().unwrap_or_else(PoisonError::into_inner);
+        indexes
+            .map(|index| {
+                if skip(index) {
+                    None
+                } else {
+                    slots.get(index).and_then(Weak::upgrade)
+                }
+            })
+            .collect()
     }
 
-    /// Remembers `entry` as the entry of the concept at `index`.
-    pub(crate) fn remember(&self, index: usize, entry: &Arc<CachedConcept>) {
-        let Some(slot) = self.slots.get(index) else {
-            return;
+    /// Remembers each `(index, entry)` as the entry of the concept at `index`. Takes the
+    /// table's lock for writing only when some entry is new to it.
+    pub(crate) fn remember_all<'a>(
+        &self,
+        entries: impl Iterator<Item = (usize, &'a Arc<CachedConcept>)> + Clone,
+    ) {
+        let differs = |slots: &[Weak<CachedConcept>], index: usize, entry: &Arc<CachedConcept>| {
+            slots
+                .get(index)
+                .is_some_and(|held| !std::ptr::eq(held.as_ptr(), Arc::as_ptr(entry)))
         };
-        let held = slot.read().unwrap_or_else(PoisonError::into_inner).as_ptr();
-        if std::ptr::eq(held, Arc::as_ptr(entry)) {
-            return;
+        {
+            let slots = self.slots.read().unwrap_or_else(PoisonError::into_inner);
+            if !entries
+                .clone()
+                .any(|(index, entry)| differs(&slots, index, entry))
+            {
+                return;
+            }
         }
-        *slot.write().unwrap_or_else(PoisonError::into_inner) = Arc::downgrade(entry);
+        let mut slots = self.slots.write().unwrap_or_else(PoisonError::into_inner);
+        for (index, entry) in entries {
+            if differs(&slots, index, entry) {
+                slots[index] = Arc::downgrade(entry);
+            }
+        }
     }
 
     /// Forgets the entry of the concept at `index` when it is `entry`.
     pub(crate) fn forget(&self, index: usize, entry: &Arc<CachedConcept>) {
-        let Some(slot) = self.slots.get(index) else {
-            return;
-        };
-        let mut held = slot.write().unwrap_or_else(PoisonError::into_inner);
-        if std::ptr::eq(held.as_ptr(), Arc::as_ptr(entry)) {
+        let mut slots = self.slots.write().unwrap_or_else(PoisonError::into_inner);
+        if let Some(held) = slots.get_mut(index)
+            && std::ptr::eq(held.as_ptr(), Arc::as_ptr(entry))
+        {
             *held = Weak::new();
         }
     }
 
     /// Forgets every entry.
     pub(crate) fn clear(&self) {
-        for slot in &self.slots {
-            *slot.write().unwrap_or_else(PoisonError::into_inner) = Weak::new();
-        }
+        let mut slots = self.slots.write().unwrap_or_else(PoisonError::into_inner);
+        slots.iter_mut().for_each(|held| *held = Weak::new());
     }
 }
 
@@ -417,6 +445,14 @@ mod tests {
         assert_eq!(built.iter().filter(|&&b| b).count(), 1);
     }
 
+    fn get(recent: &RecentEntries, index: usize) -> Option<Arc<CachedConcept>> {
+        recent.get_all(std::iter::once(index), |_| false).remove(0)
+    }
+
+    fn remember(recent: &RecentEntries, index: usize, entry: &Arc<CachedConcept>) {
+        recent.remember_all(std::iter::once((index, entry)));
+    }
+
     fn empty_entry() -> Arc<CachedConcept> {
         let payload = encode_numeric_payload(&[]).unwrap();
         Arc::new(CachedConcept::new(
@@ -428,29 +464,29 @@ mod tests {
     fn recent_entries_never_keep_an_entry_alive() {
         let recent = RecentEntries::new(2);
         let entry = empty_entry();
-        recent.remember(1, &entry);
-        assert!(Arc::ptr_eq(&recent.get(1).unwrap(), &entry));
-        assert!(recent.get(0).is_none());
+        remember(&recent, 1, &entry);
+        assert!(Arc::ptr_eq(&get(&recent, 1).unwrap(), &entry));
+        assert!(get(&recent, 0).is_none());
         assert!(
-            recent.get(2).is_none(),
+            get(&recent, 2).is_none(),
             "an index past the table is never remembered"
         );
         drop(entry);
-        assert!(recent.get(1).is_none());
+        assert!(get(&recent, 1).is_none());
     }
 
     #[test]
     fn recent_entries_forget_only_the_entry_named() {
         let recent = RecentEntries::new(1);
         let (kept, other) = (empty_entry(), empty_entry());
-        recent.remember(0, &kept);
+        remember(&recent, 0, &kept);
         recent.forget(0, &other);
-        assert!(Arc::ptr_eq(&recent.get(0).unwrap(), &kept));
+        assert!(Arc::ptr_eq(&get(&recent, 0).unwrap(), &kept));
         recent.forget(0, &kept);
-        assert!(recent.get(0).is_none());
-        recent.remember(0, &kept);
+        assert!(get(&recent, 0).is_none());
+        remember(&recent, 0, &kept);
         recent.clear();
-        assert!(recent.get(0).is_none());
+        assert!(get(&recent, 0).is_none());
     }
 
     #[test]
@@ -462,16 +498,16 @@ mod tests {
         let cache = block_cache(weight * 2, Arc::clone(&counters), Arc::clone(&recent));
         for (index, entry) in entries.iter().enumerate() {
             cache.insert(index as u32, Arc::clone(entry));
-            recent.remember(index, entry);
+            remember(&recent, index, entry);
             cache.run_pending_tasks();
         }
         let mut held = 0;
         for index in 0..entries.len() {
             if cache.contains_key(&(index as u32)) {
                 held += 1;
-                assert!(recent.get(index).is_some(), "concept {index} is cached");
+                assert!(get(&recent, index).is_some(), "concept {index} is cached");
             } else {
-                assert!(recent.get(index).is_none(), "concept {index} was dropped");
+                assert!(get(&recent, index).is_none(), "concept {index} was dropped");
             }
         }
         assert!(held <= 2, "{held} entries held");
@@ -485,7 +521,7 @@ mod tests {
         cache.insert(index as u32, Arc::clone(&entries[index]));
         cache.run_pending_tasks();
         assert!(
-            recent.get(index).is_some(),
+            get(&recent, index).is_some(),
             "an entry replaced by itself, as a reweigh does, is still remembered"
         );
     }

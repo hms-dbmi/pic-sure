@@ -747,26 +747,28 @@ impl PartitionSet {
     /// [`RECORD_EVERY`]) are looked up in the cache; the others come from
     /// [`RecentEntries`] when it still holds them, and from the cache otherwise. Every
     /// entry found in the cache is remembered there.
-    fn cached_entries(
-        &self,
-        indexes: impl Iterator<Item = usize>,
-    ) -> Vec<Option<Arc<CachedConcept>>> {
+    fn cached_entries(&self, indexes: &[usize]) -> Vec<Option<Arc<CachedConcept>>> {
         let turn = self.turns.fetch_add(1, Ordering::Relaxed) % RECORD_EVERY;
-        indexes
-            .map(|index| {
-                if index % RECORD_EVERY != turn
-                    && let Some(entry) = self.recent.get(index)
-                {
-                    self.cache_counters.hits.add(1);
-                    return Some(entry);
+        let mut entries = self.recent.get_all(indexes.iter().copied(), |index| {
+            index % RECORD_EVERY == turn
+        });
+        let recent_hits = entries.iter().filter(|entry| entry.is_some()).count();
+        self.cache_counters.hits.add(recent_hits as u64);
+        let mut looked_up = Vec::new();
+        for (position, entry) in entries.iter_mut().enumerate() {
+            if entry.is_none() {
+                *entry = self.cached_entry(indexes[position]);
+                if entry.is_some() {
+                    looked_up.push(position);
                 }
-                let found = self.cached_entry(index);
-                if let Some(entry) = &found {
-                    self.recent.remember(index, entry);
-                }
-                found
-            })
-            .collect()
+            }
+        }
+        self.recent.remember_all(
+            looked_up
+                .iter()
+                .filter_map(|&position| Some((indexes[position], entries[position].as_ref()?))),
+        );
+        entries
     }
 
     /// The entry of the concept at `index` after a miss: read from the store and cached,
@@ -1174,7 +1176,8 @@ impl<'a> Selection<'a> {
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be read.
     pub(crate) fn entries(&self, reads: &[ConceptRead]) -> Result<Vec<Arc<CachedConcept>>> {
-        let mut entries = self.set.cached_entries(reads.iter().map(|read| read.index));
+        let indexes: Vec<usize> = reads.iter().map(|read| read.index).collect();
+        let mut entries = self.set.cached_entries(&indexes);
         let missing: Vec<usize> = (0..reads.len()).filter(|&i| entries[i].is_none()).collect();
         let loaded: Vec<Result<Arc<CachedConcept>>> = if missing.len() < 2 {
             missing
@@ -1187,11 +1190,14 @@ impl<'a> Selection<'a> {
                 .map(|&i| self.set.load_entry(reads[i].index))
                 .collect()
         };
-        for (i, entry) in missing.into_iter().zip(loaded) {
-            let entry = entry?;
-            self.set.recent.remember(reads[i].index, &entry);
-            entries[i] = Some(entry);
+        for (&i, entry) in missing.iter().zip(loaded) {
+            entries[i] = Some(entry?);
         }
+        self.set.recent.remember_all(
+            missing
+                .iter()
+                .filter_map(|&i| Some((indexes[i], entries[i].as_ref()?))),
+        );
         Ok(entries.into_iter().flatten().collect())
     }
 
