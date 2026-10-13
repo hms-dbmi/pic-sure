@@ -22,6 +22,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ShippedPublicRoutes;
@@ -79,6 +80,25 @@ class PsamaIntrospectionFilterTest {
         verify(client).introspect(eq("user-token"), request.capture());
         assertThat(request.getValue()).containsExactly(Map.entry("Target Service", "/hpds/auth/v3/query/sync"));
         assertThat(request.getValue().toString()).doesNotContain("secret");
+    }
+
+    @Test
+    void rejectedServiceTokenFailsClosedWithItsOwnAuditReason() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.introspect(any(), any())).thenThrow(new IntrospectionTokenRejectedException("http://psama/token/inspect"));
+        AuditContext audit = new AuditContext();
+        StringWriter body = new StringWriter();
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.getWriter()).thenReturn(new PrintWriter(body));
+        FilterChain chain = mock(FilterChain.class);
+
+        filter(client, audit).doFilter(wrap("Bearer user-token", new byte[0], "/dictionary/concepts"), response, chain);
+
+        verify(response).setStatus(502);
+        assertThat(body.toString()).contains("\"errorType\":\"introspection_unreachable\"");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(audit.getMetadata()).containsEntry("auth_result", "failure")
+            .containsEntry("auth_failure_reason", "introspection_token_rejected");
     }
 
     @Test

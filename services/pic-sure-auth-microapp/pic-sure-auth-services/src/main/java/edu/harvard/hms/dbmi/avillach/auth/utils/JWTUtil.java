@@ -21,8 +21,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * <p>This class is for generating a JWT token and contains common methods for operations on JWT tokens.</p>
- * <p>For more information on JWT tokens, see <url><a href="https://github.com/hms-dbmi/jwt-creator/blob/master/src/main/java/edu/harvard/hms/dbmi/avillach/jwt/App.java">...</a><url/></p>
+ * <p>This class is for generating a JWT token and contains common methods for operations on JWT tokens.</p> <p>For more information on JWT
+ * tokens, see <url><a
+ * href="https://github.com/hms-dbmi/jwt-creator/blob/master/src/main/java/edu/harvard/hms/dbmi/avillach/jwt/App.java">...</a><url/></p>
  */
 @Component
 public class JWTUtil {
@@ -37,8 +38,10 @@ public class JWTUtil {
 
     private final static ObjectMapper objectMapper = new ObjectMapper();
 
-    public JWTUtil(@Value("${application.client.secret}") String clientSecret,
-                   @Value("${application.client.secret.base64}") boolean clientSecretIsBase64) {
+    public JWTUtil(
+        @Value("${application.client.secret}") String clientSecret,
+        @Value("${application.client.secret.base64}") boolean clientSecretIsBase64
+    ) {
         this.clientSecret = clientSecret;
         this.clientSecretIsBase64 = clientSecretIsBase64;
     }
@@ -90,16 +93,10 @@ public class JWTUtil {
 
         SecretKey signingKey = Keys.hmacShaKeyFor(signingKeyBytes());
 
-        //Builds the JWT and serializes it to a compact, URL-safe string
-        JwtBuilder builder = Jwts.builder()
-                .claims(claims)
-                .id(id)
-                .issuedAt(now)
-                .subject(subject)
-                .issuer(issuer)
-                .signWith(signingKey);
+        // Builds the JWT and serializes it to a compact, URL-safe string
+        JwtBuilder builder = Jwts.builder().claims(claims).id(id).issuedAt(now).subject(subject).issuer(issuer).signWith(signingKey);
 
-        //if it has been specified, let's add the expiration
+        // if it has been specified, let's add the expiration
         long expMillis = nowMillis + ttlMillis;
         Date exp = new Date(expMillis);
         builder.expiration(exp);
@@ -112,7 +109,8 @@ public class JWTUtil {
      * Verifies a compact JWT with the application signing key and returns its signed claims, enforcing expiration and not-before claims
      * when present.
      *
-     * @throws NotAuthorizedException if parsing or verification fails, including an expired, null, or empty token
+     * @throws NotAuthorizedException if parsing or verification fails, including an expired, null, or empty token. Its cause is the JJWT
+     *         exception, so an expired token's {@link ExpiredJwtException} and the claims it carries stay reachable.
      * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
      */
     public Jws<Claims> parseToken(String token) {
@@ -123,7 +121,7 @@ public class JWTUtil {
             jws = Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token);
         } catch (JwtException | IllegalArgumentException e) {
             logger.error("parseToken() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
-            throw new NotAuthorizedException(e.getClass().getSimpleName() + ": " + e.getMessage());
+            throw new NotAuthorizedException(e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }
 
         if (jws == null) {
@@ -135,9 +133,8 @@ public class JWTUtil {
     }
 
     /**
-     * Verifies the token's signature and returns its claims even when the token is past its expiration. A user whose
-     * token has idled out still needs to be able to log out, and an expired token whose signature checks out names
-     * its subject just as reliably as a live one.
+     * Verifies the token's signature and returns its claims even when the token is past its expiration. A user whose token has idled out
+     * still needs to be able to log out, and an expired token whose signature checks out names its subject just as reliably as a live one.
      *
      * @return the claims, or empty if the signature or structure could not be verified
      * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
@@ -190,8 +187,7 @@ public class JWTUtil {
     /**
      * Extract the payload from the ga4gh token and convert it to a Ga4ghPassportV1
      * @param ga4ghToken The ga4gh_passport_v1 extracted from the Passport
-     * @return Optional of a Ga4ghPassportV1. If empty we could not successfully extract the claims and map them to
-     * the class.
+     * @return Optional of a Ga4ghPassportV1. If empty we could not successfully extract the claims and map them to the class.
      */
     public static Optional<Ga4ghPassportV1> parseGa4ghPassportV1(String ga4ghToken) {
         try {

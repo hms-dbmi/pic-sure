@@ -13,6 +13,7 @@ import org.springframework.web.util.UrlPathHelper;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.ApiKeyBearer;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
@@ -84,8 +85,8 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Applies open-access validation to eligible requests. Denials produce HTTP 401; exceptions from PSAMA validation produce HTTP 502.
-     * On a grant, sets the open-access identity and validation attributes and any session refresh header before continuing the chain.
+     * Applies open-access validation to eligible requests. Denials produce HTTP 401; exceptions from PSAMA validation produce HTTP 502. On
+     * a grant, sets the open-access identity and validation attributes and any session refresh header before continuing the chain.
      *
      * @throws ServletException if the downstream filter chain fails
      * @throws IOException if writing an error response or executing the downstream filter chain fails
@@ -123,6 +124,13 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         OpenAccessValidation validation;
         try {
             validation = psama.validateOpenAccess(body);
+        } catch (IntrospectionTokenRejectedException e) {
+            log.error(e.getMessage());
+            audit.put("auth_result", "failure");
+            audit.put("auth_action", "open_access.denied");
+            audit.put("auth_failure_reason", "introspection_token_rejected");
+            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "open_access_unreachable", "Open access validation failed.");
+            return;
         } catch (Exception e) {
             // Mirror PsamaIntrospectionFilter's transport-failure handling: keep the gateway error shape
             // (rather than Spring's default 500) and record the same audit failure the deny path records.

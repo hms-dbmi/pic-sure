@@ -13,6 +13,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jws;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -97,6 +98,10 @@ public class JWTFilter extends OncePerRequestFilter {
             try {
                 jws = this.jwtUtil.parseToken(token);
             } catch (Exception e) {
+                if (e.getCause() instanceof ExpiredJwtException expired && isApplicationToken(expired.getClaims())) {
+                    rejectExpiredApplicationToken(request, response, expired.getClaims());
+                    return;
+                }
                 logger.error("Failed to parse JWT token.", e);
                 sendAuthFailure(request, "invalid_token", e.getMessage());
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token.");
@@ -199,6 +204,31 @@ public class JWTFilter extends OncePerRequestFilter {
         }
     }
 
+    private boolean isApplicationToken(Claims claims) {
+        String userId = claims == null ? null : claims.get(this.userClaimId, String.class);
+        return userId != null && userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
+    }
+
+    /**
+     * Rejects an expired PSAMA application token and logs how to replace it. The gateway sends this token as
+     * {@code TOKEN_INTROSPECTION_TOKEN} on every introspection call, so once it expires no user request can be authenticated. JJWT verifies
+     * the signature before it checks the expiration, so the claims are trustworthy enough to name the application.
+     *
+     * @param claims the verified claims of the expired token
+     */
+    private void rejectExpiredApplicationToken(HttpServletRequest request, HttpServletResponse response, Claims claims) throws IOException {
+        String userId = claims.get(this.userClaimId, String.class);
+        logger.error(
+            "The PSAMA application token for {} expired at {}. PSAMA rejects every token introspection request that presents it, so "
+                + "users cannot log in or query. To fix it, run the 'Configure PIC-SURE Token Introspection Token' Jenkins job, which "
+                + "issues a new token valid for one year and saves it to auth.application and to TOKEN_INTROSPECTION_TOKEN in the "
+                + "gateway's environment. Then start PIC-SURE again so the gateway picks up the new token.",
+            userId, claims.getExpiration()
+        );
+        sendAuthFailure(request, "application_token_expired", "Application token expired at " + claims.getExpiration());
+        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token.");
+    }
+
     private void setSecurityContextForApplication(HttpServletRequest request, CustomApplicationDetails authenticatedApplication) {
         logger.debug("Setting security context for application: {}", authenticatedApplication.getApplication().getName());
         UsernamePasswordAuthenticationToken authentication =
@@ -218,9 +248,9 @@ public class JWTFilter extends OncePerRequestFilter {
      * @param request the HttpServletRequest object
      * @param response the HttpServletResponse object
      * @param realClaimsSubject the subject of the user's claims in the JWT token
-     * @return true when the user was authenticated. False means an error response has already been sent and the
-     * caller must not continue the filter chain. Note this is not the only rejection signal: an unknown or
-     * deactivated subject still propagates an exception out of the filter rather than returning false.
+     * @return true when the user was authenticated. False means an error response has already been sent and the caller must not continue
+     *         the filter chain. Note this is not the only rejection signal: an unknown or deactivated subject still propagates an exception
+     *         out of the filter rather than returning false.
      */
     private boolean setSecurityContextForUser(HttpServletRequest request, HttpServletResponse response, String realClaimsSubject)
         throws IOException {

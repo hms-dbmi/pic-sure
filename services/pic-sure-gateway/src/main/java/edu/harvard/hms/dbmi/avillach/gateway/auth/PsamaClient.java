@@ -27,21 +27,32 @@ public class PsamaClient {
         this.serviceToken = serviceToken;
     }
 
+    /**
+     * Asks PSAMA whether {@code userToken} may make the request described by {@code requestMeta}.
+     *
+     * @throws IntrospectionTokenRejectedException if PSAMA rejects the gateway's own service token
+     */
     public IntrospectionResponse introspect(String userToken, Map<String, Object> requestMeta) {
         IntrospectionRequest body = new IntrospectionRequest(userToken, requestMeta);
         return http.post().uri(introspectionUrl).header("Authorization", "Bearer " + serviceToken).contentType(MediaType.APPLICATION_JSON)
-            .body(body).retrieve().body(IntrospectionResponse.class);
+            .body(body).retrieve().onStatus(status -> status.value() == 401, (req, res) -> {
+                throw new IntrospectionTokenRejectedException(introspectionUrl);
+            }).body(IntrospectionResponse.class);
     }
 
     /**
      * Always asks for {@code responseVersion} 2, the object response carrying key identity and the denial reason. An older PSAMA ignores
      * the field and answers with a bare boolean, which is still accepted. Anything else is a denial.
+     *
+     * @throws IntrospectionTokenRejectedException if PSAMA rejects the gateway's own service token
      */
     public OpenAccessValidation validateOpenAccess(Map<String, Object> requestBody) {
         Map<String, Object> body = new HashMap<>(requestBody);
         body.put(RESPONSE_VERSION, 2);
         JsonNode resp = http.post().uri(openAccessValidateUrl).header("Authorization", "Bearer " + serviceToken)
-            .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(JsonNode.class);
+            .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().onStatus(status -> status.value() == 401, (req, res) -> {
+                throw new IntrospectionTokenRejectedException(openAccessValidateUrl);
+            }).body(JsonNode.class);
         if (resp != null && resp.isBoolean()) {
             return OpenAccessValidation.fromBoolean(resp.asBoolean());
         }

@@ -13,6 +13,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
@@ -95,6 +96,12 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             // Preserve the existing PicsureException mapping (status/errorType from the exception) rather than
             // flattening it into a generic 502 below.
             mapPicsureException(resp, e);
+            return;
+        } catch (IntrospectionTokenRejectedException e) {
+            log.error(e.getMessage());
+            audit.put("auth_result", "failure");
+            audit.put("auth_failure_reason", "introspection_token_rejected");
+            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "introspection_unreachable", "Token introspection failed.");
             return;
         } catch (Exception e) {
             log.error("PSAMA introspection failed", e);
