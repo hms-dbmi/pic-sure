@@ -204,4 +204,29 @@ class ObfuscationServiceTest {
         assertThat(svc.maxChartBins(Map.of(TOTAL, "100000"))).isEqualTo(50);
         assertThat(svc.maxChartBins(Map.of())).isEqualTo(1);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {-1, 0, 1, 4})
+    void consentThresholdsBelowFiveBehaveAsFive(int configured) {
+        AggregateProperties props = new AggregateProperties();
+        props.getObfuscation().setConsentThreshold(configured);
+        ObfuscationService clamped = new ObfuscationService(props, new VisualizationFormatter());
+
+        Map<String, String> study = new LinkedHashMap<>();
+        study.put(STUDY, "16");
+        study.put(HMB, "12");
+        study.put(GRU, "3");
+        study.put(TOTAL, "101");
+        assertThat(clamped.obfuscateCrossCounts(study)).isEqualTo(svc.obfuscateCrossCounts(study));
+        assertThat(clamped.obfuscateChartBucket(9)).isEqualTo(new ObfuscatedCount(0, "< 10", 9));
+        assertThat(clamped.maxChartBins(Map.of(TOTAL, "200"))).isEqualTo(20);
+    }
+
+    @Test
+    void consentThresholdsAboveFiveAreKept() {
+        AggregateProperties props = new AggregateProperties();
+        props.getObfuscation().setConsentThreshold(6);
+        ObfuscationService raised = new ObfuscationService(props, new VisualizationFormatter());
+        assertThat(raised.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(HMB, "5"))).get(HMB)).isEqualTo("< 6");
+    }
 }

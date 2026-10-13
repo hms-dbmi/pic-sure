@@ -158,7 +158,8 @@ class AggregateServiceTest {
         AggregateService svc = service(backend, new AggregateProperties());
 
         ResponseEntity<String> out = svc.querySync(sync("CATEGORICAL_CROSS_COUNT"), AggregateVariant.V1);
-        assertThat(out.getBody()).contains("\"male\"").contains("< 10");
+        // male (5) is folded into the grouped bucket rather than named
+        assertThat(out.getBody()).doesNotContain("\"male\"").contains("\"female\"").contains("Other (grouped)").contains("< 10");
     }
 
     @Test

@@ -24,8 +24,8 @@ public class AggregateProperties {
 
     public static class Obfuscation {
         /**
-         * Base consent threshold. Every other obfuscation value except {@link #chartMinimumCohort} is derived from it in
-         * {@code ObfuscationService}.
+         * Base consent threshold; values below 5 are raised to 5. Every other obfuscation value except {@link #chartMinimumCohort} is
+         * derived from it in {@code ObfuscationService}.
          */
         private int consentThreshold = 5;
         /** No chart is returned for a cohort smaller than this. */

@@ -28,6 +28,8 @@ public class ObfuscationService {
 
     private static final String STUDIES_CONSENTS_KEY = "\\_studies_consents\\";
     private static final int MAX_CHART_BINS = 50;
+    /** The consent threshold can only be raised; lower values would weaken open access below the agreed floor. */
+    static final int MIN_CONSENT_THRESHOLD = 5;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -45,7 +47,14 @@ public class ObfuscationService {
 
     public ObfuscationService(AggregateProperties props, VisualizationFormatter visualizationFormatter) {
         this.visualizationFormatter = visualizationFormatter;
-        this.consentThreshold = props.getObfuscation().getConsentThreshold();
+        int configured = props.getObfuscation().getConsentThreshold();
+        if (configured < MIN_CONSENT_THRESHOLD) {
+            logger.warn(
+                "aggregate.obfuscation.consent-threshold={} is below the minimum of {}; using {}", configured, MIN_CONSENT_THRESHOLD,
+                MIN_CONSENT_THRESHOLD
+            );
+        }
+        this.consentThreshold = Math.max(configured, MIN_CONSENT_THRESHOLD);
         this.suppressedEstimate = Math.max(consentThreshold - 1, 0) / 2;
         this.suppressedVariance = Math.max(consentThreshold - 1, 0) - suppressedEstimate;
         this.maxVariance = 5 * suppressedVariance;
@@ -190,7 +199,7 @@ public class ObfuscationService {
         }
         for (Map.Entry<String, Map<String, Object>> entry : categorical.entrySet()) {
             if (visualizationFormatter.skipKey(entry.getKey())) continue;
-            categorical.put(entry.getKey(), visualizationFormatter.processResults(entry.getValue()));
+            categorical.put(entry.getKey(), visualizationFormatter.processResults(entry.getValue(), chartThreshold));
         }
         return objectMapper.writeValueAsString(obfuscateChartCounts(categorical));
     }
