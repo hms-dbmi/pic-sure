@@ -24,6 +24,9 @@ import org.mockito.InOrder;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
@@ -31,9 +34,6 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
-import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
-import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
-import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**

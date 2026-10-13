@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -14,22 +12,25 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import edu.harvard.dbmi.avillach.domain.DispatchResponse;
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.SavedQueryReference;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Hidden;
 
 /**
- * The internal query API: the token-gated boundary the hpds-query-service and the gateway both call. {@code /internal/**} passes
- * {@code WebSecurityConfig}'s {@code anyRequest().permitAll()} unauthenticated -- it is {@link InternalTokenFilter} (a plain servlet
+ * The internal query API: the token-gated boundary the hpds-query-service calls to save, read and update queries. {@code /internal/**}
+ * passes {@code WebSecurityConfig}'s {@code anyRequest().permitAll()} unauthenticated -- it is {@link InternalTokenFilter} (a plain servlet
  * filter, not this controller) that actually gates every request here on {@code X-PIC-SURE-INTERNAL-TOKEN}, and network isolation (out of
  * this service's hands) that keeps it unreachable from outside the cluster.
  *
- * <p>{@code GET /{picsureId}/dispatch} is the one FIXED external contract: the gateway's dormant {@code QueryAuthFetcher} already calls
- * {@code GET {base}/internal/queries/{id}/dispatch} expecting exactly {@code {"queryJson": "<string>"}} (deserialized as
- * {@code record DispatchResponse(String queryJson)}), 404 for an unknown id, 403 for a bad/missing token -- the key name, and that its
- * value is a JSON string (not a nested object), are load-bearing.
+ * <p>{@code GET /{picsureId}/dispatch} answers {@code {"queryJson": "<string>"}}, 404 for an unknown id and 403 for a bad or missing token.
+ * No service in this repository calls it. The gateway's {@code QueryAuthFetcher} was written against it and has since been removed.
  *
- * <p>{@code @Hidden} because no developer holding a user token can ever reach this controller: it is called machine-to-machine by the
- * gateway and hpds-query-service, gated by a shared secret, not by the caller's identity.
+ * <p>{@code @Hidden} because no developer holding a user token can ever reach this controller: it is called machine-to-machine by
+ * hpds-query-service, gated by a shared secret, not by the caller's identity.
  */
 @Hidden
 @RestController
@@ -42,13 +43,16 @@ public class InternalQueryController {
         this.service = service;
     }
 
+    /**
+     * Persists a query and answers 201 with the id it was stored under, as {@code {"picsureId": "<uuid>"}}.
+     *
+     * @param req the query to persist
+     * @return the id of the persisted query
+     */
     @AuditEvent(type = "OTHER", action = "internal_query.save")
     @PostMapping("")
-    public ResponseEntity<Map<String, UUID>> save(@RequestBody SaveQueryRequest req) {
-        UUID picsureId = service.save(req);
-        Map<String, UUID> body = new LinkedHashMap<>();
-        body.put("picsureId", picsureId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+    public ResponseEntity<SavedQueryReference> save(@RequestBody SaveQueryRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(new SavedQueryReference(service.save(req)));
     }
 
     @AuditEvent(type = "OTHER", action = "internal_query.read")
@@ -65,14 +69,15 @@ public class InternalQueryController {
     }
 
     /**
-     * MUST match the gateway's {@code QueryAuthFetcher} contract exactly: {@code {"queryJson": "<string>"}}, the stored query JSON
-     * re-serialized as a string with any legacy {@code resourceCredentials} stripped (or {@code null} for a blank stored query).
+     * Answers {@code {"queryJson": "<string>"}}: the stored query JSON re-serialized as a string with any legacy
+     * {@code resourceCredentials} stripped, or {@code null} for a blank stored query.
+     *
+     * @param picsureId the id of the stored query
+     * @return the stored query body
      */
     @AuditEvent(type = "OTHER", action = "internal_query.dispatch")
     @GetMapping("/{picsureId}/dispatch")
-    public Map<String, String> dispatch(@PathVariable("picsureId") UUID picsureId) {
-        Map<String, String> body = new LinkedHashMap<>();
-        body.put("queryJson", service.dispatchQueryJson(picsureId));
-        return body;
+    public DispatchResponse dispatch(@PathVariable("picsureId") UUID picsureId) {
+        return new DispatchResponse(service.dispatchQueryJson(picsureId));
     }
 }

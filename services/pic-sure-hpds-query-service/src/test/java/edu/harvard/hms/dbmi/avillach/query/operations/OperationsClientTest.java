@@ -25,6 +25,9 @@ import org.springframework.web.client.RestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 class OperationsClientTest {
@@ -68,6 +71,24 @@ class OperationsClientTest {
                 .withRequestBody(
                     equalToJson("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null}")
                 )
+        );
+    }
+
+    @Test
+    void saveSendsEveryMemberInDeclarationOrderNullsIncluded() {
+        UUID id = UUID.randomUUID();
+        ops.stubFor(
+            post(urlEqualTo("/operations/internal/queries")).willReturn(
+                aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"picsureId\":\"" + id + "\"}")
+            )
+        );
+
+        client().save(new SaveQueryRequest("{}", null, "QUEUED", "3", null));
+
+        ops.verify(
+            postRequestedFor(urlEqualTo("/operations/internal/queries")).withRequestBody(
+                equalTo("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"3\",\"metadata\":null}")
+            )
         );
     }
 

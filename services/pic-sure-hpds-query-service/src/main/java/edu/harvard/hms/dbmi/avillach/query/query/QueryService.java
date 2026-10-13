@@ -22,6 +22,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
@@ -29,9 +32,6 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
-import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
-import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
-import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
 
 /**
  * Implements the create, sync, status, result, signed-url, and metadata query lifecycle without a local database. Persistence goes through
