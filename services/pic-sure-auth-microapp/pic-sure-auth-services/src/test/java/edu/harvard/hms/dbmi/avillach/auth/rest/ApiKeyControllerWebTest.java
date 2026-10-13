@@ -60,8 +60,7 @@ public class ApiKeyControllerWebTest {
 
     @Test
     public void testJsonNullBodyReturns400OnPublicUserEndpoint() throws Exception {
-        mockMvc.perform(post("/open/apiKey").contentType(MediaType.APPLICATION_JSON).content("null"))
-            .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/open/apiKey").contentType(MediaType.APPLICATION_JSON).content("null")).andExpect(status().isBadRequest());
     }
 
     @Test

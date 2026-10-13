@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.hms.dbmi.avillach.auth.model.InvalidRefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.RefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.ValidRefreshToken;
@@ -45,6 +47,15 @@ public class TokenController {
         this.tokenService = tokenService;
     }
 
+    /**
+     * Introspects a user's token for the registered application calling this endpoint. The real gate is "application token only":
+     * {@code JWTFilter} admits an application token here and the service rejects any other caller. No authority names that today, since an
+     * application's granted authorities are empty, so the handler is marked {@link Access#AUTHENTICATED} rather than guarded.
+     *
+     * @param inputMap the token to introspect and the request it wants to make
+     * @param request the current request, used for audit attributes
+     * @return the introspection result, including whether the token is active
+     */
     @Operation(
         summary = "Introspect a token on behalf of an application",
         description = "Token introspection endpoint for user to retrieve a valid token"
@@ -52,6 +63,7 @@ public class TokenController {
     @ApiResponse(responseCode = "200", description = "The introspection result, including whether the token is active")
     @AuditEvent(type = "ACCESS", action = "token.introspect")
     @PostMapping(path = "/inspect", produces = "application/json")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<Map<String, Object>> inspectToken(
         @Parameter(
             required = true, description = "A JSON object that at least" + " include a user the token for validation"
@@ -93,6 +105,7 @@ public class TokenController {
     @ApiResponse(responseCode = "401", description = "The token's session has ended, expired, or been replaced by a newer login")
     @AuditEvent(type = "ACCESS", action = "token.refresh")
     @GetMapping(path = "/refresh", produces = "application/json")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String authorizationHeader, HttpServletRequest request) {
         RefreshToken refreshTokenResp = this.tokenService.refreshToken(authorizationHeader);
 
