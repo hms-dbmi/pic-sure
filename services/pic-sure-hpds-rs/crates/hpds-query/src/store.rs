@@ -79,10 +79,23 @@ pub(crate) const RECORD_EVERY: usize = 64;
 /// Whichever comes first, the drop or a read remembering the entry it loaded, the entry is
 /// not served after the drop: a read that loads a block can see the cache drop it during
 /// the same load (the cache housekeeps on the inserting thread), and the mark is on the
-/// entry itself, so it holds however the remember and the listener interleave. The one gap
-/// is the instant between the cache removing an entry and its listener marking it, in
-/// which a lookup through the cache could have returned the entry too. A slot holds its
-/// entry weakly, so it never keeps a block or view alive.
+/// entry itself, so it holds however the remember and the listener interleave. A reader
+/// that builds a view reinserts its entry only while the cache holds that very entry, so
+/// no entry is ever replaced by another without the listener seeing it dropped. A slot
+/// holds its entry weakly, so it never keeps a block or view alive.
+///
+/// The gaps, each one where a lookup through the cache could misjudge the same way or the
+/// cache itself has not yet let the entry go:
+///
+/// - The instant between the cache removing an entry from its map and calling the
+///   listener, before the mark is set.
+/// - Inside [`crate::PartitionSet::clear_cache`]: `invalidate_all` hides every entry from
+///   lookups at once, but the cache drops them, and the listener marks them, only as
+///   `run_pending_tasks` drains them. A read that found an entry through the cache just
+///   before the clear can remember it after the table is cleared, and the table serves it
+///   until the drain marks it. `clear_cache` relies on its `run_pending_tasks` call
+///   draining every entry; one that a time-limited drain leaves for later stays unmarked
+///   until the cache's next housekeeping.
 ///
 /// Memory outside the byte bound: a slot whose entry was dropped without the listener
 /// clearing it keeps that entry's small allocation (the struct, about 100 bytes, not its
@@ -167,8 +180,9 @@ impl RecentEntries {
     }
 
     /// Forgets every entry. A read running across the clear may remember the entries it
-    /// loads afterwards; those are new entries the cache holds, while every entry from
-    /// before the clear is marked dropped by the cache's listener and never served again.
+    /// loads afterwards; those are new entries the cache holds. Every entry from before the
+    /// clear is marked dropped by the cache's listener as the cache drains it, and never
+    /// served after that (see the gaps on [`RecentEntries`]).
     pub(crate) fn clear(&self) {
         let mut slots = self.slots.write().unwrap_or_else(PoisonError::into_inner);
         slots.iter_mut().for_each(|held| *held = Weak::new());
@@ -199,8 +213,8 @@ impl CachedConcept {
     }
 
     /// Marks the entry as dropped by the block cache, for good: [`RecentEntries`] never
-    /// serves or remembers it again, and a reader that builds its view does not put it back
-    /// into the cache.
+    /// serves or remembers it again. A reader that builds its view puts it back into the
+    /// cache only while the cache still holds it, so a dropped entry never returns.
     pub(crate) fn mark_dropped(&self) {
         self.dropped.store(true, Ordering::Release);
     }

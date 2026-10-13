@@ -1366,7 +1366,7 @@ mod tests {
             let concepts = 40;
             let (_dir, out) = store(&paths("s", concepts));
             let weight = entry_weight(&out, concepts);
-            let engine = engine(&out, weight * 3, 0.5);
+            let engine = engine(&out, weight * 3, 2.0);
             let (served, uncached) = fault::checking_recent_hits(|| {
                 std::thread::scope(|scope| {
                     for consents in [&[][..], &["p1"][..]] {
@@ -1394,25 +1394,50 @@ mod tests {
         fn a_view_built_by_one_read_is_served_with_its_entry_to_the_next() {
             let (_dir, out) = store(&paths("s", 1));
             let engine = engine(&out, 1 << 30, 2.0);
+            let set = engine.partitions();
+            assert_eq!(engine.count(&any_record_of("\\s\\", &[])).unwrap(), 20);
+            let block_only = set.cached_bytes();
             let narrow = any_record_of("\\s\\", &["p1"]);
             for _ in 0..5 {
                 assert_eq!(engine.count(&narrow).unwrap(), 10);
             }
-            let set = engine.partitions();
             let (views, view_bytes) = set.cached_views();
             assert_eq!(views, 1);
             assert!(view_bytes > 0);
             let stats = set.block_cache_stats();
             assert_eq!(
                 (stats.loads, stats.misses, stats.hits),
-                (1, 1, 4),
+                (1, 1, 5),
                 "{stats:?}"
             );
+            let cached = set.cached_bytes();
             assert!(
-                set.cached_bytes() > view_bytes,
-                "the view is weighed with its block: {} cached, view {view_bytes}",
-                set.cached_bytes()
+                cached >= block_only + view_bytes,
+                "the view is weighed with its block: {cached} cached, block {block_only}, \
+                 view {view_bytes}"
             );
+        }
+
+        #[test]
+        fn a_view_reinsert_never_replaces_an_entry_another_read_loaded_meanwhile() {
+            let (_dir, out) = store(&paths("s", 1));
+            let engine = engine(&out, 1 << 30, 2.0);
+            let narrow = any_record_of("\\s\\", &["p1"]);
+            let counted =
+                fault::hooking_view_reinsert(crate::partition::test_support::reload, || {
+                    engine.count(&narrow)
+                });
+            assert_eq!(counted.unwrap(), 10);
+            let (held, served) =
+                crate::partition::test_support::held_and_served(engine.partitions(), 0);
+            let held = held.expect("the reloaded entry is cached");
+            assert!(
+                !held.is_dropped(),
+                "the cache holds the entry the other read loaded"
+            );
+            let served = served.expect("the table serves the reloaded entry");
+            assert!(std::sync::Arc::ptr_eq(&held, &served));
+            assert_eq!(engine.count(&narrow).unwrap(), 10);
         }
 
         #[test]

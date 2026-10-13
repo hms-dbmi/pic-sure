@@ -23,6 +23,7 @@ use hpds_format::{
     Block, ConceptMeta, ConceptType, CryptoKey, INDEX_FILE_NAME, PartitionHolder, Protection,
     java_double_to_string, java_string_cmp,
 };
+use moka::ops::compute::Op;
 use moka::sync::Cache;
 use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
@@ -753,9 +754,19 @@ impl PartitionSet {
             index % RECORD_EVERY == turn
         });
         if crate::cohort::fault::checks_recent_hits() {
-            for (entry, &index) in entries.iter().zip(indexes) {
-                if entry.is_some() {
-                    let cached = self.cache.contains_key(&(index as u32));
+            let dropped_when_served: Vec<bool> = entries
+                .iter()
+                .map(|entry| entry.as_ref().is_some_and(|served| served.is_dropped()))
+                .collect();
+            for ((entry, &index), dropped_when_served) in
+                entries.iter().zip(indexes).zip(dropped_when_served)
+            {
+                if let Some(served) = entry {
+                    let held = self
+                        .cache
+                        .iter()
+                        .any(|(key, held)| *key == index as u32 && Arc::ptr_eq(&held, served));
+                    let cached = !dropped_when_served && (held || served.is_dropped());
                     crate::cohort::fault::note_recent_hit(cached);
                 }
             }
@@ -1224,9 +1235,12 @@ impl<'a> Selection<'a> {
     }
 
     /// The partition view of the concept `read` names, whose entry is `entry`, built and
-    /// weighed with its block when missing. An entry the cache has dropped meanwhile is not
-    /// put back: the view serves this read, and the next read loads the concept again.
-    /// Blocking.
+    /// weighed with its block when missing. The entry goes back into the cache, to be
+    /// reweighed, only while the cache still holds this very entry: the check and the
+    /// reinsert are one atomic step on the key ([`moka`]'s `and_compute_with`), so an
+    /// entry the cache has dropped meanwhile is not put back, and an entry another read
+    /// loaded for the concept meanwhile is never replaced. The view serves this read
+    /// either way. Blocking.
     ///
     /// # Errors
     /// [`QueryError::StoreInconsistent`] when a row belongs to no holder.
@@ -1239,8 +1253,15 @@ impl<'a> Selection<'a> {
                 &self.set.dictionary[read.index].name,
             )
         })?;
-        if built && !entry.is_dropped() {
-            self.set.cache.insert(read.index as u32, Arc::clone(entry));
+        if built {
+            crate::cohort::fault::before_view_reinsert(self.set, read.index);
+            self.set
+                .cache
+                .entry(read.index as u32)
+                .and_compute_with(|held| match held {
+                    Some(held) if Arc::ptr_eq(held.value(), entry) => Op::Put(Arc::clone(entry)),
+                    _ => Op::Nop,
+                });
         }
         Ok(view)
     }
@@ -1376,5 +1397,34 @@ mod tests {
             summary.to_json(),
             r#"{"name":"\\a\\","widthInBytes":8,"categorical":false,"categoryValues":[],"min":31.0,"max":"Infinity","patientCount":1126,"timestampMin":null,"timestampMax":5}"#
         );
+    }
+}
+
+/// Crate tests reaching into the cache and the table of recent entries.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+
+    /// Drops the concept at `index` from the block cache and loads it again, remembering
+    /// the new entry, as a concurrent read that found it evicted would.
+    pub(crate) fn reload(set: &PartitionSet, index: usize) {
+        set.cache.invalidate(&(index as u32));
+        set.cache.run_pending_tasks();
+        let entry = set.load_entry(index).unwrap();
+        set.recent.remember_all(std::iter::once((index, &entry)));
+    }
+
+    /// The entry the block cache holds for the concept at `index`, and the one the table of
+    /// recent entries serves for it.
+    pub(crate) fn held_and_served(
+        set: &PartitionSet,
+        index: usize,
+    ) -> (Option<Arc<CachedConcept>>, Option<Arc<CachedConcept>>) {
+        set.cache.run_pending_tasks();
+        let served = set
+            .recent
+            .get_all(std::iter::once(index), |_| false)
+            .remove(0);
+        (set.cache.get(&(index as u32)), served)
     }
 }

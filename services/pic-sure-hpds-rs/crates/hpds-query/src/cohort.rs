@@ -109,6 +109,34 @@ pub(crate) mod fault {
         static VIEW_FALLBACKS: Cell<usize> = const { Cell::new(0) };
         static CACHE_LOOKUPS: std::cell::RefCell<Option<Vec<usize>>> =
             const { std::cell::RefCell::new(None) };
+        static BEFORE_REINSERT: Cell<Option<ReinsertHook>> =
+            const { Cell::new(None) };
+    }
+
+    /// A hook run before a view reinsert, given the partition set and the concept index.
+    pub(crate) type ReinsertHook = fn(&crate::PartitionSet, usize);
+
+    /// Runs the hook [`hooking_view_reinsert`] set on the calling thread, if any, at the
+    /// moment a read that has just built the view of the concept at `index` is about to put
+    /// its entry back into the block cache.
+    pub(crate) fn before_view_reinsert(set: &crate::PartitionSet, index: usize) {
+        if let Some(hook) = BEFORE_REINSERT.with(Cell::get) {
+            hook(set, index);
+        }
+    }
+
+    /// Runs `work` on the calling thread with `hook` run before every view reinsert, as a
+    /// concurrent read acting at that moment would.
+    pub(crate) fn hooking_view_reinsert<R>(hook: ReinsertHook, work: impl FnOnce() -> R) -> R {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                BEFORE_REINSERT.with(|h| h.set(None));
+            }
+        }
+        BEFORE_REINSERT.with(|h| h.set(Some(hook)));
+        let _clear = Clear;
+        work()
     }
 
     /// Runs `work` on the calling thread with `flag` set, and clears it when `work` returns
@@ -178,8 +206,10 @@ pub(crate) mod fault {
         CHECK_RECENT_HITS.load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    /// Records one concept taken from the table of recent entries, and whether the block
-    /// cache held its key at that moment.
+    /// Records one concept taken from the table of recent entries, and whether it was the
+    /// entry the block cache held: not yet dropped when served, and then either found in the
+    /// cache under its key or dropped since (an eviction right after serving, which a
+    /// lookup through the cache could equally have returned).
     pub(crate) fn note_recent_hit(cached: bool) {
         RECENT_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if !cached {
@@ -251,6 +281,8 @@ pub(crate) mod fault {
     }
 
     pub(crate) fn note_recent_hit(_cached: bool) {}
+
+    pub(crate) fn before_view_reinsert(_set: &crate::PartitionSet, _index: usize) {}
 }
 
 /// A patient set that borrows a cached block's or view's patients, or was computed for this
