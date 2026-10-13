@@ -24,13 +24,15 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * Pins what the legacy search accepts when Jackson binds its body to a record. A body with a string term and a positive limit becomes a
- * search with the matching text search query and page size. A body that is not JSON, has no query object, or has a missing or non-positive
- * limit answers 400.
+ * search with the matching text search query and page size. A body with no query object, or with a missing or non-positive limit, answers
+ * an empty 400 from the handler. A body Jackson cannot parse or bind answers 400 before the handler runs. MockMvc does no error dispatch,
+ * so the error body Spring Boot writes for those is pinned by {@code DocumentedErrorResponsesTest} against a real server instead.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -81,17 +83,27 @@ class LegacySearchBindingTest {
         assertSearched(search, pageSize);
     }
 
-    @ParameterizedTest(name = "{0} is a 400")
+    @ParameterizedTest(name = "{0} is an empty 400")
     @ValueSource(
-        strings = {"{}", "{\"query\":null}", "{\"query\":\"age\"}", "{\"query\":{\"searchTerm\":\"age\"}}",
-            "{\"query\":{\"searchTerm\":\"age\",\"limit\":null}}", "{\"query\":{\"searchTerm\":\"age\",\"limit\":0}}",
-            "{\"query\":{\"searchTerm\":\"age\",\"limit\":\"abc\"}}", "{\"query\":{\"searchTerm\":\"age\",\"limit\":true}}",
-            "{\"query\":{\"searchTerm\":{\"a\":1},\"limit\":10}}", "{\"query\":{\"searchTerm\":[\"a\"],\"limit\":10}}", "[]", "{\"query\":",
-            " "}
+        strings = {"{}", "{\"query\":null}", "{\"query\":{\"searchTerm\":\"age\"}}", "{\"query\":{\"searchTerm\":\"age\",\"limit\":null}}",
+            "{\"query\":{\"searchTerm\":\"age\",\"limit\":0}}", "{\"query\":{\"searchTerm\":\"age\",\"limit\":-5}}"}
     )
-    void rejectsWhatCannotBeSearched(String body) throws Exception {
+    void rejectsAQueryWithoutAUsableLimit(String body) throws Exception {
         mockMvc.perform(post("/search").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest())
             .andExpect(content().string(""));
+
+        verifyNoInteractions(legacySearchService);
+    }
+
+    @ParameterizedTest(name = "{0} is a 400")
+    @ValueSource(
+        strings = {"{\"query\":\"age\"}", "{\"query\":{\"searchTerm\":\"age\",\"limit\":\"abc\"}}",
+            "{\"query\":{\"searchTerm\":\"age\",\"limit\":true}}", "{\"query\":{\"searchTerm\":{\"a\":1},\"limit\":10}}",
+            "{\"query\":{\"searchTerm\":[\"a\"],\"limit\":10}}", "[]", "{\"query\":", " "}
+    )
+    void rejectsABodyJacksonCannotBind(String body) throws Exception {
+        mockMvc.perform(post("/search").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest())
+            .andExpect(mvcResult -> assertThat(mvcResult.getResolvedException()).isInstanceOf(HttpMessageNotReadableException.class));
 
         verifyNoInteractions(legacySearchService);
     }

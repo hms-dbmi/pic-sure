@@ -41,7 +41,7 @@ public class LegacySearchController {
      */
     @Operation(summary = "Search in the legacy request and response shape")
     @ApiResponse(responseCode = "200", description = "Search results in the legacy response shape.")
-    @ApiResponse(responseCode = "400", description = "The body is not JSON, has no query object, or its limit is missing or below 1.")
+    @ApiResponse(responseCode = "400", description = "The body is not a JSON object whose query holds a numeric limit of 1 or more.")
     @AuditEvent(type = "SEARCH", action = "search.legacy")
     @RequestMapping(path = "/search")
     public ResponseEntity<LegacyResponse> legacySearch(@RequestBody LegacySearchQuery legacySearchQuery) {

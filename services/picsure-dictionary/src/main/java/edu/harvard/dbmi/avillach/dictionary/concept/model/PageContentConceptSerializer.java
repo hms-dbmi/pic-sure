@@ -8,11 +8,15 @@ import com.fasterxml.jackson.databind.jsontype.TypeSerializer;
 import java.io.IOException;
 
 /**
- * Writes a concept that sits directly in a page's {@code content} without Jackson's leading type id, as Jackson writes the content of a
- * Spring Data {@code PageImpl}. {@code PageImpl} exposes its content as an untyped list, so Jackson never applies {@link Concept}'s
- * {@code @JsonTypeInfo} to those elements and each one carries {@code type} once, as its last property. A {@code List<Concept>} component
- * would add the type id in front, so {@link ConceptPage} names this serializer for its content instead. Concepts nested under
- * {@code children} or {@code table} are untouched and keep both.
+ * Writes each concept in {@link ConceptPage#content()} exactly as Spring Data's {@code PageImpl} wrote it, so the page's JSON is unchanged.
+ *
+ * <p> A concept usually carries {@code type} twice. {@link Concept}'s {@code @JsonTypeInfo} writes it first as the type id, and the
+ * record's {@code type()} accessor writes it again as the last property. {@code PageImpl} holds its content in a generic list, so Jackson
+ * did not apply {@code @JsonTypeInfo} there and each concept carried {@code type} once, at the end. {@link ConceptPage} declares its
+ * content as {@code List<Concept>}, which would bring the leading type id back. This serializer leaves it out.
+ *
+ * <p> Only the concepts directly in {@code content} are affected. A concept nested under {@code children} or {@code table} is written as
+ * usual and still carries {@code type} twice.
  */
 public class PageContentConceptSerializer extends JsonSerializer<Concept> {
 
