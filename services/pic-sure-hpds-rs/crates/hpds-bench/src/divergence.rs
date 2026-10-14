@@ -72,9 +72,41 @@ pub enum Condition {
     /// serves `ColumnMeta` (with `observationCount`, without `widthInBytes` or timestamps),
     /// the consent branch and Rust `SummaryColumnMeta`.
     ColumnMetaShape,
-    /// The entry's query carries a non-empty `authorizationFilters` list, and both sides
-    /// answered it: both sync requests 200, or both async queries in SUCCESS.
-    AuthorizationFiltersPresent,
+    /// The entry's query carries a non-empty `authorizationFilters` list, both sides answered
+    /// it (both sync requests 200, or both async queries in SUCCESS), and the Java side's
+    /// answer is narrower than the other side's: a COUNT no greater, every count of a cross
+    /// count no greater under a key the other side also holds, a PATIENTS or DATAFRAME export
+    /// whose header is the same and whose rows are a subset. Needs the Java side to be known
+    /// ([`Divergences::for_java`]); without it the condition never holds.
+    AuthorizationFiltersNarrow,
+}
+
+/// Which Java service a comparison runs against, for rules that hold for one branch only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum JavaBranch {
+    /// The original unpartitioned HPDS, `main`.
+    Main,
+    /// The consent-partitioned HPDS, `feature-harmonization`.
+    Consent,
+}
+
+/// One of the two servers of a comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    /// The server given as `--a`.
+    A,
+    /// The server given as `--b`.
+    B,
+}
+
+/// What a comparison knows about its Java side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaService {
+    /// Which server is the Java service.
+    pub side: Side,
+    /// Which Java branch it runs.
+    pub branch: JavaBranch,
 }
 
 /// When a rule applies: one condition, or a list of body normalizations
@@ -114,6 +146,10 @@ pub struct Rule {
     /// Extra condition on the outcomes.
     #[serde(default)]
     pub when: Option<When>,
+    /// The Java branch the rule holds for. A rule naming one applies only when the
+    /// comparison names that branch ([`Divergences::for_java`]).
+    #[serde(default, rename = "javaBranch")]
+    pub java_branch: Option<JavaBranch>,
     /// Why the difference is accepted, citing the spec's divergence list.
     pub reason: String,
 }
@@ -123,6 +159,9 @@ pub struct Rule {
 pub struct Divergences {
     /// Rules tried in order; the first match wins.
     pub rules: Vec<Rule>,
+    /// The Java side of the comparison, when known.
+    #[serde(skip)]
+    pub java: Option<JavaService>,
 }
 
 /// Whether `text` matches `pattern`, where `*` matches any run of characters.
@@ -485,19 +524,88 @@ fn request_limit_refused(a: &Outcome, b: &Outcome) -> bool {
     )
 }
 
-fn authorization_filters_present(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+/// Whether `java` is at most `rust`: numbers no greater, objects whose every key the other
+/// also holds with a value at most its own, anything else equal.
+fn json_at_most(java: &Value, rust: &Value) -> bool {
+    match (java, rust) {
+        (Value::Number(x), Value::Number(y)) => match (x.as_f64(), y.as_f64()) {
+            (Some(x), Some(y)) => x <= y,
+            _ => false,
+        },
+        (Value::Object(x), Value::Object(y)) => x
+            .iter()
+            .all(|(key, value)| y.get(key).is_some_and(|other| json_at_most(value, other))),
+        _ => java == rust,
+    }
+}
+
+/// The CSV records of an export body, the header first.
+fn csv_records(text: &str) -> Option<Vec<Vec<String>>> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(text.as_bytes());
+    reader
+        .records()
+        .map(|record| record.ok().map(|r| r.iter().map(str::to_owned).collect()))
+        .collect()
+}
+
+/// Whether `java`'s answer is narrower than `rust`'s, as [`Condition::AuthorizationFiltersNarrow`]
+/// defines it.
+fn narrower(java: &Outcome, rust: &Outcome) -> bool {
+    match (java, rust) {
+        (Outcome::Sync(x), Outcome::Sync(y)) if x.status == 200 && y.status == 200 => {
+            match (x.body.trim().parse::<u64>(), y.body.trim().parse::<u64>()) {
+                (Ok(x), Ok(y)) => x <= y,
+                _ => match (
+                    serde_json::from_str::<Value>(&x.body),
+                    serde_json::from_str::<Value>(&y.body),
+                ) {
+                    (Ok(x @ Value::Object(_)), Ok(y @ Value::Object(_))) => json_at_most(&x, &y),
+                    _ => false,
+                },
+            }
+        }
+        (Outcome::Async(x), Outcome::Async(y)) if ended_in_success(x) && ended_in_success(y) => {
+            let (Some(x), Some(y)) = (&x.result_body, &y.result_body) else {
+                return false;
+            };
+            let (Some(x), Some(y)) = (csv_records(x), csv_records(y)) else {
+                return false;
+            };
+            let (Some((java_header, java_rows)), Some((rust_header, rust_rows))) =
+                (x.split_first(), y.split_first())
+            else {
+                return false;
+            };
+            let rust_rows: std::collections::HashSet<&Vec<String>> = rust_rows.iter().collect();
+            java_header == rust_header && java_rows.iter().all(|row| rust_rows.contains(row))
+        }
+        _ => false,
+    }
+}
+
+fn authorization_filters_narrow(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
     let carries_filters = query_object(&entry.request).is_some_and(|query| {
         query
             .get("authorizationFilters")
             .and_then(Value::as_array)
             .is_some_and(|filters| !filters.is_empty())
     });
-    let both_answered = match (a, b) {
-        (Outcome::Sync(x), Outcome::Sync(y)) => x.status == 200 && y.status == 200,
-        (Outcome::Async(x), Outcome::Async(y)) => ended_in_success(x) && ended_in_success(y),
-        _ => false,
+    let Some(java) = java else {
+        return false;
     };
-    carries_filters && both_answered
+    let (java_outcome, rust_outcome) = match java.side {
+        Side::A => (a, b),
+        Side::B => (b, a),
+    };
+    carries_filters && narrower(java_outcome, rust_outcome)
 }
 
 /// Rewrites a CSV body with the tab-separated values inside every cell sorted.
@@ -579,7 +687,13 @@ fn range_min_with_one_empty_body(entry: &CorpusEntry, a: &Outcome, b: &Outcome) 
 }
 
 impl Condition {
-    fn holds(self, entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    fn holds(
+        self,
+        entry: &CorpusEntry,
+        a: &Outcome,
+        b: &Outcome,
+        java: Option<JavaService>,
+    ) -> bool {
         match self {
             Condition::StrictSubsetOrTimeout => subset_or_timeout(a, b),
             Condition::SuccessBodyEmpty => empty_success_body(a, b),
@@ -608,13 +722,26 @@ impl Condition {
             Condition::GenomicTypeOnSyncRoute => genomic_type_on_sync_route(entry, a, b),
             Condition::VariantSpecPathRefused => variant_spec_path_refused(a, b),
             Condition::RequestLimitRefused => request_limit_refused(a, b),
-            Condition::AuthorizationFiltersPresent => authorization_filters_present(entry, a, b),
+            Condition::AuthorizationFiltersNarrow => {
+                authorization_filters_narrow(entry, a, b, java)
+            }
         }
     }
 }
 
 impl Rule {
-    fn matches(&self, entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    fn matches(
+        &self,
+        entry: &CorpusEntry,
+        a: &Outcome,
+        b: &Outcome,
+        java: Option<JavaService>,
+    ) -> bool {
+        if let Some(branch) = self.java_branch
+            && java.is_none_or(|java| java.branch != branch)
+        {
+            return false;
+        }
         if let Some(pattern) = &self.entry
             && !glob_match(pattern, &entry.name)
         {
@@ -637,7 +764,7 @@ impl Rule {
             }
         }
         match &self.when {
-            Some(When::One(condition)) => condition.holds(entry, a, b),
+            Some(When::One(condition)) => condition.holds(entry, a, b, java),
             Some(When::All(conditions)) => equal_after(a, b, conditions),
             None => true,
         }
@@ -679,9 +806,20 @@ impl Divergences {
         Ok(parsed)
     }
 
+    /// These rules for a comparison whose Java service is on `side` and runs `branch`: rules
+    /// naming another branch stop applying, and conditions that need the Java side can hold.
+    pub fn for_java(self, side: Side, branch: JavaBranch) -> Self {
+        Divergences {
+            java: Some(JavaService { side, branch }),
+            ..self
+        }
+    }
+
     /// The first rule that accepts the difference between the two outcomes of one entry.
     pub fn find(&self, entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> Option<&Rule> {
-        self.rules.iter().find(|rule| rule.matches(entry, a, b))
+        self.rules
+            .iter()
+            .find(|rule| rule.matches(entry, a, b, self.java))
     }
 }
 
@@ -1206,29 +1344,73 @@ mod tests {
     }
 
     #[test]
-    fn authorization_filters_accept_differing_answers_only_when_the_query_carries_them() {
-        let set = rules(json!([
-            {"name": "auth", "when": "authorization-filters-present", "reason": "why"}
+    fn authorization_filters_accept_only_a_narrower_main_answer() {
+        let file = rules(json!([
+            {"name": "auth", "javaBranch": "main", "when": "authorization-filters-narrow", "reason": "why"}
         ]));
-        let with = CorpusEntry {
-            request: json!({"query": {"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\a\\", "values": ["x"]}]}}),
-            ..entry("0001-x-count", "COUNT")
+        let main_a = file.clone().for_java(Side::A, JavaBranch::Main);
+        let main_b = file.clone().for_java(Side::B, JavaBranch::Main);
+        let consent = file.clone().for_java(Side::A, JavaBranch::Consent);
+        let filtered = |result_type: &str| CorpusEntry {
+            request: json!({"query": {"expectedResultType": result_type, "authorizationFilters": [{"conceptPath": "\\a\\", "values": ["x"]}]}}),
+            ..entry("0001-x", result_type)
         };
+        let count = filtered("COUNT");
+        let (java, rust) = (sync(200, "3202"), sync(200, "4978"));
+        assert!(main_a.find(&count, &java, &rust).is_some());
+        assert!(main_b.find(&count, &rust, &java).is_some());
+        assert!(main_a.find(&count, &rust, &java).is_none());
+        assert!(consent.find(&count, &java, &rust).is_none());
+        assert!(file.find(&count, &java, &rust).is_none());
         assert!(
-            set.find(&with, &sync(200, "3202"), &sync(200, "4978"))
-                .is_some()
-        );
-        assert!(
-            set.find(&with, &sync(500, ""), &sync(200, "4978"))
+            main_a
+                .find(&count, &sync(500, ""), &sync(200, "4978"))
                 .is_none()
         );
-        let empty = CorpusEntry {
+        let unfiltered = CorpusEntry {
             request: json!({"query": {"expectedResultType": "COUNT", "authorizationFilters": []}}),
-            ..entry("0001-x-count", "COUNT")
+            ..entry("0001-x", "COUNT")
         };
+        assert!(main_a.find(&unfiltered, &java, &rust).is_none());
+
+        let cross = filtered("CATEGORICAL_CROSS_COUNT");
+        let narrow = sync(200, r#"{"\\s\\":{"f":2}}"#);
+        let wide = sync(200, r#"{"\\s\\":{"f":3,"m":4}}"#);
+        assert!(main_a.find(&cross, &narrow, &wide).is_some());
+        assert!(main_a.find(&cross, &wide, &narrow).is_none());
+
+        let patients = CorpusEntry {
+            kind: Kind::Async,
+            ..filtered("PATIENTS")
+        };
+        let few = async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n2\n"));
+        let many = async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n1\n2\n3\n"));
+        let other = async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n4\n"));
+        assert!(main_a.find(&patients, &few, &many).is_some());
+        assert!(main_a.find(&patients, &many, &few).is_none());
+        assert!(main_a.find(&patients, &other, &many).is_none());
+    }
+
+    #[test]
+    fn branch_scoped_rules_apply_only_to_their_branch() {
+        let file = rules(json!([
+            {"name": "shape", "entry": "search-*", "javaBranch": "main", "when": ["column-meta-shape"], "reason": "why"}
+        ]));
+        let e = entry("search-age", "SEARCH");
+        let main = r#"{"results":{"phenotypes":{"p":{"name":"p","categorical":false,"min":1.0,"max":2.0,"observationCount":3,"patientCount":3}}}}"#;
+        let rust = r#"{"results":{"phenotypes":{"p":{"name":"p","widthInBytes":8,"categorical":false,"categoryValues":[],"min":1.0,"max":2.0,"patientCount":3,"timestampMin":null,"timestampMax":null}}}}"#;
+        let (x, y) = (sync(200, main), sync(200, rust));
+        assert!(file.find(&e, &x, &y).is_none());
         assert!(
-            set.find(&empty, &sync(200, "3202"), &sync(200, "4978"))
+            file.clone()
+                .for_java(Side::A, JavaBranch::Consent)
+                .find(&e, &x, &y)
                 .is_none()
+        );
+        assert!(
+            file.for_java(Side::A, JavaBranch::Main)
+                .find(&e, &x, &y)
+                .is_some()
         );
     }
 
@@ -1322,6 +1504,10 @@ mod tests {
                 .iter()
                 .any(|r| r.name.contains("patient-id") || r.name.contains("json-number"))
         );
+        for name in ["search-shape-main", "authorization-filters-main"] {
+            let rule = set.rules.iter().find(|r| r.name == name).unwrap();
+            assert_eq!(rule.java_branch, Some(JavaBranch::Main), "{name}");
+        }
     }
 
     #[test]

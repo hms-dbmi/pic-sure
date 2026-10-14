@@ -133,12 +133,14 @@
       "name": "search-shape-main",
       "entry": "search-*",
       "when": ["column-meta-shape", "numeric-max-double-min-value"],
-      "reason": "Contract: Rust serves the consent branch's /search shape, SummaryColumnMeta (name, widthInBytes, categorical, categoryValues, min, max, patientCount, timestampMin, timestampMax, nulls written). The original Java HPDS on main serves ColumnMeta (name, categorical, categoryValues for categorical concepts, min and max for numeric ones, observationCount, patientCount). Accepted only when the bodies are equal once every column meta keeps the shared fields (name, categorical, a non-empty categoryValues, a non-null min and max, patientCount) and, as the main loader also starts max at Double.MIN_VALUE (LoadingStore.java:54), a max of 4.9E-324 against a real max of zero or below takes the real value."
+      "javaBranch": "main",
+      "reason": "Contract, main branch only (javaBranch): Rust serves the consent branch's /search shape, SummaryColumnMeta (name, widthInBytes, categorical, categoryValues, min, max, patientCount, timestampMin, timestampMax, nulls written). The original Java HPDS on main serves ColumnMeta (name, categorical, categoryValues for categorical concepts, min and max for numeric ones, observationCount, patientCount). Accepted only when the bodies are equal once every column meta keeps the shared fields (name, categorical, a non-empty categoryValues, a non-null min and max, patientCount) and, as the main loader also starts max at Double.MIN_VALUE (LoadingStore.java:54), a max of 4.9E-324 against a real max of zero or below takes the real value."
     },
     {
       "name": "authorization-filters-main",
-      "when": "authorization-filters-present",
-      "reason": "Contract, README Differences from Java: Rust, like the consent branch, never applies authorizationFilters (the consent branch only validates them, QueryValidator.java:49), while the original Java HPDS on main ANDs each one into the query (PhenotypicQueryExecutor.java:35), so main answers fewer patients. Rust must not replace a main-branch HPDS that relies on authorizationFilters. Accepted only when the entry's query carries a non-empty authorizationFilters list and both sides answered (sync 200, or async SUCCESS)."
+      "when": "authorization-filters-narrow",
+      "javaBranch": "main",
+      "reason": "Contract, main branch only (javaBranch): Rust, like the consent branch, never applies authorizationFilters (the consent branch only validates them, QueryValidator.java:49), while the original Java HPDS on main ANDs each one into the query (PhenotypicQueryExecutor.java:35), so main answers fewer patients. Rust must not replace a main-branch HPDS that relies on authorizationFilters (README, Differences from Java). Accepted only against main, only when the entry's query carries a non-empty authorizationFilters list, both sides answered (sync 200, or async SUCCESS), and main's answer is the narrower one: a COUNT no greater than Rust's, every cross count no greater under a key Rust also holds, a PATIENTS or DATAFRAME export with the same header and a subset of Rust's rows. Against the consent branch, which ignores the filters as Rust does, any difference stays reported."
     }
   ]
 }

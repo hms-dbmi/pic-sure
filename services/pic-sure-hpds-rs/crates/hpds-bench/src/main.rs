@@ -11,7 +11,7 @@ use hpds_bench::consents::{
     ConsentPlan, expand, parse_variants, partitions_in_dir, partitions_of_files,
 };
 use hpds_bench::corpus::{generate, read_corpus, write_corpus};
-use hpds_bench::divergence::Divergences;
+use hpds_bench::divergence::{Divergences, JavaBranch, Side};
 use hpds_bench::duration::parse_duration;
 use hpds_bench::golden::{read_golden, run_golden};
 use hpds_bench::load::{LoadConfig, render_table, run_load};
@@ -94,6 +94,15 @@ enum Command {
         /// print as WHITELISTED with the rule's reason and do not fail the run.
         #[arg(long)]
         divergences: Option<PathBuf>,
+        /// Which server is the Java service, `a` or `b`. With --java-branch, divergence rules
+        /// scoped to a Java branch apply, and rules that need to know which answer is Java's
+        /// (the narrowing of authorizationFilters on main) can match.
+        #[arg(long, value_enum, requires = "java_branch")]
+        java: Option<JavaSide>,
+        /// The Java branch the Java service runs: `main` (the original HPDS) or `consent`
+        /// (feature-harmonization). Needs --java.
+        #[arg(long, value_enum, requires = "java")]
+        java_branch: Option<JavaBranchArg>,
     },
     /// Replay a corpus against one server and report latency and throughput.
     ///
@@ -257,6 +266,8 @@ async fn run(cli: Cli) -> Result<bool> {
             timeout,
             retries,
             divergences,
+            java,
+            java_branch,
         } => {
             if corpus.is_none() && golden.is_none() {
                 return Err(BenchError::Invalid(
@@ -277,10 +288,13 @@ async fn run(cli: Cli) -> Result<bool> {
                 let client_b = Client::new(&b, timeout, concurrency)?;
                 let entries = read_corpus(&dir)?;
                 let total = entries.len();
-                let rules = match divergences {
+                let mut rules = match divergences {
                     Some(path) => Divergences::read(&path)?,
                     None => Divergences::default(),
                 };
+                if let (Some(side), Some(branch)) = (java, java_branch) {
+                    rules = rules.for_java(side.into(), branch.into());
+                }
                 let found = compare_corpus(
                     &client_a,
                     &client_b,
@@ -362,5 +376,41 @@ mod tests {
     fn headers_without_a_colon_are_refused() {
         assert!(parse_headers(&["Accept-Encoding gzip".to_owned()]).is_err());
         assert!(parse_headers(&["Bad Name: x".to_owned()]).is_err());
+    }
+}
+
+/// `--java`: which compared server is the Java service.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum JavaSide {
+    /// The server given as `--a`.
+    A,
+    /// The server given as `--b`.
+    B,
+}
+
+impl From<JavaSide> for Side {
+    fn from(side: JavaSide) -> Side {
+        match side {
+            JavaSide::A => Side::A,
+            JavaSide::B => Side::B,
+        }
+    }
+}
+
+/// `--java-branch`: the branch the Java service runs.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum JavaBranchArg {
+    /// The original HPDS, `main`.
+    Main,
+    /// The consent-partitioned HPDS, `feature-harmonization`.
+    Consent,
+}
+
+impl From<JavaBranchArg> for JavaBranch {
+    fn from(branch: JavaBranchArg) -> JavaBranch {
+        match branch {
+            JavaBranchArg::Main => JavaBranch::Main,
+            JavaBranchArg::Consent => JavaBranch::Consent,
+        }
     }
 }

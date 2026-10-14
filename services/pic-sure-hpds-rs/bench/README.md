@@ -90,7 +90,18 @@ pair, or a condition: `strict-subset-or-timeout`, `success-body-empty` (every si
 answered 200 sent an empty body), `numeric-max-double-min-value` (the JSON bodies are equal once
 every `max` of `4.9E-324` on one side, against zero or below on the other, is aligned), or
 `range-min-success-body-empty` (both sides answered a sync request with 200, exactly one with an
-empty body, and the entry's phenotypic clause holds a `FILTER` with a `min`). `--retries N` retries other differences; an
+empty body, and the entry's phenotypic clause holds a `FILTER` with a `min`); the full list is
+the `Condition` type in `src/divergence.rs`. A rule with `javaBranch` (`main` or `consent`)
+applies only when the run names that branch with `--java <a|b> --java-branch <main|consent>`,
+which also tells conditions that need it which answer is Java's (`authorization-filters-narrow`
+accepts only a narrower answer from main):
+
+```bash
+hpds-bench compare --a http://127.0.0.1:18081/PIC-SURE --b http://rust:8080/PIC-SURE \
+  --corpus /tmp/corpus --divergences bench/divergences.json --java a --java-branch main
+```
+
+`--retries N` retries other differences; an
 entry that recovers is listed as `FLAKY` with the side that answered differently between
 attempts.
 
