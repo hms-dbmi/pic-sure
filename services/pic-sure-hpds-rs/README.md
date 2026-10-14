@@ -125,12 +125,29 @@ directory itself) as `PartitionedPhenotypicObservationStore` serves its partitio
   never writes the data directory.
 - The service holds a shared `flock` on the `pheno.index` it opened for as long as it runs, so
   an `hpds-etl` command that would replace the store files under it refuses to run, and a
-  service starting while one publishes waits for it to finish. At most once a second it also
-  checks that `pheno.index` is still the file it opened and that no publish journal appeared;
-  once either fails, every query, `/search` and result download answers 503 asking for a
-  restart, and health reports DOWN with that reason until the service restarts. That covers
-  files replaced where the lock does not reach: another kernel, a network filesystem, a
-  plain `mv`.
+  service starting while one publishes waits for it to finish.
+- After startup the service reads the store only through what it opened: the index it holds
+  in memory and its open `pheno.blocks` descriptor, read by offset. It never reopens a store
+  path (the key, `.generation` and the directory listing are read once, at open). At most once
+  a second it checks what it serves. Every query, `/search` and result download then answers
+  503 asking for a restart, and health reports DOWN with that reason until the service
+  restarts, when:
+  - the `pheno.index` or `pheno.blocks` it holds open changed in place: a file is identified by
+    device, inode, length and modification time, so `cp` over a file or `rsync --inplace` is
+    seen, and so is a `touch`, which fails closed. A rewrite that keeps both the length and
+    the modification time is not seen;
+  - a publish journal appeared in the directory;
+  - `pheno.index` became another file of the same store id, or one whose header cannot be
+    read: an in-place `remove-concepts` or `recover` the lock did not reach (another kernel,
+    a network filesystem), which withdraws data.
+
+  When `pheno.index` becomes a file of another store id, a whole store moved in (by
+  `aio/load.sh` or `bin/migrate-javabins`, which `mv` the files while the old container still
+  runs), the service logs it and goes on serving the store it opened from its open files, as it
+  did before these checks, until it is stopped. That keeps the old container answering while
+  the query service's DNS cache still points at it during a swap. A withdrawal done by
+  reloading a store without the concept is therefore served from the old files until the old
+  container stops; `remove-concepts` is the withdrawal that takes effect at once.
 - A filter matches a patient with a satisfying row in any selected partition, before
   filters combine, so a patient in two partitions can match one filter in one and another
   filter in the other, as in Java.
@@ -421,6 +438,32 @@ client may not be seen on another. A host ETL and a container ETL on a Docker De
 mount also run under different kernels. Running two loads against one store from
 different kernels is not supported.
 
+On NFS and EFS specifically, none of these locks should be relied on, and nothing here is
+designed around them:
+
+- The Linux NFS client emulates `flock` with POSIX byte-range locks, sent to the server
+  (NLM for NFSv3, the protocol itself for NFSv4). Locks then do reach other clients, but only
+  when every client mounts with locking enabled (not `nolock` or `local_lock=all`), and they
+  behave as POSIX locks, below.
+- An emulated exclusive lock needs a file opened for writing. The store lock is a `flock` on
+  the store directory's own descriptor, which can only be opened read only, so on such a mount
+  it can fail with `EBADF` and the command stops. The lock on `pheno.index` opens the file for
+  writing for this reason, falling back to read only for a dry run on a read-only mount.
+- POSIX locks belong to the process and the file, not the descriptor: closing any descriptor
+  of a file drops every lock the process holds on it. The `hpds-etl` commands read
+  `pheno.index` through another descriptor while they hold their lock on it, so on such a mount
+  they drop their own lock early, and a service starting meanwhile is not held off.
+- The service's stamp check still works where the server reports stable inode numbers and
+  modification times, so a store replaced under a service on another client is refused within
+  a second of the service seeing the change, subject to the client's attribute cache.
+
+A crash while `load`, `migrate` or `convert` publishes into an existing directory is not
+journaled as `remove-concepts` is: the files are renamed one by one, and the new store has a
+new id. It fails closed. Until `pheno.index` is renamed, it and `pheno.blocks` name different
+store ids, and the service and every `hpds-etl` command refuse the store. Between that rename
+and the `.generation` marker the two files form the whole new store, and the service still
+refuses it because the marker names the old id. Rerun the load to publish it whole.
+
 Memory: the spill routing pass holds the concept and path dictionaries. The build pass runs
 `--threads` workers (one per core by default), each holding one spill file plus 40 bytes per
 row of it, so peak memory is about `threads` times the largest spill files.
@@ -541,21 +584,27 @@ blocks file alive on disk. Removal is undone by reloading the store from inputs 
 the concepts, so take them out of the inputs too.
 
 - **Every line must name a concept.** A line that names none (a trailing space, missing
-  backslashes, a typo) fails the command before anything is written, listing the lines with
-  their numbers and a hint when a concept matches without the surrounding whitespace or with a
-  backslash at each end. `--allow-missing` removes the concepts that exist and lists the rest,
+  backslashes, a typo) fails the command before anything is written, listing each such line as
+  it is in the file, between double quotes, with its number and a hint: a concept matches it
+  without the surrounding whitespace, or with a backslash at each end, or the maintenance log
+  records it as removed by an earlier run. `--allow-missing` removes the concepts that exist and lists the rest,
   for a rerun after the concepts are gone. A file with no line naming anything always fails.
 - **`--dry-run`** reads the store under the shared store lock and prints what a run would do:
   the removed paths, their observations, the distinct patients with a removed row, the overlap
   patients dropped from tagged sets, the size `pheno.blocks` would have, and `store_in_use`
-  when a service holds the store open. It writes nothing, and fails after the report when a run
-  would fail on lines naming no concept.
+  when a service holds the store open (the probe retries a few times, so two dry runs at once
+  do not report each other). It writes nothing, works on a read-only mount, refuses symbolic
+  links as a run does, and fails after the report when a run would fail on lines naming no
+  concept.
 - **Compaction is the default.** `pheno.blocks` is rewritten to hold only the remaining
   concepts' blocks, each verified on the way, so the removed observations are no longer in the
   store's files; the store keeps its id, so blocks are copied without being re-encrypted.
   `--keep-removed-blocks` rewrites only `pheno.index` and leaves the removed observations in
   `pheno.blocks`, encrypted but present, with a warning. Use it only when the data does not
-  need to leave the disk; a later run without it compacts.
+  need to leave the disk. Compaction drops every byte no remaining concept references, so a
+  later run without it compacts what it left, even when that run removes nothing (rerun the
+  same list with `--allow-missing`); the report and the log count those bytes as
+  `unreferenced_bytes`.
 - **What compaction does not erase.** The old `pheno.blocks` is unlinked, not overwritten: its
   sectors stay on the disk until the filesystem reuses them, and a process that still has it
   open (a service that was not stopped) keeps it readable until it closes it. Backups,
@@ -566,22 +615,34 @@ the concepts, so take them out of the inputs too.
   record the run will log. Only then are `pheno.blocks` and `pheno.index` renamed into place,
   `columnMeta.csv` regenerated and the record appended, and the journal is removed last. A crash
   before the journal leaves the old store whole. After it, `hpds-etl recover --store <dir>`
-  finishes the publish: it renames each staged file still present after checking its length
-  and hash, checks the files already renamed, regenerates `columnMeta.csv`, appends the record
-  unless the log holds it, and removes the journal; a file matching neither is refused and the
-  store left as it is. `remove-concepts` runs the same recovery first. Until then the query
+  finishes the publish: it checks the journal's record against the index it publishes (the
+  index must open under the key, hash to the record's `index_sha256`, carry its store id and
+  remaining count, and hold none of its removed paths), renames each staged file still present
+  after checking its length and hash, checks the files already renamed, regenerates
+  `columnMeta.csv`, appends the record unless the log holds it, and removes the journal. A
+  staged entry that is a symbolic link, not a regular file, or not the journaled file is
+  refused, and so is a journal naming other files, the same file twice, or another order than
+  `pheno.blocks` then `pheno.index`. When a staged file is gone and nothing was renamed yet,
+  `recover` checks that the store's own files open whole, every block verified, and rolls the
+  publish back instead (`rolled-back-by-recover`). When one file was renamed and another's
+  staged copy is gone it can do neither, says so, and leaves the store as it is.
+  `remove-concepts` runs the same recovery first. Until then the query
   service refuses to open the directory, and `dump`, `column-meta-csv`, `--dry-run` and a load
   into the directory refuse it, all naming `hpds-etl recover`. `recover` also removes staged
   files a killed run left before journaling. The store format is unchanged.
 - **The maintenance log.** Every run that is not a dry run appends one JSON line to
   `maintenance-log.jsonl` in the store: `time` (UTC), `operation`, `result` (`published`,
-  `no-change` for an `--allow-missing` run that found nothing, or `completed-by-recover`),
+  `no-change` for an `--allow-missing` run that found nothing to remove or compact,
+  `completed-by-recover` or `rolled-back-by-recover`),
   `tool`, `store_id`, `publish_id`, the `concepts_file` path and its `concepts_file_sha256`,
   `removed_paths`, the line, observation, patient and byte counts, `compacted`,
-  `removed_blocks_kept`, and `index_sha256`, the SHA-256 of the `pheno.index` it left, so
+  `removed_blocks_kept`, and `index_sha256`, the SHA-256 of the `pheno.index` it left (the
+  current one for `no-change`, none for a rollback), so
   `sha256sum pheno.index` tells whether the store is still the one the last record describes.
-  No patient id or value is written. The log is created mode `0600`, never through a symbolic
-  link, and each record is synced before the command succeeds. `.generation` and
+  No patient id or value is written. The log is created mode `0600` (an existing log with
+  another mode is set to `0600`), never through a symbolic link, and each record is synced
+  before the command succeeds. Records are a fixed shape: the one a journal carries is parsed
+  with unknown fields refused before `recover` appends it. `.generation` and
   `etl-report.json` are left as they are: the store id does not change (every block's
   associated data binds it), and the report describes the load that built the store.
 - **Files.** Every file it creates is mode `0600`. It refuses a store whose `pheno.index`,
