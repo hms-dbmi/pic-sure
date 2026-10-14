@@ -8,16 +8,19 @@ use std::io::Write;
 use std::path::Path;
 
 use hpds_format::{
-    BLOCKS_FILE_NAME, BlockLocation, BlocksReader, BlocksWriter, ConceptMeta, INDEX_FILE_NAME,
-    PhenoIndex, Protection, java_string_cmp,
+    BLOCKS_FILE_NAME, BLOCKS_HEADER_LEN, BlockLocation, BlocksReader, BlocksWriter, ConceptMeta,
+    INDEX_FILE_NAME, PhenoIndex, Protection, java_string_cmp,
 };
+use roaring::RoaringBitmap;
 use serde::Serialize;
 
 use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
 use crate::load::COLUMN_META_CSV_NAME;
-use crate::store::{StagedFile, lock_store, read_index, replace_file, sync_parent};
+use crate::store::{
+    StagedFile, lock_store, lock_store_shared, read_index, replace_file, sync_parent,
+};
 
 /// Largest concepts file `remove-concepts` reads: 64 MiB, far above any list of concept
 /// paths, so a device or a wrong file is refused rather than read into memory.
@@ -37,11 +40,17 @@ pub struct RemoveOptions {
     /// Rewrite only `pheno.index`, leaving the removed concepts' blocks in `pheno.blocks` as
     /// unreferenced, still encrypted bytes. Without it `pheno.blocks` is compacted.
     pub keep_removed_blocks: bool,
+    /// Report what would be removed, reading the store under a shared lock, and write
+    /// nothing. Lines naming no concept are listed rather than failing the command.
+    pub dry_run: bool,
 }
 
 /// What `remove-concepts` did.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct RemoveReport {
+    /// True when nothing was written ([`RemoveOptions::dry_run`]): the counts, paths and
+    /// sizes are what a run would produce.
+    pub dry_run: bool,
     /// The store's id, which removal keeps.
     pub store_id: String,
     /// Lines read from the concepts file.
@@ -54,6 +63,12 @@ pub struct RemoveReport {
     pub removed_paths: Vec<String>,
     /// Observations the removed concepts held.
     pub observations_removed: u64,
+    /// Distinct patients with at least one removed observation, read from the removed
+    /// blocks; `None` when one of them could not be read.
+    pub patients_with_removed_rows: Option<u64>,
+    /// Removed concepts whose block could not be read, authenticated or decoded. They are
+    /// removed all the same.
+    pub unreadable_removed_blocks: u64,
     /// Concepts left in the index.
     pub remaining: u64,
     /// Lines that named no concept in the store, in file order. Only an
@@ -189,6 +204,36 @@ fn missing_error(
     ))
 }
 
+/// Reads the block of every concept `remove` selects and counts the distinct patients with
+/// a row in one into `report`, with the blocks that could not be read. Logs each of those
+/// by concept path.
+///
+/// # Errors
+/// The errors of building the block codec.
+fn count_removed_patients(
+    index: &PhenoIndex,
+    reader: &BlocksReader,
+    protection: &Protection,
+    remove: &[bool],
+    report: &mut RemoveReport,
+) -> Result<()> {
+    let codec = index.block_codec(protection.clone())?;
+    let membership = index.membership();
+    let mut patients = RoaringBitmap::new();
+    for (concept, _) in index.concepts().iter().zip(remove).filter(|(_, r)| **r) {
+        match reader.read_block(&codec, concept, &membership) {
+            Ok(block) => patients |= block.all_patients(),
+            Err(error) => {
+                tracing::warn!(concept = %concept.path, %error, "cannot read a removed concept's block; it is removed all the same");
+                report.unreadable_removed_blocks += 1;
+            }
+        }
+    }
+    report.patients_with_removed_rows =
+        (report.unreadable_removed_blocks == 0).then(|| patients.len());
+    Ok(())
+}
+
 /// Removes the concepts named in `concepts_file` from the store in `dir`, the step
 /// `RemoveConceptFromMetadata` performs on a javabin store.
 ///
@@ -216,6 +261,12 @@ fn missing_error(
 /// command holds the store lock, so it never interleaves with a load publishing into the
 /// same directory.
 ///
+/// With [`RemoveOptions::dry_run`] the store is read under the shared store lock, every
+/// removed block is read to count its patients, and the report says what a run would remove
+/// and how large `pheno.blocks` would become; nothing is written, and lines naming no
+/// concept are listed instead of failing. A real run reads the removed blocks too, for the
+/// same count, and still removes a concept whose block cannot be read.
+///
 /// # Errors
 /// [`EtlError::Usage`] for a concepts file that names nothing or has lines naming no
 /// concept (without `allow_missing`), and the errors of [`read_concepts_file`] and of
@@ -234,15 +285,20 @@ pub fn remove_concepts(
             concepts_file.display()
         )));
     }
-    let _lock = lock_store(dir)?;
+    let _lock = if options.dry_run {
+        lock_store_shared(dir)?
+    } else {
+        lock_store(dir)?
+    };
     let index = read_index(dir, protection)?;
     let mut report = RemoveReport {
+        dry_run: options.dry_run,
         store_id: index.store_id().to_string(),
         removed_blocks_kept: options.keep_removed_blocks,
         ..RemoveReport::default()
     };
     let remove = select_concepts(&index, &lines, &mut report);
-    if !report.not_found.is_empty() && !options.allow_missing {
+    if !report.not_found.is_empty() && !options.allow_missing && !options.dry_run {
         return Err(missing_error(
             concepts_file,
             &index,
@@ -269,6 +325,15 @@ pub fn remove_concepts(
     report.blocks_bytes_after = reader.len();
     if report.removed == 0 {
         report.removed_blocks_kept = false;
+        return Ok(report);
+    }
+    count_removed_patients(&index, &reader, protection, &remove, &mut report)?;
+    if options.dry_run {
+        if !options.keep_removed_blocks {
+            report.compacted = true;
+            report.blocks_bytes_after =
+                BLOCKS_HEADER_LEN + kept.iter().map(|c| c.block.length).sum::<u64>();
+        }
         return Ok(report);
     }
     let staged_blocks = if options.keep_removed_blocks {

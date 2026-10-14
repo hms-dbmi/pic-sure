@@ -115,6 +115,11 @@ struct RemoveConceptsArgs {
     /// rerun after the concepts are gone), and list those lines in the report.
     #[arg(long)]
     allow_missing: bool,
+    /// Report what would be removed (paths, observations, patients, blocks file size) and
+    /// write nothing. Fails after the report when a run would fail on lines naming no
+    /// concept.
+    #[arg(long)]
+    dry_run: bool,
     /// Rewrite only pheno.index, leaving the removed concepts' blocks in pheno.blocks.
     #[arg(long)]
     no_compact: bool,
@@ -445,13 +450,22 @@ fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
     let options = hpds_etl::store_maintenance::RemoveOptions {
         allow_missing: args.allow_missing,
         keep_removed_blocks: args.no_compact,
+        dry_run: args.dry_run,
     };
-    print_json(&hpds_etl::store_maintenance::remove_concepts(
+    let report = hpds_etl::store_maintenance::remove_concepts(
         &args.store,
         &args.concepts,
         &protection,
         &options,
-    )?);
+    )?;
+    print_json(&report);
+    if report.dry_run && !report.not_found.is_empty() && !args.allow_missing {
+        return Err(EtlError::Usage(format!(
+            "dry run: {} lines of {} name no concept (listed under not_found), so a run would remove nothing; fix the file or pass --allow-missing",
+            report.not_found.len(),
+            args.concepts.display()
+        )));
+    }
     Ok(())
 }
 

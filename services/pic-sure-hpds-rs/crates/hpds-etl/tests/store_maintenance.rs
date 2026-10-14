@@ -12,7 +12,9 @@ use hpds_etl::dump::{dump, dump_patients};
 use hpds_etl::java::java_double_to_string;
 use hpds_etl::load::Mode;
 use hpds_etl::store::OpenStore;
-use hpds_etl::store_maintenance::{RemoveOptions, regenerate_column_meta_csv, remove_concepts};
+use hpds_etl::store_maintenance::{
+    RemoveOptions, RemoveReport, regenerate_column_meta_csv, remove_concepts,
+};
 use hpds_format::{BLOCKS_FILE_NAME, Block, CryptoKey, NO_TIMESTAMP, Protection};
 
 fn protection() -> Protection {
@@ -74,6 +76,7 @@ fn keep_blocks_allow_missing() -> RemoveOptions {
     RemoveOptions {
         allow_missing: true,
         keep_removed_blocks: true,
+        ..RemoveOptions::default()
     }
 }
 
@@ -445,6 +448,84 @@ fn remove_concepts_checks_the_key_as_load_does() {
             "{stderr}"
         );
     }
+    assert_eq!(snapshot(&store.out), before);
+}
+
+#[test]
+fn a_dry_run_reports_exactly_what_a_run_removes_and_writes_nothing() {
+    for keep_removed_blocks in [false, true] {
+        let store = edge_store();
+        let removed: Vec<String> = store.index.concepts()[1..4]
+            .iter()
+            .map(|c| c.path.clone())
+            .collect();
+        let mut patients: Vec<u32> = removed
+            .iter()
+            .flat_map(|p| store.rows(p).into_iter().map(|row| row.0))
+            .collect();
+        patients.sort_unstable();
+        patients.dedup();
+        let list_path = store.dir.path().join("conceptsToRemove.txt");
+        std::fs::write(&list_path, removed.join("\n")).unwrap();
+        let before = snapshot(&store.out);
+        let options = RemoveOptions {
+            keep_removed_blocks,
+            dry_run: true,
+            ..RemoveOptions::default()
+        };
+
+        let dry = remove_concepts(&store.out, &list_path, &protection(), &options).unwrap();
+
+        assert_eq!(snapshot(&store.out), before);
+        assert!(dry.dry_run);
+        assert_eq!(dry.removed_paths, removed);
+        assert_eq!(dry.patients_with_removed_rows, Some(patients.len() as u64));
+        assert_eq!(dry.unreadable_removed_blocks, 0);
+        let real = remove_concepts(
+            &store.out,
+            &list_path,
+            &protection(),
+            &RemoveOptions {
+                dry_run: false,
+                ..options
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            RemoveReport {
+                dry_run: true,
+                ..real
+            },
+            dry,
+            "keep_removed_blocks {keep_removed_blocks}"
+        );
+    }
+}
+
+#[test]
+fn a_dry_run_through_the_binary_lists_missing_lines_and_fails() {
+    let store = edge_store();
+    let key = key_file(&store);
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\nmissing\n")).unwrap();
+    let before = snapshot(&store.out);
+    let output = run_hpds_etl(&[
+        "remove-concepts",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--concepts",
+        list_path.to_str().unwrap(),
+        "--key-file",
+        &key,
+        "--dry-run",
+    ]);
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["dry_run"], true);
+    assert_eq!(report["removed"], 1);
+    assert_eq!(report["not_found"], serde_json::json!(["missing"]));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--allow-missing"));
     assert_eq!(snapshot(&store.out), before);
 }
 
