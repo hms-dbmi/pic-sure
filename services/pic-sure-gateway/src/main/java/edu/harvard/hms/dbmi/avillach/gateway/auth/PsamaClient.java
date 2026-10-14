@@ -35,9 +35,8 @@ public class PsamaClient {
     public IntrospectionResponse introspect(String userToken, Map<String, Object> requestMeta) {
         IntrospectionRequest body = new IntrospectionRequest(userToken, requestMeta);
         return http.post().uri(introspectionUrl).header("Authorization", "Bearer " + serviceToken).contentType(MediaType.APPLICATION_JSON)
-            .body(body).retrieve().onStatus(status -> status.value() == 401, (req, res) -> {
-                throw new IntrospectionTokenRejectedException(introspectionUrl);
-            }).body(IntrospectionResponse.class);
+            .body(body).retrieve().onStatus(status -> status.value() == 401, rejectsServiceToken(introspectionUrl))
+            .body(IntrospectionResponse.class);
     }
 
     /**
@@ -50,9 +49,8 @@ public class PsamaClient {
         Map<String, Object> body = new HashMap<>(requestBody);
         body.put(RESPONSE_VERSION, 2);
         JsonNode resp = http.post().uri(openAccessValidateUrl).header("Authorization", "Bearer " + serviceToken)
-            .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().onStatus(status -> status.value() == 401, (req, res) -> {
-                throw new IntrospectionTokenRejectedException(openAccessValidateUrl);
-            }).body(JsonNode.class);
+            .contentType(MediaType.APPLICATION_JSON).body(body).retrieve()
+            .onStatus(status -> status.value() == 401, rejectsServiceToken(openAccessValidateUrl)).body(JsonNode.class);
         if (resp != null && resp.isBoolean()) {
             return OpenAccessValidation.fromBoolean(resp.asBoolean());
         }
@@ -64,6 +62,12 @@ public class PsamaClient {
             valid.isBoolean() && valid.asBoolean(), text(resp, "keyType"), text(resp, "keyId"), text(resp, "displayPrefix"),
             text(resp, "denial"), text(resp, "refreshedToken")
         );
+    }
+
+    private static RestClient.ResponseSpec.ErrorHandler rejectsServiceToken(String url) {
+        return (request, response) -> {
+            throw new IntrospectionTokenRejectedException(url);
+        };
     }
 
     private static String text(JsonNode resp, String field) {

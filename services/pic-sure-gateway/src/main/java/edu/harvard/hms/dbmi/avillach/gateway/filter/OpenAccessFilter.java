@@ -126,19 +126,13 @@ public class OpenAccessFilter extends OncePerRequestFilter {
             validation = psama.validateOpenAccess(body);
         } catch (IntrospectionTokenRejectedException e) {
             log.error(e.getMessage());
-            audit.put("auth_result", "failure");
-            audit.put("auth_action", "open_access.denied");
-            audit.put("auth_failure_reason", "introspection_token_rejected");
-            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "open_access_unreachable", "Open access validation failed.");
+            validationFailed(resp, "introspection_token_rejected");
             return;
         } catch (Exception e) {
             // Mirror PsamaIntrospectionFilter's transport-failure handling: keep the gateway error shape
             // (rather than Spring's default 500) and record the same audit failure the deny path records.
             log.error("PSAMA open-access validation failed", e);
-            audit.put("auth_result", "failure");
-            audit.put("auth_action", "open_access.denied");
-            audit.put("auth_failure_reason", "open_access_unreachable");
-            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "open_access_unreachable", "Open access validation failed.");
+            validationFailed(resp, "open_access_unreachable");
             return;
         }
         if (validation == null || !validation.valid()) {
@@ -164,6 +158,13 @@ public class OpenAccessFilter extends OncePerRequestFilter {
      * PSAMA gave no reason for (a bare-boolean {@code false}) or one this gateway doesn't know is {@code unauthorized}, and its audit
      * reason claims no cause.
      */
+    private void validationFailed(HttpServletResponse resp, String reason) throws IOException {
+        audit.put("auth_result", "failure");
+        audit.put("auth_action", "open_access.denied");
+        audit.put("auth_failure_reason", reason);
+        GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "open_access_unreachable", "Open access validation failed.");
+    }
+
     private void denied(HttpServletResponse resp, String reason) throws IOException {
         Denial denial = switch (reason == null ? "" : reason) {
             case OpenAccessValidation.DENIAL_KEY_MISSING -> KEY_MISSING;

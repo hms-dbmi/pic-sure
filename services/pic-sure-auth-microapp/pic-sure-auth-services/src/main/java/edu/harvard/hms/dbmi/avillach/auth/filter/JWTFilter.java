@@ -13,7 +13,6 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jws;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -34,6 +33,8 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Date;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -98,9 +99,12 @@ public class JWTFilter extends OncePerRequestFilter {
             try {
                 jws = this.jwtUtil.parseToken(token);
             } catch (Exception e) {
-                if (e.getCause() instanceof ExpiredJwtException expired && isApplicationToken(expired.getClaims())) {
-                    rejectExpiredApplicationToken(request, response, expired.getClaims());
-                    return;
+                if (isIntrospectionEndpoint(request)) {
+                    Optional<Claims> expiredApplicationClaims = expiredApplicationTokenClaims(token);
+                    if (expiredApplicationClaims.isPresent()) {
+                        rejectExpiredApplicationToken(request, response, expiredApplicationClaims.get());
+                        return;
+                    }
                 }
                 logger.error("Failed to parse JWT token.", e);
                 sendAuthFailure(request, "invalid_token", e.getMessage());
@@ -123,12 +127,12 @@ public class JWTFilter extends OncePerRequestFilter {
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Long term tokens cannot be used to access to PSAMA.");
                     return;
                 }
-            } else if (userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
+            } else if (JWTUtil.isApplicationToken(userId)) {
                 logger.info("User Authentication Starts with {}", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
 
                 // Check if the user is attempting to access the correct introspection endpoint. If not reject the request,
                 // log an error indicating the user's token may be being used by a malicious actor.
-                if (!request.getRequestURI().endsWith("token/inspect") && !request.getRequestURI().endsWith("open/validate")) {
+                if (!isIntrospectionEndpoint(request)) {
                     logger.error("{} attempted to perform request {} token may be compromised.", userId, request.getRequestURI());
                     sendAuthFailure(request, "compromised_token", "App token on wrong endpoint");
                     // Deliberately generic: naming the endpoints an application token does work on would map them
@@ -204,25 +208,40 @@ public class JWTFilter extends OncePerRequestFilter {
         }
     }
 
-    private boolean isApplicationToken(Claims claims) {
-        String userId = claims == null ? null : claims.get(this.userClaimId, String.class);
-        return userId != null && userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
+    private static boolean isIntrospectionEndpoint(HttpServletRequest request) {
+        return request.getRequestURI().endsWith("token/inspect") || request.getRequestURI().endsWith("open/validate");
     }
 
     /**
-     * Rejects an expired PSAMA application token and logs how to replace it. The gateway sends this token as
-     * {@code TOKEN_INTROSPECTION_TOKEN} on every introspection call, so once it expires no user request can be authenticated. JJWT verifies
-     * the signature before it checks the expiration, so the claims are trustworthy enough to name the application.
+     * Returns the claims of {@code token} if it is a PSAMA application token whose signature checks out but whose expiration has passed.
+     * JJWT verifies the signature before it checks the expiration, so these claims are trustworthy enough to name the application.
      *
+     * @param token a token that {@link JWTUtil#parseToken} has already rejected
+     * @return the expired application token's claims, or empty for any other token
+     */
+    private Optional<Claims> expiredApplicationTokenClaims(String token) {
+        Date now = new Date();
+        return this.jwtUtil.parseTokenAllowingExpiration(token)
+            .filter(claims -> JWTUtil.isApplicationToken(claims.get(this.userClaimId, String.class)))
+            .filter(claims -> claims.getExpiration() != null && claims.getExpiration().before(now));
+    }
+
+    /**
+     * Rejects an expired PSAMA application token and logs how to replace it. The gateway sends its token introspection token to this
+     * endpoint on every request, so if that is the token that expired, no user request can be authenticated until it is replaced.
+     *
+     * @param request the rejected request, which receives the audit failure attributes
+     * @param response the response the 401 is sent on
      * @param claims the verified claims of the expired token
+     * @throws IOException if sending the error response fails
      */
     private void rejectExpiredApplicationToken(HttpServletRequest request, HttpServletResponse response, Claims claims) throws IOException {
         String userId = claims.get(this.userClaimId, String.class);
         logger.error(
-            "The PSAMA application token for {} expired at {}. PSAMA rejects every token introspection request that presents it, so "
-                + "users cannot log in or query. To fix it, run the 'Configure PIC-SURE Token Introspection Token' Jenkins job, which "
-                + "issues a new token valid for one year and saves it to auth.application and to TOKEN_INTROSPECTION_TOKEN in the "
-                + "gateway's environment. Then start PIC-SURE again so the gateway picks up the new token.",
+            "The PSAMA application token for {} expired at {}. If this is the gateway's TOKEN_INTROSPECTION_TOKEN, users cannot log in or "
+                + "query until it is replaced. To fix it, run the 'Configure PIC-SURE Token Introspection Token' Jenkins job, which issues "
+                + "a new token valid for one year and saves it to auth.application and to TOKEN_INTROSPECTION_TOKEN in the gateway's "
+                + "environment. Then start PIC-SURE again so the gateway picks up the new token.",
             userId, claims.getExpiration()
         );
         sendAuthFailure(request, "application_token_expired", "Application token expired at " + claims.getExpiration());

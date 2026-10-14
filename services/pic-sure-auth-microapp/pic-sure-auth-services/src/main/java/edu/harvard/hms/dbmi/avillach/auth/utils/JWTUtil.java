@@ -109,8 +109,7 @@ public class JWTUtil {
      * Verifies a compact JWT with the application signing key and returns its signed claims, enforcing expiration and not-before claims
      * when present.
      *
-     * @throws NotAuthorizedException if parsing or verification fails, including an expired, null, or empty token. Its cause is the JJWT
-     *         exception, so an expired token's {@link ExpiredJwtException} and the claims it carries stay reachable.
+     * @throws NotAuthorizedException if parsing or verification fails, including an expired, null, or empty token
      * @throws io.jsonwebtoken.security.WeakKeyException if the application signing key is shorter than 32 bytes
      */
     public Jws<Claims> parseToken(String token) {
@@ -121,7 +120,7 @@ public class JWTUtil {
             jws = Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token);
         } catch (JwtException | IllegalArgumentException e) {
             logger.error("parseToken() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
-            throw new NotAuthorizedException(e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+            throw new NotAuthorizedException(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
 
         if (jws == null) {
@@ -163,6 +162,14 @@ public class JWTUtil {
 
     public static boolean isLongTermToken(String sub) {
         return sub.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX);
+    }
+
+    /**
+     * @param sub the token's user-id claim, possibly null
+     * @return true if {@code sub} names a PSAMA application, which is how the gateway's token introspection token identifies itself
+     */
+    public static boolean isApplicationToken(String sub) {
+        return sub != null && sub.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
     }
 
     public String setClientSecret(String clientSecret) {
