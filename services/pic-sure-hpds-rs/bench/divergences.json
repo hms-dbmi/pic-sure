@@ -146,6 +146,11 @@
       "name": "number-too-long-status",
       "when": "number-too-long-refused",
       "reason": "Jackson error, invalid input: Jackson 2.21 refuses a number token with more than 1,000 digits (StreamReadConstraints.getMaxNumberLength, counting integer, fraction and exponent digits). Java answers 400 with Spring's JSON error body when the token is in the request body, and 500 with an empty body when it is in a query sent as a JSON string (PicSureV3Service.convertIncomingQuery). Rust refuses the same tokens with 400 and Jackson's text, \"Number value length (<n>) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)\". Two 400s already compare equal, so the rule accepts only that message against a Java 500."
+    },
+    {
+      "name": "string-bound-refused-status",
+      "when": "string-bound-refused",
+      "reason": "Jackson error, invalid input: a min or max sent as a JSON string that Jackson 2.21's double coercion refuses as malformed (\"1d\", \"1f\", \"0x1p3\", \"1_000\", \"-NaN\", \"1.e5\") makes the Java query fail in convertIncomingQuery, which answers 500 with an empty body; Rust refuses it with 400 \"invalid value: string <text>, expected a number, a numeric string, or null\". Accepted only when the entry's query holds such a string bound (checked with hpds_query::jackson_string_double), the Java side's 500 has an empty body, and the 400 names that string. Strings refused only for their length are number-too-long-status. Holds on both Java branches, which answer alike."
     }
   ]
 }

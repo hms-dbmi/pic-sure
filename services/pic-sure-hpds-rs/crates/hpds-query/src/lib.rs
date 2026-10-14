@@ -42,6 +42,7 @@ mod view;
 pub use counters::BlockCacheStats;
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine, ReadPlan};
 pub use error::{QueryError, Result};
+pub use json_number::{MAX_NUMBER_DIGITS, NumberTooLong, StringDoubleError, jackson_string_double};
 pub use limits::{
     DEFAULT_MAX_CLAUSE_DEPTH, DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES,
     DEFAULT_MAX_QUERY_CONCEPTS, DEFAULT_MAX_SELECT_PATHS, QueryLimits,

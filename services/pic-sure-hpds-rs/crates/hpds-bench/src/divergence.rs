@@ -75,6 +75,14 @@ pub enum Condition {
     /// answered 500. Jackson refuses the same token, with 400 for the request body and with
     /// 500 when the token sits in a query sent as a JSON string.
     NumberTooLongRefused,
+    /// The entry's query holds a `min` or `max` sent as a JSON string that Jackson's double
+    /// coercion refuses as malformed (`"1d"`, `"0x1p3"`, `"-NaN"`; see
+    /// `hpds_query::jackson_string_double`), the Java side answered 500 with an empty body (the
+    /// Jackson exception escapes `convertIncomingQuery`; the response carries no text), and the
+    /// other side refused with 400 naming that string as an invalid value. A 500 with any body,
+    /// a 400 for another reason, or a string Jackson accepts does not match. Strings refused only
+    /// for their length are [`Condition::NumberTooLongRefused`].
+    StringBoundRefused,
     /// Body normalization: every column meta object (one holding `name` and `categorical`)
     /// keeps only the fields both search shapes share, `name`, `categorical`, a non-empty
     /// `categoryValues`, a non-null `min` and `max`, and `patientCount`. The main branch
@@ -542,6 +550,59 @@ fn request_limit_refused(a: &Outcome, b: &Outcome) -> bool {
     )
 }
 
+/// The request of an entry as JSON: its `request`, or its raw body when it has one.
+fn request_value(entry: &CorpusEntry) -> Option<Value> {
+    match &entry.raw_body {
+        Some(text) => serde_json::from_str(text).ok(),
+        None => Some(entry.request.clone()),
+    }
+}
+
+/// Every `min` and `max` sent as a JSON string inside `clause`, at any depth.
+fn string_bounds<'v>(clause: &'v Value, out: &mut Vec<&'v str>) {
+    if let Some(children) = clause.get("phenotypicClauses").and_then(Value::as_array) {
+        children.iter().for_each(|child| string_bounds(child, out));
+    }
+    for key in ["min", "max"] {
+        if let Some(Value::String(text)) = clause.get(key) {
+            out.push(text);
+        }
+    }
+}
+
+fn string_bound_refused(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    let Some(query) = request_value(entry).and_then(|request| query_object(&request)) else {
+        return false;
+    };
+    let mut bounds = Vec::new();
+    if let Some(clause) = query.get("phenotypicClause") {
+        string_bounds(clause, &mut bounds);
+    }
+    let refused: Vec<&str> = bounds
+        .into_iter()
+        .filter(|text| {
+            matches!(
+                hpds_query::jackson_string_double(text),
+                Err(hpds_query::StringDoubleError::Invalid)
+            )
+        })
+        .collect();
+    if refused.is_empty() {
+        return false;
+    }
+    let names_a_refused_string = |body: &str| {
+        refused.iter().any(|text| {
+            serde_json::to_string(text)
+                .is_ok_and(|quoted| body.contains(&format!("invalid value: string {quoted}")))
+        })
+    };
+    let empty_500 = |other: &Outcome| {
+        matches!(other, Outcome::Sync(s) if s.status == 500 && s.body.is_empty())
+            || matches!(other, Outcome::Async(x) if x.submit_status == 500 && x.submit_body.as_deref().is_none_or(str::is_empty))
+    };
+    refused_against(a, b, names_a_refused_string, empty_500)
+}
+
 fn number_too_long_refused(a: &Outcome, b: &Outcome) -> bool {
     refused_against(
         a,
@@ -769,6 +830,7 @@ impl Condition {
             Condition::VariantSpecPathRefused => variant_spec_path_refused(a, b),
             Condition::RequestLimitRefused => request_limit_refused(a, b),
             Condition::NumberTooLongRefused => number_too_long_refused(a, b),
+            Condition::StringBoundRefused => string_bound_refused(entry, a, b),
             Condition::AuthorizationFiltersNarrow => {
                 authorization_filters_narrow(entry, a, b, java)
             }
@@ -1479,6 +1541,53 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_string_bound_is_accepted_only_against_an_empty_java_500() {
+        let set = rules(json!([
+            {"name": "string", "when": "string-bound-refused", "reason": "why"}
+        ]));
+        let with_min = |min: Value| CorpusEntry {
+            request: json!({"query": {"expectedResultType": "COUNT", "phenotypicClause": {
+                "operator": "AND", "phenotypicClauses": [
+                    {"phenotypicFilterType": "FILTER", "conceptPath": "\\a\\", "min": min}]}}}),
+            ..entry("0001-x-count", "COUNT")
+        };
+        let refused = sync(
+            400,
+            "the query is not valid: invalid value: string \"1d\", expected a number, a numeric string, or null at line 1 column 90",
+        );
+        let java = sync(500, "");
+        let e = with_min(json!("1d"));
+        assert!(set.find(&e, &java, &refused).is_some());
+        assert!(set.find(&e, &refused, &java).is_some());
+        let unrelated = sync(500, "java.lang.NullPointerException at QueryV3Service");
+        assert!(set.find(&e, &unrelated, &refused).is_none());
+        assert!(set.find(&e, &sync(200, ""), &refused).is_none());
+        let other_reason = sync(400, "the query is not valid: unknown field `bogus`");
+        assert!(set.find(&e, &java, &other_reason).is_none());
+        let accepted = with_min(json!("1"));
+        let names_one = sync(
+            400,
+            "the query is not valid: invalid value: string \"1\", expected a number",
+        );
+        assert!(set.find(&accepted, &java, &names_one).is_none());
+        assert!(set.find(&with_min(json!(1.5)), &java, &refused).is_none());
+        let as_raw = CorpusEntry {
+            request: Value::Null,
+            raw_body: Some(
+                r#"{"query":"{\"expectedResultType\":\"COUNT\",\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"x\",\"max\":\"0x1p3\"}}"}"#.into(),
+            ),
+            ..entry("0002-x-count", "COUNT")
+        };
+        let hex = sync(
+            400,
+            "the query is not valid: invalid value: string \"0x1p3\", expected a number, a numeric string, or null",
+        );
+        assert!(set.find(&as_raw, &java, &hex).is_some());
+        let too_long = with_min(json!(format!("-{}", "1".repeat(1000))));
+        assert!(set.find(&too_long, &java, &refused).is_none());
+    }
+
+    #[test]
     fn a_too_long_number_is_accepted_only_against_a_500() {
         let set = rules(json!([
             {"name": "long", "when": "number-too-long-refused", "reason": "why"}
@@ -1573,6 +1682,7 @@ mod tests {
             "search-shape-main",
             "authorization-filters-main",
             "number-too-long-status",
+            "string-bound-refused-status",
         ] {
             let found = set.rules.iter().find(|r| r.name == name);
             assert!(
