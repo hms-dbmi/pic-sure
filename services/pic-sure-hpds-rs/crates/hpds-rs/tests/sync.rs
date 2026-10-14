@@ -313,3 +313,44 @@ async fn oversized_bodies_are_refused() {
     let reply = post(&f.app, SYNC, "x".repeat(3 << 20)).await;
     assert_eq!(reply.status, StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+/// A COUNT envelope on `path` with `min` and `max` written into the body text verbatim, so
+/// the service, not a test-side JSON library, reads the numbers.
+fn raw_range_body(path: &str, min: &str, max: &str) -> String {
+    format!(
+        r#"{{"query":{{"expectedResultType":"COUNT","phenotypicClause":{{"phenotypicFilterType":"FILTER","conceptPath":{},"min":{min},"max":{max}}}}},"resourceUUID":null}}"#,
+        serde_json::to_string(path).unwrap()
+    )
+}
+
+#[tokio::test]
+async fn a_bound_one_ulp_above_a_stored_height_counts_as_java_does() {
+    let f = fixture();
+    let height = r"\open_access-1000Genomes\data\SYNTHETIC_HEIGHT\";
+    let reply = post(
+        &f.app,
+        SYNC,
+        raw_range_body(height, "119.38000000000001", "1000"),
+    )
+    .await;
+    assert_eq!(
+        (reply.status, reply.body.as_str()),
+        (StatusCode::OK, "1125")
+    );
+    let reply = post(&f.app, SYNC, raw_range_body(height, "119.38", "1000")).await;
+    assert_eq!(
+        (reply.status, reply.body.as_str()),
+        (StatusCode::OK, "1126")
+    );
+}
+
+#[tokio::test]
+async fn an_integer_bound_as_wide_as_double_max_is_accepted_as_jackson_accepts_it() {
+    let f = fixture();
+    let double_max = "179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368";
+    let reply = post(&f.app, SYNC, raw_range_body(AGE, "0", double_max)).await;
+    assert_eq!(
+        (reply.status, reply.body.as_str()),
+        (StatusCode::OK, "1126")
+    );
+}
