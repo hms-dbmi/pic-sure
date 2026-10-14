@@ -21,8 +21,10 @@ import org.springframework.web.client.RestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
+import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
@@ -87,15 +89,15 @@ class ResourceWebClientTest {
     }
 
     @Test
-    void signedUrlBuffersJsonStringWithToken() {
+    void signedUrlReadsTheSignedUrlObjectWithToken() {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
-                .willReturn(okJson("{\"url\":\"https://s3/x\"}"))
+                .willReturn(okJson("{\"signedUrl\":\"https://s3/x\"}"))
         );
 
-        ResponseEntity<String> resp = client().queryResultSignedUrl(target(), "rr-1", req());
+        SignedUrlResponse resp = client().queryResultSignedUrl(target(), "rr-1", req());
 
-        assertThat(resp.getBody()).contains("https://s3/x");
+        assertThat(resp.getSignedUrl()).isEqualTo("https://s3/x");
     }
 
     @Test
@@ -141,12 +143,14 @@ class ResourceWebClientTest {
         hpds.stubFor(
             get(urlPathEqualTo("/PIC-SURE/v3/search/values/")).withHeader("Authorization", absent())
                 .withQueryParam("genomicConceptPath", equalTo("\\gene\\")).withQueryParam("query", equalTo("BRCA"))
-                .withQueryParam("page", equalTo("1")).willReturn(okJson("{\"results\":[],\"page\":1,\"total\":0}"))
+                .withQueryParam("page", equalTo("1")).willReturn(okJson("{\"results\":[\"BRCA1\",\"BRCA2\"],\"page\":1,\"total\":2}"))
         );
 
-        var result = client().searchConceptValues(base(), req(), "\\gene\\", "BRCA", 1, 10);
+        PaginatedSearchResult<String> result = client().searchConceptValues(base(), "\\gene\\", "BRCA", 1, 10);
 
-        assertThat(result).isNotNull();
+        assertThat(result.getResults()).containsExactly("BRCA1", "BRCA2");
+        assertThat(result.getPage()).isEqualTo(1);
+        assertThat(result.getTotal()).isEqualTo(2);
     }
 
     @Test

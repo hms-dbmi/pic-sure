@@ -23,11 +23,9 @@ public record UpdateQueryRequest(
         example = "eyJwaWNzdXJlUXVlcnlJZCI6Ijg2OTRlM2Q0LTVjYjQtNDEwZi04NDMxLTk5MzQ0NWU2ZDNmNiJ9"
     ) String metadata,
     @Schema(
-        description = "The replacement query request as a JSON string, stored as sent except that a top-level resourceCredentials member is removed.",
-        example = "{\"query\":{\"expectedResultType\":\"COUNT\"}}"
+        description = "The serialized QueryRequest that replaces the stored one. Resource credentials are stripped before it is stored.",
+        example = "{\"query\":{\"phenotypicClause\":null,\"expectedResultType\":\"COUNT\"}}"
     ) String query,
-    @Schema(
-        description = "The replacement query format version, sent with query when a row is upgraded to v3.", example = "3"
-    ) String version
+    @Schema(description = "The query format version that replaces the stored one.", example = "3") String version
 ) {
 }

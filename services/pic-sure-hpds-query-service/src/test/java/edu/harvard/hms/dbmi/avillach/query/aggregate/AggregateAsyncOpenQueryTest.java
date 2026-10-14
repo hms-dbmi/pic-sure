@@ -124,9 +124,12 @@ class AggregateAsyncOpenQueryTest {
                 .content("{\"query\":{\"expectedResultType\":\"DATAFRAME\"}}")
         ).andExpect(status().isOk());
 
-        // Generic authorized path: the raw DATAFRAME query is stored + dispatched unchanged; no consent lookup, no CROSS_COUNT rewrite.
-        verify(operationsClient)
-            .save(argThat((SaveQueryRequest r) -> r.query() != null && r.query().contains("DATAFRAME") && !r.query().contains("select")));
+        verify(operationsClient).save(
+            argThat(
+                (SaveQueryRequest r) -> r.query() != null && r.query().contains("\"expectedResultType\":\"DATAFRAME\"")
+                    && r.query().contains("\"select\":[]")
+            )
+        );
         hpds.verify(0, postRequestedFor(urlEqualTo("/v3/search")));
         hpds.verify(
             postRequestedFor(urlEqualTo("/PIC-SURE/v3/query"))

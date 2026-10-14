@@ -14,6 +14,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -55,6 +57,7 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 class HpdsQueryControllerTest {
 
     private static final String USER = "auth0|alice";
+    private static final String COUNT_BODY = "{\"query\":{\"expectedResultType\":\"COUNT\"}}";
 
     static WireMockServer hpds;
 
@@ -95,7 +98,7 @@ class HpdsQueryControllerTest {
     void queryPathNoLongerServesTheV3IngressPrefix() throws Exception {
         mockMvc.perform(
             post("/hpds/auth/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer caller-token").content("{\"query\":\"q\"}")
+                .header("Authorization", "Bearer caller-token").content(COUNT_BODY)
         ).andExpect(status().isNotFound());
     }
 
@@ -109,7 +112,7 @@ class HpdsQueryControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer caller-token").content("{\"query\":\"q\"}")
+                .header("Authorization", "Bearer caller-token").content(COUNT_BODY)
         ).andExpect(status().isOk()).andExpect(jsonPath("$.resourceResultId").value("rr-3"));
 
         verify(consentAuthorization).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
@@ -126,7 +129,7 @@ class HpdsQueryControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer caller-token").content("{\"query\":\"q\"}")
+                .header("Authorization", "Bearer caller-token").content(COUNT_BODY)
         ).andExpect(status().isOk());
 
         verify(consentAuthorization).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
@@ -199,7 +202,7 @@ class HpdsQueryControllerTest {
         stubV3Submit("rr-new");
         hpds.stubFor(
             WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-new/signed-url"))
-                .willReturn(okJson("{\"url\":\"https://example.test/result\"}"))
+                .willReturn(okJson("{\"signedUrl\":\"https://example.test/result\"}"))
         );
 
         mockMvc.perform(
@@ -232,7 +235,8 @@ class HpdsQueryControllerTest {
         StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
         hpds.stubFor(
-            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).willReturn(okJson("{\"url\":\"https://example.test/result\"}"))
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url"))
+                .willReturn(okJson("{\"signedUrl\":\"https://example.test/result\"}"))
         );
 
         mockMvc.perform(
@@ -271,6 +275,47 @@ class HpdsQueryControllerTest {
         verify(consentAuthorization).verifyReadAccess("auth", stored, "Bearer caller-token");
     }
 
+    @Test
+    void malformedJsonIs400() throws Exception {
+        mockMvc
+            .perform(
+                post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"query\":")
+            ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
+            .andExpect(jsonPath("$.message").value("Malformed request body"));
+    }
+
+    @Test
+    void signedUrlBodyIsByteIdenticalToWhatHpdsSent() throws Exception {
+        UUID id = UUID.randomUUID();
+        String fromHpds = "{\"signedUrl\":\"https://pic-sure-exports.s3.amazonaws.com/rr-1.avro"
+            + "?X-Amz-Expires=3600&X-Amz-Signature=5d41402abc4b2a76b9719d911017c592\"}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-1", "AVAILABLE", "3", null));
+        hpds.stubFor(WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).willReturn(okJson(fromHpds)));
+
+        mockMvc
+            .perform(
+                post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                    .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+            ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON)).andExpect(content().string(fromHpds))
+            .andExpect(header().doesNotExist("Matched-Stub-Id"));
+    }
+
+    @Test
+    void signedUrlOfAResultThatIsNotReadyKeepsHpdsStatusAndBody() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null));
+        hpds.stubFor(
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url"))
+                .willReturn(aResponse().withStatus(400).withBody("Status : RUNNING"))
+        );
+
+        mockMvc.perform(
+            post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header("Authorization", "Bearer caller-token").contentType(MediaType.APPLICATION_JSON).content("{}")
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("Status : RUNNING"));
+    }
+
     // --- upstream failures surface as 502, not 200/500 ---
 
     @Test
@@ -279,23 +324,22 @@ class HpdsQueryControllerTest {
 
         mockMvc.perform(
             post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
+                .content(COUNT_BODY)
         ).andExpect(status().isBadGateway()).andExpect(jsonPath("$.errorType").value("upstream_unavailable"));
     }
 
     // --- ?isInstitute=true is gone: federated/GIC queries are no longer supported ---
     //
-    // The guard must stay until at least one release after removal. Jackson's defaultImpl silently
-    // reinterprets a {"@type":"FederatedQueryRequest"} body as a GeneralQueryRequest, so isInstitute
-    // is the ONLY remaining signal that a caller intended a federated submission. Without this guard
-    // such a caller gets a 200 for a query stripped of its federation. Do not delete as dead code.
+    // The guard must stay until at least one release after removal. HpdsQueryRequest ignores @type and any other
+    // unknown member, so a {"@type":"FederatedQueryRequest"} body binds as an ordinary query and isInstitute is the
+    // ONLY remaining signal of federated intent. Do not delete as dead code.
 
     @Test
     void isInstituteIsGoneOnTheUnversionedPath() throws Exception {
         mockMvc.perform(
             post("/hpds/auth/query").param("isInstitute", "true").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, "alice@harvard.edu").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
+                .content(COUNT_BODY)
         ).andExpect(status().isGone()).andExpect(jsonPath("$.errorType").value("gone"));
     }
 
@@ -303,7 +347,7 @@ class HpdsQueryControllerTest {
 
     @Test
     void queryWithoutGatewayIdentityIsRejected() throws Exception {
-        mockMvc.perform(post("/hpds/auth/query").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}"))
+        mockMvc.perform(post("/hpds/auth/query").contentType(MediaType.APPLICATION_JSON).content(COUNT_BODY))
             .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 

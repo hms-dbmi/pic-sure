@@ -32,6 +32,7 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
@@ -228,8 +229,7 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-1"), any()))
-            .thenReturn(org.springframework.http.ResponseEntity.ok("{\"url\":\"x\"}"));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-1"), any())).thenReturn(new SignedUrlResponse("https://s3/x"));
 
         service.queryResultSignedUrl("auth", id, req());
 
@@ -259,8 +259,7 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "AVAILABLE", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"), any()))
-            .thenReturn(org.springframework.http.ResponseEntity.ok("{}"));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"), any())).thenReturn(new SignedUrlResponse("https://s3/x"));
 
         service.queryResultSignedUrl("auth", id, req(), "Bearer caller-token");
 
@@ -373,8 +372,7 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), null));
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
-        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-new"), any()))
-            .thenReturn(org.springframework.http.ResponseEntity.ok("{}"));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-new"), any())).thenReturn(new SignedUrlResponse("https://s3/x"));
 
         service.queryResultSignedUrl("auth", id, req(), "Bearer caller-token");
 

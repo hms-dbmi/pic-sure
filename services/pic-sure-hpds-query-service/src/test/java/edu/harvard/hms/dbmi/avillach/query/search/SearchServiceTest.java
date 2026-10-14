@@ -11,8 +11,6 @@ import static org.mockito.Mockito.when;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
@@ -39,10 +37,8 @@ class SearchServiceTest {
         return p;
     }
 
-    private QueryRequest req() {
-        GeneralQueryRequest r = new GeneralQueryRequest();
-        r.setQuery("BRCA");
-        return r;
+    private SearchRequest req() {
+        return new SearchRequest("BRCA");
     }
 
     @Test
@@ -80,17 +76,17 @@ class SearchServiceTest {
 
     @Test
     void valuesPassesParamsThroughOnVersionedBase() {
-        service.searchConceptValues("auth", req(), "\\gene\\", "BRCA", 1, 10);
+        service.searchConceptValues("auth", "\\gene\\", "BRCA", 1, 10);
 
-        verify(hpds).searchConceptValues(eq("http://hpds/PIC-SURE/v3"), any(), eq("\\gene\\"), eq("BRCA"), eq(1), eq(10));
+        verify(hpds).searchConceptValues("http://hpds/PIC-SURE/v3", "\\gene\\", "BRCA", 1, 10);
     }
 
     @Test
     void valuesPropagatesHpdsUpstreamError() {
-        when(hpds.searchConceptValues(any(), any(), any(), any(), any(), any())).thenThrow(new HpdsCommunicationException("boom"));
+        when(hpds.searchConceptValues(any(), any(), any(), any(), any())).thenThrow(new HpdsCommunicationException("boom"));
 
         Assertions.assertThrows(
-            HpdsCommunicationException.class, () -> service.searchConceptValues("auth", req(), "\\gene\\", "BRCA", 1, 10)
+            HpdsCommunicationException.class, () -> service.searchConceptValues("auth", "\\gene\\", "BRCA", 1, 10)
         );
     }
 
