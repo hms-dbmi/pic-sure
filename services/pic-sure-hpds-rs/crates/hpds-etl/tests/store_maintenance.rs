@@ -762,6 +762,84 @@ fn recover_refuses_a_staged_file_the_journal_does_not_describe() {
     assert!(store.out.join(".publish-journal").exists());
 }
 
+/// A store whose removal of its first concept stopped after the journal was written, and
+/// the path of its journal.
+fn journaled_store() -> (Store, std::path::PathBuf) {
+    let store = edge_store();
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let options = RemoveOptions {
+        stop_after: Some(PublishStep::Journaled),
+        ..RemoveOptions::default()
+    };
+    remove_concepts(&store.out, &list_path, &protection(), &options).unwrap_err();
+    let journal = store.out.join(".publish-journal");
+    (store, journal)
+}
+
+#[test]
+fn recover_refuses_a_symlinked_staged_file() {
+    let (store, _) = journaled_store();
+    let staged = temporary_files(&store.out)
+        .into_iter()
+        .find(|n| n.starts_with(".pheno.blocks.tmp-"))
+        .map(|n| store.out.join(n))
+        .unwrap();
+    let elsewhere = store.dir.path().join("blocks-elsewhere");
+    std::fs::rename(&staged, &elsewhere).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, &staged).unwrap();
+    let before = snapshot(&store.out);
+
+    let error = recover(&store.out, &protection()).unwrap_err().to_string();
+
+    assert!(error.contains("symbolic link"), "{error}");
+    assert_eq!(snapshot(&store.out), before);
+}
+
+/// A change made to a journal's JSON.
+type JournalEdit = fn(&mut serde_json::Value);
+
+#[test]
+fn recover_refuses_a_journal_edited_out_of_shape() {
+    let edits: [(&str, JournalEdit); 5] = [
+        ("swapped order", |j| {
+            j["files"].as_array_mut().unwrap().reverse();
+        }),
+        ("duplicate target", |j| {
+            let index = j["files"][1].clone();
+            j["files"][0] = index;
+        }),
+        ("unknown record field", |j| {
+            j["record"]["note"] = "x".into();
+        }),
+        ("removed paths that disagree", |j| {
+            let first = j["record"]["removed_paths"][0].clone();
+            j["record"]["removed_paths"] = serde_json::json!([first, "\\other\\"]);
+        }),
+        ("record with a result", |j| {
+            j["record"]["result"] = "published".into();
+        }),
+    ];
+    for (what, edit) in edits {
+        let (store, journal) = journaled_store();
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+        edit(&mut value);
+        std::fs::write(&journal, serde_json::to_vec(&value).unwrap()).unwrap();
+        let before = snapshot(&store.out);
+
+        let error = recover(&store.out, &protection()).unwrap_err().to_string();
+
+        assert!(
+            error.contains("damaged") || error.contains("does not describe"),
+            "{what}: {error}"
+        );
+        assert_eq!(snapshot(&store.out), before, "{what}");
+        assert!(records(&store.out).unwrap().is_empty(), "{what}");
+    }
+}
+
 #[test]
 fn remove_concepts_finishes_an_interrupted_removal_before_its_own() {
     let store = edge_store();

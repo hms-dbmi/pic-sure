@@ -24,9 +24,12 @@
 
 use std::fs::File;
 use std::io::{Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
-use hpds_format::{BLOCKS_FILE_NAME, INDEX_FILE_NAME, PUBLISH_JOURNAL_FILE_NAME, Protection};
+use hpds_format::{
+    BLOCKS_FILE_NAME, INDEX_FILE_NAME, PUBLISH_JOURNAL_FILE_NAME, PhenoIndex, Protection,
+};
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3::{Xxh3, xxh3_128};
 
@@ -37,6 +40,7 @@ use crate::private_fs;
 use crate::store::{
     GENERATION_FILE_NAME, ServingGuard, StagedFile, read_index, replace_file, sync_parent,
 };
+use crate::store_maintenance::{OPERATION, RemovalRecord};
 
 /// The points of a publish after which a test can stop it as a crash would, leaving every
 /// file as it is ([`StopAfter`]).
@@ -79,15 +83,17 @@ const STORE_FILES: [&str; 6] = [
 
 /// The journal file's content.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Journal {
     operation: String,
     publish_id: String,
     files: Vec<JournalFile>,
-    record: serde_json::Value,
+    record: RemovalRecord,
 }
 
 /// One staged file of a journal.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct JournalFile {
     staged: String,
     target: String,
@@ -205,9 +211,10 @@ pub fn refuse_pending_publish(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Publishes `replacements` (staged files, renamed in this order) into the store in `dir`
-/// through the journal, for `operation`, ending with `record` appended to the maintenance
-/// log with result [`crate::store_maintenance::RESULT_PUBLISHED`]. `column_meta` regenerates
+/// Publishes `replacements` (staged files, renamed in this order: `pheno.blocks` when there
+/// is one, then `pheno.index`) into the store in `dir` through the journal, ending with
+/// `record` appended to the maintenance log with result
+/// [`crate::store_maintenance::RESULT_PUBLISHED`]. `column_meta` regenerates
 /// `columnMeta.csv` once the files are in place. The caller holds the store lock and
 /// `serving`, to which the staged index is added before the journal is written, so a
 /// service that opens the new index waits until the publish is done. An interrupt waits
@@ -218,9 +225,8 @@ pub fn refuse_pending_publish(dir: &Path) -> Result<()> {
 /// `column_meta`, and [`EtlError::Usage`] when `stop_after` stops the publish.
 pub(crate) fn publish(
     dir: &Path,
-    operation: &str,
     replacements: Vec<Replacement>,
-    record: serde_json::Value,
+    record: RemovalRecord,
     column_meta: impl FnOnce() -> Result<()>,
     serving: &mut ServingGuard,
     stop_after: StopAfter,
@@ -245,9 +251,9 @@ pub(crate) fn publish(
         return Err(stopped(replacements, PublishStep::Staged));
     }
     let mut record = record;
-    record["publish_id"] = publish_id.clone().into();
+    record.publish_id = Some(publish_id.clone());
     let journal = Journal {
-        operation: operation.to_owned(),
+        operation: OPERATION.to_owned(),
         publish_id,
         files,
         record,
@@ -283,7 +289,9 @@ pub(crate) fn publish(
     }
     maintenance_log::append(
         dir,
-        &with_result(journal.record, crate::store_maintenance::RESULT_PUBLISHED),
+        &journal
+            .record
+            .finished(crate::store_maintenance::RESULT_PUBLISHED),
     )?;
     if stop(PublishStep::Recorded) {
         return Err(stopped(Vec::new(), PublishStep::Recorded));
@@ -342,10 +350,11 @@ pub(crate) fn recover_held(
     };
     if let Some(journal) = journal {
         let interrupts = crate::cleanup::lock();
+        check_record(dir, &journal, protection)?;
         for file in &journal.files {
             let staged = dir.join(&file.staged);
             let target = dir.join(&file.target);
-            if std::fs::symlink_metadata(&staged).is_ok() {
+            if staged_present(&staged)? {
                 check_file(&staged, file)?;
                 if file.target == INDEX_FILE_NAME {
                     serving.hold(&staged)?;
@@ -367,10 +376,7 @@ pub(crate) fn recover_held(
             .iter()
             .any(|r| r["publish_id"] == journal.publish_id.as_str());
         if !logged {
-            maintenance_log::append(
-                dir,
-                &with_result(journal.record, RESULT_COMPLETED_BY_RECOVER),
-            )?;
+            maintenance_log::append(dir, &journal.record.finished(RESULT_COMPLETED_BY_RECOVER))?;
             report.recorded = true;
         }
         std::fs::remove_file(&journal_path).map_err(EtlError::io("removing", &journal_path))?;
@@ -397,7 +403,27 @@ fn parse_journal(path: &Path, bytes: &[u8]) -> Result<Journal> {
         ))
     };
     let journal: Journal = serde_json::from_slice(bytes).map_err(|e| damaged(e.to_string()))?;
+    let targets: Vec<&str> = journal.files.iter().map(|f| f.target.as_str()).collect();
+    if targets != [INDEX_FILE_NAME] && targets != [BLOCKS_FILE_NAME, INDEX_FILE_NAME] {
+        return Err(damaged(format!(
+            "it names the targets {targets:?}; a publish replaces pheno.blocks then pheno.index, or pheno.index alone"
+        )));
+    }
+    if journal.operation != OPERATION
+        || journal.record.operation != OPERATION
+        || journal.record.publish_id.as_deref() != Some(journal.publish_id.as_str())
+        || journal.record.time.is_some()
+        || journal.record.result.is_some()
+        || !is_hex(&journal.publish_id, 32)
+    {
+        return Err(damaged(
+            "its operation, publish id or record does not match a remove-concepts publish".into(),
+        ));
+    }
     for file in &journal.files {
+        if !is_hex(&file.xxh3_128, 32) {
+            return Err(damaged(format!("it names the hash {:?}", file.xxh3_128)));
+        }
         if !REPLACEABLE.contains(&file.target.as_str()) {
             return Err(damaged(format!("it names the target {:?}", file.target)));
         }
@@ -409,6 +435,85 @@ fn parse_journal(path: &Path, bytes: &[u8]) -> Result<Journal> {
         }
     }
     Ok(journal)
+}
+
+/// True when `text` is `len` lowercase hex digits.
+fn is_hex(text: &str, len: usize) -> bool {
+    text.len() == len && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// True when the staged file `path` exists, false when it does not.
+///
+/// # Errors
+/// [`EtlError::Usage`] when it exists as anything but a regular file, a symbolic link
+/// included.
+fn staged_present(path: &Path) -> Result<bool> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_file() => Ok(true),
+        Ok(_) => Err(EtlError::Usage(format!(
+            "{} is a symbolic link or not a regular file, so it is not the file the interrupted publish staged; the store is left as it is",
+            path.display()
+        ))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(EtlError::io("reading", path)(e)),
+    }
+}
+
+/// Checks the journal's record against the index it publishes, before anything moves: the
+/// index (staged, or already in place) must open under `protection`, its SHA-256 must be the
+/// record's `index_sha256`, its store id the record's, its concept count the record's
+/// `remaining`, and none of the record's `removed_paths` may be in it.
+///
+/// # Errors
+/// [`EtlError::Usage`] when any of these fails; I/O errors reading the index.
+fn check_record(dir: &Path, journal: &Journal, protection: &Protection) -> Result<()> {
+    let Some(file) = journal.files.last() else {
+        return Ok(());
+    };
+    let staged = dir.join(&file.staged);
+    let path = if staged_present(&staged)? {
+        staged
+    } else {
+        dir.join(&file.target)
+    };
+    let bytes = read_no_follow(&path)?;
+    let record = &journal.record;
+    let matches = PhenoIndex::decode(&bytes, protection).is_ok_and(|index| {
+        record.index_sha256.as_deref() == Some(maintenance_log::sha256_hex(&bytes).as_str())
+            && index.store_id().to_string() == record.store_id
+            && index.concepts().len() as u64 == record.remaining
+            && record.removed == record.removed_paths.len() as u64
+            && record
+                .removed_paths
+                .iter()
+                .all(|removed| index.position(removed).is_none())
+    });
+    if !matches {
+        return Err(EtlError::Usage(format!(
+            "{}: its record does not describe {}; the store is left as it is",
+            dir.join(PUBLISH_JOURNAL_FILE_NAME).display(),
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+/// The bytes of the regular file `path`, never through a symbolic link.
+fn read_no_follow(path: &Path) -> Result<Vec<u8>> {
+    let mut file = open_no_follow(path)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(EtlError::io("reading", path))?;
+    Ok(bytes)
+}
+
+/// Opens `path` for reading, refusing a symbolic link (`O_NOFOLLOW`).
+fn open_no_follow(path: &Path) -> Result<File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .map_err(EtlError::io("reading", path))
 }
 
 /// True when `name` is a temporary name [`StagedFile`] gives a replacement of `target`.
@@ -434,7 +539,7 @@ fn check_file(path: &Path, file: &JournalFile) -> Result<()> {
 
 /// The length and XXH3-128 of the file at `path`.
 fn hash_file(path: &Path) -> Result<(u64, u128)> {
-    let mut file = File::open(path).map_err(EtlError::io("reading", path))?;
+    let mut file = open_no_follow(path)?;
     let mut hasher = Xxh3::new();
     let mut buffer = vec![0u8; 1 << 20];
     let mut bytes = 0u64;
@@ -484,13 +589,6 @@ fn file_name(path: &Path) -> Result<String> {
         .and_then(|n| n.to_str())
         .map(str::to_owned)
         .ok_or_else(|| EtlError::Usage(format!("{} has no UTF-8 file name", path.display())))
-}
-
-/// `record` with its `result` set and its `time` set to now, in UTC.
-pub(crate) fn with_result(mut record: serde_json::Value, result: &str) -> serde_json::Value {
-    record["result"] = result.into();
-    record["time"] = maintenance_log::utc_now().into();
-    record
 }
 
 /// Leaves `replacements` staged, as a crash would, and returns the error a stopped publish

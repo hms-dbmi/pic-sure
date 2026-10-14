@@ -11,7 +11,7 @@ use hpds_format::{
     INDEX_FILE_NAME, PartitionTable, PhenoIndex, Protection, java_string_cmp,
 };
 use roaring::RoaringBitmap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
@@ -433,7 +433,7 @@ pub fn remove_concepts(
                 &concepts_sha256,
                 Some(&maintenance_log::sha256_hex(&current)),
             );
-            maintenance_log::append(dir, &publish::with_result(record, RESULT_NO_CHANGE))?;
+            maintenance_log::append(dir, &record.finished(RESULT_NO_CHANGE))?;
         }
         return Ok(report);
     }
@@ -483,7 +483,6 @@ pub fn remove_concepts(
     );
     publish::publish(
         dir,
-        "remove-concepts",
         replacements,
         record,
         || write_column_meta_csv_file(&rewritten, &dir.join(COLUMN_META_CSV_NAME)),
@@ -500,6 +499,72 @@ pub const RESULT_PUBLISHED: &str = "published";
 /// nothing to compact, and wrote no store file.
 pub const RESULT_NO_CHANGE: &str = "no-change";
 
+/// A maintenance log record of `remove-concepts`, the record a removal's publish journal
+/// carries. Typed, and parsed with unknown fields refused, so a journal can only ever add a
+/// record of this shape to the log.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemovalRecord {
+    /// UTC time the record was appended; `None` until then.
+    pub time: Option<String>,
+    /// Always `remove-concepts`.
+    pub operation: String,
+    /// [`RESULT_PUBLISHED`], [`RESULT_NO_CHANGE`] or a result of `recover`; `None` until
+    /// appended.
+    pub result: Option<String>,
+    /// The `hpds-etl` banner of the run.
+    pub tool: String,
+    /// The store id.
+    pub store_id: String,
+    /// The concepts file as given.
+    pub concepts_file: String,
+    /// The SHA-256 of the concepts file.
+    pub concepts_file_sha256: String,
+    /// Lines read.
+    pub lines: u64,
+    /// Empty lines skipped.
+    pub blank_lines: u64,
+    /// Lines that named no concept.
+    pub lines_naming_no_concept: u64,
+    /// Concepts removed.
+    pub removed: u64,
+    /// Paths of the removed concepts.
+    pub removed_paths: Vec<String>,
+    /// Observations they held.
+    pub observations_removed: u64,
+    /// Distinct patients with a removed row, `None` when a removed block was unreadable.
+    pub patients_with_removed_rows: Option<u64>,
+    /// Removed blocks that could not be read.
+    pub unreadable_removed_blocks: u64,
+    /// Concepts left.
+    pub remaining: u64,
+    /// Overlap patients dropped from tagged sets.
+    pub tagged_patients_dropped: u64,
+    /// Whether `pheno.blocks` was compacted.
+    pub compacted: bool,
+    /// Whether unreferenced blocks were left in `pheno.blocks`.
+    pub removed_blocks_kept: bool,
+    /// Bytes of `pheno.blocks` no remaining concept referenced before the run.
+    pub unreferenced_bytes: u64,
+    /// Size of `pheno.blocks` before.
+    pub blocks_bytes_before: u64,
+    /// Size of `pheno.blocks` after.
+    pub blocks_bytes_after: u64,
+    /// SHA-256 of the `pheno.index` the run left.
+    pub index_sha256: Option<String>,
+    /// Id of the publish, shared with its journal; `None` for a run that published nothing.
+    pub publish_id: Option<String>,
+}
+
+impl RemovalRecord {
+    /// The record with `result` and the current UTC time set, as JSON.
+    pub(crate) fn finished(mut self, result: &str) -> serde_json::Value {
+        self.result = Some(result.to_owned());
+        self.time = Some(maintenance_log::utc_now());
+        serde_json::to_value(self).unwrap_or_default()
+    }
+}
+
 /// The maintenance log record of the removal `report` describes, driven by `concepts_file`
 /// whose SHA-256 is `concepts_sha256`, leaving the index whose SHA-256 is `index_sha256`.
 /// Its `result` and `time` are set when it is appended.
@@ -508,33 +573,37 @@ fn removal_record(
     concepts_file: &Path,
     concepts_sha256: &str,
     index_sha256: Option<&str>,
-) -> serde_json::Value {
-    serde_json::json!({
-        "time": null,
-        "operation": "remove-concepts",
-        "result": null,
-        "tool": crate::banner(),
-        "store_id": report.store_id,
-        "concepts_file": concepts_file.display().to_string(),
-        "concepts_file_sha256": concepts_sha256,
-        "lines": report.lines,
-        "blank_lines": report.blank_lines,
-        "lines_naming_no_concept": report.not_found.len(),
-        "removed": report.removed,
-        "removed_paths": report.removed_paths,
-        "observations_removed": report.observations_removed,
-        "patients_with_removed_rows": report.patients_with_removed_rows,
-        "unreadable_removed_blocks": report.unreadable_removed_blocks,
-        "remaining": report.remaining,
-        "tagged_patients_dropped": report.tagged_patients_dropped,
-        "compacted": report.compacted,
-        "removed_blocks_kept": report.removed_blocks_kept,
-        "unreferenced_bytes": report.unreferenced_bytes,
-        "blocks_bytes_before": report.blocks_bytes_before,
-        "blocks_bytes_after": report.blocks_bytes_after,
-        "index_sha256": index_sha256,
-    })
+) -> RemovalRecord {
+    RemovalRecord {
+        time: None,
+        operation: OPERATION.to_owned(),
+        result: None,
+        tool: crate::banner(),
+        store_id: report.store_id.clone(),
+        concepts_file: concepts_file.display().to_string(),
+        concepts_file_sha256: concepts_sha256.to_owned(),
+        lines: report.lines,
+        blank_lines: report.blank_lines,
+        lines_naming_no_concept: report.not_found.len() as u64,
+        removed: report.removed,
+        removed_paths: report.removed_paths.clone(),
+        observations_removed: report.observations_removed,
+        patients_with_removed_rows: report.patients_with_removed_rows,
+        unreadable_removed_blocks: report.unreadable_removed_blocks,
+        remaining: report.remaining,
+        tagged_patients_dropped: report.tagged_patients_dropped,
+        compacted: report.compacted,
+        removed_blocks_kept: report.removed_blocks_kept,
+        unreferenced_bytes: report.unreferenced_bytes,
+        blocks_bytes_before: report.blocks_bytes_before,
+        blocks_bytes_after: report.blocks_bytes_after,
+        index_sha256: index_sha256.map(str::to_owned),
+        publish_id: None,
+    }
 }
+
+/// The operation name of `remove-concepts` in journals and log records.
+pub const OPERATION: &str = "remove-concepts";
 
 /// Regenerates `columnMeta.csv` for the store in `dir` from its index, byte for byte as
 /// `hpds-etl load` writes it, at `out` or by default at `<dir>/columnMeta.csv`, holding the
