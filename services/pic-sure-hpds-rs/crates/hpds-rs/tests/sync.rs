@@ -435,3 +435,39 @@ async fn a_string_bound_jackson_refuses_is_a_400() {
         );
     }
 }
+
+#[tokio::test]
+async fn not_is_read_as_jacksons_boolean_coercion_reads_it() {
+    let f = fixture();
+    let body = |not: &str| {
+        format!(
+            r#"{{"query":{{"expectedResultType":"COUNT","phenotypicClause":{{"phenotypicFilterType":"REQUIRED","conceptPath":{},"not":{not}}}}},"resourceUUID":null}}"#,
+            serde_json::to_string(SEX).unwrap()
+        )
+    };
+    for accepted in [
+        r#""TRUE""#,
+        r#"" true ""#,
+        r#""null""#,
+        r#""  ""#,
+        "2",
+        "0",
+        "null",
+    ] {
+        let reply = post(&f.app, SYNC, body(accepted)).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (StatusCode::OK, "4978"),
+            "{accepted}"
+        );
+    }
+    for refused in [r#""tRuE""#, r#""yes""#, r#""1""#, "1.0"] {
+        let reply = post(&f.app, SYNC, body(refused)).await;
+        assert_eq!(
+            reply.status,
+            StatusCode::BAD_REQUEST,
+            "{refused}: {}",
+            reply.body
+        );
+    }
+}

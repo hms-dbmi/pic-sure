@@ -22,8 +22,11 @@
 //! - Doubles accept JSON numbers and strings (`"5"`, `" 2.5 "`, `"NaN"`, `"Infinity"`), and an
 //!   empty or blank string is `null`, as Jackson's scalar coercion does. Strings follow
 //!   Jackson's coercion, not `Double.parseDouble`: `"1d"`, `"0x1p3"` and `"-NaN"` are refused
-//!   (see `hpds_format::jackson_string_double`). Booleans accept `true`, `false` and the
-//!   strings `"true"` and `"false"`.
+//!   (see `hpds_format::jackson_string_double`).
+//! - Booleans (`not`) accept `true` and `false`, a JSON integer (0 is false, any other is true,
+//!   as Jackson's int to Boolean coercion reads it; a float is refused), and a string trimmed as
+//!   `String.trim` does: blank or `null` is null, `true`, `TRUE` and `True` are true, `false`,
+//!   `FALSE` and `False` are false, and any other text (`tRuE`, `yes`, `1`) is refused.
 //! - Numbers are read from their literal text as Jackson 2.21 reads them: a number with more
 //!   than 1,000 digits is refused (`StreamReadConstraints`), and a `min` or `max` that
 //!   overflows a double is `±Infinity` and one written as the integer `-0` is `0.0`. Every
@@ -38,6 +41,7 @@
 
 use std::fmt;
 
+use hpds_format::java_trim;
 use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -705,13 +709,16 @@ fn java_double<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>
     deserializer.deserialize_any(JavaDouble)
 }
 
+/// `Boolean` as Jackson 2.21's `NumberDeserializers.BooleanDeserializer` reads it with the
+/// default mapper (see the module docs). An integer beyond 64 bits, which Jackson reads as true,
+/// arrives from `serde_json` as a float and is refused.
 struct JavaBoolean;
 
 impl<'de> Visitor<'de> for JavaBoolean {
     type Value = Option<bool>;
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("a boolean, \"true\", \"false\", or null")
+        f.write_str("a boolean, an integer, \"true\", \"false\", or null")
     }
 
     fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
@@ -730,11 +737,20 @@ impl<'de> Visitor<'de> for JavaBoolean {
         Ok(Some(value))
     }
 
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
+        Ok(Some(value != 0))
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
+        Ok(Some(value != 0))
+    }
+
     fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
-        match value {
-            "true" => Ok(Some(true)),
-            "false" => Ok(Some(false)),
-            "" => Ok(None),
+        let trimmed = java_trim(value);
+        match trimmed {
+            "" | "null" => Ok(None),
+            "true" | "TRUE" | "True" => Ok(Some(true)),
+            "false" | "FALSE" | "False" => Ok(Some(false)),
             _ => Err(E::invalid_value(de::Unexpected::Str(value), &self)),
         }
     }
@@ -857,6 +873,60 @@ mod tests {
         };
         assert!(sub.phenotypic_clauses.is_empty());
         assert_eq!(sub.operator, None);
+    }
+
+    #[test]
+    fn not_follows_jacksons_boolean_coercion() {
+        let filter_not = |not: Value| {
+            parse(json!({"expectedResultType": "COUNT", "phenotypicClause":
+                {"phenotypicFilterType": "REQUIRED", "conceptPath": "\\a\\", "not": not}}))
+            .map(|q| match q.phenotypic_clause {
+                Some(PhenotypicClause::Filter(f)) => f.not,
+                _ => panic!("expected a filter"),
+            })
+        };
+        let subquery_not = |not: Value| {
+            parse(json!({"expectedResultType": "COUNT", "phenotypicClause": {"operator": "AND", "not": not,
+                "phenotypicClauses": [{"phenotypicFilterType": "REQUIRED", "conceptPath": "\\a\\"}]}}))
+            .map(|q| match q.phenotypic_clause {
+                Some(PhenotypicClause::Subquery(s)) => s.not,
+                _ => panic!("expected a subquery"),
+            })
+        };
+        let jackson = [
+            (json!("null"), Some(None)),
+            (json!(" null "), Some(None)),
+            (json!("TRUE"), Some(Some(true))),
+            (json!("True"), Some(Some(true))),
+            (json!(" true "), Some(Some(true))),
+            (json!("\ttrue\n"), Some(Some(true))),
+            (json!("False"), Some(Some(false))),
+            (json!(" FALSE "), Some(Some(false))),
+            (json!("  "), Some(None)),
+            (json!(""), Some(None)),
+            (json!("tRuE"), None),
+            (json!("yes"), None),
+            (json!("1"), None),
+            (json!("0"), None),
+            (json!("NULL"), None),
+            (json!(1), Some(Some(true))),
+            (json!(0), Some(Some(false))),
+            (json!(2), Some(Some(true))),
+            (json!(-1), Some(Some(true))),
+            (json!(1.0), None),
+            (json!(0.0), None),
+            (json!(null), Some(None)),
+            (json!(true), Some(Some(true))),
+            (json!(false), Some(Some(false))),
+        ];
+        for (not, expected) in jackson {
+            assert_eq!(filter_not(not.clone()).ok(), expected, "filter not {not}");
+            assert_eq!(
+                subquery_not(not.clone()).ok(),
+                expected,
+                "subquery not {not}"
+            );
+        }
     }
 
     #[test]
