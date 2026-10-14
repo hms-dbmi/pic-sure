@@ -126,6 +126,28 @@ async fn dataframe_lifecycle() {
 }
 
 #[tokio::test]
+async fn dataframe_select_of_patient_id_writes_the_patient_id() {
+    let f = fixture();
+    let submitted = submit(
+        &f.app,
+        json!({"expectedResultType": "DATAFRAME", "select": ["patient_id", SEX], "phenotypicClause": finnish()}),
+    )
+    .await;
+    let id = submitted["resourceResultId"].as_str().unwrap().to_owned();
+    assert_eq!(wait(&f.app, &id).await["resourceStatus"], "SUCCESS");
+    let result = post(&f.app, &format!("{QUERY}/{id}/result"), "{}").await;
+    let lines: Vec<&str> = result.body.lines().collect();
+    assert_eq!(lines[0], format!("patient_id,patient_id,{SEX}"));
+    assert_eq!(lines.len(), 103);
+    for line in &lines[1..] {
+        let fields: Vec<&str> = line.split(',').collect();
+        assert_eq!(fields.len(), 3, "{line}");
+        assert_eq!(fields[0], fields[1], "{line}");
+        assert!(fields[0].parse::<u32>().is_ok(), "{line}");
+    }
+}
+
+#[tokio::test]
 async fn unsupported_exports_end_in_error() {
     let f = fixture();
     for result_type in ["DATAFRAME_TIMESERIES", "DATAFRAME_PFB"] {

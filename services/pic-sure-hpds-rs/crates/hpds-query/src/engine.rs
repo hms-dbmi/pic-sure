@@ -20,7 +20,7 @@ use crate::partition::{ConceptRead, PartitionOptions, PartitionSet, ReadMode, Se
 use crate::result_cache::{self, ResultCache, ResultCacheStats, SyncAnswer};
 use crate::results::{
     CategoricalCrossCounts, ColumnBlock, ConceptCounts, ContinuousCrossCounts, Dataframe,
-    DataframeRows, PATIENT_ID_FIELD_NAME, SyncResult,
+    DataframeColumn, DataframeRows, PATIENT_ID_FIELD_NAME, SyncResult,
 };
 use crate::store::CachedConcept;
 use crate::validate::{QueryValidator, path_is_variant_spec};
@@ -494,7 +494,8 @@ impl Engine {
     ///
     /// A cell holds the patient's values from every selected partition holding the concept,
     /// partition by partition in name order and in input order within one. Java merges
-    /// cubes in an unspecified partition order.
+    /// cubes in an unspecified partition order. A `select` entry equal to `patient_id` holds
+    /// the patient id, as `MultiValueQueryV3Processor.runQuery` writes it.
     ///
     /// # Errors
     /// As for [`Engine::cohort`], [`QueryError::Block`] when a block cannot be loaded, and
@@ -505,6 +506,7 @@ impl Engine {
         let cohort = cohort.into_owned();
         let paths: Vec<(&str, ConceptRead)> = distinct(&query.select)
             .into_iter()
+            .filter(|path| *path != PATIENT_ID_FIELD_NAME)
             .filter_map(|path| Some((path, selection.concept(path)?)))
             .collect();
         let partitions: Arc<[bool]> = selection.mask().into();
@@ -529,7 +531,16 @@ impl Engine {
         let columns = query
             .select
             .iter()
-            .map(|path| loaded.get(path.as_str()).cloned())
+            .map(|path| {
+                if path == PATIENT_ID_FIELD_NAME {
+                    DataframeColumn::PatientId
+                } else {
+                    loaded
+                        .get(path.as_str())
+                        .cloned()
+                        .map_or(DataframeColumn::Empty, DataframeColumn::Values)
+                }
+            })
             .collect();
         let header = std::iter::once(PATIENT_ID_FIELD_NAME.to_owned())
             .chain(query.select.iter().cloned())

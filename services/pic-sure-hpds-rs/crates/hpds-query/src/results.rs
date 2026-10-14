@@ -181,10 +181,32 @@ pub struct Dataframe {
 /// `sortedByKey`), which is a k-way merge of the partitions on patient with ties broken by
 /// partition name. Numeric values are written with [`java_double_to_string`], the
 /// `toString` Java applies. A patient with no value, or a path no selected partition holds,
-/// gives an empty cell. CSV quoting is left to the writer.
+/// gives an empty cell. A `select` entry equal to [`PATIENT_ID_FIELD_NAME`] holds the patient
+/// id instead, as `MultiValueQueryV3Processor.runQuery` writes it. CSV quoting is left to the
+/// writer.
 pub struct DataframeRows {
     patients: roaring::bitmap::IntoIter,
-    columns: Vec<Option<Part>>,
+    columns: Vec<Cells>,
+}
+
+/// What one DATAFRAME column holds, as the engine hands it to [`DataframeRows`].
+#[derive(Debug, Clone)]
+pub(crate) enum DataframeColumn {
+    /// The patient id, for a `select` entry equal to [`PATIENT_ID_FIELD_NAME`]. Java matches
+    /// that header name before it looks at the dictionary, so it wins over any concept path
+    /// spelled the same.
+    PatientId,
+    /// The values of the concept the entry names.
+    Values(ColumnBlock),
+    /// Nothing: a path no selected partition holds.
+    Empty,
+}
+
+/// One column of [`DataframeRows`] while rows are produced.
+enum Cells {
+    PatientId,
+    Values(Part),
+    Empty,
 }
 
 /// The block one DATAFRAME column reads, and, when some of its rows lie in unselected
@@ -216,15 +238,33 @@ struct Part {
 }
 
 impl DataframeRows {
-    /// Rows for `cohort`, one column per entry of `columns`: the block of that path, or
-    /// `None` for a path no selected partition holds.
-    pub(crate) fn new(cohort: RoaringBitmap, columns: Vec<Option<ColumnBlock>>) -> Self {
+    /// Rows for `cohort`, one column per entry of `columns`.
+    pub(crate) fn new(cohort: RoaringBitmap, columns: Vec<DataframeColumn>) -> Self {
         DataframeRows {
             patients: cohort.into_iter(),
             columns: columns
                 .into_iter()
-                .map(|column| column.map(Part::new))
+                .map(|column| match column {
+                    DataframeColumn::PatientId => Cells::PatientId,
+                    DataframeColumn::Values(block) => Cells::Values(Part::new(block)),
+                    DataframeColumn::Empty => Cells::Empty,
+                })
                 .collect(),
+        }
+    }
+}
+
+impl Cells {
+    /// Appends this column's cell for `patient` to `out` and returns true when the field
+    /// needs CSV quotes. A patient id never does.
+    fn write(&mut self, patient: u32, out: &mut Vec<u8>) -> bool {
+        match self {
+            Cells::PatientId => {
+                push_decimal_u32(patient, out);
+                false
+            }
+            Cells::Values(part) => part.write_cell(patient, out),
+            Cells::Empty => false,
         }
     }
 }
@@ -391,9 +431,7 @@ impl DataframeRows {
         push_decimal_u32(patient, &mut row.text);
         row.end_field();
         for column in &mut self.columns {
-            if let Some(part) = column {
-                part.write_cell(patient, &mut row.text);
-            }
+            column.write(patient, &mut row.text);
             row.end_field();
         }
         true
@@ -412,9 +450,7 @@ impl DataframeRows {
         for column in &mut self.columns {
             out.push(b',');
             let start = out.len();
-            if let Some(part) = column
-                && part.write_cell(patient, out)
-            {
+            if column.write(patient, out) {
                 quote_field(out, start);
             }
         }

@@ -298,6 +298,54 @@ fn patients_and_dataframe_rows() {
 }
 
 #[test]
+fn dataframe_select_of_patient_id_holds_the_patient_id() {
+    let s = demographics();
+    let mut q = query(
+        ResultType::Dataframe,
+        Some(filter_values(COHORT, &["a", "b"])),
+    );
+    q.select = vec![
+        "patient_id".into(),
+        SEX.into(),
+        "patient_id".into(),
+        "PATIENT_ID".into(),
+    ];
+    let frame = s.engine.dataframe(&q).unwrap();
+    assert_eq!(
+        frame.header,
+        ["patient_id", "patient_id", SEX, "patient_id", "PATIENT_ID"]
+    );
+    let rows: Vec<Vec<String>> = frame.rows.collect();
+    assert_eq!(
+        rows,
+        [
+            ["1", "1", "male", "1", ""],
+            ["2", "2", "male", "2", ""],
+            ["4", "4", "female", "4", ""],
+        ]
+    );
+    let mut csv = Vec::new();
+    let mut rows = s.engine.dataframe(&q).unwrap().rows;
+    while rows.next_csv_into(&mut csv) {}
+    assert_eq!(
+        String::from_utf8(csv).unwrap(),
+        "1,1,male,1,\n2,2,male,2,\n4,4,female,4,\n"
+    );
+}
+
+#[test]
+fn dataframe_patient_id_wins_over_a_concept_spelled_the_same() {
+    let s = store(&[
+        (5, "patient_id", None, Some("stored")),
+        (7, "patient_id", None, Some("x")),
+    ]);
+    let mut q = query(ResultType::Dataframe, None);
+    q.select = vec!["patient_id".into()];
+    let rows: Vec<Vec<String>> = s.engine.dataframe(&q).unwrap().rows.collect();
+    assert_eq!(rows, [["5", "5"], ["7", "7"]]);
+}
+
+#[test]
 fn dataframe_keeps_input_order_within_a_patient() {
     const NOTE: &str = "\\note\\";
     const LAB: &str = "\\lab\\";
