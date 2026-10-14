@@ -19,19 +19,51 @@ use crate::java::{java_double_max, java_double_min};
 use crate::load::COLUMN_META_CSV_NAME;
 use crate::store::{StagedFile, lock_store, read_index, replace_file, sync_parent};
 
+/// Largest concepts file `remove-concepts` reads: 64 MiB, far above any list of concept
+/// paths, so a device or a wrong file is refused rather than read into memory.
+pub const MAX_CONCEPTS_FILE_BYTES: u64 = 64 << 20;
+
+/// How many unmatched lines the error of a strict removal lists before it only counts the
+/// rest.
+const LISTED_MISSING_LINES: usize = 20;
+
+/// How `remove-concepts` runs.
+#[derive(Clone, Debug, Default)]
+pub struct RemoveOptions {
+    /// Remove the concepts that exist even when some lines of the file name no concept,
+    /// listing those lines in the report. Without it such a line fails the command before
+    /// anything is written.
+    pub allow_missing: bool,
+    /// Rewrite only `pheno.index`, leaving the removed concepts' blocks in `pheno.blocks` as
+    /// unreferenced, still encrypted bytes. Without it `pheno.blocks` is compacted.
+    pub keep_removed_blocks: bool,
+}
+
 /// What `remove-concepts` did.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct RemoveReport {
+    /// The store's id, which removal keeps.
+    pub store_id: String,
     /// Lines read from the concepts file.
     pub lines: u64,
+    /// Empty lines, which name nothing and are skipped.
+    pub blank_lines: u64,
     /// Concepts removed from the index.
     pub removed: u64,
+    /// Paths of the removed concepts, in index order.
+    pub removed_paths: Vec<String>,
+    /// Observations the removed concepts held.
+    pub observations_removed: u64,
     /// Concepts left in the index.
     pub remaining: u64,
-    /// Lines that named no concept in the store, in file order. Java ignores them silently.
+    /// Lines that named no concept in the store, in file order. Only an
+    /// [`RemoveOptions::allow_missing`] run reports any; otherwise they fail the command.
     pub not_found: Vec<String>,
     /// Whether `pheno.blocks` was rewritten to hold only the remaining concepts' blocks.
     pub compacted: bool,
+    /// Whether the removed concepts' blocks were left in `pheno.blocks`
+    /// ([`RemoveOptions::keep_removed_blocks`]).
+    pub removed_blocks_kept: bool,
     /// Size of `pheno.blocks` in bytes before the command.
     pub blocks_bytes_before: u64,
     /// Size of `pheno.blocks` in bytes after the command.
@@ -64,71 +96,184 @@ pub fn java_read_lines(text: &str) -> Vec<&str> {
     lines
 }
 
+/// Reads the concepts file of `remove-concepts`: a regular file (a symbolic link to one is
+/// followed) of at most [`MAX_CONCEPTS_FILE_BYTES`], in UTF-8.
+///
+/// # Errors
+/// [`EtlError::Usage`] for anything but a regular file, or one too large; [`EtlError::Io`]
+/// when it cannot be read or is not UTF-8.
+pub fn read_concepts_file(path: &Path) -> Result<String> {
+    let meta = std::fs::metadata(path).map_err(EtlError::io("reading", path))?;
+    if !meta.is_file() {
+        return Err(EtlError::Usage(format!(
+            "{} is not a regular file; give the file listing the concept paths to remove",
+            path.display()
+        )));
+    }
+    if meta.len() > MAX_CONCEPTS_FILE_BYTES {
+        return Err(EtlError::Usage(format!(
+            "{} holds {} bytes, more than the {MAX_CONCEPTS_FILE_BYTES} a list of concept paths can need",
+            path.display(),
+            meta.len()
+        )));
+    }
+    std::fs::read_to_string(path).map_err(EtlError::io("reading", path))
+}
+
+/// The concepts the lines of a concepts file select in `index`, Java's rules: a line names
+/// the concept whose path equals it exactly once U+FFFD is removed from it. Returns which
+/// index positions are selected, and fills the report's line counts and `not_found`.
+fn select_concepts(index: &PhenoIndex, lines: &[&str], report: &mut RemoveReport) -> Vec<bool> {
+    let mut remove = vec![false; index.concepts().len()];
+    report.lines = lines.len() as u64;
+    for line in lines {
+        if line.is_empty() {
+            report.blank_lines += 1;
+            continue;
+        }
+        let path = line.replace('\u{FFFD}', "");
+        match index.position(&path) {
+            Some(position) => remove[position] = true,
+            None => report.not_found.push((*line).to_string()),
+        }
+    }
+    remove
+}
+
+/// Why `line`, which names no concept of `index`, may have been meant to name one.
+fn near_miss(index: &PhenoIndex, line: &str) -> Option<&'static str> {
+    let path = line.replace('\u{FFFD}', "");
+    let trimmed = path.trim();
+    if trimmed != path && index.position(trimmed).is_some() {
+        return Some("a concept matches it without the surrounding whitespace");
+    }
+    let core = trimmed.trim_matches('\\');
+    let framed = format!("\\{core}\\");
+    if framed != trimmed && index.position(&framed).is_some() {
+        return Some("a concept matches it with a backslash at each end");
+    }
+    None
+}
+
+/// The error of a strict removal whose concepts file has lines naming no concept: lists
+/// them (up to [`LISTED_MISSING_LINES`]) with their line numbers and any near miss.
+fn missing_error(
+    concepts_file: &Path,
+    index: &PhenoIndex,
+    lines: &[&str],
+    not_found: &[String],
+) -> EtlError {
+    let mut listed = Vec::new();
+    let mut wanted = not_found.iter().peekable();
+    for (number, line) in lines.iter().enumerate() {
+        if listed.len() == LISTED_MISSING_LINES {
+            break;
+        }
+        if wanted.peek().is_some_and(|w| w.as_str() == *line) {
+            wanted.next();
+            let hint = near_miss(index, line).map_or_else(String::new, |h| format!(" ({h})"));
+            listed.push(format!("line {}: {line:?}{hint}", number + 1));
+        }
+    }
+    let more = not_found.len().saturating_sub(listed.len());
+    let more = if more > 0 {
+        format!("; and {more} more")
+    } else {
+        String::new()
+    };
+    EtlError::Usage(format!(
+        "{} of the lines in {} name no concept in the store, so nothing was removed: {}{more}. Lines match a concept path exactly, case, spaces and backslashes included. Fix the file, or pass --allow-missing to remove the concepts that exist (for example on a rerun)",
+        not_found.len(),
+        concepts_file.display(),
+        listed.join("; ")
+    ))
+}
+
 /// Removes the concepts named in `concepts_file` from the store in `dir`, the step
 /// `RemoveConceptFromMetadata` performs on a javabin store.
 ///
-/// The file is read as UTF-8 and split into lines as `BufferedReader.readLine` does. A
-/// concept is removed when its path equals a line exactly, after U+FFFD is removed from the
-/// line: Java matches the raw metastore keys, which still hold U+FFFD, while this store
-/// holds the keys with U+FFFD stripped, as the Java service sees them. Lines are not
-/// trimmed and a line is never a prefix match. The patient ID set, the partition table and
-/// the overlap set are left as they are, as Java leaves `allIds`; removing rows never adds a
-/// patient to an untagged block, so the overlap set stays correct for the blocks that
-/// remain.
+/// The file is read as UTF-8 ([`read_concepts_file`]) and split into lines as
+/// `BufferedReader.readLine` does. A concept is removed when its path equals a line exactly,
+/// after U+FFFD is removed from the line: Java matches the raw metastore keys, which still
+/// hold U+FFFD, while this store holds the keys with U+FFFD stripped, as the Java service
+/// sees them. Lines are not trimmed and a line is never a prefix match. Empty lines are
+/// skipped. Unlike Java, which ignores a line naming no concept, such a line fails the
+/// command before anything is written, listing the lines, unless
+/// [`RemoveOptions::allow_missing`] is set; a file with no line naming anything always
+/// fails. With `allow_missing` and nothing to remove, no file is rewritten.
 ///
-/// With `compact`, `pheno.blocks` is rewritten to hold only the remaining concepts' blocks,
-/// each verified on the way, so the removed concepts' observations are physically gone;
-/// Java instead leaves their cubes in `allObservationsStore.javabin`. The store keeps its
-/// id, so the blocks are copied without being re-encrypted. The new blocks file and index
-/// are written beside the old ones and renamed into place, blocks first and index last; a
-/// reader holding the old index meanwhile fails authentication on a moved block rather
-/// than reading another concept's data. Without `compact`, only `pheno.index` is rewritten
-/// and the removed blocks stay in `pheno.blocks` as unreferenced bytes. `columnMeta.csv` is
-/// then regenerated from the new index, which Java leaves to a separate
-/// `CreateColumnmetaCSV` run. The whole command holds the store lock, so it never
-/// interleaves with a load publishing into the same directory.
+/// The patient ID set, the partition table and the overlap set are left as they are, as
+/// Java leaves `allIds`; removing rows never adds a patient to an untagged block, so the
+/// overlap set stays correct for the blocks that remain.
+///
+/// By default `pheno.blocks` is rewritten to hold only the remaining concepts' blocks, each
+/// verified on the way, so the removed concepts' observations are no longer in the store's
+/// files; Java instead leaves their cubes in `allObservationsStore.javabin`. The store keeps
+/// its id, so the blocks are copied without being re-encrypted. With
+/// [`RemoveOptions::keep_removed_blocks`] only `pheno.index` is rewritten and the removed
+/// blocks stay in `pheno.blocks` as unreferenced bytes. `columnMeta.csv` is then regenerated
+/// from the new index, which Java leaves to a separate `CreateColumnmetaCSV` run. The whole
+/// command holds the store lock, so it never interleaves with a load publishing into the
+/// same directory.
 ///
 /// # Errors
-/// [`EtlError::Io`] when the concepts file cannot be read or is not UTF-8, and the errors
-/// of reading, verifying and writing the index, the blocks and `columnMeta.csv`.
+/// [`EtlError::Usage`] for a concepts file that names nothing or has lines naming no
+/// concept (without `allow_missing`), and the errors of [`read_concepts_file`] and of
+/// reading, verifying and writing the index, the blocks and `columnMeta.csv`.
 pub fn remove_concepts(
     dir: &Path,
     concepts_file: &Path,
     protection: &Protection,
-    compact: bool,
+    options: &RemoveOptions,
 ) -> Result<RemoveReport> {
-    let text =
-        std::fs::read_to_string(concepts_file).map_err(EtlError::io("reading", concepts_file))?;
+    let text = read_concepts_file(concepts_file)?;
     let lines = java_read_lines(&text);
+    if lines.iter().all(|line| line.is_empty()) {
+        return Err(EtlError::Usage(format!(
+            "{} names no concept: it is empty or holds only empty lines",
+            concepts_file.display()
+        )));
+    }
     let _lock = lock_store(dir)?;
     let index = read_index(dir, protection)?;
-    let mut remove = vec![false; index.concepts().len()];
     let mut report = RemoveReport {
-        lines: lines.len() as u64,
+        store_id: index.store_id().to_string(),
+        removed_blocks_kept: options.keep_removed_blocks,
         ..RemoveReport::default()
     };
-    for line in lines {
-        let path = line.replace('\u{FFFD}', "");
-        match index.position(&path) {
-            Some(position) => remove[position] = true,
-            None => report.not_found.push(line.to_string()),
+    let remove = select_concepts(&index, &lines, &mut report);
+    if !report.not_found.is_empty() && !options.allow_missing {
+        return Err(missing_error(
+            concepts_file,
+            &index,
+            &lines,
+            &report.not_found,
+        ));
+    }
+    let mut kept = Vec::with_capacity(index.concepts().len());
+    for (concept, removed) in index.concepts().iter().zip(&remove) {
+        if *removed {
+            report.removed_paths.push(concept.path.clone());
+            report.observations_removed += u64::from(concept.observation_count);
+        } else {
+            kept.push(concept.clone());
         }
     }
-    let mut kept: Vec<ConceptMeta> = index
-        .concepts()
-        .iter()
-        .zip(&remove)
-        .filter(|(_, removed)| !**removed)
-        .map(|(concept, _)| concept.clone())
-        .collect();
-    report.removed = (index.concepts().len() - kept.len()) as u64;
+    report.removed = report.removed_paths.len() as u64;
     report.remaining = kept.len() as u64;
 
     let blocks_path = dir.join(BLOCKS_FILE_NAME);
     let index_path = dir.join(INDEX_FILE_NAME);
     let reader = BlocksReader::open(&blocks_path, index.store_id())?;
     report.blocks_bytes_before = reader.len();
-    let staged_blocks = if compact {
+    report.blocks_bytes_after = reader.len();
+    if report.removed == 0 {
+        report.removed_blocks_kept = false;
+        return Ok(report);
+    }
+    let staged_blocks = if options.keep_removed_blocks {
+        None
+    } else {
         let codec = index.block_codec(protection.clone())?;
         let membership = index.membership();
         let mut new_len = 0;
@@ -146,9 +291,6 @@ pub fn remove_concepts(
         report.blocks_bytes_after = new_len;
         report.compacted = true;
         Some(staged)
-    } else {
-        report.blocks_bytes_after = report.blocks_bytes_before;
-        None
     };
     drop(reader);
 

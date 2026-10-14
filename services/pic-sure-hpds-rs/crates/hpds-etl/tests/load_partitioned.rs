@@ -1172,7 +1172,12 @@ fn remove_concepts_runs_only_under_the_store_lock() {
     let lock = hold_store_lock(&out);
     let target = out.clone();
     let remove = std::thread::spawn(move || {
-        hpds_etl::store_maintenance::remove_concepts(&target, &concepts, &test_protection(), true)
+        hpds_etl::store_maintenance::remove_concepts(
+            &target,
+            &concepts,
+            &test_protection(),
+            &hpds_etl::store_maintenance::RemoveOptions::default(),
+        )
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     assert!(!remove.is_finished(), "remove-concepts waits for the lock");

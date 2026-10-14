@@ -106,9 +106,15 @@ struct RemoveConceptsArgs {
     /// Store directory to change in place, under its store lock.
     #[arg(long)]
     store: PathBuf,
-    /// File naming one concept path per line (conceptsToRemove.txt).
+    /// File naming one concept path per line (conceptsToRemove.txt). Each line must equal
+    /// a concept path exactly; a line naming no concept fails the command before anything
+    /// is written.
     #[arg(long)]
     concepts: PathBuf,
+    /// Remove the concepts that exist even when some lines name no concept (for example a
+    /// rerun after the concepts are gone), and list those lines in the report.
+    #[arg(long)]
+    allow_missing: bool,
     /// Rewrite only pheno.index, leaving the removed concepts' blocks in pheno.blocks.
     #[arg(long)]
     no_compact: bool,
@@ -431,12 +437,20 @@ fn open_layout(store: &Path, key: &KeyArgs) -> Result<Protection> {
 }
 
 fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
-    let protection = open_layout(&args.store, &args.key)?;
+    open_layout(&args.store, &args.key)?;
+    let (protection, _) = hpds_etl::partitions::resolve_shared_key(
+        &args.key.source(KeySource::StoreDirectory),
+        &args.store,
+    )?;
+    let options = hpds_etl::store_maintenance::RemoveOptions {
+        allow_missing: args.allow_missing,
+        keep_removed_blocks: args.no_compact,
+    };
     print_json(&hpds_etl::store_maintenance::remove_concepts(
         &args.store,
         &args.concepts,
         &protection,
-        !args.no_compact,
+        &options,
     )?);
     Ok(())
 }

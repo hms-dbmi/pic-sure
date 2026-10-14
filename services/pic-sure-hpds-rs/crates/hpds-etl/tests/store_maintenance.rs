@@ -12,7 +12,7 @@ use hpds_etl::dump::{dump, dump_patients};
 use hpds_etl::java::java_double_to_string;
 use hpds_etl::load::Mode;
 use hpds_etl::store::OpenStore;
-use hpds_etl::store_maintenance::{regenerate_column_meta_csv, remove_concepts};
+use hpds_etl::store_maintenance::{RemoveOptions, regenerate_column_meta_csv, remove_concepts};
 use hpds_format::{BLOCKS_FILE_NAME, Block, CryptoKey, NO_TIMESTAMP, Protection};
 
 fn protection() -> Protection {
@@ -70,6 +70,30 @@ fn open_store_rows(store: &OpenStore, path: &str) -> Vec<common::Row> {
     }
 }
 
+fn keep_blocks_allow_missing() -> RemoveOptions {
+    RemoveOptions {
+        allow_missing: true,
+        keep_removed_blocks: true,
+    }
+}
+
+/// The names in the store directory `dir`, sorted, with each file's bytes.
+fn snapshot(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap())
+        .filter(|e| e.file_type().unwrap().is_file())
+        .map(|e| {
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                std::fs::read(e.path()).unwrap(),
+            )
+        })
+        .collect();
+    files.sort();
+    files
+}
+
 fn key_file(store: &Store) -> String {
     let path = store.dir.path().join("key");
     std::fs::write(&path, format!("{KEY}\n")).unwrap();
@@ -101,7 +125,7 @@ fn column_meta_csv_regenerates_what_load_wrote() {
 }
 
 #[test]
-fn remove_concepts_without_compaction_drops_exact_lines_from_the_index_only() {
+fn remove_concepts_keeping_blocks_drops_exact_lines_from_the_index_only() {
     let store = edge_store();
     let before: Vec<String> = store
         .index
@@ -120,16 +144,25 @@ fn remove_concepts_without_compaction_drops_exact_lines_from_the_index_only() {
     std::fs::write(&list_path, list).unwrap();
     let blocks_before = std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap();
 
-    let report = remove_concepts(&store.out, &list_path, &protection(), false).unwrap();
+    let report = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &keep_blocks_allow_missing(),
+    )
+    .unwrap();
 
     assert!(!report.compacted);
+    assert!(report.removed_blocks_kept);
     assert_eq!(report.blocks_bytes_before, report.blocks_bytes_after);
     assert_eq!(report.lines, 7);
+    assert_eq!(report.blank_lines, 1);
     assert_eq!(report.removed, 3);
+    assert_eq!(report.removed_paths, before[..3]);
     assert_eq!(report.remaining as usize, before.len() - 3);
     assert_eq!(
         report.not_found,
-        ["", prefix.as_str(), padded.as_str(), "not a concept"]
+        [prefix.as_str(), padded.as_str(), "not a concept"]
     );
     let after = OpenStore::open(&store.out, protection()).unwrap();
     let remaining: Vec<&str> = after
@@ -186,10 +219,24 @@ fn remove_concepts_compacts_the_blocks_by_default() {
         .unwrap()
         .len();
 
-    let report = remove_concepts(&store.out, &list_path, &protection(), true).unwrap();
+    let report = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions::default(),
+    )
+    .unwrap();
 
     assert!(report.compacted);
+    assert!(!report.removed_blocks_kept);
     assert_eq!(report.removed, 3);
+    assert_eq!(
+        report.observations_removed,
+        removed
+            .iter()
+            .map(|p| store.rows(p).len() as u64)
+            .sum::<u64>()
+    );
     assert_eq!(report.blocks_bytes_before, blocks_before);
     assert_eq!(report.blocks_bytes_after, blocks_before - removed_bytes);
     assert_eq!(
@@ -255,6 +302,150 @@ fn remove_concepts_through_the_binary() {
         std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap(),
         blocks_before
     );
+}
+
+#[test]
+fn a_line_naming_no_concept_fails_before_anything_is_written() {
+    let store = edge_store();
+    let paths: Vec<String> = store
+        .index
+        .concepts()
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    let trailing_space = format!("{} ", paths[1]);
+    let unframed = paths[2].trim_matches('\\').to_string();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(
+        &list_path,
+        format!(
+            "{}\n{trailing_space}\n\n{unframed}\nno such concept\n",
+            paths[0]
+        ),
+    )
+    .unwrap();
+    let before = snapshot(&store.out);
+
+    let error = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions::default(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("3 of the lines"), "{error}");
+    assert!(error.contains("nothing was removed"), "{error}");
+    assert!(
+        error.contains(&format!(
+            "line 2: {trailing_space:?} (a concept matches it without the surrounding whitespace)"
+        )),
+        "{error}"
+    );
+    assert!(
+        error.contains(&format!(
+            "line 4: {unframed:?} (a concept matches it with a backslash at each end)"
+        )),
+        "{error}"
+    );
+    assert!(error.contains("line 5: \"no such concept\". "), "{error}");
+    assert!(error.contains("--allow-missing"), "{error}");
+    assert_eq!(snapshot(&store.out), before);
+
+    let report = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions {
+            allow_missing: true,
+            ..RemoveOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(report.removed_paths, [paths[0].clone()]);
+    assert_eq!(report.not_found.len(), 3);
+}
+
+#[test]
+fn an_empty_concepts_file_fails_and_a_rerun_with_nothing_left_changes_nothing() {
+    let store = edge_store();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    let before = snapshot(&store.out);
+    for empty in ["", "\n", "\r\n\n"] {
+        std::fs::write(&list_path, empty).unwrap();
+        let error = remove_concepts(
+            &store.out,
+            &list_path,
+            &protection(),
+            &RemoveOptions {
+                allow_missing: true,
+                ..RemoveOptions::default()
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("names no concept"), "{empty:?}: {error}");
+    }
+    let error = remove_concepts(
+        &store.out,
+        store.dir.path(),
+        &protection(),
+        &RemoveOptions::default(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("is not a regular file"), "{error}");
+
+    std::fs::write(&list_path, "\\gone\\\n").unwrap();
+    let report = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions {
+            allow_missing: true,
+            ..RemoveOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(report.removed, 0);
+    assert!(!report.compacted);
+    assert_eq!(report.not_found, ["\\gone\\"]);
+    assert_eq!(snapshot(&store.out), before);
+}
+
+#[test]
+fn remove_concepts_checks_the_key_as_load_does() {
+    let store = edge_store();
+    std::fs::write(store.out.join("encryption_key"), format!("{KEY}\n")).unwrap();
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let other_key = store.dir.path().join("other_key");
+    std::fs::write(&other_key, format!("{KEY}\n\n")).unwrap();
+    let before = snapshot(&store.out);
+    for extra in [
+        vec!["--plain"],
+        vec!["--key-file", other_key.to_str().unwrap()],
+    ] {
+        let mut args = vec![
+            "remove-concepts",
+            "--store",
+            store.out.to_str().unwrap(),
+            "--concepts",
+            list_path.to_str().unwrap(),
+        ];
+        args.extend(extra.iter().copied());
+        let output = run_hpds_etl(&args);
+        assert!(!output.status.success(), "{extra:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("plain stores are for benchmarking")
+                || stderr.contains("the store keeps the key it has"),
+            "{stderr}"
+        );
+    }
+    assert_eq!(snapshot(&store.out), before);
 }
 
 fn dump_text(dir: &Path) -> String {
