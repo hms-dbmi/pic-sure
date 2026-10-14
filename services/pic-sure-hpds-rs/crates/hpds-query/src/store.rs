@@ -13,7 +13,7 @@ use std::time::Instant;
 use hpds_format::{
     BLOCKS_FILE_NAME, Block, BlockCodec, BlockLocation, BlocksReader, ConceptView, ExpectedBlock,
     INDEX_FILE_NAME, IndexBody, Membership, PUBLISH_JOURNAL_FILE_NAME, PartitionHolder,
-    PartitionTable, Protection,
+    PartitionTable, Protection, StoreId,
 };
 use moka::notification::RemovalCause;
 use moka::sync::Cache;
@@ -462,6 +462,10 @@ impl Store {
 /// How often, at most, [`ServingLock::check`] looks at the data directory: once a second.
 const STORE_CHECK_INTERVAL_MS: u64 = 1000;
 
+/// How much of a replacement `pheno.index` [`ServingLock::check`] reads to learn its store
+/// id from the plain header.
+const HEADER_READ_LEN: u64 = 64 << 10;
+
 /// What identifies the content of a file: its device and inode, length, and modification
 /// time. A rename gives another inode; a rewrite in place (`cp` over the file, `rsync
 /// --inplace`) changes the length or the modification time. A `touch` changes the time
@@ -500,18 +504,25 @@ impl FileStamp {
 ///
 /// After startup the service reads the store only through what it opened: the index it
 /// holds in memory and its open `pheno.blocks` descriptor, read by offset. It never opens a
-/// store path again. [`ServingLock::check`] refuses every query once a file it holds open
-/// changed in place (its length or modification time moved), a publish journal appeared,
-/// or `pheno.index` became another file.
+/// store path again. [`ServingLock::check`] therefore asks two questions. Has a file the
+/// service holds open changed in place? Then its reads may no longer be the store it
+/// opened, and every query is refused. Has the directory moved on? A publish journal, or a
+/// `pheno.index` with the same store id but another file (an in-place `remove-concepts` or
+/// `recover` the lock did not reach, which withdraws data), also refuses every query. A
+/// `pheno.index` of another store id (a whole store renamed in by `aio/load.sh` or
+/// `bin/migrate-javabins`) does not: the service goes on serving the old store from its
+/// open files, as it did before this check existed, until it is stopped.
 #[derive(Debug)]
 pub(crate) struct ServingLock {
     file: File,
     dir: PathBuf,
     index: FileStamp,
     blocks: Option<FileStamp>,
+    store_id: Option<StoreId>,
     opened: Instant,
     checked_ms: AtomicU64,
     changed: AtomicBool,
+    superseded: AtomicBool,
 }
 
 impl ServingLock {
@@ -557,23 +568,26 @@ impl ServingLock {
                 dir: dir.to_path_buf(),
                 index: held,
                 blocks: None,
+                store_id: None,
                 opened: Instant::now(),
                 checked_ms: AtomicU64::new(0),
                 changed: AtomicBool::new(false),
+                superseded: AtomicBool::new(false),
             };
             return Ok((lock, bytes));
         }
     }
 
-    /// Records the state of the open `pheno.blocks` descriptor, `blocks`, which
-    /// [`ServingLock::check`] compares against.
-    pub(crate) fn bind(&mut self, blocks: &std::fs::Metadata) {
+    /// Records the store id of the index read under the lock and the state of the open
+    /// `pheno.blocks` descriptor, `blocks`, which [`ServingLock::check`] compares against.
+    pub(crate) fn bind(&mut self, store_id: StoreId, blocks: &std::fs::Metadata) {
+        self.store_id = Some(store_id);
         self.blocks = Some(FileStamp::of(blocks));
     }
 
     /// Fails once what the service serves may no longer be the store it opened (see the type
     /// documentation): a file it holds open changed in place, a publish journal appeared, or
-    /// `pheno.index` became another file. `blocks` gives the state of
+    /// `pheno.index` became another file of the same store id. `blocks` gives the state of
     /// the open `pheno.blocks` descriptor now. Looks at most once per
     /// [`STORE_CHECK_INTERVAL_MS`] and answers from the last look in between; once it has
     /// failed it always fails.
@@ -629,12 +643,43 @@ impl ServingLock {
         {
             return Some("the open pheno.blocks was changed in place");
         }
-        match std::fs::metadata(self.dir.join(INDEX_FILE_NAME)) {
-            Ok(now) if FileStamp::of(&now) == self.index => None,
-            Ok(_) => Some("pheno.index was replaced"),
-            Err(_) => Some("pheno.index is gone"),
+        if self.superseded.load(Ordering::Relaxed) {
+            return None;
+        }
+        let path = self.dir.join(INDEX_FILE_NAME);
+        let Ok(now) = std::fs::metadata(&path) else {
+            return Some("pheno.index is gone");
+        };
+        if FileStamp::of(&now) == self.index {
+            return None;
+        }
+        match (read_store_id(&path), self.store_id) {
+            (Some(id), Some(ours)) if id != ours => {
+                self.superseded.store(true, Ordering::Relaxed);
+                tracing::warn!(
+                    dir = %self.dir.display(),
+                    new_store = %id,
+                    "another store was moved into the data directory; serving the store opened at startup from its open files until the service stops"
+                );
+                None
+            }
+            _ => Some("pheno.index was replaced within the same store"),
         }
     }
+}
+
+/// The store id in the plain header of the index at `path`, or `None` when it cannot be
+/// read.
+fn read_store_id(path: &Path) -> Option<StoreId> {
+    let mut bytes = Vec::new();
+    File::open(path)
+        .ok()?
+        .take(HEADER_READ_LEN)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    hpds_format::PhenoIndex::decode_header(&bytes)
+        .ok()
+        .map(|header| header.store_id)
 }
 
 fn open_error(dir: &Path, error: impl std::fmt::Display) -> QueryError {

@@ -244,3 +244,32 @@ fn a_service_refuses_queries_once_a_file_it_holds_open_changes_in_place() {
         );
     }
 }
+
+#[test]
+fn a_service_keeps_serving_its_open_store_when_another_store_is_moved_in() {
+    let d = two_partitions();
+    let other = partitioned_rows(&[("p1", vec![(7, AGE, Some(1.0), None)])]);
+    let engine = d.open(&lenient()).unwrap();
+    let age = query(ResultType::Count, Some(required(AGE)));
+    assert_eq!(engine.count(&age).unwrap(), 2);
+    for name in ["pheno.blocks", "pheno.index"] {
+        let staged = d.out.join(format!("{name}.next"));
+        std::fs::copy(other.out.join(name), &staged).unwrap();
+        std::fs::rename(&staged, d.out.join(name)).unwrap();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+
+    assert_eq!(
+        engine.count(&age).unwrap(),
+        2,
+        "the old store, from its open files"
+    );
+    engine.partitions().check_unchanged().unwrap();
+
+    std::fs::write(d.out.join(".publish-journal"), "{}").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    assert!(matches!(
+        engine.count(&age).unwrap_err(),
+        hpds_query::QueryError::StoreChanged { .. }
+    ));
+}

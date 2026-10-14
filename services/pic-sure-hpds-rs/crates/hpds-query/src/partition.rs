@@ -417,7 +417,10 @@ impl PartitionSet {
             dictionary.push(SummaryColumnMeta::from_concept(&meta));
         }
         let (store, table) = files.into_store(entries);
-        serving.bind(&store.blocks_metadata().map_err(|e| open_error(dir, e))?);
+        serving.bind(
+            store_id,
+            &store.blocks_metadata().map_err(|e| open_error(dir, e))?,
+        );
         let partitions: Vec<Partition> = if partitioned {
             table
                 .partitions
@@ -481,7 +484,8 @@ impl PartitionSet {
 
     /// Fails once what this set serves may no longer be the store it opened (see
     /// [`ServingLock::check`]): a file it holds open changed in place, a publish into the
-    /// directory began, or `pheno.index` was replaced. Every
+    /// directory began, or `pheno.index` was replaced within the same store. A whole store of
+    /// another id moved in does not fail it; the set goes on serving its own open files. Every
     /// computation of the engine checks this first, and the service checks it on every
     /// route that reads the store.
     ///
