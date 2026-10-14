@@ -245,8 +245,15 @@ async fn errors_are_not_cached() {
 async fn a_cross_count_holding_minus_one_is_not_stored() {
     let f = cached();
     let blocks = f.store().join("pheno.blocks");
-    let len = usize::try_from(std::fs::metadata(&blocks).unwrap().len()).unwrap();
+    let meta = std::fs::metadata(&blocks).unwrap();
+    let len = usize::try_from(meta.len()).unwrap();
     std::fs::write(&blocks, vec![0xff; len]).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&blocks)
+        .unwrap()
+        .set_modified(meta.modified().unwrap())
+        .unwrap();
     for result_type in ["CROSS_COUNT", "OBSERVATION_CROSS_COUNT"] {
         let query = json!({"expectedResultType": result_type, "select": [SEX, AGE],
             "userConsents": consents(&["partition1"])});

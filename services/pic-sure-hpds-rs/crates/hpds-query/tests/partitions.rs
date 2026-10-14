@@ -594,12 +594,14 @@ fn a_failed_block_load_still_weighs_the_blocks_it_read() {
     let d = partitioned_rows(&[("p1", rows(&[1, 2])), ("p2", rows(&[3, 4]))]);
     let engine = d.open(&lenient()).unwrap();
     let blocks = d.out.join(hpds_format::BLOCKS_FILE_NAME);
-    let len = std::fs::metadata(&blocks).unwrap().len();
+    let meta = std::fs::metadata(&blocks).unwrap();
+    let len = meta.len();
     let file = std::fs::OpenOptions::new()
         .write(true)
         .open(&blocks)
         .unwrap();
     std::os::unix::fs::FileExt::write_all_at(&file, &[0xff; 8], len - 8).unwrap();
+    file.set_modified(meta.modified().unwrap()).unwrap();
     drop(file);
     let set = engine.partitions();
     let error = engine
