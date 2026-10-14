@@ -107,6 +107,17 @@ impl AppState {
         }
     }
 
+    /// True while another store of another id has been moved into the data directory and
+    /// the engine goes on serving the store it opened
+    /// ([`hpds_query::PartitionSet::store_superseded`]). Read after
+    /// [`AppState::down_reason`], which runs the check that notices it.
+    pub fn store_superseded(&self) -> bool {
+        self.inner
+            .engine
+            .as_ref()
+            .is_some_and(|engine| engine.partitions().store_superseded())
+    }
+
     /// True when [`AppState::down_reason`] is `None`.
     pub fn is_healthy(&self) -> bool {
         self.down_reason().is_none()

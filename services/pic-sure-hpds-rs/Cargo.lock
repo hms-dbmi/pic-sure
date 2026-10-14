@@ -810,6 +810,7 @@ dependencies = [
  "hpds-etl",
  "hpds-format",
  "hpds-gen",
+ "libc",
  "memchr",
  "moka",
  "rayon",

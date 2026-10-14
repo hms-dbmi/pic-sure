@@ -4,7 +4,7 @@
 
 use std::fs::{File, TryLockError};
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError, RwLock, Weak};
@@ -504,14 +504,19 @@ impl FileStamp {
 ///
 /// After startup the service reads the store only through what it opened: the index it
 /// holds in memory and its open `pheno.blocks` descriptor, read by offset. It never opens a
-/// store path again. [`ServingLock::check`] therefore asks two questions. Has a file the
+/// store path for its data again; the check opens `pheno.index` only to stamp it and read a
+/// replacement's header, never following a link or waiting on a FIFO ([`open_index`]), and
+/// the startup open refuses a `pheno.index` that is not a regular file the same way.
+/// [`ServingLock::check`] therefore asks two questions. Has a file the
 /// service holds open changed in place? Then its reads may no longer be the store it
 /// opened, and every query is refused. Has the directory moved on? A publish journal, or a
 /// `pheno.index` with the same store id but another file (an in-place `remove-concepts` or
 /// `recover` the lock did not reach, which withdraws data), also refuses every query. A
 /// `pheno.index` of another store id (a whole store renamed in by `aio/load.sh` or
 /// `bin/migrate-javabins`) does not: the service goes on serving the old store from its
-/// open files, as it did before this check existed, until it is stopped.
+/// open files, as it did before this check existed, until it is stopped, and reports itself
+/// superseded ([`ServingLock::is_superseded`]). A `pheno.index` whose header this format
+/// does not read (another format version) refuses at once.
 #[derive(Debug)]
 pub(crate) struct ServingLock {
     file: File,
@@ -536,7 +541,7 @@ impl ServingLock {
     pub(crate) fn open(dir: &Path) -> Result<(Self, Vec<u8>)> {
         let path = dir.join(INDEX_FILE_NAME);
         loop {
-            let mut file = File::open(&path).map_err(|e| open_error(dir, e))?;
+            let mut file = open_index(&path).map_err(|e| open_error(dir, e))?;
             match file.try_lock_shared() {
                 Ok(()) => {}
                 Err(TryLockError::WouldBlock) => {
@@ -646,14 +651,25 @@ impl ServingLock {
         if self.superseded.load(Ordering::Relaxed) {
             return None;
         }
-        let path = self.dir.join(INDEX_FILE_NAME);
-        let Ok(now) = std::fs::metadata(&path) else {
-            return Some("pheno.index is gone");
+        let mut file = match open_index(&self.dir.join(INDEX_FILE_NAME)) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Some("pheno.index is gone");
+            }
+            Err(_) => {
+                return Some("pheno.index is a symbolic link, not a regular file, or unreadable");
+            }
+        };
+        let Ok(now) = file.metadata() else {
+            return Some("pheno.index cannot be examined");
         };
         if FileStamp::of(&now) == self.index {
             return None;
         }
-        match (read_store_id(&path), self.store_id) {
+        match (read_store_id(&mut file), self.store_id) {
+            (None, _) => {
+                Some("pheno.index was replaced by a file whose header this format does not read")
+            }
             (Some(id), Some(ours)) if id != ours => {
                 self.superseded.store(true, Ordering::Relaxed);
                 tracing::warn!(
@@ -666,17 +682,40 @@ impl ServingLock {
             _ => Some("pheno.index was replaced within the same store"),
         }
     }
+
+    /// True once [`ServingLock::check`] has seen a store of another id moved into the
+    /// directory while this one goes on serving its open files.
+    pub(crate) fn is_superseded(&self) -> bool {
+        self.superseded.load(Ordering::Relaxed)
+    }
 }
 
-/// The store id in the plain header of the index at `path`, or `None` when it cannot be
-/// read.
-fn read_store_id(path: &Path) -> Option<StoreId> {
+/// Opens the index at `path` for reading without following a symbolic link and without
+/// waiting on a FIFO or device (`O_NOFOLLOW | O_NONBLOCK`), and refuses anything but a
+/// regular file, judged by `fstat` on the same handle so nothing can be swapped in between.
+///
+/// # Errors
+/// The I/O error of the open (`ELOOP` for a symbolic link) or `fstat`, and
+/// [`std::io::ErrorKind::InvalidInput`] for a file that is not regular.
+fn open_index(path: &Path) -> std::io::Result<File> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} is not a regular file", path.display()),
+        ));
+    }
+    Ok(file)
+}
+
+/// The store id in the plain header of the open index `file`, or `None` when its header
+/// cannot be read in this format (another format version, a truncated or foreign file).
+fn read_store_id(file: &mut File) -> Option<StoreId> {
     let mut bytes = Vec::new();
-    File::open(path)
-        .ok()?
-        .take(HEADER_READ_LEN)
-        .read_to_end(&mut bytes)
-        .ok()?;
+    file.take(HEADER_READ_LEN).read_to_end(&mut bytes).ok()?;
     hpds_format::PhenoIndex::decode_header(&bytes)
         .ok()
         .map(|header| header.store_id)

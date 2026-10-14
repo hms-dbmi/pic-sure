@@ -111,6 +111,12 @@ pub struct Health {
     /// carries a path or the open error, which go to the log.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<&'static str>,
+    /// True while another store, of another id, has been moved into the data directory and
+    /// the service goes on serving the store it opened from its open files
+    /// ([`AppState::store_superseded`]). The status stays UP; a restart serves the new
+    /// store. Left out when false.
+    #[serde(rename = "storeSuperseded", skip_serializing_if = "std::ops::Not::not")]
+    pub store_superseded: bool,
 }
 
 async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
@@ -120,6 +126,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
             Json(Health {
                 status: "UP",
                 reason: None,
+                store_superseded: state.store_superseded(),
             }),
         ),
         Some(reason) => (
@@ -127,6 +134,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
             Json(Health {
                 status: "DOWN",
                 reason: Some(reason),
+                store_superseded: state.store_superseded(),
             }),
         ),
     }

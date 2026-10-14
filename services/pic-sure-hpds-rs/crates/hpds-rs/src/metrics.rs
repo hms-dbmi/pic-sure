@@ -265,6 +265,12 @@ pub fn render(state: &AppState) -> String {
         let partitions = engine.partitions();
         render_block_cache(&mut family, &partitions.block_cache_stats());
         family.single(
+            "hpds_store_superseded",
+            "gauge",
+            "1 while another store has been moved into the data directory and the service serves the store it opened from its open files; a restart serves the new one.",
+            u64::from(partitions.store_superseded()),
+        );
+        family.single(
             "hpds_cohort_guard_refusals_total",
             "counter",
             "Queries refused because a cohort held patients outside the selected partitions.",

@@ -139,15 +139,22 @@ directory itself) as `PartitionedPhenotypicObservationStore` serves its partitio
   - a publish journal appeared in the directory;
   - `pheno.index` became another file of the same store id, or one whose header cannot be
     read: an in-place `remove-concepts` or `recover` the lock did not reach (another kernel,
-    a network filesystem), which withdraws data.
+    a network filesystem), which withdraws data. An index of another format version is one
+    whose header this format does not read, so a format-version swap refuses at once;
+  - `pheno.index` became a symbolic link, a FIFO or anything but a regular file. The check
+    opens it with `O_NOFOLLOW | O_NONBLOCK` and judges it by `fstat` on that handle, so it
+    never follows a link or waits, and the startup open refuses such a `pheno.index` the same
+    way.
 
   When `pheno.index` becomes a file of another store id, a whole store moved in (by
   `aio/load.sh` or `bin/migrate-javabins`, which `mv` the files while the old container still
   runs), the service logs it and goes on serving the store it opened from its open files, as it
   did before these checks, until it is stopped. That keeps the old container answering while
-  the query service's DNS cache still points at it during a swap. A withdrawal done by
-  reloading a store without the concept is therefore served from the old files until the old
-  container stops; `remove-concepts` is the withdrawal that takes effect at once.
+  the query service's DNS cache still points at it during a swap. Health stays UP and carries
+  `"storeSuperseded": true`, and the `hpds_store_superseded` gauge is 1, so orchestration can
+  see that a restart is due. A withdrawal done by reloading a store without the concept is
+  therefore served from the old files until the old container stops (or is restarted on that
+  signal); `remove-concepts` is the withdrawal that takes effect at once.
 - A filter matches a patient with a satisfying row in any selected partition, before
   filters combine, so a patient in two partitions can match one filter in one and another
   filter in the other, as in Java.
@@ -289,6 +296,7 @@ runs on the blocking pool.
 | `hpds_block_cache_entries`, `hpds_block_cache_bytes`, `hpds_block_cache_capacity_bytes` | gauge | Concepts and bytes held, blocks and views, and the bound |
 | `hpds_block_cache_views`, `hpds_block_cache_view_bytes` | gauge | Partition views held and their bytes, part of the above |
 | `hpds_block_loads_total`, `hpds_block_load_failures_total`, `hpds_block_load_seconds_total` | counter | Blocks read from the store, authenticated and decoded into the cache; block reads that failed; and the seconds spent on both, summed over threads |
+| `hpds_store_superseded` | gauge | 1 while a store of another id has been moved into the data directory and the service serves the store it opened from its open files (see [Partition layout](#partition-layout)); a restart serves the new one |
 | `hpds_cohort_guard_refusals_total` | counter | Queries refused by the cohort check (see [Narrow selections](#narrow-selections)) |
 | `hpds_result_cache_hits_total`, `_misses_total`, `_evictions_total` | counter | Result cache lookups and evictions; only with `HPDS_RESULT_CACHE_BYTES` above 0 |
 | `hpds_result_cache_entries`, `_bytes`, `_capacity_bytes` | gauge | What the result cache holds, and its bound; only when it is on |
@@ -313,7 +321,7 @@ off, and a connection that takes more than 10 seconds to send a request's header
 | `POST /query/format`, `POST /write/{dataType}` | 400, not supported |
 | `POST /search` | The merged dictionary as `SummaryColumnMeta` (`name`, `widthInBytes`, `categorical`, `categoryValues`, `min`, `max`, `patientCount`, `timestampMin`, `timestampMax`, nulls written), not consent-scoped. A string term, `""` included, answers an object keyed by path, matched by case-insensitive path substring or exact category value; a null or missing term answers Java's array of one-entry objects for every concept. `info: {}`. See the locale note in `search.rs`. gzip on request, see [Search compression](#search-compression). |
 | `GET /search/values/` | An empty page |
-| `GET /actuator/health` | 200 `{"status":"UP"}` when the store's dictionary holds a concept; else 503 `{"status":"DOWN","reason":...}` |
+| `GET /actuator/health` | 200 `{"status":"UP"}` when the store's dictionary holds a concept, with `"storeSuperseded":true` added while a store of another id has been moved in (see [Partition layout](#partition-layout)); else 503 `{"status":"DOWN","reason":...}` |
 | `GET /metrics` | With `HPDS_METRICS=on`, the counters of [Metrics](#metrics) as Prometheus text (`text/plain; version=0.0.4`); otherwise 404. At the root, not under `/PIC-SURE` |
 
 Differences from Java a caller can see:
@@ -633,7 +641,9 @@ the concepts, so take them out of the inputs too.
 - **The maintenance log.** Every run that is not a dry run appends one JSON line to
   `maintenance-log.jsonl` in the store: `time` (UTC), `operation`, `result` (`published`,
   `no-change` for an `--allow-missing` run that found nothing to remove or compact,
-  `completed-by-recover` or `rolled-back-by-recover`),
+  `completed-by-recover` or `rolled-back-by-recover`, whose record lists no removed paths
+  and no removal counts, since nothing was withdrawn; `recover` also says so and that the
+  removal must be run again),
   `tool`, `store_id`, `publish_id`, the `concepts_file` path and its `concepts_file_sha256`,
   `removed_paths`, the line, observation, patient and byte counts, `compacted`,
   `removed_blocks_kept`, and `index_sha256`, the SHA-256 of the `pheno.index` it left (the

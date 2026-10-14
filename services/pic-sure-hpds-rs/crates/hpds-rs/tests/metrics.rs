@@ -177,6 +177,7 @@ async fn an_idle_service_exposes_valid_text() {
         value(&samples, "hpds_cohort_guard_refusals_total", &[]),
         Some(0.0)
     );
+    assert_eq!(value(&samples, "hpds_store_superseded", &[]), Some(0.0));
     assert_eq!(
         value(&samples, "hpds_block_cache_capacity_bytes", &[]),
         Some(f.config.partitions.store.cache_bytes as f64)
@@ -444,4 +445,32 @@ async fn the_metrics_route_counts_itself() {
         ),
         Some(1.0)
     );
+}
+
+#[tokio::test]
+async fn a_store_moved_in_is_reported_superseded_while_health_stays_up() {
+    let f = metrics_on();
+    let other = tempfile::tempdir().unwrap();
+    let other_store = common::build_store(other.path());
+    for name in ["pheno.blocks", "pheno.index"] {
+        let staged = f.store().join(format!("{name}.next"));
+        std::fs::copy(other_store.join(name), &staged).unwrap();
+        std::fs::rename(&staged, f.store().join(name)).unwrap();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+
+    let health = get(&f.app, "/actuator/health").await;
+
+    assert_eq!(health.status, StatusCode::OK);
+    assert_eq!(health.json()["status"], "UP");
+    assert_eq!(health.json()["storeSuperseded"], true);
+    let (_, samples) = scrape(&f).await;
+    assert_eq!(value(&samples, "hpds_store_superseded", &[]), Some(1.0));
+    let count = post(
+        &f.app,
+        "/PIC-SURE/v3/query/sync",
+        envelope(json!({"expectedResultType": "COUNT"})),
+    )
+    .await;
+    assert_eq!(count.status, StatusCode::OK, "the old store still answers");
 }

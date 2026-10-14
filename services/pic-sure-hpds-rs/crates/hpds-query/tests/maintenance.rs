@@ -265,6 +265,7 @@ fn a_service_keeps_serving_its_open_store_when_another_store_is_moved_in() {
         "the old store, from its open files"
     );
     engine.partitions().check_unchanged().unwrap();
+    assert!(engine.partitions().store_superseded());
 
     std::fs::write(d.out.join(".publish-journal"), "{}").unwrap();
     std::thread::sleep(std::time::Duration::from_millis(1100));
@@ -272,4 +273,61 @@ fn a_service_keeps_serving_its_open_store_when_another_store_is_moved_in() {
         engine.count(&age).unwrap_err(),
         hpds_query::QueryError::StoreChanged { .. }
     ));
+}
+
+#[test]
+fn a_service_refuses_queries_once_pheno_index_is_a_link_a_fifo_or_another_format() {
+    let changes: [(&str, StoreChange); 3] = [
+        ("a symbolic link", |out| {
+            let moved = out.join("index-elsewhere");
+            std::fs::rename(out.join("pheno.index"), &moved).unwrap();
+            std::os::unix::fs::symlink(&moved, out.join("pheno.index")).unwrap();
+        }),
+        ("a FIFO", |out| {
+            std::fs::remove_file(out.join("pheno.index")).unwrap();
+            let status = std::process::Command::new("mkfifo")
+                .arg(out.join("pheno.index"))
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }),
+        ("another format version", |out| {
+            let mut bytes = std::fs::read(out.join("pheno.index")).unwrap();
+            bytes[8] = bytes[8].wrapping_add(1);
+            let staged = out.join("index-next");
+            std::fs::write(&staged, bytes).unwrap();
+            std::fs::rename(&staged, out.join("pheno.index")).unwrap();
+        }),
+    ];
+    for (what, change) in changes {
+        let d = two_partitions();
+        let engine = d.open(&lenient()).unwrap();
+        let age = query(ResultType::Count, Some(required(AGE)));
+        assert_eq!(engine.count(&age).unwrap(), 2, "{what}");
+        change(&d.out);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let started = std::time::Instant::now();
+        let error = engine.count(&age).unwrap_err();
+
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "{what}: never waits"
+        );
+        assert!(
+            matches!(error, hpds_query::QueryError::StoreChanged { .. }),
+            "{what}: {error}"
+        );
+        assert!(!engine.partitions().store_superseded(), "{what}");
+    }
+}
+
+#[test]
+fn a_symlinked_pheno_index_is_refused_at_open() {
+    let d = two_partitions();
+    let moved = d.out.join("index-elsewhere");
+    std::fs::rename(d.out.join("pheno.index"), &moved).unwrap();
+    std::os::unix::fs::symlink(&moved, d.out.join("pheno.index")).unwrap();
+    let message = d.open(&lenient()).unwrap_err().to_string();
+    assert!(message.contains("cannot open the store"), "{message}");
 }

@@ -495,6 +495,13 @@ impl PartitionSet {
         self.serving.check(|| self.store.blocks_metadata())
     }
 
+    /// True once another store (of another id) was moved into the data directory while
+    /// this set goes on serving the store it opened from its open files. Health stays UP;
+    /// the service reports it so orchestration can see a restart is due.
+    pub fn store_superseded(&self) -> bool {
+        self.serving.is_superseded()
+    }
+
     /// A hash of the store id. Another load of the data directory gives another value.
     pub(crate) fn generation(&self) -> u128 {
         self.generation
