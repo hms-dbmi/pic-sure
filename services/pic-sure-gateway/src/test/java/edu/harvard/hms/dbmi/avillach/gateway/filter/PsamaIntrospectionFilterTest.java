@@ -53,7 +53,7 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         when(client.introspect(eq("user-token"), any()))
             .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "alice@example.com", "ADMIN", List.of("QUERY"), false, null, null));
-        BufferedRequestWrapper request = wrap("Bearer user-token", new byte[0], "/hpds/auth/v3/query/sync");
+        BufferedRequestWrapper request = wrap("Bearer user-token", new byte[0], "/hpds/auth/query/sync");
         FilterChain chain = mock(FilterChain.class);
 
         filter(client, new AuditContext()).doFilter(request, mock(HttpServletResponse.class), chain);
@@ -71,13 +71,13 @@ class PsamaIntrospectionFilterTest {
         byte[] body = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":{\"a\":1}}".getBytes();
 
         filter(client, new AuditContext()).doFilter(
-            wrap("Bearer user-token", body, "/hpds/%61uth//v3/query/sync"), mock(HttpServletResponse.class), mock(FilterChain.class)
+            wrap("Bearer user-token", body, "/hpds/%61uth//query/sync"), mock(HttpServletResponse.class), mock(FilterChain.class)
         );
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> request = ArgumentCaptor.forClass(Map.class);
         verify(client).introspect(eq("user-token"), request.capture());
-        assertThat(request.getValue()).containsExactly(Map.entry("Target Service", "/hpds/auth/v3/query/sync"));
+        assertThat(request.getValue()).containsExactly(Map.entry("Target Service", "/hpds/auth/query/sync"));
         assertThat(request.getValue().toString()).doesNotContain("secret");
     }
 
