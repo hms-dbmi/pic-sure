@@ -31,6 +31,10 @@ Every `description` is one or more sentences, each ending in a period. A bare no
 Nullability is stated in prose. A member the server always writes, possibly as JSON null, keeps `requiredMode = REQUIRED` and says
 "Null when ..." in its description. `nullable = true` is not used.
 
+A scalar whose only honest example is a value the deployment configures, such as an obfuscation variance, has no `example`, and
+its description says why. The service's `OpenApiDocumentTest` names it in `assertSchemaDocumented(document, Set.of("Schema.property"),
+...)`, which fails if the property gains an example or stops being a scalar of a checked schema.
+
 A hidden controller's models follow the convention too. Hidden means absent from the document, not undocumented in code.
 
 Examples are real domain values. Never `string`, `foo` or `example`. Use these wherever the kind of value appears, so every service

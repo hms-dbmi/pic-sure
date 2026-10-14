@@ -1,5 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
@@ -14,6 +18,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,6 +29,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.test.context.ContextConfiguration;
 
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -199,6 +205,35 @@ public class TokenServiceTest {
 
         Map<String, Object> response = tokenService.inspectToken(inputMap);
         assertEquals("Token not found", response.get("message"));
+    }
+
+    // an open-access session token sent as a bearer by mistake is refused, and neither form of it reaches a log line
+    @Test
+    public void testInspectToken_sessionTokenIsRejectedAndNeverLogged() {
+        String sessionToken = OpenSessionFixtures.enabledService(Clock.systemUTC()).issue().token();
+        String jwt = sessionToken.substring(ApiKeyService.OPEN_SESSION_KEY_PREFIX.length());
+        Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+        Level previousLevel = root.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        root.addAppender(appender);
+        root.setLevel(Level.ALL);
+        try {
+            for (String presented : List.of(sessionToken, jwt)) {
+                Map<String, Object> inputMap = new HashMap<>();
+                inputMap.put("token", presented);
+                assertFalse((Boolean) tokenService.inspectToken(inputMap).get("active"));
+            }
+        } finally {
+            root.detachAppender(appender);
+            root.setLevel(previousLevel);
+        }
+
+        assertFalse(appender.list.isEmpty());
+        String signature = jwt.substring(jwt.lastIndexOf('.') + 1);
+        for (ILoggingEvent event : appender.list) {
+            assertFalse(event.getFormattedMessage().contains(signature), event.getFormattedMessage());
+        }
     }
 
     @Test
