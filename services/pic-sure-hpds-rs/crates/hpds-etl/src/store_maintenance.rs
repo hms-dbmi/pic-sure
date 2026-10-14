@@ -8,7 +8,7 @@ use std::path::Path;
 
 use hpds_format::{
     BLOCKS_FILE_NAME, BLOCKS_HEADER_LEN, BlockLocation, BlocksReader, BlocksWriter, ConceptMeta,
-    INDEX_FILE_NAME, PhenoIndex, Protection, java_string_cmp,
+    INDEX_FILE_NAME, PartitionTable, PhenoIndex, Protection, java_string_cmp,
 };
 use roaring::RoaringBitmap;
 use serde::Serialize;
@@ -82,6 +82,9 @@ pub struct RemoveReport {
     pub unreadable_removed_blocks: u64,
     /// Concepts left in the index.
     pub remaining: u64,
+    /// Overlap patients dropped from a partition's tagged set because none of their
+    /// remaining rows carries that partition's tag, summed over partitions.
+    pub tagged_patients_dropped: u64,
     /// Lines that named no concept in the store, in file order. Only an
     /// [`RemoveOptions::allow_missing`] run reports any; otherwise they fail the command.
     pub not_found: Vec<String>,
@@ -245,6 +248,56 @@ fn count_removed_patients(
     Ok(())
 }
 
+/// The partition table of `index` once only the `kept` concepts remain: the partition
+/// patient sets and the overlap set as they are, and each partition's tagged set narrowed to
+/// the overlap patients that still have a row tagged with the partition. Only tagged
+/// blocks hold rows of overlap patients, so only the kept tagged blocks are read. Counts the
+/// patients dropped from tagged sets into `report`.
+///
+/// # Errors
+/// [`EtlError::Format`] when a kept tagged block cannot be read, or tags a row with a
+/// partition whose recorded tagged set lacks its patient.
+fn remaining_partition_table(
+    index: &PhenoIndex,
+    reader: &BlocksReader,
+    protection: &Protection,
+    kept: &[ConceptMeta],
+    report: &mut RemoveReport,
+) -> Result<PartitionTable> {
+    let mut table = index.partition_table().clone();
+    if table.overlap.is_empty() {
+        return Ok(table);
+    }
+    let codec = index.block_codec(protection.clone())?;
+    let membership = index.membership();
+    let mut tagged = vec![RoaringBitmap::new(); table.partitions.len()];
+    for concept in kept.iter().filter(|c| c.tagged) {
+        let block = reader.read_block(&codec, concept, &membership)?;
+        for (patient, partition) in block.rows_by_key(&membership) {
+            if let Some(partition) = partition
+                && table.overlap.contains(patient)
+                && let Some(set) = tagged.get_mut(usize::from(partition))
+            {
+                set.insert(patient);
+            }
+        }
+    }
+    for (partition, narrowed) in table.partitions.iter_mut().zip(tagged) {
+        if !narrowed.is_subset(&partition.tagged) {
+            return Err(EtlError::Format(hpds_format::FormatError::Corrupt {
+                what: "partition table",
+                detail: format!(
+                    "a block tags rows with partition {:?} that its tagged set lacks",
+                    partition.name
+                ),
+            }));
+        }
+        report.tagged_patients_dropped += partition.tagged.len() - narrowed.len();
+        partition.tagged = narrowed;
+    }
+    Ok(table)
+}
+
 /// Removes the concepts named in `concepts_file` from the store in `dir`, the step
 /// `RemoveConceptFromMetadata` performs on a javabin store.
 ///
@@ -258,9 +311,12 @@ fn count_removed_patients(
 /// [`RemoveOptions::allow_missing`] is set; a file with no line naming anything always
 /// fails. With `allow_missing` and nothing to remove, no file is rewritten.
 ///
-/// The patient ID set, the partition table and the overlap set are left as they are, as
-/// Java leaves `allIds`; removing rows never adds a patient to an untagged block, so the
-/// overlap set stays correct for the blocks that remain.
+/// The patient ID set, the partition patient sets and the overlap set are left as they
+/// are, as Java leaves `allIds`; removing rows never adds a patient to an untagged block, so
+/// the overlap set stays correct for the blocks that remain. Each partition's tagged set,
+/// which the service's cohort guard reads as the overlap patients a selection of that
+/// partition may answer for, is narrowed to the patients that still have a row tagged with
+/// it ([`RemoveReport::tagged_patients_dropped`]).
 ///
 /// By default `pheno.blocks` is rewritten to hold only the remaining concepts' blocks, each
 /// verified on the way, so the removed concepts' observations are no longer in the store's
@@ -362,6 +418,7 @@ pub fn remove_concepts(
         return Ok(report);
     }
     count_removed_patients(&index, &reader, protection, &remove, &mut report)?;
+    let table = remaining_partition_table(&index, &reader, protection, &kept, &mut report)?;
     if options.dry_run {
         if !options.keep_removed_blocks {
             report.compacted = true;
@@ -394,7 +451,7 @@ pub fn remove_concepts(
     let rewritten = PhenoIndex::with_partitions(
         index.header().clone(),
         index.patients().clone(),
-        index.partition_table().clone(),
+        table,
         kept,
     )?;
     let encoded = rewritten.encode(protection)?;
@@ -450,6 +507,7 @@ fn removal_record(
         "patients_with_removed_rows": report.patients_with_removed_rows,
         "unreadable_removed_blocks": report.unreadable_removed_blocks,
         "remaining": report.remaining,
+        "tagged_patients_dropped": report.tagged_patients_dropped,
         "compacted": report.compacted,
         "removed_blocks_kept": report.removed_blocks_kept,
         "blocks_bytes_before": report.blocks_bytes_before,

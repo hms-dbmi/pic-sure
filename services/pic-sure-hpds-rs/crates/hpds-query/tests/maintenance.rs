@@ -143,3 +143,57 @@ fn a_service_refuses_queries_once_its_store_is_replaced_or_a_publish_begins() {
         assert!(engine.partitions().check_unchanged().is_err());
     }
 }
+
+#[test]
+fn removing_an_overlap_patients_rows_narrows_the_tagged_sets_the_guard_reads() {
+    const NOTE: &str = "\\notes\\NOTE\\";
+    let d = partitioned_rows(&[
+        (
+            "p1",
+            vec![(1, SEX, None, Some("male")), (2, NOTE, None, Some("a"))],
+        ),
+        (
+            "p2",
+            vec![(2, AGE, Some(40.0), None), (3, AGE, Some(30.0), None)],
+        ),
+    ]);
+    let tagged = |d: &PartitionedDir| -> Vec<Vec<u32>> {
+        let index =
+            hpds_format::PhenoIndex::read_file(d.out.join("pheno.index"), &protection()).unwrap();
+        index
+            .partition_table()
+            .partitions
+            .iter()
+            .map(|p| p.tagged.iter().collect())
+            .collect()
+    };
+    assert_eq!(tagged(&d), [vec![2], vec![2]]);
+    let list = concepts_file(&d, &[NOTE]);
+
+    let report = remove_concepts(&d.out, &list, &protection(), &RemoveOptions::default()).unwrap();
+
+    assert_eq!(report.tagged_patients_dropped, 1);
+    assert_eq!(tagged(&d), [vec![], vec![2]]);
+    let engine = d.open(&lenient()).unwrap();
+    assert_eq!(engine.partitions().overlap_patients(), 1);
+    let consent = |name: &str| UserConsent {
+        value: Some(name.into()),
+    };
+    let mut p1_sex = query(ResultType::Count, Some(required(SEX)));
+    p1_sex.user_consents = vec![consent("p1")];
+    assert_eq!(engine.count(&p1_sex).unwrap(), 1);
+    let mut p1_all = query(ResultType::Count, None);
+    p1_all.user_consents = vec![consent("p1")];
+    assert_eq!(
+        engine.count(&p1_all).unwrap(),
+        2,
+        "p1's patient set is kept"
+    );
+    let mut p2_age = query(ResultType::Count, Some(required(AGE)));
+    p2_age.user_consents = vec![consent("p2")];
+    assert_eq!(engine.count(&p2_age).unwrap(), 2);
+    let mut p1_age = p2_age.clone();
+    p1_age.user_consents = vec![consent("p1")];
+    assert_eq!(engine.count(&p1_age).unwrap(), 0);
+    assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
+}

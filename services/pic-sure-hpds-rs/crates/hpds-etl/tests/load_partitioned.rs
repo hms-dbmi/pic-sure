@@ -784,6 +784,19 @@ fn cli_maintenance_commands_change_the_one_store() {
         [3],
         "the partition table is kept"
     );
+    let tagged: Vec<u64> = store
+        .index
+        .partition_table()
+        .partitions
+        .iter()
+        .map(|p| p.tagged.len())
+        .collect();
+    assert_eq!(
+        tagged,
+        [0, 0],
+        "patient 3's only tagged rows were in the removed concept"
+    );
+    assert_eq!(report["tagged_patients_dropped"], 2);
     let csv_path = out.join("columnMeta.csv");
     let before = std::fs::read_to_string(&csv_path).unwrap();
     assert!(!before.contains("shared"));
