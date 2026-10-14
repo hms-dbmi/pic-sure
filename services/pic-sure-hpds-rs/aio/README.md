@@ -132,5 +132,23 @@ directory holding partition stores written by Rust HPDS v1 to v3.
   reset), `down.sh` restores `query.env` alone. `switch.sh java` needs `query.env.pre-rust`, or a
   `query.env` that already points at the Java HPDS, and warns when the backup's URLs differ from
   a current non-rust `query.env`.
+- **Removing concepts** from `hpds-rs/` needs `hpds-rs` stopped: `hpds-etl remove-concepts`
+  refuses to run while the service holds the store open, because a running service keeps
+  serving what it read at startup. Stop it, run the command, then start it again with `up.sh`:
+
+  ```bash
+  docker stop hpds-rs
+  docker run --rm --user "$(id -u):$(id -g)" \
+    -v "$DOCKER_CONFIG_DIR/hpds-rs:/store" -v "$PWD/conceptsToRemove.txt:/in/concepts.txt:ro" \
+    hms-dbmi/pic-sure-hpds-rs-etl:LATEST remove-concepts --store /store --concepts /in/concepts.txt --dry-run
+  # the same without --dry-run, then:
+  aio/up.sh
+  ```
+
+  Each removal is recorded in `hpds-rs/maintenance-log.jsonl`. If the command is killed
+  part way, `hpds-rs` stays DOWN until `remove-concepts` or `recover --store /store` is run the
+  same way. A later `load.sh` rebuilds the store from its inputs and brings removed concepts
+  back unless they were taken out of the inputs too. See the service README's "Removing
+  concepts".
 - Network and container names can be overridden for tests with `PICSURE_NETWORK`,
   `HPDS_NETWORK`, `QS_CONTAINER`, `HPDS_RS_CONTAINER` and `HPDS_JAVA_CONTAINER`.

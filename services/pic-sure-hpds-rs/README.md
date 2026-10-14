@@ -83,7 +83,8 @@ its consents, then the concepts it touches in the partitions those consents sele
 
 The key is read from `<HPDS_DATA_DIRECTORY>/encryption_key`. When the data directory cannot be
 opened (no store, a store of format 1 written by Rust HPDS v1 to v3, a partition left in
-javabin form, a `.generation` mismatch, a block that disagrees with the index, an
+javabin form, a `.generation` mismatch, an interrupted publish awaiting `hpds-etl recover`,
+a block that disagrees with the index, an
 unpartitioned store while consents are required) the server still starts, logs the open
 error, health reports DOWN with a reason, and query routes answer 503. The startup log line
 `store opened` carries `overlap_patients`, the size of the overlap set (see
@@ -119,6 +120,17 @@ directory itself) as `PartitionedPhenotypicObservationStore` serves its partitio
   Beside a store, subdirectories are ignored.
 - When `<dir>/.generation` exists (the ETL writes it last), it must hold exactly the store id
   of `pheno.index`, or the open is refused as a load still being published.
+- A directory holding `.publish-journal` is refused until `hpds-etl recover` finishes the
+  interrupted publish it records (see [Removing concepts](#removing-concepts)). The service
+  never writes the data directory.
+- The service holds a shared `flock` on the `pheno.index` it opened for as long as it runs, so
+  an `hpds-etl` command that would replace the store files under it refuses to run, and a
+  service starting while one publishes waits for it to finish. At most once a second it also
+  checks that `pheno.index` is still the file it opened and that no publish journal appeared;
+  once either fails, every query, `/search` and result download answers 503 asking for a
+  restart, and health reports DOWN with that reason until the service restarts. That covers
+  files replaced where the lock does not reach: another kernel, a network filesystem, a
+  plain `mv`.
 - A filter matches a patient with a satisfying row in any selected partition, before
   filters combine, so a patient in two partitions can match one filter in one and another
   filter in the other, as in Java.
@@ -328,6 +340,8 @@ Differences from Java a caller can see:
 - A failed query's `resultMetadata` carries an `error` message.
 - With the consent flag on and an unpartitioned data directory, Java fails to start; this
   service starts and reports DOWN on `/actuator/health`.
+- When its store files are replaced while it runs, this service refuses every query with a 503
+  until it restarts. Java keeps answering from the store it loaded at startup.
 - Neither service binds an async result to the consents it was submitted with. The query
   service enforces read access (`verifyReadAccess`) before it hands out a result, as it does
   for Java.
@@ -384,9 +398,11 @@ last: one line, the store id of its `pheno.index` as 32 lowercase hex digits. In
 and `pheno.index` last, so a reader that finds the new index finds the new blocks, and the
 marker names the old id until the new store is complete. That publish holds an exclusive
 `flock` on the `--out` directory itself (no lock file), the store lock, which every command
-that writes a store takes (`load`, `migrate`, `convert`, `remove-concepts`, `column-meta-csv`),
-so two of them never interleave, also from separate containers sharing the directory (on one
-kernel, see below). `--out` is refused when it holds a partitioned store of format 1 (partition
+that writes a store takes (`load`, `migrate`, `convert`, `remove-concepts`, `recover`,
+`column-meta-csv`), so two of them never interleave, also from separate containers sharing the
+directory (on one kernel, see below). A publish into an existing `--out` is refused, before
+anything is built, while a running query service holds that store open (see
+[Partition layout](#partition-layout)), and while it holds an interrupted publish's journal. `--out` is refused when it holds a partitioned store of format 1 (partition
 directories or a `.combined` directory); convert that one into another directory instead.
 The staging directory's name carries the pid, a per-process sequence number and a random
 suffix, so concurrent runs, also in separate containers, never share one. Moving into place is
@@ -480,8 +496,10 @@ directory and exports each partition: a subdirectory with both javabin files is 
 one with only one of them fails the run.
 
 `remove-concepts` and `column-meta-csv` act on the one store under its store lock.
-`remove-concepts` keeps the store id, the partition table and the overlap set: removing rows
-never puts an overlap patient into an untagged block.
+`remove-concepts` keeps the store id, the partition patient sets and the overlap set: removing
+rows never puts an overlap patient into an untagged block. It narrows each partition's tagged
+set to the overlap patients that still have a row tagged with it (see
+[Removing concepts](#removing-concepts)).
 
 `dump --out <dir>` of a partitioned store writes `<dir>/<partition>.csv`, each holding the rows
 of that partition (its tags, or its patients' routing), concept by concept, in the order a
@@ -504,6 +522,83 @@ block's offset and length. `--merged` is accepted for a partitioned store and re
 unpartitioned one. No per-partition `columnMeta.csv` is written: nothing on the harmonization
 branch, in Java HPDS or the query service, reads one; the dictionary ETL reads the one file it
 is given.
+
+### Removing concepts
+
+`hpds-etl remove-concepts --store <dir> --concepts <file>` withdraws concepts from a store, the
+step `RemoveConceptFromMetadata` performs on a javabin store with `conceptsToRemove.txt`. The
+file is UTF-8, one concept path per line, split as `BufferedReader.readLine` splits it. A line
+removes the concept whose path equals it exactly once U+FFFD is removed from it (Java matches
+the raw metastore keys, which still hold U+FFFD; this store holds them stripped). Lines are not
+trimmed and never match a prefix. Empty lines are skipped. The key is checked as `load` checks
+it: `--key-file` must equal the store's `encryption_key`, and `--plain` is refused over a store
+with one.
+
+Run it with the service stopped: stop it, run `remove-concepts`, start it. The command refuses
+to run while a query service holds the store open, because a running service keeps serving the
+index and blocks it read at startup, the removed concepts included, and would keep the old
+blocks file alive on disk. Removal is undone by reloading the store from inputs that still hold
+the concepts, so take them out of the inputs too.
+
+- **Every line must name a concept.** A line that names none (a trailing space, missing
+  backslashes, a typo) fails the command before anything is written, listing the lines with
+  their numbers and a hint when a concept matches without the surrounding whitespace or with a
+  backslash at each end. `--allow-missing` removes the concepts that exist and lists the rest,
+  for a rerun after the concepts are gone. A file with no line naming anything always fails.
+- **`--dry-run`** reads the store under the shared store lock and prints what a run would do:
+  the removed paths, their observations, the distinct patients with a removed row, the overlap
+  patients dropped from tagged sets, the size `pheno.blocks` would have, and `store_in_use`
+  when a service holds the store open. It writes nothing, and fails after the report when a run
+  would fail on lines naming no concept.
+- **Compaction is the default.** `pheno.blocks` is rewritten to hold only the remaining
+  concepts' blocks, each verified on the way, so the removed observations are no longer in the
+  store's files; the store keeps its id, so blocks are copied without being re-encrypted.
+  `--keep-removed-blocks` rewrites only `pheno.index` and leaves the removed observations in
+  `pheno.blocks`, encrypted but present, with a warning. Use it only when the data does not
+  need to leave the disk; a later run without it compacts.
+- **What compaction does not erase.** The old `pheno.blocks` is unlinked, not overwritten: its
+  sectors stay on the disk until the filesystem reuses them, and a process that still has it
+  open (a service that was not stopped) keeps it readable until it closes it. Backups,
+  snapshots, copies of the store and copies of the inputs are outside the store. Erasing those,
+  and the disk itself where that is required, is the operator's responsibility.
+- **Crash safety.** The new files are staged beside the old ones and synced, then a journal,
+  `.publish-journal`, records each staged file with its target, length and XXH3-128, and the
+  record the run will log. Only then are `pheno.blocks` and `pheno.index` renamed into place,
+  `columnMeta.csv` regenerated and the record appended, and the journal is removed last. A crash
+  before the journal leaves the old store whole. After it, `hpds-etl recover --store <dir>`
+  finishes the publish: it renames each staged file still present after checking its length
+  and hash, checks the files already renamed, regenerates `columnMeta.csv`, appends the record
+  unless the log holds it, and removes the journal; a file matching neither is refused and the
+  store left as it is. `remove-concepts` runs the same recovery first. Until then the query
+  service refuses to open the directory, and `dump`, `column-meta-csv`, `--dry-run` and a load
+  into the directory refuse it, all naming `hpds-etl recover`. `recover` also removes staged
+  files a killed run left before journaling. The store format is unchanged.
+- **The maintenance log.** Every run that is not a dry run appends one JSON line to
+  `maintenance-log.jsonl` in the store: `time` (UTC), `operation`, `result` (`published`,
+  `no-change` for an `--allow-missing` run that found nothing, or `completed-by-recover`),
+  `tool`, `store_id`, `publish_id`, the `concepts_file` path and its `concepts_file_sha256`,
+  `removed_paths`, the line, observation, patient and byte counts, `compacted`,
+  `removed_blocks_kept`, and `index_sha256`, the SHA-256 of the `pheno.index` it left, so
+  `sha256sum pheno.index` tells whether the store is still the one the last record describes.
+  No patient id or value is written. The log is created mode `0600`, never through a symbolic
+  link, and each record is synced before the command succeeds. `.generation` and
+  `etl-report.json` are left as they are: the store id does not change (every block's
+  associated data binds it), and the report describes the load that built the store.
+- **Files.** Every file it creates is mode `0600`. It refuses a store whose `pheno.index`,
+  `pheno.blocks`, `columnMeta.csv`, `.generation`, journal or log is a symbolic link, since
+  renaming over a link leaves the file it points to, and its data, in place. The concepts file
+  must be a regular file of at most 64 MiB.
+- **Partitions.** The partition patient sets and the overlap set are kept, as Java keeps
+  `allIds`. Each partition's tagged set, which the service's cohort guard reads as the overlap
+  patients a selection of that partition may answer for, is narrowed to the patients that still
+  have a row tagged with it.
+
+Differences from Java: a line naming no concept fails the command (Java ignores it) unless
+`--allow-missing`; the removed observations leave `pheno.blocks` (Java leaves them in
+`allObservationsStore.javabin`); `columnMeta.csv` is regenerated (Java leaves that to
+`CreateColumnmetaCSV`); the replacement is crash safe and logged (Java rewrites
+`columnMeta.javabin` in place); and a running service is refused (Java's service keeps serving
+what it loaded).
 
 ### Converting a store of format 1
 
