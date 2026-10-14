@@ -354,3 +354,45 @@ async fn an_integer_bound_as_wide_as_double_max_is_accepted_as_jackson_accepts_i
         (StatusCode::OK, "1126")
     );
 }
+
+#[tokio::test]
+async fn an_overflowing_bound_is_infinity_and_counts_as_java_does() {
+    let f = fixture();
+    for (min, max, count) in [
+        ("0", "1e309", "1126"),
+        ("1e309", "1e310", "0"),
+        ("-1e309", "1000", "1126"),
+    ] {
+        let reply = post(&f.app, SYNC, raw_range_body(AGE, min, max)).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (StatusCode::OK, count),
+            "{min} {max}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_number_longer_than_jacksons_limit_is_a_400() {
+    let f = fixture();
+    let long = format!("1{}", "0".repeat(1000));
+    let reply = post(&f.app, SYNC, raw_range_body(AGE, &long, "1")).await;
+    assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        reply.body,
+        "the request body is not valid JSON: Number value length (1001) exceeds the maximum allowed (1000)"
+    );
+    let as_string = json!({
+        "query": format!(r#"{{"expectedResultType":"COUNT","x":{long}}}"#),
+        "resourceUUID": null
+    });
+    let reply = post(&f.app, SYNC, as_string.to_string()).await;
+    assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+    assert!(
+        reply.body.starts_with(
+            "the query is not valid: Number value length (1001) exceeds the maximum allowed (1000)"
+        ),
+        "{}",
+        reply.body
+    );
+}

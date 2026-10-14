@@ -78,3 +78,103 @@ fn an_integer_literal_as_wide_as_double_max_reads_as_double_max() {
     let [query, _] = read_both_ways(&range_json("0", DOUBLE_MAX_INTEGER));
     assert_eq!(s.engine.count(&query).unwrap(), 2);
 }
+
+const ZERO: &str = "\\demographics\\ZERO\\";
+
+/// A COUNT query on `path` with the bounds written into the JSON text verbatim.
+fn bounds_json(path: &str, bounds: &[(&str, &str)]) -> String {
+    let fields: String = bounds
+        .iter()
+        .map(|(k, v)| format!(r#","{k}":{v}"#))
+        .collect();
+    format!(
+        r#"{{"expectedResultType":"COUNT","phenotypicClause":{{"phenotypicFilterType":"FILTER","conceptPath":{}{fields}}}}}"#,
+        serde_json::to_string(path).unwrap()
+    )
+}
+
+#[test]
+fn bounds_that_overflow_a_double_read_as_jackson_reads_them() {
+    let wide = format!("1{}", "0".repeat(309));
+    let thousand_digits = format!("1{}", "0".repeat(999));
+    let midpoint_above_max = "179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497792";
+    let cases = [
+        ("1e309", f64::INFINITY),
+        ("-1e309", f64::NEG_INFINITY),
+        ("1.7976931348623159e308", f64::INFINITY),
+        ("1.7976931348623158e308", f64::MAX),
+        (wide.as_str(), f64::INFINITY),
+        (&format!("-{wide}"), f64::NEG_INFINITY),
+        (thousand_digits.as_str(), f64::INFINITY),
+        (midpoint_above_max, f64::INFINITY),
+        (DOUBLE_MAX_INTEGER, f64::MAX),
+        ("1e-400", 0.0),
+    ];
+    for (text, jackson) in cases {
+        for query in read_both_ways(&bounds_json(HEIGHT, &[("min", text)])) {
+            let (min, _) = bounds(&query);
+            assert_eq!(min.unwrap().to_bits(), jackson.to_bits(), "{text}");
+        }
+    }
+}
+
+#[test]
+fn minus_zero_reads_as_jackson_reads_it() {
+    for (text, jackson) in [("-0", 0.0_f64), ("-0.0", -0.0), ("-0e0", -0.0), ("0", 0.0)] {
+        for query in read_both_ways(&bounds_json(ZERO, &[("max", text)])) {
+            let (_, max) = bounds(&query);
+            assert_eq!(max.unwrap().to_bits(), jackson.to_bits(), "{text}");
+        }
+    }
+}
+
+#[test]
+fn infinite_and_zero_bounds_count_as_java_does() {
+    let s = store(&[
+        (1, ZERO, Some(-0.0), None),
+        (2, ZERO, Some(-0.0), None),
+        (3, ZERO, Some(0.0), None),
+        (4, ZERO, Some(0.0), None),
+        (5, HEIGHT, Some(0.0), None),
+        (6, HEIGHT, Some(5e-324), None),
+        (7, HEIGHT, Some(9007199254740992.0), None),
+        (8, HEIGHT, Some(f64::MAX), None),
+    ]);
+    let cases = [
+        (ZERO, vec![("min", "-0")], 2),
+        (ZERO, vec![("max", "-0")], 4),
+        (ZERO, vec![("min", "-0"), ("max", "-0")], 2),
+        (ZERO, vec![("min", "-0.0")], 4),
+        (ZERO, vec![("max", "-0.0")], 2),
+        (ZERO, vec![("min", "-0e0")], 4),
+        (HEIGHT, vec![("max", "1e309")], 4),
+        (HEIGHT, vec![("min", "0"), ("max", "1e309")], 4),
+        (HEIGHT, vec![("min", "-1e309")], 4),
+        (HEIGHT, vec![("max", "-1e309")], 0),
+        (HEIGHT, vec![("min", DOUBLE_MAX_INTEGER)], 1),
+    ];
+    for (path, bounds, expected) in cases {
+        let json = bounds_json(path, &bounds);
+        for query in read_both_ways(&json) {
+            assert_eq!(s.engine.count(&query).unwrap(), expected, "{json}");
+        }
+    }
+}
+
+#[test]
+fn numbers_longer_than_jacksons_limit_are_refused() {
+    let message = "Number value length (1001) exceeds the maximum allowed (1000)";
+    for text in [
+        format!("1{}", "0".repeat(1000)),
+        format!("0.{}1", "0".repeat(999)),
+        format!("1e{}1", "0".repeat(999)),
+    ] {
+        let json = bounds_json(HEIGHT, &[("min", &text)]);
+        let direct = Query::from_json(json.as_bytes()).unwrap_err().to_string();
+        let strict = parse_strict(json.as_bytes()).unwrap_err().to_string();
+        assert!(direct.starts_with(message), "{direct}");
+        assert!(strict.starts_with(message), "{strict}");
+    }
+    let accepted = bounds_json(HEIGHT, &[("max", &format!("1.{}1", "0".repeat(998)))]);
+    assert!(Query::from_json(accepted.as_bytes()).is_ok());
+}

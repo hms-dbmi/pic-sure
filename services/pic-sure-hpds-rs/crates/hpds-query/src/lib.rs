@@ -29,6 +29,7 @@ mod counters;
 mod engine;
 mod error;
 mod fan_out;
+mod json_number;
 mod limits;
 pub mod model;
 mod partition;

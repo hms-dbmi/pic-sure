@@ -22,6 +22,11 @@
 //! - Doubles accept JSON numbers and strings (`"5"`, `"NaN"`, `"Infinity"`), and an empty
 //!   string is `null`, as Jackson's scalar coercion does. Booleans accept `true`, `false`
 //!   and the strings `"true"` and `"false"`.
+//! - Numbers are read from their literal text as Jackson 2.21 reads them: a number with more
+//!   than 1,000 digits is refused (`StreamReadConstraints`), and a `min` or `max` that
+//!   overflows a double is `±Infinity` and one written as the integer `-0` is `0.0`. Every
+//!   other number is the correctly rounded double, as `serde_json` with `float_roundtrip`
+//!   reads it.
 //! - Enums accept their exact Java name or their ordinal as a JSON integer.
 //! - UUIDs must be in the canonical 36-character form and are kept in lowercase.
 //!
@@ -611,24 +616,37 @@ impl<'de> Visitor<'de> for StrictValueVisitor {
 /// whole request body, envelope included, before taking the query out of it: a body parsed
 /// with plain `serde_json::from_slice` has already dropped the earlier duplicate.
 ///
+/// Numbers are read as Jackson reads them, through the number scan of `json_number`: a
+/// number with more than 1,000 digits is refused, and a `min` or `max` that overflows a double
+/// or is the integer `-0` is read as `±Infinity` or `0.0`.
+///
 /// # Errors
 /// The `serde_json` error for invalid JSON (a byte order mark, comments, trailing commas
-/// and `NaN` literals included) or a duplicate key.
+/// and `NaN` literals included), a number with more than 1,000 digits, or a duplicate key.
 pub fn parse_strict(json: &[u8]) -> serde_json::Result<Value> {
-    let mut deserializer = serde_json::Deserializer::from_slice(json);
+    let json = java_number_text(json)?;
+    let mut deserializer = serde_json::Deserializer::from_slice(&json);
     let StrictValue(value) = StrictValue::deserialize(&mut deserializer)?;
     deserializer.end()?;
     Ok(value)
 }
 
+/// `json` with its number tokens prepared as `json_number::java_numbers` prepares them, the
+/// refusal of an over-long number given as a `serde_json` error.
+fn java_number_text(json: &[u8]) -> serde_json::Result<std::borrow::Cow<'_, [u8]>> {
+    crate::json_number::java_numbers(json).map_err(<serde_json::Error as de::Error>::custom)
+}
+
 impl Query {
     /// Reads a query from JSON text with every rule of this module, duplicate keys
-    /// included. The same as `serde_json::from_slice::<Query>`.
+    /// included, and numbers read as [`parse_strict`] reads them. Otherwise the same as
+    /// `serde_json::from_slice::<Query>`.
     ///
     /// # Errors
-    /// The `serde_json` error for invalid JSON or a query the model refuses.
+    /// The `serde_json` error for invalid JSON, a number with more than 1,000 digits, or a
+    /// query the model refuses.
     pub fn from_json(json: &[u8]) -> serde_json::Result<Query> {
-        serde_json::from_slice(json)
+        serde_json::from_slice(&java_number_text(json)?)
     }
 }
 
