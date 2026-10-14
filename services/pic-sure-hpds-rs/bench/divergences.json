@@ -45,7 +45,7 @@
       "name": "range-min-above-every-value-empty-200",
       "statuses": [200, 200],
       "when": "range-min-success-body-empty",
-      "reason": "Spec divergence, Range filters: Java's seekForMinIndex throws when min is above every value (on the harmonization branch, every value of any one selected partition holding the concept), and copyOfRange throws when max is below min; Java then answers 200 with an empty body, where Rust answers 200 with the result for an empty cohort. Accepted only for sync entries whose phenotypic clause holds a FILTER with a min, and only when exactly one side's 200 body is empty. A string min counts when Jackson coerces it to a number (\"NaN\" is above every value), and an entry sent as a raw body is read from that body."
+      "reason": "Spec divergence, Range filters: Java's seekForMinIndex throws when min is above every value (on the harmonization branch, every value of any one selected partition holding the concept), and copyOfRange throws when max is below min; Java then answers 200 with an empty body, where Rust answers 200 with the result for an empty cohort. Accepted only for sync entries whose phenotypic clause holds a FILTER with a min, and only when the empty 200 body is Java's (the run must name its Java side with --java and --java-branch) and Rust's 200 has a body. A string min counts when Jackson coerces it to a number (\"NaN\" is above every value), and an entry sent as a raw body is read from that body."
     },
     {
       "name": "missing-consents-sync-empty-200",

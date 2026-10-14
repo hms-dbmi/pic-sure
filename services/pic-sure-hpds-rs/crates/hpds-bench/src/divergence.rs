@@ -22,9 +22,11 @@ pub enum Condition {
     /// `4.9E-324` (Java's `Double.MIN_VALUE`) on one side, against a value of zero or below on
     /// the other, takes the other side's value. At least one such field must differ.
     NumericMaxDoubleMinValue,
-    /// Both sides answered a sync request with 200, exactly one of them with an empty body,
-    /// and the entry's phenotypic clause holds a `FILTER` with a `min`: a number, or a string
-    /// Jackson coerces to one (`"NaN"`, `"5"`). The request may be a raw body.
+    /// Both sides answered a sync request with 200, the Java side (which must be known,
+    /// [`Divergences::for_java`]) with an empty body and the other with a body, and the entry's
+    /// phenotypic clause holds a `FILTER` with a `min`: a number, or a string Jackson coerces
+    /// to one (`"NaN"`, `"5"`). The request may be a raw body. An empty 200 from Rust never
+    /// matches.
     RangeMinSuccessBodyEmpty,
     /// Both sides answered 200 with JSON that differs, and is equal once every
     /// `categoryValues` array is sorted on both sides.
@@ -825,13 +827,27 @@ fn filter_without_criteria_refused(entry: &CorpusEntry, a: &Outcome, b: &Outcome
         )
 }
 
-fn range_min_with_one_empty_body(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
-    let (Outcome::Sync(x), Outcome::Sync(y)) = (a, b) else {
+fn range_min_with_one_empty_body(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(java) = java else {
         return false;
     };
-    x.status == 200
-        && y.status == 200
-        && x.body.is_empty() != y.body.is_empty()
+    let (java_outcome, rust_outcome) = match java.side {
+        Side::A => (a, b),
+        Side::B => (b, a),
+    };
+    let (Outcome::Sync(java_answer), Outcome::Sync(rust_answer)) = (java_outcome, rust_outcome)
+    else {
+        return false;
+    };
+    java_answer.status == 200
+        && rust_answer.status == 200
+        && java_answer.body.is_empty()
+        && !rust_answer.body.is_empty()
         && request_value(entry)
             .and_then(|request| query_object(&request))
             .and_then(|query| query.get("phenotypicClause").cloned())
@@ -853,7 +869,7 @@ impl Condition {
             | Condition::CategoryValuesOrder
             | Condition::SearchConceptOrder
             | Condition::ColumnMetaShape => equal_after(a, b, &[self]),
-            Condition::RangeMinSuccessBodyEmpty => range_min_with_one_empty_body(entry, a, b),
+            Condition::RangeMinSuccessBodyEmpty => range_min_with_one_empty_body(entry, a, b, java),
             Condition::MissingConsentsEmpty200 => missing_consents_empty_200(entry, a, b),
             Condition::MissingConsentsAsyncError => missing_consents_async_error(entry, a, b),
             Condition::DataframeCellOrder => dataframe_cell_order(a, b),
@@ -1120,9 +1136,10 @@ mod tests {
 
     #[test]
     fn an_empty_200_is_accepted_only_for_a_range_filter_with_a_min() {
-        let set = rules(json!([
+        let file = rules(json!([
             {"name": "range", "statuses": [200, 200], "when": "range-min-success-body-empty", "reason": "why"}
         ]));
+        let set = file.clone().for_java(Side::A, JavaBranch::Consent);
         let above_every_value = json!({"operator": "AND", "phenotypicClauses": [
             {"conceptPath": "\\a\\", "max": -37.31, "phenotypicFilterType": "FILTER"},
             {"conceptPath": "\\b\\", "min": -33.37, "phenotypicFilterType": "FILTER"}
@@ -1133,7 +1150,14 @@ mod tests {
         );
         let rust = sync(200, r#"{"\\a\\":{}}"#);
         assert!(set.find(&e, &sync(200, ""), &rust).is_some());
-        assert!(set.find(&e, &rust, &sync(200, "")).is_some());
+        assert!(set.find(&e, &rust, &sync(200, "")).is_none());
+        assert!(
+            file.clone()
+                .for_java(Side::B, JavaBranch::Main)
+                .find(&e, &rust, &sync(200, ""))
+                .is_some()
+        );
+        assert!(file.find(&e, &sync(200, ""), &rust).is_none());
         assert!(set.find(&e, &sync(200, ""), &sync(200, "")).is_none());
         assert!(set.find(&e, &sync(200, "{}"), &rust).is_none());
         assert!(set.find(&e, &sync(200, ""), &sync(400, "msg")).is_none());
@@ -1175,11 +1199,19 @@ mod tests {
                 {"conceptPath": "\\b\\", "min": -33.37, "phenotypicFilterType": "FILTER"}
             ]}),
         );
+        let set = set.for_java(Side::A, JavaBranch::Consent);
         let rule = set
             .find(&e, &sync(200, ""), &sync(200, r#"{"\\b\\":{}}"#))
             .unwrap();
         assert_eq!(rule.name, "range-min-above-every-value-empty-200");
         assert!(rule.reason.contains("seekForMinIndex"));
+        let count = with_clause(
+            "0114-numeric-range-count",
+            json!({"conceptPath": "\\b\\", "min": 5.0, "phenotypicFilterType": "FILTER"}),
+        );
+        let java_count = sync(200, "12");
+        let rust_empty = sync(200, "");
+        assert!(set.find(&count, &java_count, &rust_empty).is_none());
     }
 
     fn async_outcome(submit: u16, resource: Option<&str>, body: Option<&str>) -> Outcome {
@@ -1638,7 +1670,8 @@ mod tests {
         let set = rules(json!([
             {"name": "none", "when": "filter-without-criteria-refused", "reason": "why"},
             {"name": "range", "statuses": [200, 200], "when": "range-min-success-body-empty", "reason": "why"}
-        ]));
+        ]))
+        .for_java(Side::A, JavaBranch::Main);
         let filter = |extra: Value| {
             let mut clause = json!({"phenotypicFilterType": "FILTER", "conceptPath": "\\a\\"});
             for (key, value) in extra.as_object().unwrap() {
