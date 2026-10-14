@@ -376,7 +376,8 @@ impl PartitionSet {
                 format!(
                     "it holds {PUBLISH_JOURNAL_FILE_NAME}: an hpds-etl command was interrupted \
                      while replacing the store files, which may not match. Run hpds-etl \
-                     recover --store <this directory>, then restart the service"
+                     recover --store <this directory>, which finishes or rolls back the \
+                     publish or says why it can do neither, then restart the service"
                 ),
             ));
         }

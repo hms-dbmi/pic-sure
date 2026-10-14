@@ -841,6 +841,65 @@ fn recover_refuses_a_journal_edited_out_of_shape() {
 }
 
 #[test]
+fn recover_rolls_back_when_a_staged_file_is_gone_before_anything_moved() {
+    let (store, journal) = journaled_store();
+    let index_before = std::fs::read(store.out.join("pheno.index")).unwrap();
+    let staged_index = temporary_files(&store.out)
+        .into_iter()
+        .find(|n| n.starts_with(".pheno.index.tmp-"))
+        .unwrap();
+    std::fs::remove_file(store.out.join(staged_index)).unwrap();
+    let refused = regenerate_column_meta_csv(&store.out, None, &protection())
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("rolls it back"), "{refused}");
+
+    let report = recover(&store.out, &protection()).unwrap();
+
+    assert_eq!(report.rolled_back.as_deref(), Some("remove-concepts"));
+    assert_eq!(report.finished, None);
+    assert!(!journal.exists());
+    assert_eq!(temporary_files(&store.out), Vec::<String>::new());
+    assert_eq!(
+        std::fs::read(store.out.join("pheno.index")).unwrap(),
+        index_before
+    );
+    let opened = OpenStore::open(&store.out, protection()).unwrap();
+    assert_eq!(opened.index.concepts().len(), store.index.concepts().len());
+    let log = records(&store.out).unwrap();
+    assert_eq!(log.len(), 1);
+    assert_eq!(log[0]["result"], "rolled-back-by-recover");
+}
+
+#[test]
+fn recover_refuses_when_one_file_moved_and_another_staged_copy_is_gone() {
+    let store = edge_store();
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let options = RemoveOptions {
+        stop_after: Some(PublishStep::BlocksMoved),
+        ..RemoveOptions::default()
+    };
+    remove_concepts(&store.out, &list_path, &protection(), &options).unwrap_err();
+    let staged_index = temporary_files(&store.out)
+        .into_iter()
+        .find(|n| n.starts_with(".pheno.index.tmp-"))
+        .unwrap();
+    std::fs::remove_file(store.out.join(staged_index)).unwrap();
+    let before = snapshot(&store.out);
+
+    let error = recover(&store.out, &protection()).unwrap_err().to_string();
+
+    assert!(
+        error.contains("neither finished nor rolled back"),
+        "{error}"
+    );
+    assert!(!error.contains("hpds-etl recover"), "{error}");
+    assert_eq!(snapshot(&store.out), before);
+}
+
+#[test]
 fn remove_concepts_finishes_an_interrupted_removal_before_its_own() {
     let store = edge_store();
     let paths: Vec<String> = store

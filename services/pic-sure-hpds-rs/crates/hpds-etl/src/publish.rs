@@ -10,10 +10,15 @@
 //!
 //! Before the journal is synced nothing of the store has changed, and the staged files are
 //! orphans a later [`recover`] removes. Once it is, every staged file is complete, so
-//! [`recover`] always rolls forward: it renames each staged file still present over its
-//! target after checking its length and hash, checks that a target already renamed has
-//! them, regenerates `columnMeta.csv`, appends the record unless the log already holds it,
-//! and removes the journal. A file that matches neither is refused rather than published.
+//! [`recover`] rolls forward: it checks the journal's record against the index it
+//! publishes, renames each staged file still present over its target after checking its
+//! length and hash, checks that a target already renamed has them, regenerates
+//! `columnMeta.csv`, appends the record unless the log already holds it, and removes the
+//! journal. A staged file that is not the journaled one, or not a regular file, is refused
+//! rather than published. When a staged file is gone and no file was renamed yet, the store
+//! is still the old one: [`recover`] checks that it opens whole, removes the other staged
+//! files and the journal, and logs the publish as rolled back. When some file was renamed
+//! and another's staged copy is gone, it can do neither and says so.
 //! While the journal exists the query service refuses to open the directory, and the
 //! other `hpds-etl` commands refuse to read it.
 //!
@@ -203,7 +208,7 @@ pub fn refuse_pending_publish(dir: &Path) -> Result<()> {
     let journal = dir.join(PUBLISH_JOURNAL_FILE_NAME);
     if std::fs::symlink_metadata(&journal).is_ok() {
         return Err(EtlError::Usage(format!(
-            "{} holds {PUBLISH_JOURNAL_FILE_NAME}: an hpds-etl command was interrupted while replacing the store files. Run hpds-etl recover --store {} to finish it, then retry",
+            "{} holds {PUBLISH_JOURNAL_FILE_NAME}: an hpds-etl command was interrupted while replacing the store files. Run hpds-etl recover --store {}, which finishes the publish, rolls it back when nothing was replaced yet, or says why it can do neither; then retry",
             dir.display(),
             dir.display()
         )));
@@ -312,6 +317,9 @@ pub struct RecoverReport {
     /// Whether the maintenance log record of the finished publish was appended now (false
     /// when the interrupted run had appended it).
     pub recorded: bool,
+    /// The operation whose interrupted publish was rolled back, or `None`: a staged file
+    /// was gone before any file was renamed, so the store was still the old one.
+    pub rolled_back: Option<String>,
     /// Temporary files of interrupted runs removed: staged replacements never journaled.
     pub orphans_removed: u64,
 }
@@ -350,6 +358,24 @@ pub(crate) fn recover_held(
     };
     if let Some(journal) = journal {
         let interrupts = crate::cleanup::lock();
+        let states = journal
+            .files
+            .iter()
+            .map(|file| entry_state(dir, file))
+            .collect::<Result<Vec<_>>>()?;
+        if states.contains(&EntryState::Lost) {
+            if states.contains(&EntryState::Moved) {
+                return Err(EtlError::Usage(format!(
+                    "{}: some files of the interrupted publish are in place and the staged copy of another is gone, so it can be neither finished nor rolled back; the store is left as it is. Restore it from a backup or reload it",
+                    journal_path.display()
+                )));
+            }
+            roll_back(dir, protection, &journal, &journal_path)?;
+            drop(interrupts);
+            report.rolled_back = Some(journal.operation);
+            report.orphans_removed = remove_orphans(dir)?;
+            return Ok(report);
+        }
         check_record(dir, &journal, protection)?;
         for file in &journal.files {
             let staged = dir.join(&file.staged);
@@ -391,6 +417,87 @@ pub(crate) fn recover_held(
     }
     report.orphans_removed = remove_orphans(dir)?;
     Ok(report)
+}
+
+/// Result of a removal record whose interrupted publish `recover` rolled back.
+pub const RESULT_ROLLED_BACK_BY_RECOVER: &str = "rolled-back-by-recover";
+
+/// Where one journal entry stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EntryState {
+    /// The staged file is present and is the one journaled.
+    Staged,
+    /// The staged file is gone and the target is the journaled file: it was renamed.
+    Moved,
+    /// The staged file is gone and the target is not the journaled file: the staged copy
+    /// was lost before it was renamed.
+    Lost,
+}
+
+/// Where the journal entry `file` of the store in `dir` stands.
+///
+/// # Errors
+/// [`EtlError::Usage`] for a staged file that is not a regular file or not the journaled
+/// one; I/O errors reading.
+fn entry_state(dir: &Path, file: &JournalFile) -> Result<EntryState> {
+    let staged = dir.join(&file.staged);
+    if staged_present(&staged)? {
+        check_file(&staged, file)?;
+        return Ok(EntryState::Staged);
+    }
+    let (bytes, hash) = hash_file(&dir.join(&file.target))?;
+    Ok(
+        if bytes == file.bytes && format!("{hash:032x}") == file.xxh3_128 {
+            EntryState::Moved
+        } else {
+            EntryState::Lost
+        },
+    )
+}
+
+/// Rolls back the interrupted publish `journal` of the store in `dir`, none of whose files
+/// was renamed: checks that the store's own files still form a whole store (the index opens
+/// under `protection` and every block it names reads and verifies), removes the staged files
+/// left, appends the record with result [`RESULT_ROLLED_BACK_BY_RECOVER`], and removes the
+/// journal at `journal_path`.
+///
+/// # Errors
+/// [`EtlError::Usage`] when the old store does not open whole; I/O errors.
+fn roll_back(
+    dir: &Path,
+    protection: &Protection,
+    journal: &Journal,
+    journal_path: &Path,
+) -> Result<()> {
+    let whole = (|| -> Result<()> {
+        let index = read_index(dir, protection)?;
+        let reader = hpds_format::BlocksReader::open(dir.join(BLOCKS_FILE_NAME), index.store_id())?;
+        let codec = index.block_codec(protection.clone())?;
+        let membership = index.membership();
+        for concept in index.concepts() {
+            reader.read_block(&codec, concept, &membership)?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = whole {
+        return Err(EtlError::Usage(format!(
+            "{}: a staged file of the interrupted publish is gone, and the store's own files do not form a whole store ({error}), so it can be neither finished nor rolled back; the store is left as it is. Restore it from a backup or reload it",
+            journal_path.display()
+        )));
+    }
+    for file in &journal.files {
+        let staged = dir.join(&file.staged);
+        if staged_present(&staged)? {
+            std::fs::remove_file(&staged).map_err(EtlError::io("removing", &staged))?;
+        }
+    }
+    let mut record = journal.record.clone();
+    record.index_sha256 = None;
+    maintenance_log::append(dir, &record.finished(RESULT_ROLLED_BACK_BY_RECOVER))?;
+    std::fs::remove_file(journal_path).map_err(EtlError::io("removing", journal_path))?;
+    private_fs::sync_dir(dir).map_err(EtlError::io("syncing", dir))?;
+    tracing::warn!(operation = %journal.operation, "rolled back an interrupted publish");
+    Ok(())
 }
 
 /// Parses the journal at `path` and checks that it names only staged replacements of
