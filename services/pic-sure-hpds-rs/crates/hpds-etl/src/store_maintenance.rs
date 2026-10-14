@@ -93,6 +93,10 @@ pub struct RemoveReport {
     /// Whether the removed concepts' blocks were left in `pheno.blocks`
     /// ([`RemoveOptions::keep_removed_blocks`]).
     pub removed_blocks_kept: bool,
+    /// Bytes of `pheno.blocks` before the command that no remaining concept references:
+    /// the blocks removed now, plus any an earlier [`RemoveOptions::keep_removed_blocks`]
+    /// run left. Compaction drops them all.
+    pub unreferenced_bytes: u64,
     /// Size of `pheno.blocks` in bytes before the command.
     pub blocks_bytes_before: u64,
     /// Size of `pheno.blocks` in bytes after the command.
@@ -338,7 +342,13 @@ fn remaining_partition_table(
 ///
 /// Every run that is not a dry run appends a record to the store's maintenance log
 /// ([`crate::maintenance_log`]) once its files are in place: result `published`, or
-/// `no-change` for an `allow_missing` run that found nothing to remove.
+/// `no-change` for an `allow_missing` run that found nothing to remove and nothing to
+/// compact.
+///
+/// Compaction drops every byte of `pheno.blocks` no remaining concept references, not only
+/// the blocks removed now, so a run without `keep_removed_blocks` also compacts what an
+/// earlier `keep_removed_blocks` run left, even when it removes nothing itself (an
+/// `allow_missing` rerun of the same list).
 ///
 /// # Errors
 /// [`EtlError::Usage`] for a concepts file that names nothing or has lines naming no
@@ -409,10 +419,20 @@ pub fn remove_concepts(
     let reader = BlocksReader::open(&blocks_path, index.store_id())?;
     report.blocks_bytes_before = reader.len();
     report.blocks_bytes_after = reader.len();
-    if report.removed == 0 {
-        report.removed_blocks_kept = false;
+    let compacted_len = BLOCKS_HEADER_LEN + kept.iter().map(|c| c.block.length).sum::<u64>();
+    report.unreferenced_bytes = reader.len().saturating_sub(compacted_len);
+    let compact = !options.keep_removed_blocks && report.unreferenced_bytes > 0;
+    if report.removed == 0 && !compact {
+        report.removed_blocks_kept = options.keep_removed_blocks && report.unreferenced_bytes > 0;
         if !options.dry_run {
-            let record = removal_record(&report, concepts_file, &concepts_sha256, None);
+            let current =
+                std::fs::read(&index_path).map_err(EtlError::io("reading", &index_path))?;
+            let record = removal_record(
+                &report,
+                concepts_file,
+                &concepts_sha256,
+                Some(&maintenance_log::sha256_hex(&current)),
+            );
             maintenance_log::append(dir, &publish::with_result(record, RESULT_NO_CHANGE))?;
         }
         return Ok(report);
@@ -420,15 +440,14 @@ pub fn remove_concepts(
     count_removed_patients(&index, &reader, protection, &remove, &mut report)?;
     let table = remaining_partition_table(&index, &reader, protection, &kept, &mut report)?;
     if options.dry_run {
-        if !options.keep_removed_blocks {
+        if compact {
             report.compacted = true;
-            report.blocks_bytes_after =
-                BLOCKS_HEADER_LEN + kept.iter().map(|c| c.block.length).sum::<u64>();
+            report.blocks_bytes_after = compacted_len;
         }
         return Ok(report);
     }
     let mut replacements = Vec::with_capacity(2);
-    if !options.keep_removed_blocks {
+    if compact {
         let codec = index.block_codec(protection.clone())?;
         let membership = index.membership();
         let mut written = (0, 0);
@@ -478,7 +497,7 @@ pub fn remove_concepts(
 pub const RESULT_PUBLISHED: &str = "published";
 
 /// Result of a removal record of an `--allow-missing` run that found nothing to remove and
-/// wrote no store file.
+/// nothing to compact, and wrote no store file.
 pub const RESULT_NO_CHANGE: &str = "no-change";
 
 /// The maintenance log record of the removal `report` describes, driven by `concepts_file`
@@ -510,6 +529,7 @@ fn removal_record(
         "tagged_patients_dropped": report.tagged_patients_dropped,
         "compacted": report.compacted,
         "removed_blocks_kept": report.removed_blocks_kept,
+        "unreferenced_bytes": report.unreferenced_bytes,
         "blocks_bytes_before": report.blocks_bytes_before,
         "blocks_bytes_after": report.blocks_bytes_after,
         "index_sha256": index_sha256,

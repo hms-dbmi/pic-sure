@@ -461,7 +461,10 @@ fn an_empty_concepts_file_fails_and_a_rerun_with_nothing_left_changes_nothing() 
     assert_eq!(log.len(), 1, "only the no-change run is recorded");
     assert_eq!(log[0]["result"], "no-change");
     assert_eq!(log[0]["lines_naming_no_concept"], 1);
-    assert_eq!(log[0]["index_sha256"], serde_json::Value::Null);
+    assert_eq!(
+        log[0]["index_sha256"],
+        sha256_hex(&std::fs::read(store.out.join("pheno.index")).unwrap())
+    );
 }
 
 #[test]
@@ -850,6 +853,72 @@ fn recover_through_the_binary() {
     assert_eq!(report["finished"], "remove-concepts");
     let removed = [first];
     assert_removed(&store, &removed, &removed, 1);
+}
+
+#[test]
+fn a_rerun_without_keep_removed_blocks_compacts_what_an_earlier_run_kept() {
+    let store = edge_store();
+    let removed: Vec<String> = store.index.concepts()[..2]
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    let removed_bytes: u64 = store.index.concepts()[..2]
+        .iter()
+        .map(|c| c.block.length)
+        .sum();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, removed.join("\n")).unwrap();
+    let blocks = store.out.join(BLOCKS_FILE_NAME);
+    let before = std::fs::metadata(&blocks).unwrap().len();
+    remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions {
+            keep_removed_blocks: true,
+            ..RemoveOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(std::fs::metadata(&blocks).unwrap().len(), before);
+    let allow_missing = RemoveOptions {
+        allow_missing: true,
+        ..RemoveOptions::default()
+    };
+    let dry = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions {
+            dry_run: true,
+            ..allow_missing.clone()
+        },
+    )
+    .unwrap();
+    assert!(dry.compacted);
+    assert_eq!(dry.unreferenced_bytes, removed_bytes);
+
+    let report = remove_concepts(&store.out, &list_path, &protection(), &allow_missing).unwrap();
+
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.not_found, removed);
+    assert!(report.compacted);
+    assert_eq!(report.unreferenced_bytes, removed_bytes);
+    assert_eq!(report.blocks_bytes_after, before - removed_bytes);
+    assert_eq!(
+        std::fs::metadata(&blocks).unwrap().len(),
+        before - removed_bytes
+    );
+    let log = records(&store.out).unwrap();
+    assert_eq!(log.len(), 2);
+    assert_eq!(log[1]["result"], "published");
+    assert_eq!(log[1]["compacted"], true);
+    assert_eq!(log[1]["unreferenced_bytes"], removed_bytes);
+    assert_removed(&store, &removed, &[], 2);
+
+    let again = remove_concepts(&store.out, &list_path, &protection(), &allow_missing).unwrap();
+    assert!(!again.compacted);
+    assert_eq!(records(&store.out).unwrap()[2]["result"], "no-change");
 }
 
 fn dump_text(dir: &Path) -> String {
