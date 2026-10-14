@@ -254,13 +254,15 @@ pub enum StringDoubleError {
 /// - Otherwise the text is trimmed of characters up to the space, as `String.trim` does; an
 ///   empty result, or exactly `null` (`_checkTextualNull`, with scalar coercion on as it is by
 ///   default), is `None`. `NULL` and `Null` are not null.
-/// - A trimmed text longer than [`MAX_NUMBER_DIGITS`] characters, sign and dot included, is
-///   refused as `StreamReadConstraints` refuses it.
-/// - The rest must be a plain decimal: an optional sign, then digits with an optional fraction
-///   and an optional exponent, digits and a trailing dot (`1.`), or a dot and digits with an
-///   optional exponent (`.5e1`). Java suffixes (`1d`, `1f`), hexadecimal (`0x1p3`),
-///   underscores and `1.e5` are refused, although `Double.parseDouble` takes some of them.
-///   The value is the correctly rounded double, overflow to infinity included.
+/// - The rest must be a plain decimal (`NumberInput.looksLikeValidNumber`): an optional sign,
+///   then digits with an optional fraction and an optional exponent, digits and a trailing dot
+///   (`1.`), or a dot and digits with an optional exponent (`.5e1`). Java suffixes (`1d`,
+///   `1f`), hexadecimal (`0x1p3`), underscores and `1.e5` are refused, although
+///   `Double.parseDouble` takes some of them. This check comes first, so a malformed text of
+///   any length is refused as malformed.
+/// - A plain decimal longer than [`MAX_NUMBER_DIGITS`] characters, sign and dot included, is
+///   then refused as `StreamReadConstraints.validateFPLength` refuses it.
+/// - The value is the correctly rounded double, overflow to infinity included.
 ///
 /// # Errors
 /// [`StringDoubleError::TooLong`] and [`StringDoubleError::Invalid`] as above.
@@ -275,12 +277,12 @@ pub fn jackson_string_double(text: &str) -> Result<Option<f64>, StringDoubleErro
     if trimmed.is_empty() || trimmed == "null" {
         return Ok(None);
     }
-    let length = trimmed.chars().count();
-    if length > MAX_NUMBER_DIGITS {
-        return Err(StringDoubleError::TooLong(NumberTooLong { digits: length }));
-    }
     if !is_plain_decimal(trimmed.as_bytes()) {
         return Err(StringDoubleError::Invalid);
+    }
+    let length = trimmed.len();
+    if length > MAX_NUMBER_DIGITS {
+        return Err(StringDoubleError::TooLong(NumberTooLong { digits: length }));
     }
     trimmed
         .parse::<f64>()
@@ -486,6 +488,16 @@ mod tests {
             )
         };
         assert!(jackson_string_double(&"1".repeat(1000)).is_ok());
+        for malformed in [
+            format!("{}d", "1".repeat(1000)),
+            format!("{}d", "1".repeat(1001)),
+            "x".repeat(1001),
+        ] {
+            assert_eq!(
+                jackson_string_double(&malformed),
+                Err(StringDoubleError::Invalid)
+            );
+        }
         assert!(too_long(&"1".repeat(1001)));
         assert!(too_long(&format!("-{}", "1".repeat(1000))));
         assert!(too_long(&format!("1.{}", "1".repeat(999))));
