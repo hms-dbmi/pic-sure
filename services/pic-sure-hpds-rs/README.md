@@ -344,6 +344,12 @@ Differences from Java a caller can see:
   restart.
 - Genomic input (genomic result types, `genomicFilters`, variant-spec paths) is a 400 naming the
   unsupported feature.
+- `authorizationFilters` never narrow a query, as on the Java consent branch, which only
+  validates them; `userConsents` choose the partitions instead. The original Java HPDS (main)
+  applies each authorization filter as one more AND clause, so its answers shrink to the
+  patients those filters allow. This service must not replace a main-branch HPDS in a
+  deployment that relies on `authorizationFilters` for access control: it would return every
+  patient the query matches.
 
 On SIGTERM or ctrl-c the server stops accepting, gives open connections 5 seconds to finish,
 then gives the runtime 5 more seconds before abandoning running queries. `hpds-rs healthcheck` requests
