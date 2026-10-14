@@ -411,3 +411,19 @@ async fn an_overflowing_number_in_an_ignored_field_is_accepted() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_string_bound_jackson_refuses_is_a_400() {
+    let f = fixture();
+    for min in [r#""1d""#, r#""0x1p3""#, r#""-NaN""#] {
+        let reply = post(&f.app, SYNC, raw_range_body(AGE, min, "100")).await;
+        assert_eq!(
+            reply.status,
+            StatusCode::BAD_REQUEST,
+            "{min}: {}",
+            reply.body
+        );
+    }
+    let reply = post(&f.app, SYNC, raw_range_body(AGE, r#"" 40 ""#, r#""+100""#)).await;
+    assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
+}

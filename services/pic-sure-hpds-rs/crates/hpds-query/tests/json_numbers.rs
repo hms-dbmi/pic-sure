@@ -191,3 +191,41 @@ fn overflowing_numbers_outside_bounds_are_kept_as_their_text() {
     let query: Query = serde_json::from_value(envelope["query"].clone()).unwrap();
     assert_eq!(bounds(&query), (Some(1.0), None));
 }
+
+#[test]
+fn string_bounds_coerce_as_jackson_does() {
+    for refused in [
+        "\"1d\"",
+        "\"1f\"",
+        "\"-NaN\"",
+        "\"0x1p3\"",
+        "\"1_000\"",
+        "\"1.e5\"",
+        "\" Infinity\"",
+    ] {
+        let json = bounds_json(HEIGHT, &[("min", refused)]);
+        assert!(Query::from_json(json.as_bytes()).is_err(), "{refused}");
+    }
+    for (accepted, value) in [
+        ("\"+1\"", Some(1.0)),
+        ("\" 1\"", Some(1.0)),
+        ("\"Infinity\"", Some(f64::INFINITY)),
+        ("\"-Infinity\"", Some(f64::NEG_INFINITY)),
+        ("\"\"", None),
+        ("\"  \"", None),
+    ] {
+        for query in read_both_ways(&bounds_json(HEIGHT, &[("min", accepted)])) {
+            assert_eq!(bounds(&query).0, value, "{accepted}");
+        }
+    }
+    let nan = Query::from_json(bounds_json(HEIGHT, &[("min", "\"NaN\"")]).as_bytes()).unwrap();
+    assert!(bounds(&nan).0.unwrap().is_nan());
+    let long = format!("\"-{}\"", "1".repeat(1000));
+    let error = Query::from_json(bounds_json(HEIGHT, &[("min", &long)]).as_bytes())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.starts_with("Number value length (1001) exceeds the maximum allowed (1000"),
+        "{error}"
+    );
+}

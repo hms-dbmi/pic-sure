@@ -19,9 +19,11 @@
 //! - `null` or missing lists (`select`, `authorizationFilters`, `userConsents`,
 //!   `genomicFilters`, `phenotypicClauses`) are empty lists, as the record accessors return
 //!   them.
-//! - Doubles accept JSON numbers and strings (`"5"`, `"NaN"`, `"Infinity"`), and an empty
-//!   string is `null`, as Jackson's scalar coercion does. Booleans accept `true`, `false`
-//!   and the strings `"true"` and `"false"`.
+//! - Doubles accept JSON numbers and strings (`"5"`, `" 2.5 "`, `"NaN"`, `"Infinity"`), and an
+//!   empty or blank string is `null`, as Jackson's scalar coercion does. Strings follow
+//!   Jackson's coercion, not `Double.parseDouble`: `"1d"`, `"0x1p3"` and `"-NaN"` are refused
+//!   (see `json_number::jackson_string_double`). Booleans accept `true`, `false` and the
+//!   strings `"true"` and `"false"`.
 //! - Numbers are read from their literal text as Jackson 2.21 reads them: a number with more
 //!   than 1,000 digits is refused (`StreamReadConstraints`), and a `min` or `max` that
 //!   overflows a double is `±Infinity` and one written as the integer `-0` is `0.0`. Every
@@ -39,8 +41,6 @@ use std::fmt;
 use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value};
-
-use hpds_format::parse_java_double;
 
 macro_rules! java_enum {
     ($(#[$meta:meta])* $name:ident { $($(#[$vmeta:meta])* $variant:ident = $java:literal,)+ }) => {
@@ -692,14 +692,12 @@ impl<'de> Visitor<'de> for JavaDouble {
     }
 
     fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
-        match value {
-            "" => Ok(None),
-            "INF" => Ok(Some(f64::INFINITY)),
-            "-INF" => Ok(Some(f64::NEG_INFINITY)),
-            _ => parse_java_double(value)
-                .map(Some)
-                .ok_or_else(|| E::invalid_value(de::Unexpected::Str(value), &self)),
-        }
+        crate::json_number::jackson_string_double(value).map_err(|error| match error {
+            crate::json_number::StringDoubleError::TooLong(too_long) => E::custom(too_long),
+            crate::json_number::StringDoubleError::Invalid => {
+                E::invalid_value(de::Unexpected::Str(value), &self)
+            }
+        })
     }
 }
 
