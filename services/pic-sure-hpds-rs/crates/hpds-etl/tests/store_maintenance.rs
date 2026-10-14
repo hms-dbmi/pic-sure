@@ -11,6 +11,7 @@ use hpds_etl::column_meta_csv::write_column_meta_csv;
 use hpds_etl::dump::{dump, dump_patients};
 use hpds_etl::java::java_double_to_string;
 use hpds_etl::load::Mode;
+use hpds_etl::maintenance_log::{MAINTENANCE_LOG_FILE_NAME, records, sha256_hex};
 use hpds_etl::store::OpenStore;
 use hpds_etl::store_maintenance::{
     RemoveOptions, RemoveReport, regenerate_column_meta_csv, remove_concepts,
@@ -80,12 +81,14 @@ fn keep_blocks_allow_missing() -> RemoveOptions {
     }
 }
 
-/// The names in the store directory `dir`, sorted, with each file's bytes.
+/// The names in the store directory `dir`, sorted, with each file's bytes, the maintenance
+/// log left out.
 fn snapshot(dir: &Path) -> Vec<(String, Vec<u8>)> {
     let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(dir)
         .unwrap()
         .map(|e| e.unwrap())
         .filter(|e| e.file_type().unwrap().is_file())
+        .filter(|e| e.file_name() != MAINTENANCE_LOG_FILE_NAME)
         .map(|e| {
             (
                 e.file_name().to_string_lossy().into_owned(),
@@ -257,6 +260,28 @@ fn remove_concepts_compacts_the_blocks_by_default() {
     for path in &removed {
         assert!(after.index.get(path).is_none());
     }
+    let log = records(&store.out).unwrap();
+    assert_eq!(log.len(), 1);
+    let record = &log[0];
+    assert_eq!(record["operation"], "remove-concepts");
+    assert_eq!(record["result"], "published");
+    assert_eq!(record["store_id"], store.index.store_id().to_string());
+    assert_eq!(record["removed_paths"], serde_json::json!(removed));
+    assert_eq!(record["compacted"], true);
+    assert_eq!(record["removed_blocks_kept"], false);
+    assert_eq!(
+        record["concepts_file_sha256"],
+        sha256_hex(&std::fs::read(&list_path).unwrap())
+    );
+    assert_eq!(
+        record["index_sha256"],
+        sha256_hex(&std::fs::read(store.out.join("pheno.index")).unwrap())
+    );
+    assert!(record["time"].as_str().unwrap().ends_with('Z'), "{record}");
+    assert!(
+        record["tool"].as_str().unwrap().starts_with("hpds-etl "),
+        "{record}"
+    );
     let leftovers: Vec<String> = std::fs::read_dir(&store.out)
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
@@ -431,6 +456,11 @@ fn an_empty_concepts_file_fails_and_a_rerun_with_nothing_left_changes_nothing() 
     assert!(!report.compacted);
     assert_eq!(report.not_found, ["\\gone\\"]);
     assert_eq!(snapshot(&store.out), before);
+    let log = records(&store.out).unwrap();
+    assert_eq!(log.len(), 1, "only the no-change run is recorded");
+    assert_eq!(log[0]["result"], "no-change");
+    assert_eq!(log[0]["lines_naming_no_concept"], 1);
+    assert_eq!(log[0]["index_sha256"], serde_json::Value::Null);
 }
 
 #[test]
@@ -493,6 +523,7 @@ fn a_dry_run_reports_exactly_what_a_run_removes_and_writes_nothing() {
         let dry = remove_concepts(&store.out, &list_path, &protection(), &options).unwrap();
 
         assert_eq!(snapshot(&store.out), before);
+        assert!(!store.out.join(MAINTENANCE_LOG_FILE_NAME).exists());
         assert!(dry.dry_run);
         assert_eq!(dry.removed_paths, removed);
         assert_eq!(dry.patients_with_removed_rows, Some(patients.len() as u64));
@@ -515,6 +546,17 @@ fn a_dry_run_reports_exactly_what_a_run_removes_and_writes_nothing() {
             dry,
             "keep_removed_blocks {keep_removed_blocks}"
         );
+        let log = records(&store.out).unwrap();
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0]["removed_blocks_kept"], keep_removed_blocks);
+        assert_eq!(log[0]["compacted"], !keep_removed_blocks);
+        let text = std::fs::read_to_string(store.out.join(MAINTENANCE_LOG_FILE_NAME)).unwrap();
+        for patient in &patients {
+            assert!(
+                !text.contains(&format!("\"{patient}\"")) && !text.contains(&format!("[{patient}")),
+                "the log names no patient"
+            );
+        }
     }
 }
 

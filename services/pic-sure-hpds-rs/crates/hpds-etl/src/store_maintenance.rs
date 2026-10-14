@@ -18,6 +18,7 @@ use crate::column_meta_csv::write_column_meta_csv;
 use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
 use crate::load::COLUMN_META_CSV_NAME;
+use crate::maintenance_log;
 use crate::store::{
     StagedFile, lock_store, lock_store_shared, read_index, replace_file, sync_parent,
 };
@@ -267,6 +268,10 @@ fn count_removed_patients(
 /// concept are listed instead of failing. A real run reads the removed blocks too, for the
 /// same count, and still removes a concept whose block cannot be read.
 ///
+/// Every run that is not a dry run appends a record to the store's maintenance log
+/// ([`crate::maintenance_log`]) once its files are in place: result `published`, or
+/// `no-change` for an `allow_missing` run that found nothing to remove.
+///
 /// # Errors
 /// [`EtlError::Usage`] for a concepts file that names nothing or has lines naming no
 /// concept (without `allow_missing`), and the errors of [`read_concepts_file`] and of
@@ -278,6 +283,7 @@ pub fn remove_concepts(
     options: &RemoveOptions,
 ) -> Result<RemoveReport> {
     let text = read_concepts_file(concepts_file)?;
+    let concepts_sha256 = maintenance_log::sha256_hex(text.as_bytes());
     let lines = java_read_lines(&text);
     if lines.iter().all(|line| line.is_empty()) {
         return Err(EtlError::Usage(format!(
@@ -325,6 +331,10 @@ pub fn remove_concepts(
     report.blocks_bytes_after = reader.len();
     if report.removed == 0 {
         report.removed_blocks_kept = false;
+        if !options.dry_run {
+            let record = removal_record(&report, concepts_file, &concepts_sha256, None);
+            maintenance_log::append(dir, &record_with_result(record, RESULT_NO_CHANGE))?;
+        }
         return Ok(report);
     }
     count_removed_patients(&index, &reader, protection, &remove, &mut report)?;
@@ -365,17 +375,73 @@ pub fn remove_concepts(
         index.partition_table().clone(),
         kept,
     )?;
+    let encoded = rewritten.encode(protection)?;
     let staged_index = StagedFile::write(&index_path, |out| {
-        out.write_all(&rewritten.encode(protection)?)
+        out.write_all(&encoded)
             .map_err(EtlError::io("writing", &index_path))
     })?;
+    let record = removal_record(
+        &report,
+        concepts_file,
+        &concepts_sha256,
+        Some(&maintenance_log::sha256_hex(&encoded)),
+    );
     if let Some(staged_blocks) = staged_blocks {
         staged_blocks.commit()?;
     }
     staged_index.commit()?;
     sync_parent(&index_path)?;
     write_column_meta_csv_file(&rewritten, &dir.join(COLUMN_META_CSV_NAME))?;
+    maintenance_log::append(dir, &record_with_result(record, RESULT_PUBLISHED))?;
     Ok(report)
+}
+
+/// Result of a removal record whose files were published by the run itself.
+pub const RESULT_PUBLISHED: &str = "published";
+
+/// Result of a removal record of an `--allow-missing` run that found nothing to remove and
+/// wrote no store file.
+pub const RESULT_NO_CHANGE: &str = "no-change";
+
+/// The maintenance log record of the removal `report` describes, driven by `concepts_file`
+/// whose SHA-256 is `concepts_sha256`, leaving the index whose SHA-256 is `index_sha256`.
+/// Its `result` and `time` are set when it is appended ([`record_with_result`]).
+fn removal_record(
+    report: &RemoveReport,
+    concepts_file: &Path,
+    concepts_sha256: &str,
+    index_sha256: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "time": null,
+        "operation": "remove-concepts",
+        "result": null,
+        "tool": crate::banner(),
+        "store_id": report.store_id,
+        "concepts_file": concepts_file.display().to_string(),
+        "concepts_file_sha256": concepts_sha256,
+        "lines": report.lines,
+        "blank_lines": report.blank_lines,
+        "lines_naming_no_concept": report.not_found.len(),
+        "removed": report.removed,
+        "removed_paths": report.removed_paths,
+        "observations_removed": report.observations_removed,
+        "patients_with_removed_rows": report.patients_with_removed_rows,
+        "unreadable_removed_blocks": report.unreadable_removed_blocks,
+        "remaining": report.remaining,
+        "compacted": report.compacted,
+        "removed_blocks_kept": report.removed_blocks_kept,
+        "blocks_bytes_before": report.blocks_bytes_before,
+        "blocks_bytes_after": report.blocks_bytes_after,
+        "index_sha256": index_sha256,
+    })
+}
+
+/// `record` with its `result` set to `result` and its `time` to now, in UTC.
+fn record_with_result(mut record: serde_json::Value, result: &str) -> serde_json::Value {
+    record["result"] = result.into();
+    record["time"] = maintenance_log::utc_now().into();
+    record
 }
 
 /// Regenerates `columnMeta.csv` for the store in `dir` from its index, byte for byte as
