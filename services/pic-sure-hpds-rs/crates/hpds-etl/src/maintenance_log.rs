@@ -13,7 +13,7 @@
 
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::os::unix::fs::{FileExt, OpenOptionsExt};
+use std::os::unix::fs::{FileExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -28,7 +28,8 @@ pub const MAINTENANCE_LOG_FILE_NAME: &str = "maintenance-log.jsonl";
 /// Appends `record` as one line to the maintenance log of the store in `dir`, creating the
 /// log mode `0600` when it is missing, and syncs it (and the directory, for a new log). A
 /// torn last line left by a crash is ended first, so the new record stays on a line of
-/// its own.
+/// its own. An existing log with another mode (one readable by group or others) is set to
+/// `0600` first.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when the log is a symbolic link or not a regular file; I/O errors
@@ -44,10 +45,12 @@ pub fn append(dir: &Path, record: &serde_json::Value) -> Result<()> {
         .custom_flags(libc::O_NOFOLLOW)
         .open(&path)
         .map_err(EtlError::io("opening", &path))?;
-    let len = file
-        .metadata()
-        .map_err(EtlError::io("reading", &path))?
-        .len();
+    let meta = file.metadata().map_err(EtlError::io("reading", &path))?;
+    if meta.permissions().mode() & 0o777 != private_fs::FILE_MODE {
+        file.set_permissions(std::fs::Permissions::from_mode(private_fs::FILE_MODE))
+            .map_err(EtlError::io("narrowing the mode of", &path))?;
+    }
+    let len = meta.len();
     let mut last = *b"\n";
     if len > 0 {
         file.read_exact_at(&mut last, len - 1)
@@ -160,7 +163,6 @@ mod tests {
 
     #[test]
     fn the_log_is_appended_private_and_never_through_a_link() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         assert!(records(dir.path()).unwrap().is_empty());
         append(dir.path(), &serde_json::json!({"n": 1})).unwrap();
@@ -184,6 +186,11 @@ mod tests {
                 serde_json::json!({"n": 3})
             ]
         );
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        append(dir.path(), &serde_json::json!({"n": 4})).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "a wider mode is narrowed");
 
         let other = tempfile::tempdir().unwrap();
         std::os::unix::fs::symlink(&path, other.path().join(MAINTENANCE_LOG_FILE_NAME)).unwrap();
