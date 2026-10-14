@@ -83,8 +83,8 @@ pub enum Condition {
     ColumnMetaShape,
     /// The entry's query carries a non-empty `authorizationFilters` list, both sides answered
     /// it (both sync requests 200, or both async queries in SUCCESS), and the Java side's
-    /// answer is narrower than the other side's: a COUNT no greater, every count of a cross
-    /// count no greater under a key the other side also holds, a PATIENTS or DATAFRAME export
+    /// answer is narrower than the other side's: a COUNT no greater, a cross count with the
+    /// same top-level keys and every count under them no greater, a PATIENTS or DATAFRAME export
     /// whose header is the same and whose rows are a subset. Needs the Java side to be known
     /// ([`Divergences::for_java`]); without it the condition never holds.
     AuthorizationFiltersNarrow,
@@ -571,6 +571,20 @@ fn json_at_most(java: &Value, rust: &Value) -> bool {
     }
 }
 
+/// Whether a cross count `java` is narrower than `rust`: the same top-level keys (one per
+/// selected concept, which no filter removes, so an empty `{}` never passes), and under each a
+/// value [`json_at_most`] the other's.
+fn same_keys_at_most(
+    java: &serde_json::Map<String, Value>,
+    rust: &serde_json::Map<String, Value>,
+) -> bool {
+    java.len() == rust.len()
+        && java.iter().all(|(key, value)| {
+            rust.get(key)
+                .is_some_and(|other| json_at_most(value, other))
+        })
+}
+
 /// The CSV records of an export body, the header first.
 fn csv_records(text: &str) -> Option<Vec<Vec<String>>> {
     let mut reader = csv::ReaderBuilder::new()
@@ -594,7 +608,7 @@ fn narrower(java: &Outcome, rust: &Outcome) -> bool {
                     serde_json::from_str::<Value>(&x.body),
                     serde_json::from_str::<Value>(&y.body),
                 ) {
-                    (Ok(x @ Value::Object(_)), Ok(y @ Value::Object(_))) => json_at_most(&x, &y),
+                    (Ok(Value::Object(x)), Ok(Value::Object(y))) => same_keys_at_most(&x, &y),
                     _ => false,
                 },
             }
@@ -1416,6 +1430,18 @@ mod tests {
         let wide = sync(200, r#"{"\\s\\":{"f":3,"m":4}}"#);
         assert!(main_a.find(&cross, &narrow, &wide).is_some());
         assert!(main_a.find(&cross, &wide, &narrow).is_none());
+        assert!(main_a.find(&cross, &sync(200, "{}"), &wide).is_none());
+        let other_concept = sync(200, r#"{"\\t\\":{"f":1}}"#);
+        assert!(main_a.find(&cross, &other_concept, &wide).is_none());
+        let counts = filtered("CROSS_COUNT");
+        let two = sync(200, r#"{"\\a\\":2,"\\b\\":0}"#);
+        let three = sync(200, r#"{"\\a\\":3,"\\b\\":1}"#);
+        assert!(main_a.find(&counts, &two, &three).is_some());
+        assert!(
+            main_a
+                .find(&counts, &sync(200, r#"{"\\a\\":2}"#), &three)
+                .is_none()
+        );
 
         let patients = CorpusEntry {
             kind: Kind::Async,
