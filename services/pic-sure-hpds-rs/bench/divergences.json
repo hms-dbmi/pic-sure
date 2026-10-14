@@ -127,7 +127,7 @@
     {
       "name": "request-limit-status",
       "when": "request-limit-refused",
-      "reason": "README, the HPDS_MAX_* settings: Rust bounds every query (HPDS_MAX_SELECT_PATHS 5,000 selects, HPDS_MAX_CLAUSE_DEPTH 64 levels, HPDS_MAX_CLAUSE_NODES 10,000 clauses, HPDS_MAX_QUERY_CONCEPTS 20,000 touched concepts) and its JSON reader refuses bodies nested past serde_json's recursion limit of 128, about 63 nested subqueries. Java has no such bounds and answers. Accepted only for a 400 naming one of those limits (a message holding \"(HPDS_MAX_\" or \"recursion limit exceeded\") against a Java answer (a sync 200 or an accepted async submit)."
+      "reason": "README, the HPDS_MAX_* settings: Rust bounds the shape of every query (HPDS_MAX_SELECT_PATHS 5,000 selects, HPDS_MAX_CLAUSE_DEPTH 64 levels, HPDS_MAX_CLAUSE_NODES 10,000 clauses, HPDS_MAX_QUERY_CONCEPTS 20,000 touched concepts), and its JSON reader refuses bodies nested past serde_json's recursion limit of 128, about 63 nested subqueries. Java has no such bounds and answers. Accepted only for a 400 naming one of those four limits or \"recursion limit exceeded\" against a Java answer (a sync 200 or an accepted async submit). HPDS_MAX_CROSS_COUNT_ENTRIES, which refuses a valid cross count for the size of its answer rather than the shape of the query, is not covered and stays a reported difference."
     },
     {
       "name": "search-shape-main",

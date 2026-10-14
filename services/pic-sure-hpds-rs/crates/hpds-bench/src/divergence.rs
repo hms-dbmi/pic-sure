@@ -62,9 +62,12 @@ pub enum Condition {
     /// phenotype-only HPDS`, while the other answered (a sync 200 or an accepted async
     /// submit).
     VariantSpecPathRefused,
-    /// One side refused with 400 naming one of its request limits (a message holding
-    /// `(HPDS_MAX_`) or the JSON nesting limit (`recursion limit exceeded`), while the other
-    /// answered (a sync 200 or an accepted async submit).
+    /// One side refused with 400 naming one of its request shape limits
+    /// (`HPDS_MAX_SELECT_PATHS`, `HPDS_MAX_CLAUSE_DEPTH`, `HPDS_MAX_CLAUSE_NODES`,
+    /// `HPDS_MAX_QUERY_CONCEPTS`) or the JSON nesting limit (`recursion limit exceeded`), while
+    /// the other answered (a sync 200 or an accepted async submit). The result size limit
+    /// `HPDS_MAX_CROSS_COUNT_ENTRIES` does not match: it refuses a valid query for what its
+    /// answer would hold, not for its shape.
     RequestLimitRefused,
     /// Body normalization: every column meta object (one holding `name` and `categorical`)
     /// keeps only the fields both search shapes share, `name`, `categorical`, a non-empty
@@ -512,13 +515,22 @@ fn variant_spec_path_refused(a: &Outcome, b: &Outcome) -> bool {
     )
 }
 
+/// The request shape limits whose refusal [`Condition::RequestLimitRefused`] accepts.
+const SHAPE_LIMITS: [&str; 4] = [
+    "(HPDS_MAX_SELECT_PATHS)",
+    "(HPDS_MAX_CLAUSE_DEPTH)",
+    "(HPDS_MAX_CLAUSE_NODES)",
+    "(HPDS_MAX_QUERY_CONCEPTS)",
+];
+
 fn request_limit_refused(a: &Outcome, b: &Outcome) -> bool {
     refused_against(
         a,
         b,
         |body| {
-            body.contains("(HPDS_MAX_")
+            SHAPE_LIMITS.iter().any(|limit| body.contains(limit))
                 || body.starts_with("the request body is not valid JSON: recursion limit exceeded")
+                || body.starts_with("the query is not valid: recursion limit exceeded")
         },
         answered,
     )
@@ -1310,6 +1322,11 @@ mod tests {
             Some("limit")
         );
         assert_eq!(name(&count, &sync(200, "4978"), &sync(400, "bad")), None);
+        let result_size = sync(
+            400,
+            "the cross count would hold more than 5000000 entries (HPDS_MAX_CROSS_COUNT_ENTRIES)",
+        );
+        assert_eq!(name(&count, &sync(200, "{}"), &result_size), None);
     }
 
     #[test]
