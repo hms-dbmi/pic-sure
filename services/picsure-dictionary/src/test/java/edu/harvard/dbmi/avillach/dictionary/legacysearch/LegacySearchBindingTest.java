@@ -61,10 +61,11 @@ class LegacySearchBindingTest {
     }
 
     @Test
-    void stillAnswersWithoutAnHttpMethodRestriction() throws Exception {
-        mockMvc.perform(get("/search").contentType(MediaType.APPLICATION_JSON).content(LEGACY_CLIENT_BODY)).andExpect(status().isOk());
+    void rejectsAMethodOtherThanPost() throws Exception {
+        mockMvc.perform(get("/search").contentType(MediaType.APPLICATION_JSON).content(LEGACY_CLIENT_BODY))
+            .andExpect(status().isMethodNotAllowed());
 
-        assertSearched("age:*", 100);
+        verifyNoInteractions(legacySearchService);
     }
 
     @ParameterizedTest(name = "{0} searches [{1}] with page size {2}")
