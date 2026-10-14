@@ -231,3 +231,43 @@ fn string_bounds_coerce_as_jackson_does() {
         "{error}"
     );
 }
+
+#[test]
+fn scalars_in_string_fields_read_as_their_literal_text() {
+    let json = r#"{"expectedResultType":"CROSS_COUNT","select":[5,-0,1.50,1e3,1E+3,1e309,true],"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":1.50,"values":[0.000,false,"a"]},"userConsents":[{"value":1.0E-5}]}"#;
+    for query in read_both_ways(json) {
+        assert_eq!(
+            query.select,
+            ["5", "-0", "1.50", "1e3", "1E+3", "1e309", "true"]
+        );
+        match &query.phenotypic_clause {
+            Some(PhenotypicClause::Filter(filter)) => {
+                assert_eq!(filter.concept_path, "1.50");
+                assert_eq!(
+                    filter.values.as_deref(),
+                    Some(&["0.000".to_owned(), "false".to_owned(), "a".to_owned()][..])
+                );
+            }
+            other => panic!("expected a filter, got {other:?}"),
+        }
+        assert_eq!(query.consent_values(), ["1.0E-5"]);
+    }
+    for refused in [
+        r#"{"expectedResultType":"COUNT","select":[[1]]}"#,
+        r#"{"expectedResultType":"COUNT","select":[{"a":1}]}"#,
+        r#"{"expectedResultType":"COUNT","phenotypicClause":{"phenotypicFilterType":"REQUIRED","conceptPath":[1]}}"#,
+    ] {
+        assert!(Query::from_json(refused.as_bytes()).is_err(), "{refused}");
+    }
+}
+
+#[test]
+fn an_integer_too_wide_for_64_bits_in_not_reads_as_true() {
+    let json = r#"{"expectedResultType":"COUNT","phenotypicClause":{"phenotypicFilterType":"REQUIRED","conceptPath":"x","not":99999999999999999999}}"#;
+    for query in read_both_ways(json) {
+        match &query.phenotypic_clause {
+            Some(PhenotypicClause::Filter(filter)) => assert_eq!(filter.not, Some(true)),
+            other => panic!("expected a filter, got {other:?}"),
+        }
+    }
+}

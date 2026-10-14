@@ -518,3 +518,28 @@ async fn uuids_are_read_as_jacksons_uuid_coercion_reads_them() {
         StatusCode::BAD_REQUEST
     );
 }
+
+#[tokio::test]
+async fn scalars_in_string_fields_are_read_as_their_literal_text() {
+    let f = fixture();
+    let body = r#"{"query":{"expectedResultType":"CROSS_COUNT","select":[1.50,1e3,-0,true]},"resourceUUID":null}"#;
+    let reply = post(&f.app, SYNC, body).await;
+    assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
+    let counts: serde_json::Value = serde_json::from_str(&reply.body).unwrap();
+    assert_eq!(counts, json!({"1.50": 0, "1e3": 0, "-0": 0, "true": 0}));
+    let wide_not = format!(
+        r#"{{"query":{{"expectedResultType":"COUNT","phenotypicClause":{{"phenotypicFilterType":"REQUIRED","conceptPath":{},"not":99999999999999999999}}}},"resourceUUID":null}}"#,
+        serde_json::to_string(SEX).unwrap()
+    );
+    let reply = post(&f.app, SYNC, wide_not).await;
+    assert_eq!(
+        (reply.status, reply.body.as_str()),
+        (StatusCode::OK, "4978")
+    );
+    let nested =
+        r#"{"query":{"expectedResultType":"CROSS_COUNT","select":[[1]]},"resourceUUID":null}"#;
+    assert_eq!(
+        post(&f.app, SYNC, nested).await.status,
+        StatusCode::BAD_REQUEST
+    );
+}

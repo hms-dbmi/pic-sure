@@ -32,6 +32,10 @@
 //!   overflows a double is `±Infinity` and one written as the integer `-0` is `0.0`. Every
 //!   other number is the correctly rounded double, as `serde_json` with `float_roundtrip`
 //!   reads it.
+//! - A JSON number, `true` or `false` where the model holds a Java `String` (an element of
+//!   `select` or `values`, a `conceptPath`, a genomic filter `key`, a consent `value`) reads as
+//!   its literal request text (`1.50`, `1e3` and `-0` as written), as Jackson coerces a scalar
+//!   into a `String`. Objects and arrays there are refused, as Jackson refuses them.
 //! - Enums accept their exact Java name, the name with surrounding whitespace, their ordinal as
 //!   a JSON integer, or the ordinal written as a string (`"1"`), as Jackson's enum coercion
 //!   does; names are case sensitive.
@@ -341,11 +345,12 @@ pub struct AuthorizationFilter {
 ///
 /// A `null` element of the `userConsents` array reads as a consent with no value, so it
 /// still makes the list non-empty (Java's `userConsents().isEmpty()` is false for it) but
-/// contributes no consent value. An integer or boolean `value` reads as its text, as
-/// Jackson's scalar coercion into a `String` does: `{"value":1}` is the consent `"1"`. A
-/// fractional or out-of-range number is refused: Jackson keeps its request text (`1e2`),
-/// which `serde_json` does not preserve, so reading it would risk naming a different
-/// consent than Java does. Objects and arrays are refused.
+/// contributes no consent value. A number or boolean `value` reads as its literal request
+/// text, as Jackson's scalar coercion into a `String` does: `{"value":1.50}` is the consent
+/// `"1.50"`. [`parse_strict`] and [`Query::from_json`] quote such a token before `serde_json`
+/// reads it, since `serde_json` keeps no number text; a float that reaches this type unquoted
+/// (a query built from a `Value` some other way) is refused rather than read with different
+/// text. Objects and arrays are refused.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UserConsent {
     /// The consent, for example `phs000007.c1`; `None` when null or absent.
@@ -734,7 +739,7 @@ fn java_double<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>
 
 /// `Boolean` as Jackson 2.21's `NumberDeserializers.BooleanDeserializer` reads it with the
 /// default mapper (see the module docs). An integer beyond 64 bits, which Jackson reads as true,
-/// arrives from `serde_json` as a float and is refused.
+/// is rewritten to `true` by the request number scan before `serde_json` sees it.
 struct JavaBoolean;
 
 impl<'de> Visitor<'de> for JavaBoolean {
@@ -1093,11 +1098,24 @@ mod tests {
         ]}))
         .unwrap();
         assert_eq!(q.consent_values(), ["-7", "1", "true"]);
-        for float in ["2.5", "1e2", "1.0", "123456789012345678901234567890"] {
-            let text =
-                format!(r#"{{"expectedResultType":"COUNT","userConsents":[{{"value":{float}}}]}}"#);
-            assert!(Query::from_json(text.as_bytes()).is_err(), "{float}");
+        for number in [
+            "2.5",
+            "1e2",
+            "1.0",
+            "1.50",
+            "-0",
+            "123456789012345678901234567890",
+        ] {
+            let text = format!(
+                r#"{{"expectedResultType":"COUNT","userConsents":[{{"value":{number}}}]}}"#
+            );
+            let q = Query::from_json(text.as_bytes()).unwrap();
+            assert_eq!(q.consent_values(), [number], "{number}");
         }
+        assert!(
+            parse(json!({"expectedResultType": "COUNT", "userConsents": [{"value": 2.5}]}))
+                .is_err()
+        );
         let q: Query = serde_json::from_str(
             r#"{"expectedResultType":"COUNT","userConsents":[{"value":12345678901234567890}]}"#,
         )
