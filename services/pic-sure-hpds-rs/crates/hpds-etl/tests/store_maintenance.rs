@@ -291,7 +291,7 @@ fn remove_concepts_through_the_binary() {
     std::fs::write(&list_path, format!("{second}\n")).unwrap();
     let blocks_before = std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap();
     std::fs::write(store.out.join("encryption_key"), format!("{KEY}\n")).unwrap();
-    let output = hpds_etl(&[
+    let renamed = run_hpds_etl(&[
         "remove-concepts",
         "--store",
         store.out.to_str().unwrap(),
@@ -299,8 +299,24 @@ fn remove_concepts_through_the_binary() {
         list_path.to_str().unwrap(),
         "--no-compact",
     ]);
+    assert!(!renamed.status.success());
+    assert!(String::from_utf8_lossy(&renamed.stderr).contains("--keep-removed-blocks"));
+    assert_eq!(
+        std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap(),
+        blocks_before
+    );
+    let output = hpds_etl(&[
+        "remove-concepts",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--concepts",
+        list_path.to_str().unwrap(),
+        "--keep-removed-blocks",
+    ]);
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["compacted"], false);
+    assert_eq!(report["removed_blocks_kept"], true);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("encrypted but present"));
     assert_eq!(
         std::fs::read(store.out.join(BLOCKS_FILE_NAME)).unwrap(),
         blocks_before

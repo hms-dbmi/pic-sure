@@ -120,8 +120,13 @@ struct RemoveConceptsArgs {
     /// concept.
     #[arg(long)]
     dry_run: bool,
-    /// Rewrite only pheno.index, leaving the removed concepts' blocks in pheno.blocks.
+    /// Rewrite only pheno.index and leave the removed concepts' observations in
+    /// pheno.blocks, encrypted but present, as unreferenced bytes. Unsafe when withdrawing
+    /// data: the default compaction is what takes them out of the store's files.
     #[arg(long)]
+    keep_removed_blocks: bool,
+    /// Replaced by --keep-removed-blocks; refused with a message naming it.
+    #[arg(long, hide = true)]
     no_compact: bool,
     #[command(flatten)]
     key: KeyArgs,
@@ -442,6 +447,16 @@ fn open_layout(store: &Path, key: &KeyArgs) -> Result<Protection> {
 }
 
 fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
+    if args.no_compact {
+        return Err(EtlError::Usage(
+            "--no-compact is now --keep-removed-blocks: it leaves the removed concepts' observations in pheno.blocks, so name that explicitly, or drop it to compact".into(),
+        ));
+    }
+    if args.keep_removed_blocks {
+        tracing::warn!(
+            "--keep-removed-blocks: the removed concepts' observations stay in pheno.blocks, encrypted but present, until a run without it compacts the store"
+        );
+    }
     open_layout(&args.store, &args.key)?;
     let (protection, _) = hpds_etl::partitions::resolve_shared_key(
         &args.key.source(KeySource::StoreDirectory),
@@ -449,7 +464,7 @@ fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
     )?;
     let options = hpds_etl::store_maintenance::RemoveOptions {
         allow_missing: args.allow_missing,
-        keep_removed_blocks: args.no_compact,
+        keep_removed_blocks: args.keep_removed_blocks,
         dry_run: args.dry_run,
     };
     let report = hpds_etl::store_maintenance::remove_concepts(
