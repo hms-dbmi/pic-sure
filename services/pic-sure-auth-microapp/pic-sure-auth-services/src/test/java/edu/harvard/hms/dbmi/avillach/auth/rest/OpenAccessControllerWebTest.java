@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class OpenAccessControllerWebTest {
 
-    private static final String GATEWAY_BODY = "{\"request\":{\"Target Service\":\"/hpds/open/v3/query/sync\"}}";
+    private static final String GATEWAY_BODY = "{\"request\":{\"Target Service\":\"/hpds/open/query/sync\"}}";
 
     private AuthorizationService authorizationService;
     private MockMvc mockMvc;

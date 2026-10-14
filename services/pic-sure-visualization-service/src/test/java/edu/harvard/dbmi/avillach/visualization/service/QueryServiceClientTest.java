@@ -65,7 +65,7 @@ class QueryServiceClientTest {
         Map<String, Map<String, Integer>> expected = new LinkedHashMap<>();
         expected.put("\\test\\", Map.of("a", 1));
 
-        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/query/sync")).andExpect(method(HttpMethod.POST))
             .andExpect(header("X-User-Id", "u-1")).andExpect(header("X-User-Subject", "sub-1")).andExpect(header("X-User-Email", "a@b"))
             .andExpect(header("X-User-Roles", "ROLE_X")).andExpect(header("X-User-Privileges", "PRIV_A,PRIV_B"))
             .andExpect(header("X-Request-Id", "request-1")).andExpect(header("Accept", MediaType.ALL_VALUE))
@@ -84,11 +84,11 @@ class QueryServiceClientTest {
 
     @Test
     void getOpenCrossCounts_postsToOpenBackend() throws Exception {
-        // The open path goes to AggregateV3Controller, which applies threshold/variance obfuscation before answering.
+        // The open path goes to AggregateController, which applies threshold/variance obfuscation before answering.
         Map<String, Map<String, ObfuscatedCount>> expected = new LinkedHashMap<>();
         expected.put("\\test\\", Map.of("a", new ObfuscatedCount(1, "1")));
 
-        mockServer.expect(requestTo(BASE_URL + "/hpds/open/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo(BASE_URL + "/hpds/open/query/sync")).andExpect(method(HttpMethod.POST))
             .andExpect(header("X-User-Id", "OPEN_ACCESS:predev.example.org"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
@@ -102,7 +102,7 @@ class QueryServiceClientTest {
 
     @Test
     void blankIdentityComponentsAreNotSentAsHeaders() throws Exception {
-        mockServer.expect(requestTo(BASE_URL + "/hpds/open/v3/query/sync")).andExpect(headerDoesNotExist("X-User-Subject"))
+        mockServer.expect(requestTo(BASE_URL + "/hpds/open/query/sync")).andExpect(headerDoesNotExist("X-User-Subject"))
             .andExpect(headerDoesNotExist("X-User-Email")).andExpect(headerDoesNotExist("X-User-Roles"))
             .andExpect(headerDoesNotExist("X-User-Privileges")).andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
@@ -116,7 +116,7 @@ class QueryServiceClientTest {
     void outboundBodyCarriesNoResourceUuid() throws Exception {
         // The removed resource registry's selector. query-service picks its backend from the path segment and only
         // echoes this field back, so sending it is dead weight that reads as if it still routed something.
-        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync")).andExpect(jsonPath("$.resourceUUID").doesNotExist())
+        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/query/sync")).andExpect(jsonPath("$.resourceUUID").doesNotExist())
             .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
         Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
@@ -129,7 +129,7 @@ class QueryServiceClientTest {
     void authorizationFiltersSurviveIntoTheSubQuery() throws Exception {
         // The decomposer must preserve all filters while building a subquery. HQS replaces authorization filters from
         // the caller's current consents before execution.
-        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync"))
+        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/query/sync"))
             .andExpect(jsonPath("$.query.authorizationFilters[0].conceptPath").value("\\_consents\\"))
             .andExpect(jsonPath("$.query.authorizationFilters[0].values[0]").value("phs000001.c1"))
             .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
@@ -147,7 +147,7 @@ class QueryServiceClientTest {
         Map<String, Map<String, Integer>> expected = new LinkedHashMap<>();
         expected.put("\\test\\", Map.of("a", 1));
 
-        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync"))
+        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/query/sync"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
         Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
@@ -159,7 +159,7 @@ class QueryServiceClientTest {
         assertEquals("QUERY", event.getEventType());
         assertEquals("visualization.query-service.query", event.getAction());
         // The destination recorded must be the hop actually made, not the HPDS hop this service no longer performs.
-        assertEquals("/hpds/auth/v3/query/sync", event.getRequest().getUrl());
+        assertEquals("/hpds/auth/query/sync", event.getRequest().getUrl());
         assertEquals("localhost", event.getRequest().getDestIp());
         assertEquals(9999, event.getRequest().getDestPort());
         assertEquals(200, event.getRequest().getStatus());
@@ -177,7 +177,7 @@ class QueryServiceClientTest {
         Map<String, Map<String, Integer>> expected = new LinkedHashMap<>();
         expected.put("\\Nhanes\\demographics\\AGE\\", ageValues);
 
-        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/v3/query/sync"))
+        mockServer.expect(requestTo(BASE_URL + "/hpds/auth/query/sync"))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 

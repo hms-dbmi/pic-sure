@@ -59,6 +59,20 @@ class ObfuscationServiceTest {
     }
 
     @Test
+    void studyBandIsCappedWhenNamedAndHiddenGroupsAreMixed() {
+        // 40 named + 8 hidden at 2 each = 56; the band would be 2 x 8 = 16 uncapped
+        Map<String, String> counts = new LinkedHashMap<>();
+        counts.put(STUDY, "52");
+        counts.put(HMB, "40");
+        for (int i = 0; i < 8; i++) {
+            counts.put(STUDY + "c" + i + "\\", "1");
+        }
+        Map<String, String> out = svc.obfuscateCrossCounts(counts);
+        assertThat(out.get(STUDY)).isEqualTo("56 ±10");
+        assertThat(out.get(HMB)).isEqualTo("40");
+    }
+
+    @Test
     void studyUsesSumEvenWhenHpdsStudyCountDiffers() {
         Map<String, String> out = crossCounts(STUDY, "99", HMB, "12", GRU, "18");
         assertThat(out.get(STUDY)).isEqualTo("30");

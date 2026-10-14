@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Privacy-critical obfuscation for open (aggregate) v1 and v3 requests.
+ * Privacy-critical obfuscation for open (aggregate) requests.
  *
  * <p>Cross counts are keyed {@code \_studies_consents\}, {@code \_studies_consents\<study>\} and
  * {@code \_studies_consents\<study>\<consent>\}. Consent groups are suppressed below the consent threshold, a study is the sum of its
