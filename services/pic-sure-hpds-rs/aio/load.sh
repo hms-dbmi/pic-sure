@@ -8,10 +8,11 @@
 #   csv       runs hpds-etl load --mode sequential (the all-in-one's multi-file job, rollup
 #             on) over $DOCKER_CONFIG_DIR/hpds_input/*.csv, mounted read-only, into a staging
 #             directory inside hpds-rs/, then swaps the store files into place, pheno.index
-#             last.
+#             and then .generation last.
 #
 # Both copy the all-in-one's encryption_key into hpds-rs/ with mode 600, and keep an
-# existing hpds-rs.env. If the hpds-rs container is running it is recreated afterwards,
+# existing hpds-rs.env. Both refuse an hpds-rs/ holding .publish-journal (an interrupted
+# hpds-etl remove-concepts); run hpds-etl recover on it first. If the hpds-rs container is running it is recreated afterwards,
 # because its bind mount would otherwise keep serving the replaced files.
 set -euo pipefail
 
@@ -125,17 +126,28 @@ install_key_into() {
   act install -m 600 "$source_key" "$target"
 }
 
-# Moves the finished store files from directory $1 into hpds-rs/, pheno.index last.
+# Refuses an hpds-rs/ an interrupted hpds-etl publish left a journal in.
+refuse_pending_publish() {
+  if [[ -e "$RS_STORE_DIR/.publish-journal" || -L "$RS_STORE_DIR/.publish-journal" ]]; then
+    fail "$RS_STORE_DIR holds .publish-journal: an hpds-etl command was interrupted while replacing its store files. Run hpds-etl recover --store on it first"
+  fi
+}
+
+# Moves the finished store files from directory $1 into hpds-rs/, pheno.index and then the
+# .generation marker naming the new store last, and flushes them with sync.
 swap_staged_store() {
   local staged="$1" name
+  local names=(pheno.blocks columnMeta.csv etl-report.json pheno.index .generation)
   if [[ "$DRY_RUN" != "1" ]]; then
-    for name in pheno.blocks columnMeta.csv etl-report.json pheno.index; do
+    for name in "${names[@]}"; do
       [[ -f "$staged/$name" ]] || fail "hpds-etl did not write $name"
     done
   fi
-  for name in pheno.blocks columnMeta.csv etl-report.json pheno.index; do
+  refuse_pending_publish
+  for name in "${names[@]}"; do
     act mv -f "$staged/$name" "$RS_STORE_DIR/$name"
   done
+  act sync
 }
 
 parse_args "$@"
@@ -143,6 +155,7 @@ parse_args "$@"
 mode="${ARGS[0]}"
 require_config_dir
 require_docker
+refuse_pending_publish
 
 case "$mode" in
   migrate) load_migrate ;;

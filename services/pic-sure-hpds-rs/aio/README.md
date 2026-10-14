@@ -40,7 +40,7 @@ Docker VM. Then start the AIO, then `up.sh`.
 |---|---|
 | `build-images.sh [--java-etl]` | Images `hms-dbmi/pic-sure-hpds-rs:LATEST` and `hms-dbmi/pic-sure-hpds-rs-etl:LATEST`. With `--java-etl`, `hms-dbmi/pic-sure-hpds-etl:migrate`, only when no local Java ETL image already holds `ExportForMigration`. The all-in-one's own `hms-dbmi/pic-sure-hpds-etl:LATEST` is never retagged. |
 | `load.sh migrate` | `hpds-rs/` (`pheno.blocks`, `pheno.index`, `columnMeta.csv`, `etl-report.json`, `encryption_key` mode 600). Converts `hpds/` through `bin/migrate-javabins` with `FORCE=1`. `hpds/` is mounted read-only and never written. |
-| `load.sh csv` | The same files in `hpds-rs/`, built by `hpds-etl load --mode sequential` (the all-in-one's multi-file job, rollup on) over `hpds_input/*.csv`, mounted read-only. It builds in `hpds-rs/.csv-next/` first and moves the files into place, `pheno.index` last. |
+| `load.sh csv` | The same files in `hpds-rs/`, built by `hpds-etl load --mode sequential` (the all-in-one's multi-file job, rollup on) over `hpds_input/*.csv`, mounted read-only. It builds in `hpds-rs/.csv-next/` first and moves the files into place, `pheno.index` and then the `.generation` marker last, then syncs. |
 | `up.sh` | Container `hpds-rs`, replaced safely (see below); `hpds-rs/hpds-rs.env` on the first run only; directories `hpds-rs-results/` and `log/hpds-rs-logs/`. |
 | `switch.sh rust` | `query/query.env.pre-rust` (once, never overwritten; an existing `query.env.java-backup` from an earlier version is read and renamed to it), the two URL lines of `query/query.env`, and a recreated `pic-sure-hpds-query-service` container. |
 | `switch.sh java` | The two URL lines of `query/query.env` (each restored from the backup on its own), the backup renamed to `query.env.pre-rust.used`, and a recreated query service. `--file-only` restores the file and touches no container. |
@@ -48,7 +48,8 @@ Docker VM. Then start the AIO, then `up.sh`.
 | `down.sh` | Removes the container, after switching the query service back (or restoring `query.env` alone when no query service container points at hpds-rs). Leaves the store, results, logs and Java `hpds` alone. |
 
 Both load modes copy the all-in-one's `hpds/encryption_key` into `hpds-rs/` with mode 600 and refuse
-to replace a different key already there. If `hpds-rs` is running when a load finishes, it is
+to replace a different key already there. Both refuse an `hpds-rs/` holding `.publish-journal`, left by an
+interrupted `hpds-etl remove-concepts`; run `hpds-etl recover` on it first. If `hpds-rs` is running when a load finishes, it is
 recreated, because its bind mount would otherwise keep serving the replaced files.
 
 `up.sh` needs the `picsure` and `hpds` networks, so start the AIO first. It creates the container,
