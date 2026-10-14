@@ -380,6 +380,7 @@ mod tests {
     fn async_header_and_row_count() {
         let outcome = Outcome::Async(crate::client::AsyncOutcome {
             submit_status: 200,
+            submit_body: None,
             status: Some("AVAILABLE".into()),
             resource_status: Some("SUCCESS".into()),
             result_status: Some(200),

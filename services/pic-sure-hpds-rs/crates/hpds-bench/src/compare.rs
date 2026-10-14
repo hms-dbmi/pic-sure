@@ -608,6 +608,7 @@ mod tests {
     fn async_ignores_nothing_but_row_order() {
         let base = AsyncOutcome {
             submit_status: 200,
+            submit_body: None,
             status: Some("AVAILABLE".into()),
             resource_status: Some("SUCCESS".into()),
             result_status: Some(200),

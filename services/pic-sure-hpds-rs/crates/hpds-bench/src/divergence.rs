@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::client::{AsyncOutcome, Outcome, SyncOutcome};
 use crate::compare::{csv_diff, json_diff_with};
 use crate::consents::has_consent_values;
-use crate::corpus::CorpusEntry;
+use crate::corpus::{CorpusEntry, Kind};
 use crate::{BenchError, Result};
 
 /// A condition on the two outcomes that must hold for a rule to apply, beyond name and status.
@@ -44,6 +44,37 @@ pub enum Condition {
     /// Both sides accepted an async submit, one ended in ERROR and the other in SUCCESS, and
     /// the entry's phenotypic clause holds a `FILTER` with a numeric `min`.
     RangeMinAsyncError,
+    /// One side refused with 400 `<path> is not a categorical variable` (values on a numeric
+    /// concept), and the other answered the sync request 200 with an empty body or ended the
+    /// accepted async query in ERROR.
+    ValuesOnNumericRefused,
+    /// One side refused with 400 `<path> is not a numeric variable` (a range on a categorical
+    /// concept), and the other answered the sync request 200 with an empty body or ended the
+    /// accepted async query in ERROR.
+    RangeOnCategoricalRefused,
+    /// An async entry whose submit one side refused with 400 `Result type <type> is computed
+    /// synchronously. Submit it with POST /query/sync.`, while the other accepted it (200).
+    SyncTypeOnAsyncRoute,
+    /// A sync entry for a genomic result type that one side refused with 400 `result type
+    /// <type> is not supported by this phenotype-only HPDS`, while the other answered 200.
+    GenomicTypeOnSyncRoute,
+    /// One side refused with 400 `variant-spec concept path "<path>" is not supported by this
+    /// phenotype-only HPDS`, while the other answered (a sync 200 or an accepted async
+    /// submit).
+    VariantSpecPathRefused,
+    /// One side refused with 400 naming one of its request limits (a message holding
+    /// `(HPDS_MAX_`) or the JSON nesting limit (`recursion limit exceeded`), while the other
+    /// answered (a sync 200 or an accepted async submit).
+    RequestLimitRefused,
+    /// Body normalization: every column meta object (one holding `name` and `categorical`)
+    /// keeps only the fields both search shapes share, `name`, `categorical`, a non-empty
+    /// `categoryValues`, a non-null `min` and `max`, and `patientCount`. The main branch
+    /// serves `ColumnMeta` (with `observationCount`, without `widthInBytes` or timestamps),
+    /// the consent branch and Rust `SummaryColumnMeta`.
+    ColumnMetaShape,
+    /// The entry's query carries a non-empty `authorizationFilters` list, and both sides
+    /// answered it: both sync requests 200, or both async queries in SUCCESS.
+    AuthorizationFiltersPresent,
 }
 
 /// When a rule applies: one condition, or a list of body normalizations
@@ -254,7 +285,38 @@ fn is_normalization(condition: Condition) -> bool {
         Condition::NumericMaxDoubleMinValue
             | Condition::CategoryValuesOrder
             | Condition::SearchConceptOrder
+            | Condition::ColumnMetaShape
     )
+}
+
+/// The fields both search shapes share.
+const SHARED_COLUMN_META_FIELDS: [&str; 6] = [
+    "name",
+    "categorical",
+    "categoryValues",
+    "min",
+    "max",
+    "patientCount",
+];
+
+/// Reduces, on one side, every column meta object to the fields both search shapes share
+/// (see [`Condition::ColumnMetaShape`]).
+fn reduce_column_meta(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if map.contains_key("name") && map.contains_key("categorical") {
+                map.retain(|key, field| {
+                    SHARED_COLUMN_META_FIELDS.contains(&key.as_str())
+                        && !field.is_null()
+                        && field.as_array().is_none_or(|items| !items.is_empty())
+                });
+            } else {
+                map.values_mut().for_each(reduce_column_meta);
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(reduce_column_meta),
+        _ => {}
+    }
 }
 
 /// Whether two 200 JSON bodies differ and become equal once every normalization in
@@ -279,6 +341,10 @@ fn equal_after(a: &Outcome, b: &Outcome, conditions: &[Condition]) -> bool {
     if json_diff_with(&left, &right, false).is_empty() {
         return false;
     }
+    if conditions.contains(&Condition::ColumnMetaShape) {
+        reduce_column_meta(&mut left);
+        reduce_column_meta(&mut right);
+    }
     if conditions.contains(&Condition::SearchConceptOrder) {
         sort_one_key_object_arrays(&mut left);
         sort_one_key_object_arrays(&mut right);
@@ -293,13 +359,59 @@ fn equal_after(a: &Outcome, b: &Outcome, conditions: &[Condition]) -> bool {
     json_diff_with(&left, &right, false).is_empty()
 }
 
+/// The message Rust answers a query with no consent value while consents are required.
+const CONSENTS_REQUIRED: &str = "User consents are required for this query";
+
+/// The 400 refusal body of a sync answer or an async submit, if the outcome is one.
+fn refusal(outcome: &Outcome) -> Option<&str> {
+    match outcome {
+        Outcome::Sync(sync) if sync.status == 400 => Some(&sync.body),
+        Outcome::Async(asynchronous) if asynchronous.submit_status == 400 => {
+            asynchronous.submit_body.as_deref()
+        }
+        _ => None,
+    }
+}
+
+/// How Java fails a query it cannot evaluate: a sync 200 with an empty body, or an async
+/// query it accepted and ended in ERROR.
+fn failed_quietly(outcome: &Outcome) -> bool {
+    match outcome {
+        Outcome::Sync(sync) => sync.status == 200 && sync.body.is_empty(),
+        Outcome::Async(asynchronous) => ended_in_error(asynchronous),
+        Outcome::TimedOut | Outcome::Failed(_) => false,
+    }
+}
+
+/// Whether the outcome is an answer: a sync 200 or an async submit accepted with 200.
+fn answered(outcome: &Outcome) -> bool {
+    match outcome {
+        Outcome::Sync(sync) => sync.status == 200,
+        Outcome::Async(asynchronous) => asynchronous.submit_status == 200,
+        Outcome::TimedOut | Outcome::Failed(_) => false,
+    }
+}
+
+/// Whether one side refused with a body `refused` accepts and the other side's outcome
+/// satisfies `other`, in either orientation.
+fn refused_against(
+    a: &Outcome,
+    b: &Outcome,
+    refused: impl Fn(&str) -> bool,
+    other: impl Fn(&Outcome) -> bool,
+) -> bool {
+    let one_way = |x: &Outcome, y: &Outcome| refusal(x).is_some_and(&refused) && other(y);
+    one_way(a, b) || one_way(b, a)
+}
+
 fn missing_consents_empty_200(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
-    let (Outcome::Sync(x), Outcome::Sync(y)) = (a, b) else {
+    let (Outcome::Sync(_), Outcome::Sync(_)) = (a, b) else {
         return false;
     };
-    let empty_200 = |s: &SyncOutcome| s.status == 200 && s.body.is_empty();
+    let empty_200 =
+        |o: &Outcome| matches!(o, Outcome::Sync(s) if s.status == 200 && s.body.is_empty());
     !has_consent_values(&entry.request)
-        && ((empty_200(x) && y.status == 400) || (empty_200(y) && x.status == 400))
+        && refused_against(a, b, |body| body == CONSENTS_REQUIRED, empty_200)
 }
 
 fn ended_in_error(outcome: &AsyncOutcome) -> bool {
@@ -313,12 +425,79 @@ fn ended_in_success(outcome: &AsyncOutcome) -> bool {
 }
 
 fn missing_consents_async_error(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
-    let (Outcome::Async(x), Outcome::Async(y)) = (a, b) else {
+    let (Outcome::Async(_), Outcome::Async(_)) = (a, b) else {
         return false;
     };
+    let errored = |o: &Outcome| matches!(o, Outcome::Async(x) if ended_in_error(x));
     !has_consent_values(&entry.request)
-        && ((ended_in_error(x) && y.submit_status == 400)
-            || (ended_in_error(y) && x.submit_status == 400))
+        && refused_against(a, b, |body| body == CONSENTS_REQUIRED, errored)
+}
+
+fn sync_type_on_async_route(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    let expected = format!(
+        "Result type {} is computed synchronously. Submit it with POST /query/sync.",
+        entry.result_type
+    );
+    entry.kind == Kind::Async
+        && refused_against(
+            a,
+            b,
+            |body| body == expected,
+            |o| matches!(o, Outcome::Async(x) if x.submit_status == 200),
+        )
+}
+
+fn genomic_type_on_sync_route(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    let expected = format!(
+        "result type {} is not supported by this phenotype-only HPDS",
+        entry.result_type
+    );
+    entry.kind == Kind::Sync
+        && refused_against(
+            a,
+            b,
+            |body| body == expected,
+            |o| matches!(o, Outcome::Sync(s) if s.status == 200),
+        )
+}
+
+fn variant_spec_path_refused(a: &Outcome, b: &Outcome) -> bool {
+    refused_against(
+        a,
+        b,
+        |body| {
+            body.starts_with("variant-spec concept path \"")
+                && body.ends_with("\" is not supported by this phenotype-only HPDS")
+        },
+        answered,
+    )
+}
+
+fn request_limit_refused(a: &Outcome, b: &Outcome) -> bool {
+    refused_against(
+        a,
+        b,
+        |body| {
+            body.contains("(HPDS_MAX_")
+                || body.starts_with("the request body is not valid JSON: recursion limit exceeded")
+        },
+        answered,
+    )
+}
+
+fn authorization_filters_present(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    let carries_filters = query_object(&entry.request).is_some_and(|query| {
+        query
+            .get("authorizationFilters")
+            .and_then(Value::as_array)
+            .is_some_and(|filters| !filters.is_empty())
+    });
+    let both_answered = match (a, b) {
+        (Outcome::Sync(x), Outcome::Sync(y)) => x.status == 200 && y.status == 200,
+        (Outcome::Async(x), Outcome::Async(y)) => ended_in_success(x) && ended_in_success(y),
+        _ => false,
+    };
+    carries_filters && both_answered
 }
 
 /// Rewrites a CSV body with the tab-separated values inside every cell sorted.
@@ -406,12 +585,30 @@ impl Condition {
             Condition::SuccessBodyEmpty => empty_success_body(a, b),
             Condition::NumericMaxDoubleMinValue
             | Condition::CategoryValuesOrder
-            | Condition::SearchConceptOrder => equal_after(a, b, &[self]),
+            | Condition::SearchConceptOrder
+            | Condition::ColumnMetaShape => equal_after(a, b, &[self]),
             Condition::RangeMinSuccessBodyEmpty => range_min_with_one_empty_body(entry, a, b),
             Condition::MissingConsentsEmpty200 => missing_consents_empty_200(entry, a, b),
             Condition::MissingConsentsAsyncError => missing_consents_async_error(entry, a, b),
             Condition::DataframeCellOrder => dataframe_cell_order(a, b),
             Condition::RangeMinAsyncError => range_min_async_error(entry, a, b),
+            Condition::ValuesOnNumericRefused => refused_against(
+                a,
+                b,
+                |body| body.ends_with(" is not a categorical variable"),
+                failed_quietly,
+            ),
+            Condition::RangeOnCategoricalRefused => refused_against(
+                a,
+                b,
+                |body| body.ends_with(" is not a numeric variable"),
+                failed_quietly,
+            ),
+            Condition::SyncTypeOnAsyncRoute => sync_type_on_async_route(entry, a, b),
+            Condition::GenomicTypeOnSyncRoute => genomic_type_on_sync_route(entry, a, b),
+            Condition::VariantSpecPathRefused => variant_spec_path_refused(a, b),
+            Condition::RequestLimitRefused => request_limit_refused(a, b),
+            Condition::AuthorizationFiltersPresent => authorization_filters_present(entry, a, b),
         }
     }
 }
@@ -695,12 +892,23 @@ mod tests {
     fn async_outcome(submit: u16, resource: Option<&str>, body: Option<&str>) -> Outcome {
         Outcome::Async(AsyncOutcome {
             submit_status: submit,
+            submit_body: None,
             status: resource.map(|r| if r == "SUCCESS" { "AVAILABLE" } else { r }.to_owned()),
             resource_status: resource.map(str::to_owned),
             result_status: body.map(|_| 200),
             result_content_type: body.map(|_| "text/plain".to_owned()),
             result_body: body.map(str::to_owned),
             timed_out: false,
+        })
+    }
+
+    fn refused_submit(body: &str) -> Outcome {
+        Outcome::Async(AsyncOutcome {
+            submit_body: Some(body.into()),
+            ..match async_outcome(400, None, None) {
+                Outcome::Async(outcome) => outcome,
+                _ => unreachable!("async_outcome builds an async outcome"),
+            }
         })
     }
 
@@ -721,18 +929,21 @@ mod tests {
         let set = rules(json!([
             {"name": "m", "statuses": [200, 400], "when": "missing-consents-empty-200", "reason": "why"}
         ]));
+        let required = sync(400, CONSENTS_REQUIRED);
         for consents in [None, Some(json!([])), Some(json!([{"value": null}]))] {
             let e = consent_entry("0001-x-count-c-none", Kind::Sync, consents);
-            assert!(set.find(&e, &sync(200, ""), &sync(400, "msg")).is_some());
-            assert!(set.find(&e, &sync(400, "msg"), &sync(200, "")).is_some());
-            assert!(set.find(&e, &sync(200, "12"), &sync(400, "msg")).is_none());
+            assert!(set.find(&e, &sync(200, ""), &required).is_some());
+            assert!(set.find(&e, &required, &sync(200, "")).is_some());
+            assert!(set.find(&e, &sync(200, "12"), &required).is_none());
+            let other_refusal = sync(400, "\\a\\ is not a categorical variable");
+            assert!(set.find(&e, &sync(200, ""), &other_refusal).is_none());
         }
         let with = consent_entry(
             "0001-x-count-c-one",
             Kind::Sync,
             Some(json!([{"value": "p1"}])),
         );
-        assert!(set.find(&with, &sync(200, ""), &sync(400, "msg")).is_none());
+        assert!(set.find(&with, &sync(200, ""), &required).is_none());
     }
 
     #[test]
@@ -742,9 +953,17 @@ mod tests {
         ]));
         let e = consent_entry("0005-x-patients-c-empty", Kind::Async, Some(json!([])));
         let java = async_outcome(200, Some("ERROR"), None);
-        let rust = async_outcome(400, None, None);
+        let rust = refused_submit(CONSENTS_REQUIRED);
         assert!(set.find(&e, &java, &rust).is_some());
         assert!(set.find(&e, &rust, &java).is_some());
+        let sync_type = refused_submit(
+            "Result type COUNT is computed synchronously. Submit it with POST /query/sync.",
+        );
+        assert!(set.find(&e, &java, &sync_type).is_none());
+        assert!(
+            set.find(&e, &java, &async_outcome(400, None, None))
+                .is_none()
+        );
         let success = async_outcome(200, Some("SUCCESS"), Some("patient_id\n1\n"));
         assert!(set.find(&e, &success, &rust).is_none());
         let with = consent_entry(
@@ -857,6 +1076,163 @@ mod tests {
     }
 
     #[test]
+    fn refusals_are_accepted_only_with_their_message_against_javas_answer() {
+        let set = rules(json!([
+            {"name": "values", "when": "values-on-numeric-refused", "reason": "why"},
+            {"name": "range", "when": "range-on-categorical-refused", "reason": "why"},
+            {"name": "route", "when": "sync-type-on-async-route", "reason": "why"},
+            {"name": "genomic", "when": "genomic-type-on-sync-route", "reason": "why"},
+            {"name": "variant", "when": "variant-spec-path-refused", "reason": "why"},
+            {"name": "limit", "when": "request-limit-refused", "reason": "why"}
+        ]));
+        let name = |e: &CorpusEntry, a: &Outcome, b: &Outcome| {
+            set.find(e, a, b).map(|rule| rule.name.clone())
+        };
+        let count = entry("0001-x-count", "COUNT");
+        let empty = sync(200, "");
+        let not_categorical = sync(400, "\\age\\ is not a categorical variable");
+        assert_eq!(
+            name(&count, &empty, &not_categorical).as_deref(),
+            Some("values")
+        );
+        assert_eq!(
+            name(&count, &not_categorical, &empty).as_deref(),
+            Some("values")
+        );
+        assert_eq!(name(&count, &sync(200, "3"), &not_categorical), None);
+        let not_numeric = sync(400, "\\sex\\ is not a numeric variable");
+        assert_eq!(name(&count, &empty, &not_numeric).as_deref(), Some("range"));
+        let patients = CorpusEntry {
+            kind: Kind::Async,
+            ..entry("0002-x-patients", "PATIENTS")
+        };
+        let errored = async_outcome(200, Some("ERROR"), None);
+        let refused = refused_submit("\\age\\ is not a categorical variable");
+        assert_eq!(
+            name(&patients, &errored, &refused).as_deref(),
+            Some("values")
+        );
+        let succeeded = async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n"));
+        assert_eq!(name(&patients, &succeeded, &refused), None);
+
+        let async_count = CorpusEntry {
+            kind: Kind::Async,
+            ..entry("0003-x-count-async", "COUNT")
+        };
+        let route = refused_submit(
+            "Result type COUNT is computed synchronously. Submit it with POST /query/sync.",
+        );
+        assert_eq!(
+            name(&async_count, &errored, &route).as_deref(),
+            Some("route")
+        );
+        let no_status = async_outcome(200, None, None);
+        assert_eq!(
+            name(&async_count, &no_status, &route).as_deref(),
+            Some("route")
+        );
+        assert_eq!(name(&patients, &errored, &route), None);
+
+        let variant_list = entry("0004-x-variant-list", "VARIANT_LIST_FOR_QUERY");
+        let genomic = sync(
+            400,
+            "result type VARIANT_LIST_FOR_QUERY is not supported by this phenotype-only HPDS",
+        );
+        let not_allowed = sync(200, "VARIANT_LIST query type not allowed");
+        assert_eq!(
+            name(&variant_list, &not_allowed, &genomic).as_deref(),
+            Some("genomic")
+        );
+        assert_eq!(name(&count, &not_allowed, &genomic), None);
+
+        let variant = sync(
+            400,
+            "variant-spec concept path \"rs123\" is not supported by this phenotype-only HPDS",
+        );
+        assert_eq!(
+            name(&count, &sync(200, "0"), &variant).as_deref(),
+            Some("variant")
+        );
+        assert_eq!(name(&count, &sync(500, ""), &variant), None);
+
+        let limit = sync(
+            400,
+            "the query has more than 10000 clauses (HPDS_MAX_CLAUSE_NODES)",
+        );
+        assert_eq!(
+            name(&count, &sync(200, "4978"), &limit).as_deref(),
+            Some("limit")
+        );
+        let nesting = sync(
+            400,
+            "the request body is not valid JSON: recursion limit exceeded at line 1 column 2708",
+        );
+        assert_eq!(
+            name(&count, &sync(200, "4978"), &nesting).as_deref(),
+            Some("limit")
+        );
+        assert_eq!(name(&count, &sync(200, "4978"), &sync(400, "bad")), None);
+    }
+
+    #[test]
+    fn column_meta_shape_compares_only_the_shared_fields() {
+        let set = rules(json!([
+            {"name": "shape", "entry": "search-*", "when": ["column-meta-shape"], "reason": "why"}
+        ]));
+        let e = entry("search-age", "SEARCH");
+        let main = r#"{"results":{"phenotypes":{"p":{"name":"p","categorical":false,"min":31.0,"max":62.0,"observationCount":1126,"patientCount":1126}},"info":{}},"searchQuery":"p"}"#;
+        let rust = r#"{"results":{"phenotypes":{"p":{"name":"p","widthInBytes":8,"categorical":false,"categoryValues":[],"min":31.0,"max":62.0,"patientCount":1126,"timestampMin":null,"timestampMax":null}},"info":{}},"searchQuery":"p"}"#;
+        assert!(set.find(&e, &sync(200, main), &sync(200, rust)).is_some());
+        let changed = rust.replace("\"patientCount\":1126", "\"patientCount\":1125");
+        assert!(
+            set.find(&e, &sync(200, main), &sync(200, &changed))
+                .is_none()
+        );
+        let categorical_main = r#"{"results":{"phenotypes":[{"s":{"name":"s","categorical":true,"categoryValues":["a"],"observationCount":2,"patientCount":2}}]}}"#;
+        let categorical_rust = r#"{"results":{"phenotypes":[{"s":{"name":"s","widthInBytes":1,"categorical":true,"categoryValues":["a"],"min":null,"max":null,"patientCount":2,"timestampMin":null,"timestampMax":null}}]}}"#;
+        assert!(
+            set.find(
+                &e,
+                &sync(200, categorical_main),
+                &sync(200, categorical_rust)
+            )
+            .is_some()
+        );
+        let other_value = categorical_rust.replace("[\"a\"]", "[\"b\"]");
+        assert!(
+            set.find(&e, &sync(200, categorical_main), &sync(200, &other_value))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn authorization_filters_accept_differing_answers_only_when_the_query_carries_them() {
+        let set = rules(json!([
+            {"name": "auth", "when": "authorization-filters-present", "reason": "why"}
+        ]));
+        let with = CorpusEntry {
+            request: json!({"query": {"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\a\\", "values": ["x"]}]}}),
+            ..entry("0001-x-count", "COUNT")
+        };
+        assert!(
+            set.find(&with, &sync(200, "3202"), &sync(200, "4978"))
+                .is_some()
+        );
+        assert!(
+            set.find(&with, &sync(500, ""), &sync(200, "4978"))
+                .is_none()
+        );
+        let empty = CorpusEntry {
+            request: json!({"query": {"expectedResultType": "COUNT", "authorizationFilters": []}}),
+            ..entry("0001-x-count", "COUNT")
+        };
+        assert!(
+            set.find(&empty, &sync(200, "3202"), &sync(200, "4978"))
+                .is_none()
+        );
+    }
+
+    #[test]
     fn condition_lists_must_hold_only_normalizations() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("d.json");
@@ -898,6 +1274,54 @@ mod tests {
                 "rule {name} cites no source"
             );
         }
+    }
+
+    #[test]
+    fn the_checked_in_file_names_each_refusal_and_contract_rule() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/divergences.json");
+        let set = Divergences::read(&file).unwrap();
+        let count = entry("0001-x-count", "COUNT");
+        let rule = |a: &Outcome, b: &Outcome| set.find(&count, a, b).map(|r| r.name.as_str());
+        assert_eq!(
+            rule(
+                &sync(200, ""),
+                &sync(400, "\\a\\ is not a categorical variable")
+            ),
+            Some("values-on-numeric-status")
+        );
+        assert_eq!(
+            rule(&sync(200, ""), &sync(400, CONSENTS_REQUIRED)),
+            Some("missing-consents-sync-empty-200")
+        );
+        assert_eq!(
+            rule(
+                &sync(200, ""),
+                &sync(400, "\\a\\ is not a numeric variable")
+            ),
+            Some("range-on-categorical-status")
+        );
+        assert_eq!(rule(&sync(200, ""), &sync(400, "something else")), None);
+        for name in [
+            "values-on-numeric-status",
+            "range-on-categorical-status",
+            "sync-type-on-async-route",
+            "genomic-type-on-sync-route",
+            "variant-spec-path-status",
+            "request-limit-status",
+            "search-shape-main",
+            "authorization-filters-main",
+        ] {
+            let found = set.rules.iter().find(|r| r.name == name);
+            assert!(
+                found.is_some_and(|r| !r.reason.is_empty()),
+                "missing rule {name}"
+            );
+        }
+        assert!(
+            !set.rules
+                .iter()
+                .any(|r| r.name.contains("patient-id") || r.name.contains("json-number"))
+        );
     }
 
     #[test]

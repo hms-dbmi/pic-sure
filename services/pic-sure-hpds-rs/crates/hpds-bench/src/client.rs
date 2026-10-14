@@ -30,6 +30,8 @@ pub struct SyncOutcome {
 pub struct AsyncOutcome {
     /// HTTP status of the submit call.
     pub submit_status: u16,
+    /// Body of a submit call that did not answer 200, such as a refusal message.
+    pub submit_body: Option<String>,
     /// Terminal `status` field of the query status (`AVAILABLE`, `ERROR`, ...).
     pub status: Option<String>,
     /// Terminal `resourceStatus` field (`SUCCESS`, `ERROR`, ...).
@@ -356,11 +358,14 @@ impl Client {
     ) -> Result<Cycle<AsyncOutcome>, reqwest::Error> {
         let started = Instant::now();
         let submitted = self.post("query", payload).send().await?;
+        let submit_status = submitted.status().as_u16();
+        let submit_text = submitted.text().await.unwrap_or_default();
+        let mut status: Value = serde_json::from_str(&submit_text).unwrap_or(Value::Null);
         let mut outcome = AsyncOutcome {
-            submit_status: submitted.status().as_u16(),
+            submit_status,
+            submit_body: (submit_status != 200).then_some(submit_text),
             ..AsyncOutcome::default()
         };
-        let mut status: Value = submitted.json().await.unwrap_or(Value::Null);
         let mut delay = match poll {
             PollStrategy::Backoff => Duration::from_millis(5),
             PollStrategy::Fixed(interval) => interval,

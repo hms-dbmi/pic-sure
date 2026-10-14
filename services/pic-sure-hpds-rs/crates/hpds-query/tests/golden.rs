@@ -93,6 +93,7 @@ fn run_async(engine: &Engine, query: &Query) -> Outcome {
     let ok = body.is_ok();
     Outcome::Async(AsyncOutcome {
         submit_status: 200,
+        submit_body: None,
         status: None,
         resource_status: Some(if ok { "SUCCESS" } else { "ERROR" }.into()),
         result_status: ok.then_some(200),

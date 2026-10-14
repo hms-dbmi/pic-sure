@@ -51,12 +51,12 @@
       "name": "missing-consents-sync-empty-200",
       "statuses": [200, 400],
       "when": "missing-consents-empty-200",
-      "reason": "Decision 7 (plan-v2.md) and README, Differences from Java: 'With HPDS_REQUIRE_AUTHORIZATION_FILTER true, a query with no consent value is a 400 \"User consents are required for this query\" on both query routes. Java answers /query/sync 200 with an empty body and no queryMetadata header'. Accepted only when the entry's query carries no userConsents value and the 200 side's body is empty."
+      "reason": "Decision 7 (plan-v2.md) and README, Differences from Java: 'With HPDS_REQUIRE_AUTHORIZATION_FILTER true, a query with no consent value is a 400 \"User consents are required for this query\" on both query routes. Java answers /query/sync 200 with an empty body and no queryMetadata header'. Accepted only when the entry's query carries no userConsents value, the 400 body is exactly that message (which Rust sends only with the flag on), and the 200 side's body is empty. A 400 for any other reason, such as values on a numeric concept on an unpartitioned store, does not match."
     },
     {
       "name": "missing-consents-async-error",
       "when": "missing-consents-async-error",
-      "reason": "Decision 7 (plan-v2.md) and README, Differences from Java: with the flag on and no consent value Rust refuses POST /query with 400, where Java answers 'POST /query 200 with a status of ERROR'. Accepted only when the entry's query carries no userConsents value."
+      "reason": "Decision 7 (plan-v2.md) and README, Differences from Java: with the flag on and no consent value Rust refuses POST /query with 400 \"User consents are required for this query\", where Java answers 'POST /query 200 with a status of ERROR'. Accepted only when the entry's query carries no userConsents value and the refused submit's body is exactly that message, so a sync type submitted on the async route or any other refusal does not match."
     },
     {
       "name": "search-category-values-order",
@@ -98,6 +98,47 @@
       "entry": "error-duplicate-key-*",
       "statuses": [200, 400],
       "reason": "README, Differences from Java: 'Request bodies holding the same key twice in any object, the envelope, the query, a clause or a userConsents entry included ... are a 400. Jackson keeps the last copy.' Accepted only for the duplicate-key entries."
+    },
+    {
+      "name": "values-on-numeric-status",
+      "when": "values-on-numeric-refused",
+      "reason": "Java error, invalid input: a FILTER with values on a numeric concept makes PhenoCube.getKeysForValue throw a ClassCastException (PhenoCube.java:54-55), so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses the query with 400 \"<path> is not a categorical variable\". Accepted only for that message against Java's empty 200 or async ERROR."
+    },
+    {
+      "name": "range-on-categorical-status",
+      "when": "range-on-categorical-refused",
+      "reason": "Java error, invalid input: a FILTER with min or max on a categorical concept casts the cube's values to Double and throws (PhenoCube.java:100-103), so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses the query with 400 \"<path> is not a numeric variable\". Accepted only for that message against Java's empty 200 or async ERROR."
+    },
+    {
+      "name": "sync-type-on-async-route",
+      "when": "sync-type-on-async-route",
+      "reason": "README, Differences from Java: 'POST /query accepts only PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES and DATAFRAME_PFB'. Java accepts a sync result type there and then fails it: COUNT ends in ERROR (CountV3Processor.java:211 throws UnsupportedOperationException on the worker) and CROSS_COUNT is never given a status (QueryV3Service.java:123). Rust refuses the submit with 400 \"Result type <type> is computed synchronously. Submit it with POST /query/sync.\". Accepted only for async entries with that exact message for the entry's result type, against a submit Java accepted."
+    },
+    {
+      "name": "genomic-type-on-sync-route",
+      "when": "genomic-type-on-sync-route",
+      "reason": "Spec, phenotype-only scope: genomic result types are out of scope. Java answers some of them on /query/sync with 200 and a text such as \"VARIANT_LIST query type not allowed\"; Rust answers 400 \"result type <type> is not supported by this phenotype-only HPDS\". Accepted only for sync entries with that exact message for the entry's result type, against a Java 200."
+    },
+    {
+      "name": "variant-spec-path-status",
+      "when": "variant-spec-path-refused",
+      "reason": "Spec, phenotype-only scope: a concept path shaped like a variant spec (an rs number or chromosome,position,ref,alt) names genomic data. Java looks it up as a phenotype concept, finds none, and answers as for an unknown path (a count of 0, an empty cross count, an export with no rows). Rust refuses it with 400 \"variant-spec concept path \\\"<path>\\\" is not supported by this phenotype-only HPDS\". Accepted only for that message against a Java answer (a sync 200 or an accepted async submit)."
+    },
+    {
+      "name": "request-limit-status",
+      "when": "request-limit-refused",
+      "reason": "README, the HPDS_MAX_* settings: Rust bounds every query (HPDS_MAX_SELECT_PATHS 5,000 selects, HPDS_MAX_CLAUSE_DEPTH 64 levels, HPDS_MAX_CLAUSE_NODES 10,000 clauses, HPDS_MAX_QUERY_CONCEPTS 20,000 touched concepts) and its JSON reader refuses bodies nested past serde_json's recursion limit of 128, about 63 nested subqueries. Java has no such bounds and answers. Accepted only for a 400 naming one of those limits (a message holding \"(HPDS_MAX_\" or \"recursion limit exceeded\") against a Java answer (a sync 200 or an accepted async submit)."
+    },
+    {
+      "name": "search-shape-main",
+      "entry": "search-*",
+      "when": ["column-meta-shape", "numeric-max-double-min-value"],
+      "reason": "Contract: Rust serves the consent branch's /search shape, SummaryColumnMeta (name, widthInBytes, categorical, categoryValues, min, max, patientCount, timestampMin, timestampMax, nulls written). The original Java HPDS on main serves ColumnMeta (name, categorical, categoryValues for categorical concepts, min and max for numeric ones, observationCount, patientCount). Accepted only when the bodies are equal once every column meta keeps the shared fields (name, categorical, a non-empty categoryValues, a non-null min and max, patientCount) and, as the main loader also starts max at Double.MIN_VALUE (LoadingStore.java:54), a max of 4.9E-324 against a real max of zero or below takes the real value."
+    },
+    {
+      "name": "authorization-filters-main",
+      "when": "authorization-filters-present",
+      "reason": "Contract, README Differences from Java: Rust, like the consent branch, never applies authorizationFilters (the consent branch only validates them, QueryValidator.java:49), while the original Java HPDS on main ANDs each one into the query (PhenotypicQueryExecutor.java:35), so main answers fewer patients. Rust must not replace a main-branch HPDS that relies on authorizationFilters. Accepted only when the entry's query carries a non-empty authorizationFilters list and both sides answered (sync 200, or async SUCCESS)."
     }
   ]
 }
