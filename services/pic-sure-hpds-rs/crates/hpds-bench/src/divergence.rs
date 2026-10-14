@@ -70,7 +70,8 @@ pub enum Condition {
     /// answer would hold, not for its shape.
     RequestLimitRefused,
     /// One side refused with 400 because a number token holds more than 1,000 digits
-    /// (`Number value length (<n>) exceeds the maximum allowed (1000)`), while the other
+    /// (`Number value length (<n>) exceeds the maximum allowed (1000, from
+    /// `StreamReadConstraints.getMaxNumberLength()`)`, Jackson's own text), while the other
     /// answered 500. Jackson refuses the same token, with 400 for the request body and with
     /// 500 when the token sits in a query sent as a JSON string.
     NumberTooLongRefused,
@@ -547,7 +548,9 @@ fn number_too_long_refused(a: &Outcome, b: &Outcome) -> bool {
         b,
         |body| {
             body.contains("Number value length (")
-                && body.contains(") exceeds the maximum allowed (1000)")
+                && body.contains(
+                    ") exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)",
+                )
         },
         |other| other.status_code() == 500,
     )
@@ -1457,7 +1460,7 @@ mod tests {
         let e = entry("0001-x-count", "COUNT");
         let refused = sync(
             400,
-            "the query is not valid: Number value length (1001) exceeds the maximum allowed (1000)",
+            "the query is not valid: Number value length (1001) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)",
         );
         assert!(set.find(&e, &sync(500, ""), &refused).is_some());
         assert!(set.find(&e, &refused, &sync(500, "")).is_some());

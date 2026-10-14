@@ -145,7 +145,7 @@
     {
       "name": "number-too-long-status",
       "when": "number-too-long-refused",
-      "reason": "Jackson error, invalid input: Jackson 2.21 refuses a number token with more than 1,000 digits (StreamReadConstraints.getMaxNumberLength, counting integer, fraction and exponent digits). Java answers 400 with Spring's JSON error body when the token is in the request body, and 500 with an empty body when it is in a query sent as a JSON string (PicSureV3Service.convertIncomingQuery). Rust refuses the same tokens with 400 \"Number value length (<n>) exceeds the maximum allowed (1000)\". Two 400s already compare equal, so the rule accepts only that message against a Java 500."
+      "reason": "Jackson error, invalid input: Jackson 2.21 refuses a number token with more than 1,000 digits (StreamReadConstraints.getMaxNumberLength, counting integer, fraction and exponent digits). Java answers 400 with Spring's JSON error body when the token is in the request body, and 500 with an empty body when it is in a query sent as a JSON string (PicSureV3Service.convertIncomingQuery). Rust refuses the same tokens with 400 and Jackson's text, \"Number value length (<n>) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)\". Two 400s already compare equal, so the rule accepts only that message against a Java 500."
     }
   ]
 }

@@ -163,7 +163,7 @@ fn infinite_and_zero_bounds_count_as_java_does() {
 
 #[test]
 fn numbers_longer_than_jacksons_limit_are_refused() {
-    let message = "Number value length (1001) exceeds the maximum allowed (1000)";
+    let message = "Number value length (1001) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)";
     for text in [
         format!("1{}", "0".repeat(1000)),
         format!("0.{}1", "0".repeat(999)),

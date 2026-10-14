@@ -380,7 +380,7 @@ async fn a_number_longer_than_jacksons_limit_is_a_400() {
     assert_eq!(reply.status, StatusCode::BAD_REQUEST);
     assert_eq!(
         reply.body,
-        "the request body is not valid JSON: Number value length (1001) exceeds the maximum allowed (1000)"
+        "the request body is not valid JSON: Number value length (1001) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)"
     );
     let as_string = json!({
         "query": format!(r#"{{"expectedResultType":"COUNT","x":{long}}}"#),
@@ -390,7 +390,7 @@ async fn a_number_longer_than_jacksons_limit_is_a_400() {
     assert_eq!(reply.status, StatusCode::BAD_REQUEST);
     assert!(
         reply.body.starts_with(
-            "the query is not valid: Number value length (1001) exceeds the maximum allowed (1000)"
+            "the query is not valid: Number value length (1001) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)"
         ),
         "{}",
         reply.body

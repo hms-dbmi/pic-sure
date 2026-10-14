@@ -44,7 +44,7 @@ impl std::fmt::Display for NumberTooLong {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Number value length ({}) exceeds the maximum allowed ({MAX_NUMBER_DIGITS})",
+            "Number value length ({}) exceeds the maximum allowed ({MAX_NUMBER_DIGITS}, from `StreamReadConstraints.getMaxNumberLength()`)",
             self.digits
         )
     }
@@ -514,7 +514,7 @@ mod tests {
         }
         assert_eq!(
             NumberTooLong { digits: 1001 }.to_string(),
-            "Number value length (1001) exceeds the maximum allowed (1000)"
+            "Number value length (1001) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)"
         );
     }
 
