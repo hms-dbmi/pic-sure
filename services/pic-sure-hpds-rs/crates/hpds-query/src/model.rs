@@ -22,7 +22,7 @@
 //! - Doubles accept JSON numbers and strings (`"5"`, `" 2.5 "`, `"NaN"`, `"Infinity"`), and an
 //!   empty or blank string is `null`, as Jackson's scalar coercion does. Strings follow
 //!   Jackson's coercion, not `Double.parseDouble`: `"1d"`, `"0x1p3"` and `"-NaN"` are refused
-//!   (see `json_number::jackson_string_double`). Booleans accept `true`, `false` and the
+//!   (see `hpds_format::jackson_string_double`). Booleans accept `true`, `false` and the
 //!   strings `"true"` and `"false"`.
 //! - Numbers are read from their literal text as Jackson 2.21 reads them: a number with more
 //!   than 1,000 digits is refused (`StreamReadConstraints`), and a `min` or `max` that
@@ -692,9 +692,9 @@ impl<'de> Visitor<'de> for JavaDouble {
     }
 
     fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
-        crate::json_number::jackson_string_double(value).map_err(|error| match error {
-            crate::json_number::StringDoubleError::TooLong(too_long) => E::custom(too_long),
-            crate::json_number::StringDoubleError::Invalid => {
+        hpds_format::jackson_string_double(value).map_err(|error| match error {
+            hpds_format::StringDoubleError::TooLong(too_long) => E::custom(too_long),
+            hpds_format::StringDoubleError::Invalid => {
                 E::invalid_value(de::Unexpected::Str(value), &self)
             }
         })

@@ -742,7 +742,7 @@ dependencies = [
  "clap",
  "csv",
  "hdrhistogram",
- "hpds-query",
+ "hpds-format",
  "reqwest",
  "serde",
  "serde_json",

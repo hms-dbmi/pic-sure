@@ -23,34 +23,12 @@
 //! The length check applies to every number, since Jackson applies it while reading the whole
 //! body.
 //!
-//! [`jackson_string_double`] is the other half: a `min` or `max` sent as a JSON string, read as
+//! `hpds_format::jackson_string_double` is the other half: a `min` or `max` sent as a JSON string, read as
 //! Jackson's `StdDeserializer` coerces a string to a `Double`.
 
 use std::borrow::Cow;
 
-/// The most digits a number token may hold, `StreamReadConstraints.DEFAULT_MAX_NUM_LEN`.
-pub const MAX_NUMBER_DIGITS: usize = 1000;
-
-/// A number longer than Jackson allows: a token with more than [`MAX_NUMBER_DIGITS`] digits,
-/// or a string coerced to a double with more than [`MAX_NUMBER_DIGITS`] characters once
-/// trimmed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NumberTooLong {
-    /// The digits the token holds, or the characters of the trimmed string.
-    pub digits: usize,
-}
-
-impl std::fmt::Display for NumberTooLong {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Number value length ({}) exceeds the maximum allowed ({MAX_NUMBER_DIGITS}, from `StreamReadConstraints.getMaxNumberLength()`)",
-            self.digits
-        )
-    }
-}
-
-impl std::error::Error for NumberTooLong {}
+use hpds_format::{MAX_NUMBER_DIGITS, NumberTooLong};
 
 /// Where the scanner is inside one open object or array.
 #[derive(Debug, Clone, Copy)]
@@ -236,100 +214,6 @@ fn bound_replacement(token: &[u8]) -> Option<Replacement> {
     })
 }
 
-/// Why a string is not a double Jackson accepts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StringDoubleError {
-    /// Not a number in the form Jackson parses.
-    Invalid,
-    /// Longer than [`MAX_NUMBER_DIGITS`] characters once trimmed.
-    TooLong(NumberTooLong),
-}
-
-/// A `Double` field given as a JSON string, read as Jackson 2.21's `StdDeserializer` coerces
-/// it (checked against Jackson 2.21.5 on every string of up to five characters over
-/// `0 1 . e E + - n u l` and space, 177,156 strings).
-///
-/// - `NaN`, `Infinity`, `+Infinity`, `-Infinity`, `INF`, `+INF` and `-INF`, exactly as
-///   written, are the special values; any other spelling (`-NaN`, `inf`, ` Infinity`) is not.
-/// - Otherwise the text is trimmed of characters up to the space, as `String.trim` does; an
-///   empty result, or exactly `null` (`_checkTextualNull`, with scalar coercion on as it is by
-///   default), is `None`. `NULL` and `Null` are not null.
-/// - The rest must be a plain decimal (`NumberInput.looksLikeValidNumber`): an optional sign,
-///   then digits with an optional fraction and an optional exponent, digits and a trailing dot
-///   (`1.`), or a dot and digits with an optional exponent (`.5e1`). Java suffixes (`1d`,
-///   `1f`), hexadecimal (`0x1p3`), underscores and `1.e5` are refused, although
-///   `Double.parseDouble` takes some of them. This check comes first, so a malformed text of
-///   any length is refused as malformed.
-/// - A plain decimal longer than [`MAX_NUMBER_DIGITS`] characters, sign and dot included, is
-///   then refused as `StreamReadConstraints.validateFPLength` refuses it.
-/// - The value is the correctly rounded double, overflow to infinity included.
-///
-/// # Errors
-/// [`StringDoubleError::TooLong`] and [`StringDoubleError::Invalid`] as above.
-pub fn jackson_string_double(text: &str) -> Result<Option<f64>, StringDoubleError> {
-    match text {
-        "NaN" => return Ok(Some(f64::NAN)),
-        "Infinity" | "+Infinity" | "INF" | "+INF" => return Ok(Some(f64::INFINITY)),
-        "-Infinity" | "-INF" => return Ok(Some(f64::NEG_INFINITY)),
-        _ => {}
-    }
-    let trimmed = text.trim_matches(|c: char| c <= ' ');
-    if trimmed.is_empty() || trimmed == "null" {
-        return Ok(None);
-    }
-    if !is_plain_decimal(trimmed.as_bytes()) {
-        return Err(StringDoubleError::Invalid);
-    }
-    let length = trimmed.len();
-    if length > MAX_NUMBER_DIGITS {
-        return Err(StringDoubleError::TooLong(NumberTooLong { digits: length }));
-    }
-    trimmed
-        .parse::<f64>()
-        .map(Some)
-        .map_err(|_| StringDoubleError::Invalid)
-}
-
-/// Whether `text` matches `[+-]?(D+(\.D+)?([eE][+-]?D+)?|D+\.|\.D+([eE][+-]?D+)?)`, `D` an
-/// ASCII digit.
-fn is_plain_decimal(text: &[u8]) -> bool {
-    let digits = |from: usize| {
-        text[from..]
-            .iter()
-            .take_while(|b| b.is_ascii_digit())
-            .count()
-    };
-    let mut i = usize::from(matches!(text.first(), Some(b'+' | b'-')));
-    let integer = digits(i);
-    i += integer;
-    let mut fraction = 0;
-    let mut dot = false;
-    if text.get(i) == Some(&b'.') {
-        dot = true;
-        i += 1;
-        fraction = digits(i);
-        i += fraction;
-    }
-    if integer == 0 && fraction == 0 {
-        return false;
-    }
-    if i == text.len() {
-        return true;
-    }
-    if dot && fraction == 0 {
-        return false;
-    }
-    if !matches!(text[i], b'e' | b'E') {
-        return false;
-    }
-    i += 1;
-    if matches!(text.get(i), Some(b'+' | b'-')) {
-        i += 1;
-    }
-    let exponent = digits(i);
-    exponent > 0 && i + exponent == text.len()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,119 +275,6 @@ mod tests {
             rewritten(r#"{"x":1.7976931348623157e308}"#),
             r#"{"x":1.7976931348623157e308}"#
         );
-    }
-
-    #[test]
-    fn strings_coerce_to_doubles_as_jackson_coerces_them() {
-        let ok = |text: &str| jackson_string_double(text).unwrap();
-        let refused = |text: &str| jackson_string_double(text) == Err(StringDoubleError::Invalid);
-        for text in [
-            "1d",
-            "1f",
-            "1D",
-            "1F",
-            "-NaN",
-            "+NaN",
-            "inf",
-            "nan",
-            "0x1p3",
-            "0X1P3",
-            "1_000",
-            "NULL",
-            "Null",
-            "nul",
-            "null1",
-            "1.e5",
-            ".e5",
-            "e5",
-            "1e",
-            "1e+",
-            "-",
-            "+",
-            "--1",
-            "+-1",
-            "1.2.3",
-            "1e5.5",
-            "1ee5",
-            " Infinity",
-            "Infinity ",
-            " NaN",
-            "1,5",
-            "1.5e-3d",
-            "1\u{a0}",
-        ] {
-            assert!(refused(text), "{text:?}");
-        }
-        assert!(ok("NaN").unwrap().is_nan());
-        for (text, value) in [
-            ("Infinity", f64::INFINITY),
-            ("+Infinity", f64::INFINITY),
-            ("-Infinity", f64::NEG_INFINITY),
-            ("INF", f64::INFINITY),
-            ("+INF", f64::INFINITY),
-            ("-INF", f64::NEG_INFINITY),
-            ("+1", 1.0),
-            (" 1", 1.0),
-            ("1 ", 1.0),
-            (" 1 ", 1.0),
-            ("1.", 1.0),
-            ("-1.", -1.0),
-            (".5", 0.5),
-            ("-.5", -0.5),
-            ("+.5", 0.5),
-            ("1e5", 1e5),
-            ("1E+2", 100.0),
-            ("+1e+5", 1e5),
-            ("1e+05", 1e5),
-            ("00012", 12.0),
-            ("1e400", f64::INFINITY),
-            ("-1e400", f64::NEG_INFINITY),
-            ("1e-400", 0.0),
-            ("2.4703282292062328e-324", 5e-324),
-        ] {
-            assert_eq!(
-                ok(text).map(f64::to_bits),
-                Some(value.to_bits()),
-                "{text:?}"
-            );
-        }
-        for (text, bits) in [
-            ("-0", 0x8000_0000_0000_0000_u64),
-            ("-0.0", 0x8000_0000_0000_0000),
-            ("0e0", 0),
-        ] {
-            assert_eq!(ok(text).map(f64::to_bits), Some(bits), "{text:?}");
-        }
-        for text in ["", " ", "  ", "null", " null ", "\tnull\n"] {
-            assert_eq!(ok(text), None, "{text:?}");
-        }
-    }
-
-    #[test]
-    fn coerced_strings_longer_than_the_limit_are_refused_counting_sign_and_dot() {
-        let too_long = |text: &str| {
-            matches!(
-                jackson_string_double(text),
-                Err(StringDoubleError::TooLong(NumberTooLong { digits: 1001 }))
-            )
-        };
-        assert!(jackson_string_double(&"1".repeat(1000)).is_ok());
-        for malformed in [
-            format!("{}d", "1".repeat(1000)),
-            format!("{}d", "1".repeat(1001)),
-            "x".repeat(1001),
-        ] {
-            assert_eq!(
-                jackson_string_double(&malformed),
-                Err(StringDoubleError::Invalid)
-            );
-        }
-        assert!(too_long(&"1".repeat(1001)));
-        assert!(too_long(&format!("-{}", "1".repeat(1000))));
-        assert!(too_long(&format!("1.{}", "1".repeat(999))));
-        assert!(too_long(&format!("1e{}1", "0".repeat(998))));
-        assert!(jackson_string_double(&format!(" {}", "1".repeat(1000))).is_ok());
-        assert!(jackson_string_double(&format!("{} ", "1".repeat(1000))).is_ok());
     }
 
     #[test]

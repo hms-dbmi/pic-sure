@@ -80,7 +80,7 @@ pub enum Condition {
     NumberTooLongRefused,
     /// The entry's query holds a `min` or `max` sent as a JSON string that Jackson's double
     /// coercion refuses as malformed (`"1d"`, `"0x1p3"`, `"-NaN"`; see
-    /// `hpds_query::jackson_string_double`), the Java side answered 500 with an empty body (the
+    /// `hpds_format::jackson_string_double`), the Java side answered 500 with an empty body (the
     /// Jackson exception escapes `convertIncomingQuery`; the response carries no text), and the
     /// other side refused with 400 naming that string as an invalid value. A 500 with any body,
     /// a 400 for another reason, or a string Jackson accepts does not match. Strings refused only
@@ -591,8 +591,8 @@ fn string_bound_refused(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
         .into_iter()
         .filter(|text| {
             matches!(
-                hpds_query::jackson_string_double(text),
-                Err(hpds_query::StringDoubleError::Invalid)
+                hpds_format::jackson_string_double(text),
+                Err(hpds_format::StringDoubleError::Invalid)
             )
         })
         .collect();
@@ -791,7 +791,7 @@ fn holds_range_min_filter(clause: &Value) -> bool {
         && clause.get("min").is_some_and(|min| {
             min.is_number()
                 || min.as_str().is_some_and(|text| {
-                    matches!(hpds_query::jackson_string_double(text), Ok(Some(_)))
+                    matches!(hpds_format::jackson_string_double(text), Ok(Some(_)))
                 })
         })
 }
@@ -805,7 +805,7 @@ fn holds_filter_without_criteria(clause: &Value) -> bool {
     }
     let no_bound = |key: &str| match clause.get(key) {
         None | Some(Value::Null) => true,
-        Some(Value::String(text)) => matches!(hpds_query::jackson_string_double(text), Ok(None)),
+        Some(Value::String(text)) => matches!(hpds_format::jackson_string_double(text), Ok(None)),
         Some(_) => false,
     };
     clause.get("phenotypicFilterType").and_then(Value::as_str) == Some("FILTER")
