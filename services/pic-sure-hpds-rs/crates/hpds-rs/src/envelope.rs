@@ -1,14 +1,16 @@
 //! The `QueryRequest` envelope every POST body arrives in, and the UUID helpers the routes
 //! share.
 
+use hpds_format::java_trim;
 use hpds_query::{Query, parse_strict};
 use serde_json::{Map, Value};
 
 use crate::error::ApiError;
 
 /// Reads a request body as a `QueryRequest`: a JSON object whose `query` is any JSON value and
-/// whose `resourceUUID`, when present and not null, is a UUID string. Other top-level fields
-/// are ignored, as `@JsonIgnoreProperties(ignoreUnknown = true)` ignores them.
+/// whose `resourceUUID`, when present and not null, is a UUID string (trimmed as `String.trim`
+/// does, a blank string standing for null, as Jackson's `UUIDDeserializer` reads it). Other
+/// top-level fields are ignored, as `@JsonIgnoreProperties(ignoreUnknown = true)` ignores them.
 ///
 /// The body is read with [`parse_strict`], so an object holding the same key twice anywhere
 /// in it, the envelope and an object `query` included, is refused. A lenient parse would keep
@@ -28,7 +30,8 @@ pub fn read_envelope(body: &[u8]) -> Result<Map<String, Value>, ApiError> {
     };
     match fields.get("resourceUUID") {
         None | Some(Value::Null) => {}
-        Some(Value::String(id)) if canonical_uuid(id).is_some() => {}
+        Some(Value::String(id))
+            if java_trim(id).is_empty() || canonical_uuid(java_trim(id)).is_some() => {}
         Some(_) => return Err(ApiError::bad_request("resourceUUID must be a UUID")),
     }
     Ok(fields)
@@ -136,6 +139,26 @@ mod tests {
         let string = read_query(br#"{"query":"{\"expectedResultType\":\"COUNT\"}"}"#);
         assert_eq!(object.unwrap().expected_result_type, ResultType::Count);
         assert_eq!(string.unwrap().expected_result_type, ResultType::Count);
+    }
+
+    #[test]
+    fn resource_uuids_are_read_as_jacksons_uuid_coercion_reads_them() {
+        let uuid = "8694E3D4-5CB4-410F-8431-993445E6D3F6";
+        for id in [
+            format!("\" {uuid} \""),
+            "\"\"".into(),
+            "\"  \"".into(),
+            format!("\"{uuid}\""),
+        ] {
+            let body =
+                format!(r#"{{"resourceUUID":{id},"query":{{"expectedResultType":"COUNT"}}}}"#);
+            assert!(read_query(body.as_bytes()).is_ok(), "{id}");
+        }
+        for id in ["\"null\"", "\"x\"", "5"] {
+            let body =
+                format!(r#"{{"resourceUUID":{id},"query":{{"expectedResultType":"COUNT"}}}}"#);
+            assert!(read_query(body.as_bytes()).is_err(), "{id}");
+        }
     }
 
     #[test]

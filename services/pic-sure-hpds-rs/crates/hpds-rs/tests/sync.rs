@@ -492,3 +492,29 @@ async fn enums_are_read_as_jacksons_enum_coercion_reads_them() {
         assert_eq!(reply.status, StatusCode::BAD_REQUEST, "{result_type}");
     }
 }
+
+#[tokio::test]
+async fn uuids_are_read_as_jacksons_uuid_coercion_reads_them() {
+    let f = fixture();
+    let uuid = "8694E3D4-5CB4-410F-8431-993445E6D3F6";
+    for (field, value) in [
+        ("picsureId", format!(r#"" {uuid} ""#)),
+        ("picsureId", r#""""#.to_owned()),
+        ("id", r#""  ""#.to_owned()),
+    ] {
+        let body = format!(
+            r#"{{"query":{{"expectedResultType":"COUNT","{field}":{value}}},"resourceUUID":" "}}"#
+        );
+        let reply = post(&f.app, SYNC, body).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (StatusCode::OK, "4978"),
+            "{field} {value}"
+        );
+    }
+    let body = r#"{"query":{"expectedResultType":"COUNT","picsureId":"null"},"resourceUUID":null}"#;
+    assert_eq!(
+        post(&f.app, SYNC, body).await.status,
+        StatusCode::BAD_REQUEST
+    );
+}

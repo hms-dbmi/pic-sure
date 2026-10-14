@@ -35,7 +35,8 @@
 //! - Enums accept their exact Java name, the name with surrounding whitespace, their ordinal as
 //!   a JSON integer, or the ordinal written as a string (`"1"`), as Jackson's enum coercion
 //!   does; names are case sensitive.
-//! - UUIDs must be in the canonical 36-character form and are kept in lowercase.
+//! - UUIDs must be in the canonical 36-character form, after trimming as `String.trim` does,
+//!   and are kept in lowercase; an empty or blank string is null.
 //!
 //! Where Jackson would accept a value that only fails later (a missing
 //! `expectedResultType`, `phenotypicFilterType` or `conceptPath`, a `null` inside a string
@@ -794,11 +795,18 @@ fn is_canonical_uuid(value: &str) -> bool {
         })
 }
 
+/// A `UUID` field as Jackson 2.21's `UUIDDeserializer` reads it: the text trimmed as
+/// `String.trim` does, blank as null, otherwise the canonical 36-character form in either case,
+/// kept in lowercase. `"null"` and every other form are refused.
 fn java_uuid<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
-    match Option::<String>::deserialize(deserializer)? {
-        None => Ok(None),
-        Some(value) if is_canonical_uuid(&value) => Ok(Some(value.to_ascii_lowercase())),
-        Some(value) => Err(de::Error::custom(format!(
+    let Some(value) = Option::<String>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+    let trimmed = java_trim(&value);
+    match trimmed {
+        "" => Ok(None),
+        _ if is_canonical_uuid(trimmed) => Ok(Some(trimmed.to_ascii_lowercase())),
+        _ => Err(de::Error::custom(format!(
             "{value:?} is not a UUID in the canonical 8-4-4-4-12 form"
         ))),
     }
@@ -1037,13 +1045,33 @@ mod tests {
     }
 
     #[test]
-    fn uuids_must_be_canonical() {
+    fn uuids_follow_jacksons_uuid_coercion() {
         let q = parse(json!({"expectedResultType": "COUNT", "picsureId": "8694E3D4-5CB4-410F-8431-993445E6D3F6"})).unwrap();
         assert_eq!(
             q.picsure_id.as_deref(),
             Some("8694e3d4-5cb4-410f-8431-993445e6d3f6")
         );
         assert!(parse(json!({"expectedResultType": "COUNT", "id": "1-2-3-4-5"})).is_err());
+        let uuid = "8694e3d4-5cb4-410f-8431-993445e6d3f6";
+        let id =
+            |value: Value| parse(json!({"expectedResultType": "COUNT", "id": value})).map(|q| q.id);
+        for (value, expected) in [
+            (json!(format!(" {uuid} ")), Some(Some(uuid.to_owned()))),
+            (
+                json!(format!("\t{}\n", uuid.to_uppercase())),
+                Some(Some(uuid.to_owned())),
+            ),
+            (json!(""), Some(None)),
+            (json!("  "), Some(None)),
+            (json!(null), Some(None)),
+            (json!("null"), None),
+            (json!(uuid.replace('-', "")), None),
+            (json!(format!("{{{uuid}}}")), None),
+            (json!(format!("{uuid} x")), None),
+            (json!(123), None),
+        ] {
+            assert_eq!(id(value.clone()).ok(), expected, "{value}");
+        }
     }
 
     #[test]
