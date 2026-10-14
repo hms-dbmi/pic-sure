@@ -132,6 +132,14 @@ impl BlocksReader {
         })
     }
 
+    /// The state of the open file now (`fstat`), which a rewrite in place changes.
+    ///
+    /// # Errors
+    /// The I/O error of `fstat`.
+    pub fn file_metadata(&self) -> std::io::Result<std::fs::Metadata> {
+        self.file.metadata()
+    }
+
     /// The store the file belongs to.
     pub fn store_id(&self) -> StoreId {
         self.store_id

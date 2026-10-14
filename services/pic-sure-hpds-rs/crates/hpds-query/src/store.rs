@@ -410,6 +410,14 @@ impl Store {
         self.entries[position as usize]
     }
 
+    /// The state of the open `pheno.blocks` descriptor now.
+    ///
+    /// # Errors
+    /// The I/O error of `fstat`.
+    pub(crate) fn blocks_metadata(&self) -> std::io::Result<std::fs::Metadata> {
+        self.reader.file_metadata()
+    }
+
     /// The routing of patients to partitions.
     pub(crate) fn membership(&self) -> &Membership {
         &self.membership
@@ -454,23 +462,53 @@ impl Store {
 /// How often, at most, [`ServingLock::check`] looks at the data directory: once a second.
 const STORE_CHECK_INTERVAL_MS: u64 = 1000;
 
+/// What identifies the content of a file: its device and inode, length, and modification
+/// time. A rename gives another inode; a rewrite in place (`cp` over the file, `rsync
+/// --inplace`) changes the length or the modification time. A `touch` changes the time
+/// too, and counts as a change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FileStamp {
+    dev: u64,
+    ino: u64,
+    len: u64,
+    mtime_ns: i128,
+}
+
+impl FileStamp {
+    fn of(meta: &std::fs::Metadata) -> Self {
+        FileStamp {
+            dev: meta.dev(),
+            ino: meta.ino(),
+            len: meta.len(),
+            mtime_ns: i128::from(meta.mtime()) * 1_000_000_000 + i128::from(meta.mtime_nsec()),
+        }
+    }
+
+    fn same_inode(&self, other: &FileStamp) -> bool {
+        (self.dev, self.ino) == (other.dev, other.ino)
+    }
+}
+
 /// The shared `flock` the service holds on the `pheno.index` it serves, for as long as it
-/// serves it, and the check that the data directory still holds that store.
+/// serves it, and the check that what it serves is still what it opened.
 ///
 /// Every `hpds-etl` command that replaces store files takes an exclusive `flock` on the
 /// current `pheno.index` without waiting, and on the new one before it renames it into
 /// place, holding both until its publish is done. So a command refuses to change a store a
 /// service on the same kernel holds, and a service that starts during a publish waits for
-/// it to finish rather than reading half of it. `flock` reaches only processes under one
-/// kernel; for anything else that replaces the files (another kernel, a network
-/// filesystem, a plain `mv`), [`ServingLock::check`] notices that `pheno.index` is no
-/// longer the file opened, or that a publish journal appeared, and from then on every
-/// query is refused with [`QueryError::StoreChanged`].
+/// it to finish rather than reading half of it.
+///
+/// After startup the service reads the store only through what it opened: the index it
+/// holds in memory and its open `pheno.blocks` descriptor, read by offset. It never opens a
+/// store path again. [`ServingLock::check`] refuses every query once a file it holds open
+/// changed in place (its length or modification time moved), a publish journal appeared,
+/// or `pheno.index` became another file.
 #[derive(Debug)]
 pub(crate) struct ServingLock {
-    _file: File,
+    file: File,
     dir: PathBuf,
-    identity: (u64, u64),
+    index: FileStamp,
+    blocks: Option<FileStamp>,
     opened: Instant,
     checked_ms: AtomicU64,
     changed: AtomicBool,
@@ -505,10 +543,9 @@ impl ServingLock {
                     );
                 }
             }
-            let held = file.metadata().map_err(|e| open_error(dir, e))?;
-            let identity = (held.dev(), held.ino());
+            let held = FileStamp::of(&file.metadata().map_err(|e| open_error(dir, e))?);
             match std::fs::metadata(&path) {
-                Ok(now) if (now.dev(), now.ino()) == identity => {}
+                Ok(now) if FileStamp::of(&now).same_inode(&held) => {}
                 Ok(_) => continue,
                 Err(e) => return Err(open_error(dir, e)),
             }
@@ -516,9 +553,10 @@ impl ServingLock {
             file.read_to_end(&mut bytes)
                 .map_err(|e| open_error(dir, e))?;
             let lock = ServingLock {
-                _file: file,
+                file,
                 dir: dir.to_path_buf(),
-                identity,
+                index: held,
+                blocks: None,
                 opened: Instant::now(),
                 checked_ms: AtomicU64::new(0),
                 changed: AtomicBool::new(false),
@@ -527,14 +565,25 @@ impl ServingLock {
         }
     }
 
-    /// Fails once the data directory no longer holds the store this lock was taken on: its
-    /// `pheno.index` is gone or another file, or it holds a publish journal. Looks at the
-    /// directory at most once per [`STORE_CHECK_INTERVAL_MS`] and answers from the last
-    /// look in between; once it has failed it always fails.
+    /// Records the state of the open `pheno.blocks` descriptor, `blocks`, which
+    /// [`ServingLock::check`] compares against.
+    pub(crate) fn bind(&mut self, blocks: &std::fs::Metadata) {
+        self.blocks = Some(FileStamp::of(blocks));
+    }
+
+    /// Fails once what the service serves may no longer be the store it opened (see the type
+    /// documentation): a file it holds open changed in place, a publish journal appeared, or
+    /// `pheno.index` became another file. `blocks` gives the state of
+    /// the open `pheno.blocks` descriptor now. Looks at most once per
+    /// [`STORE_CHECK_INTERVAL_MS`] and answers from the last look in between; once it has
+    /// failed it always fails.
     ///
     /// # Errors
     /// [`QueryError::StoreChanged`].
-    pub(crate) fn check(&self) -> Result<()> {
+    pub(crate) fn check(
+        &self,
+        blocks: impl FnOnce() -> std::io::Result<std::fs::Metadata>,
+    ) -> Result<()> {
         if !self.changed.load(Ordering::Relaxed) {
             let now = u64::try_from(self.opened.elapsed().as_millis()).unwrap_or(u64::MAX);
             let last = self.checked_ms.load(Ordering::Relaxed);
@@ -542,23 +591,49 @@ impl ServingLock {
                 return Ok(());
             }
             self.checked_ms.store(now.max(1), Ordering::Relaxed);
-            let same = std::fs::metadata(self.dir.join(INDEX_FILE_NAME))
-                .is_ok_and(|meta| (meta.dev(), meta.ino()) == self.identity);
-            let journal =
-                std::fs::symlink_metadata(self.dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok();
-            if same && !journal {
-                return Ok(());
-            }
-            if !self.changed.swap(true, Ordering::Relaxed) {
-                tracing::error!(
-                    dir = %self.dir.display(),
-                    "the store changed on disk after it was opened; refusing every query until the service restarts"
-                );
+            match self.look(blocks) {
+                None => return Ok(()),
+                Some(reason) => {
+                    if !self.changed.swap(true, Ordering::Relaxed) {
+                        tracing::error!(
+                            dir = %self.dir.display(),
+                            reason,
+                            "the store changed on disk after it was opened; refusing every query until the service restarts"
+                        );
+                    }
+                }
             }
         }
         Err(QueryError::StoreChanged {
             dir: self.dir.clone(),
         })
+    }
+
+    /// Why the service must stop answering, or `None` while it may go on.
+    fn look(
+        &self,
+        blocks: impl FnOnce() -> std::io::Result<std::fs::Metadata>,
+    ) -> Option<&'static str> {
+        if std::fs::symlink_metadata(self.dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok() {
+            return Some("a publish journal appeared");
+        }
+        if self
+            .file
+            .metadata()
+            .map_or(true, |meta| FileStamp::of(&meta) != self.index)
+        {
+            return Some("the open pheno.index was changed in place");
+        }
+        if let Some(opened) = self.blocks
+            && blocks().map_or(true, |meta| FileStamp::of(&meta) != opened)
+        {
+            return Some("the open pheno.blocks was changed in place");
+        }
+        match std::fs::metadata(self.dir.join(INDEX_FILE_NAME)) {
+            Ok(now) if FileStamp::of(&now) == self.index => None,
+            Ok(_) => Some("pheno.index was replaced"),
+            Err(_) => Some("pheno.index is gone"),
+        }
     }
 }
 

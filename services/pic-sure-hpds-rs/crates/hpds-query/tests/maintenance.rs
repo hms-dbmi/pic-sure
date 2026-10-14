@@ -197,3 +197,50 @@ fn removing_an_overlap_patients_rows_narrows_the_tagged_sets_the_guard_reads() {
     assert_eq!(engine.count(&p1_age).unwrap(), 0);
     assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
 }
+
+/// A change made to the files of a data directory.
+type StoreChange = fn(&std::path::Path);
+
+#[test]
+fn a_service_refuses_queries_once_a_file_it_holds_open_changes_in_place() {
+    let changes: [(&str, StoreChange); 3] = [
+        ("blocks appended in place", |out| {
+            use std::io::Write;
+            let mut blocks = std::fs::OpenOptions::new()
+                .append(true)
+                .open(out.join("pheno.blocks"))
+                .unwrap();
+            blocks.write_all(&[0]).unwrap();
+        }),
+        ("index copied over in place", |out| {
+            let bytes = std::fs::read(out.join("pheno.index")).unwrap();
+            let mut padded = bytes.clone();
+            padded.push(0);
+            std::fs::write(out.join("pheno.index"), padded).unwrap();
+        }),
+        ("index touched", |out| {
+            let index = std::fs::File::options()
+                .write(true)
+                .open(out.join("pheno.index"))
+                .unwrap();
+            index
+                .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+                .unwrap();
+        }),
+    ];
+    for (what, change) in changes {
+        let d = two_partitions();
+        let engine = d.open(&lenient()).unwrap();
+        let age = query(ResultType::Count, Some(required(AGE)));
+        assert_eq!(engine.count(&age).unwrap(), 2, "{what}");
+        change(&d.out);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let error = engine.count(&age).unwrap_err();
+
+        assert!(
+            matches!(error, hpds_query::QueryError::StoreChanged { .. }),
+            "{what}: {error}"
+        );
+    }
+}

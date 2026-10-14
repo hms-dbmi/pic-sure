@@ -369,7 +369,7 @@ impl PartitionSet {
                 ));
             }
         };
-        let (serving, index_bytes) = ServingLock::open(dir)?;
+        let (mut serving, index_bytes) = ServingLock::open(dir)?;
         if std::fs::symlink_metadata(dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok() {
             return Err(open_error(
                 dir,
@@ -417,6 +417,7 @@ impl PartitionSet {
             dictionary.push(SummaryColumnMeta::from_concept(&meta));
         }
         let (store, table) = files.into_store(entries);
+        serving.bind(&store.blocks_metadata().map_err(|e| open_error(dir, e))?);
         let partitions: Vec<Partition> = if partitioned {
             table
                 .partitions
@@ -478,15 +479,16 @@ impl PartitionSet {
         })
     }
 
-    /// Fails once the data directory no longer holds the store this set opened (see
-    /// [`ServingLock::check`]): its files were replaced, or a publish into it began. Every
+    /// Fails once what this set serves may no longer be the store it opened (see
+    /// [`ServingLock::check`]): a file it holds open changed in place, a publish into the
+    /// directory began, or `pheno.index` was replaced. Every
     /// computation of the engine checks this first, and the service checks it on every
     /// route that reads the store.
     ///
     /// # Errors
     /// [`QueryError::StoreChanged`].
     pub fn check_unchanged(&self) -> Result<()> {
-        self.serving.check()
+        self.serving.check(|| self.store.blocks_metadata())
     }
 
     /// A hash of the store id. Another load of the data directory gives another value.
