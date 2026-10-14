@@ -141,6 +141,11 @@
       "when": "authorization-filters-narrow",
       "javaBranch": "main",
       "reason": "Contract, main branch only (javaBranch): Rust, like the consent branch, never applies authorizationFilters (the consent branch only validates them, QueryValidator.java:49), while the original Java HPDS on main ANDs each one into the query (PhenotypicQueryExecutor.java:35), so main answers fewer patients. Rust must not replace a main-branch HPDS that relies on authorizationFilters (README, Differences from Java). Accepted only against main, only when the entry's query carries a non-empty authorizationFilters list, both sides answered (sync 200, or async SUCCESS), and main's answer is the narrower one: a COUNT no greater than Rust's, every cross count no greater under a key Rust also holds, a PATIENTS or DATAFRAME export with the same header and a subset of Rust's rows. Against the consent branch, which ignores the filters as Rust does, any difference stays reported."
+    },
+    {
+      "name": "number-too-long-status",
+      "when": "number-too-long-refused",
+      "reason": "Jackson error, invalid input: Jackson 2.21 refuses a number token with more than 1,000 digits (StreamReadConstraints.getMaxNumberLength, counting integer, fraction and exponent digits). Java answers 400 with Spring's JSON error body when the token is in the request body, and 500 with an empty body when it is in a query sent as a JSON string (PicSureV3Service.convertIncomingQuery). Rust refuses the same tokens with 400 \"Number value length (<n>) exceeds the maximum allowed (1000)\". Two 400s already compare equal, so the rule accepts only that message against a Java 500."
     }
   ]
 }

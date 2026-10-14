@@ -69,6 +69,11 @@ pub enum Condition {
     /// `HPDS_MAX_CROSS_COUNT_ENTRIES` does not match: it refuses a valid query for what its
     /// answer would hold, not for its shape.
     RequestLimitRefused,
+    /// One side refused with 400 because a number token holds more than 1,000 digits
+    /// (`Number value length (<n>) exceeds the maximum allowed (1000)`), while the other
+    /// answered 500. Jackson refuses the same token, with 400 for the request body and with
+    /// 500 when the token sits in a query sent as a JSON string.
+    NumberTooLongRefused,
     /// Body normalization: every column meta object (one holding `name` and `categorical`)
     /// keeps only the fields both search shapes share, `name`, `categorical`, a non-empty
     /// `categoryValues`, a non-null `min` and `max`, and `patientCount`. The main branch
@@ -536,6 +541,18 @@ fn request_limit_refused(a: &Outcome, b: &Outcome) -> bool {
     )
 }
 
+fn number_too_long_refused(a: &Outcome, b: &Outcome) -> bool {
+    refused_against(
+        a,
+        b,
+        |body| {
+            body.contains("Number value length (")
+                && body.contains(") exceeds the maximum allowed (1000)")
+        },
+        |other| other.status_code() == 500,
+    )
+}
+
 /// Whether `java` is at most `rust`: numbers no greater, objects whose every key the other
 /// also holds with a value at most its own, anything else equal.
 fn json_at_most(java: &Value, rust: &Value) -> bool {
@@ -734,6 +751,7 @@ impl Condition {
             Condition::GenomicTypeOnSyncRoute => genomic_type_on_sync_route(entry, a, b),
             Condition::VariantSpecPathRefused => variant_spec_path_refused(a, b),
             Condition::RequestLimitRefused => request_limit_refused(a, b),
+            Condition::NumberTooLongRefused => number_too_long_refused(a, b),
             Condition::AuthorizationFiltersNarrow => {
                 authorization_filters_narrow(entry, a, b, java)
             }
@@ -1432,6 +1450,22 @@ mod tests {
     }
 
     #[test]
+    fn a_too_long_number_is_accepted_only_against_a_500() {
+        let set = rules(json!([
+            {"name": "long", "when": "number-too-long-refused", "reason": "why"}
+        ]));
+        let e = entry("0001-x-count", "COUNT");
+        let refused = sync(
+            400,
+            "the query is not valid: Number value length (1001) exceeds the maximum allowed (1000)",
+        );
+        assert!(set.find(&e, &sync(500, ""), &refused).is_some());
+        assert!(set.find(&e, &refused, &sync(500, "")).is_some());
+        assert!(set.find(&e, &sync(200, "3"), &refused).is_none());
+        assert!(set.find(&e, &sync(500, ""), &sync(400, "other")).is_none());
+    }
+
+    #[test]
     fn condition_lists_must_hold_only_normalizations() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("d.json");
@@ -1509,6 +1543,7 @@ mod tests {
             "request-limit-status",
             "search-shape-main",
             "authorization-filters-main",
+            "number-too-long-status",
         ] {
             let found = set.rules.iter().find(|r| r.name == name);
             assert!(
