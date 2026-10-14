@@ -426,4 +426,12 @@ async fn a_string_bound_jackson_refuses_is_a_400() {
     }
     let reply = post(&f.app, SYNC, raw_range_body(AGE, r#"" 40 ""#, r#""+100""#)).await;
     assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
+    for null in [r#""null""#, r#"" null ""#] {
+        let reply = post(&f.app, SYNC, raw_range_body(AGE, null, "100")).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (StatusCode::OK, "1126"),
+            "{null}"
+        );
+    }
 }

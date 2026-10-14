@@ -247,12 +247,13 @@ pub enum StringDoubleError {
 
 /// A `Double` field given as a JSON string, read as Jackson 2.21's `StdDeserializer` coerces
 /// it (checked against Jackson 2.21.5 on every string of up to five characters over
-/// `0 1 . e E + -` and space).
+/// `0 1 . e E + - n u l` and space, 177,156 strings).
 ///
 /// - `NaN`, `Infinity`, `+Infinity`, `-Infinity`, `INF`, `+INF` and `-INF`, exactly as
 ///   written, are the special values; any other spelling (`-NaN`, `inf`, ` Infinity`) is not.
 /// - Otherwise the text is trimmed of characters up to the space, as `String.trim` does; an
-///   empty result is `None` (null).
+///   empty result, or exactly `null` (`_checkTextualNull`, with scalar coercion on as it is by
+///   default), is `None`. `NULL` and `Null` are not null.
 /// - A trimmed text longer than [`MAX_NUMBER_DIGITS`] characters, sign and dot included, is
 ///   refused as `StreamReadConstraints` refuses it.
 /// - The rest must be a plain decimal: an optional sign, then digits with an optional fraction
@@ -271,7 +272,7 @@ pub fn jackson_string_double(text: &str) -> Result<Option<f64>, StringDoubleErro
         _ => {}
     }
     let trimmed = text.trim_matches(|c: char| c <= ' ');
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || trimmed == "null" {
         return Ok(None);
     }
     let length = trimmed.chars().count();
@@ -406,6 +407,10 @@ mod tests {
             "0x1p3",
             "0X1P3",
             "1_000",
+            "NULL",
+            "Null",
+            "nul",
+            "null1",
             "1.e5",
             ".e5",
             "e5",
@@ -467,7 +472,7 @@ mod tests {
         ] {
             assert_eq!(ok(text).map(f64::to_bits), Some(bits), "{text:?}");
         }
-        for text in ["", " ", "  "] {
+        for text in ["", " ", "  ", "null", " null ", "\tnull\n"] {
             assert_eq!(ok(text), None, "{text:?}");
         }
     }

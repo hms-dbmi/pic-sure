@@ -213,6 +213,8 @@ fn string_bounds_coerce_as_jackson_does() {
         ("\"-Infinity\"", Some(f64::NEG_INFINITY)),
         ("\"\"", None),
         ("\"  \"", None),
+        ("\"null\"", None),
+        ("\" null \"", None),
     ] {
         for query in read_both_ways(&bounds_json(HEIGHT, &[("min", accepted)])) {
             assert_eq!(bounds(&query).0, value, "{accepted}");

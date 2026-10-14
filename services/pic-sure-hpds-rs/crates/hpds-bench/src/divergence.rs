@@ -1659,6 +1659,8 @@ mod tests {
             json!({}),
             json!({"min": ""}),
             json!({"min": "  ", "max": null}),
+            json!({"min": "null"}),
+            json!({"max": " null "}),
             json!({"values": null}),
         ] {
             assert_eq!(
