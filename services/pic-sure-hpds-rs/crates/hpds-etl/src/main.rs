@@ -34,6 +34,9 @@ enum Command {
     Convert(ConvertArgs),
     /// Remove the concepts named in a file from a store, as RemoveConceptFromMetadata does.
     RemoveConcepts(RemoveConceptsArgs),
+    /// Finish a publish into a store that a crash or kill interrupted, and remove the
+    /// temporary files it left. Does nothing to a store with no interrupted publish.
+    Recover(RecoverArgs),
     /// Regenerate a store's columnMeta.csv from its index.
     ColumnMetaCsv(ColumnMetaCsvArgs),
     /// Write a store as canonical CSV in DumpSourceCSV layout and order, or its patient IDs.
@@ -128,6 +131,15 @@ struct RemoveConceptsArgs {
     /// Replaced by --keep-removed-blocks; refused with a message naming it.
     #[arg(long, hide = true)]
     no_compact: bool,
+    #[command(flatten)]
+    key: KeyArgs,
+}
+
+#[derive(Args)]
+struct RecoverArgs {
+    /// Store directory to recover, under its store lock.
+    #[arg(long)]
+    store: PathBuf,
     #[command(flatten)]
     key: KeyArgs,
 }
@@ -331,6 +343,7 @@ fn main() -> ExitCode {
         Command::Migrate(args) => run_migrate(args),
         Command::Convert(args) => run_convert(args),
         Command::RemoveConcepts(args) => run_remove_concepts(args),
+        Command::Recover(args) => run_recover(args),
         Command::ColumnMetaCsv(args) => run_column_meta_csv(args),
         Command::Dump(args) => run_dump(args),
     };
@@ -466,6 +479,7 @@ fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
         allow_missing: args.allow_missing,
         keep_removed_blocks: args.keep_removed_blocks,
         dry_run: args.dry_run,
+        ..Default::default()
     };
     let report = hpds_etl::store_maintenance::remove_concepts(
         &args.store,
@@ -481,6 +495,17 @@ fn run_remove_concepts(args: RemoveConceptsArgs) -> Result<()> {
             args.concepts.display()
         )));
     }
+    Ok(())
+}
+
+fn run_recover(args: RecoverArgs) -> Result<()> {
+    open_layout(&args.store, &args.key)?;
+    let (protection, _) = hpds_etl::partitions::resolve_shared_key(
+        &args.key.source(KeySource::StoreDirectory),
+        &args.store,
+    )?;
+    let _lock = hpds_etl::store::lock_store(&args.store)?;
+    print_json(&hpds_etl::publish::recover(&args.store, &protection)?);
     Ok(())
 }
 

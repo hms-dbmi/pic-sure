@@ -4,7 +4,6 @@
 //! ([`crate::store::lock_store`]) while they write.
 
 use std::collections::BTreeMap;
-use std::io::Write;
 use std::path::Path;
 
 use hpds_format::{
@@ -19,9 +18,11 @@ use crate::error::{EtlError, Result};
 use crate::java::{java_double_max, java_double_min};
 use crate::load::COLUMN_META_CSV_NAME;
 use crate::maintenance_log;
-use crate::store::{
-    StagedFile, lock_store, lock_store_shared, read_index, replace_file, sync_parent,
+use crate::publish::{
+    self, HashingWriter, Replacement, StopAfter, recover, refuse_linked_store_files,
+    refuse_pending_publish,
 };
+use crate::store::{StagedFile, lock_store, lock_store_shared, read_index, replace_file};
 
 /// Largest concepts file `remove-concepts` reads: 64 MiB, far above any list of concept
 /// paths, so a device or a wrong file is refused rather than read into memory.
@@ -44,6 +45,10 @@ pub struct RemoveOptions {
     /// Report what would be removed, reading the store under a shared lock, and write
     /// nothing. Lines naming no concept are listed rather than failing the command.
     pub dry_run: bool,
+    /// Stops the publish after this step as a crash would, for tests of
+    /// [`crate::publish::recover`]. `None` in every real run.
+    #[doc(hidden)]
+    pub stop_after: StopAfter,
 }
 
 /// What `remove-concepts` did.
@@ -292,9 +297,14 @@ pub fn remove_concepts(
         )));
     }
     let _lock = if options.dry_run {
-        lock_store_shared(dir)?
+        let lock = lock_store_shared(dir)?;
+        refuse_pending_publish(dir)?;
+        lock
     } else {
-        lock_store(dir)?
+        let lock = lock_store(dir)?;
+        refuse_linked_store_files(dir)?;
+        recover(dir, protection)?;
+        lock
     };
     let index = read_index(dir, protection)?;
     let mut report = RemoveReport {
@@ -333,7 +343,7 @@ pub fn remove_concepts(
         report.removed_blocks_kept = false;
         if !options.dry_run {
             let record = removal_record(&report, concepts_file, &concepts_sha256, None);
-            maintenance_log::append(dir, &record_with_result(record, RESULT_NO_CHANGE))?;
+            maintenance_log::append(dir, &publish::with_result(record, RESULT_NO_CHANGE))?;
         }
         return Ok(report);
     }
@@ -346,27 +356,25 @@ pub fn remove_concepts(
         }
         return Ok(report);
     }
-    let staged_blocks = if options.keep_removed_blocks {
-        None
-    } else {
+    let mut replacements = Vec::with_capacity(2);
+    if !options.keep_removed_blocks {
         let codec = index.block_codec(protection.clone())?;
         let membership = index.membership();
-        let mut new_len = 0;
+        let mut written = (0, 0);
         let staged = StagedFile::write(&blocks_path, |out| {
-            let mut writer = BlocksWriter::new(out, index.store_id())?;
+            let mut writer = BlocksWriter::new(HashingWriter::new(out), index.store_id())?;
             for concept in &mut kept {
                 reader.read_block(&codec, concept, &membership)?;
                 let stored = reader.read_stored(concept.block)?;
                 concept.block = writer.append_stored(&stored)?;
             }
-            new_len = writer.len();
-            writer.finish()?;
+            written = writer.finish()?.digest();
             Ok(())
         })?;
-        report.blocks_bytes_after = new_len;
+        report.blocks_bytes_after = written.0;
         report.compacted = true;
-        Some(staged)
-    };
+        replacements.push(Replacement::new(staged, written.0, written.1));
+    }
     drop(reader);
 
     let rewritten = PhenoIndex::with_partitions(
@@ -376,23 +384,21 @@ pub fn remove_concepts(
         kept,
     )?;
     let encoded = rewritten.encode(protection)?;
-    let staged_index = StagedFile::write(&index_path, |out| {
-        out.write_all(&encoded)
-            .map_err(EtlError::io("writing", &index_path))
-    })?;
+    replacements.push(Replacement::of_bytes(&index_path, &encoded)?);
     let record = removal_record(
         &report,
         concepts_file,
         &concepts_sha256,
         Some(&maintenance_log::sha256_hex(&encoded)),
     );
-    if let Some(staged_blocks) = staged_blocks {
-        staged_blocks.commit()?;
-    }
-    staged_index.commit()?;
-    sync_parent(&index_path)?;
-    write_column_meta_csv_file(&rewritten, &dir.join(COLUMN_META_CSV_NAME))?;
-    maintenance_log::append(dir, &record_with_result(record, RESULT_PUBLISHED))?;
+    publish::publish(
+        dir,
+        "remove-concepts",
+        replacements,
+        record,
+        || write_column_meta_csv_file(&rewritten, &dir.join(COLUMN_META_CSV_NAME)),
+        options.stop_after,
+    )?;
     Ok(report)
 }
 
@@ -405,7 +411,7 @@ pub const RESULT_NO_CHANGE: &str = "no-change";
 
 /// The maintenance log record of the removal `report` describes, driven by `concepts_file`
 /// whose SHA-256 is `concepts_sha256`, leaving the index whose SHA-256 is `index_sha256`.
-/// Its `result` and `time` are set when it is appended ([`record_with_result`]).
+/// Its `result` and `time` are set when it is appended.
 fn removal_record(
     report: &RemoveReport,
     concepts_file: &Path,
@@ -437,13 +443,6 @@ fn removal_record(
     })
 }
 
-/// `record` with its `result` set to `result` and its `time` to now, in UTC.
-fn record_with_result(mut record: serde_json::Value, result: &str) -> serde_json::Value {
-    record["result"] = result.into();
-    record["time"] = maintenance_log::utc_now().into();
-    record
-}
-
 /// Regenerates `columnMeta.csv` for the store in `dir` from its index, byte for byte as
 /// `hpds-etl load` writes it, at `out` or by default at `<dir>/columnMeta.csv`, holding the
 /// store lock while it reads the index and writes the file. Returns the number of rows
@@ -457,6 +456,7 @@ pub fn regenerate_column_meta_csv(
     protection: &Protection,
 ) -> Result<u64> {
     let _lock = lock_store(dir)?;
+    refuse_pending_publish(dir)?;
     let index = read_index(dir, protection)?;
     let target = out.map_or_else(|| dir.join(COLUMN_META_CSV_NAME), Path::to_path_buf);
     write_column_meta_csv_file(&index, &target)?;
@@ -543,7 +543,11 @@ fn merge_into(into: &mut ConceptMeta, other: &ConceptMeta) {
     };
 }
 
-fn write_column_meta_csv_file(index: &PhenoIndex, target: &Path) -> Result<()> {
+/// Writes `columnMeta.csv` for `index` at `target`, replacing any file there atomically.
+///
+/// # Errors
+/// I/O errors writing, syncing or renaming the file.
+pub(crate) fn write_column_meta_csv_file(index: &PhenoIndex, target: &Path) -> Result<()> {
     replace_file(target, |out| {
         write_column_meta_csv(out, index.concepts()).map_err(EtlError::io("writing", target))
     })

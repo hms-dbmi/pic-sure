@@ -755,6 +755,9 @@ impl Staging {
         }
         let parent = parent_dir(out);
         crate::partitions::check_same_filesystem(&parent, &[out.to_path_buf()])?;
+        if out.is_dir() {
+            crate::publish::refuse_pending_publish(out)?;
+        }
         Ok(Staging {
             dir: TemporaryDir::create(&parent, &format!("{name}.staging"))?,
             key: false,
@@ -789,7 +792,8 @@ impl Staging {
     /// that finds the new index finds the new blocks (until then the old index refuses the
     /// new blocks by store id), then the staged key, and the marker is replaced last. A
     /// reader sees the marker name the old id until the new store is complete. An interrupt
-    /// waits until the moves are done.
+    /// waits until the moves are done. A directory holding an interrupted publish's journal
+    /// is refused before anything moves; `hpds-etl recover` finishes that publish first.
     ///
     /// # Errors
     /// I/O errors syncing, renaming or writing the marker.
@@ -811,6 +815,7 @@ impl Staging {
             let parent = parent_dir(out);
             return private_fs::sync_dir(&parent).map_err(EtlError::io("syncing", &parent));
         }
+        crate::publish::refuse_pending_publish(out)?;
         private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
         let published = crate::partitions::replace_store_files(&staged, out).and_then(|()| {
             if self.key {

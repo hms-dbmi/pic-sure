@@ -12,6 +12,7 @@ use hpds_etl::dump::{dump, dump_patients};
 use hpds_etl::java::java_double_to_string;
 use hpds_etl::load::Mode;
 use hpds_etl::maintenance_log::{MAINTENANCE_LOG_FILE_NAME, records, sha256_hex};
+use hpds_etl::publish::{PublishStep, recover};
 use hpds_etl::store::OpenStore;
 use hpds_etl::store_maintenance::{
     RemoveOptions, RemoveReport, regenerate_column_meta_csv, remove_concepts,
@@ -585,6 +586,270 @@ fn a_dry_run_through_the_binary_lists_missing_lines_and_fails() {
     assert_eq!(report["not_found"], serde_json::json!(["missing"]));
     assert!(String::from_utf8_lossy(&output.stderr).contains("--allow-missing"));
     assert_eq!(snapshot(&store.out), before);
+}
+
+/// Names of the temporary files in `dir`.
+fn temporary_files(dir: &Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains(".tmp-"))
+        .collect()
+}
+
+/// Checks that the store in `dir` is `store` without `removed`, with every remaining block
+/// readable and holding its rows, a matching `columnMeta.csv`, no journal or temporary
+/// file, and `records_expected` maintenance log records, the last naming `last_removed`.
+fn assert_removed(
+    store: &Store,
+    removed: &[String],
+    last_removed: &[String],
+    records_expected: usize,
+) {
+    let after = OpenStore::open(&store.out, protection()).unwrap();
+    for concept in store.index.concepts() {
+        match after.index.get(&concept.path) {
+            Some(kept) => assert_eq!(
+                open_store_rows(&after, &kept.path),
+                store.rows(&concept.path),
+                "{}",
+                concept.path
+            ),
+            None => assert!(removed.contains(&concept.path), "{}", concept.path),
+        }
+    }
+    for path in removed {
+        assert!(after.index.get(path).is_none(), "{path}");
+    }
+    let mut csv = Vec::new();
+    write_column_meta_csv(&mut csv, after.index.concepts()).unwrap();
+    assert_eq!(
+        std::fs::read(store.out.join("columnMeta.csv")).unwrap(),
+        csv
+    );
+    assert!(!store.out.join(".publish-journal").exists());
+    assert_eq!(temporary_files(&store.out), Vec::<String>::new());
+    let log = records(&store.out).unwrap();
+    assert_eq!(log.len(), records_expected);
+    assert_eq!(
+        log.last().unwrap()["removed_paths"],
+        serde_json::json!(last_removed)
+    );
+    assert_eq!(
+        log.last().unwrap()["index_sha256"],
+        sha256_hex(&std::fs::read(store.out.join("pheno.index")).unwrap())
+    );
+}
+
+#[test]
+fn a_removal_stopped_at_any_step_is_left_whole_or_finished_by_recover() {
+    let steps = [
+        PublishStep::Staged,
+        PublishStep::Journaled,
+        PublishStep::BlocksMoved,
+        PublishStep::IndexMoved,
+        PublishStep::ColumnMetaWritten,
+        PublishStep::Recorded,
+    ];
+    for keep_removed_blocks in [false, true] {
+        for step in steps {
+            if keep_removed_blocks && step == PublishStep::BlocksMoved {
+                continue;
+            }
+            let context = format!("{step:?}, keep_removed_blocks {keep_removed_blocks}");
+            let store = edge_store();
+            let removed: Vec<String> = store.index.concepts()[..2]
+                .iter()
+                .map(|c| c.path.clone())
+                .collect();
+            let list_path = store.dir.path().join("conceptsToRemove.txt");
+            std::fs::write(&list_path, removed.join("\n")).unwrap();
+            let options = RemoveOptions {
+                keep_removed_blocks,
+                stop_after: Some(step),
+                ..RemoveOptions::default()
+            };
+
+            let error = remove_concepts(&store.out, &list_path, &protection(), &options)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("publish stopped"), "{context}: {error}");
+
+            let journal = store.out.join(".publish-journal");
+            if step == PublishStep::Staged {
+                assert!(!journal.exists(), "{context}");
+                let opened = OpenStore::open(&store.out, protection()).unwrap();
+                assert_eq!(
+                    opened.index.concepts().len(),
+                    store.index.concepts().len(),
+                    "{context}: the old store is whole"
+                );
+                for concept in opened.index.concepts() {
+                    opened.read_block(concept).unwrap();
+                }
+                assert!(!temporary_files(&store.out).is_empty(), "{context}");
+                let report = recover(&store.out, &protection()).unwrap();
+                assert_eq!(report.finished, None, "{context}");
+                assert!(report.orphans_removed >= 1, "{context}");
+                assert_eq!(temporary_files(&store.out), Vec::<String>::new());
+                assert!(records(&store.out).unwrap().is_empty(), "{context}");
+                continue;
+            }
+            assert!(journal.exists(), "{context}");
+            let refused = OpenStore::open(&store.out, protection())
+                .err()
+                .unwrap()
+                .to_string();
+            assert!(refused.contains("hpds-etl recover"), "{context}: {refused}");
+            let refused = regenerate_column_meta_csv(&store.out, None, &protection())
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("hpds-etl recover"), "{context}: {refused}");
+
+            let report = recover(&store.out, &protection()).unwrap();
+
+            assert_eq!(
+                report.finished.as_deref(),
+                Some("remove-concepts"),
+                "{context}"
+            );
+            assert_eq!(report.recorded, step != PublishStep::Recorded, "{context}");
+            assert_removed(&store, &removed, &removed, 1);
+            let result = &records(&store.out).unwrap()[0]["result"];
+            let expected = if step == PublishStep::Recorded {
+                "published"
+            } else {
+                "completed-by-recover"
+            };
+            assert_eq!(result, expected, "{context}");
+            assert_eq!(
+                recover(&store.out, &protection()).unwrap(),
+                Default::default(),
+                "{context}: a second recover does nothing"
+            );
+        }
+    }
+}
+
+#[test]
+fn recover_refuses_a_staged_file_the_journal_does_not_describe() {
+    let store = edge_store();
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let options = RemoveOptions {
+        stop_after: Some(PublishStep::Journaled),
+        ..RemoveOptions::default()
+    };
+    remove_concepts(&store.out, &list_path, &protection(), &options).unwrap_err();
+    let staged = temporary_files(&store.out)
+        .into_iter()
+        .find(|n| n.starts_with(".pheno.blocks.tmp-"))
+        .unwrap();
+    let staged = store.out.join(staged);
+    let mut bytes = std::fs::read(&staged).unwrap();
+    bytes.push(0);
+    std::fs::write(&staged, bytes).unwrap();
+    let before = snapshot(&store.out);
+
+    let error = recover(&store.out, &protection()).unwrap_err().to_string();
+
+    assert!(error.contains("is not the file"), "{error}");
+    assert_eq!(snapshot(&store.out), before);
+    assert!(store.out.join(".publish-journal").exists());
+}
+
+#[test]
+fn remove_concepts_finishes_an_interrupted_removal_before_its_own() {
+    let store = edge_store();
+    let paths: Vec<String> = store
+        .index
+        .concepts()
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{}\n", paths[0])).unwrap();
+    let stopped = RemoveOptions {
+        stop_after: Some(PublishStep::BlocksMoved),
+        ..RemoveOptions::default()
+    };
+    remove_concepts(&store.out, &list_path, &protection(), &stopped).unwrap_err();
+    std::fs::write(&list_path, format!("{}\n", paths[1])).unwrap();
+
+    let report = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions::default(),
+    )
+    .unwrap();
+
+    assert_eq!(report.removed_paths, [paths[1].clone()]);
+    let log = records(&store.out).unwrap();
+    assert_eq!(log[0]["result"], "completed-by-recover");
+    assert_eq!(log[0]["removed_paths"], serde_json::json!([paths[0]]));
+    assert_removed(&store, &paths[..2], &paths[1..2], 2);
+}
+
+#[test]
+fn remove_concepts_refuses_store_files_that_are_symbolic_links() {
+    let store = edge_store();
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let elsewhere = store.dir.path().join("columnMeta-elsewhere.csv");
+    std::fs::rename(store.out.join("columnMeta.csv"), &elsewhere).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, store.out.join("columnMeta.csv")).unwrap();
+    let before = snapshot(&store.out);
+
+    let error = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions::default(),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(error.contains("symbolic link"), "{error}");
+    assert_eq!(snapshot(&store.out), before);
+}
+
+#[test]
+fn recover_through_the_binary() {
+    let store = edge_store();
+    let key = key_file(&store);
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let options = RemoveOptions {
+        stop_after: Some(PublishStep::IndexMoved),
+        ..RemoveOptions::default()
+    };
+    remove_concepts(&store.out, &list_path, &protection(), &options).unwrap_err();
+    let dump = run_hpds_etl(&[
+        "dump",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--key-file",
+        &key,
+    ]);
+    assert!(!dump.status.success());
+    assert!(String::from_utf8_lossy(&dump.stderr).contains("hpds-etl recover"));
+
+    let output = hpds_etl(&[
+        "recover",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--key-file",
+        &key,
+    ]);
+
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["finished"], "remove-concepts");
+    let removed = [first];
+    assert_removed(&store, &removed, &removed, 1);
 }
 
 fn dump_text(dir: &Path) -> String {

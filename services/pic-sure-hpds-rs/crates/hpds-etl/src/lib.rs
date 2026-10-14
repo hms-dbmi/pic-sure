@@ -10,8 +10,9 @@
 //! [`column_meta_csv`] writes `columnMeta.csv` byte for byte as Java does, and [`store`] opens
 //! existing stores and holds their lock and `.generation` marker. [`partitions`] holds the
 //! partition directories of exports and of format 1 stores. [`output`] writes the files
-//! `dump` produces outside a store. [`maintenance_log`] keeps the record of every change
-//! made to a store in place. [`cleanup`] removes the temporary directories of an
+//! `dump` produces outside a store. [`publish`] replaces a store's files in place through a
+//! journal that `recover` finishes after a crash, and [`maintenance_log`] keeps the record
+//! of every change made to a store in place. [`cleanup`] removes the temporary directories of an
 //! interrupted run.
 
 pub mod cleanup;
@@ -27,6 +28,7 @@ pub mod migrate;
 pub mod output;
 pub mod partitions;
 mod private_fs;
+pub mod publish;
 pub mod store;
 pub mod store_maintenance;
 

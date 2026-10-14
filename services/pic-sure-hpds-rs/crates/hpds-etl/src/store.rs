@@ -56,8 +56,10 @@ impl OpenStore {
     ///
     /// # Errors
     /// [`EtlError::Format`] when the index or blocks file is missing, corrupt, from another
-    /// store, or protected differently from `protection`.
+    /// store, or protected differently from `protection`; [`EtlError::Usage`] while an
+    /// interrupted publish awaits `hpds-etl recover` ([`crate::publish`]).
     pub fn open(dir: &Path, protection: Protection) -> Result<Self> {
+        crate::publish::refuse_pending_publish(dir)?;
         let index = read_index(dir, &protection)?;
         let reader = BlocksReader::open(dir.join(BLOCKS_FILE_NAME), index.store_id())?;
         let codec = index.block_codec(protection)?;
@@ -226,6 +228,22 @@ impl StagedFile {
             .sync_all()
             .map_err(EtlError::io("writing", &staged.tmp))?;
         Ok(staged)
+    }
+
+    /// The temporary file.
+    pub(crate) fn path(&self) -> &Path {
+        &self.tmp
+    }
+
+    /// The file the temporary file replaces.
+    pub(crate) fn target(&self) -> &Path {
+        &self.target
+    }
+
+    /// Leaves the temporary file where it is instead of removing it on drop, as a crash
+    /// would leave it.
+    pub(crate) fn keep(mut self) {
+        self.committed = true;
     }
 
     /// Renames the temporary file over its target. The caller syncs the directory.

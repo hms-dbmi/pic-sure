@@ -20,8 +20,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use hpds_format::{
-    Block, ConceptMeta, ConceptType, CryptoKey, INDEX_FILE_NAME, PartitionHolder, Protection,
-    java_double_to_string, java_string_cmp,
+    Block, ConceptMeta, ConceptType, CryptoKey, INDEX_FILE_NAME, PUBLISH_JOURNAL_FILE_NAME,
+    PartitionHolder, Protection, java_double_to_string, java_string_cmp,
 };
 use moka::ops::compute::Op;
 use moka::sync::Cache;
@@ -336,7 +336,9 @@ impl PartitionSet {
     ///
     /// When `<dir>/.generation` exists (the ETL writes it last), it must hold exactly the
     /// store id of the index, as 32 hex digits, or the open is refused as a load still
-    /// being published.
+    /// being published. A directory holding [`PUBLISH_JOURNAL_FILE_NAME`], the journal of an
+    /// `hpds-etl` publish that was interrupted, is refused until `hpds-etl recover` finishes
+    /// it; the service never writes the data directory itself.
     ///
     /// # Errors
     /// [`QueryError::Open`] for every refusal above, a key file that cannot be read, and a
@@ -345,6 +347,16 @@ impl PartitionSet {
     pub fn open(dir: &Path, options: &PartitionOptions) -> Result<Self> {
         if !dir.join(INDEX_FILE_NAME).exists() {
             return Err(refuse_without_index(dir)?);
+        }
+        if std::fs::symlink_metadata(dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok() {
+            return Err(open_error(
+                dir,
+                format!(
+                    "it holds {PUBLISH_JOURNAL_FILE_NAME}: an hpds-etl command was interrupted \
+                     while replacing the store files, which may not match. Run hpds-etl \
+                     recover --store <this directory>, then restart the service"
+                ),
+            ));
         }
         let root_key = read_key_text(&dir.join(KEY_FILE_NAME))?;
         let protection = match &root_key {

@@ -216,6 +216,12 @@ pub const INDEX_FILE_NAME: &str = "pheno.index";
 /// Name of the file holding the per-concept blocks.
 pub const BLOCKS_FILE_NAME: &str = "pheno.blocks";
 
+/// Name of the journal an `hpds-etl` command writes into a store directory before it renames
+/// replacement files over the store's, and removes once every step of the publish is done.
+/// While it exists the store may hold new blocks beside an old index, so the query service
+/// refuses to open the directory and `hpds-etl recover` finishes the publish.
+pub const PUBLISH_JOURNAL_FILE_NAME: &str = ".publish-journal";
+
 /// Format version written into the index header and bound into block associated data.
 pub const FORMAT_VERSION: u16 = 2;
 
