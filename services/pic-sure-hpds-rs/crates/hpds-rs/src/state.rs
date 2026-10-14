@@ -15,6 +15,10 @@ use crate::search::SearchIndex;
 /// Health reason when the data directory could not be opened.
 pub const NOT_OPENED_REASON: &str = "the phenotype store could not be opened; see the server log";
 
+/// Health reason when the store files changed on disk after the service opened them.
+pub const STORE_CHANGED_REASON: &str =
+    "the phenotype store changed on disk after it was opened; restart the service";
+
 /// Health reason when the partitions were opened but hold no concept.
 pub const NO_CONCEPTS_REASON: &str = "no partition holds a concept";
 
@@ -61,24 +65,43 @@ impl AppState {
         })
     }
 
-    /// The engine.
+    /// The engine, while the data directory still holds the store it opened.
     ///
     /// # Errors
-    /// A 503 [`ApiError`] when the data directory could not be opened.
+    /// A 503 [`ApiError`] when the data directory could not be opened, or when its store
+    /// files changed on disk since ([`hpds_query::PartitionSet::check_unchanged`]).
     pub fn engine(&self) -> Result<&Arc<Engine>, ApiError> {
-        self.inner
+        let engine = self
+            .inner
             .engine
             .as_ref()
-            .ok_or_else(|| ApiError::unavailable("the phenotype store is not loaded"))
+            .ok_or_else(|| ApiError::unavailable("the phenotype store is not loaded"))?;
+        engine.partitions().check_unchanged()?;
+        Ok(engine)
+    }
+
+    /// Fails while the engine's data directory no longer holds the store it opened. Passes
+    /// when no store was opened.
+    ///
+    /// # Errors
+    /// A 503 [`ApiError`] naming [`STORE_CHANGED_REASON`].
+    pub fn check_store(&self) -> Result<(), ApiError> {
+        match &self.inner.engine {
+            Some(engine) => Ok(engine.partitions().check_unchanged()?),
+            None => Ok(()),
+        }
     }
 
     /// `None` when the partitions are open and their merged dictionary holds at least one
     /// concept, the rule of Java's `HpdsReadinessHealthIndicator` without genomic data.
-    /// Otherwise why the service is not ready: [`NOT_OPENED_REASON`] or
-    /// [`NO_CONCEPTS_REASON`].
+    /// Otherwise why the service is not ready: [`NOT_OPENED_REASON`],
+    /// [`STORE_CHANGED_REASON`] or [`NO_CONCEPTS_REASON`].
     pub fn down_reason(&self) -> Option<&'static str> {
         match &self.inner.engine {
             None => Some(NOT_OPENED_REASON),
+            Some(engine) if engine.partitions().check_unchanged().is_err() => {
+                Some(STORE_CHANGED_REASON)
+            }
             Some(engine) if !engine.partitions().is_healthy() => Some(NO_CONCEPTS_REASON),
             Some(_) => None,
         }

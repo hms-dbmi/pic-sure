@@ -64,9 +64,13 @@ impl ApiError {
 }
 
 impl From<QueryError> for ApiError {
-    /// A 400 carrying the error's message when [`QueryError::is_client_error`] holds, and
-    /// otherwise a 500 whose detail is logged rather than sent.
+    /// A 400 carrying the error's message when [`QueryError::is_client_error`] holds, a 503
+    /// saying the service must restart for [`QueryError::StoreChanged`] (the data directory
+    /// is logged, not sent), and otherwise a 500 whose detail is logged rather than sent.
     fn from(error: QueryError) -> Self {
+        if let QueryError::StoreChanged { .. } = error {
+            return ApiError::unavailable(crate::state::STORE_CHANGED_REASON);
+        }
         if error.is_client_error() {
             ApiError::bad_request(error.to_string())
         } else {

@@ -67,7 +67,7 @@ use crate::cleanup::{self, TemporaryDir};
 use crate::error::{EtlError, Result};
 use crate::merge::{store_header, write_index_and_column_meta};
 use crate::private_fs;
-use crate::store::{lock_store, write_generation};
+use crate::store::{ServingGuard, lock_store, write_generation};
 
 /// Name of the CSV the loader writes for dictionary hydration.
 pub const COLUMN_META_CSV_NAME: &str = "columnMeta.csv";
@@ -739,8 +739,9 @@ impl Staging {
     /// that was killed.
     ///
     /// # Errors
-    /// [`EtlError::Usage`] when `out` has no name, is not a directory, or is on another
-    /// filesystem than its parent, where the staging directory goes; I/O errors.
+    /// [`EtlError::Usage`] when `out` has no name, is not a directory, is on another
+    /// filesystem than its parent, where the staging directory goes, holds an interrupted
+    /// publish, or holds a store a running query service has open; I/O errors.
     pub(crate) fn create(out: &Path) -> Result<Self> {
         let name = out
             .file_name()
@@ -757,6 +758,7 @@ impl Staging {
         crate::partitions::check_same_filesystem(&parent, &[out.to_path_buf()])?;
         if out.is_dir() {
             crate::publish::refuse_pending_publish(out)?;
+            drop(ServingGuard::acquire(out)?);
         }
         Ok(Staging {
             dir: TemporaryDir::create(&parent, &format!("{name}.staging"))?,
@@ -793,7 +795,10 @@ impl Staging {
     /// new blocks by store id), then the staged key, and the marker is replaced last. A
     /// reader sees the marker name the old id until the new store is complete. An interrupt
     /// waits until the moves are done. A directory holding an interrupted publish's journal
-    /// is refused before anything moves; `hpds-etl recover` finishes that publish first.
+    /// is refused before anything moves; `hpds-etl recover` finishes that publish first. So
+    /// is a directory whose `pheno.index` a running query service holds
+    /// ([`ServingGuard`]); the guard also holds the new index until the marker is written,
+    /// so a service starting meanwhile waits for the whole store.
     ///
     /// # Errors
     /// I/O errors syncing, renaming or writing the marker.
@@ -816,6 +821,8 @@ impl Staging {
             return private_fs::sync_dir(&parent).map_err(EtlError::io("syncing", &parent));
         }
         crate::publish::refuse_pending_publish(out)?;
+        let mut serving = ServingGuard::acquire(out)?;
+        serving.hold(&staged.join(INDEX_FILE_NAME))?;
         private_fs::sync_dir(&staged).map_err(EtlError::io("syncing", &staged))?;
         let published = crate::partitions::replace_store_files(&staged, out).and_then(|()| {
             if self.key {
@@ -827,6 +834,7 @@ impl Staging {
             write_generation(out, id)
         });
         drop(registered);
+        drop(serving);
         drop(store_lock);
         published
     }

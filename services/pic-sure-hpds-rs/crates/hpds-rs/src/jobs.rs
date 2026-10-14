@@ -1139,12 +1139,15 @@ pub async fn status(
 
 /// `POST /query/{id}/result`: streams a finished export as `text/plain`. An unknown id is a
 /// 404 JSON error; a query that has not succeeded is a 400 with Java's body
-/// `Status : <state>` and Java's `application/json` content type.
+/// `Status : <state>` and Java's `application/json` content type. While the store changed on
+/// disk since the service opened it, every result is a 503: it may hold data the store no
+/// longer has.
 pub async fn result(
     State(state): State<AppState>,
     PathParam(id): PathParam<String>,
 ) -> Result<Response, ApiError> {
     let id = parse_id(&id)?;
+    state.check_store()?;
     let (file, size) = match state.results().open_result(&id) {
         Ok(OpenedResult::File(file, size)) => (file, size),
         Ok(OpenedResult::Memory(bytes)) => {

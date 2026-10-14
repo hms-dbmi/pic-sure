@@ -19,10 +19,12 @@ use crate::java::{java_double_max, java_double_min};
 use crate::load::COLUMN_META_CSV_NAME;
 use crate::maintenance_log;
 use crate::publish::{
-    self, HashingWriter, Replacement, StopAfter, recover, refuse_linked_store_files,
+    self, HashingWriter, Replacement, StopAfter, recover_held, refuse_linked_store_files,
     refuse_pending_publish,
 };
-use crate::store::{StagedFile, lock_store, lock_store_shared, read_index, replace_file};
+use crate::store::{
+    ServingGuard, StagedFile, lock_store, lock_store_shared, read_index, replace_file,
+};
 
 /// Largest concepts file `remove-concepts` reads: 64 MiB, far above any list of concept
 /// paths, so a device or a wrong file is refused rather than read into memory.
@@ -57,6 +59,9 @@ pub struct RemoveReport {
     /// True when nothing was written ([`RemoveOptions::dry_run`]): the counts, paths and
     /// sizes are what a run would produce.
     pub dry_run: bool,
+    /// Dry runs only: true when a query service holds the store open, so a run would be
+    /// refused until the service is stopped.
+    pub store_in_use: bool,
     /// The store's id, which removal keeps.
     pub store_id: String,
     /// Lines read from the concepts file.
@@ -265,7 +270,9 @@ fn count_removed_patients(
 /// blocks stay in `pheno.blocks` as unreferenced bytes. `columnMeta.csv` is then regenerated
 /// from the new index, which Java leaves to a separate `CreateColumnmetaCSV` run. The whole
 /// command holds the store lock, so it never interleaves with a load publishing into the
-/// same directory.
+/// same directory. It also holds the [`ServingGuard`], so it refuses to run while a query
+/// service holds the store open: a running service keeps the index and blocks it read at
+/// startup, and would go on serving the removed concepts.
 ///
 /// With [`RemoveOptions::dry_run`] the store is read under the shared store lock, every
 /// removed block is read to count its patients, and the report says what a run would remove
@@ -303,12 +310,19 @@ pub fn remove_concepts(
     } else {
         let lock = lock_store(dir)?;
         refuse_linked_store_files(dir)?;
-        recover(dir, protection)?;
         lock
+    };
+    let mut serving = if options.dry_run {
+        None
+    } else {
+        let mut serving = ServingGuard::acquire(dir)?;
+        recover_held(dir, protection, &mut serving)?;
+        Some(serving)
     };
     let index = read_index(dir, protection)?;
     let mut report = RemoveReport {
         dry_run: options.dry_run,
+        store_in_use: options.dry_run && ServingGuard::is_held(dir)?,
         store_id: index.store_id().to_string(),
         removed_blocks_kept: options.keep_removed_blocks,
         ..RemoveReport::default()
@@ -397,6 +411,7 @@ pub fn remove_concepts(
         replacements,
         record,
         || write_column_meta_csv_file(&rewritten, &dir.join(COLUMN_META_CSV_NAME)),
+        serving.get_or_insert_with(ServingGuard::default),
         options.stop_after,
     )?;
     Ok(report)

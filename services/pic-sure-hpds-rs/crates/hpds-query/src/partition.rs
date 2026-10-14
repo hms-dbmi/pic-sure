@@ -33,8 +33,8 @@ use crate::counters::{BlockCacheCounters, BlockCacheStats};
 use crate::error::{QueryError, Result};
 use crate::model::Query;
 use crate::store::{
-    BlockCache, CachedConcept, ConceptEntry, KEY_FILE_NAME, RECORD_EVERY, RecentEntries, Store,
-    StoreFiles, StoreOptions, block_cache,
+    BlockCache, CachedConcept, ConceptEntry, KEY_FILE_NAME, RECORD_EVERY, RecentEntries,
+    ServingLock, Store, StoreFiles, StoreOptions, block_cache,
 };
 use crate::validate::ConceptLookup;
 use crate::view::View;
@@ -299,6 +299,7 @@ pub struct PartitionSet {
     guard_refusals: AtomicU64,
     scopes: Cache<Box<[u64]>, Arc<Scope>>,
     generation: u128,
+    serving: ServingLock,
 }
 
 impl std::fmt::Debug for PartitionSet {
@@ -340,6 +341,10 @@ impl PartitionSet {
     /// `hpds-etl` publish that was interrupted, is refused until `hpds-etl recover` finishes
     /// it; the service never writes the data directory itself.
     ///
+    /// The set holds a shared `flock` on the `pheno.index` it opened for as long as it lives
+    /// ([`ServingLock`]), which makes the `hpds-etl` commands that replace store files refuse
+    /// to run, and waits for one that is publishing to finish before reading.
+    ///
     /// # Errors
     /// [`QueryError::Open`] for every refusal above, a key file that cannot be read, and a
     /// store whose index or blocks file is missing, corrupt, from another store, or
@@ -347,16 +352,6 @@ impl PartitionSet {
     pub fn open(dir: &Path, options: &PartitionOptions) -> Result<Self> {
         if !dir.join(INDEX_FILE_NAME).exists() {
             return Err(refuse_without_index(dir)?);
-        }
-        if std::fs::symlink_metadata(dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok() {
-            return Err(open_error(
-                dir,
-                format!(
-                    "it holds {PUBLISH_JOURNAL_FILE_NAME}: an hpds-etl command was interrupted \
-                     while replacing the store files, which may not match. Run hpds-etl \
-                     recover --store <this directory>, then restart the service"
-                ),
-            ));
         }
         let root_key = read_key_text(&dir.join(KEY_FILE_NAME))?;
         let protection = match &root_key {
@@ -374,7 +369,19 @@ impl PartitionSet {
                 ));
             }
         };
-        let files = StoreFiles::open(dir, protection)?;
+        let (serving, index_bytes) = ServingLock::open(dir)?;
+        if std::fs::symlink_metadata(dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok() {
+            return Err(open_error(
+                dir,
+                format!(
+                    "it holds {PUBLISH_JOURNAL_FILE_NAME}: an hpds-etl command was interrupted \
+                     while replacing the store files, which may not match. Run hpds-etl \
+                     recover --store <this directory>, then restart the service"
+                ),
+            ));
+        }
+        let files = StoreFiles::open(dir, &index_bytes, protection)?;
+        drop(index_bytes);
         let store_id = files.index().store_id();
         check_generation(dir, &store_id.to_string())?;
         let partitioned = !files.index().partition_table().is_empty();
@@ -466,7 +473,19 @@ impl PartitionSet {
                 .weigher(|key, scope| scope_weight(key, scope))
                 .build(),
             generation,
+            serving,
         })
+    }
+
+    /// Fails once the data directory no longer holds the store this set opened (see
+    /// [`ServingLock::check`]): its files were replaced, or a publish into it began. Every
+    /// computation of the engine checks this first, and the service checks it on every
+    /// route that reads the store.
+    ///
+    /// # Errors
+    /// [`QueryError::StoreChanged`].
+    pub fn check_unchanged(&self) -> Result<()> {
+        self.serving.check()
     }
 
     /// A hash of the store id. Another load of the data directory gives another value.

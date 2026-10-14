@@ -216,6 +216,7 @@ impl Engine {
     /// [`QueryLimits::admit`]). The receipt it returns is the only way to reach the cohort
     /// evaluator and the result computations.
     fn admit<'q>(&self, query: &'q Query, select_use: SelectUse) -> Result<CheckedQuery<'q, '_>> {
+        self.partitions.check_unchanged()?;
         self.limits.admit(query, &self.partitions, select_use)
     }
 

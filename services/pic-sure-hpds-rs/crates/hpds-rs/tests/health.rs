@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use common::{KEY, config, fixture, get, java_fixture_dir, open_engine};
 use hpds_query::Engine;
-use hpds_rs::state::NOT_OPENED_REASON;
+use hpds_rs::state::{NOT_OPENED_REASON, STORE_CHANGED_REASON};
 use hpds_rs::{AppState, probe_health, router};
 
 #[tokio::test]
@@ -141,4 +141,36 @@ fn probe_is_false_when_nothing_listens() {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     assert!(!probe_health(port));
+}
+
+#[tokio::test]
+async fn store_files_replaced_behind_the_service_take_it_down_until_restart() {
+    let fixture = common::fixture();
+    let store = fixture.store();
+    let reply = get(&fixture.app, "/actuator/health").await;
+    assert_eq!(reply.status, StatusCode::OK);
+    let index = store.join("pheno.index");
+    let copy = store.join("pheno.index.copy");
+    std::fs::copy(&index, &copy).unwrap();
+    std::fs::rename(&copy, &index).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+
+    let reply = get(&fixture.app, "/actuator/health").await;
+    assert_eq!(reply.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(reply.json()["reason"], STORE_CHANGED_REASON);
+    let query = common::post(
+        &fixture.app,
+        "/PIC-SURE/v3/query/sync",
+        common::envelope(serde_json::json!({"expectedResultType": "COUNT"})),
+    )
+    .await;
+    assert_eq!(query.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(query.body, STORE_CHANGED_REASON);
+    let search = common::post(
+        &fixture.app,
+        "/PIC-SURE/v3/search",
+        serde_json::json!({"query": ""}).to_string(),
+    )
+    .await;
+    assert_eq!(search.status, StatusCode::SERVICE_UNAVAILABLE);
 }

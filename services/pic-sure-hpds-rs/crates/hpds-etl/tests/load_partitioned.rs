@@ -1208,3 +1208,27 @@ fn column_meta_csv_writes_only_under_the_store_lock() {
     assert_eq!(regenerate.join().unwrap().unwrap(), 3);
     assert_eq!(std::fs::read_to_string(&csv).unwrap(), before);
 }
+
+#[test]
+fn a_load_into_a_store_a_service_holds_is_refused_before_it_builds() {
+    let dir = tempfile::tempdir().unwrap();
+    let key = dir.path().join("key");
+    write_key(&key);
+    let out = dir.path().join("out");
+    let mut options = options(harmonization_inputs(), out.clone());
+    options.key = KeySource::File(key);
+    options.threads = Some(2);
+    load_partitioned(&options).unwrap();
+    let before = read_generation(&out);
+    let service = std::fs::File::open(out.join("pheno.index")).unwrap();
+    service.lock_shared().unwrap();
+
+    let error = load_partitioned(&options).unwrap_err().to_string();
+
+    assert!(error.contains("open in a running query service"), "{error}");
+    assert_eq!(read_generation(&out), before);
+    assert!(!staged(dir.path(), ".out.staging-", "pheno.index"));
+    drop(service);
+    load_partitioned(&options).unwrap();
+    assert_ne!(read_generation(&out), before);
+}

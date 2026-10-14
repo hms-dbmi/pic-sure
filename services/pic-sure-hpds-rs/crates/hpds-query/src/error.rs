@@ -112,12 +112,24 @@ pub enum QueryError {
     /// A blocking task did not finish, for example because it panicked.
     #[error("query task failed: {0}")]
     Task(String),
+
+    /// The store files in the data directory were replaced, or a publish into it began,
+    /// after the service opened it, so what the service holds in memory may include data
+    /// the store no longer has. Every query is refused until the service restarts.
+    #[error(
+        "the store in {dir} changed on disk after this service opened it; restart the service to serve the new store"
+    )]
+    StoreChanged {
+        /// The data directory.
+        dir: PathBuf,
+    },
 }
 
 impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
     /// variant except [`QueryError::Open`], [`QueryError::CohortOutsideSelection`],
-    /// [`QueryError::Block`], [`QueryError::StoreInconsistent`] and [`QueryError::Task`].
+    /// [`QueryError::Block`], [`QueryError::StoreInconsistent`], [`QueryError::Task`] and
+    /// [`QueryError::StoreChanged`].
     pub fn is_client_error(&self) -> bool {
         !matches!(
             self,
@@ -126,6 +138,7 @@ impl QueryError {
                 | QueryError::Block { .. }
                 | QueryError::StoreInconsistent { .. }
                 | QueryError::Task(_)
+                | QueryError::StoreChanged { .. }
         )
     }
 }

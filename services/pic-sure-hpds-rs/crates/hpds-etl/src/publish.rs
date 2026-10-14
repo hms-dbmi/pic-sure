@@ -34,7 +34,9 @@ use crate::error::{EtlError, Result};
 use crate::load::COLUMN_META_CSV_NAME;
 use crate::maintenance_log;
 use crate::private_fs;
-use crate::store::{GENERATION_FILE_NAME, StagedFile, read_index, replace_file, sync_parent};
+use crate::store::{
+    GENERATION_FILE_NAME, ServingGuard, StagedFile, read_index, replace_file, sync_parent,
+};
 
 /// The points of a publish after which a test can stop it as a crash would, leaving every
 /// file as it is ([`StopAfter`]).
@@ -206,8 +208,10 @@ pub fn refuse_pending_publish(dir: &Path) -> Result<()> {
 /// Publishes `replacements` (staged files, renamed in this order) into the store in `dir`
 /// through the journal, for `operation`, ending with `record` appended to the maintenance
 /// log with result [`crate::store_maintenance::RESULT_PUBLISHED`]. `column_meta` regenerates
-/// `columnMeta.csv` once the files are in place. The caller holds the store lock. An
-/// interrupt waits until the journal is removed.
+/// `columnMeta.csv` once the files are in place. The caller holds the store lock and
+/// `serving`, to which the staged index is added before the journal is written, so a
+/// service that opens the new index waits until the publish is done. An interrupt waits
+/// until the journal is removed.
 ///
 /// # Errors
 /// I/O errors writing the journal, renaming, syncing or appending, the error of
@@ -218,9 +222,15 @@ pub(crate) fn publish(
     replacements: Vec<Replacement>,
     record: serde_json::Value,
     column_meta: impl FnOnce() -> Result<()>,
+    serving: &mut ServingGuard,
     stop_after: StopAfter,
 ) -> Result<()> {
     let stop = |step: PublishStep| stop_after == Some(step);
+    for replacement in &replacements {
+        if replacement.staged.target().ends_with(INDEX_FILE_NAME) {
+            serving.hold(replacement.staged.path())?;
+        }
+    }
     let publish_id = hpds_format::StoreId::random()?.to_string();
     let mut files = Vec::with_capacity(replacements.len());
     for replacement in &replacements {
@@ -300,15 +310,28 @@ pub struct RecoverReport {
 
 /// Finishes the interrupted publish of the store in `dir`, if any, and removes temporary
 /// files an interrupted run left, as described in the module documentation. The caller
-/// holds the store lock. `protection` opens the store's index to regenerate
-/// `columnMeta.csv`.
+/// holds the store lock; this takes the [`ServingGuard`]. `protection` opens the store's
+/// index to regenerate `columnMeta.csv`.
 ///
 /// # Errors
-/// [`EtlError::Usage`] for a store file that is a symbolic link, a journal that cannot be
-/// parsed or names unexpected files, and a staged or target file whose length or hash
-/// differs from the journal's; the errors of renaming, reading the index, writing
-/// `columnMeta.csv` and appending to the log.
+/// [`EtlError::Usage`] for a store held by a running query service, a store file that is a
+/// symbolic link, a journal that cannot be parsed or names unexpected files, and a staged
+/// or target file whose length or hash differs from the journal's; the errors of renaming,
+/// reading the index, writing `columnMeta.csv` and appending to the log.
 pub fn recover(dir: &Path, protection: &Protection) -> Result<RecoverReport> {
+    recover_held(dir, protection, &mut ServingGuard::acquire(dir)?)
+}
+
+/// [`recover`] for a caller that already holds the store's [`ServingGuard`], to which each
+/// staged index is added before it is renamed into place.
+///
+/// # Errors
+/// As for [`recover`].
+pub(crate) fn recover_held(
+    dir: &Path,
+    protection: &Protection,
+    serving: &mut ServingGuard,
+) -> Result<RecoverReport> {
     refuse_linked_store_files(dir)?;
     let mut report = RecoverReport::default();
     let journal_path = dir.join(PUBLISH_JOURNAL_FILE_NAME);
@@ -324,6 +347,9 @@ pub fn recover(dir: &Path, protection: &Protection) -> Result<RecoverReport> {
             let target = dir.join(&file.target);
             if std::fs::symlink_metadata(&staged).is_ok() {
                 check_file(&staged, file)?;
+                if file.target == INDEX_FILE_NAME {
+                    serving.hold(&staged)?;
+                }
                 std::fs::rename(&staged, &target)
                     .map_err(EtlError::io("moving into place", &target))?;
                 report.files_moved += 1;

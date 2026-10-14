@@ -2,13 +2,18 @@
 //! byte-bounded cache of decoded blocks and their partition views, which a
 //! [`crate::PartitionSet`] holds.
 
+use std::fs::{File, TryLockError};
+use std::io::Read;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError, RwLock, Weak};
+use std::time::Instant;
 
 use hpds_format::{
     BLOCKS_FILE_NAME, Block, BlockCodec, BlockLocation, BlocksReader, ConceptView, ExpectedBlock,
-    INDEX_FILE_NAME, IndexBody, Membership, PartitionHolder, PartitionTable, Protection,
+    INDEX_FILE_NAME, IndexBody, Membership, PUBLISH_JOURNAL_FILE_NAME, PartitionHolder,
+    PartitionTable, Protection,
 };
 use moka::notification::RemovalCause;
 use moka::sync::Cache;
@@ -324,15 +329,15 @@ pub(crate) struct StoreFiles {
 }
 
 impl StoreFiles {
-    /// Opens the store in `dir`: verifies `pheno.index` under `protection` and opens
-    /// `pheno.blocks` for its store id.
+    /// Opens the store in `dir` whose `pheno.index` holds `index_bytes` (read under the
+    /// [`ServingLock`]): verifies the index under `protection` and opens `pheno.blocks` for
+    /// its store id.
     ///
     /// # Errors
     /// [`QueryError::Open`] when either file is missing, corrupt, from another store, or
     /// protected differently from `protection`.
-    pub(crate) fn open(dir: &Path, protection: Protection) -> Result<Self> {
-        let index = IndexBody::read_file(dir.join(INDEX_FILE_NAME), &protection)
-            .map_err(|e| open_error(dir, e))?;
+    pub(crate) fn open(dir: &Path, index_bytes: &[u8], protection: Protection) -> Result<Self> {
+        let index = IndexBody::decode(index_bytes, &protection).map_err(|e| open_error(dir, e))?;
         let reader = BlocksReader::open(dir.join(BLOCKS_FILE_NAME), index.store_id())
             .map_err(|e| open_error(dir, e))?;
         let codec = index
@@ -443,6 +448,117 @@ impl Store {
                 concept_path: path.to_owned(),
                 source: Arc::new(source),
             })
+    }
+}
+
+/// How often, at most, [`ServingLock::check`] looks at the data directory: once a second.
+const STORE_CHECK_INTERVAL_MS: u64 = 1000;
+
+/// The shared `flock` the service holds on the `pheno.index` it serves, for as long as it
+/// serves it, and the check that the data directory still holds that store.
+///
+/// Every `hpds-etl` command that replaces store files takes an exclusive `flock` on the
+/// current `pheno.index` without waiting, and on the new one before it renames it into
+/// place, holding both until its publish is done. So a command refuses to change a store a
+/// service on the same kernel holds, and a service that starts during a publish waits for
+/// it to finish rather than reading half of it. `flock` reaches only processes under one
+/// kernel; for anything else that replaces the files (another kernel, a network
+/// filesystem, a plain `mv`), [`ServingLock::check`] notices that `pheno.index` is no
+/// longer the file opened, or that a publish journal appeared, and from then on every
+/// query is refused with [`QueryError::StoreChanged`].
+#[derive(Debug)]
+pub(crate) struct ServingLock {
+    _file: File,
+    dir: PathBuf,
+    identity: (u64, u64),
+    opened: Instant,
+    checked_ms: AtomicU64,
+    changed: AtomicBool,
+}
+
+impl ServingLock {
+    /// Opens `<dir>/pheno.index`, takes the shared lock on it (waiting while an `hpds-etl`
+    /// command holds it, and opening again if the file was replaced meanwhile), and returns
+    /// the lock with the file's bytes. A filesystem without `flock` is logged and served
+    /// unlocked; the check still applies.
+    ///
+    /// # Errors
+    /// [`QueryError::Open`] when the index cannot be opened or read.
+    pub(crate) fn open(dir: &Path) -> Result<(Self, Vec<u8>)> {
+        let path = dir.join(INDEX_FILE_NAME);
+        loop {
+            let mut file = File::open(&path).map_err(|e| open_error(dir, e))?;
+            match file.try_lock_shared() {
+                Ok(()) => {}
+                Err(TryLockError::WouldBlock) => {
+                    tracing::warn!(
+                        dir = %dir.display(),
+                        "an hpds-etl command is changing the store; waiting for it to finish"
+                    );
+                    file.lock_shared().map_err(|e| open_error(dir, e))?;
+                }
+                Err(TryLockError::Error(error)) => {
+                    tracing::warn!(
+                        %error,
+                        dir = %dir.display(),
+                        "cannot lock pheno.index; hpds-etl will not see that this service holds the store"
+                    );
+                }
+            }
+            let held = file.metadata().map_err(|e| open_error(dir, e))?;
+            let identity = (held.dev(), held.ino());
+            match std::fs::metadata(&path) {
+                Ok(now) if (now.dev(), now.ino()) == identity => {}
+                Ok(_) => continue,
+                Err(e) => return Err(open_error(dir, e)),
+            }
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes)
+                .map_err(|e| open_error(dir, e))?;
+            let lock = ServingLock {
+                _file: file,
+                dir: dir.to_path_buf(),
+                identity,
+                opened: Instant::now(),
+                checked_ms: AtomicU64::new(0),
+                changed: AtomicBool::new(false),
+            };
+            return Ok((lock, bytes));
+        }
+    }
+
+    /// Fails once the data directory no longer holds the store this lock was taken on: its
+    /// `pheno.index` is gone or another file, or it holds a publish journal. Looks at the
+    /// directory at most once per [`STORE_CHECK_INTERVAL_MS`] and answers from the last
+    /// look in between; once it has failed it always fails.
+    ///
+    /// # Errors
+    /// [`QueryError::StoreChanged`].
+    pub(crate) fn check(&self) -> Result<()> {
+        if !self.changed.load(Ordering::Relaxed) {
+            let now = u64::try_from(self.opened.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let last = self.checked_ms.load(Ordering::Relaxed);
+            if now.saturating_sub(last) < STORE_CHECK_INTERVAL_MS && last != 0 {
+                return Ok(());
+            }
+            self.checked_ms.store(now.max(1), Ordering::Relaxed);
+            let same = std::fs::metadata(self.dir.join(INDEX_FILE_NAME))
+                .is_ok_and(|meta| (meta.dev(), meta.ino()) == self.identity);
+            let journal =
+                std::fs::symlink_metadata(self.dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok();
+            if same && !journal {
+                return Ok(());
+            }
+            if !self.changed.swap(true, Ordering::Relaxed) {
+                tracing::error!(
+                    dir = %self.dir.display(),
+                    "the store changed on disk after it was opened; refusing every query until the service restarts"
+                );
+            }
+        }
+        Err(QueryError::StoreChanged {
+            dir: self.dir.clone(),
+        })
     }
 }
 

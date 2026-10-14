@@ -1,7 +1,7 @@
 //! Opening an existing store, its lock, its `.generation` marker, and replacing its files in
 //! place, shared by the commands that work on a store after it is built.
 
-use std::fs::File;
+use std::fs::{File, OpenOptions, TryLockError};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
@@ -167,6 +167,82 @@ pub fn lock_store(dir: &Path) -> Result<StoreLock> {
     let file = File::open(dir).map_err(EtlError::io("opening", dir))?;
     file.lock().map_err(EtlError::io("locking", dir))?;
     Ok(StoreLock { _dir: file })
+}
+
+/// Exclusive `flock`s on the `pheno.index` files of a store, held by every command that
+/// replaces store files in place while it does: the current index, taken without waiting,
+/// and each new index before it is renamed into place. The query service holds a shared
+/// `flock` on the index it serves for as long as it runs, so a command refuses to change a
+/// store a running service holds (the service would keep serving what it read at startup,
+/// removed concepts included), and a service starting during a publish waits until the
+/// guard is dropped. Like [`StoreLock`] it reaches processes under one kernel only; the
+/// service notices replaced files it could not see locked and refuses queries.
+#[derive(Debug, Default)]
+pub struct ServingGuard {
+    files: Vec<File>,
+}
+
+impl ServingGuard {
+    /// Takes the exclusive lock on `<dir>/pheno.index`, when there is one.
+    ///
+    /// # Errors
+    /// [`EtlError::Usage`] when a query service (or another process) holds a lock on it,
+    /// naming the fix; I/O errors opening or locking it.
+    pub fn acquire(dir: &Path) -> Result<Self> {
+        let mut guard = ServingGuard::default();
+        let index = dir.join(INDEX_FILE_NAME);
+        if std::fs::symlink_metadata(&index).is_ok() {
+            guard.hold(&index).map_err(|e| match e {
+                EtlError::Usage(_) => EtlError::Usage(format!(
+                    "the store in {} is open in a running query service, which holds a lock on {INDEX_FILE_NAME} and keeps serving what it read at startup. Stop the service, run this command, then start the service",
+                    dir.display()
+                )),
+                other => other,
+            })?;
+        }
+        Ok(guard)
+    }
+
+    /// True when a query service (or another process) holds a lock on `<dir>/pheno.index`,
+    /// so [`ServingGuard::acquire`] would refuse.
+    ///
+    /// # Errors
+    /// I/O errors opening or locking the index.
+    pub fn is_held(dir: &Path) -> Result<bool> {
+        match ServingGuard::acquire(dir) {
+            Ok(_) => Ok(false),
+            Err(EtlError::Usage(_)) => Ok(true),
+            Err(other) => Err(other),
+        }
+    }
+
+    /// Takes the exclusive lock on `path` too, without waiting, and holds it with the
+    /// others.
+    ///
+    /// # Errors
+    /// [`EtlError::Usage`] when another process holds a lock on it; I/O errors opening or
+    /// locking it.
+    pub(crate) fn hold(&mut self, path: &Path) -> Result<()> {
+        let file = match OpenOptions::new().read(true).write(true).open(path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                File::open(path).map_err(EtlError::io("opening", path))?
+            }
+            Err(e) => return Err(EtlError::io("opening", path)(e)),
+        };
+        match file.try_lock() {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => {
+                return Err(EtlError::Usage(format!(
+                    "{} is locked by another process",
+                    path.display()
+                )));
+            }
+            Err(TryLockError::Error(e)) => return Err(EtlError::io("locking", path)(e)),
+        }
+        self.files.push(file);
+        Ok(())
+    }
 }
 
 /// Reads and verifies `<dir>/pheno.index`.
