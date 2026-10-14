@@ -471,3 +471,24 @@ async fn not_is_read_as_jacksons_boolean_coercion_reads_it() {
         );
     }
 }
+
+#[tokio::test]
+async fn enums_are_read_as_jacksons_enum_coercion_reads_them() {
+    let f = fixture();
+    for result_type in [r#"" COUNT ""#, r#""0""#, "0"] {
+        let body =
+            format!(r#"{{"query":{{"expectedResultType":{result_type}}},"resourceUUID":null}}"#);
+        let reply = post(&f.app, SYNC, body).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (StatusCode::OK, "4978"),
+            "{result_type}"
+        );
+    }
+    for result_type in [r#""count""#, r#""01""#, r#""null""#] {
+        let body =
+            format!(r#"{{"query":{{"expectedResultType":{result_type}}},"resourceUUID":null}}"#);
+        let reply = post(&f.app, SYNC, body).await;
+        assert_eq!(reply.status, StatusCode::BAD_REQUEST, "{result_type}");
+    }
+}

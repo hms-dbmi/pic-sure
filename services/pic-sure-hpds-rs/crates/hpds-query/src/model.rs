@@ -32,7 +32,9 @@
 //!   overflows a double is `±Infinity` and one written as the integer `-0` is `0.0`. Every
 //!   other number is the correctly rounded double, as `serde_json` with `float_roundtrip`
 //!   reads it.
-//! - Enums accept their exact Java name or their ordinal as a JSON integer.
+//! - Enums accept their exact Java name, the name with surrounding whitespace, their ordinal as
+//!   a JSON integer, or the ordinal written as a string (`"1"`), as Jackson's enum coercion
+//!   does; names are case sensitive.
 //! - UUIDs must be in the canonical 36-character form and are kept in lowercase.
 //!
 //! Where Jackson would accept a value that only fails later (a missing
@@ -72,6 +74,26 @@ macro_rules! java_enum {
                     _ => None,
                 }
             }
+
+            /// The variant a JSON string names, as Jackson 2.21's `EnumDeserializer` reads it
+            /// with the default mapper: the exact constant name, else the text trimmed as
+            /// `String.trim` does and matched again, else a trimmed decimal ordinal without a
+            /// sign or leading zero (`"1"`, `" 13 "`, not `"01"` or `"+1"`). The match is case
+            /// sensitive and an empty or blank text is refused.
+            pub fn from_java_text(text: &str) -> Option<Self> {
+                $name::from_java_name(text).or_else(|| {
+                    let trimmed = java_trim(text);
+                    $name::from_java_name(trimmed).or_else(|| {
+                        let canonical = trimmed == "0"
+                            || (trimmed.starts_with(|c: char| ('1'..='9').contains(&c))
+                                && trimmed.bytes().all(|b| b.is_ascii_digit()));
+                        canonical
+                            .then(|| trimmed.parse::<usize>().ok())
+                            .flatten()
+                            .and_then(|index| $name::ALL.get(index).copied())
+                    })
+                })
+            }
         }
 
         impl fmt::Display for $name {
@@ -97,7 +119,7 @@ macro_rules! java_enum {
                     }
 
                     fn visit_str<E: de::Error>(self, value: &str) -> Result<$name, E> {
-                        $name::from_java_name(value)
+                        $name::from_java_text(value)
                             .ok_or_else(|| E::invalid_value(de::Unexpected::Str(value), &self))
                     }
 
@@ -873,6 +895,71 @@ mod tests {
         };
         assert!(sub.phenotypic_clauses.is_empty());
         assert_eq!(sub.operator, None);
+    }
+
+    #[test]
+    fn enums_follow_jacksons_enum_coercion() {
+        let result_type = |value: Value| {
+            parse(json!({"expectedResultType": value})).map(|q| q.expected_result_type)
+        };
+        for (value, expected) in [
+            (json!("COUNT"), Some(ResultType::Count)),
+            (json!(" COUNT "), Some(ResultType::Count)),
+            (json!("\tCOUNT\n"), Some(ResultType::Count)),
+            (json!("COUNT\u{0}"), Some(ResultType::Count)),
+            (json!("0"), Some(ResultType::Count)),
+            (json!("1"), Some(ResultType::Dataframe)),
+            (json!(" 13 "), Some(ResultType::Patients)),
+            (json!(1), Some(ResultType::Dataframe)),
+            (json!("count"), None),
+            (json!("Count"), None),
+            (json!("null"), None),
+            (json!(""), None),
+            (json!("  "), None),
+            (json!("01"), None),
+            (json!("+1"), None),
+            (json!("-0"), None),
+            (json!("1.0"), None),
+            (json!("14"), None),
+            (json!("9999999999"), None),
+            (json!(99), None),
+            (json!(1.0), None),
+            (json!(true), None),
+        ] {
+            assert_eq!(result_type(value.clone()).ok(), expected, "{value}");
+        }
+        let operator = |value: Value| {
+            parse(
+                json!({"expectedResultType": "COUNT", "phenotypicClause": {"operator": value,
+                "phenotypicClauses": [{"phenotypicFilterType": "REQUIRED", "conceptPath": "x"}]}}),
+            )
+            .map(|q| match q.phenotypic_clause {
+                Some(PhenotypicClause::Subquery(s)) => s.operator,
+                _ => panic!("expected a subquery"),
+            })
+        };
+        assert_eq!(operator(json!(" AND ")).ok(), Some(Some(Operator::And)));
+        assert_eq!(operator(json!("1")).ok(), Some(Some(Operator::Or)));
+        assert!(operator(json!("and")).is_err());
+        assert!(operator(json!("2")).is_err());
+        let filter_type = |value: Value| {
+            parse(json!({"expectedResultType": "COUNT", "phenotypicClause":
+                {"phenotypicFilterType": value, "conceptPath": "x"}}))
+            .map(|q| match q.phenotypic_clause {
+                Some(PhenotypicClause::Filter(f)) => f.phenotypic_filter_type,
+                _ => panic!("expected a filter"),
+            })
+        };
+        assert_eq!(
+            filter_type(json!(" REQUIRED ")).ok(),
+            Some(PhenotypicFilterType::Required)
+        );
+        assert_eq!(
+            filter_type(json!("0")).ok(),
+            Some(PhenotypicFilterType::Required)
+        );
+        assert!(filter_type(json!("filter")).is_err());
+        assert!(filter_type(json!("null")).is_err());
     }
 
     #[test]
