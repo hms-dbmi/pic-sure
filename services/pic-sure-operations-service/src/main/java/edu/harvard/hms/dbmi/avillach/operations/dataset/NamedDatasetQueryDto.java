@@ -23,9 +23,7 @@ public record NamedDatasetQueryDto(
     @Schema(
         description = "The stored query request, a JSON document carried as one string. Its query member is always in the v3 format: a query stored before v3 is converted for this response and the stored row is left as it was. An empty string when the row holds no query.",
         example = "{\"query\":{\"phenotypicClause\":null,\"expectedResultType\":\"COUNT\"}}"
-    ) String query,
-    @Schema(
-        description = "When the query was saved, in epoch milliseconds, or null on a row with no start time.", example = "1790777100000"
-    ) Long startTime, @Schema(description = "The last status recorded for the query, or null when the row has none.") PicSureStatus status
+    ) String query, @Schema(description = "When the query was saved, in epoch milliseconds.", example = "1790777100000") Long startTime,
+    @Schema(description = "The last status recorded for the query, or null when the row has none.") PicSureStatus status
 ) {
 }
