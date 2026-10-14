@@ -458,8 +458,9 @@ fn entry_state(dir: &Path, file: &JournalFile) -> Result<EntryState> {
 /// Rolls back the interrupted publish `journal` of the store in `dir`, none of whose files
 /// was renamed: checks that the store's own files still form a whole store (the index opens
 /// under `protection` and every block it names reads and verifies), removes the staged files
-/// left, appends the record with result [`RESULT_ROLLED_BACK_BY_RECOVER`], and removes the
-/// journal at `journal_path`.
+/// left, appends the record with result [`RESULT_ROLLED_BACK_BY_RECOVER`] and every removal
+/// field zeroed (no removed paths, no counts, no index hash), since nothing was withdrawn,
+/// and removes the journal at `journal_path`.
 ///
 /// # Errors
 /// [`EtlError::Usage`] when the old store does not open whole; I/O errors.
@@ -469,7 +470,7 @@ fn roll_back(
     journal: &Journal,
     journal_path: &Path,
 ) -> Result<()> {
-    let whole = (|| -> Result<()> {
+    let whole = (|| -> Result<u64> {
         let index = read_index(dir, protection)?;
         let reader = hpds_format::BlocksReader::open(dir.join(BLOCKS_FILE_NAME), index.store_id())?;
         let codec = index.block_codec(protection.clone())?;
@@ -477,14 +478,17 @@ fn roll_back(
         for concept in index.concepts() {
             reader.read_block(&codec, concept, &membership)?;
         }
-        Ok(())
+        Ok(index.concepts().len() as u64)
     })();
-    if let Err(error) = whole {
-        return Err(EtlError::Usage(format!(
-            "{}: a staged file of the interrupted publish is gone, and the store's own files do not form a whole store ({error}), so it can be neither finished nor rolled back; the store is left as it is. Restore it from a backup or reload it",
-            journal_path.display()
-        )));
-    }
+    let remaining = match whole {
+        Ok(remaining) => remaining,
+        Err(error) => {
+            return Err(EtlError::Usage(format!(
+                "{}: a staged file of the interrupted publish is gone, and the store's own files do not form a whole store ({error}), so it can be neither finished nor rolled back; the store is left as it is. Restore it from a backup or reload it",
+                journal_path.display()
+            )));
+        }
+    };
     for file in &journal.files {
         let staged = dir.join(&file.staged);
         if staged_present(&staged)? {
@@ -493,6 +497,17 @@ fn roll_back(
     }
     let mut record = journal.record.clone();
     record.index_sha256 = None;
+    record.removed = 0;
+    record.removed_paths = Vec::new();
+    record.observations_removed = 0;
+    record.patients_with_removed_rows = None;
+    record.unreadable_removed_blocks = 0;
+    record.tagged_patients_dropped = 0;
+    record.compacted = false;
+    record.removed_blocks_kept = false;
+    record.unreferenced_bytes = 0;
+    record.blocks_bytes_after = record.blocks_bytes_before;
+    record.remaining = remaining;
     maintenance_log::append(dir, &record.finished(RESULT_ROLLED_BACK_BY_RECOVER))?;
     std::fs::remove_file(journal_path).map_err(EtlError::io("removing", journal_path))?;
     private_fs::sync_dir(dir).map_err(EtlError::io("syncing", dir))?;

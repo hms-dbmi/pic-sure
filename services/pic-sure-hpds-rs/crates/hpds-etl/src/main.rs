@@ -505,7 +505,13 @@ fn run_recover(args: RecoverArgs) -> Result<()> {
         &args.store,
     )?;
     let _lock = hpds_etl::store::lock_store(&args.store)?;
-    print_json(&hpds_etl::publish::recover(&args.store, &protection)?);
+    let report = hpds_etl::publish::recover(&args.store, &protection)?;
+    print_json(&report);
+    if let Some(operation) = &report.rolled_back {
+        eprintln!(
+            "hpds-etl: the interrupted {operation} was rolled back: nothing was withdrawn, and the store is as it was before it. Run {operation} again to remove the concepts"
+        );
+    }
     Ok(())
 }
 

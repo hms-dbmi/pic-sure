@@ -12,8 +12,9 @@
 #
 # Both copy the all-in-one's encryption_key into hpds-rs/ with mode 600, and keep an
 # existing hpds-rs.env. Both refuse an hpds-rs/ holding .publish-journal (an interrupted
-# hpds-etl remove-concepts); run hpds-etl recover on it first. If the hpds-rs container is running it is recreated afterwards,
-# because its bind mount would otherwise keep serving the replaced files.
+# hpds-etl remove-concepts); run hpds-etl recover on it first. If the hpds-rs container is
+# running it is recreated afterwards, because it would otherwise keep serving the store it
+# opened from its open files.
 set -euo pipefail
 
 # shellcheck source=lib.sh

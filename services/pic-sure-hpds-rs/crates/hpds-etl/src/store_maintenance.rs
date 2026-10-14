@@ -448,7 +448,9 @@ pub fn remove_concepts(
     report.blocks_bytes_before = reader.len();
     report.blocks_bytes_after = reader.len();
     let compacted_len = BLOCKS_HEADER_LEN + kept.iter().map(|c| c.block.length).sum::<u64>();
-    report.unreferenced_bytes = reader.len().saturating_sub(compacted_len);
+    report.unreferenced_bytes = reader
+        .len()
+        .saturating_sub(BLOCKS_HEADER_LEN + distinct_bytes(kept.iter().map(|c| c.block)));
     let compact = !options.keep_removed_blocks && report.unreferenced_bytes > 0;
     if report.removed == 0 && !compact {
         report.removed_blocks_kept = options.keep_removed_blocks && report.unreferenced_bytes > 0;
@@ -526,6 +528,27 @@ pub const RESULT_PUBLISHED: &str = "published";
 /// Result of a removal record of an `--allow-missing` run that found nothing to remove and
 /// nothing to compact, and wrote no store file.
 pub const RESULT_NO_CHANGE: &str = "no-change";
+
+/// The bytes of `pheno.blocks` the block ranges `blocks` cover, each byte counted once. The
+/// index does not forbid two entries naming overlapping ranges (a block's associated data
+/// binds its concept path, so such a store fails verification when either is read), so
+/// unreferenced bytes are measured against the merged ranges rather than the summed lengths.
+fn distinct_bytes(blocks: impl Iterator<Item = BlockLocation>) -> u64 {
+    let mut ranges: Vec<(u64, u64)> = blocks
+        .map(|b| (b.offset, b.offset.saturating_add(b.length)))
+        .collect();
+    ranges.sort_unstable();
+    let mut covered = 0;
+    let mut reach = 0;
+    for (start, end) in ranges {
+        let start = start.max(reach);
+        if end > start {
+            covered += end - start;
+            reach = end;
+        }
+    }
+    covered
+}
 
 /// A maintenance log record of `remove-concepts`, the record a removal's publish journal
 /// carries. Typed, and parsed with unknown fields refused, so a journal can only ever add a
@@ -746,6 +769,23 @@ pub(crate) fn write_column_meta_csv_file(index: &PhenoIndex, target: &Path) -> R
 #[cfg(test)]
 mod tests {
     use super::java_read_lines;
+
+    #[test]
+    fn distinct_bytes_counts_overlapping_blocks_once() {
+        use hpds_format::BlockLocation;
+        let bytes = |ranges: &[(u64, u64)]| {
+            super::distinct_bytes(
+                ranges
+                    .iter()
+                    .map(|&(offset, length)| BlockLocation { offset, length }),
+            )
+        };
+        assert_eq!(bytes(&[]), 0);
+        assert_eq!(bytes(&[(24, 10), (34, 5)]), 15);
+        assert_eq!(bytes(&[(24, 10), (24, 10)]), 10);
+        assert_eq!(bytes(&[(30, 10), (24, 10)]), 16);
+        assert_eq!(bytes(&[(24, 20), (30, 2)]), 20);
+    }
 
     #[test]
     fn lines_split_as_buffered_reader_does() {

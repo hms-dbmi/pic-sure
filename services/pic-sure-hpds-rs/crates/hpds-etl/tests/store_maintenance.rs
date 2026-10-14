@@ -884,6 +884,41 @@ fn recover_rolls_back_when_a_staged_file_is_gone_before_anything_moved() {
     let log = records(&store.out).unwrap();
     assert_eq!(log.len(), 1);
     assert_eq!(log[0]["result"], "rolled-back-by-recover");
+    assert_eq!(log[0]["removed"], 0);
+    assert_eq!(log[0]["removed_paths"], serde_json::json!([]));
+    assert_eq!(log[0]["observations_removed"], 0);
+    assert_eq!(log[0]["compacted"], false);
+    assert_eq!(log[0]["index_sha256"], serde_json::Value::Null);
+    assert_eq!(
+        log[0]["remaining"],
+        store.index.concepts().len() as u64,
+        "the old store's concepts all remain"
+    );
+}
+
+#[test]
+fn recover_through_the_binary_says_a_rolled_back_removal_withdrew_nothing() {
+    let (store, _) = journaled_store();
+    let key = key_file(&store);
+    let staged_index = temporary_files(&store.out)
+        .into_iter()
+        .find(|n| n.starts_with(".pheno.index.tmp-"))
+        .unwrap();
+    std::fs::remove_file(store.out.join(staged_index)).unwrap();
+
+    let output = hpds_etl(&[
+        "recover",
+        "--store",
+        store.out.to_str().unwrap(),
+        "--key-file",
+        &key,
+    ]);
+
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["rolled_back"], "remove-concepts");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("nothing was withdrawn"), "{stderr}");
+    assert!(stderr.contains("Run remove-concepts again"), "{stderr}");
 }
 
 #[test]
