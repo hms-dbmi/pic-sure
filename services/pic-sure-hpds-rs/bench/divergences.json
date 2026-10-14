@@ -91,7 +91,7 @@
     {
       "name": "range-min-above-partition-values-async-error",
       "when": "range-min-async-error",
-      "reason": "Spec divergence, Range filters ('Java's seekForMinIndex throws when min is above every value'), which on the harmonization branch applies per partition: a min above every value of one selected partition holding the concept throws, so the Java async query ends in ERROR where Rust answers the cohort. Accepted only for entries whose phenotypic clause holds a FILTER with a min."
+      "reason": "Spec divergence, Range filters ('Java's seekForMinIndex throws when min is above every value'), which on the harmonization branch applies per partition: a min above every value of one selected partition holding the concept throws, so the Java async query ends in ERROR where Rust answers the cohort. Accepted only for entries whose phenotypic clause holds a FILTER with a min, and only when the ERROR is Java's (the run must name its Java side with --java and --java-branch) and Rust's query succeeded."
     },
     {
       "name": "duplicate-key-last-wins",

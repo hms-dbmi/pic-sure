@@ -44,8 +44,10 @@ pub enum Condition {
     /// Both async results succeeded with CSV bodies that differ, and are equal once the
     /// tab-separated values inside every cell are sorted.
     DataframeCellOrder,
-    /// Both sides accepted an async submit, one ended in ERROR and the other in SUCCESS, and
-    /// the entry's phenotypic clause holds a `FILTER` with a numeric `min`.
+    /// Both sides accepted an async submit, the Java side (which must be known,
+    /// [`Divergences::for_java`]) ended in ERROR and the other in SUCCESS, and the entry's
+    /// phenotypic clause holds a `FILTER` with a `min` (as for
+    /// [`Condition::RangeMinSuccessBodyEmpty`]). An ERROR from Rust never matches.
     RangeMinAsyncError,
     /// One side refused with 400 `<path> is not a categorical variable` (values on a numeric
     /// concept), and the other answered the sync request 200 with an empty body or ended the
@@ -765,11 +767,25 @@ fn dataframe_cell_order(a: &Outcome, b: &Outcome) -> bool {
     }
 }
 
-fn range_min_async_error(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
-    let (Outcome::Async(x), Outcome::Async(y)) = (a, b) else {
+fn range_min_async_error(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(java) = java else {
         return false;
     };
-    ((ended_in_error(x) && ended_in_success(y)) || (ended_in_error(y) && ended_in_success(x)))
+    let (java_outcome, rust_outcome) = match java.side {
+        Side::A => (a, b),
+        Side::B => (b, a),
+    };
+    let (Outcome::Async(java_answer), Outcome::Async(rust_answer)) = (java_outcome, rust_outcome)
+    else {
+        return false;
+    };
+    ended_in_error(java_answer)
+        && ended_in_success(rust_answer)
         && request_value(entry)
             .and_then(|request| query_object(&request))
             .and_then(|query| query.get("phenotypicClause").cloned())
@@ -873,7 +889,7 @@ impl Condition {
             Condition::MissingConsentsEmpty200 => missing_consents_empty_200(entry, a, b),
             Condition::MissingConsentsAsyncError => missing_consents_async_error(entry, a, b),
             Condition::DataframeCellOrder => dataframe_cell_order(a, b),
-            Condition::RangeMinAsyncError => range_min_async_error(entry, a, b),
+            Condition::RangeMinAsyncError => range_min_async_error(entry, a, b, java),
             Condition::ValuesOnNumericRefused => refused_against(
                 a,
                 b,
@@ -1372,9 +1388,10 @@ mod tests {
 
     #[test]
     fn async_error_is_accepted_only_for_a_range_filter_with_a_min() {
-        let set = rules(json!([
+        let file = rules(json!([
             {"name": "range", "when": "range-min-async-error", "reason": "why"}
         ]));
+        let set = file.clone().for_java(Side::A, JavaBranch::Consent);
         let with_min = CorpusEntry {
             kind: Kind::Async,
             ..with_clause(
@@ -1385,7 +1402,17 @@ mod tests {
         let java = async_outcome(200, Some("ERROR"), None);
         let rust = async_outcome(200, Some("SUCCESS"), Some("patient_id\n"));
         assert!(set.find(&with_min, &java, &rust).is_some());
-        assert!(set.find(&with_min, &rust, &java).is_some());
+        assert!(set.find(&with_min, &rust, &java).is_none());
+        assert!(
+            file.clone()
+                .for_java(Side::B, JavaBranch::Main)
+                .find(&with_min, &rust, &java)
+                .is_some()
+        );
+        assert!(file.find(&with_min, &java, &rust).is_none());
+        let java_success = async_outcome(200, Some("SUCCESS"), Some("patient_id\n7\n"));
+        let rust_error = async_outcome(200, Some("ERROR"), None);
+        assert!(set.find(&with_min, &java_success, &rust_error).is_none());
         assert!(
             set.find(&with_min, &java, &async_outcome(400, None, None))
                 .is_none()
