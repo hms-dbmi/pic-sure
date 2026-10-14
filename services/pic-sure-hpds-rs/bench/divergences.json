@@ -45,7 +45,7 @@
       "name": "range-min-above-every-value-empty-200",
       "statuses": [200, 200],
       "when": "range-min-success-body-empty",
-      "reason": "Spec divergence, Range filters: Java's seekForMinIndex throws when min is above every value (on the harmonization branch, every value of any one selected partition holding the concept), and copyOfRange throws when max is below min; Java then answers 200 with an empty body, where Rust answers 200 with the result for an empty cohort. Accepted only for sync entries whose phenotypic clause holds a FILTER with a min, and only when exactly one side's 200 body is empty."
+      "reason": "Spec divergence, Range filters: Java's seekForMinIndex throws when min is above every value (on the harmonization branch, every value of any one selected partition holding the concept), and copyOfRange throws when max is below min; Java then answers 200 with an empty body, where Rust answers 200 with the result for an empty cohort. Accepted only for sync entries whose phenotypic clause holds a FILTER with a min, and only when exactly one side's 200 body is empty. A string min counts when Jackson coerces it to a number (\"NaN\" is above every value), and an entry sent as a raw body is read from that body."
     },
     {
       "name": "missing-consents-sync-empty-200",
@@ -151,6 +151,11 @@
       "name": "string-bound-refused-status",
       "when": "string-bound-refused",
       "reason": "Jackson error, invalid input: a min or max sent as a JSON string that Jackson 2.21's double coercion refuses as malformed (\"1d\", \"1f\", \"0x1p3\", \"1_000\", \"-NaN\", \"1.e5\") makes the Java query fail in convertIncomingQuery, which answers 500 with an empty body; Rust refuses it with 400 \"invalid value: string <text>, expected a number, a numeric string, or null\". Accepted only when the entry's query holds such a string bound (checked with hpds_query::jackson_string_double), the Java side's 500 has an empty body, and the 400 names that string. Strings refused only for their length are number-too-long-status. Holds on both Java branches, which answer alike."
+    },
+    {
+      "name": "filter-without-criteria-status",
+      "when": "filter-without-criteria-refused",
+      "reason": "Java error, invalid input: a FILTER with neither values nor a min or max (a blank string bound counts as none, since Jackson coerces it to null) makes PhenotypicQueryExecutor throw (PhenotypicQueryExecutor.java:90), so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR; Rust refuses it with 400 \"Either values or one of min/max must be set for a filter on <path>\". invalid-request-empty-200 covers hpds-bench's own error entry for this; this rule covers any entry whose query holds such a filter, and only with that exact refusal against Java's empty 200 or async ERROR."
     }
   ]
 }

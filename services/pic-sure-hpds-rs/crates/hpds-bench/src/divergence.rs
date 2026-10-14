@@ -23,7 +23,8 @@ pub enum Condition {
     /// the other, takes the other side's value. At least one such field must differ.
     NumericMaxDoubleMinValue,
     /// Both sides answered a sync request with 200, exactly one of them with an empty body,
-    /// and the entry's phenotypic clause holds a `FILTER` with a numeric `min`.
+    /// and the entry's phenotypic clause holds a `FILTER` with a `min`: a number, or a string
+    /// Jackson coerces to one (`"NaN"`, `"5"`). The request may be a raw body.
     RangeMinSuccessBodyEmpty,
     /// Both sides answered 200 with JSON that differs, and is equal once every
     /// `categoryValues` array is sorted on both sides.
@@ -83,6 +84,12 @@ pub enum Condition {
     /// a 400 for another reason, or a string Jackson accepts does not match. Strings refused only
     /// for their length are [`Condition::NumberTooLongRefused`].
     StringBoundRefused,
+    /// The entry's query holds a `FILTER` with no criterion (no `values` and no `min` or `max`,
+    /// a blank string bound counting as none, as Jackson reads it), one side refused with 400
+    /// `Either values or one of min/max must be set for a filter on <path>`, and the other
+    /// answered the sync request 200 with an empty body or ended the async query in ERROR,
+    /// as Java does when `PhenotypicQueryExecutor` throws on such a filter.
+    FilterWithoutCriteriaRefused,
     /// Body normalization: every column meta object (one holding `name` and `categorical`)
     /// keeps only the fields both search shapes share, `name`, `categorical`, a non-empty
     /// `categoryValues`, a non-null `min` and `max`, and `patientCount`. The main branch
@@ -761,7 +768,8 @@ fn range_min_async_error(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool 
         return false;
     };
     ((ended_in_error(x) && ended_in_success(y)) || (ended_in_error(y) && ended_in_success(x)))
-        && query_object(&entry.request)
+        && request_value(entry)
+            .and_then(|request| query_object(&request))
             .and_then(|query| query.get("phenotypicClause").cloned())
             .is_some_and(|clause| holds_range_min_filter(&clause))
 }
@@ -778,7 +786,43 @@ fn holds_range_min_filter(clause: &Value) -> bool {
         return children.iter().any(holds_range_min_filter);
     }
     clause.get("phenotypicFilterType").and_then(Value::as_str) == Some("FILTER")
-        && clause.get("min").is_some_and(Value::is_number)
+        && clause.get("min").is_some_and(|min| {
+            min.is_number()
+                || min.as_str().is_some_and(|text| {
+                    matches!(hpds_query::jackson_string_double(text), Ok(Some(_)))
+                })
+        })
+}
+
+/// Whether `clause` holds, at any depth, a `FILTER` with no criterion: `values` absent or null
+/// and each of `min` and `max` absent, null, or a string Jackson coerces to null (empty or
+/// blank).
+fn holds_filter_without_criteria(clause: &Value) -> bool {
+    if let Some(children) = clause.get("phenotypicClauses").and_then(Value::as_array) {
+        return children.iter().any(holds_filter_without_criteria);
+    }
+    let no_bound = |key: &str| match clause.get(key) {
+        None | Some(Value::Null) => true,
+        Some(Value::String(text)) => matches!(hpds_query::jackson_string_double(text), Ok(None)),
+        Some(_) => false,
+    };
+    clause.get("phenotypicFilterType").and_then(Value::as_str) == Some("FILTER")
+        && clause.get("values").is_none_or(Value::is_null)
+        && no_bound("min")
+        && no_bound("max")
+}
+
+fn filter_without_criteria_refused(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    request_value(entry)
+        .and_then(|request| query_object(&request))
+        .and_then(|query| query.get("phenotypicClause").cloned())
+        .is_some_and(|clause| holds_filter_without_criteria(&clause))
+        && refused_against(
+            a,
+            b,
+            |body| body.starts_with("Either values or one of min/max must be set for a filter on "),
+            failed_quietly,
+        )
 }
 
 fn range_min_with_one_empty_body(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
@@ -788,7 +832,8 @@ fn range_min_with_one_empty_body(entry: &CorpusEntry, a: &Outcome, b: &Outcome) 
     x.status == 200
         && y.status == 200
         && x.body.is_empty() != y.body.is_empty()
-        && query_object(&entry.request)
+        && request_value(entry)
+            .and_then(|request| query_object(&request))
             .and_then(|query| query.get("phenotypicClause").cloned())
             .is_some_and(|clause| holds_range_min_filter(&clause))
 }
@@ -831,6 +876,7 @@ impl Condition {
             Condition::RequestLimitRefused => request_limit_refused(a, b),
             Condition::NumberTooLongRefused => number_too_long_refused(a, b),
             Condition::StringBoundRefused => string_bound_refused(entry, a, b),
+            Condition::FilterWithoutCriteriaRefused => filter_without_criteria_refused(entry, a, b),
             Condition::AuthorizationFiltersNarrow => {
                 authorization_filters_narrow(entry, a, b, java)
             }
@@ -1588,6 +1634,59 @@ mod tests {
     }
 
     #[test]
+    fn a_filter_without_criteria_is_accepted_only_against_javas_quiet_failure() {
+        let set = rules(json!([
+            {"name": "none", "when": "filter-without-criteria-refused", "reason": "why"},
+            {"name": "range", "statuses": [200, 200], "when": "range-min-success-body-empty", "reason": "why"}
+        ]));
+        let filter = |extra: Value| {
+            let mut clause = json!({"phenotypicFilterType": "FILTER", "conceptPath": "\\a\\"});
+            for (key, value) in extra.as_object().unwrap() {
+                clause[key] = value.clone();
+            }
+            CorpusEntry {
+                request: json!({"query": {"expectedResultType": "COUNT", "phenotypicClause": clause}}),
+                ..entry("0001-x-count", "COUNT")
+            }
+        };
+        let refused = sync(
+            400,
+            "Either values or one of min/max must be set for a filter on \\a\\",
+        );
+        let name =
+            |e: &CorpusEntry, a: &Outcome, b: &Outcome| set.find(e, a, b).map(|r| r.name.clone());
+        for extra in [
+            json!({}),
+            json!({"min": ""}),
+            json!({"min": "  ", "max": null}),
+            json!({"values": null}),
+        ] {
+            assert_eq!(
+                name(&filter(extra.clone()), &sync(200, ""), &refused).as_deref(),
+                Some("none"),
+                "{extra}"
+            );
+        }
+        assert_eq!(
+            name(&filter(json!({"min": 1})), &sync(200, ""), &refused),
+            None
+        );
+        assert_eq!(name(&filter(json!({})), &sync(500, ""), &refused), None);
+        assert_eq!(
+            name(&filter(json!({})), &sync(200, ""), &sync(400, "other")),
+            None
+        );
+
+        let nan = filter(json!({"min": "NaN"}));
+        assert_eq!(
+            name(&nan, &sync(200, ""), &sync(200, "0")).as_deref(),
+            Some("range")
+        );
+        let refused_string = filter(json!({"min": "1d"}));
+        assert_eq!(name(&refused_string, &sync(200, ""), &sync(200, "0")), None);
+    }
+
+    #[test]
     fn a_too_long_number_is_accepted_only_against_a_500() {
         let set = rules(json!([
             {"name": "long", "when": "number-too-long-refused", "reason": "why"}
@@ -1683,6 +1782,7 @@ mod tests {
             "authorization-filters-main",
             "number-too-long-status",
             "string-bound-refused-status",
+            "filter-without-criteria-status",
         ] {
             let found = set.rules.iter().find(|r| r.name == name);
             assert!(
