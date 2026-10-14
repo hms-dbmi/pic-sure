@@ -396,3 +396,18 @@ async fn a_number_longer_than_jacksons_limit_is_a_400() {
         reply.body
     );
 }
+
+#[tokio::test]
+async fn an_overflowing_number_in_an_ignored_field_is_accepted() {
+    let f = fixture();
+    for extra in [r#""extra":1e309"#, r#""resourceCredentials":{"k":-1e309}"#] {
+        let body =
+            format!(r#"{{"query":{{"expectedResultType":"COUNT"}},"resourceUUID":null,{extra}}}"#);
+        let reply = post(&f.app, SYNC, body).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (StatusCode::OK, "4978"),
+            "{extra}"
+        );
+    }
+}

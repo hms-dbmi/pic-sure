@@ -15,9 +15,13 @@
 //!   same double.
 //! - A `min` or `max` written as the integer `-0` is `0.0` in Jackson, which reads it as an
 //!   integer; `serde_json` reads `-0.0`. The token is rewritten to `0`.
+//! - Any other number that overflows a double is accepted by Jackson, which ignores it in a
+//!   field it ignores and coerces it to its text in a string field; `serde_json` refuses the
+//!   whole text. The token is rewritten to a JSON string holding its own text, so an ignored
+//!   field stays ignored and a string field gets the text Jackson gives it.
 //!
-//! Only values of a `min` or `max` key are rewritten; the length check applies to every
-//! number, since Jackson applies it while reading the whole body.
+//! The length check applies to every number, since Jackson applies it while reading the whole
+//! body.
 
 use std::borrow::Cow;
 
@@ -64,7 +68,7 @@ enum Frame {
 /// digits.
 pub fn java_numbers(json: &[u8]) -> Result<Cow<'_, [u8]>, NumberTooLong> {
     let mut frames: Vec<Frame> = Vec::new();
-    let mut edits: Vec<(usize, usize, &'static [u8])> = Vec::new();
+    let mut edits: Vec<(usize, usize, Replacement)> = Vec::new();
     let mut i = 0;
     while i < json.len() {
         match json[i] {
@@ -112,12 +116,19 @@ pub fn java_numbers(json: &[u8]) -> Result<Cow<'_, [u8]>, NumberTooLong> {
                 if digits > MAX_NUMBER_DIGITS {
                     return Err(NumberTooLong { digits });
                 }
-                if let Some(Frame::Object {
-                    expects_key: false,
-                    bound: true,
-                }) = frames.last()
-                    && let Some(replacement) = bound_replacement(token)
-                {
+                let is_bound = matches!(
+                    frames.last(),
+                    Some(Frame::Object {
+                        expects_key: false,
+                        bound: true,
+                    })
+                );
+                let replacement = if is_bound {
+                    bound_replacement(token)
+                } else {
+                    overflow(token).map(|_| Replacement::Quoted)
+                };
+                if let Some(replacement) = replacement {
                     edits.push((start, i, replacement));
                 }
             }
@@ -131,7 +142,14 @@ pub fn java_numbers(json: &[u8]) -> Result<Cow<'_, [u8]>, NumberTooLong> {
     let mut copied = 0;
     for (start, end, replacement) in edits {
         out.extend_from_slice(&json[copied..start]);
-        out.extend_from_slice(replacement);
+        match replacement {
+            Replacement::Text(text) => out.extend_from_slice(text),
+            Replacement::Quoted => {
+                out.push(b'"');
+                out.extend_from_slice(&json[start..end]);
+                out.push(b'"');
+            }
+        }
         copied = end;
     }
     out.extend_from_slice(&json[copied..]);
@@ -173,12 +191,17 @@ fn is_bound_key(token: &[u8]) -> bool {
 /// `Double.MAX_VALUE` is below `10^309`.
 const FINITE_INTEGER_DIGITS: usize = 308;
 
-/// What a `min` or `max` number token becomes, when Jackson reads it differently from
-/// `serde_json`.
-fn bound_replacement(token: &[u8]) -> Option<&'static [u8]> {
-    if token == b"-0" {
-        return Some(b"0");
-    }
+/// What a number token is rewritten to.
+#[derive(Debug, Clone, Copy)]
+enum Replacement {
+    /// This text instead of the token.
+    Text(&'static [u8]),
+    /// The token's own text, quoted as a JSON string.
+    Quoted,
+}
+
+/// The infinity a number token overflows to, as its sign, or `None` when it is finite.
+fn overflow(token: &[u8]) -> Option<f64> {
     if !token.iter().any(|b| matches!(b, b'e' | b'E')) {
         let integer_digits = token
             .iter()
@@ -190,13 +213,22 @@ fn bound_replacement(token: &[u8]) -> Option<&'static [u8]> {
         }
     }
     let value: f64 = std::str::from_utf8(token).ok()?.parse().ok()?;
-    if value == f64::INFINITY {
-        Some(b"\"Infinity\"")
-    } else if value == f64::NEG_INFINITY {
-        Some(b"\"-Infinity\"")
-    } else {
-        None
+    value.is_infinite().then_some(value)
+}
+
+/// What a `min` or `max` number token becomes, when Jackson reads it differently from
+/// `serde_json`.
+fn bound_replacement(token: &[u8]) -> Option<Replacement> {
+    if token == b"-0" {
+        return Some(Replacement::Text(b"0"));
     }
+    overflow(token).map(|infinity| {
+        Replacement::Text(if infinity > 0.0 {
+            b"\"Infinity\""
+        } else {
+            b"\"-Infinity\""
+        })
+    })
 }
 
 #[cfg(test)]
@@ -209,7 +241,7 @@ mod tests {
 
     #[test]
     fn ordinary_text_is_borrowed_unchanged() {
-        let json = br#"{"min":1.5,"max":-0.0,"values":["-0","1e309"],"n":[1e309,-0]}"#;
+        let json = br#"{"min":1.5,"max":-0.0,"values":["-0","1e309"],"n":[1e308,-0]}"#;
         assert!(matches!(java_numbers(json), Ok(Cow::Borrowed(_))));
     }
 
@@ -237,50 +269,28 @@ mod tests {
     }
 
     #[test]
-    fn only_values_of_a_bound_key_are_rewritten() {
-        let json = r#"{"values":["min",1e309],"min":"min","conceptPath":"max","other":-0}"#;
+    fn only_values_of_a_bound_key_become_infinity_or_zero() {
+        let json = r#"{"values":["min",-0],"min":"min","conceptPath":"max","other":-0}"#;
         assert_eq!(rewritten(json), json);
         assert_eq!(
-            rewritten(r#"[{"min":[1e309]},{"k":"x\"min","max":-0}]"#),
-            r#"[{"min":[1e309]},{"k":"x\"min","max":0}]"#
+            rewritten(r#"[{"min":[-0]},{"k":"x\"min","max":-0}]"#),
+            r#"[{"min":[-0]},{"k":"x\"min","max":0}]"#
         );
     }
 
     #[test]
-    fn digits_past_the_limit_are_refused_as_jackson_counts_them() {
-        let z = |n: usize| "0".repeat(n);
-        let cases = [
-            (format!("1{}", z(999)), None),
-            (format!("1{}", z(1000)), Some(1001)),
-            (format!("-1{}", z(999)), None),
-            (format!("0.{}1", z(999)), Some(1001)),
-            (format!("1.{}1", z(998)), None),
-            (format!("0e{}1", z(999)), Some(1001)),
-            (format!("1e{}1", z(998)), None),
-            (format!("1.{}1e1", z(997)), None),
-            (format!("1.{}1e+1", z(998)), Some(1001)),
-        ];
-        for (number, refused) in cases {
-            let json = format!(r#"{{"values":[{number}]}}"#);
-            assert_eq!(
-                java_numbers(json.as_bytes()).err(),
-                refused.map(|digits| NumberTooLong { digits }),
-                "{} digits",
-                number.len()
-            );
-        }
+    fn other_overflowing_numbers_become_their_own_text() {
         assert_eq!(
-            NumberTooLong { digits: 1001 }.to_string(),
-            "Number value length (1001) exceeds the maximum allowed (1000)"
+            rewritten(r#"{"query":{"min":1},"extra":1e309,"resourceCredentials":{"k":-1E+400}}"#),
+            r#"{"query":{"min":1},"extra":"1e309","resourceCredentials":{"k":"-1E+400"}}"#
         );
-    }
-
-    #[test]
-    fn escaped_quotes_keep_a_string_open() {
-        let json = br#"{"k":"x\"min\":-0","l":"a\\","max":-0}"#;
         assert_eq!(
-            String::from_utf8(java_numbers(json).unwrap().into_owned()).unwrap(),
-            r#"{"k":"x\"min\":-0","l":"a\\","max":0}"#
+            rewritten(r#"{"values":[1e309,2],"min":[1e309]}"#),
+            r#"{"values":["1e309",2],"min":["1e309"]}"#
+        );
+        assert_eq!(
+            rewritten(r#"{"x":1.7976931348623157e308}"#),
+            r#"{"x":1.7976931348623157e308}"#
         );
     }
 

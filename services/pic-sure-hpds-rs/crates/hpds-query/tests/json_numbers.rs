@@ -178,3 +178,16 @@ fn numbers_longer_than_jacksons_limit_are_refused() {
     let accepted = bounds_json(HEIGHT, &[("max", &format!("1.{}1", "0".repeat(998)))]);
     assert!(Query::from_json(accepted.as_bytes()).is_ok());
 }
+
+#[test]
+fn overflowing_numbers_outside_bounds_are_kept_as_their_text() {
+    let body = format!(
+        r#"{{"query":{},"resourceUUID":null,"extra":1e309,"resourceCredentials":{{"k":-1e309}}}}"#,
+        bounds_json(HEIGHT, &[("min", "1")])
+    );
+    let envelope = parse_strict(body.as_bytes()).unwrap();
+    assert_eq!(envelope["extra"], "1e309");
+    assert_eq!(envelope["resourceCredentials"]["k"], "-1e309");
+    let query: Query = serde_json::from_value(envelope["query"].clone()).unwrap();
+    assert_eq!(bounds(&query), (Some(1.0), None));
+}
