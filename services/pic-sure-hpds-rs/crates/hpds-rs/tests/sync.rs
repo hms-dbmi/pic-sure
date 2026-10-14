@@ -520,13 +520,26 @@ async fn uuids_are_read_as_jacksons_uuid_coercion_reads_them() {
 }
 
 #[tokio::test]
-async fn scalars_in_string_fields_are_read_as_their_literal_text() {
+async fn scalars_in_string_fields_are_read_as_the_text_of_each_query_path() {
     let f = fixture();
-    let body = r#"{"query":{"expectedResultType":"CROSS_COUNT","select":[1.50,1e3,-0,true]},"resourceUUID":null}"#;
-    let reply = post(&f.app, SYNC, body).await;
-    assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
-    let counts: serde_json::Value = serde_json::from_str(&reply.body).unwrap();
-    assert_eq!(counts, json!({"1.50": 0, "1e3": 0, "-0": 0, "true": 0}));
+    let query = r#"{"expectedResultType":"CROSS_COUNT","select":[1.50,1e3,-0,1e309,true]}"#;
+    let cross_counts = |reply: common::Reply| {
+        assert_eq!(reply.status, StatusCode::OK, "{}", reply.body);
+        serde_json::from_str::<serde_json::Value>(&reply.body).unwrap()
+    };
+    let object = format!(r#"{{"query":{query},"resourceUUID":null}}"#);
+    assert_eq!(
+        cross_counts(post(&f.app, SYNC, object).await),
+        json!({"1.5": 0, "1000.0": 0, "0": 0, "Infinity": 0, "true": 0})
+    );
+    let string = format!(
+        r#"{{"query":{},"resourceUUID":null}}"#,
+        serde_json::to_string(query).unwrap()
+    );
+    assert_eq!(
+        cross_counts(post(&f.app, SYNC, string).await),
+        json!({"1.50": 0, "1e3": 0, "-0": 0, "1e309": 0, "true": 0})
+    );
     let wide_not = format!(
         r#"{{"query":{{"expectedResultType":"COUNT","phenotypicClause":{{"phenotypicFilterType":"REQUIRED","conceptPath":{},"not":99999999999999999999}}}},"resourceUUID":null}}"#,
         serde_json::to_string(SEX).unwrap()
@@ -535,6 +548,30 @@ async fn scalars_in_string_fields_are_read_as_their_literal_text() {
     assert_eq!(
         (reply.status, reply.body.as_str()),
         (StatusCode::OK, "4978")
+    );
+    let minus_zero_not = format!(
+        r#"{{"expectedResultType":"COUNT","phenotypicClause":{{"phenotypicFilterType":"REQUIRED","conceptPath":{},"not":-0}}}}"#,
+        serde_json::to_string(SEX).unwrap()
+    );
+    let required = post(
+        &f.app,
+        SYNC,
+        format!(r#"{{"query":{minus_zero_not},"resourceUUID":null}}"#),
+    )
+    .await;
+    assert_eq!(required.status, StatusCode::OK, "{}", required.body);
+    let as_string = post(
+        &f.app,
+        SYNC,
+        format!(
+            r#"{{"query":{},"resourceUUID":null}}"#,
+            serde_json::to_string(&minus_zero_not).unwrap()
+        ),
+    )
+    .await;
+    assert_eq!(
+        (as_string.status, as_string.body.as_str()),
+        (StatusCode::OK, required.body.as_str())
     );
     let nested =
         r#"{"query":{"expectedResultType":"CROSS_COUNT","select":[[1]]},"resourceUUID":null}"#;

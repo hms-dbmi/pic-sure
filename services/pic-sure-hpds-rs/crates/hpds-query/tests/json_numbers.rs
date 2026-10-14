@@ -4,7 +4,7 @@
 mod common;
 
 use common::*;
-use hpds_query::{PhenotypicClause, Query, parse_strict};
+use hpds_query::{PhenotypicClause, Query, parse_request_body, parse_strict};
 
 const HEIGHT: &str = "\\demographics\\HEIGHT\\";
 
@@ -27,19 +27,20 @@ fn bounds(query: &Query) -> (Option<f64>, Option<f64>) {
     }
 }
 
-/// Reads `json` both ways the service does: directly, and through [`parse_strict`] into a
-/// value first, as the HTTP envelope does.
-fn read_both_ways(json: &str) -> [Query; 2] {
+/// Reads `json` every way the service does: directly, through [`parse_strict`] into a value
+/// as a string query is read, and through [`parse_request_body`] as an object query is read.
+fn read_every_way(json: &str) -> [Query; 3] {
     let direct = Query::from_json(json.as_bytes()).unwrap();
-    let through_value = serde_json::from_value(parse_strict(json.as_bytes()).unwrap()).unwrap();
-    [direct, through_value]
+    let text = serde_json::from_value(parse_strict(json.as_bytes()).unwrap()).unwrap();
+    let body = serde_json::from_value(parse_request_body(json.as_bytes()).unwrap()).unwrap();
+    [direct, text, body]
 }
 
 #[test]
 fn seventeen_digit_decimals_keep_their_exact_double() {
     let above = 119.38_f64.next_up();
     assert_eq!(above.to_string(), "119.38000000000001");
-    for query in read_both_ways(&range_json("119.38000000000001", "126.99999999999999")) {
+    for query in read_every_way(&range_json("119.38000000000001", "126.99999999999999")) {
         let (min, max) = bounds(&query);
         assert_eq!(min.unwrap().to_bits(), above.to_bits());
         assert_eq!(max.unwrap().to_bits(), 127.0_f64.next_down().to_bits());
@@ -63,7 +64,7 @@ fn bounds_one_ulp_from_a_stored_value_count_as_the_oracle_does() {
     ];
     for (min, max, expected) in cases {
         let json = range_json(&min.to_string(), &max.to_string());
-        for query in read_both_ways(&json) {
+        for query in read_every_way(&json) {
             assert_eq!(s.engine.count(&query).unwrap(), expected, "{json}");
         }
     }
@@ -71,11 +72,11 @@ fn bounds_one_ulp_from_a_stored_value_count_as_the_oracle_does() {
 
 #[test]
 fn an_integer_literal_as_wide_as_double_max_reads_as_double_max() {
-    for query in read_both_ways(&range_json("0", DOUBLE_MAX_INTEGER)) {
+    for query in read_every_way(&range_json("0", DOUBLE_MAX_INTEGER)) {
         assert_eq!(bounds(&query), (Some(0.0), Some(f64::MAX)));
     }
     let s = store(&[(1, HEIGHT, Some(0.5), None), (2, HEIGHT, Some(1e300), None)]);
-    let [query, _] = read_both_ways(&range_json("0", DOUBLE_MAX_INTEGER));
+    let [query, _, _] = read_every_way(&range_json("0", DOUBLE_MAX_INTEGER));
     assert_eq!(s.engine.count(&query).unwrap(), 2);
 }
 
@@ -111,7 +112,7 @@ fn bounds_that_overflow_a_double_read_as_jackson_reads_them() {
         ("1e-400", 0.0),
     ];
     for (text, jackson) in cases {
-        for query in read_both_ways(&bounds_json(HEIGHT, &[("min", text)])) {
+        for query in read_every_way(&bounds_json(HEIGHT, &[("min", text)])) {
             let (min, _) = bounds(&query);
             assert_eq!(min.unwrap().to_bits(), jackson.to_bits(), "{text}");
         }
@@ -121,7 +122,7 @@ fn bounds_that_overflow_a_double_read_as_jackson_reads_them() {
 #[test]
 fn minus_zero_reads_as_jackson_reads_it() {
     for (text, jackson) in [("-0", 0.0_f64), ("-0.0", -0.0), ("-0e0", -0.0), ("0", 0.0)] {
-        for query in read_both_ways(&bounds_json(ZERO, &[("max", text)])) {
+        for query in read_every_way(&bounds_json(ZERO, &[("max", text)])) {
             let (_, max) = bounds(&query);
             assert_eq!(max.unwrap().to_bits(), jackson.to_bits(), "{text}");
         }
@@ -155,7 +156,7 @@ fn infinite_and_zero_bounds_count_as_java_does() {
     ];
     for (path, bounds, expected) in cases {
         let json = bounds_json(path, &bounds);
-        for query in read_both_ways(&json) {
+        for query in read_every_way(&json) {
             assert_eq!(s.engine.count(&query).unwrap(), expected, "{json}");
         }
     }
@@ -164,19 +165,35 @@ fn infinite_and_zero_bounds_count_as_java_does() {
 #[test]
 fn numbers_longer_than_jacksons_limit_are_refused() {
     let message = "Number value length (1001) exceeds the maximum allowed (1000, from `StreamReadConstraints.getMaxNumberLength()`)";
+    let refused = |result: serde_json::Result<()>| {
+        let error = result.unwrap_err().to_string();
+        assert!(error.starts_with(message), "{error}");
+    };
     for text in [
         format!("1{}", "0".repeat(1000)),
-        format!("0.{}1", "0".repeat(999)),
         format!("1e{}1", "0".repeat(999)),
+        format!("0.{}1e1", "0".repeat(998)),
     ] {
         let json = bounds_json(HEIGHT, &[("min", &text)]);
-        let direct = Query::from_json(json.as_bytes()).unwrap_err().to_string();
-        let strict = parse_strict(json.as_bytes()).unwrap_err().to_string();
-        assert!(direct.starts_with(message), "{direct}");
-        assert!(strict.starts_with(message), "{strict}");
+        refused(Query::from_json(json.as_bytes()).map(drop));
+        refused(parse_strict(json.as_bytes()).map(drop));
+        refused(parse_request_body(json.as_bytes()).map(drop));
     }
     let accepted = bounds_json(HEIGHT, &[("max", &format!("1.{}1", "0".repeat(998)))]);
     assert!(Query::from_json(accepted.as_bytes()).is_ok());
+    assert!(parse_request_body(accepted.as_bytes()).is_ok());
+}
+
+#[test]
+fn a_leading_zero_counts_only_in_a_request_body() {
+    let json = bounds_json(HEIGHT, &[("min", &format!("0.{}1", "0".repeat(999)))]);
+    assert_eq!(
+        bounds(&Query::from_json(json.as_bytes()).unwrap()),
+        (Some(0.0), None)
+    );
+    assert!(parse_strict(json.as_bytes()).is_ok());
+    let error = parse_request_body(json.as_bytes()).unwrap_err().to_string();
+    assert!(error.starts_with("Number value length (1001)"), "{error}");
 }
 
 #[test]
@@ -185,7 +202,7 @@ fn overflowing_numbers_outside_bounds_are_kept_as_their_text() {
         r#"{{"query":{},"resourceUUID":null,"extra":1e309,"resourceCredentials":{{"k":-1e309}}}}"#,
         bounds_json(HEIGHT, &[("min", "1")])
     );
-    let envelope = parse_strict(body.as_bytes()).unwrap();
+    let envelope = parse_request_body(body.as_bytes()).unwrap();
     assert_eq!(envelope["extra"], "1e309");
     assert_eq!(envelope["resourceCredentials"]["k"], "-1e309");
     let query: Query = serde_json::from_value(envelope["query"].clone()).unwrap();
@@ -216,7 +233,7 @@ fn string_bounds_coerce_as_jackson_does() {
         ("\"null\"", None),
         ("\" null \"", None),
     ] {
-        for query in read_both_ways(&bounds_json(HEIGHT, &[("min", accepted)])) {
+        for query in read_every_way(&bounds_json(HEIGHT, &[("min", accepted)])) {
             assert_eq!(bounds(&query).0, value, "{accepted}");
         }
     }
@@ -232,26 +249,65 @@ fn string_bounds_coerce_as_jackson_does() {
     );
 }
 
-#[test]
-fn scalars_in_string_fields_read_as_their_literal_text() {
-    let json = r#"{"expectedResultType":"CROSS_COUNT","select":[5,-0,1.50,1e3,1E+3,1e309,true],"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":1.50,"values":[0.000,false,"a"]},"userConsents":[{"value":1.0E-5}]}"#;
-    for query in read_both_ways(json) {
-        assert_eq!(
-            query.select,
-            ["5", "-0", "1.50", "1e3", "1E+3", "1e309", "true"]
-        );
-        match &query.phenotypic_clause {
-            Some(PhenotypicClause::Filter(filter)) => {
-                assert_eq!(filter.concept_path, "1.50");
-                assert_eq!(
-                    filter.values.as_deref(),
-                    Some(&["0.000".to_owned(), "false".to_owned(), "a".to_owned()][..])
-                );
-            }
-            other => panic!("expected a filter, got {other:?}"),
-        }
-        assert_eq!(query.consent_values(), ["1.0E-5"]);
+/// The `select`, filter `values`, `conceptPath` and consent values of `query`.
+fn string_fields(query: &Query) -> (Vec<String>, Vec<String>, String, Vec<String>) {
+    match &query.phenotypic_clause {
+        Some(PhenotypicClause::Filter(filter)) => (
+            query.select.clone(),
+            filter.values.clone().unwrap_or_default(),
+            filter.concept_path.clone(),
+            query
+                .consent_values()
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        ),
+        other => panic!("expected a filter, got {other:?}"),
     }
+}
+
+#[test]
+fn scalars_in_string_fields_read_as_the_text_of_each_path() {
+    let json = r#"{"expectedResultType":"CROSS_COUNT","select":[5,-0,1.50,1e3,1E+3,1e309,-1e309,123456789012345678901234567890,true],"phenotypicClause":{"phenotypicFilterType":"FILTER","conceptPath":1.50,"values":[0.000,false,"a"]},"userConsents":[{"value":1.0E-5}]}"#;
+    let owned = |items: &[&str]| items.iter().map(ToString::to_string).collect::<Vec<_>>();
+    let literal = (
+        owned(&[
+            "5",
+            "-0",
+            "1.50",
+            "1e3",
+            "1E+3",
+            "1e309",
+            "-1e309",
+            "123456789012345678901234567890",
+            "true",
+        ]),
+        owned(&["0.000", "false", "a"]),
+        "1.50".to_owned(),
+        owned(&["1.0E-5"]),
+    );
+    let [direct, text, body] = read_every_way(json);
+    assert_eq!(string_fields(&direct), literal);
+    assert_eq!(string_fields(&text), literal);
+    assert_eq!(
+        string_fields(&body),
+        (
+            owned(&[
+                "5",
+                "0",
+                "1.5",
+                "1000.0",
+                "1000.0",
+                "Infinity",
+                "-Infinity",
+                "123456789012345678901234567890",
+                "true"
+            ]),
+            owned(&["0.0", "false", "a"]),
+            "1.5".to_owned(),
+            owned(&["1.0E-5"]),
+        )
+    );
     for refused in [
         r#"{"expectedResultType":"COUNT","select":[[1]]}"#,
         r#"{"expectedResultType":"COUNT","select":[{"a":1}]}"#,
@@ -264,7 +320,7 @@ fn scalars_in_string_fields_read_as_their_literal_text() {
 #[test]
 fn an_integer_too_wide_for_64_bits_in_not_reads_as_true() {
     let json = r#"{"expectedResultType":"COUNT","phenotypicClause":{"phenotypicFilterType":"REQUIRED","conceptPath":"x","not":99999999999999999999}}"#;
-    for query in read_both_ways(json) {
+    for query in read_every_way(json) {
         match &query.phenotypic_clause {
             Some(PhenotypicClause::Filter(filter)) => assert_eq!(filter.not, Some(true)),
             other => panic!("expected a filter, got {other:?}"),

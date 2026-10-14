@@ -5,8 +5,8 @@
 //!
 //! - A JSON object with the same key twice, anywhere in the query, is rejected. Jackson keeps
 //!   the last value instead; refusing keeps a consent list from being read differently here
-//!   than by the query service that overwrote it. [`parse_strict`] applies the same rule to
-//!   a whole request body.
+//!   than by the query service that overwrote it. [`parse_strict`] and
+//!   [`parse_request_body`] apply the same rule to query text and to a whole request body.
 //! - Field names match exactly (`userConsents`, never `UserConsents` or `user_consents`).
 //! - Unknown fields anywhere inside the query are rejected (`FAIL_ON_UNKNOWN_PROPERTIES`).
 //!   The two `@JsonIgnore` properties of `PhenotypicFilter`, `categoricalFilter` and
@@ -28,14 +28,17 @@
 //!   `String.trim` does: blank or `null` is null, `true`, `TRUE` and `True` are true, `false`,
 //!   `FALSE` and `False` are false, and any other text (`tRuE`, `yes`, `1`) is refused.
 //! - Numbers are read from their literal text as Jackson 2.21 reads them: a number with more
-//!   than 1,000 digits is refused (`StreamReadConstraints`), and a `min` or `max` that
+//!   than 1,000 counted digits is refused (`StreamReadConstraints`; the count differs between
+//!   query text and a request body, see `json_number`), and a `min` or `max` that
 //!   overflows a double is `±Infinity` and one written as the integer `-0` is `0.0`. Every
 //!   other number is the correctly rounded double, as `serde_json` with `float_roundtrip`
 //!   reads it.
 //! - A JSON number, `true` or `false` where the model holds a Java `String` (an element of
 //!   `select` or `values`, a `conceptPath`, a genomic filter `key`, a consent `value`) reads as
-//!   its literal request text (`1.50`, `1e3` and `-0` as written), as Jackson coerces a scalar
-//!   into a `String`. Objects and arrays there are refused, as Jackson refuses them.
+//!   Jackson coerces a scalar into a `String`. In query text that is the literal text (`1.50`,
+//!   `1e3` and `-0` as written). In an object `query` of a request body, which the service
+//!   reads untyped and writes back before reading it as a `Query`, it is the written-back text
+//!   (`1.5`, `1000.0`, `0`). Objects and arrays there are refused, as Jackson refuses them.
 //! - Enums accept their exact Java name, the name with surrounding whitespace, their ordinal as
 //!   a JSON integer, or the ordinal written as a string (`"1"`), as Jackson's enum coercion
 //!   does; names are case sensitive.
@@ -52,6 +55,8 @@ use hpds_format::java_trim;
 use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value};
+
+use crate::json_number::Source;
 
 macro_rules! java_enum {
     ($(#[$meta:meta])* $name:ident { $($(#[$vmeta:meta])* $variant:ident = $java:literal,)+ }) => {
@@ -345,9 +350,10 @@ pub struct AuthorizationFilter {
 ///
 /// A `null` element of the `userConsents` array reads as a consent with no value, so it
 /// still makes the list non-empty (Java's `userConsents().isEmpty()` is false for it) but
-/// contributes no consent value. A number or boolean `value` reads as its literal request
-/// text, as Jackson's scalar coercion into a `String` does: `{"value":1.50}` is the consent
-/// `"1.50"`. [`parse_strict`] and [`Query::from_json`] quote such a token before `serde_json`
+/// contributes no consent value. A number or boolean `value` reads as Jackson's scalar
+/// coercion into a `String` reads it: `{"value":1.50}` is the consent `"1.50"` in query text
+/// and `"1.5"` in an object `query` of a request body. [`parse_strict`],
+/// [`parse_request_body`] and [`Query::from_json`] quote such a token before `serde_json`
 /// reads it, since `serde_json` keeps no number text; a float that reaches this type unquoted
 /// (a query built from a `Value` some other way) is refused rather than read with different
 /// text. Objects and arrays are refused.
@@ -644,29 +650,48 @@ impl<'de> Visitor<'de> for StrictValueVisitor {
 }
 
 /// Parses `json` as a [`serde_json::Value`], refusing any object that holds the same key
-/// twice at any depth (where `serde_json` and Jackson keep the last value). For reading a
-/// whole request body, envelope included, before taking the query out of it: a body parsed
-/// with plain `serde_json::from_slice` has already dropped the earlier duplicate.
+/// twice at any depth (where `serde_json` and Jackson keep the last value). For reading query
+/// text, such as the contents of a string `query`; a whole request body goes through
+/// [`parse_request_body`].
 ///
-/// Numbers are read as Jackson reads them, through the number scan of `json_number`: a
-/// number with more than 1,000 digits is refused, and a `min` or `max` that overflows a double
-/// or is the integer `-0` is read as `±Infinity` or `0.0`.
+/// Numbers are read as Jackson's character parser reads them, through the number scan of
+/// `json_number`: a number with more than 1,000 counted digits is refused, a `min` or `max`
+/// that overflows a double or is the integer `-0` is read as `±Infinity` or `0.0`, and a
+/// number in a `String` field is read as its literal text.
 ///
 /// # Errors
 /// The `serde_json` error for invalid JSON (a byte order mark, comments, trailing commas
-/// and `NaN` literals included), a number with more than 1,000 digits, or a duplicate key.
+/// and `NaN` literals included), a number with more than 1,000 counted digits, or a duplicate
+/// key.
 pub fn parse_strict(json: &[u8]) -> serde_json::Result<Value> {
-    let json = java_number_text(json)?;
+    parse_strict_from(json, Source::QueryText)
+}
+
+/// [`parse_strict`] for a whole request body, envelope included. A body parsed with plain
+/// `serde_json::from_slice` has already dropped an earlier duplicate key.
+///
+/// Numbers are read as the service reads an object `query`: Jackson's byte parser counts
+/// every digit against the 1,000-digit limit, and a number in a `String` field becomes the
+/// text Jackson writes its untyped value back as (`1.50` becomes `1.5`, `-0` becomes `0`).
+///
+/// # Errors
+/// As [`parse_strict`].
+pub fn parse_request_body(json: &[u8]) -> serde_json::Result<Value> {
+    parse_strict_from(json, Source::RequestBody)
+}
+
+fn parse_strict_from(json: &[u8], source: Source) -> serde_json::Result<Value> {
+    let json = java_number_text(json, source)?;
     let mut deserializer = serde_json::Deserializer::from_slice(&json);
     let StrictValue(value) = StrictValue::deserialize(&mut deserializer)?;
     deserializer.end()?;
     Ok(value)
 }
 
-/// `json` with its number tokens prepared as `json_number::java_numbers` prepares them, the
-/// refusal of an over-long number given as a `serde_json` error.
-fn java_number_text(json: &[u8]) -> serde_json::Result<std::borrow::Cow<'_, [u8]>> {
-    crate::json_number::java_numbers(json).map_err(<serde_json::Error as de::Error>::custom)
+/// `json` with its number tokens prepared as `json_number::java_numbers` prepares them for
+/// `source`, the refusal of an over-long number given as a `serde_json` error.
+fn java_number_text(json: &[u8], source: Source) -> serde_json::Result<std::borrow::Cow<'_, [u8]>> {
+    crate::json_number::java_numbers(json, source).map_err(<serde_json::Error as de::Error>::custom)
 }
 
 impl Query {
@@ -678,7 +703,7 @@ impl Query {
     /// The `serde_json` error for invalid JSON, a number with more than 1,000 digits, or a
     /// query the model refuses.
     pub fn from_json(json: &[u8]) -> serde_json::Result<Query> {
-        serde_json::from_slice(&java_number_text(json)?)
+        serde_json::from_slice(&java_number_text(json, Source::QueryText)?)
     }
 }
 

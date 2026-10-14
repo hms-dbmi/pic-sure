@@ -5,10 +5,18 @@
 //! shapes remain, and [`java_numbers`] handles them on the raw text before `serde_json` sees
 //! it:
 //!
+//! The service reads a query on one of two paths, and [`Source`] names them. A query sent as
+//! a JSON object is read by Spring's `ObjectMapper` from the request bytes as an untyped value
+//! (`Object`), written back to text and read again as a `Query`. A query sent as a JSON string
+//! is read once, from that string's characters. The two paths differ in two rules below: the
+//! digit count of the length limit, and the text a number in a `String` field becomes.
+//!
 //! - A number token with more than [`MAX_NUMBER_DIGITS`] digits, anywhere in the text, is
 //!   refused, as Jackson's `StreamReadConstraints.getMaxNumberLength()` refuses it. Jackson's
-//!   byte parser counts every digit of the token: integer part, fraction and exponent, with
-//!   neither sign.
+//!   byte parser, which reads a request body, counts every digit of the token: integer part,
+//!   fraction and exponent, with neither sign. Its character parser, which reads a string
+//!   query, counts the same digits except a lone integer digit `0`, which it counts only when
+//!   the token has both a fraction and an exponent.
 //! - A `min` or `max` that overflows a double (`1e309`, a 310-digit integer) is `±Infinity` in
 //!   Jackson, which `PhenotypicFilterValidator` never checks; `serde_json` refuses it. The token
 //!   is rewritten to the string `"Infinity"` or `"-Infinity"`, which the model reads as the
@@ -17,10 +25,16 @@
 //!   integer; `serde_json` reads `-0.0`. The token is rewritten to `0`.
 //! - A number, `true` or `false` where the v3 model holds a Java `String` (an element of
 //!   `select` or `values`, the value of `conceptPath`, `key` or a consent's `value`) is coerced
-//!   by Jackson to its literal source text (`1.50`, `1e3`, `-0` and `1e309` stay as written).
-//!   `serde_json` would refuse it or lose the text. The token is rewritten to a JSON string
-//!   holding its own text. Objects and arrays in those positions are left for the model to
-//!   refuse, as Jackson refuses them.
+//!   by Jackson to its source text. `serde_json` would refuse it or lose the text, so the
+//!   token is rewritten to a JSON string. In a string query the text is the token as written
+//!   (`1.50`, `1e3`, `-0` and `1e309` stay as they are). In an object query it is the text the
+//!   untyped value was written back as: an integer's decimal digits (`-0` becomes `0`), and a
+//!   decimal or exponent token's `Double.toString` (`1.50` becomes `1.5`, `1e3` becomes
+//!   `1000.0`, `1e309` becomes `Infinity`). Objects and arrays in those positions are left for
+//!   the model to refuse, as Jackson refuses them.
+//! - The integer `-0` as the value of `not` is `false` to Jackson, which reads it as the
+//!   integer zero; `serde_json` reads the float `-0.0`, which the model refuses. The token is
+//!   rewritten to `0`.
 //! - An integer too wide for 64 bits as the value of `not` is true to Jackson's int to Boolean
 //!   coercion (any non-zero integer is); `serde_json` would hand it over as a float, which the
 //!   model refuses. The token is rewritten to `true`.
@@ -40,7 +54,19 @@
 
 use std::borrow::Cow;
 
-use hpds_format::{MAX_NUMBER_DIGITS, NumberTooLong};
+use hpds_format::{MAX_NUMBER_DIGITS, NumberTooLong, java_double_to_string};
+
+/// Where the JSON text being read comes from, which decides the two rules that differ between
+/// the service's two ways of reading a query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    /// A whole request body, read from its bytes, whose `query` (when it is an object) the
+    /// service writes back to text before reading it as a `Query`.
+    RequestBody,
+    /// Query text read from characters: the contents of a string `query`, or a query read on
+    /// its own.
+    QueryText,
+}
 
 /// What the v3 model reads the value of a key as, for the keys this module acts on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,7 +108,7 @@ impl Frame {
     }
 }
 
-/// Applies the rules of the module docs to `json`.
+/// Applies the rules of the module docs to `json`, read as `source` says.
 ///
 /// Returns the text unchanged (borrowed) when no token needs rewriting, which is the usual
 /// case. Malformed JSON is passed through for `serde_json` to report; the scan never fails on
@@ -91,7 +117,7 @@ impl Frame {
 /// # Errors
 /// [`NumberTooLong`] for the first number token with more than [`MAX_NUMBER_DIGITS`]
 /// digits.
-pub fn java_numbers(json: &[u8]) -> Result<Cow<'_, [u8]>, NumberTooLong> {
+pub fn java_numbers(json: &[u8], source: Source) -> Result<Cow<'_, [u8]>, NumberTooLong> {
     let mut frames: Vec<Frame> = Vec::new();
     let mut edits: Vec<(usize, usize, Replacement)> = Vec::new();
     let mut i = 0;
@@ -154,7 +180,7 @@ pub fn java_numbers(json: &[u8]) -> Result<Cow<'_, [u8]>, NumberTooLong> {
                     i += 1;
                 }
                 let token = &json[start..i];
-                let digits = token.iter().filter(|b| b.is_ascii_digit()).count();
+                let digits = counted_digits(token, source);
                 if digits > MAX_NUMBER_DIGITS {
                     return Err(NumberTooLong { digits });
                 }
@@ -166,8 +192,8 @@ pub fn java_numbers(json: &[u8]) -> Result<Cow<'_, [u8]>, NumberTooLong> {
                 } else {
                     match kind {
                         KeyKind::Bound => bound_replacement(token),
-                        KeyKind::Text => Some(Replacement::Quoted),
-                        KeyKind::Not => wide_integer(token).then_some(Replacement::Text(b"true")),
+                        KeyKind::Text => Some(text_replacement(token, source)),
+                        KeyKind::Not => not_replacement(token),
                         KeyKind::TextList | KeyKind::Other => {
                             overflow(token).map(|_| Replacement::Quoted)
                         }
@@ -192,6 +218,11 @@ pub fn java_numbers(json: &[u8]) -> Result<Cow<'_, [u8]>, NumberTooLong> {
             Replacement::Quoted => {
                 out.push(b'"');
                 out.extend_from_slice(&json[start..end]);
+                out.push(b'"');
+            }
+            Replacement::QuotedText(text) => {
+                out.push(b'"');
+                out.extend_from_slice(text.as_bytes());
                 out.push(b'"');
             }
         }
@@ -290,12 +321,63 @@ fn wide_integer(token: &[u8]) -> bool {
 const FINITE_INTEGER_DIGITS: usize = 308;
 
 /// What a number token is rewritten to.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Replacement {
     /// This text instead of the token.
     Text(&'static [u8]),
     /// The token's own text, quoted as a JSON string.
     Quoted,
+    /// This text, quoted as a JSON string.
+    QuotedText(String),
+}
+
+/// The digits of a number token that Jackson counts against [`MAX_NUMBER_DIGITS`] when
+/// reading from `source`. A malformed token counts every digit.
+fn counted_digits(token: &[u8], source: Source) -> usize {
+    let all = token.iter().filter(|b| b.is_ascii_digit()).count();
+    if source == Source::RequestBody || !is_json_number(token) {
+        return all;
+    }
+    let unsigned = token.strip_prefix(b"-").unwrap_or(token);
+    let lone_zero =
+        unsigned.first() == Some(&b'0') && !unsigned.get(1).is_some_and(u8::is_ascii_digit);
+    let fraction = unsigned.contains(&b'.');
+    let exponent = unsigned.iter().any(|b| matches!(b, b'e' | b'E'));
+    if lone_zero && !(fraction && exponent) {
+        all - 1
+    } else {
+        all
+    }
+}
+
+/// What a well-formed number token in a `String` position becomes, read from `source`: its
+/// own text from query text, and the text Jackson writes its untyped value back as from a
+/// request body.
+fn text_replacement(token: &[u8], source: Source) -> Replacement {
+    if source == Source::QueryText {
+        return Replacement::Quoted;
+    }
+    if token.iter().any(|b| matches!(b, b'.' | b'e' | b'E')) {
+        let value: f64 = std::str::from_utf8(token)
+            .ok()
+            .and_then(|text| text.parse().ok())
+            .unwrap_or(f64::NAN);
+        Replacement::QuotedText(java_double_to_string(value))
+    } else if token == b"-0" {
+        Replacement::QuotedText("0".to_owned())
+    } else {
+        Replacement::Quoted
+    }
+}
+
+/// What a well-formed number token as the value of `not` becomes, when Jackson's Boolean
+/// coercion reads it differently from how `serde_json` hands it to the model.
+fn not_replacement(token: &[u8]) -> Option<Replacement> {
+    if token == b"-0" {
+        Some(Replacement::Text(b"0"))
+    } else {
+        wide_integer(token).then_some(Replacement::Text(b"true"))
+    }
 }
 
 /// The infinity a number token overflows to, as its sign, or `None` when it is finite.
@@ -333,14 +415,26 @@ fn bound_replacement(token: &[u8]) -> Option<Replacement> {
 mod tests {
     use super::*;
 
+    fn rewritten_from(json: &str, source: Source) -> String {
+        String::from_utf8(java_numbers(json.as_bytes(), source).unwrap().into_owned()).unwrap()
+    }
+
     fn rewritten(json: &str) -> String {
-        String::from_utf8(java_numbers(json.as_bytes()).unwrap().into_owned()).unwrap()
+        let text = rewritten_from(json, Source::QueryText);
+        assert_eq!(
+            rewritten_from(json, Source::RequestBody),
+            text,
+            "both sources: {json}"
+        );
+        text
     }
 
     #[test]
     fn ordinary_text_is_borrowed_unchanged() {
         let json = br#"{"min":1.5,"max":-0.0,"values":["-0","1e309"],"n":[1e308,-0]}"#;
-        assert!(matches!(java_numbers(json), Ok(Cow::Borrowed(_))));
+        for source in [Source::RequestBody, Source::QueryText] {
+            assert!(matches!(java_numbers(json, source), Ok(Cow::Borrowed(_))));
+        }
     }
 
     #[test]
@@ -393,10 +487,11 @@ mod tests {
     }
 
     #[test]
-    fn scalars_in_string_positions_become_their_literal_text() {
+    fn scalars_in_string_positions_of_query_text_become_their_literal_text() {
         assert_eq!(
-            rewritten(
-                r#"{"select":[5,-0,1.50,1e3,1E+3,1e309,true,false,null,"a"],"phenotypicClause":{"conceptPath":1.50,"values":[0.000,true]},"userConsents":[{"value":5}],"genomicFilters":[{"key":false,"values":[1.0E-5]}]}"#
+            rewritten_from(
+                r#"{"select":[5,-0,1.50,1e3,1E+3,1e309,true,false,null,"a"],"phenotypicClause":{"conceptPath":1.50,"values":[0.000,true]},"userConsents":[{"value":5}],"genomicFilters":[{"key":false,"values":[1.0E-5]}]}"#,
+                Source::QueryText
             ),
             r#"{"select":["5","-0","1.50","1e3","1E+3","1e309","true","false",null,"a"],"phenotypicClause":{"conceptPath":"1.50","values":["0.000","true"]},"userConsents":[{"value":"5"}],"genomicFilters":[{"key":"false","values":["1.0E-5"]}]}"#
         );
@@ -404,6 +499,17 @@ mod tests {
         assert_eq!(rewritten(nested), nested);
         let elsewhere = r#"{"expectedResultType":1,"n":[true,2.50],"other":false}"#;
         assert_eq!(rewritten(elsewhere), elsewhere);
+    }
+
+    #[test]
+    fn scalars_in_string_positions_of_a_request_body_become_the_text_jackson_writes_back() {
+        assert_eq!(
+            rewritten_from(
+                r#"{"query":{"select":[5,-0,1.50,1e3,-1E+3,-0.0,0.000,1e309,-1e309,1e-400,2.5e-324,123456789012345678901234567890,true,null],"phenotypicClause":{"conceptPath":1.0E-5,"values":[1e7,true]},"userConsents":[{"value":-7}]}}"#,
+                Source::RequestBody
+            ),
+            r#"{"query":{"select":["5","0","1.5","1000.0","-1000.0","-0.0","0.0","Infinity","-Infinity","0.0","4.9E-324","123456789012345678901234567890","true",null],"phenotypicClause":{"conceptPath":"1.0E-5","values":["1.0E7","true"]},"userConsents":[{"value":"-7"}]}}"#
+        );
         assert_eq!(
             rewritten(r#"{"c\u006fnceptPath":7}"#),
             r#"{"c\u006fnceptPath":"7"}"#
@@ -418,6 +524,14 @@ mod tests {
         );
         let small = r#"{"not":2,"n":{"not":9223372036854775807},"m":{"not":1e30}}"#;
         assert_eq!(rewritten(small), small);
+    }
+
+    #[test]
+    fn an_integer_minus_zero_in_not_becomes_zero() {
+        assert_eq!(
+            rewritten(r#"{"not":-0,"x":{"not":-0.0},"y":-0}"#),
+            r#"{"not":0,"x":{"not":-0.0},"y":-0}"#
+        );
     }
 
     #[test]
@@ -440,24 +554,31 @@ mod tests {
     fn digits_past_the_limit_are_refused_as_jackson_counts_them() {
         let z = |n: usize| "0".repeat(n);
         let cases = [
-            (format!("1{}", z(999)), None),
-            (format!("1{}", z(1000)), Some(1001)),
-            (format!("-1{}", z(999)), None),
-            (format!("0.{}1", z(999)), Some(1001)),
-            (format!("1.{}1", z(998)), None),
-            (format!("0e{}1", z(999)), Some(1001)),
-            (format!("1e{}1", z(998)), None),
-            (format!("1.{}1e1", z(997)), None),
-            (format!("1.{}1e+1", z(998)), Some(1001)),
+            (format!("1{}", z(999)), None, None),
+            (format!("1{}", z(1000)), Some(1001), Some(1001)),
+            (format!("-1{}", z(999)), None, None),
+            (format!("0.{}1", z(999)), Some(1001), None),
+            (format!("-0.{}1", z(999)), Some(1001), None),
+            (format!("0.{}1", z(1000)), Some(1002), Some(1001)),
+            (format!("1.{}1", z(998)), None, None),
+            (format!("1.{}1", z(999)), Some(1001), Some(1001)),
+            (format!("0e{}1", z(999)), Some(1001), None),
+            (format!("0.{}1e1", z(998)), Some(1001), Some(1001)),
+            (format!("0.{}1e1", z(997)), None, None),
+            (format!("1e{}1", z(998)), None, None),
+            (format!("1.{}1e1", z(997)), None, None),
+            (format!("1.{}1e+1", z(998)), Some(1001), Some(1001)),
         ];
-        for (number, refused) in cases {
+        for (number, body, text) in cases {
             let json = format!(r#"{{"values":[{number}]}}"#);
-            assert_eq!(
-                java_numbers(json.as_bytes()).err(),
-                refused.map(|digits| NumberTooLong { digits }),
-                "{} digits",
-                number.len()
-            );
+            for (source, refused) in [(Source::RequestBody, body), (Source::QueryText, text)] {
+                assert_eq!(
+                    java_numbers(json.as_bytes(), source).err(),
+                    refused.map(|digits| NumberTooLong { digits }),
+                    "{} characters from {source:?}",
+                    number.len()
+                );
+            }
         }
         assert_eq!(
             NumberTooLong { digits: 1001 }.to_string(),
@@ -469,7 +590,7 @@ mod tests {
     fn escaped_quotes_keep_a_string_open() {
         let json = br#"{"k":"x\"min\":-0","l":"a\\","max":-0}"#;
         assert_eq!(
-            String::from_utf8(java_numbers(json).unwrap().into_owned()).unwrap(),
+            String::from_utf8(java_numbers(json, Source::QueryText).unwrap().into_owned()).unwrap(),
             r#"{"k":"x\"min\":-0","l":"a\\","max":0}"#
         );
     }
@@ -483,7 +604,7 @@ mod tests {
             r#"{"min":--1}"#,
             "\"\\",
         ] {
-            assert!(java_numbers(json.as_bytes()).is_ok());
+            assert!(java_numbers(json.as_bytes(), Source::RequestBody).is_ok());
         }
     }
 }

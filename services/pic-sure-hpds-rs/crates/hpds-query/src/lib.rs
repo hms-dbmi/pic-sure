@@ -48,7 +48,7 @@ pub use limits::{
 };
 pub use model::{
     AuthorizationFilter, GenomicFilter, Operator, PhenotypicClause, PhenotypicFilter,
-    PhenotypicFilterType, PhenotypicSubquery, Query, ResultType, UserConsent, parse_strict,
+    PhenotypicFilterType, PhenotypicSubquery, Query, ResultType, UserConsent, parse_request_body, parse_strict,
 };
 pub use partition::{
     COMBINED_DIR_NAME, Layout, NARROW_VIEW_SHARE, Partition, PartitionOptions, PartitionSet,

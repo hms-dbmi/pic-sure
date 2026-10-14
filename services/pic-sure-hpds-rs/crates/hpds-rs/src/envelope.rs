@@ -2,7 +2,7 @@
 //! share.
 
 use hpds_format::java_trim;
-use hpds_query::{Query, parse_strict};
+use hpds_query::{Query, parse_request_body, parse_strict};
 use serde_json::{Map, Value};
 
 use crate::error::ApiError;
@@ -12,7 +12,7 @@ use crate::error::ApiError;
 /// does, a blank string standing for null, as Jackson's `UUIDDeserializer` reads it). Other
 /// top-level fields are ignored, as `@JsonIgnoreProperties(ignoreUnknown = true)` ignores them.
 ///
-/// The body is read with [`parse_strict`], so an object holding the same key twice anywhere
+/// The body is read with [`parse_request_body`], so an object holding the same key twice anywhere
 /// in it, the envelope and an object `query` included, is refused. A lenient parse would keep
 /// the last copy, and a caller could then smuggle a second `userConsents` past a proxy that
 /// rewrote the first.
@@ -21,7 +21,7 @@ use crate::error::ApiError;
 /// A 400 [`ApiError`] when the body is not JSON, holds a duplicate key, is not an object, or
 /// has an invalid `resourceUUID`.
 pub fn read_envelope(body: &[u8]) -> Result<Map<String, Value>, ApiError> {
-    let value = parse_strict(body)
+    let value = parse_request_body(body)
         .map_err(|e| ApiError::bad_request(format!("the request body is not valid JSON: {e}")))?;
     let Value::Object(fields) = value else {
         return Err(ApiError::bad_request(
