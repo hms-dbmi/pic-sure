@@ -384,13 +384,13 @@ fn a_line_naming_no_concept_fails_before_anything_is_written() {
     assert!(error.contains("nothing was removed"), "{error}");
     assert!(
         error.contains(&format!(
-            "line 2: {trailing_space:?} (a concept matches it without the surrounding whitespace)"
+            "line 2: \"{trailing_space}\" (a concept matches it without the surrounding whitespace)"
         )),
         "{error}"
     );
     assert!(
         error.contains(&format!(
-            "line 4: {unframed:?} (a concept matches it with a backslash at each end)"
+            "line 4: \"{unframed}\" (a concept matches it with a backslash at each end)"
         )),
         "{error}"
     );
@@ -410,6 +410,21 @@ fn a_line_naming_no_concept_fails_before_anything_is_written() {
     .unwrap();
     assert_eq!(report.removed_paths, [paths[0].clone()]);
     assert_eq!(report.not_found.len(), 3);
+    let rerun = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions::default(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        rerun.contains(&format!(
+            "line 1: \"{}\" (already removed by an earlier run, per maintenance-log.jsonl)",
+            paths[0]
+        )),
+        "{rerun}"
+    );
 }
 
 #[test]

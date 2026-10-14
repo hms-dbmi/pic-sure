@@ -3,7 +3,7 @@
 //! concept's metadata across partitions. Both commands hold the store lock
 //! ([`crate::store::lock_store`]) while they write.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use hpds_format::{
@@ -173,9 +173,17 @@ fn select_concepts(index: &PhenoIndex, lines: &[&str], report: &mut RemoveReport
     remove
 }
 
-/// Why `line`, which names no concept of `index`, may have been meant to name one.
-fn near_miss(index: &PhenoIndex, line: &str) -> Option<&'static str> {
+/// Why `line`, which names no concept of `index`, may have been meant to name one, or that
+/// it names a concept an earlier run removed (`removed_before`, from the maintenance log).
+fn near_miss(
+    index: &PhenoIndex,
+    removed_before: &HashSet<String>,
+    line: &str,
+) -> Option<&'static str> {
     let path = line.replace('\u{FFFD}', "");
+    if removed_before.contains(&path) {
+        return Some("already removed by an earlier run, per maintenance-log.jsonl");
+    }
     let trimmed = path.trim();
     if trimmed != path && index.position(trimmed).is_some() {
         return Some("a concept matches it without the surrounding whitespace");
@@ -189,13 +197,30 @@ fn near_miss(index: &PhenoIndex, line: &str) -> Option<&'static str> {
 }
 
 /// The error of a strict removal whose concepts file has lines naming no concept: lists
-/// them (up to [`LISTED_MISSING_LINES`]) with their line numbers and any near miss.
+/// them (up to [`LISTED_MISSING_LINES`]) with their line numbers, each as it is in the file
+/// between double quotes (backslashes not doubled), and any near miss or earlier removal
+/// the store's maintenance log in `dir` records.
 fn missing_error(
+    dir: &Path,
     concepts_file: &Path,
     index: &PhenoIndex,
     lines: &[&str],
     not_found: &[String],
 ) -> EtlError {
+    let removed_before: HashSet<String> = maintenance_log::records(dir)
+        .unwrap_or_default()
+        .iter()
+        .filter(|record| {
+            record["operation"] == OPERATION
+                && matches!(
+                    record["result"].as_str(),
+                    Some(RESULT_PUBLISHED | crate::publish::RESULT_COMPLETED_BY_RECOVER)
+                )
+        })
+        .filter_map(|record| record["removed_paths"].as_array())
+        .flatten()
+        .filter_map(|path| path.as_str().map(str::to_owned))
+        .collect();
     let mut listed = Vec::new();
     let mut wanted = not_found.iter().peekable();
     for (number, line) in lines.iter().enumerate() {
@@ -204,8 +229,9 @@ fn missing_error(
         }
         if wanted.peek().is_some_and(|w| w.as_str() == *line) {
             wanted.next();
-            let hint = near_miss(index, line).map_or_else(String::new, |h| format!(" ({h})"));
-            listed.push(format!("line {}: {line:?}{hint}", number + 1));
+            let hint = near_miss(index, &removed_before, line)
+                .map_or_else(String::new, |h| format!(" ({h})"));
+            listed.push(format!("line {}: \"{line}\"{hint}", number + 1));
         }
     }
     let more = not_found.len().saturating_sub(listed.len());
@@ -397,6 +423,7 @@ pub fn remove_concepts(
     let remove = select_concepts(&index, &lines, &mut report);
     if !report.not_found.is_empty() && !options.allow_missing && !options.dry_run {
         return Err(missing_error(
+            dir,
             concepts_file,
             &index,
             &lines,
