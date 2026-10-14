@@ -372,6 +372,7 @@ pub fn remove_concepts(
     let _lock = if options.dry_run {
         let lock = lock_store_shared(dir)?;
         refuse_pending_publish(dir)?;
+        refuse_linked_store_files(dir)?;
         lock
     } else {
         let lock = lock_store(dir)?;

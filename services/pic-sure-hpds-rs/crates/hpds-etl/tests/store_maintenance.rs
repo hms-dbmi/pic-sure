@@ -1058,6 +1058,67 @@ fn a_rerun_without_keep_removed_blocks_compacts_what_an_earlier_run_kept() {
     assert_eq!(records(&store.out).unwrap()[2]["result"], "no-change");
 }
 
+#[test]
+fn a_dry_run_reports_in_use_only_for_a_lock_held_throughout() {
+    use std::os::unix::fs::PermissionsExt;
+    let store = edge_store();
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let dry = RemoveOptions {
+        dry_run: true,
+        ..RemoveOptions::default()
+    };
+    let index = store.out.join("pheno.index");
+    let brief = std::fs::File::open(&index).unwrap();
+    brief.lock().unwrap();
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        drop(brief);
+    });
+    let report = remove_concepts(&store.out, &list_path, &protection(), &dry).unwrap();
+    release.join().unwrap();
+    assert!(
+        !report.store_in_use,
+        "a probe held for an instant is not a service"
+    );
+
+    let service = std::fs::File::open(&index).unwrap();
+    service.lock_shared().unwrap();
+    std::fs::set_permissions(&index, std::fs::Permissions::from_mode(0o400)).unwrap();
+    let report = remove_concepts(&store.out, &list_path, &protection(), &dry).unwrap();
+    assert!(report.store_in_use);
+    drop(service);
+    let report = remove_concepts(&store.out, &list_path, &protection(), &dry).unwrap();
+    assert!(
+        !report.store_in_use,
+        "a read-only index is probed read only"
+    );
+}
+
+#[test]
+fn a_dry_run_refuses_store_files_that_are_symbolic_links() {
+    let store = edge_store();
+    let first = store.index.concepts()[0].path.clone();
+    let list_path = store.dir.path().join("conceptsToRemove.txt");
+    std::fs::write(&list_path, format!("{first}\n")).unwrap();
+    let elsewhere = store.dir.path().join("generation-elsewhere");
+    std::fs::rename(store.out.join(".generation"), &elsewhere).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, store.out.join(".generation")).unwrap();
+    let error = remove_concepts(
+        &store.out,
+        &list_path,
+        &protection(),
+        &RemoveOptions {
+            dry_run: true,
+            ..RemoveOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("symbolic link"), "{error}");
+}
+
 fn dump_text(dir: &Path) -> String {
     let store = OpenStore::open(dir, protection()).unwrap();
     let mut out = Vec::new();

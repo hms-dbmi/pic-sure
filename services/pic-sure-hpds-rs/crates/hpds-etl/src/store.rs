@@ -204,20 +204,31 @@ impl ServingGuard {
     }
 
     /// True when a query service (or another process) holds a lock on `<dir>/pheno.index`,
-    /// so [`ServingGuard::acquire`] would refuse.
+    /// so [`ServingGuard::acquire`] would refuse. The probe takes the exclusive lock for an
+    /// instant, so two probes at once (two dry runs) can each see the other's; it retries
+    /// [`HELD_PROBES`] times, [`HELD_PROBE_PAUSE`] apart, and reports a lock held only when
+    /// every attempt finds it, as a service's is.
     ///
     /// # Errors
     /// I/O errors opening or locking the index.
     pub fn is_held(dir: &Path) -> Result<bool> {
-        match ServingGuard::acquire(dir) {
-            Ok(_) => Ok(false),
-            Err(EtlError::Usage(_)) => Ok(true),
-            Err(other) => Err(other),
+        for attempt in 0..HELD_PROBES {
+            match ServingGuard::acquire(dir) {
+                Ok(_) => return Ok(false),
+                Err(EtlError::Usage(_)) if attempt + 1 < HELD_PROBES => {
+                    std::thread::sleep(HELD_PROBE_PAUSE);
+                }
+                Err(EtlError::Usage(_)) => return Ok(true),
+                Err(other) => return Err(other),
+            }
         }
+        Ok(true)
     }
 
     /// Takes the exclusive lock on `path` too, without waiting, and holds it with the
-    /// others.
+    /// others. The file is opened for writing, which a network filesystem's lock emulation
+    /// needs for an exclusive lock, and read only when the file or the filesystem is not
+    /// writable (a dry run on a read-only mount).
     ///
     /// # Errors
     /// [`EtlError::Usage`] when another process holds a lock on it; I/O errors opening or
@@ -225,7 +236,12 @@ impl ServingGuard {
     pub(crate) fn hold(&mut self, path: &Path) -> Result<()> {
         let file = match OpenOptions::new().read(true).write(true).open(path) {
             Ok(file) => file,
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem
+                ) =>
+            {
                 File::open(path).map_err(EtlError::io("opening", path))?
             }
             Err(e) => return Err(EtlError::io("opening", path)(e)),
@@ -244,6 +260,12 @@ impl ServingGuard {
         Ok(())
     }
 }
+
+/// How many times [`ServingGuard::is_held`] probes the lock before it reports it held.
+const HELD_PROBES: u32 = 5;
+
+/// The pause between two probes of [`ServingGuard::is_held`].
+const HELD_PROBE_PAUSE: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// Reads and verifies `<dir>/pheno.index`.
 ///
