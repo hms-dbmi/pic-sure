@@ -42,8 +42,9 @@
 //! - Enums accept their exact Java name, the name with surrounding whitespace, their ordinal as
 //!   a JSON integer, or the ordinal written as a string (`"1"`), as Jackson's enum coercion
 //!   does; names are case sensitive.
-//! - UUIDs must be in the canonical 36-character form, after trimming as `String.trim` does,
-//!   and are kept in lowercase; an empty or blank string is null.
+//! - UUIDs must be in the canonical 36-character form or 16 bytes of Base64 (22 characters,
+//!   or 24 ending in `==`), after trimming as `String.trim` does, and are kept in lowercase
+//!   canonical form; an empty or blank string is null.
 //!
 //! Where Jackson would accept a value that only fails later (a missing
 //! `expectedResultType`, `phenotypicFilterType` or `conceptPath`, a `null` inside a string
@@ -51,7 +52,7 @@
 
 use std::fmt;
 
-use hpds_format::java_trim;
+use hpds_format::{jackson_uuid, java_trim};
 use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -813,33 +814,23 @@ fn java_boolean<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<boo
     deserializer.deserialize_any(JavaBoolean)
 }
 
-/// True when `value` is a UUID in the canonical `8-4-4-4-12` hexadecimal form.
-fn is_canonical_uuid(value: &str) -> bool {
-    value.len() == 36
-        && value.char_indices().all(|(i, c)| {
-            if matches!(i, 8 | 13 | 18 | 23) {
-                c == '-'
-            } else {
-                c.is_ascii_hexdigit()
-            }
-        })
-}
-
 /// A `UUID` field as Jackson 2.21's `UUIDDeserializer` reads it: the text trimmed as
-/// `String.trim` does, blank as null, otherwise the canonical 36-character form in either case,
-/// kept in lowercase. `"null"` and every other form are refused.
+/// `String.trim` does, blank as null, otherwise the canonical 36-character form in either case
+/// or the 16 bytes in Base64 (see `hpds_format::jackson_uuid`), kept in lowercase canonical
+/// form. `"null"` and every other form are refused.
 fn java_uuid<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
     let Some(value) = Option::<String>::deserialize(deserializer)? else {
         return Ok(None);
     };
     let trimmed = java_trim(&value);
-    match trimmed {
-        "" => Ok(None),
-        _ if is_canonical_uuid(trimmed) => Ok(Some(trimmed.to_ascii_lowercase())),
-        _ => Err(de::Error::custom(format!(
-            "{value:?} is not a UUID in the canonical 8-4-4-4-12 form"
-        ))),
+    if trimmed.is_empty() {
+        return Ok(None);
     }
+    jackson_uuid(trimmed).map(Some).ok_or_else(|| {
+        de::Error::custom(format!(
+            "{value:?} is not a UUID in the canonical 8-4-4-4-12 form or 16 bytes of Base64"
+        ))
+    })
 }
 
 #[cfg(test)]

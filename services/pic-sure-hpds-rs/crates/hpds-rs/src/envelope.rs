@@ -1,15 +1,16 @@
 //! The `QueryRequest` envelope every POST body arrives in, and the UUID helpers the routes
 //! share.
 
-use hpds_format::java_trim;
+use hpds_format::{jackson_uuid, java_trim};
 use hpds_query::{Query, parse_request_body, parse_strict};
 use serde_json::{Map, Value};
 
 use crate::error::ApiError;
 
 /// Reads a request body as a `QueryRequest`: a JSON object whose `query` is any JSON value and
-/// whose `resourceUUID`, when present and not null, is a UUID string (trimmed as `String.trim`
-/// does, a blank string standing for null, as Jackson's `UUIDDeserializer` reads it). Other
+/// whose `resourceUUID`, when present and not null, is a UUID string as Jackson's
+/// `UUIDDeserializer` reads it (trimmed as `String.trim` does, a blank string standing for
+/// null, the canonical form or 16 bytes of Base64, see `hpds_format::jackson_uuid`). Other
 /// top-level fields are ignored, as `@JsonIgnoreProperties(ignoreUnknown = true)` ignores them.
 ///
 /// The body is read with [`parse_request_body`], so an object holding the same key twice anywhere
@@ -31,7 +32,7 @@ pub fn read_envelope(body: &[u8]) -> Result<Map<String, Value>, ApiError> {
     match fields.get("resourceUUID") {
         None | Some(Value::Null) => {}
         Some(Value::String(id))
-            if java_trim(id).is_empty() || canonical_uuid(java_trim(id)).is_some() => {}
+            if java_trim(id).is_empty() || jackson_uuid(java_trim(id)).is_some() => {}
         Some(_) => return Err(ApiError::bad_request("resourceUUID must be a UUID")),
     }
     Ok(fields)

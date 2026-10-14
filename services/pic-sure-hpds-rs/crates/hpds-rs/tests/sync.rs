@@ -501,6 +501,8 @@ async fn uuids_are_read_as_jacksons_uuid_coercion_reads_them() {
         ("picsureId", format!(r#"" {uuid} ""#)),
         ("picsureId", r#""""#.to_owned()),
         ("id", r#""  ""#.to_owned()),
+        ("picsureId", r#""hpTj1Fy0QQ+EMZk0ReY99g==""#.to_owned()),
+        ("id", r#"" hpTj1Fy0QQ-EMZk0ReY99g ""#.to_owned()),
     ] {
         let body = format!(
             r#"{{"query":{{"expectedResultType":"COUNT","{field}":{value}}},"resourceUUID":" "}}"#
@@ -512,11 +514,25 @@ async fn uuids_are_read_as_jacksons_uuid_coercion_reads_them() {
             "{field} {value}"
         );
     }
-    let body = r#"{"query":{"expectedResultType":"COUNT","picsureId":"null"},"resourceUUID":null}"#;
+    let base64_resource =
+        r#"{"query":{"expectedResultType":"COUNT"},"resourceUUID":"hpTj1Fy0QQ_EMZk0ReY99g"}"#;
+    let reply = post(&f.app, SYNC, base64_resource).await;
     assert_eq!(
-        post(&f.app, SYNC, body).await.status,
-        StatusCode::BAD_REQUEST
+        (reply.status, reply.body.as_str()),
+        (StatusCode::OK, "4978")
     );
+    for refused in [
+        r#"{"query":{"expectedResultType":"COUNT","picsureId":"null"},"resourceUUID":null}"#,
+        r#"{"query":{"expectedResultType":"COUNT","picsureId":"hpTj1Fy0QQ+EMZk0ReY99g="},"resourceUUID":null}"#,
+        r#"{"query":{"expectedResultType":"COUNT","id":"hpTj1Fy0QQ+EMZk0ReY99gAA"},"resourceUUID":null}"#,
+        r#"{"query":{"expectedResultType":"COUNT"},"resourceUUID":"hpTj1Fy0QQ+EMZk0ReY99"}"#,
+    ] {
+        assert_eq!(
+            post(&f.app, SYNC, refused).await.status,
+            StatusCode::BAD_REQUEST,
+            "{refused}"
+        );
+    }
 }
 
 #[tokio::test]

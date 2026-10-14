@@ -305,6 +305,66 @@ pub fn java_trim(s: &str) -> &str {
     s.trim_matches(|c: char| c <= ' ')
 }
 
+/// The lowercase canonical `8-4-4-4-12` form of a UUID written as Jackson 2.21's
+/// `UUIDDeserializer` accepts it, from text already trimmed as [`java_trim`] trims it.
+///
+/// Two forms are accepted. The canonical 36-character form, hexadecimal digits in either case.
+/// And the 16 bytes in Base64: 22 characters, or 22 followed by `==`. The 22 characters may
+/// mix the standard and URL-safe alphabets (`+` and `-` are both 62, `/` and `_` both 63), and
+/// the four bits the last character carries past the 16th byte are ignored, as Jackson's
+/// decoder ignores them. Every other length, padding or character is refused with `None`.
+pub fn jackson_uuid(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    if bytes.len() == 36 {
+        let valid = bytes.iter().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => *b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        });
+        return valid.then(|| text.to_ascii_lowercase());
+    }
+    let encoded = match bytes.len() {
+        22 => bytes,
+        24 if bytes.ends_with(b"==") => &bytes[..22],
+        _ => return None,
+    };
+    let mut decoded = [0u8; 16];
+    let mut bits = 0u32;
+    let mut held = 0u32;
+    let mut written = 0;
+    for byte in encoded {
+        bits = (bits << 6) | u32::from(base64_value(*byte)?);
+        held += 6;
+        if held >= 8 && written < decoded.len() {
+            held -= 8;
+            decoded[written] = (bits >> held) as u8;
+            written += 1;
+        }
+        bits &= (1 << held) - 1;
+    }
+    let hex: String = decoded.iter().map(|b| format!("{b:02x}")).collect();
+    Some(format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    ))
+}
+
+/// The six bits a Base64 character stands for in either the standard or the URL-safe
+/// alphabet, or `None` for any other character (`=` included).
+fn base64_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' | b'-' => Some(62),
+        b'/' | b'_' => Some(63),
+        _ => None,
+    }
+}
+
 /// Parses `input` with the grammar and rounding of Java `Double.parseDouble`.
 ///
 /// Accepted, after [`java_trim`]: an optional sign, then `NaN`, `Infinity`, a decimal
@@ -590,6 +650,79 @@ fn is_plain_decimal(text: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uuids_read_as_jacksons_uuid_deserializer_reads_them() {
+        let id = "8694e3d4-5cb4-410f-8431-993445e63df6";
+        for text in [
+            id,
+            "8694E3D4-5CB4-410F-8431-993445E63DF6",
+            "hpTj1Fy0QQ+EMZk0ReY99g",
+            "hpTj1Fy0QQ+EMZk0ReY99g==",
+            "hpTj1Fy0QQ-EMZk0ReY99g==",
+            "hpTj1Fy0QQ+EMZk0ReY99h",
+            "hpTj1Fy0QQ+EMZk0ReY99j==",
+        ] {
+            assert_eq!(jackson_uuid(text).as_deref(), Some(id), "{text}");
+        }
+        for (text, decoded) in [
+            (
+                "hpTj1Fy0QQ/EMZk0ReY99g",
+                "8694e3d4-5cb4-410f-c431-993445e63df6",
+            ),
+            (
+                "hpTj1Fy0QQ_EMZk0ReY99g==",
+                "8694e3d4-5cb4-410f-c431-993445e63df6",
+            ),
+            (
+                "hpTj1Fy0QQ+EMZk0ReY9-_==",
+                "8694e3d4-5cb4-410f-8431-993445e63dfb",
+            ),
+            (
+                "hpTj1Fy0QQ+EMZk0ReY99A==",
+                "8694e3d4-5cb4-410f-8431-993445e63df4",
+            ),
+            (
+                "hpTj1Fy0QQ+EMZk0ReY99w==",
+                "8694e3d4-5cb4-410f-8431-993445e63df7",
+            ),
+            (
+                "hpTj1Fy0QQ+EMZk0ReY99/==",
+                "8694e3d4-5cb4-410f-8431-993445e63df7",
+            ),
+            (
+                "AAAAAAAAAAAAAAAAAAAAAA",
+                "00000000-0000-0000-0000-000000000000",
+            ),
+            (
+                "____________________-A",
+                "ffffffff-ffff-ffff-ffff-fffffffffff8",
+            ),
+        ] {
+            assert_eq!(jackson_uuid(text).as_deref(), Some(decoded), "{text}");
+        }
+        for text in [
+            "",
+            "hpTj1Fy0QQ+EMZk0ReY99g=",
+            "hpTj1Fy0QQ+EMZk0ReY99g===",
+            "hpTj1Fy0QQ+EMZk0ReY99",
+            "hpTj1Fy0QQ+EMZk0ReY99=",
+            "hpTj1Fy0QQ+EMZk0ReY99gA",
+            "hpTj1Fy0QQ+EMZk0ReY99gAA",
+            "hpTj1Fy0QQ+EMZk0ReY99gA=",
+            "=hpTj1Fy0QQ+EMZk0ReY99g=",
+            "hpTj1Fy0QQ+EMZk0ReY99g=A",
+            "hpTj1Fy0QQ+EMZk0ReY99g.=",
+            "hpTj1Fy0QQ+EMZk0 eY99g==",
+            "AAAAAAAAAAAAAAAAAAAAAAAA",
+            "8694e3d45cb4410f8431993445e6d3f6",
+            "8694e3d4-5cb4-410f-8431-993445e6d3f",
+            "8694e3d4-5cb4-410f-8431-993445e6d3fg",
+            "null",
+        ] {
+            assert_eq!(jackson_uuid(text), None, "{text}");
+        }
+    }
 
     #[test]
     fn strings_coerce_to_doubles_as_jackson_coerces_them() {
