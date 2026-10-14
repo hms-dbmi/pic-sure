@@ -43,7 +43,7 @@ public class AccessRuleServiceTest {
         retiredConsentRule.setType(17);
         retiredConsentRule.setValue("/v3/query");
 
-        assertFalse(accessRuleService.decisionMaker(retiredConsentRule, "/hpds/auth/v3/query/sync"));
+        assertFalse(accessRuleService.decisionMaker(retiredConsentRule, "/hpds/auth/query/sync"));
     }
 
     @Test

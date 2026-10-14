@@ -30,15 +30,13 @@ class ControllerAuditEventTest {
 
     private static final Map<String, String> EXPECTED = new TreeMap<>(
         Map.ofEntries(
-            Map.entry("HpdsQueryV3Controller.query", "QUERY query.submitted"),
-            Map.entry("HpdsQueryV3Controller.querySync", "QUERY query.sync"),
-            Map.entry("HpdsQueryV3Controller.status", "QUERY query.status"),
-            Map.entry("HpdsQueryV3Controller.result", "DATA_ACCESS query.result"),
-            Map.entry("HpdsQueryV3Controller.signedUrl", "DATA_ACCESS query.signed_url"),
-            Map.entry("HpdsQueryV3Controller.metadata", "QUERY query.metadata"),
+            Map.entry("HpdsQueryController.query", "QUERY query.submitted"),
+            Map.entry("HpdsQueryController.querySync", "QUERY query.sync"),
+            Map.entry("HpdsQueryController.status", "QUERY query.status"),
+            Map.entry("HpdsQueryController.result", "DATA_ACCESS query.result"),
+            Map.entry("HpdsQueryController.signedUrl", "DATA_ACCESS query.signed_url"),
+            Map.entry("HpdsQueryController.metadata", "QUERY query.metadata"),
             Map.entry("AggregateController.querySync", "QUERY query.sync"), Map.entry("AggregateController.query", "QUERY query.submitted"),
-            Map.entry("AggregateV3Controller.querySync", "QUERY query.sync"),
-            Map.entry("AggregateV3Controller.query", "QUERY query.submitted"),
             Map.entry("HpdsSearchController.search", "SEARCH search.execute"),
             Map.entry("HpdsSearchController.values", "SEARCH search.values")
         )

@@ -145,7 +145,7 @@ public class TokenServiceTest {
         String token = jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, user.getSubject(), testTokenExpiration);
         Map<String, Object> inputMap = new HashMap<>();
         inputMap.put("token", token);
-        inputMap.put("request", Map.of("Target Service", "/hpds/auth/v3/query/sync"));
+        inputMap.put("request", Map.of("Target Service", "/hpds/auth/query/sync"));
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
         when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
@@ -168,7 +168,7 @@ public class TokenServiceTest {
         String token = jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, user.getSubject(), testTokenExpiration);
         Map<String, Object> inputMap = new HashMap<>();
         inputMap.put("token", token);
-        inputMap.put("request", Map.of("Target Service", "/hpds/auth/v3/query/sync", "Query", Map.of("secret", "value")));
+        inputMap.put("request", Map.of("Target Service", "/hpds/auth/query/sync", "Query", Map.of("secret", "value")));
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
 
@@ -186,7 +186,7 @@ public class TokenServiceTest {
         String token = jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, user.getSubject(), testTokenExpiration);
         Map<String, Object> inputMap = new HashMap<>();
         inputMap.put("token", token);
-        inputMap.put("request", Map.of("Target Service", "/hpds/auth/v3/query/sync"));
+        inputMap.put("request", Map.of("Target Service", "/hpds/auth/query/sync"));
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
         when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
             .thenReturn(new EvaluateAccessRuleResult(false, Set.of(), null, Optional.of("No access rule grants this request.")));
@@ -195,7 +195,7 @@ public class TokenServiceTest {
 
         assertFalse((Boolean) response.get("active"));
         assertEquals("No access rule grants this request.", response.get("message"));
-        verify(authorizationService).isAuthorized(application, Map.of("Target Service", "/hpds/auth/v3/query/sync"), user, false);
+        verify(authorizationService).isAuthorized(application, Map.of("Target Service", "/hpds/auth/query/sync"), user, false);
     }
 
     @Test

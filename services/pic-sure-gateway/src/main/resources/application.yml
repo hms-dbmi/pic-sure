@@ -38,7 +38,7 @@ spring:
               filters:
                 - StripPrefix=1
             # Query-service and operations-service ingress. Unlike the routes
-            # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
+            # above, these serve at the verbatim public path, with no StripPrefix. /hpds/{auth,open}/query|search
             # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
             # /operations/** is served by operations-service, the sole DB owner.
             # /operations/configuration/** and exact GET /operations/banners/active have public-read rules below,
