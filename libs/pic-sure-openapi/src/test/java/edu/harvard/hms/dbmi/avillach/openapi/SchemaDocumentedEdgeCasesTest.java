@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.openapi;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Set;
+
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -62,6 +64,34 @@ class SchemaDocumentedEdgeCasesTest {
         JsonNode document = new ObjectMapper().readTree(REF_DOCUMENT.formatted("3.0.1"));
         OpenApiDocumentAssertions.assertSchemaDocumented(document, "Thing");
     }
+
+    @Test
+    void exemptScalarMustHaveNoExample() throws Exception {
+        JsonNode document = new ObjectMapper().readTree(EXEMPT_DOCUMENT.formatted(""));
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, Set.of("Thing.spread"), "Thing");
+    }
+
+    @Test
+    void exemptScalarWithAnExampleFails() throws Exception {
+        JsonNode document = new ObjectMapper().readTree(EXEMPT_DOCUMENT.formatted(",\"example\":3"));
+        assertThatThrownBy(() -> OpenApiDocumentAssertions.assertSchemaDocumented(document, Set.of("Thing.spread"), "Thing"))
+            .isInstanceOf(AssertionError.class).hasMessageContaining("Thing.spread is exempt from the example rule but has an example");
+    }
+
+    @Test
+    void exemptionThatMatchesNoScalarFails() throws Exception {
+        JsonNode document = new ObjectMapper().readTree(EXEMPT_DOCUMENT.formatted(""));
+        assertThatThrownBy(() -> OpenApiDocumentAssertions.assertSchemaDocumented(document, Set.of("Thing.gone"), "Thing"))
+            .isInstanceOf(AssertionError.class)
+            .hasMessageContaining("Thing.gone is exempt from the example rule but is not a scalar property of a checked schema")
+            .hasMessageContaining("Thing.spread has no example");
+    }
+
+    private static final String EXEMPT_DOCUMENT = """
+        {"openapi":"3.1.0","components":{"schemas":{"Thing":{"type":"object","description":"A thing","properties":{
+          "spread":{"type":["integer","null"],"description":"The spread"%s},
+          "name":{"type":"string","description":"The name","example":"x"}}}}}}
+        """;
 
     private static final String REF_DOCUMENT = """
         {"openapi":"%s","components":{"schemas":{

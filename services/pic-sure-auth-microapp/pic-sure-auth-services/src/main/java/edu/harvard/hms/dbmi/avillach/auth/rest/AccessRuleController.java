@@ -130,7 +130,7 @@ public class AccessRuleController {
     @ApiResponse(responseCode = "200", description = "Rule type names mapped to their numeric values, under the types member.")
     @AuditEvent(type = "OTHER", action = "access_rule.types")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @GetMapping(path = "/allTypes", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(path = "/allTypes", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<AccessRuleTypesResponse> getAllTypes() {
         return PICSUREResponse.success(new AccessRuleTypesResponse(AccessRule.TypeNaming.getTypeNameMap()));
     }

@@ -28,8 +28,9 @@ import edu.harvard.hms.dbmi.avillach.openapi.OpenApiDocumentAssertions;
  * summarised operation. An endpoint cannot vanish from the document, and the annotation pass cannot skip one, without failing here. This is
  * also PSAMA's first test to boot the full application context: an in-memory H2 schema stands in for MySQL, and {@code NON_KEYWORDS}
  * excuses the columns Hibernate would otherwise refuse because H2 reserves their names. Required authorities appear in a description only
- * as the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose. The cache inspection controller is
- * switched on so its operations are covered too.
+ * as the sentence the shared customizer writes from {@code @PreAuthorize}, never as hand-written prose, and a handler marked
+ * {@code @PublicEndpoint} gets the sentence for its level. The cache inspection controller is switched on so its operations are covered
+ * too.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
@@ -76,7 +77,8 @@ class OpenApiDocumentTest {
         assertThat(description(paths, "/accessRule", "post"))
             .isEqualTo("Creates the access rules in the request body.\n\nRequired authorities: SUPER_ADMIN.");
         assertThat(description(paths, "/user", "post")).isEqualTo("Creates the users in the request body.\n\nRequired authorities: ADMIN.");
-        assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user");
+        assertThat(description(paths, "/user/me", "get")).isEqualTo("Retrieve information of current user\n\nAny authenticated user.");
+        assertThat(description(paths, "/tos/latest", "get")).endsWith("\n\nPublic, no token needed.");
         assertThat(description(paths, "/application", "get"))
             .isEqualTo("Lists every registered application.\n\nRequired authorities: ADMIN, SUPER_ADMIN.");
         paths.forEach(
@@ -270,6 +272,28 @@ class OpenApiDocumentTest {
 
     private JsonNode document() throws Exception {
         return objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
+    }
+
+    @Test
+    void openValidateDocumentsBothResponseShapes() throws Exception {
+        JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
+
+        JsonNode oneOf = document.path("paths").path("/open/validate").path("post").path("responses").path("200").path("content")
+            .path("application/json").path("schema").path("oneOf");
+        assertThat(oneOf).extracting(JsonNode::toString)
+            .containsExactlyInAnyOrder("{\"type\":\"boolean\"}", "{\"$ref\":\"#/components/schemas/OpenAccessValidationResponse\"}");
+        JsonNode denial =
+            document.path("components").path("schemas").path("OpenAccessValidationResponse").path("properties").path("denial");
+        assertThat(denial.path("enum")).extracting(JsonNode::asText).containsExactly("key_missing", "key_invalid", "rules");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "OpenAccessValidationResponse");
+    }
+
+    @Test
+    void openSessionDocumentsItsResponse() throws Exception {
+        JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
+
+        OpenApiDocumentAssertions.assertResponseSchema(document, "post", "/open/session", "200", "OpenSessionResponse");
+        OpenApiDocumentAssertions.assertSchemaDocumented(document, "OpenSessionResponse");
     }
 
     private static String description(JsonNode paths, String path, String method) {

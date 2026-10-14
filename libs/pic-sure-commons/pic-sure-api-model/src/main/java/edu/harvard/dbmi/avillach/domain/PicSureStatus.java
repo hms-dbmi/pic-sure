@@ -2,7 +2,7 @@ package edu.harvard.dbmi.avillach.domain;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Where a query stands, as PIC-SURE reports it to clients.")
+@Schema(description = "The status of a query.")
 public enum PicSureStatus {
     @Schema(description = "Accepted and waiting for a worker, or waiting to be retried.")
     QUEUED, @Schema(description = "Running on the resource.")
