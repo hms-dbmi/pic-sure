@@ -49,9 +49,10 @@
 //!
 //! Where Jackson accepts a value that Java only fails on later, the query is still read, as
 //! Java answers INFO_COLUMN_LISTING without evaluating it: a `null` or missing
-//! `phenotypicFilterType` or `conceptPath`, a `null` among a filter's `values` or a
-//! subquery's `phenotypicClauses` ([`Query::java_failure`], refused by every computation), a
-//! `null` element of `select` ([`Query::select_nulls`]) or of `authorizationFilters`
+//! `phenotypicFilterType` or `conceptPath`, a `null` among a subquery's `phenotypicClauses`
+//! ([`Query::java_failure`], refused by every computation), a `null` among a filter's
+//! `values` (dropped; on a `FILTER` marked by [`PhenotypicFilter::null_values`] and refused
+//! only where Java looks it up), a `null` element of `select` ([`Query::select_nulls`]) or of `authorizationFilters`
 //! ([`Query::null_authorization_filters`]), and a `null` genomic filter or genomic value
 //! (the query stays unsupported). A missing or `null` `expectedResultType` is refused here
 //! ([`NULL_RESULT_TYPE_MESSAGE`]), since no route can answer without it.
@@ -277,8 +278,7 @@ pub struct Query {
     /// The refusal for a construct of the phenotypic clause that Jackson reads but Java fails
     /// on as soon as it evaluates the clause: a filter whose `conceptPath` or
     /// `phenotypicFilterType` is `null` or missing ([`NULL_CONCEPT_PATH_MESSAGE`],
-    /// [`NULL_FILTER_TYPE_MESSAGE`]), a `null` among a filter's `values`
-    /// ([`NULL_VALUE_MESSAGE`]), or a `null` among a subquery's `phenotypicClauses`
+    /// [`NULL_FILTER_TYPE_MESSAGE`]), or a `null` among a subquery's `phenotypicClauses`
     /// ([`NULL_CLAUSE_MESSAGE`]). Java answers INFO_COLUMN_LISTING without evaluating the
     /// clause, so the query is read, with the construct replaced (a placeholder path or type,
     /// the `null` element dropped), and every computation refuses it with this message
@@ -332,14 +332,37 @@ pub const NULL_FILTER_TYPE_MESSAGE: &str = "a phenotypic filter's phenotypicFilt
 /// evaluates the subquery.
 pub const NULL_CLAUSE_MESSAGE: &str = "a phenotypic subquery's phenotypicClauses hold null";
 
+/// What [`defer_java_failures`] found in a phenotypic clause.
+#[derive(Default)]
+struct Deferred {
+    /// The refusal for the first construct Java fails on whenever it evaluates the clause.
+    failure: Option<&'static str>,
+    /// Filters seen so far, in depth-first order.
+    filters: usize,
+    /// The depth-first indices of the `FILTER`s whose `values` held `null`.
+    null_value_filters: Vec<usize>,
+}
+
+impl Deferred {
+    fn note(&mut self, message: &'static str) {
+        self.failure.get_or_insert(message);
+    }
+}
+
 /// Replaces, in the phenotypic clause `clause`, each construct Jackson reads but Java fails on
-/// when it evaluates the clause, and returns the refusal for the first one found (see
-/// [`Query::java_failure`]). A clause is deduced as in [`PhenotypicClause`]'s reader; one that
-/// is neither a filter nor a subquery, or both, is left for that reader to refuse, as Jackson
-/// refuses it.
-fn defer_java_failures(clause: &mut Value) -> Option<&'static str> {
+/// when it evaluates the clause, and records it in `deferred` (see [`Query::java_failure`]).
+/// A clause is deduced as in [`PhenotypicClause`]'s reader; one that is neither a filter nor a
+/// subquery, or both, is left for that reader to refuse, as Jackson refuses it.
+///
+/// A `null` among a filter's `values` is dropped. Java fails on it only where it looks the
+/// value up: a `FILTER` whose concept is categorical in a selected partition (a `TreeMap` key
+/// lookup). It ignores `values` on `REQUIRED` and `ANY_RECORD_OF`, finds nothing for an unknown
+/// concept, and answers nothing for `null` on a numeric one. So a `FILTER` that held one is
+/// marked ([`PhenotypicFilter::null_values`]) for the evaluator to decide, and the other types
+/// drop it silently.
+fn defer_java_failures(clause: &mut Value, deferred: &mut Deferred) {
     let Value::Object(fields) = clause else {
-        return None;
+        return;
     };
     let subquery = fields
         .keys()
@@ -347,48 +370,60 @@ fn defer_java_failures(clause: &mut Value) -> Option<&'static str> {
     let filter = fields
         .keys()
         .any(|k| FILTER_ONLY_FIELDS.contains(&k.as_str()));
-    let mut failure = None;
-    let mut note = |message: &'static str| {
-        failure.get_or_insert(message);
-    };
     match (subquery, filter) {
         (true, false) => {
             if let Some(Value::Array(children)) = fields.get_mut("phenotypicClauses") {
                 let before = children.len();
                 children.retain(|child| !child.is_null());
                 if children.len() < before {
-                    note(NULL_CLAUSE_MESSAGE);
+                    deferred.note(NULL_CLAUSE_MESSAGE);
                 }
                 for child in children.iter_mut() {
-                    if let Some(message) = defer_java_failures(child) {
-                        note(message);
-                    }
+                    defer_java_failures(child, deferred);
                 }
             }
         }
         (false, true) => {
+            let index = deferred.filters;
+            deferred.filters += 1;
             if fields
                 .get("phenotypicFilterType")
                 .is_none_or(Value::is_null)
             {
                 fields.insert("phenotypicFilterType".into(), Value::from("REQUIRED"));
-                note(NULL_FILTER_TYPE_MESSAGE);
+                deferred.note(NULL_FILTER_TYPE_MESSAGE);
             }
             if fields.get("conceptPath").is_none_or(Value::is_null) {
                 fields.insert("conceptPath".into(), Value::from(""));
-                note(NULL_CONCEPT_PATH_MESSAGE);
+                deferred.note(NULL_CONCEPT_PATH_MESSAGE);
             }
+            let is_filter = fields.get("phenotypicFilterType") == Some(&Value::from("FILTER"));
             if let Some(Value::Array(values)) = fields.get_mut("values") {
                 let before = values.len();
                 values.retain(|value| !value.is_null());
-                if values.len() < before {
-                    note(NULL_VALUE_MESSAGE);
+                if values.len() < before && is_filter {
+                    deferred.null_value_filters.push(index);
                 }
             }
         }
         _ => {}
     }
-    failure
+}
+
+/// Sets [`PhenotypicFilter::null_values`] on the filters of `clause` whose depth-first index
+/// is in `marked`, counting filters in `seen` in the order [`defer_java_failures`] did.
+fn mark_null_values(clause: &mut PhenotypicClause, seen: &mut usize, marked: &[usize]) {
+    match clause {
+        PhenotypicClause::Filter(filter) => {
+            filter.null_values = marked.contains(seen);
+            *seen += 1;
+        }
+        PhenotypicClause::Subquery(subquery) => {
+            for child in &mut subquery.phenotypic_clauses {
+                mark_null_values(child, seen, marked);
+            }
+        }
+    }
 }
 
 impl TryFrom<QueryFields> for Query {
@@ -407,10 +442,12 @@ impl TryFrom<QueryFields> for Query {
         let (phenotypic_clause, java_failure) = match fields.phenotypic_clause {
             None | Some(StrictValue(Value::Null)) => (None, None),
             Some(StrictValue(mut clause)) => {
-                let failure = defer_java_failures(&mut clause);
-                let clause = serde_json::from_value::<PhenotypicClause>(clause)
+                let mut deferred = Deferred::default();
+                defer_java_failures(&mut clause, &mut deferred);
+                let mut clause = serde_json::from_value::<PhenotypicClause>(clause)
                     .map_err(|e| e.to_string())?;
-                (Some(clause), failure)
+                mark_null_values(&mut clause, &mut 0, &deferred.null_value_filters);
+                (Some(clause), deferred.failure)
             }
         };
         Ok(Query {
@@ -673,6 +710,13 @@ pub struct PhenotypicFilter {
     /// Accepted and ignored, as in Java.
     #[serde(default, deserialize_with = "java_boolean")]
     pub not: Option<bool>,
+    /// Whether the request's `values` held `null` elements, which are not in `values`. Set
+    /// only on a `FILTER`, by the query reader. Java counts them toward a non-empty `values`
+    /// (so the filter is still a categorical one) and fails when it looks one up in a
+    /// categorical concept; the evaluator refuses that case ([`NULL_VALUE_MESSAGE`]) and
+    /// otherwise answers as Java does.
+    #[serde(skip)]
+    pub null_values: bool,
 }
 
 /// Refusal of a phenotypic filter whose `conceptPath` is `null`. Java fails on it on every
@@ -680,8 +724,9 @@ pub struct PhenotypicFilter {
 /// executor, for `ANY_RECORD_OF`) on `POST /query`.
 pub const NULL_CONCEPT_PATH_MESSAGE: &str = "a phenotypic filter's conceptPath is null";
 
-/// Refusal of a phenotypic filter whose `values` holds a `null`. Java fails on it when the
-/// executor looks the value up, on every route.
+/// Refusal of a `FILTER` whose `values` held a `null`, when the concept is categorical in a
+/// selected partition: Java's executor looks the `null` up in the concept's category map,
+/// which throws. Raised by the evaluator, on every route.
 pub const NULL_VALUE_MESSAGE: &str = "a phenotypic filter's values hold null";
 
 fn concept_path<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
@@ -708,13 +753,15 @@ impl PhenotypicFilter {
             min: None,
             max: None,
             not: None,
+            null_values: false,
         }
     }
 
-    /// `PhenotypicFilter.isCategoricalFilter`: a `FILTER` with a non-empty `values`.
+    /// `PhenotypicFilter.isCategoricalFilter`: a `FILTER` with a non-empty `values`, a
+    /// `null` element counting as one ([`PhenotypicFilter::null_values`]).
     pub fn is_categorical_filter(&self) -> bool {
         self.phenotypic_filter_type == PhenotypicFilterType::Filter
-            && self.values.as_ref().is_some_and(|v| !v.is_empty())
+            && (self.null_values || self.values.as_ref().is_some_and(|v| !v.is_empty()))
     }
 
     /// `PhenotypicFilter.isNumericFilter`: a `FILTER` with `min` or `max` set.
@@ -1123,10 +1170,6 @@ mod tests {
                 NULL_FILTER_TYPE_MESSAGE,
             ),
             (
-                json!({"phenotypicFilterType": "FILTER", "conceptPath": "a", "values": ["x", null]}),
-                NULL_VALUE_MESSAGE,
-            ),
-            (
                 json!({"operator": "AND", "phenotypicClauses": [required, null]}),
                 NULL_CLAUSE_MESSAGE,
             ),
@@ -1182,6 +1225,54 @@ mod tests {
             ]
         );
         assert_eq!(other.java_failure, None);
+    }
+
+    #[test]
+    fn a_null_filter_value_marks_only_a_filter_and_is_dropped() {
+        let read = |clause: Value| {
+            parse(json!({"expectedResultType": "COUNT", "phenotypicClause": clause})).unwrap()
+        };
+        let filters = |query: &Query| -> Vec<PhenotypicFilter> {
+            query.all_filters().into_iter().cloned().collect()
+        };
+        let q = read(
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": "a", "values": ["x", null]}),
+        );
+        assert_eq!(q.java_failure, None);
+        let [f] = filters(&q).try_into().unwrap();
+        assert!(f.null_values && f.is_categorical_filter());
+        assert_eq!(f.values.as_deref(), Some(&["x".to_owned()][..]));
+        let only_null =
+            read(json!({"phenotypicFilterType": "FILTER", "conceptPath": "a", "values": [null]}));
+        let [f] = filters(&only_null).try_into().unwrap();
+        assert!(f.null_values && f.is_categorical_filter());
+        assert_eq!(f.values.as_deref(), Some(&[][..]));
+        for filter_type in ["REQUIRED", "ANY_RECORD_OF"] {
+            let q = read(
+                json!({"phenotypicFilterType": filter_type, "conceptPath": "a", "values": [null]}),
+            );
+            assert_eq!(q.java_failure, None, "{filter_type}");
+            let [f] = filters(&q).try_into().unwrap();
+            assert!(!f.null_values, "{filter_type}");
+            assert_eq!(f.values.as_deref(), Some(&[][..]), "{filter_type}");
+        }
+        let nested = read(json!({"operator": "OR", "phenotypicClauses": [
+            {"phenotypicFilterType": "FILTER", "conceptPath": "a", "values": ["x"]},
+            null,
+            {"operator": "AND", "phenotypicClauses": [
+                {"phenotypicFilterType": "REQUIRED", "conceptPath": "b", "values": [null]},
+                {"phenotypicFilterType": "FILTER", "conceptPath": "c", "values": [null, "y"]}
+            ]}
+        ]}));
+        let marks: Vec<(String, bool)> = filters(&nested)
+            .into_iter()
+            .map(|f| (f.concept_path, f.null_values))
+            .collect();
+        assert_eq!(
+            marks,
+            [("a".into(), false), ("b".into(), false), ("c".into(), true)]
+        );
+        assert_eq!(nested.java_failure.as_deref(), Some(NULL_CLAUSE_MESSAGE));
     }
 
     #[test]

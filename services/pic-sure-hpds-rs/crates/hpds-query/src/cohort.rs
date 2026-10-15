@@ -30,7 +30,8 @@ use crate::error::{QueryError, Result};
 use crate::fan_out;
 use crate::limits::CheckedQuery;
 use crate::model::{
-    Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery,
+    NULL_VALUE_MESSAGE, Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType,
+    PhenotypicSubquery,
 };
 use crate::partition::{ConceptRead, ReadMode, Selection};
 use crate::view::View;
@@ -440,7 +441,7 @@ fn evaluate_filter(selection: &Selection<'_>, filter: &PhenotypicFilter) -> Resu
         PhenotypicFilterType::Required => required_patients(selection, path),
         PhenotypicFilterType::AnyRecordOf => any_record_of(selection, path),
         PhenotypicFilterType::Filter => match &filter.values {
-            Some(values) => patients_with_values(selection, path, values),
+            Some(values) => patients_with_values(selection, path, values, filter.null_values),
             None if filter.min.is_some() || filter.max.is_some() => {
                 range_patients(selection, path, filter.min, filter.max)
             }
@@ -588,23 +589,41 @@ fn union_of(sets: &[&RoaringBitmap], chunks: usize) -> RoaringBitmap {
 /// Values the selected partitions do not hold contribute nothing; an unknown path or an
 /// empty `values` gives the empty set.
 ///
+/// `null_values` says the request's `values` also held `null`, as Java keeps it. Java looks
+/// each value up: a `null` throws in a categorical concept's category map, and finds nothing
+/// in a numeric concept or an unknown one. So it is refused only for a concept that is
+/// categorical in a selected partition.
+///
 /// # Errors
-/// [`QueryError::StoreInconsistent`] when the block is numeric, which the structure check
-/// has already ruled out through the dictionary, [`QueryError::Block`] when the block
-/// cannot be loaded.
-fn patients_with_values(selection: &Selection<'_>, path: &str, values: &[String]) -> Result<Found> {
-    if values.is_empty() {
+/// [`QueryError::Invalid`] with [`NULL_VALUE_MESSAGE`] for a `null` value on a categorical
+/// concept, [`QueryError::StoreInconsistent`] when the block is numeric and non-null values
+/// were named, which the structure check has already ruled out through the dictionary, and
+/// [`QueryError::Block`] when the block cannot be loaded.
+fn patients_with_values(
+    selection: &Selection<'_>,
+    path: &str,
+    values: &[String],
+    null_values: bool,
+) -> Result<Found> {
+    if values.is_empty() && !null_values {
         return Ok(Found::none());
     }
     let Some(read) = selection.concept(path) else {
         return Ok(Found::none());
     };
     let entry = selection.entry(&read)?;
-    let Block::Categorical(block) = entry.block().as_ref() else {
-        return Err(QueryError::StoreInconsistent {
-            concept_path: path.to_owned(),
-            detail: "the index says categorical but the block is numeric",
-        });
+    let block = match entry.block().as_ref() {
+        Block::Categorical(_) if null_values => {
+            return Err(QueryError::Invalid(NULL_VALUE_MESSAGE.to_owned()));
+        }
+        Block::Categorical(block) => block,
+        _ if values.is_empty() => return Ok(Found::none()),
+        _ => {
+            return Err(QueryError::StoreInconsistent {
+                concept_path: path.to_owned(),
+                detail: "the index says categorical but the block is numeric",
+            });
+        }
     };
     let mut found: Vec<usize> = values.iter().filter_map(|v| block.find_value(v)).collect();
     found.sort_unstable();

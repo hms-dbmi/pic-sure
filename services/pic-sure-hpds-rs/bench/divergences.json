@@ -176,7 +176,7 @@
     {
       "name": "null-filter-value-status",
       "when": "null-filter-value-refused",
-      "reason": "Java error, invalid input: a null among a phenotypic filter's values makes the executor fail when it looks the value up, so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses it with 400 and exactly \"a phenotypic filter's values hold null\". Accepted only when the query holds such a value, with that exact refusal against those failures."
+      "reason": "Java error, invalid input: a null among a FILTER's values makes Java's executor fail where it looks the value up in a categorical concept's category map (a TreeMap, PhenoCube.java:43), so Java answers /query/sync 200 with an empty body. Java finds nothing for the null in an unknown or numeric concept and ignores values on REQUIRED and ANY_RECORD_OF, and Rust answers those as Java does; on POST /query both end the job in ERROR. Rust refuses the sync case with 400 and exactly \"a phenotypic filter's values hold null\". Accepted only when the query holds such a value, with that exact refusal against Java's failure."
     },
     {
       "name": "null-result-type-status",

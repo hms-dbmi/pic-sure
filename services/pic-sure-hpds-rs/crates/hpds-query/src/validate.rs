@@ -181,7 +181,7 @@ pub fn validate_filter(filter: &PhenotypicFilter, concepts: &impl ConceptLookup)
     let has_bound = filter.min.is_some() || filter.max.is_some();
     match filter.phenotypic_filter_type {
         PhenotypicFilterType::Filter => {
-            if has_bound && filter.values.as_ref().is_some_and(|v| !v.is_empty()) {
+            if has_bound && filter.is_categorical_filter() {
                 return Err(QueryError::Invalid(format!(
                     "Filter with concept path {path} cannot have both categorical values and min/max set"
                 )));

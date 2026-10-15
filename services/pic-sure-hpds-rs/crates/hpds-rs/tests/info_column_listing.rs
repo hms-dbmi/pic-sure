@@ -7,7 +7,7 @@ mod common;
 
 use axum::Router;
 use axum::http::StatusCode;
-use common::{AGE, SEX, fixture, post};
+use common::{AGE, SEX, fixture, post, wait};
 use hpds_query::{
     NULL_AUTHORIZATION_FILTER_MESSAGE, NULL_CLAUSE_MESSAGE, NULL_CONCEPT_PATH_MESSAGE,
     NULL_FILTER_TYPE_MESSAGE, NULL_VALUE_MESSAGE,
@@ -125,10 +125,6 @@ async fn other_result_types_refuse_the_deferred_constructs_by_name() {
             NULL_FILTER_TYPE_MESSAGE,
         ),
         (
-            json!({"phenotypicFilterType": "FILTER", "conceptPath": SEX, "values": [null, "male"]}),
-            NULL_VALUE_MESSAGE,
-        ),
-        (
             json!({"operator": "OR", "phenotypicClauses": [required_sex(), null]}),
             NULL_CLAUSE_MESSAGE,
         ),
@@ -160,5 +156,102 @@ async fn a_null_authorization_filter_is_ignored_on_sync_and_refused_on_post_quer
             (status, body.as_str()),
             (StatusCode::BAD_REQUEST, NULL_AUTHORIZATION_FILTER_MESSAGE)
         );
+    }
+}
+
+#[tokio::test]
+async fn a_null_filter_value_is_refused_only_where_java_looks_it_up() {
+    let f = fixture();
+    let unknown = "\\no\\such\\";
+    let count = |clause: Value| json!({"expectedResultType": "COUNT", "phenotypicClause": clause});
+    for (clause, expected) in [
+        (
+            json!({"phenotypicFilterType": "REQUIRED", "conceptPath": SEX, "values": [null]}),
+            "4978",
+        ),
+        (
+            json!({"phenotypicFilterType": "ANY_RECORD_OF", "conceptPath": SEX, "values": [null]}),
+            "4978",
+        ),
+        (
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": unknown, "values": [null]}),
+            "0",
+        ),
+        (
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": unknown, "values": [null, "x"]}),
+            "0",
+        ),
+        (
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": unknown, "values": [null], "min": 1}),
+            "0",
+        ),
+        (
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": AGE, "values": [null]}),
+            "0",
+        ),
+        (
+            json!({"operator": "OR", "phenotypicClauses": [required_sex(), {"phenotypicFilterType": "FILTER", "conceptPath": unknown, "values": [null]}]}),
+            "4978",
+        ),
+    ] {
+        for (status, body) in replies(&f.app, SYNC, &count(clause.clone())).await {
+            assert_eq!(
+                (status, body.as_str()),
+                (StatusCode::OK, expected),
+                "{clause}"
+            );
+        }
+    }
+    for clause in [
+        json!({"phenotypicFilterType": "FILTER", "conceptPath": SEX, "values": [null]}),
+        json!({"phenotypicFilterType": "FILTER", "conceptPath": SEX, "values": ["male", null]}),
+    ] {
+        for (status, body) in replies(&f.app, SYNC, &count(clause.clone())).await {
+            assert_eq!(
+                (status, body.as_str()),
+                (StatusCode::BAD_REQUEST, NULL_VALUE_MESSAGE),
+                "{clause}"
+            );
+        }
+        let patients = json!({"expectedResultType": "PATIENTS", "phenotypicClause": clause});
+        for (status, body) in replies(&f.app, QUERY, &patients).await {
+            assert_eq!(status, StatusCode::OK, "{body}");
+            let id: Value = serde_json::from_str(&body).unwrap();
+            let done = wait(&f.app, id["resourceResultId"].as_str().unwrap()).await;
+            assert_eq!(done["resourceStatus"], "ERROR", "{clause}");
+        }
+    }
+    let unknown_patients = json!({"expectedResultType": "PATIENTS", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": unknown, "values": [null]}});
+    for (status, body) in replies(&f.app, QUERY, &unknown_patients).await {
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let id: Value = serde_json::from_str(&body).unwrap();
+        let done = wait(&f.app, id["resourceResultId"].as_str().unwrap()).await;
+        assert_eq!(done["resourceStatus"], "SUCCESS");
+    }
+    for (clause, message) in [
+        (
+            json!({"phenotypicFilterType": "REQUIRED", "conceptPath": SEX, "values": [null]}),
+            format!(
+                "Required filter with concept path {SEX} cannot have categorical values or min/max set"
+            ),
+        ),
+        (
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": AGE, "values": [null]}),
+            format!("{AGE} is not a categorical variable"),
+        ),
+        (
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": unknown, "values": [null], "min": 1}),
+            format!(
+                "Filter with concept path {unknown} cannot have both categorical values and min/max set"
+            ),
+        ),
+    ] {
+        let patients = json!({"expectedResultType": "PATIENTS", "phenotypicClause": clause});
+        for (status, body) in replies(&f.app, QUERY, &patients).await {
+            assert_eq!(
+                (status, body.as_str()),
+                (StatusCode::BAD_REQUEST, message.as_str())
+            );
+        }
     }
 }
