@@ -52,6 +52,13 @@ public class JWTFilter extends OncePerRequestFilter {
 
     private final static Logger logger = LoggerFactory.getLogger(JWTFilter.class);
 
+    /**
+     * Response header naming why PSAMA refused an application token on {@code token/inspect} or {@code open/validate}:
+     * {@code application_token_expired}, {@code token_mismatch} or {@code application_not_found}. The gateway's {@code PsamaClient} reads
+     * it under the same name, so a rename has to change both.
+     */
+    public static final String APPLICATION_TOKEN_REJECTED_HEADER = "X-Application-Token-Rejected";
+
     private final TOSService tosService;
 
     private final String userClaimId;
@@ -149,9 +156,9 @@ public class JWTFilter extends OncePerRequestFilter {
                     (CustomApplicationDetails) this.customUserDetailService.loadUserByUsername("application:" + applicationId);
                 if (customApplicationDetails.getApplication() == null) {
                     logger.error("Cannot find an application by userId: {}", applicationId);
-                    sendAuthFailure(request, "application_not_found", "No application for ID: " + applicationId);
-                    response.sendError(
-                        HttpServletResponse.SC_UNAUTHORIZED, "Your token doesn't contain valid identical information, please contact admin."
+                    rejectApplicationToken(
+                        request, response, "application_not_found", "No application for ID: " + applicationId,
+                        "Your token doesn't contain valid identical information, please contact admin."
                     );
                     return;
                 }
@@ -163,9 +170,8 @@ public class JWTFilter extends OncePerRequestFilter {
                         "filter() incoming application token - {} - is not the same as record, might because the token has been refreshed. Subject: {}",
                         token, userId
                     );
-                    sendAuthFailure(request, "token_mismatch", "Application token does not match record");
-                    response.sendError(
-                        HttpServletResponse.SC_UNAUTHORIZED,
+                    rejectApplicationToken(
+                        request, response, "token_mismatch", "Application token does not match record",
                         "Your token has been inactivated, please contact admin to grab you the latest one."
                     );
                     return;
@@ -244,8 +250,29 @@ public class JWTFilter extends OncePerRequestFilter {
                 + "environment. Then start PIC-SURE again so the gateway picks up the new token.",
             userId, claims.getExpiration()
         );
-        sendAuthFailure(request, "application_token_expired", "Application token expired at " + claims.getExpiration());
-        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token.");
+        rejectApplicationToken(
+            request, response, "application_token_expired", "Application token expired at " + claims.getExpiration(), "Invalid token."
+        );
+    }
+
+    /**
+     * Sends a 401 for an application token presented on an introspection endpoint, naming the reason in
+     * {@link #APPLICATION_TOKEN_REJECTED_HEADER}. The gateway relies on that header to tell its own token being refused apart from any
+     * other 401, so every rejection of a well-formed application token on these endpoints must go through here.
+     *
+     * @param request the rejected request, which receives the audit failure attributes
+     * @param response the response the 401 is sent on
+     * @param reason the audit failure reason, also sent as the header value
+     * @param auditMessage the audit failure message
+     * @param errorMessage the error message sent to the caller
+     * @throws IOException if sending the error response fails
+     */
+    private void rejectApplicationToken(
+        HttpServletRequest request, HttpServletResponse response, String reason, String auditMessage, String errorMessage
+    ) throws IOException {
+        sendAuthFailure(request, reason, auditMessage);
+        response.setHeader(APPLICATION_TOKEN_REJECTED_HEADER, reason);
+        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, errorMessage);
     }
 
     private void setSecurityContextForApplication(HttpServletRequest request, CustomApplicationDetails authenticatedApplication) {

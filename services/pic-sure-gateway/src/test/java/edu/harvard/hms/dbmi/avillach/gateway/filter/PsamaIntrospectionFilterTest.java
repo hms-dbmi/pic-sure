@@ -85,7 +85,8 @@ class PsamaIntrospectionFilterTest {
     @Test
     void rejectedServiceTokenFailsClosedWithItsOwnAuditReason() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.introspect(any(), any())).thenThrow(new IntrospectionTokenRejectedException("http://psama/token/inspect"));
+        when(client.introspect(any(), any()))
+            .thenThrow(new IntrospectionTokenRejectedException("http://psama/token/inspect", "application_token_expired"));
         AuditContext audit = new AuditContext();
         StringWriter body = new StringWriter();
         HttpServletResponse response = mock(HttpServletResponse.class);

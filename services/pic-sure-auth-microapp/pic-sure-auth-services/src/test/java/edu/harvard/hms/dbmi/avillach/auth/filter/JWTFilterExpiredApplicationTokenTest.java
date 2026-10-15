@@ -75,6 +75,7 @@ class JWTFilterExpiredApplicationTokenTest {
         verify(filterChain, never()).doFilter(any(), any());
         verifyNoInteractions(userDetailsService);
         assertEquals("application_token_expired", AuditAttributes.getMetadata(lastRequest).get("auth_failure_reason"));
+        assertEquals("application_token_expired", response.getHeader(JWTFilter.APPLICATION_TOKEN_REJECTED_HEADER));
 
         String message = singleErrorMessage();
         assertTrue(message.contains(APPLICATION_SUBJECT), message);
@@ -110,6 +111,7 @@ class JWTFilterExpiredApplicationTokenTest {
         verify(filterChain, never()).doFilter(any(), any());
         assertEquals("Failed to parse JWT token.", singleErrorMessage());
         assertEquals("invalid_token", AuditAttributes.getMetadata(lastRequest).get("auth_failure_reason"));
+        assertNull(response.getHeader(JWTFilter.APPLICATION_TOKEN_REJECTED_HEADER));
     }
 
     private String singleErrorMessage() {

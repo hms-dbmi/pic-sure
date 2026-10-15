@@ -416,7 +416,8 @@ class OpenAccessFilterTest {
     @Test
     void rejectedServiceTokenYields502WithItsOwnAuditReason() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
-        when(client.validateOpenAccess(any())).thenThrow(new IntrospectionTokenRejectedException("http://psama/open/validate"));
+        when(client.validateOpenAccess(any()))
+            .thenThrow(new IntrospectionTokenRejectedException("http://psama/open/validate", "application_token_expired"));
         AuditContext ctx = new AuditContext();
         OpenAccessFilter f = filter(client, ctx, true);
 

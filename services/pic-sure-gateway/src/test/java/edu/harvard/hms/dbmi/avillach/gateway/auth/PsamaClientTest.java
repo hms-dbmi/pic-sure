@@ -21,10 +21,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 
 class PsamaClientTest {
 
@@ -191,20 +193,34 @@ class PsamaClientTest {
     }
 
     @Test
-    void introspectionRejectingTheServiceTokenNamesTheFix() {
-        psama.stubFor(post(urlEqualTo("/token/introspect")).willReturn(unauthorized()));
+    void introspectionRejectingTheServiceTokenNamesTheReasonAndTheFix() {
+        psama.stubFor(post(urlEqualTo("/token/introspect")).willReturn(rejectedServiceToken("application_token_expired")));
 
         assertThatThrownBy(() -> client().introspect("user-token", Map.of("Target Service", "/info")))
             .isInstanceOf(IntrospectionTokenRejectedException.class).hasMessageContaining("TOKEN_INTROSPECTION_TOKEN")
-            .hasMessageContaining("/token/introspect").hasMessageContaining("Configure PIC-SURE Token Introspection Token");
+            .hasMessageContaining("/token/introspect").hasMessageContaining("has expired")
+            .hasMessageContaining("Configure PIC-SURE Token Introspection Token");
     }
 
     @Test
-    void openValidateRejectingTheServiceTokenNamesTheFix() {
-        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(unauthorized()));
+    void openValidateRejectingTheServiceTokenNamesTheReason() {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(rejectedServiceToken("token_mismatch")));
 
         assertThatThrownBy(() -> client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host")))
-            .isInstanceOf(IntrospectionTokenRejectedException.class).hasMessageContaining("/open/validate");
+            .isInstanceOf(IntrospectionTokenRejectedException.class).hasMessageContaining("/open/validate")
+            .hasMessageContaining("does not match the one saved in auth.application");
+    }
+
+    /**
+     * A 401 without PSAMA's rejection header may come from a proxy or from some other failure, so it must not be reported as the gateway's
+     * token needing replacement.
+     */
+    @Test
+    void bareUnauthorizedIsNotBlamedOnTheServiceToken() {
+        psama.stubFor(post(urlEqualTo("/token/introspect")).willReturn(unauthorized()));
+
+        assertThatThrownBy(() -> client().introspect("user-token", Map.of("Target Service", "/info")))
+            .isInstanceOf(HttpClientErrorException.Unauthorized.class);
     }
 
     @Test
@@ -213,5 +229,9 @@ class PsamaClientTest {
 
         assertThatThrownBy(() -> client().introspect("user-token", Map.of("Target Service", "/info")))
             .isInstanceOf(HttpServerErrorException.class);
+    }
+
+    private static ResponseDefinitionBuilder rejectedServiceToken(String reason) {
+        return unauthorized().withHeader(PsamaClient.APPLICATION_TOKEN_REJECTED_HEADER, reason);
     }
 }
