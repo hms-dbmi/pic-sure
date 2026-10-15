@@ -51,7 +51,10 @@ public record TokenInspectionResponse(
     @Schema(
         description = "Privilege names the user holds for the calling application, plus the ones bound to no application.",
         example = "[\"SUPER_ADMIN\", \"PRIV_FENCE_phs000007_c1\"]"
-    ) Set<String> privileges, @Schema(hidden = true) Map<String, Object> claims
+    ) Set<String> privileges,
+    @Schema(
+        hidden = true, description = "Every other claim of the introspected token, written beside the named members."
+    ) Map<String, Object> claims
 ) {
 
     private static final Set<String> NAMED =
