@@ -28,6 +28,7 @@ import org.springframework.web.client.RestClientException;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.OpenAccessValidation;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
@@ -410,6 +411,25 @@ class OpenAccessFilterTest {
         verify(chain, never()).doFilter(any(), any());
         assertThat(ctx.getMetadata()).containsEntry("auth_result", "failure")
             .containsEntry("auth_failure_reason", "open_access_unreachable");
+    }
+
+    @Test
+    void rejectedServiceTokenYields502WithItsOwnAuditReason() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any()))
+            .thenThrow(new IntrospectionTokenRejectedException("http://psama/open/validate", "application_token_expired"));
+        AuditContext ctx = new AuditContext();
+        OpenAccessFilter f = filter(client, ctx, true);
+
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(wrap(null), resp, chain);
+
+        assertThat(resp.getStatus()).isEqualTo(502);
+        assertThat(resp.getContentAsString()).contains("\"errorType\":\"open_access_unreachable\"");
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(ctx.getMetadata()).containsEntry("auth_result", "failure")
+            .containsEntry("auth_failure_reason", "introspection_token_rejected");
     }
 
     private static BufferedRequestWrapper wrap(String authHeader) {

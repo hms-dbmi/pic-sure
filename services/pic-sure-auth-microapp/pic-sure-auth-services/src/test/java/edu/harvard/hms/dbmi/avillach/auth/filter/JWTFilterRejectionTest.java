@@ -33,9 +33,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Every path where JWTFilter decides a request is unauthorized must actually stop it. The filter used to call
- * response.sendError(...) and then carry on into filterChain.doFilter(...) — in the application-token branches it
- * even installed an authenticated security context first, so a request it had just rejected reached the handler.
+ * Every path where JWTFilter decides a request is unauthorized must actually stop it. The filter used to call response.sendError(...) and
+ * then carry on into filterChain.doFilter(...) — in the application-token branches it even installed an authenticated security context
+ * first, so a request it had just rejected reached the handler.
  */
 class JWTFilterRejectionTest {
 
@@ -65,8 +65,8 @@ class JWTFilterRejectionTest {
     }
 
     /**
-     * An application token is only ever meant to reach the introspection endpoints. Anywhere else, the filter treats
-     * it as possibly compromised — and must not then hand the request to the endpoint it was aimed at.
+     * An application token is only ever meant to reach the introspection endpoints. Anywhere else, the filter treats it as possibly
+     * compromised — and must not then hand the request to the endpoint it was aimed at.
      */
     @Test
     void applicationTokenOnTheWrongEndpointIsStopped() throws Exception {
@@ -75,6 +75,10 @@ class JWTFilterRejectionTest {
         MockHttpServletResponse response = callWithAppToken("/auth/user");
 
         assertEquals(401, response.getStatus());
+        assertNull(
+            response.getHeader(JWTFilter.APPLICATION_TOKEN_REJECTED_HEADER),
+            "an application token on the wrong endpoint is a misuse, not the gateway's credential failing"
+        );
         assertNull(SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain, never()).doFilter(any(), any());
         assertFalse(
@@ -92,6 +96,7 @@ class JWTFilterRejectionTest {
         MockHttpServletResponse response = callWithAppToken("/auth/token/inspect");
 
         assertEquals(401, response.getStatus());
+        assertEquals("token_mismatch", response.getHeader(JWTFilter.APPLICATION_TOKEN_REJECTED_HEADER));
         assertNull(SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain, never()).doFilter(any(), any());
     }
@@ -160,8 +165,8 @@ class JWTFilterRejectionTest {
     }
 
     /**
-     * @param tokenOnRecord the application's token in the database; equal to {@link #PRESENTED_APP_TOKEN} for a
-     * current token, different for one that has since been rotated.
+     * @param tokenOnRecord the application's token in the database; equal to {@link #PRESENTED_APP_TOKEN} for a current token, different
+     *        for one that has since been rotated.
      */
     private void stubApplicationToken(String tokenOnRecord) {
         String subject = AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|app-uuid";
