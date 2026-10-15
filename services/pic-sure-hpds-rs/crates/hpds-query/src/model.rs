@@ -47,9 +47,12 @@
 //!   or 24 ending in `==`), after trimming as `String.trim` does, and are kept in lowercase
 //!   canonical form; an empty or blank string is null.
 //!
-//! Where Jackson would accept a value that only fails later (a missing
-//! `expectedResultType`, `phenotypicFilterType` or `conceptPath`, a `null` inside a string
-//! list), deserialization fails here instead.
+//! Where Jackson would accept a value that only fails later, deserialization fails here
+//! instead: a missing `phenotypicFilterType` or `conceptPath`, a missing or `null`
+//! `expectedResultType` ([`NULL_RESULT_TYPE_MESSAGE`]), a `null` `conceptPath`
+//! ([`NULL_CONCEPT_PATH_MESSAGE`]) and a `null` among a filter's `values`
+//! ([`NULL_VALUE_MESSAGE`]). A `null` where Java can still answer is kept: an element of
+//! `select` ([`Query::select_nulls`]) and anything in `authorizationFilters`.
 
 use std::fmt;
 
@@ -242,40 +245,109 @@ java_enum! {
 
 /// `v3.Query`: which patients to match and what to return about them.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(try_from = "QueryFields")]
 pub struct Query {
-    /// Concept paths to return, for the result types that return fields.
-    #[serde(default, deserialize_with = "null_as_default")]
+    /// Concept paths to return, for the result types that return fields. A `null` element of
+    /// the request's `select` is not kept here; [`Query::select_nulls`] counts them.
     pub select: Vec<String>,
+    /// How many `null` elements the request's `select` held. Java keeps them in the list:
+    /// COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and INFO_COLUMN_LISTING never
+    /// read `select` and answer as without them, while CROSS_COUNT, OBSERVATION_CROSS_COUNT
+    /// and every query submitted to `POST /query` (whose `QueryValidator` looks each path up)
+    /// fail on them. The service refuses those.
+    pub select_nulls: usize,
     /// Deprecated consent filters. Parsed and checked by [`crate::QueryValidator`], but never
     /// applied to a cohort: consents select partitions through `user_consents` instead.
-    #[serde(default, deserialize_with = "null_as_default")]
     pub authorization_filters: Vec<AuthorizationFilter>,
     /// The caller's consents, in request order. Each names a partition to read; see
     /// [`Query::consent_values`].
-    #[serde(default, deserialize_with = "null_as_default")]
     pub user_consents: Vec<UserConsent>,
     /// The filter tree, or `None` for no filter.
-    #[serde(default)]
     pub phenotypic_clause: Option<PhenotypicClause>,
     /// Variant filters. Always unsupported here when non-empty.
-    #[serde(default, deserialize_with = "null_as_default")]
     pub genomic_filters: Vec<GenomicFilter>,
     /// What the query returns.
     pub expected_result_type: ResultType,
     /// An externally assigned UUID, lowercase.
-    #[serde(default, deserialize_with = "java_uuid")]
     pub picsure_id: Option<String>,
     /// An internally assigned UUID, lowercase.
-    #[serde(default, deserialize_with = "java_uuid")]
     pub id: Option<String>,
 }
 
+/// The JSON fields of a [`Query`] as read, before the `null` elements of `select` are
+/// counted out and a missing or `null` `expectedResultType` is refused.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct QueryFields {
+    #[serde(default, deserialize_with = "null_as_default")]
+    select: Vec<Option<String>>,
+    #[serde(default, deserialize_with = "null_as_default")]
+    authorization_filters: Vec<AuthorizationFilter>,
+    #[serde(default, deserialize_with = "null_as_default")]
+    user_consents: Vec<UserConsent>,
+    #[serde(default)]
+    phenotypic_clause: Option<PhenotypicClause>,
+    #[serde(default, deserialize_with = "null_as_default")]
+    genomic_filters: Vec<GenomicFilter>,
+    #[serde(default)]
+    expected_result_type: Option<ResultType>,
+    #[serde(default, deserialize_with = "java_uuid")]
+    picsure_id: Option<String>,
+    #[serde(default, deserialize_with = "java_uuid")]
+    id: Option<String>,
+}
+
+/// Refusal of a query whose `select` holds `null` ([`Query::select_nulls`]) where Java fails
+/// on it: a CROSS_COUNT or OBSERVATION_CROSS_COUNT on the sync route, and any query on
+/// `POST /query`.
+pub const NULL_SELECT_MESSAGE: &str = "select holds null, which Java cannot answer here";
+
+/// Refusal of a query whose `expectedResultType` is missing or `null`. Java reads it as
+/// `null` and fails on it whatever the route: the sync route switches on it, and
+/// `POST /query` picks a processor by it.
+pub const NULL_RESULT_TYPE_MESSAGE: &str = "expectedResultType is null";
+
+impl TryFrom<QueryFields> for Query {
+    type Error = &'static str;
+
+    fn try_from(fields: QueryFields) -> std::result::Result<Self, Self::Error> {
+        let expected_result_type = fields
+            .expected_result_type
+            .ok_or(NULL_RESULT_TYPE_MESSAGE)?;
+        let select_nulls = fields.select.iter().filter(|path| path.is_none()).count();
+        Ok(Query {
+            select: fields.select.into_iter().flatten().collect(),
+            select_nulls,
+            authorization_filters: fields.authorization_filters,
+            user_consents: fields.user_consents,
+            phenotypic_clause: fields.phenotypic_clause,
+            genomic_filters: fields.genomic_filters,
+            expected_result_type,
+            picsure_id: fields.picsure_id,
+            id: fields.id,
+        })
+    }
+}
+
 impl Query {
+    /// Whether Java fails on the `null` elements of this query's `select` when it is sent to
+    /// the sync route (`asynchronous` false) or to `POST /query` (true): always on
+    /// `POST /query`, and on the sync route for the two result types that read `select`,
+    /// CROSS_COUNT and OBSERVATION_CROSS_COUNT. False when `select` held no `null`.
+    pub fn select_nulls_fail(&self, asynchronous: bool) -> bool {
+        self.select_nulls > 0
+            && (asynchronous
+                || matches!(
+                    self.expected_result_type,
+                    ResultType::CrossCount | ResultType::ObservationCrossCount
+                ))
+    }
+
     /// A query of `result_type` with no select, no filters and no ids.
     pub fn new(result_type: ResultType) -> Self {
         Query {
             select: Vec::new(),
+            select_nulls: 0,
             authorization_filters: Vec::new(),
             user_consents: Vec::new(),
             phenotypic_clause: None,
@@ -338,14 +410,21 @@ impl Query {
 }
 
 /// `v3.AuthorizationFilter`: patients must have one of `values` for `concept_path`.
+///
+/// Both fields may be `null`, and so may each value, as Java reads them: the sync route
+/// never looks at authorization filters on the consent branch and answers the query, so this
+/// service, which never applies them either, accepts them all. `POST /query` checks them
+/// ([`crate::QueryValidator`]).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct AuthorizationFilter {
-    /// The categorical concept to match.
-    pub concept_path: String,
-    /// Accepted values; `None` when the JSON held `null` or omitted it.
+    /// The categorical concept to match; `None` when the JSON held `null` or omitted it.
     #[serde(default)]
-    pub values: Option<Vec<String>>,
+    pub concept_path: Option<String>,
+    /// Accepted values; `None` when the JSON held `null` or omitted it, and a `None` element
+    /// for each `null` in the list.
+    #[serde(default)]
+    pub values: Option<Vec<Option<String>>>,
 }
 
 /// `v3.UserConsent`: one consent the caller holds, naming a partition.
@@ -468,10 +547,12 @@ pub enum PhenotypicClause {
 pub struct PhenotypicFilter {
     /// How the concept path is matched.
     pub phenotypic_filter_type: PhenotypicFilterType,
-    /// The concept path.
+    /// The concept path. A `null` one is refused ([`NULL_CONCEPT_PATH_MESSAGE`]).
+    #[serde(deserialize_with = "concept_path")]
     pub concept_path: String,
-    /// Values to match, for `FILTER`; `None` when null or absent.
-    #[serde(default)]
+    /// Values to match, for `FILTER`; `None` when null or absent. A `null` element is refused
+    /// ([`NULL_VALUE_MESSAGE`]).
+    #[serde(default, deserialize_with = "filter_values")]
     pub values: Option<Vec<String>>,
     /// Inclusive lower bound, for `FILTER`.
     #[serde(default, deserialize_with = "java_double")]
@@ -482,6 +563,29 @@ pub struct PhenotypicFilter {
     /// Accepted and ignored, as in Java.
     #[serde(default, deserialize_with = "java_boolean")]
     pub not: Option<bool>,
+}
+
+/// Refusal of a phenotypic filter whose `conceptPath` is `null`. Java fails on it on every
+/// route: the executor looks the path up on the sync route, and `QueryValidator` (or the
+/// executor, for `ANY_RECORD_OF`) on `POST /query`.
+pub const NULL_CONCEPT_PATH_MESSAGE: &str = "a phenotypic filter's conceptPath is null";
+
+/// Refusal of a phenotypic filter whose `values` holds a `null`. Java fails on it when the
+/// executor looks the value up, on every route.
+pub const NULL_VALUE_MESSAGE: &str = "a phenotypic filter's values hold null";
+
+fn concept_path<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    Option::<String>::deserialize(deserializer)?
+        .ok_or_else(|| de::Error::custom(NULL_CONCEPT_PATH_MESSAGE))
+}
+
+fn filter_values<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<String>>, D::Error> {
+    Option::<Vec<Option<String>>>::deserialize(deserializer)?
+        .map(|values| values.into_iter().collect::<Option<Vec<String>>>())
+        .map(|values| values.ok_or_else(|| de::Error::custom(NULL_VALUE_MESSAGE)))
+        .transpose()
 }
 
 impl PhenotypicFilter {
@@ -849,6 +953,49 @@ mod tests {
             parse(json!({"expectedResultType": "COUNT", "select": null, "genomicFilters": null}))
                 .unwrap();
         assert_eq!(q, Query::new(ResultType::Count));
+    }
+
+    #[test]
+    fn nulls_are_kept_where_java_can_answer_and_refused_where_it_cannot() {
+        let q = parse(json!({"expectedResultType": "COUNT", "select": [null, "a", null]})).unwrap();
+        assert_eq!(
+            (q.select.clone(), q.select_nulls),
+            (vec!["a".to_owned()], 2)
+        );
+        assert!(!q.select_nulls_fail(false));
+        assert!(q.select_nulls_fail(true));
+        for result_type in ["CROSS_COUNT", "OBSERVATION_CROSS_COUNT"] {
+            let q = parse(json!({"expectedResultType": result_type, "select": [null]})).unwrap();
+            assert!(q.select_nulls_fail(false), "{result_type}");
+        }
+        let q = parse(json!({"expectedResultType": "CROSS_COUNT", "select": ["a"]})).unwrap();
+        assert!(!q.select_nulls_fail(false) && !q.select_nulls_fail(true));
+        let q = parse(json!({"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": null, "values": [null, "x"]}]})).unwrap();
+        assert_eq!(
+            q.authorization_filters,
+            [AuthorizationFilter {
+                concept_path: None,
+                values: Some(vec![None, Some("x".to_owned())]),
+            }]
+        );
+        for (query, message) in [
+            (
+                json!({"expectedResultType": null}),
+                NULL_RESULT_TYPE_MESSAGE,
+            ),
+            (json!({"select": []}), NULL_RESULT_TYPE_MESSAGE),
+            (
+                json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "REQUIRED", "conceptPath": null}}),
+                NULL_CONCEPT_PATH_MESSAGE,
+            ),
+            (
+                json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": "a", "values": ["x", null]}}),
+                NULL_VALUE_MESSAGE,
+            ),
+        ] {
+            let error = parse(query.clone()).unwrap_err().to_string();
+            assert!(error.contains(message), "{query}: {error}");
+        }
     }
 
     #[test]

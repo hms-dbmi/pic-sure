@@ -154,7 +154,7 @@ impl QueryLimits {
             query
                 .authorization_filters
                 .iter()
-                .map(|f| f.concept_path.as_str()),
+                .filter_map(|f| f.concept_path.as_deref()),
         );
         let mut touched = concepts.len();
         for prefix in prefixes {

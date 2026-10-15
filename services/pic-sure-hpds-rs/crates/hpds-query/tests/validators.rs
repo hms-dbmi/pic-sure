@@ -40,8 +40,8 @@ fn filter(
 
 fn auth(path: &str, values: Option<&[&str]>) -> AuthorizationFilter {
     AuthorizationFilter {
-        concept_path: path.into(),
-        values: values.map(|v| v.iter().map(|s| (*s).to_owned()).collect()),
+        concept_path: Some(path.into()),
+        values: values.map(|v| v.iter().map(|s| Some((*s).to_owned())).collect()),
     }
 }
 

@@ -1090,6 +1090,9 @@ fn not_ready_response(name: &str) -> Response {
 /// CONTINUOUS_CROSS_COUNT here and COUNT then ends in ERROR; this service refuses all sync
 /// types up front.
 ///
+/// A `select` holding `null` is refused first ([`hpds_query::NULL_SELECT_MESSAGE`]): Java's
+/// `QueryValidator` looks every path up and fails on it, answering an empty 200.
+///
 /// Checks run in this order: the query's shape against the limits, then its consents
 /// ([`Engine::check_limits`], which fails with "User consents are required for this query"
 /// when `hpds.requireAuthorizationFilter` is on and no consent value is given), then the
@@ -1105,6 +1108,9 @@ pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Respon
 }
 
 fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
+    if query.select_nulls_fail(true) {
+        return Err(ApiError::bad_request(hpds_query::NULL_SELECT_MESSAGE));
+    }
     match query.expected_result_type {
         ResultType::Patients
         | ResultType::Dataframe

@@ -107,6 +107,32 @@ pub enum Condition {
     /// whose header is the same and whose rows are a subset. Needs the Java side to be known
     /// ([`Divergences::for_java`]); without it the condition never holds.
     AuthorizationFiltersNarrow,
+    /// The entry's query holds `null` in `select`, the Rust side refused with 400 `select holds
+    /// null, which Java cannot answer here`, and the Java side failed: a sync 200 with an empty
+    /// body (CROSS_COUNT and OBSERVATION_CROSS_COUNT put the null path in a map that refuses
+    /// null keys), or an async submit answered 200 with no status (`QueryValidator` looks the
+    /// null path up in a `TreeMap`). With the Java side unknown, either side may be Java.
+    NullSelectRefused,
+    /// The entry's query holds a phenotypic filter, at any depth, or an authorization filter
+    /// whose `conceptPath` is `null`; the Rust side refused with 400 naming the null
+    /// `conceptPath`, and the Java side failed: a sync 200 with an empty body, an async
+    /// submit answered 200 with no status, or an async query that ended in ERROR.
+    NullConceptPathRefused,
+    /// The entry's query holds a phenotypic filter, at any depth, whose `values` holds `null`;
+    /// the Rust side refused with 400 `a phenotypic filter's values hold null`, and the Java
+    /// side failed: a sync 200 with an empty body or an async query that ended in ERROR.
+    NullFilterValueRefused,
+    /// The entry's query has a missing or `null` `expectedResultType`; the Rust side refused
+    /// with 400 `expectedResultType is null`, and the Java side failed: a sync 200 with an
+    /// empty body or an async submit answered 200 with no status.
+    NullResultTypeRefused,
+    /// The entry's query holds an authorization filter whose `conceptPath` or one of whose
+    /// `values` is `null`; the Java side (which must be known) failed, a sync 200 with an
+    /// empty body or an async query that ended in ERROR, while the Rust side answered, a sync
+    /// 200 with a body or an async query that ended in SUCCESS. The main branch applies
+    /// authorization filters and fails on the null; Rust ignores them, as the consent branch
+    /// does on the sync route.
+    NullAuthorizationFilterIgnored,
 }
 
 /// Which Java service a comparison runs against, for rules that hold for one branch only.
@@ -870,6 +896,196 @@ fn range_min_with_one_empty_body(
             .is_some_and(|clause| holds_range_min_filter(&clause))
 }
 
+/// The message Rust refuses a `null` select element with, where Java fails on it.
+const NULL_SELECT: &str = "select holds null, which Java cannot answer here";
+
+/// The messages Rust refuses a `null` concept path with.
+const NULL_CONCEPT_PATHS: [&str; 2] = [
+    "a phenotypic filter's conceptPath is null",
+    "an authorization filter's conceptPath is null",
+];
+
+/// The message Rust refuses a `null` among a phenotypic filter's values with.
+const NULL_FILTER_VALUE: &str = "a phenotypic filter's values hold null";
+
+/// The message Rust refuses a missing or `null` result type with.
+const NULL_RESULT_TYPE: &str = "expectedResultType is null";
+
+/// Every phenotypic filter of `clause`, at any depth.
+fn filters<'v>(clause: &'v Value, out: &mut Vec<&'v Value>) {
+    match clause.get("phenotypicClauses").and_then(Value::as_array) {
+        Some(children) => children.iter().for_each(|child| filters(child, out)),
+        None => out.push(clause),
+    }
+}
+
+/// The entry's query as JSON, read from its raw body when it has one, a string `query`
+/// parsed.
+fn entry_query(entry: &CorpusEntry) -> Option<Value> {
+    request_value(entry).and_then(|request| query_object(&request))
+}
+
+fn holds_null(list: Option<&Value>) -> bool {
+    list.and_then(Value::as_array)
+        .is_some_and(|items| items.iter().any(Value::is_null))
+}
+
+fn phenotypic_filters(query: &Value) -> Vec<&Value> {
+    let mut out = Vec::new();
+    if let Some(clause) = query.get("phenotypicClause").filter(|c| !c.is_null()) {
+        filters(clause, &mut out);
+    }
+    out
+}
+
+fn authorization_filters(query: &Value) -> &[Value] {
+    query
+        .get("authorizationFilters")
+        .and_then(Value::as_array)
+        .map_or(&[], Vec::as_slice)
+}
+
+/// An async submit Java answered 200 with no query status: the body was empty because an
+/// exception escaped the handler.
+fn submit_failed(outcome: &Outcome) -> bool {
+    matches!(outcome, Outcome::Async(x) if x.submit_status == 200
+        && x.status.is_none()
+        && x.resource_status.is_none()
+        && !x.timed_out)
+}
+
+fn empty_sync_200(outcome: &Outcome) -> bool {
+    matches!(outcome, Outcome::Sync(s) if s.status == 200 && s.body.is_empty())
+}
+
+fn async_error(outcome: &Outcome) -> bool {
+    matches!(outcome, Outcome::Async(x) if ended_in_error(x))
+}
+
+/// Whether the Rust side refused with a body `refused` accepts and the Java side's outcome
+/// satisfies `failed`. With the Java side unknown, either side may be Java.
+fn rust_refused_java_failed(
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+    refused: impl Fn(&str) -> bool,
+    failed: impl Fn(&Outcome) -> bool,
+) -> bool {
+    match java {
+        Some(java) => {
+            let (java_outcome, rust_outcome) = match java.side {
+                Side::A => (a, b),
+                Side::B => (b, a),
+            };
+            refusal(rust_outcome).is_some_and(&refused) && failed(java_outcome)
+        }
+        None => refused_against(a, b, refused, failed),
+    }
+}
+
+fn null_select_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    entry_query(entry).is_some_and(|query| holds_null(query.get("select")))
+        && rust_refused_java_failed(
+            a,
+            b,
+            java,
+            |body| body == NULL_SELECT,
+            |o| empty_sync_200(o) || submit_failed(o),
+        )
+}
+
+fn null_concept_path_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    entry_query(entry).is_some_and(|query| {
+        phenotypic_filters(&query)
+            .into_iter()
+            .chain(authorization_filters(&query))
+            .any(|filter| filter.get("conceptPath").is_some_and(Value::is_null))
+    }) && rust_refused_java_failed(
+        a,
+        b,
+        java,
+        |body| {
+            NULL_CONCEPT_PATHS
+                .iter()
+                .any(|message| body.contains(message))
+        },
+        |o| empty_sync_200(o) || submit_failed(o) || async_error(o),
+    )
+}
+
+fn null_filter_value_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    entry_query(entry).is_some_and(|query| {
+        phenotypic_filters(&query)
+            .iter()
+            .any(|filter| holds_null(filter.get("values")))
+    }) && rust_refused_java_failed(
+        a,
+        b,
+        java,
+        |body| body.contains(NULL_FILTER_VALUE),
+        |o| empty_sync_200(o) || async_error(o),
+    )
+}
+
+fn null_result_type_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    entry_query(entry)
+        .is_some_and(|query| query.get("expectedResultType").is_none_or(Value::is_null))
+        && rust_refused_java_failed(
+            a,
+            b,
+            java,
+            |body| body.contains(NULL_RESULT_TYPE),
+            |o| empty_sync_200(o) || submit_failed(o),
+        )
+}
+
+fn null_authorization_filter_ignored(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(java) = java else {
+        return false;
+    };
+    let (java_outcome, rust_outcome) = match java.side {
+        Side::A => (a, b),
+        Side::B => (b, a),
+    };
+    let rust_answered = match rust_outcome {
+        Outcome::Sync(s) => s.status == 200 && !s.body.is_empty(),
+        Outcome::Async(x) => ended_in_success(x),
+        Outcome::TimedOut | Outcome::Failed(_) => false,
+    };
+    entry_query(entry).is_some_and(|query| {
+        authorization_filters(&query).iter().any(|filter| {
+            filter.get("conceptPath").is_some_and(Value::is_null)
+                || holds_null(filter.get("values"))
+        })
+    }) && (empty_sync_200(java_outcome) || async_error(java_outcome))
+        && rust_answered
+}
+
 impl Condition {
     fn holds(
         self,
@@ -911,6 +1127,13 @@ impl Condition {
             Condition::FilterWithoutCriteriaRefused => filter_without_criteria_refused(entry, a, b),
             Condition::AuthorizationFiltersNarrow => {
                 authorization_filters_narrow(entry, a, b, java)
+            }
+            Condition::NullSelectRefused => null_select_refused(entry, a, b, java),
+            Condition::NullConceptPathRefused => null_concept_path_refused(entry, a, b, java),
+            Condition::NullFilterValueRefused => null_filter_value_refused(entry, a, b, java),
+            Condition::NullResultTypeRefused => null_result_type_refused(entry, a, b, java),
+            Condition::NullAuthorizationFilterIgnored => {
+                null_authorization_filter_ignored(entry, a, b, java)
             }
         }
     }
@@ -1875,5 +2098,222 @@ mod tests {
         )
         .unwrap();
         assert_eq!(Divergences::read(&file).unwrap().rules.len(), 1);
+    }
+
+    fn query_entry(name: &str, kind: Kind, query: Value) -> CorpusEntry {
+        CorpusEntry {
+            name: name.into(),
+            kind,
+            result_type: query["expectedResultType"]
+                .as_str()
+                .unwrap_or("COUNT")
+                .into(),
+            request: json!({"query": query, "resourceUUID": null}),
+            raw_body: None,
+            error_path: false,
+        }
+    }
+
+    fn checked_in() -> Divergences {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/divergences.json");
+        Divergences::read(&file).unwrap()
+    }
+
+    fn bodiless_submit() -> Outcome {
+        async_outcome(200, None, None)
+    }
+
+    fn rule_name(set: &Divergences, e: &CorpusEntry, a: &Outcome, b: &Outcome) -> Option<String> {
+        set.find(e, a, b).map(|rule| rule.name.clone())
+    }
+
+    #[test]
+    fn null_select_is_accepted_only_with_the_null_and_java_failing() {
+        let set = checked_in();
+        let refusal = sync(400, NULL_SELECT);
+        let cross = query_entry(
+            "select-path-and-null-cross-count",
+            Kind::Sync,
+            json!({"expectedResultType": "CROSS_COUNT", "select": ["\\a\\", null]}),
+        );
+        for branch in [JavaBranch::Main, JavaBranch::Consent] {
+            let set = set.clone().for_java(Side::A, branch);
+            assert_eq!(
+                rule_name(&set, &cross, &sync(200, ""), &refusal).as_deref(),
+                Some("null-select-status")
+            );
+            assert_eq!(rule_name(&set, &cross, &refusal, &sync(200, "")), None);
+            assert_eq!(rule_name(&set, &cross, &sync(200, "{}"), &refusal), None);
+        }
+        let set = set.for_java(Side::A, JavaBranch::Main);
+        let without_null = query_entry(
+            "select-path-cross-count",
+            Kind::Sync,
+            json!({"expectedResultType": "CROSS_COUNT", "select": ["\\a\\"]}),
+        );
+        assert_eq!(
+            rule_name(&set, &without_null, &sync(200, ""), &refusal),
+            None
+        );
+        let patients = query_entry(
+            "select-null-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS", "select": [null]}),
+        );
+        assert_eq!(
+            rule_name(
+                &set,
+                &patients,
+                &bodiless_submit(),
+                &refused_submit(NULL_SELECT)
+            )
+            .as_deref(),
+            Some("null-select-status")
+        );
+        assert_eq!(
+            rule_name(
+                &set,
+                &patients,
+                &async_outcome(200, Some("ERROR"), None),
+                &refused_submit(NULL_SELECT)
+            ),
+            None
+        );
+        assert_eq!(
+            rule_name(
+                &set,
+                &patients,
+                &bodiless_submit(),
+                &refused_submit("other")
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn null_concept_paths_values_and_result_types_need_the_null_and_java_failing() {
+        let set = checked_in().for_java(Side::B, JavaBranch::Consent);
+        let required_null = json!({"phenotypicFilterType": "REQUIRED", "conceptPath": null});
+        let nested = query_entry(
+            "conceptpath-null-in-subquery",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"operator": "OR", "phenotypicClauses": [required_null]}}),
+        );
+        let path_refusal = sync(
+            400,
+            "the query is not valid: a phenotypic filter's conceptPath is null at line 1 column 90",
+        );
+        assert_eq!(
+            rule_name(&set, &nested, &path_refusal, &sync(200, "")).as_deref(),
+            Some("null-concept-path-status")
+        );
+        assert_eq!(
+            rule_name(&set, &nested, &path_refusal, &sync(200, "3")),
+            None
+        );
+        let authz = query_entry(
+            "authz-conceptpath-null-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS", "authorizationFilters": [{"conceptPath": null, "values": ["x"]}]}),
+        );
+        let authz_refusal = refused_submit("an authorization filter's conceptPath is null");
+        assert_eq!(
+            rule_name(&set, &authz, &authz_refusal, &bodiless_submit()).as_deref(),
+            Some("null-concept-path-status")
+        );
+        let any_record = query_entry(
+            "conceptpath-null-any-record-of",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS", "phenotypicClause": {"phenotypicFilterType": "ANY_RECORD_OF", "conceptPath": null}}),
+        );
+        assert_eq!(
+            rule_name(
+                &set,
+                &any_record,
+                &refused_submit(
+                    "the query is not valid: a phenotypic filter's conceptPath is null"
+                ),
+                &async_outcome(200, Some("ERROR"), None)
+            )
+            .as_deref(),
+            Some("null-concept-path-status")
+        );
+        let values = query_entry(
+            "values-null",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": "\\s\\", "values": [null, "x"]}}),
+        );
+        let value_refusal = sync(
+            400,
+            "the query is not valid: a phenotypic filter's values hold null at line 1 column 99",
+        );
+        assert_eq!(
+            rule_name(&set, &values, &value_refusal, &sync(200, "")).as_deref(),
+            Some("null-filter-value-status")
+        );
+        assert_eq!(
+            rule_name(&set, &values, &path_refusal, &sync(200, "")),
+            None
+        );
+        let result_type = query_entry(
+            "result-type-null",
+            Kind::Sync,
+            json!({"expectedResultType": null}),
+        );
+        let type_refusal = sync(400, "the query is not valid: expectedResultType is null");
+        assert_eq!(
+            rule_name(&set, &result_type, &type_refusal, &sync(200, "")).as_deref(),
+            Some("null-result-type-status")
+        );
+        let typed = query_entry("count", Kind::Sync, json!({"expectedResultType": "COUNT"}));
+        assert_eq!(rule_name(&set, &typed, &type_refusal, &sync(200, "")), None);
+    }
+
+    #[test]
+    fn a_null_in_authorization_filters_is_accepted_only_against_main_failing() {
+        let set = checked_in();
+        let sync_entry = query_entry(
+            "authz-values-null-count",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\s\\", "values": [null]}]}),
+        );
+        let main = set.clone().for_java(Side::A, JavaBranch::Main);
+        assert_eq!(
+            rule_name(&main, &sync_entry, &sync(200, ""), &sync(200, "3")).as_deref(),
+            Some("null-authorization-filter-main")
+        );
+        assert_eq!(
+            rule_name(&main, &sync_entry, &sync(200, "3"), &sync(200, "")),
+            None
+        );
+        let consent = set.clone().for_java(Side::A, JavaBranch::Consent);
+        assert_eq!(
+            rule_name(&consent, &sync_entry, &sync(200, ""), &sync(200, "3")),
+            None
+        );
+        let async_entry = query_entry(
+            "authz-values-null-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS", "authorizationFilters": [{"conceptPath": "\\s\\", "values": ["x", null]}]}),
+        );
+        assert_eq!(
+            rule_name(
+                &main,
+                &async_entry,
+                &async_outcome(200, Some("ERROR"), None),
+                &async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n1\n"))
+            )
+            .as_deref(),
+            Some("null-authorization-filter-main")
+        );
+        let clean = query_entry(
+            "authz-control-count",
+            Kind::Sync,
+            json!({"expectedResultType": "COUNT", "authorizationFilters": [{"conceptPath": "\\s\\", "values": ["x"]}]}),
+        );
+        assert_eq!(
+            rule_name(&main, &clean, &sync(200, ""), &sync(200, "3")),
+            None
+        );
     }
 }

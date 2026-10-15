@@ -180,8 +180,8 @@ fn authorization_filters_are_never_applied() {
     let mut q = query(ResultType::Count, Some(required(AGE)));
     let unfiltered = s.engine.cohort(&q).unwrap();
     q.authorization_filters = vec![AuthorizationFilter {
-        concept_path: POPULATION.into(),
-        values: Some(vec!["Finnish".into(), "Yoruba".into()]),
+        concept_path: Some(POPULATION.into()),
+        values: Some(vec![Some("Finnish".into()), Some("Yoruba".into())]),
     }];
     assert_eq!(s.engine.cohort(&q).unwrap(), unfiltered);
     q.phenotypic_clause = None;

@@ -160,8 +160,8 @@ fn authorization_filters_count_as_clauses() {
     let mut q = query(ResultType::Count, Some(filter_values(SEX, &["female"])));
     q.authorization_filters = (0..2)
         .map(|_| hpds_query::AuthorizationFilter {
-            concept_path: COHORT.into(),
-            values: Some(vec!["base".into()]),
+            concept_path: Some(COHORT.into()),
+            values: Some(vec![Some("base".into())]),
         })
         .collect();
     limit_message(engine.count(&q));

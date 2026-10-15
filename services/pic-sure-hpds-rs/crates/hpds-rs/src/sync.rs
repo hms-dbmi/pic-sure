@@ -35,6 +35,10 @@ const NO_VARIANT_FILTERS_BODY: &str =
 /// - Any other genomic result type is a 400 text error naming it.
 /// - An export type (PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES, DATAFRAME_PFB) is a 400 with
 ///   Java's message pointing at `POST /query`.
+/// - A `null` element of `select` is ignored by COUNT, CATEGORICAL_CROSS_COUNT and
+///   CONTINUOUS_CROSS_COUNT, which never read `select`, and refused with a 400
+///   ([`hpds_query::NULL_SELECT_MESSAGE`]) by CROSS_COUNT and OBSERVATION_CROSS_COUNT, where
+///   Java fails with an empty 200.
 /// - Before any work is queued, the query's shape is checked against the limits, then its
 ///   consents, then the concepts it touches in the partitions its consents select
 ///   ([`hpds_query::Engine::check_limits`]). With `hpds.requireAuthorizationFilter` on, a
@@ -74,6 +78,9 @@ async fn answer_query(state: &AppState, query: Query) -> Result<Response, ApiErr
             "Result type {result_type} is served asynchronously. Submit it with POST /query, poll \
              /query/{{resourceQueryId}}/status, then collect it from /query/{{resourceQueryId}}/result."
         )));
+    }
+    if query.select_nulls_fail(false) {
+        return Err(ApiError::bad_request(hpds_query::NULL_SELECT_MESSAGE));
     }
     let engine = state.engine()?;
     engine.check_limits(&query)?;

@@ -47,7 +47,8 @@ pub use limits::{
     DEFAULT_MAX_QUERY_CONCEPTS, DEFAULT_MAX_SELECT_PATHS, QueryLimits,
 };
 pub use model::{
-    AuthorizationFilter, GenomicFilter, Operator, PhenotypicClause, PhenotypicFilter,
+    AuthorizationFilter, GenomicFilter, NULL_CONCEPT_PATH_MESSAGE, NULL_RESULT_TYPE_MESSAGE,
+    NULL_SELECT_MESSAGE, NULL_VALUE_MESSAGE, Operator, PhenotypicClause, PhenotypicFilter,
     PhenotypicFilterType, PhenotypicSubquery, Query, ResultType, UserConsent, parse_request_body,
     parse_strict,
 };
@@ -61,7 +62,10 @@ pub use results::{
     PATIENT_ID_FIELD_NAME, PATIENTS_HEADER, RowBuffer, SyncResult,
 };
 pub use store::{DEFAULT_CACHE_BYTES, KEY_FILE_NAME, StoreOptions};
-pub use validate::{ConceptLookup, QueryValidator, check_supported, path_is_variant_spec};
+pub use validate::{
+    ConceptLookup, NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE, QueryValidator, check_supported,
+    path_is_variant_spec,
+};
 
 /// Directory used when `HPDS_DATA_DIRECTORY` is not set. Matches the Java service, so the
 /// all-in-one stack bind-mounts the hpds-rs host directory at the same path.

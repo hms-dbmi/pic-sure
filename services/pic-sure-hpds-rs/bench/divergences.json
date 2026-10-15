@@ -156,6 +156,32 @@
       "name": "filter-without-criteria-status",
       "when": "filter-without-criteria-refused",
       "reason": "Java error, invalid input: a FILTER with neither values nor a min or max (a blank string bound counts as none, since Jackson coerces it to null) makes PhenotypicQueryExecutor throw (PhenotypicQueryExecutor.java:90), so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR; Rust refuses it with 400 \"Either values or one of min/max must be set for a filter on <path>\". invalid-request-empty-200 covers hpds-bench's own error entry for this; this rule covers any entry whose query holds such a filter, and only with that exact refusal against Java's empty 200 or async ERROR."
+    },
+    {
+      "name": "null-select-status",
+      "when": "null-select-refused",
+      "reason": "Java error, invalid input: a null element of select makes Java fail where it reads select. CROSS_COUNT and OBSERVATION_CROSS_COUNT put each path in a map that refuses a null key (CountV3Processor.java:76 and :101 on the consent branch, :76 on main), so /query/sync answers 200 with an empty body; POST /query fails in QueryValidator, which looks every select path up in the dictionary's TreeMap (QueryValidator.java:53 on main, :54 on the consent branch), and answers 200 with no body. Rust refuses those cases with 400 \"select holds null, which Java cannot answer here\". COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and INFO_COLUMN_LISTING never read select, and both services answer them as without the null. Accepted only when the query holds a null select element, Rust's 400 is that exact message, and Java's answer is the empty sync 200 or the bodiless async 200."
+    },
+    {
+      "name": "null-concept-path-status",
+      "when": "null-concept-path-refused",
+      "reason": "Java error, invalid input: a phenotypic filter whose conceptPath is null makes Java fail on every route (the executor looks the path up on /query/sync and answers 200 with an empty body; on POST /query QueryValidator's dictionary lookup answers 200 with no body, or for ANY_RECORD_OF the job ends in ERROR), and so does an authorization filter whose conceptPath is null on POST /query (PhenotypicFilterValidator.java:29). Rust refuses them with 400 naming the null conceptPath. Accepted only when the query holds such a filter, Rust's 400 names it, and Java's answer is one of those three failures."
+    },
+    {
+      "name": "null-filter-value-status",
+      "when": "null-filter-value-refused",
+      "reason": "Java error, invalid input: a null among a phenotypic filter's values makes the executor fail when it looks the value up, so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses it with 400 \"a phenotypic filter's values hold null\". Accepted only when the query holds such a value, with that refusal against those failures."
+    },
+    {
+      "name": "null-result-type-status",
+      "when": "null-result-type-refused",
+      "reason": "Java error, invalid input: a missing or null expectedResultType reaches a switch on it (PicSureV3Service.java:318 on main, :328 on the consent branch, for /query/sync; QueryV3Service.java:118 for POST /query), which throws, so Java answers 200 with no body on both routes. Rust refuses it with 400 \"expectedResultType is null\". Accepted only for such a query, with that refusal against those failures."
+    },
+    {
+      "name": "null-authorization-filter-main",
+      "when": "null-authorization-filter-ignored",
+      "javaBranch": "main",
+      "reason": "Java error, deprecated field: the main branch applies authorizationFilters, and a null conceptPath or a null value in one makes it fail, answering /query/sync 200 with an empty body and ending POST /query in ERROR. Rust never applies authorizationFilters, as the consent branch does not on /query/sync, and answers the query. Accepted only on main, only when the query holds such a null, and only with Java's failure against Rust's answer."
     }
   ]
 }

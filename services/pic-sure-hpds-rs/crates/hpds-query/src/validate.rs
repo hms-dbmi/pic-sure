@@ -204,11 +204,19 @@ pub fn validate_filter(filter: &PhenotypicFilter, concepts: &impl ConceptLookup)
     }
 }
 
+/// Refusal of an authorization filter whose `conceptPath` is `null` on `POST /query`.
+pub const NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE: &str =
+    "an authorization filter's conceptPath is null";
+
 /// `PhenotypicFilterValidator.validate(AuthorizationFilter, metaStore)`: values must be
-/// non-empty and the concept must exist and be categorical.
+/// non-empty (a list holding only `null` counts as non-empty, as in Java) and the concept
+/// must exist and be categorical. A `null` concept path is refused with
+/// [`NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE`], where Java's lookup of it in the dictionary
+/// throws.
 ///
 /// # Errors
-/// [`QueryError::Invalid`] with Java's message.
+/// [`QueryError::Invalid`] with Java's message, or with
+/// [`NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE`].
 pub fn validate_authorization_filter(
     filter: &AuthorizationFilter,
     concepts: &impl ConceptLookup,
@@ -218,7 +226,11 @@ pub fn validate_authorization_filter(
             "AuthorizationFilter values cannot be null or empty".into(),
         ));
     }
-    let path = &filter.concept_path;
+    let Some(path) = &filter.concept_path else {
+        return Err(QueryError::Invalid(
+            NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE.into(),
+        ));
+    };
     match concepts.concept_type(path) {
         None => Err(QueryError::Invalid(format!(
             "{path} is not a valid concept path"
