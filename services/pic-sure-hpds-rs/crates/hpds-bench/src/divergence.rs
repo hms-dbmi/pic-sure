@@ -57,6 +57,12 @@ pub enum Condition {
     /// concept), and the other answered the sync request 200 with an empty body or ended the
     /// accepted async query in ERROR.
     RangeOnCategoricalRefused,
+    /// One side refused with 400 naming a filter whose shape Java's `PhenotypicFilterValidator`
+    /// refuses (`Required filter with concept path <path> cannot have categorical values or
+    /// min/max set`, or `Filter with concept path <path> cannot have both categorical values
+    /// and min/max set`), and the other answered the sync request 200 with an empty body or
+    /// ended the accepted async query in ERROR.
+    FilterShapeRefused,
     /// An async entry whose submit one side refused with 400 `Result type <type> is computed
     /// synchronously. Submit it with POST /query/sync.`, while the other accepted it (200).
     SyncTypeOnAsyncRoute,
@@ -1229,6 +1235,18 @@ impl Condition {
                 a,
                 b,
                 |body| body.ends_with(" is not a categorical variable"),
+                failed_quietly,
+            ),
+            Condition::FilterShapeRefused => refused_against(
+                a,
+                b,
+                |body| {
+                    (body.starts_with("Required filter with concept path ")
+                        && body.ends_with(" cannot have categorical values or min/max set"))
+                        || (body.starts_with("Filter with concept path ")
+                            && body
+                                .ends_with(" cannot have both categorical values and min/max set"))
+                },
                 failed_quietly,
             ),
             Condition::RangeOnCategoricalRefused => refused_against(
@@ -2668,6 +2686,50 @@ mod tests {
             refused_submit("result type COUNT is not supported by this phenotype-only HPDS");
         assert_eq!(
             rule_name(&set, &entry, &bodiless_submit(), &other_type),
+            None
+        );
+    }
+
+    #[test]
+    fn filter_shape_refusals_are_accepted_against_javas_error() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Main);
+        let e = query_entry(
+            "required-with-values-patients",
+            Kind::Async,
+            json!({"expectedResultType": "PATIENTS"}),
+        );
+        for message in [
+            "Required filter with concept path \\s\\ cannot have categorical values or min/max set",
+            "Filter with concept path \\s\\ cannot have both categorical values and min/max set",
+        ] {
+            assert_eq!(
+                rule_name(
+                    &set,
+                    &e,
+                    &async_outcome(200, Some("ERROR"), None),
+                    &refused_submit(message)
+                )
+                .as_deref(),
+                Some("filter-shape-status"),
+                "{message}"
+            );
+            assert_eq!(
+                rule_name(
+                    &set,
+                    &e,
+                    &async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n")),
+                    &refused_submit(message)
+                ),
+                None
+            );
+        }
+        assert_eq!(
+            rule_name(
+                &set,
+                &e,
+                &async_outcome(200, Some("ERROR"), None),
+                &refused_submit("other")
+            ),
             None
         );
     }

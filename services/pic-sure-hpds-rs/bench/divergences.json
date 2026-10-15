@@ -106,6 +106,11 @@
       "reason": "Java error, invalid input: a FILTER with values on a numeric concept makes PhenoCube.getKeysForValue throw a ClassCastException (PhenoCube.java:54-55), so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses the query with 400 \"<path> is not a categorical variable\". Accepted only for that message against Java's empty 200 or async ERROR."
     },
     {
+      "name": "filter-shape-status",
+      "when": "filter-shape-refused",
+      "reason": "Spec divergence, HTTP errors: POST /query runs Java's PhenotypicFilterValidator, which throws IllegalArgumentException for a REQUIRED or ANY_RECORD_OF filter with values or a bound, and for a FILTER with both values and a bound; Java catches it and ends the query in ERROR (QueryV3Service.runQuery). Rust refuses the submit with 400 and the validator's own message. Accepted only for those two messages against Java's ERROR or empty sync 200."
+    },
+    {
       "name": "range-on-categorical-status",
       "when": "range-on-categorical-refused",
       "reason": "Java error, invalid input: a FILTER with min or max on a categorical concept casts the cube's values to Double and throws (PhenoCube.java:100-103), so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses the query with 400 \"<path> is not a numeric variable\". Accepted only for that message against Java's empty 200 or async ERROR."
