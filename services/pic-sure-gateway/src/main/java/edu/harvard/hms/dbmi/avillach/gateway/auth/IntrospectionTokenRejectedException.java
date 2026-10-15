@@ -14,7 +14,7 @@ public class IntrospectionTokenRejectedException extends RuntimeException {
     public IntrospectionTokenRejectedException(String url) {
         super(
             "PSAMA rejected the gateway's TOKEN_INTROSPECTION_TOKEN (HTTP 401 from " + url
-                + "). The token has most likely expired, or it is unset or "
+                + "). The token has most likely expired, it is unset, or "
                 + "does not match the token saved in auth.application. Users cannot log in or query until it is replaced. To fix it, "
                 + "run the 'Configure PIC-SURE Token Introspection Token' Jenkins job, which issues a new token valid for one year and "
                 + "saves it to auth.application and to TOKEN_INTROSPECTION_TOKEN in the gateway's environment. Then start PIC-SURE again "
