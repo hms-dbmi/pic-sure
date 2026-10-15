@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.UserProfileResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
@@ -252,9 +253,9 @@ public class UserServiceTest {
 
         when(mockJwtUtil.parseToken(anyString())).thenReturn(claimsJws);
         when(tosService.hasUserAcceptedLatest(any())).thenReturn(true);
-        User.UserForDisplay currentUser = userService.getCurrentUser("Bearer " + token, true);
+        UserProfileResponse currentUser = userService.getCurrentUser("Bearer " + token, true);
         assertNotNull(currentUser);
-        assertEquals(user.getToken(), currentUser.getToken());
+        assertEquals(user.getToken(), currentUser.token());
     }
 
     @Test
@@ -273,9 +274,9 @@ public class UserServiceTest {
         System.out.println(claimsJws);
         when(mockJwtUtil.parseToken(anyString())).thenReturn(claimsJws);
         when(tosService.hasUserAcceptedLatest(any())).thenReturn(true);
-        User.UserForDisplay currentUser = userService.getCurrentUser("Bearer " + token, true);
+        UserProfileResponse currentUser = userService.getCurrentUser("Bearer " + token, true);
         assertNotNull(currentUser);
-        assertEquals(user.getToken(), currentUser.getToken());
+        assertEquals(user.getToken(), currentUser.token());
     }
 
     @Test
@@ -308,9 +309,9 @@ public class UserServiceTest {
         when(mockJwtUtil.parseToken(anyString())).thenReturn(claimsJws);
         user.setToken(token);
         when(tosService.hasUserAcceptedLatest(any())).thenReturn(true);
-        User.UserForDisplay currentUser = userService.getCurrentUser("Bearer " + token, true);
+        UserProfileResponse currentUser = userService.getCurrentUser("Bearer " + token, true);
         assertNotNull(currentUser);
-        assertEquals(user.getToken(), currentUser.getToken());
+        assertEquals(user.getToken(), currentUser.token());
     }
 
     @Test
@@ -474,9 +475,8 @@ public class UserServiceTest {
     @Test
     public void ensureBaselineRoles_persistenceFails_rejectsAuthentication() {
         User user = createTestUser();
-        when(roleService.findByNames(anySet())).thenReturn(
-            Map.of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME))
-        );
+        when(roleService.findByNames(anySet()))
+            .thenReturn(Map.of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME)));
         when(userRepository.save(user)).thenThrow(new IllegalStateException("synthetic database failure"));
 
         NotAuthorizedException exception = assertThrows(NotAuthorizedException.class, () -> userService.ensureBaselineRoles(user));

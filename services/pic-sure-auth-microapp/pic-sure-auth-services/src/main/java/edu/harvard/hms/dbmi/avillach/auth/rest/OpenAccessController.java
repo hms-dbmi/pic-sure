@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse.Denial;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenSessionResponse;
@@ -38,16 +40,18 @@ public class OpenAccessController {
 
     private final AuthorizationService authorizationService;
     private final OpenSessionService openSessionService;
+    private final ObjectMapper objectMapper;
     private final boolean openIdpProviderIsEnabled;
 
     /** Configures open-access validation and session issuance; both endpoints require the open identity provider to be enabled. */
     @Autowired
     public OpenAccessController(
-        AuthorizationService authorizationService, OpenSessionService openSessionService,
+        AuthorizationService authorizationService, OpenSessionService openSessionService, ObjectMapper objectMapper,
         @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled
     ) {
         this.authorizationService = authorizationService;
         this.openSessionService = openSessionService;
+        this.objectMapper = objectMapper;
         this.openIdpProviderIsEnabled = openIdpProviderIsEnabled;
     }
 
@@ -93,9 +97,11 @@ public class OpenAccessController {
     @PublicEndpoint(Access.ANONYMOUS)
     public ResponseEntity<?> validate(
         @Parameter(
-            required = true, description = "A JSON object that at least includes a user and the token for validation"
-        ) @RequestBody Map<String, Object> inputMap, HttpServletRequest request
+            required = true,
+            description = "The open-access request to validate, naming its target service and carrying the API key when one is enforced."
+        ) @RequestBody OpenAccessValidationRequest validationRequest, HttpServletRequest request
     ) {
+        Map<String, Object> inputMap = validationRequest.toMap(objectMapper);
         // A gateway that predates the object response reads anything but a bare boolean as a denial, so the object goes only to a
         // caller that asks for it. Either service can then be deployed or rolled back first.
         boolean objectResponse = inputMap != null && inputMap.get(RESPONSE_VERSION) instanceof Number version && version.doubleValue() == 2;
