@@ -8,9 +8,12 @@
 //! - the result type;
 //! - the partitions the query's consents select, after admission, as a bit per partition,
 //!   so two different consent selections never share an entry;
-//! - a canonical encoding of the phenotypic clause (every filter field, `not` included,
-//!   floats by their bits), and of `select` for the two types that read it (CROSS_COUNT and
-//!   OBSERVATION_CROSS_COUNT);
+//! - a canonical encoding of the phenotypic clause (every filter field, `not` and the mark
+//!   of `null` values included, floats by their bits), and of `select` for the two types
+//!   that read it (CROSS_COUNT and OBSERVATION_CROSS_COUNT), its count of `null` elements
+//!   included;
+//! - the deferred refusal the query carries ([`crate::Query::java_failure`]), if any, and
+//!   the count of `null` elements of `authorizationFilters`;
 //! - `authorizationFilters` as their exact canonical JSON: the filters and each filter's
 //!   values in request order, repeats kept, with nothing sorted or deduplicated. They are
 //!   validated and never applied, so what order or repetition would mean is undefined;
@@ -52,9 +55,10 @@ const MAX_ENTRY_SHARE: u64 = 16;
 
 /// Bytes of the shortest key [`key_of`] writes: the generation (16), the result type
 /// `COUNT` behind its length (8 + 5), the partition count (8), one byte of partition bits
-/// (at most eight partitions), the no-clause tag (1) and the empty `authorizationFilters`
-/// JSON `[]` behind its length (8 + 2).
-const SHORTEST_KEY: u64 = 16 + 8 + 5 + 8 + 1 + 1 + 8 + 2;
+/// (at most eight partitions), the no-clause tag (1), the no-deferred-refusal tag (1), the
+/// empty `authorizationFilters` JSON `[]` behind its length (8 + 2) and its count of `null`
+/// elements (8).
+const SHORTEST_KEY: u64 = 16 + 8 + 5 + 8 + 1 + 1 + 1 + 8 + 2 + 8;
 
 /// The smallest bound under which the cache can store any answer: the lightest possible
 /// entry (the shortest key, a one-byte COUNT body and [`ENTRY_OVERHEAD`]) is then exactly
@@ -236,6 +240,7 @@ pub(crate) fn key_of(checked: &CheckedQuery<'_, '_>, generation: u128) -> Option
         for path in &query.select {
             key.text(path);
         }
+        key.count(query.select_nulls);
     }
     match &query.phenotypic_clause {
         None => key.byte(0),
@@ -244,7 +249,15 @@ pub(crate) fn key_of(checked: &CheckedQuery<'_, '_>, generation: u128) -> Option
             key.clause(clause);
         }
     }
+    match &query.java_failure {
+        None => key.byte(0),
+        Some(message) => {
+            key.byte(1);
+            key.text(message);
+        }
+    }
     key.authorization_filters(&query.authorization_filters);
+    key.count(query.null_authorization_filters);
     Some(key.finish())
 }
 
@@ -354,5 +367,6 @@ impl KeyWriter {
         self.float(filter.min);
         self.float(filter.max);
         self.flag(filter.not);
+        self.byte(u8::from(filter.null_values));
     }
 }

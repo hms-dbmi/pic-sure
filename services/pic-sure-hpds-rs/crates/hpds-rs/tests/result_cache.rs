@@ -550,3 +550,72 @@ async fn categorical_cross_counts_are_cached_per_selection() {
     let two = sync(&f.app, &categorical(selections[1])).await;
     assert_ne!(one.body, two.body, "the selections answer differently");
 }
+
+#[tokio::test]
+async fn a_null_filter_value_never_shares_an_entry_with_the_same_values_without_it() {
+    let f = cached();
+    let plain = json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": SEX, "values": ["female"]}});
+    let with_null = json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": SEX, "values": ["female", null]}});
+    for _ in 0..2 {
+        let reply = sync(&f.app, &plain).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (StatusCode::OK, "2330")
+        );
+    }
+    assert_eq!(stats(&f).hits, 1);
+    for query in [&with_null, &json!({"query": with_null.clone()})["query"]] {
+        let reply = sync(&f.app, query).await;
+        assert_eq!(
+            (reply.status, reply.body.as_str()),
+            (StatusCode::BAD_REQUEST, hpds_query::NULL_VALUE_MESSAGE)
+        );
+    }
+    assert_eq!(stats(&f).hits, 1);
+    let string_path = json!({"query": with_null.to_string(), "resourceUUID": null}).to_string();
+    let reply = post(&f.app, SYNC, string_path).await;
+    assert_eq!(
+        (reply.status, reply.body.as_str()),
+        (StatusCode::BAD_REQUEST, hpds_query::NULL_VALUE_MESSAGE)
+    );
+    assert_eq!(stats(&f).hits, 1);
+}
+
+/// Every model field that can change an answer is in the key: a query differing from a
+/// cached one only in such a field is never answered from that entry.
+#[test]
+fn queries_differing_only_in_a_null_marker_never_share_an_entry() {
+    let f = cached();
+    let parse = |value: Value| -> hpds_query::Query { serde_json::from_value(value).unwrap() };
+    let required = json!({"phenotypicFilterType": "REQUIRED", "conceptPath": SEX});
+    let pairs = [
+        (
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": SEX, "values": ["female"]}}),
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": SEX, "values": ["female", null]}}),
+        ),
+        (
+            json!({"expectedResultType": "CROSS_COUNT", "select": [SEX]}),
+            json!({"expectedResultType": "CROSS_COUNT", "select": [SEX, null]}),
+        ),
+        (
+            json!({"expectedResultType": "COUNT", "phenotypicClause": required.clone()}),
+            json!({"expectedResultType": "COUNT", "phenotypicClause": required.clone(), "authorizationFilters": [null]}),
+        ),
+        (
+            json!({"expectedResultType": "COUNT", "phenotypicClause": required}),
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"conceptPath": SEX}}),
+        ),
+    ];
+    for (plain, variant) in pairs {
+        let (plain, variant) = (parse(plain), parse(variant));
+        f.engine.answer_sync(&plain).unwrap();
+        assert!(
+            matches!(f.engine.cached_sync(&plain), Ok(Some(_))),
+            "{plain:?}"
+        );
+        assert!(
+            !matches!(f.engine.cached_sync(&variant), Ok(Some(_))),
+            "{variant:?} shared the entry of {plain:?}"
+        );
+    }
+}

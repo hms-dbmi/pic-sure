@@ -48,7 +48,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `HPDS_CACHE_BYTES` | 4 GiB | Byte bound of the decoded block cache. One cache entry holds a concept's block and, once a narrow selection has read the concept through it, its partition view (see [Narrow selections](#narrow-selections)), weighed together, so a read of one concept costs one lookup whatever the selection. A read of many concepts (a study-level `ANY_RECORD_OF`) sends one concept in 64 through the cache on each query, in rotation, and takes the others from a table of the entries it last found there. The table holds entries weakly and forgets every entry the cache drops, so the bound holds, and the cache still sees which concepts are read, though it sees one such read in 64: under eviction pressure a concept read only that way ages faster than one read on its own. The old name `CACHE_BYTES` is still read, with a warning. |
 | `CACHE_SIZE` | ignored | Java's cube count; logged as ignored. |
 | `HPDS_ALLOW_PLAIN` | `false` | Open a store with no key file. Local benchmarking only. |
-| `HPDS_RESULT_CACHE_BYTES` | `0` (off) | Byte bound of the sync result cache, which holds COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers (see [Result cache](#result-cache)). `0` turns it off. A bound above 0 but below 2,864 bytes can store no answer, since one answer may take at most a sixteenth of it; startup logs a warning saying so. |
+| `HPDS_RESULT_CACHE_BYTES` | `0` (off) | Byte bound of the sync result cache, which holds COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and OBSERVATION_CROSS_COUNT answers (see [Result cache](#result-cache)). `0` turns it off. A bound above 0 but below 2,992 bytes can store no answer, since one answer may take at most a sixteenth of it; startup logs a warning saying so. |
 | `HPDS_COMBINED_STORE`, `HPDS_PER_PARTITION_COUNTS` | ignored | Settings of the format 1 store layout; logged as ignored. |
 | `HPDS_REQUIRE_AUTHORIZATION_FILTER` | `true` | Rust-only name for Java's `hpds.requireAuthorizationFilter`, which is also accepted as a variable of that exact name (the Rust name wins when both are set). Despite the name it gates `userConsents`, not authorization filters: when true, every query on `/query/sync` and `POST /query` needs at least one non-null `userConsents` value and is otherwise a 400 "User consents are required for this query", and an unpartitioned data directory is refused at startup. When false, a query without consent values reads every partition. `authorizationFilters` are validated on `POST /query` but never applied, in either mode, as on the Java branch. An open (non-auth) backend must run with it false, since the query service sends that backend no consents. |
 | `ID_BATCH_SIZE` | `0` | Java's export switch. `0` ends every DATAFRAME export in ERROR with "exports are disabled (ID_BATCH_SIZE=0)"; any larger value enables exports (the batch size itself does not change the algorithm). PATIENTS is unaffected. |
@@ -211,8 +211,10 @@ An opt-in cache of sync answers, off unless `HPDS_RESULT_CACHE_BYTES` is above 0
   engine queue and answers at once.
 - **Keying.** An entry is keyed on the store generation (a hash of the store id), the result
   type, the partitions the consents select after admission, and the fields that decide the
-  answer: the phenotypic clause, and `select` for CROSS_COUNT and OBSERVATION_CROSS_COUNT. It
-  also holds `authorizationFilters` as their exact canonical JSON, filters and values in
+  answer: the phenotypic clause (with each filter's mark of a `null` among its values), and
+  `select` for CROSS_COUNT and OBSERVATION_CROSS_COUNT (with its count of `null` elements). It
+  also holds the deferred refusal a query carries for a clause Java fails on, the count of
+  `null` elements of `authorizationFilters`, and `authorizationFilters` as their exact canonical JSON, filters and values in
   request order with repeats kept, nothing sorted or deduplicated. They are never applied, so
   what their order or repetition would mean is undefined; two queries that differ there in any
   way, order included, compute the same answer into two entries, which costs hits but is never
