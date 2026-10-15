@@ -20,7 +20,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <archunit.version>1.4.1</archunit.version>
         <junit.version>5.11.4</junit.version>
-        <jackson.version>2.22.3</jackson.version>
+        <jackson.version>2.21.7</jackson.version>
     </properties>
 
     <dependencies>
@@ -87,7 +87,7 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.21.5</version>
+            <version>2.21.7</version>
             <scope>test</scope>
         </dependency>
         <dependency>
