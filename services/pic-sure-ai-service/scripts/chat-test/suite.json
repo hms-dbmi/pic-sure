@@ -1,0 +1,249 @@
+{
+  "name": "chat",
+  "title": "pic-sure-ai-service chat regression suite",
+  "fixtures": {
+    "t7Query": {
+      "select": [
+        "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+        "\\Nhanes\\demographics\\SEX\\",
+        "\\Nhanes\\demographics\\AGE\\"
+      ],
+      "phenotypicClause": {
+        "operator": "AND",
+        "phenotypicClauses": [
+          {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+            "values": [
+              "female"
+            ]
+          },
+          {
+            "phenotypicFilterType": "FILTER",
+            "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+            "min": 40
+          }
+        ]
+      }
+    },
+    "uiEmptyQuery": {
+      "select": [],
+      "authorizationFilters": [],
+      "phenotypicClause": null,
+      "genomicFilters": [],
+      "expectedResultType": "COUNT",
+      "picsureId": null,
+      "id": null
+    }
+  },
+  "tests": [
+    {
+      "id": "T1",
+      "name": "BMI lookup",
+      "runs": 3,
+      "message": "Find variables related to BMI",
+      "pass": "search proposed (contains body mass index) and no query; short prose names `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\` with its exact path. The proposed search holds no term that matched nothing (no bare bmi)."
+    },
+    {
+      "id": "T2",
+      "name": "Typo + obesity measures",
+      "runs": 1,
+      "message": "show me variables for body mas index and other obesity measures",
+      "pass": "search proposed covering BMI and at least two of height, weight, waist; prose summarizes them with exact paths; no query. No search is PARTIAL. If the reply says the variables are shown/displayed in the results table, a search must have been proposed; a claim with no search is a FAIL. Flag duplicated reply text."
+    },
+    {
+      "id": "T3",
+      "name": "Cholesterol research",
+      "runs": 1,
+      "message": "My research is on cholesterol levels across different demographic groups. What variables should I look at?",
+      "pass": "cholesterol (total, HDL, LDL) AND demographics (sex, age, race/ethnicity), grouped, exact paths; no query. A search proposal is optional (note it)."
+    },
+    {
+      "id": "T6",
+      "name": "Labs / missing data",
+      "runs": 1,
+      "message": "I'm interested in creatinine, albumin, leukocytes, and d dimer. Are these available? Also, can I study sickle cell disease?",
+      "pass": "creatinine and albumin found; leukocytes mapped to white blood cell count; D-dimer and sickle cell reported not available (unless the env's dictionary now has them); nothing invented; no query. A search proposal for the found labs is optional (note it)."
+    },
+    {
+      "id": "T7",
+      "name": "Cohort query proposal",
+      "runs": 5,
+      "message": "Show me female participants over 40 and include their BMI",
+      "pass": "SEX [female], AGE min 40 (a max at or above 85 is noted, not failed), select has BMI + SEX + AGE; query returned; no search, no facets; prose without JSON. A reply with no query is a FAIL. If the log has \"checking the counted query\", the counted-query guard supplied it: note it, and check the returned query matches what was counted."
+    },
+    {
+      "id": "T8",
+      "name": "\"Show me\" is a lookup",
+      "runs": 1,
+      "message": "Just show me BMI and waist circumference",
+      "pass": "search proposed covering both (e.g. `body mass index | waist circumference`); no query; prose names both with exact paths. The proposed search must find BMI: body mass index in it, no bare BMI."
+    },
+    {
+      "id": "T9",
+      "name": "Narrowing follow-up",
+      "runs": 1,
+      "message": "narrow that to people over 50",
+      "body": {
+        "query": "$fixture:t7Query"
+      },
+      "selectChange": {
+        "remove": []
+      },
+      "pass": "SEX kept, AGE min becomes 50, select still has BMI + SEX + AGE; query returned; no search, no facets. A model removeSelect is a FAIL."
+    },
+    {
+      "id": "T10",
+      "name": "Select with no filters",
+      "runs": 1,
+      "message": "Select all race variables",
+      "pass": "search proposed (contains race); no query; prose names `\\Nhanes\\demographics\\RACE\\`. A select-only propose_query is read as the search that found the variables, so there should be NO refused propose_query (error=true) in the log; count any. A reply saying the variables are now selected/added to the selection is a FAIL (the propose_query result says nothing was selected)."
+    },
+    {
+      "id": "T11",
+      "name": "Select with existing filters",
+      "runs": 1,
+      "message": "Select all race variables",
+      "body": {
+        "query": "$fixture:t7Query"
+      },
+      "selectChange": {
+        "add": [
+          "\\Synthea\\ACT Demographics\\Race\\",
+          "\\Nhanes\\demographics\\RACE\\"
+        ],
+        "remove": []
+      },
+      "pass": "query returned keeping SEX and AGE filters; select has RACE + SEX + AGE + BMI; no search. BMI dropped from select is a FAIL (only removeSelect removes a variable). The model adds both race paths with addSelect; a flagged plain select is a note, not a FAIL."
+    },
+    {
+      "id": "T12",
+      "name": "Lookup from the UI's empty query",
+      "runs": 1,
+      "message": "Select all race variables",
+      "body": {
+        "query": "$fixture:uiEmptyQuery",
+        "search": "",
+        "facets": []
+      },
+      "pass": "same as T10; no 400."
+    },
+    {
+      "id": "T13",
+      "name": "Cohort from the UI's empty query",
+      "runs": 1,
+      "message": "Show me female participants over 40 and include their BMI",
+      "body": {
+        "query": "$fixture:uiEmptyQuery",
+        "search": "",
+        "facets": []
+      },
+      "pass": "same as T7; no 400."
+    },
+    {
+      "id": "T14",
+      "name": "Several topics in one question",
+      "runs": 5,
+      "message": "Do you have anything on smoking, alcohol use, sleep, and physical activity?",
+      "pass": "each topic answered (smoking and alcohol with exact paths, physical activity found); sleep is found as three Synthea G47 sleep-disorder paths, so it must be reported with them, not as not found; alcohol lists all seven: the four `\\Nhanes\\questionnaire\\alcohol use\\` items (days drink in year, drink 5 in a day, drink per day, days 5 drinks in year), `food component recall\\Alcohol (gm)`, `supplement use\\ALCOHOL_PERCENT`, and the Synthea F10 path; short summary, not the full smoking list; no query; finishes under the cap. A search is expected (model-called, or added by the service because one search found the named paths); no search is PARTIAL. Any path flag is a FAIL for that path. A topic with about eight or fewer matches written as \"examples include\" is a FAIL. Paths left out of the prose are still a FAIL for the prose, but note that the table would show them. An \"asking the model to correct them\" log line means the path repair ran; note whether the final reply still has a flagged path (FAIL) or was fixed. Note the search terms used in any failing run."
+    },
+    {
+      "id": "T15",
+      "name": "Remove a selected variable",
+      "runs": 2,
+      "message": "Remove BMI from my selected variables",
+      "body": {
+        "query": "$fixture:t7Query"
+      },
+      "selectChange": {
+        "remove": [
+          "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\"
+        ]
+      },
+      "pass": "query returned with SEX and AGE filters kept; select has SEX + AGE and no BMI; the model sends removeSelect with BMI. The reply says BMI is removed only if it was; a reply claiming a removal the returned query does not show is a FAIL."
+    },
+    {
+      "id": "T16",
+      "name": "Browse by category",
+      "runs": 1,
+      "message": "Show me all the laboratory variables",
+      "pass": "list_facets called; no query. list_facets returns categories (dataset_id, data_type) but none for laboratory, so a search for laboratory is proposed; nothing guessed, and no facet that list_facets did not return. Any offer to narrow by dataset or data type must be a real category. Flag a proposal that lists non-laboratory matches (Labetalol, laborer) as laboratory variables."
+    },
+    {
+      "id": "T17",
+      "name": "Topic within a dataset",
+      "runs": 1,
+      "message": "Show me the cholesterol variables in the NHANES dataset",
+      "pass": "list_facets called, search_concepts called with the facet {category: dataset_id, name: Nhanes}, and the response carries search containing cholesterol AND facets [{dataset_id, Nhanes}]; no query. The prose names only NHANES cholesterol paths and no Synthea ones (the narrowed search returns six). If the reply says the variables are shown/displayed in the results table, a search must have been proposed; a claim with no search is a FAIL. A facet that list_facets did not return is a FAIL. Flag duplicated reply text."
+    },
+    {
+      "id": "T18",
+      "name": "Alcohol on its own",
+      "runs": 3,
+      "message": "What alcohol variables do you have?",
+      "pass": "names all six local paths: the four `\\Nhanes\\questionnaire\\alcohol use\\` items, `food component recall\\Alcohol (gm)`, `supplement use\\ALCOHOL_PERCENT` (plus the Synthea F10 path in the target env); exact paths; no query. A search containing alcohol is expected; no search is PARTIAL. If this passes while T14 fails, the cause is the combined search crowding the page; if it fails too, the dictionary search is not returning them. Note the search terms used in any failing run."
+    },
+    {
+      "id": "T19",
+      "name": "Facet-only browse",
+      "runs": 1,
+      "message": "Show me all the continuous variables",
+      "pass": "list_facets called; the response carries facets [{data_type, continuous}] copied from list_facets, with or without a search; no query. Prose gives the count or a few examples with exact paths, not the whole list; nothing guessed."
+    },
+    {
+      "id": "T20",
+      "name": "Replace a selected variable",
+      "runs": 2,
+      "message": "Replace BMI with weight",
+      "body": {
+        "query": "$fixture:t7Query"
+      },
+      "selectChange": {
+        "add": [
+          "\\Nhanes\\examination\\body measures\\Weight (kg)\\"
+        ],
+        "remove": [
+          "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\"
+        ]
+      },
+      "pass": "query returned keeping SEX and AGE filters; select has Weight (kg) + SEX + AGE and NO BMI; no search; the model sends addSelect with Weight (kg) and removeSelect with BMI. BMI still in select is a FAIL, and so is a reply claiming the replacement when the returned query still has BMI."
+    },
+    {
+      "id": "T21",
+      "name": "Count question is not a query change",
+      "runs": 3,
+      "message": "How many female participants over 40 are there?",
+      "pass": "count_participants called; prose gives the count as obfuscated, not exact; NO query returned (the counted-query guard must not fire on a plain count question; a \"checking the counted query\" log line is a FAIL unless the reply really claimed the query changed, then note the wording). A search is acceptable."
+    },
+    {
+      "id": "T22",
+      "name": "Model sends only the selection change",
+      "runs": 5,
+      "message": "Select all race variables",
+      "body": {
+        "query": "$fixture:t7Query"
+      },
+      "selectChange": {
+        "add": [
+          "\\Synthea\\ACT Demographics\\Race\\",
+          "\\Nhanes\\demographics\\RACE\\"
+        ],
+        "remove": []
+      },
+      "pass": "Same request as T11, run 5 times and scored on what the model sent. Count each flag: \"did not add\" (a race path missing from addSelect), \"removed ... unasked\" (any removeSelect: BMI would be dropped), and \"sent select (read as addSelect)\" (still using the old field; works, but note how often). The returned query must keep SEX and AGE and have RACE + SEX + AGE + BMI, as in T11."
+    },
+    {
+      "id": "T23",
+      "name": "Exclusion is a filter, not a removal",
+      "runs": 3,
+      "message": "Exclude smokers from my cohort",
+      "body": {
+        "query": "$fixture:t7Query"
+      },
+      "selectChange": {
+        "remove": []
+      },
+      "pass": "query returned keeping SEX and AGE filters and adding a smoking filter that excludes smokers (not: true on a smoking variable, or the non-smoker values of a categorical one, from a search this turn); select still has BMI + SEX + AGE, plus the smoking variable the filter adds; no removeSelect (flagged \"removed ... unasked\" is a FAIL). Note the smoking path and how the exclusion was written."
+    }
+  ]
+}
