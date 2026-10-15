@@ -25,6 +25,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 
 /**
@@ -50,7 +51,7 @@ public class AccessRuleController {
     @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
     @GetMapping(value = "/{accessRuleId}")
     public ResponseEntity<AccessRuleResponse> getAccessRuleById(
-        @Parameter(description = "The UUID of the access rule to fetch.") @PathVariable("accessRuleId") String accessRuleId
+        @Parameter(description = "The UUID of the access rule to fetch.") @PathVariable("accessRuleId") UUID accessRuleId
     ) {
         AccessRule accessRule = this.accessRuleService.getAccessRuleById(accessRuleId)
             .orElseThrow(() -> new PicSureResponseException(HttpStatus.NOT_FOUND, "AccessRule not found", null));
@@ -95,7 +96,7 @@ public class AccessRuleController {
     @ApiResponse(responseCode = "200", description = "The updated access rules.")
     @AuditEvent(type = "ADMIN", action = "access_rule.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @PatchMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<AccessRuleResponse>> updateAccessRule(
         @Parameter(
             required = true, description = "The access rules to update, each named by UUID; a field left out keeps its stored value."

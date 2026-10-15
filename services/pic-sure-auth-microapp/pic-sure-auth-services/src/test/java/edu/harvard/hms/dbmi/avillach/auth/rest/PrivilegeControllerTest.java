@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -80,7 +80,7 @@ class PrivilegeControllerTest {
         when(privilegeService.updateFrom(anyList())).thenReturn(all);
 
         mockMvc.perform(
-            put("/privilege").contentType(MediaType.APPLICATION_JSON)
+            patch("/privilege").contentType(MediaType.APPLICATION_JSON)
                 .content("[{\"uuid\":\"" + all.getFirst().getUuid() + "\",\"description\":\"edited\"}]")
         ).andExpect(status().isOk()).andExpect(content().string(FrozenWire.json(all)));
     }

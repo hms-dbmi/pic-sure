@@ -89,7 +89,7 @@ public class PrivilegeController {
     @ApiResponse(responseCode = "200", description = "Every privilege after the update, not only the updated ones.")
     @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @PreAuthorize("hasAnyAuthority('SUPER_ADMIN')")
-    @PutMapping(consumes = "application/json", produces = "application/json")
+    @PatchMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<PrivilegeResponse>> updatePrivilege(
         @Parameter(
             required = true, description = "The privileges to update, each named by UUID; a field left out keeps its stored value."

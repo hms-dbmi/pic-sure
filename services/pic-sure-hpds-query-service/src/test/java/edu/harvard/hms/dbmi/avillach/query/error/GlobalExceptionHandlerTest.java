@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.ServletWebRequest;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 
 /**
@@ -42,35 +43,42 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void mapsUnknownExceptionTo500WithCommonsShape() {
-        ResponseEntity<Map<String, Object>> resp = handler.unknown(new RuntimeException("boom"));
+    void mapsUnknownExceptionTo500WithCommonsShape() throws Exception {
+        ResponseEntity<Object> resp = handler.handleUnexpected(new RuntimeException("boom"), request());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(resp.getBody()).containsKey("errorType").containsKey("message").containsKey("requestId");
+        assertThat(resp.getBody()).isInstanceOfSatisfying(
+            Map.class,
+            body -> assertThat(body).containsEntry("errorType", "internal_error")
+                .containsEntry("message", PicsureExceptionAdvice.SERVER_ERROR).containsKey("requestId")
+        );
     }
 
     @Test
     void mapsUnreadableBodyTo400WithAFixedMessage() throws Exception {
         ResponseEntity<Object> resp = handler.handleException(
-            new HttpMessageNotReadableException("JSON parse error: raw-client-payload", new MockHttpInputMessage(new byte[0])),
-            new ServletWebRequest(new MockHttpServletRequest())
+            new HttpMessageNotReadableException("JSON parse error: raw-client-payload", new MockHttpInputMessage(new byte[0])), request()
         );
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(resp.getBody()).isInstanceOfSatisfying(
             Map.class,
-            body -> assertThat(body).containsEntry("errorType", "bad_request").containsEntry("message", "Malformed request body")
-                .containsKey("requestId")
+            body -> assertThat(body).containsEntry("errorType", "bad_request")
+                .containsEntry("message", PicsureExceptionAdvice.BODY_UNREADABLE).containsKey("requestId")
         );
+        assertThat(resp.getBody().toString()).doesNotContain("raw-client-payload");
     }
 
     @Test
     void typeMismatchWithoutAPropertyNameStillReadsCleanly() throws Exception {
-        ResponseEntity<Object> resp =
-            handler.handleException(new TypeMismatchException("abc", Integer.class), new ServletWebRequest(new MockHttpServletRequest()));
+        ResponseEntity<Object> resp = handler.handleException(new TypeMismatchException("abc", Integer.class), request());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(resp.getBody())
-            .isInstanceOfSatisfying(Map.class, body -> assertThat(body).containsEntry("message", "Invalid value for a request parameter"));
+            .isInstanceOfSatisfying(Map.class, body -> assertThat(body).containsEntry("message", PicsureExceptionAdvice.CLIENT_ERROR));
+    }
+
+    private static ServletWebRequest request() {
+        return new ServletWebRequest(new MockHttpServletRequest());
     }
 }

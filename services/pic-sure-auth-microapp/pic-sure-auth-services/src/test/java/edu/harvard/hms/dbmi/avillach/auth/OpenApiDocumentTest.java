@@ -94,13 +94,13 @@ class OpenApiDocumentTest {
     void adminWritesDocumentTheirRequestRecords() throws Exception {
         JsonNode document = objectMapper.readTree(mockMvc.perform(get("/v3/api-docs")).andReturn().getResponse().getContentAsString());
         Map<String, String> records = Map.ofEntries(
-            Map.entry("/user post", "UserCreateRequest"), Map.entry("/user put", "UserUpdateRequest"),
-            Map.entry("/role post", "RoleCreateRequest"), Map.entry("/role put", "RoleUpdateRequest"),
-            Map.entry("/privilege post", "PrivilegeCreateRequest"), Map.entry("/privilege put", "PrivilegeUpdateRequest"),
-            Map.entry("/connection post", "ConnectionCreateRequest"), Map.entry("/connection put", "ConnectionUpdateRequest"),
-            Map.entry("/mapping post", "UserMetadataMappingCreateRequest"), Map.entry("/mapping put", "UserMetadataMappingUpdateRequest"),
-            Map.entry("/accessRule post", "AccessRuleCreateRequest"), Map.entry("/accessRule put", "AccessRuleUpdateRequest"),
-            Map.entry("/application post", "ApplicationCreateRequest"), Map.entry("/application put", "ApplicationUpdateRequest")
+            Map.entry("/user post", "UserCreateRequest"), Map.entry("/user patch", "UserUpdateRequest"),
+            Map.entry("/role post", "RoleCreateRequest"), Map.entry("/role patch", "RoleUpdateRequest"),
+            Map.entry("/privilege post", "PrivilegeCreateRequest"), Map.entry("/privilege patch", "PrivilegeUpdateRequest"),
+            Map.entry("/connection post", "ConnectionCreateRequest"), Map.entry("/connection patch", "ConnectionUpdateRequest"),
+            Map.entry("/mapping post", "UserMetadataMappingCreateRequest"), Map.entry("/mapping patch", "UserMetadataMappingUpdateRequest"),
+            Map.entry("/accessRule post", "AccessRuleCreateRequest"), Map.entry("/accessRule patch", "AccessRuleUpdateRequest"),
+            Map.entry("/application post", "ApplicationCreateRequest"), Map.entry("/application patch", "ApplicationUpdateRequest")
         );
 
         records.forEach((operation, record) -> {
@@ -108,6 +108,8 @@ class OpenApiDocumentTest {
             JsonNode body = document.path("paths").path(pathAndMethod[0]).path(pathAndMethod[1]).path("requestBody").path("content")
                 .path(MediaType.APPLICATION_JSON_VALUE).path("schema");
             assertThat(body.path("items").path("$ref").asText()).as(operation).isEqualTo("#/components/schemas/" + record);
+            assertThat(document.path("paths").path(pathAndMethod[0]).has("put")).as("%s must not also answer PUT", pathAndMethod[0])
+                .isFalse();
         });
         JsonNode userUpdate = document.path("components").path("schemas").path("UserUpdateRequest").path("properties");
         assertThat(userUpdate.has("email")).isTrue();
@@ -122,7 +124,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/application/{applicationId}", "200", "ApplicationResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/application", "200", "ApplicationResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/application", "200", "ApplicationResponse");
-        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/application", "200", "ApplicationResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "patch", "/application", "200", "ApplicationResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/application/{applicationId}", "200", "ApplicationResponse");
         OpenApiDocumentAssertions
             .assertResponseSchema(document, "get", "/application/refreshToken/{applicationId}", "200", "ApplicationTokenResponse");
@@ -139,7 +141,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/connection/{connectionId}", "200", "ConnectionResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/connection", "200", "ConnectionResponse");
         OpenApiDocumentAssertions.assertEnvelope(document, "post", "/connection", "200", "ConnectionResponse");
-        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/connection", "200", "ConnectionResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "patch", "/connection", "200", "ConnectionResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/connection/{connectionId}", "200", "ConnectionResponse");
         OpenApiDocumentAssertions
             .assertSchemaHasFields(document, "ConnectionResponse", "uuid", "id", "label", "subPrefix", "requiredFields");
@@ -156,7 +158,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/mapping/{connectionId}", "200", "ConnectionResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/mapping", "200", "UserMetadataMappingResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/mapping", "200", "UserMetadataMappingResponse");
-        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/mapping", "200", "UserMetadataMappingResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "patch", "/mapping", "200", "UserMetadataMappingResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/mapping/{mappingId}", "200", "UserMetadataMappingResponse");
         OpenApiDocumentAssertions.assertSchemaHasFields(
             document, "UserMetadataMappingResponse", "uuid", "connection", "generalMetadataJsonPath", "auth0MetadataJsonPath"
@@ -171,7 +173,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/accessRule/{accessRuleId}", "200", "AccessRuleResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/accessRule", "200", "AccessRuleResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/accessRule", "200", "AccessRuleResponse");
-        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/accessRule", "200", "AccessRuleResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "patch", "/accessRule", "200", "AccessRuleResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/accessRule/{accessRuleId}", "200", "AccessRuleResponse");
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/accessRule/allTypes", "200", "AccessRuleTypesResponse");
         OpenApiDocumentAssertions.assertSchemaHasFields(
@@ -192,7 +194,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/privilege/{privilegeId}", "200", "PrivilegeResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/privilege", "200", "PrivilegeResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/privilege", "200", "PrivilegeResponse");
-        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/privilege", "200", "PrivilegeResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "patch", "/privilege", "200", "PrivilegeResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "delete", "/privilege/{privilegeId}", "200", "PrivilegeResponse");
         OpenApiDocumentAssertions
             .assertSchemaHasFields(document, "PrivilegeResponse", "uuid", "name", "description", "application", "accessRules");
@@ -211,7 +213,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/role/{roleId}", "200", "RoleResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/role", "200", "RoleResponse");
         OpenApiDocumentAssertions.assertEnvelope(document, "post", "/role", "200", "RoleResponse");
-        OpenApiDocumentAssertions.assertEnvelope(document, "put", "/role", "200", "RoleResponse");
+        OpenApiDocumentAssertions.assertEnvelope(document, "patch", "/role", "200", "RoleResponse");
         OpenApiDocumentAssertions.assertEnvelope(document, "delete", "/role/{roleId}", "200", "RoleResponse");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "RoleResponse", "uuid", "name", "description", "privileges");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "PrivilegeResponse", "uuid");
@@ -227,7 +229,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertResponseSchema(document, "get", "/user/{userId}", "200", "UserResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "get", "/user", "200", "UserResponse");
         OpenApiDocumentAssertions.assertBareArrayOf(document, "post", "/user", "200", "UserResponse");
-        OpenApiDocumentAssertions.assertBareArrayOf(document, "put", "/user", "200", "UserResponse");
+        OpenApiDocumentAssertions.assertBareArrayOf(document, "patch", "/user", "200", "UserResponse");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "UserResponse", "uuid", "email", "connection", "roles");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "ConnectionResponse", "uuid");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "RoleResponse", "uuid");

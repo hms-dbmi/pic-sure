@@ -45,7 +45,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 
 /**
- * {@code POST} and {@code PUT /user} cannot reach the fields the login and terms-of-service flows own: {@code subject}, the long-term
+ * {@code POST} and {@code PATCH /user} cannot reach the fields the login and terms-of-service flows own: {@code subject}, the long-term
  * {@code token}, {@code passport}, {@code acceptedTOS}, {@code matched}, {@code auth0metadata}, or the row identifier on a create. The
  * {@code SUPER_ADMIN} guard still holds on the request-record path.
  */

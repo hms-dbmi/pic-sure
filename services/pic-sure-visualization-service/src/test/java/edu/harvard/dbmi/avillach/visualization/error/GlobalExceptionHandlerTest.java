@@ -15,6 +15,8 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.context.request.ServletWebRequest;
 
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
+
 import java.io.IOException;
 import java.util.Map;
 
@@ -97,13 +99,13 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleUnreadableMessage_returns400() {
+    void handleUnreadableMessage_returns400() throws Exception {
         HttpMessageNotReadableException e = new HttpMessageNotReadableException("Could not read JSON", (Throwable) null, null);
 
-        ResponseEntity<Object> response = handler.handleHttpMessageNotReadable(e, new HttpHeaders(), HttpStatus.BAD_REQUEST, request());
+        ResponseEntity<Object> response = handler.handleException(e, request());
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        assertEquals("Malformed request body", error(response));
+        assertEquals(PicsureExceptionAdvice.BODY_UNREADABLE, error(response));
     }
 
     @Test
@@ -128,13 +130,13 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleGenericException_returns500() {
+    void handleUnexpected_returns500() throws Exception {
         Exception e = new RuntimeException("something unexpected");
 
-        ResponseEntity<Map<String, String>> response = handler.handleGenericException(e);
+        ResponseEntity<Object> response = handler.handleUnexpected(e, request());
 
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
-        assertEquals("Internal server error", response.getBody().get("error"));
+        assertEquals(PicsureExceptionAdvice.SERVER_ERROR, error(response));
     }
 
     private static ServletWebRequest request() {

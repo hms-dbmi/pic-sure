@@ -50,8 +50,8 @@ public class AccessRuleService {
         logger.info("fence_standard_access_rules: {}", fenceStandardAccessRules);
     }
 
-    public Optional<AccessRule> getAccessRuleById(String accessRuleId) {
-        return accessRuleRepo.findById(UUID.fromString(accessRuleId));
+    public Optional<AccessRule> getAccessRuleById(UUID accessRuleId) {
+        return accessRuleRepo.findById(accessRuleId);
     }
 
     public List<AccessRule> getAllAccessRules() {

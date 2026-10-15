@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -87,7 +87,7 @@ class UserControllerAdminTest {
         when(userService.sendUserUpdateEmailsFromResponse(updated)).thenReturn(null);
 
         mockMvc.perform(
-            put("/user").contentType(MediaType.APPLICATION_JSON)
+            patch("/user").contentType(MediaType.APPLICATION_JSON)
                 .content("[{\"uuid\":\"" + updated.getFirst().getUuid() + "\",\"active\":false}]")
         ).andExpect(status().isOk()).andExpect(content().string(FrozenWire.json(updated, DROPPED)));
     }
@@ -118,7 +118,7 @@ class UserControllerAdminTest {
         when(userService.updateFrom(anyList())).thenReturn(null);
 
         mockMvc
-            .perform(put("/user").contentType(MediaType.APPLICATION_JSON).content("[{\"uuid\":\"" + UUID.randomUUID() + "\"}]"))
+            .perform(patch("/user").contentType(MediaType.APPLICATION_JSON).content("[{\"uuid\":\"" + UUID.randomUUID() + "\"}]"))
             .andExpect(status().isInternalServerError()).andExpect(
                 content().string("{\"message\":\"Application error\",\"content\":\"Inner application error, please contact admin.\"}")
             );

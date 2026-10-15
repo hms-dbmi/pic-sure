@@ -1,9 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.exceptions;
 
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.mock.http.MockHttpInputMessage;
@@ -20,49 +19,50 @@ public class GlobalExceptionHandlerTest {
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
     @Test
-    public void testTypeMismatchIs400NotServerError() {
+    public void testTypeMismatchIs400NotServerError() throws Exception {
         MethodArgumentTypeMismatchException ex =
             new MethodArgumentTypeMismatchException("not-a-type", ApiKeyType.class, "keyType", null, null);
 
-        ResponseEntity<?> response = handler.handleTypeMismatch(ex);
+        ResponseEntity<?> response = handler.handleException(ex, request());
 
         assertEquals(400, response.getStatusCode().value());
     }
 
     @Test
-    public void testTypeMismatchNamesParameterAndEnumConstantsWithoutEchoingValue() {
+    public void testTypeMismatchNamesTheParameterWithoutEchoingValue() throws Exception {
         MethodArgumentTypeMismatchException ex =
             new MethodArgumentTypeMismatchException("not-a-type", ApiKeyType.class, "keyType", null, null);
 
-        String body = String.valueOf(handler.handleTypeMismatch(ex).getBody());
+        String body = String.valueOf(handler.handleException(ex, request()).getBody());
 
-        assertTrue(body.contains("keyType"));
-        assertTrue(body.contains("USER"));
-        assertTrue(body.contains("PLATFORM"));
-        // the offending value is client-controlled and must not be reflected
+        assertTrue(body.contains("Bad Request"));
+        assertTrue(body.contains(PicsureExceptionAdvice.invalidParameter("keyType")));
         assertFalse(body.contains("not-a-type"));
     }
 
     @Test
-    public void testUnreadableBodyIs400WithoutParserDetails() {
+    public void testUnreadableBodyIs400WithoutParserDetails() throws Exception {
         HttpMessageNotReadableException ex =
             new HttpMessageNotReadableException("JSON parse error: raw-client-payload", new MockHttpInputMessage(new byte[0]));
 
-        ResponseEntity<?> response = handler.handleHttpMessageNotReadable(
-            ex, new HttpHeaders(), HttpStatus.BAD_REQUEST, new ServletWebRequest(new MockHttpServletRequest())
-        );
+        ResponseEntity<?> response = handler.handleException(ex, request());
 
         assertEquals(400, response.getStatusCode().value());
         assertFalse(String.valueOf(response.getBody()).contains("raw-client-payload"));
     }
 
     @Test
-    public void testTypeMismatchOnNonEnumNamesExpectedType() {
-        MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException("abc", int.class, "page", null, null);
+    public void testRuntimeExceptionIs500WithoutItsMessage() {
+        ResponseEntity<?> response = handler.handleRuntime(new IllegalStateException("internal detail"));
 
-        String body = String.valueOf(handler.handleTypeMismatch(ex).getBody());
+        String body = String.valueOf(response.getBody());
+        assertEquals(500, response.getStatusCode().value());
+        assertTrue(body.contains("Internal Server Error"));
+        assertTrue(body.contains(PicsureExceptionAdvice.SERVER_ERROR));
+        assertFalse(body.contains("internal detail"));
+    }
 
-        assertEquals(400, handler.handleTypeMismatch(ex).getStatusCode().value());
-        assertTrue(body.contains("page"));
+    private static ServletWebRequest request() {
+        return new ServletWebRequest(new MockHttpServletRequest());
     }
 }

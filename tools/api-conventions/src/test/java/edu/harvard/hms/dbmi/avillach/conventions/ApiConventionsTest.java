@@ -116,12 +116,6 @@ class ApiConventionsTest {
     }
 
     @Test
-    void noHandlerBindsAnEntity() {
-        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
-        report("no-entity-parameters", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
-    }
-
-    @Test
     void everyValueStringIsWellFormed() {
         report("value-strings-well-formed", overAllModules(ConfigurationRules::valueStringsAreWellFormed));
     }
@@ -169,6 +163,12 @@ class ApiConventionsTest {
             }
         }
         return violations;
+    }
+
+    @Test
+    void noHandlerBindsAnEntity() {
+        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
+        report("no-entity-parameters", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
     }
 
     private static List<String> overAllModules(Rule rule) {

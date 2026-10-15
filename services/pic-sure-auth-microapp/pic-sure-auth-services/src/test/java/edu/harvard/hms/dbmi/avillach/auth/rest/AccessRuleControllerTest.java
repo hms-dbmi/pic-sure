@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -41,7 +41,7 @@ class AccessRuleControllerTest {
     @Test
     void readingOneAccessRuleReturnsTheEntityJsonWithoutTheMergedMembers() throws Exception {
         AccessRule rule = gatedRule();
-        when(accessRuleService.getAccessRuleById(rule.getUuid().toString())).thenReturn(Optional.of(rule));
+        when(accessRuleService.getAccessRuleById(rule.getUuid())).thenReturn(Optional.of(rule));
 
         mockMvc.perform(get("/accessRule/{accessRuleId}", rule.getUuid())).andExpect(status().isOk())
             .andExpect(content().string(FrozenWire.json(rule))).andExpect(content().string(not(containsString("merged"))));
@@ -70,7 +70,7 @@ class AccessRuleControllerTest {
         when(accessRuleService.updateFrom(anyList())).thenReturn(updated);
 
         mockMvc.perform(
-            put("/accessRule").contentType(MediaType.APPLICATION_JSON)
+            patch("/accessRule").contentType(MediaType.APPLICATION_JSON)
                 .content("[{\"uuid\":\"" + updated.getFirst().getUuid() + "\",\"value\":\"/search/\"}]")
         ).andExpect(status().isOk()).andExpect(content().string(FrozenWire.json(updated)));
     }
@@ -96,7 +96,7 @@ class AccessRuleControllerTest {
     @Test
     void readingAnUnknownAccessRuleIs404InTheErrorEnvelope() throws Exception {
         UUID unknown = UUID.randomUUID();
-        when(accessRuleService.getAccessRuleById(unknown.toString())).thenReturn(Optional.empty());
+        when(accessRuleService.getAccessRuleById(unknown)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/accessRule/{accessRuleId}", unknown)).andExpect(status().isNotFound())
             .andExpect(content().string("{\"message\":\"AccessRule not found\",\"content\":null}"));

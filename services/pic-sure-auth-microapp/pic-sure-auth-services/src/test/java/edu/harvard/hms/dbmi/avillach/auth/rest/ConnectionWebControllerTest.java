@@ -6,7 +6,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -78,7 +78,7 @@ class ConnectionWebControllerTest {
         when(connectionWebService.updateFrom(anyList())).thenReturn(updated);
 
         mockMvc.perform(
-            put("/connection").contentType(MediaType.APPLICATION_JSON)
+            patch("/connection").contentType(MediaType.APPLICATION_JSON)
                 .content("[{\"uuid\":\"" + updated.getFirst().getUuid() + "\",\"label\":\"FENCE\"}]")
         ).andExpect(status().isOk()).andExpect(content().string(FrozenWire.json(updated)));
     }

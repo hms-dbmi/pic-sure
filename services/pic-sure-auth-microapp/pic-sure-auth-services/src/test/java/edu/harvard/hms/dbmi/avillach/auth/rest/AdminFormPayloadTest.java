@@ -156,7 +156,7 @@ class AdminFormPayloadTest {
         ObjectNode edited = userFormBody(target.getEmail(), false);
         edited.put("uuid", target.getUuid().toString());
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/user").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk());
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/user").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk());
 
         User saved = userRepository.findById(target.getUuid()).orElseThrow();
         assertThat(saved.isActive()).isFalse();
@@ -171,7 +171,7 @@ class AdminFormPayloadTest {
         spread.set("connection", connectionAsListed());
         spread.putArray("roles").add(roleAsUserFormSendsIt());
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/user").content(json.createArrayNode().add(spread).toString())).andExpect(status().isOk())
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/user").content(json.createArrayNode().add(spread).toString())).andExpect(status().isOk())
             .andExpect(jsonPath("$[0].uuid").value(target.getUuid().toString())).andExpect(jsonPath("$[0].active").value(false))
             .andExpect(jsonPath("$[0].connection.uuid").value(connection.getUuid().toString()))
             .andExpect(jsonPath("$[0].roles[0].uuid").value(role.getUuid().toString())).andExpect(jsonPath("$[0].token").doesNotExist())
@@ -221,7 +221,7 @@ class AdminFormPayloadTest {
         edited.putObject("application").put("uuid", application.getUuid().toString());
         edited.put("uuid", stored.getUuid().toString());
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/privilege").content(json.createArrayNode().add(edited).toString()))
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/privilege").content(json.createArrayNode().add(edited).toString()))
             .andExpect(status().isOk());
 
         assertThat(privilegeRepository.findById(stored.getUuid()).orElseThrow().getDescription()).isEqualTo("edited in the privilege form");
@@ -264,7 +264,7 @@ class AdminFormPayloadTest {
         edited.putArray("privileges").addObject().put("uuid", privilege.getUuid().toString());
         edited.put("uuid", stored.getUuid().toString());
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/role").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk())
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/role").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk())
             .andExpect(jsonPath("$.message").value("All Roles are updated."))
             .andExpect(jsonPath("$.content[0].uuid").value(stored.getUuid().toString()))
             .andExpect(jsonPath("$.content[0].description").value("edited in the role form"));
@@ -288,7 +288,7 @@ class AdminFormPayloadTest {
             .put("requiredFields", "[{\"label\":\"Email\",\"id\":\"email\"}]").put("subPrefix", id + "|");
         edited.put("uuid", stored.getUuid().toString());
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/connection").content(json.createArrayNode().add(edited).toString()))
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/connection").content(json.createArrayNode().add(edited).toString()))
             .andExpect(status().isOk()).andExpect(jsonPath("$[0].uuid").value(stored.getUuid().toString()))
             .andExpect(jsonPath("$[0].label").value("Edited " + suffix))
             .andExpect(jsonPath("$[0].requiredFields").value("[{\"label\":\"Email\",\"id\":\"email\"}]"));
@@ -303,7 +303,7 @@ class AdminFormPayloadTest {
         ObjectNode edited = json.createObjectNode().put("uuid", application.getUuid().toString()).put("name", application.getName())
             .put("description", "edited").put("token", "forged-application-token");
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/application").content(json.createArrayNode().add(edited).toString()))
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/application").content(json.createArrayNode().add(edited).toString()))
             .andExpect(status().isOk()).andExpect(jsonPath("$[0].uuid").value(application.getUuid().toString()))
             .andExpect(jsonPath("$[0].description").value("edited"))
             .andExpect(jsonPath("$[0].privileges[0].uuid").value(privilege.getUuid().toString()))
@@ -318,7 +318,7 @@ class AdminFormPayloadTest {
     void applicationUpdateIsTheStoredEntityJsonWithoutTheToken() throws Exception {
         ObjectNode edited = json.createObjectNode().put("uuid", application.getUuid().toString()).put("description", "read back");
 
-        String body = mockMvc.perform(asAdmin(HttpMethod.PUT, "/application").content(json.createArrayNode().add(edited).toString()))
+        String body = mockMvc.perform(asAdmin(HttpMethod.PATCH, "/application").content(json.createArrayNode().add(edited).toString()))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
         String expected = new TransactionTemplate(transactionManager)
@@ -346,7 +346,7 @@ class AdminFormPayloadTest {
         edited.putObject("application").put("uuid", application.getUuid().toString());
         edited.put("uuid", privilege.getUuid().toString());
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/privilege").content(json.createArrayNode().add(edited).toString()))
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/privilege").content(json.createArrayNode().add(edited).toString()))
             .andExpect(status().isOk());
 
         JsonNode saved = getJson("/privilege/{id}", privilege.getUuid());
@@ -380,7 +380,7 @@ class AdminFormPayloadTest {
         edited.put("matched", true);
         edited.put("acceptedTOS", 1_700_000_000_000L);
 
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/user").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk());
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/user").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk());
 
         User saved = userRepository.findById(target.getUuid()).orElseThrow();
         assertThat(saved.getSubject()).isEqualTo(STORED_SUBJECT_PREFIX + suffix);
@@ -411,7 +411,7 @@ class AdminFormPayloadTest {
 
     @Test
     void nullListElementIsRejectedAs400() throws Exception {
-        mockMvc.perform(asAdmin(HttpMethod.PUT, "/role").content("[null]")).andExpect(status().isBadRequest())
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/role").content("[null]")).andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.message").value("Invalid request body")).andExpect(jsonPath("$.content").value("[0] must not be null"));
     }
 

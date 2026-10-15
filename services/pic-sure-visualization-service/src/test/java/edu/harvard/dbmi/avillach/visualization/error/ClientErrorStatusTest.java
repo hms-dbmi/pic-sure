@@ -26,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
+
 /**
  * Pins the status, headers and body {@link GlobalExceptionHandler} gives each request error Spring MVC raises before a handler runs, and
  * for an exception no handler expects. Every response carries the {@code {error}} body.
@@ -81,66 +83,69 @@ class ClientErrorStatusTest {
     @Test
     void unreadableJsonBodyIs400() throws Exception {
         mockMvc.perform(post("/probe/body").contentType(MediaType.APPLICATION_JSON).content("{\"name\":"))
-            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Malformed request body"));
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.BODY_UNREADABLE));
     }
 
     @Test
     void missingBodyIs400() throws Exception {
         mockMvc.perform(post("/probe/body").contentType(MediaType.APPLICATION_JSON)).andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("Malformed request body"));
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.BODY_UNREADABLE));
     }
 
     @Test
     void unsupportedMediaTypeIs415WithAccept() throws Exception {
         mockMvc.perform(post("/probe/body").contentType(MediaType.TEXT_PLAIN).content("name")).andExpect(status().isUnsupportedMediaType())
             .andExpect(header().string(HttpHeaders.ACCEPT, containsString("application/json")))
-            .andExpect(jsonPath("$.error").value("This endpoint does not accept the request's content type."));
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.UNSUPPORTED_MEDIA_TYPE));
     }
 
     @Test
     void pathTypeMismatchIs400WithoutEchoingTheValue() throws Exception {
         mockMvc.perform(get("/probe/items/abc")).andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("Invalid value for 'id'")).andExpect(content().string(not(containsString("abc"))));
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.invalidParameter("id")))
+            .andExpect(content().string(not(containsString("abc"))));
     }
 
     @Test
     void wrongMethodIs405WithAllow() throws Exception {
         mockMvc.perform(get("/probe/body")).andExpect(status().isMethodNotAllowed()).andExpect(header().string(HttpHeaders.ALLOW, "POST"))
-            .andExpect(jsonPath("$.error").value("This endpoint does not support the request method."));
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.METHOD_NOT_ALLOWED));
     }
 
     @Test
     void missingRequiredParameterIs400() throws Exception {
         mockMvc.perform(get("/probe/search")).andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("Required parameter 'q' is not present."));
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.missingParameter("q")));
     }
 
     @Test
     void missingResourceIs404() throws Exception {
-        mockMvc.perform(get("/probe/missing")).andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("Not found"));
+        mockMvc.perform(get("/probe/missing")).andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.NOT_FOUND));
     }
 
     @Test
     void unmappedPathIs404() throws Exception {
-        mockMvc.perform(get("/nope")).andExpect(status().isNotFound()).andExpect(jsonPath("$.error").exists());
+        mockMvc.perform(get("/nope")).andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.NOT_FOUND));
     }
 
     @Test
     void unacceptableMediaTypeIs406() throws Exception {
         mockMvc.perform(get("/probe/page").accept(MediaType.APPLICATION_JSON)).andExpect(status().isNotAcceptable())
-            .andExpect(jsonPath("$.error").value("Acceptable representations: [text/html]."));
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.NOT_ACCEPTABLE));
     }
 
     @Test
     void unexpectedRuntimeExceptionIs500() throws Exception {
         mockMvc.perform(get("/probe/boom")).andExpect(status().isInternalServerError())
-            .andExpect(jsonPath("$.error").value("Internal server error"));
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.SERVER_ERROR));
     }
 
     @Test
     void unexpectedCheckedExceptionIs500() throws Exception {
         mockMvc.perform(get("/probe/checked")).andExpect(status().isInternalServerError())
-            .andExpect(jsonPath("$.error").value("Internal server error"));
+            .andExpect(jsonPath("$.error").value(PicsureExceptionAdvice.SERVER_ERROR));
     }
 
     private static Object controller() {

@@ -15,6 +15,8 @@ import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.test.web.servlet.MockMvc;
 
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
+
 /**
  * {@code GET /cache} returns the cache names as a bare array. {@code GET /cache/{cacheName}} returns the cache's name beside its entries,
  * and the entries are one JSON object of cache keys to cached values.
@@ -56,9 +58,7 @@ class CacheControllerTest {
 
         FrozenWire.mockMvc(new CacheController(foreignManager)).perform(get("/cache/{cacheName}", "foreign"))
             .andExpect(status().isInternalServerError()).andExpect(
-                content().string(
-                    "{\"message\":\"An error occurred while processing your request\",\"content\":\"Cache store is not a map: foreign\"}"
-                )
+                content().string("{\"message\":\"Internal Server Error\",\"content\":\"" + PicsureExceptionAdvice.SERVER_ERROR + "\"}")
             );
     }
 }
