@@ -153,11 +153,6 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         chain.doFilter(req, resp);
     }
 
-    /**
-     * Key denials get their own error type so a client can tell "get a new key or session" apart from "the access rules said no". A denial
-     * PSAMA gave no reason for (a bare-boolean {@code false}) or one this gateway doesn't know is {@code unauthorized}, and its audit
-     * reason claims no cause.
-     */
     private void validationFailed(HttpServletResponse resp, String reason) throws IOException {
         audit.put("auth_result", "failure");
         audit.put("auth_action", "open_access.denied");
@@ -165,6 +160,11 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "open_access_unreachable", "Open access validation failed.");
     }
 
+    /**
+     * Key denials get their own error type so a client can tell "get a new key or session" apart from "the access rules said no". A denial
+     * PSAMA gave no reason for (a bare-boolean {@code false}) or one this gateway doesn't know is {@code unauthorized}, and its audit
+     * reason claims no cause.
+     */
     private void denied(HttpServletResponse resp, String reason) throws IOException {
         Denial denial = switch (reason == null ? "" : reason) {
             case OpenAccessValidation.DENIAL_KEY_MISSING -> KEY_MISSING;
