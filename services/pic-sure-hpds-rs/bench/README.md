@@ -82,7 +82,10 @@ Responses with status 400 or above on both sides are compared by status only. JS
 structure, ignoring key order, and `1` equals `1.0`, except in count-valued sync results (COUNT
 and the cross counts), where an integer against a float is a difference because Java emits
 integers. CSV compares the header exactly and the rows as a multiset; a row that fails to parse
-or has the wrong field count is a difference.
+or has the wrong field count is a difference. When both sides answer a sync request 200, a
+`queryMetadata` header on one side only is a difference; neither side sending it (Java's
+INFO_COLUMN_LISTING `[]`, an empty 200) is agreement. Entries that probe invalid requests skip
+this check.
 
 A difference matching a rule in the divergence file prints as `WHITELISTED` with the rule's
 reason and does not fail the run. A rule names an entry glob, a list of exact entry names, a result type, an unordered status

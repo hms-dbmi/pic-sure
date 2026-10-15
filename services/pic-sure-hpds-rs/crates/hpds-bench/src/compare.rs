@@ -42,9 +42,11 @@ fn numbers_equal(a: &serde_json::Number, b: &serde_json::Number) -> bool {
 /// What an entry's response is expected to carry, which decides how strictly it is compared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Mode {
-    /// Whether a 200 response must carry the `queryMetadata` header. Invalid requests are exempt:
-    /// Java answers some of them with an empty 200 that skips the header.
-    pub expect_metadata: bool,
+    /// Whether the presence of the `queryMetadata` header is compared when both sides answer
+    /// 200: a header on one side only is a difference, and both sides without it agree (Java
+    /// sends none with INFO_COLUMN_LISTING's `[]`, nor with an empty 200). Invalid requests are
+    /// exempt: Java answers some of them with an empty 200 that skips the header.
+    pub compare_metadata: bool,
     /// Whether every JSON number is a count that Java emits as an integer, so an integer on one
     /// side and a float on the other is a difference.
     pub count_valued: bool,
@@ -55,7 +57,7 @@ impl Mode {
     pub fn for_entry(entry: &CorpusEntry) -> Self {
         let sync = entry.kind == Kind::Sync;
         Self {
-            expect_metadata: sync && !entry.error_path,
+            compare_metadata: sync && !entry.error_path,
             count_valued: sync && COUNT_RESULT_TYPES.contains(&entry.result_type.as_str()),
         }
     }
@@ -255,10 +257,13 @@ fn sync_diff(a: &SyncOutcome, b: &SyncOutcome, mode: Mode) -> Vec<String> {
         return out;
     }
     field_diff("content-type", &a.content_type, &b.content_type, &mut out);
-    for (side, outcome) in [("A", a), ("B", b)] {
-        if mode.expect_metadata && outcome.status == 200 && !outcome.has_query_metadata {
-            out.push(format!("queryMetadata header missing on {side}"));
-        }
+    if mode.compare_metadata
+        && a.status == 200
+        && b.status == 200
+        && a.has_query_metadata != b.has_query_metadata
+    {
+        let side = if a.has_query_metadata { "A" } else { "B" };
+        out.push(format!("queryMetadata header on {side} only"));
     }
     out.extend(body_diff(
         "body",
@@ -381,7 +386,7 @@ fn changed(before: &Outcome, after: &Outcome, mode: Mode) -> bool {
         (Outcome::TimedOut, Outcome::TimedOut) => false,
         _ => {
             let same_side = Mode {
-                expect_metadata: false,
+                compare_metadata: false,
                 ..mode
             };
             !compare_outcomes(before, after, same_side).is_empty()
@@ -508,11 +513,11 @@ mod tests {
     use serde_json::json;
 
     const META: Mode = Mode {
-        expect_metadata: true,
+        compare_metadata: true,
         count_valued: false,
     };
     const COUNTS: Mode = Mode {
-        expect_metadata: true,
+        compare_metadata: true,
         count_valued: true,
     };
 
@@ -668,11 +673,12 @@ mod tests {
     }
 
     #[test]
-    fn missing_metadata_is_ignored_when_not_expected() {
+    fn metadata_presence_is_ignored_when_not_compared() {
         let a = sync(200, "application/json", "{}", false);
+        let b = sync(200, "application/json", "{}", true);
         let none = Mode::default();
-        assert!(compare_outcomes(&a, &a, none).is_empty());
-        assert!(!compare_outcomes(&a, &a, META).is_empty());
+        assert!(compare_outcomes(&a, &b, none).is_empty());
+        assert!(!compare_outcomes(&a, &b, META).is_empty());
     }
 
     #[test]
@@ -704,10 +710,50 @@ mod tests {
         };
         assert_eq!(Mode::for_entry(&entry), COUNTS);
         entry.error_path = true;
-        assert!(!Mode::for_entry(&entry).expect_metadata);
+        assert!(!Mode::for_entry(&entry).compare_metadata);
         entry.error_path = false;
         entry.kind = Kind::Search;
         entry.result_type = "SEARCH".into();
         assert_eq!(Mode::for_entry(&entry), Mode::default());
+    }
+
+    fn sync_200(body: &str, has_query_metadata: bool) -> Outcome {
+        Outcome::Sync(SyncOutcome {
+            status: 200,
+            content_type: Some("application/json".into()),
+            body: body.into(),
+            has_query_metadata,
+        })
+    }
+
+    #[test]
+    fn query_metadata_differs_only_when_one_side_sends_it() {
+        let (with, without) = (sync_200("[]", true), sync_200("[]", false));
+        assert!(compare_outcomes(&without, &without, META).is_empty());
+        assert!(compare_outcomes(&with, &with, META).is_empty());
+        assert_eq!(
+            compare_outcomes(&with, &without, META),
+            ["queryMetadata header on A only"]
+        );
+        assert_eq!(
+            compare_outcomes(&without, &with, META),
+            ["queryMetadata header on B only"]
+        );
+        let exempt = Mode {
+            compare_metadata: false,
+            ..META
+        };
+        assert!(compare_outcomes(&with, &without, exempt).is_empty());
+        let refused = Outcome::Sync(SyncOutcome {
+            status: 400,
+            content_type: Some("text/plain".into()),
+            body: "bad".into(),
+            has_query_metadata: false,
+        });
+        assert!(
+            !compare_outcomes(&with, &refused, META)
+                .iter()
+                .any(|line| line.starts_with("queryMetadata"))
+        );
     }
 }
