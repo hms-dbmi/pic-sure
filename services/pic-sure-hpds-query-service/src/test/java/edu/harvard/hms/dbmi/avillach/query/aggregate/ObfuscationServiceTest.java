@@ -48,19 +48,20 @@ class ObfuscationServiceTest {
         assertThat(out.get(STUDY)).isEqualTo("16 ±4");
     }
 
-    @Test
-    void studyBandIsCappedAtTen() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"1, 2 ±2", "5, 10 ±10", "6, 12 ±12", "8, 16 ±16", "50, 100 ±100"})
+    void studyBandGrowsWithEverySuppressedConsentGroupWithoutACap(int suppressed, String expected) {
         Map<String, String> counts = new LinkedHashMap<>();
-        counts.put(STUDY, "6");
-        for (int i = 0; i < 6; i++) {
+        counts.put(STUDY, String.valueOf(suppressed));
+        for (int i = 0; i < suppressed; i++) {
             counts.put(STUDY + "c" + i + "\\", "1");
         }
-        assertThat(svc.obfuscateCrossCounts(counts).get(STUDY)).isEqualTo("12 ±10");
+        assertThat(svc.obfuscateCrossCounts(counts).get(STUDY)).isEqualTo(expected);
     }
 
     @Test
-    void studyBandIsCappedWhenNamedAndHiddenGroupsAreMixed() {
-        // 40 named + 8 hidden at 2 each = 56; the band would be 2 x 8 = 16 uncapped
+    void studyBandIsNotCappedWhenNamedAndHiddenGroupsAreMixed() {
+        // 40 named + 8 hidden at 2 each = 56, with a band of 2 x 8 = 16
         Map<String, String> counts = new LinkedHashMap<>();
         counts.put(STUDY, "52");
         counts.put(HMB, "40");
@@ -68,7 +69,7 @@ class ObfuscationServiceTest {
             counts.put(STUDY + "c" + i + "\\", "1");
         }
         Map<String, String> out = svc.obfuscateCrossCounts(counts);
-        assertThat(out.get(STUDY)).isEqualTo("56 ±10");
+        assertThat(out.get(STUDY)).isEqualTo("56 ±16");
         assertThat(out.get(HMB)).isEqualTo("40");
     }
 
@@ -182,7 +183,7 @@ class ObfuscationServiceTest {
         props.getObfuscation().setConsentThreshold(10);
         ObfuscationService scaled = new ObfuscationService(props, new VisualizationFormatter());
 
-        // Suppressed consent group: 4 ±5; study and total band 5 x 5 = 25
+        // Suppressed consent group: 4 ±5; total band 5 x 5 = 25
         Map<String, String> study = new LinkedHashMap<>();
         study.put(STUDY, "20");
         study.put(HMB, "20");

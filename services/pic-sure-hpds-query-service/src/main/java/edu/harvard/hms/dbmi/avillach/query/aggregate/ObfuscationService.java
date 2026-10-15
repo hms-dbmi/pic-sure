@@ -40,7 +40,7 @@ public class ObfuscationService {
     // A suppressed consent group (0..consentThreshold-1) counts toward its study as the middle of that range, with a band covering it.
     private final int suppressedEstimate;
     private final int suppressedVariance;
-    private final int maxVariance;
+    private final int totalVariance;
     private final int roundingStep;
     private final int chartThreshold;
     private final int chartVariance;
@@ -58,7 +58,7 @@ public class ObfuscationService {
         this.consentThreshold = Math.max(configured, MIN_CONSENT_THRESHOLD);
         this.suppressedEstimate = Math.max(consentThreshold - 1, 0) / 2;
         this.suppressedVariance = Math.max(consentThreshold - 1, 0) - suppressedEstimate;
-        this.maxVariance = 5 * suppressedVariance;
+        this.totalVariance = 5 * suppressedVariance;
         this.roundingStep = consentThreshold;
         this.chartThreshold = 2 * consentThreshold;
         this.chartVariance = consentThreshold;
@@ -140,7 +140,7 @@ public class ObfuscationService {
         if (suppressed == 0) {
             return Integer.toString(sum);
         }
-        return sum + " ±" + Math.min(suppressed * suppressedVariance, maxVariance);
+        return sum + " ±" + suppressed * suppressedVariance;
     }
 
     /** COUNT case: takes the study-consents CROSS_COUNT and returns only its obfuscated total. A missing total is suppressed. */
@@ -154,7 +154,7 @@ public class ObfuscationService {
         if (isSuppressed(count)) {
             return suppressedDisplay();
         }
-        return roundUp(count) + " ±" + maxVariance;
+        return roundUp(count) + " ±" + totalVariance;
     }
 
     private boolean isSuppressed(Integer count) {
