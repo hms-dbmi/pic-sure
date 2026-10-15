@@ -29,6 +29,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -195,7 +196,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/application/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Application is not found by given Application ID: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Application is not found by given Application ID: " + unknown));
     }
 
     @Test
@@ -211,7 +213,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.DELETE, "/application/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Cannot find application by the given applicationId: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Cannot find application by the given applicationId: " + unknown));
     }
 
     @Test
@@ -234,7 +237,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/role/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Role is not found by given role ID: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Role is not found by given role ID: " + unknown));
     }
 
     @Test
@@ -242,7 +246,8 @@ class DocumentedErrorResponsesTest {
         UUID unknown = UUID.randomUUID();
 
         mockMvc.perform(asSuperAdmin(HttpMethod.DELETE, "/role/{id}", unknown)).andExpect(status().isBadRequest())
-            .andExpect(content().string("Role not found - uuid: " + unknown));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Role not found - uuid: " + unknown));
     }
 
     @Test
@@ -257,7 +262,7 @@ class DocumentedErrorResponsesTest {
     @Test
     void unknownPrivilegeIs400() throws Exception {
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/privilege/{id}", UUID.randomUUID())).andExpect(status().isBadRequest())
-            .andExpect(content().string("Privilege not found"));
+            .andExpect(jsonPath("$.message").value("Invalid request")).andExpect(jsonPath("$.content").value("Privilege not found"));
     }
 
     @Test
@@ -286,7 +291,8 @@ class DocumentedErrorResponsesTest {
     @Test
     void unknownConnectionIs400() throws Exception {
         mockMvc.perform(asSuperAdmin(HttpMethod.GET, "/connection/{id}", "no-such-connection")).andExpect(status().isBadRequest())
-            .andExpect(content().string("Connection with id no-such-connection not found"));
+            .andExpect(jsonPath("$.message").value("Invalid request"))
+            .andExpect(jsonPath("$.content").value("Connection with id no-such-connection not found"));
     }
 
     @Test
@@ -352,7 +358,7 @@ class DocumentedErrorResponsesTest {
         void unknownCacheNameReturnsANewEmptyCache() throws Exception {
             cacheInspectionMockMvc
                 .perform(anonymous(HttpMethod.GET, "/cache/{name}", "nope").with(holding(AuthNaming.AuthRoleNaming.SUPER_ADMIN)))
-                .andExpect(status().isOk()).andExpect(content().json("{}"));
+                .andExpect(status().isOk()).andExpect(content().json("{\"name\":\"nope\",\"entries\":{}}", JsonCompareMode.STRICT));
         }
 
         @Test

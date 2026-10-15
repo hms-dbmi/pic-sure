@@ -101,6 +101,11 @@ class ApiConventionsTest {
     }
 
     @Test
+    void catchAllExceptionAdviceKeepsFrameworkStatuses() {
+        report("catch-all-advice-extends-base", overAllModules(ExceptionAdviceRules::catchAllAdviceExtendsBaseHandler));
+    }
+
+    @Test
     void everyHandlerCarriesAnAuditEvent() {
         report("handler-has-audit-event", overAllModules(AuditRules::auditEventOnEveryHandler));
     }
@@ -158,6 +163,26 @@ class ApiConventionsTest {
             }
         }
         return violations;
+    }
+
+    @Test
+    void noHandlerBindsAnEntity() {
+        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
+        report("no-entity-parameters", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
+    }
+
+    @Test
+    void everyHandlerSignatureIsTyped() {
+        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
+        report(
+            "typed-handler-signatures",
+            overDocumentedModules((module, classes) -> SignatureRules.typedHandlerSignatures(module, classes, entities))
+        );
+    }
+
+    @Test
+    void everyReachableModelIsDocumented() {
+        report("schema-documented-models", SchemaRules.documentedModels(registry, modules, SchemaRules.SHARED_MODEL_MODULES));
     }
 
     private static List<String> overAllModules(Rule rule) {

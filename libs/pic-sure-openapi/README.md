@@ -16,14 +16,14 @@ It applies to every type a documented handler binds or returns, and to every typ
 | Where | Requirement |
 |---|---|
 | Record, class or enum | `@Schema(description = ...)` on the type |
-| Field or record component | `description` |
-| Scalar field: a numeric primitive or its box, `String`, `UUID`, `Instant`, `Date`, `LocalDate` | `example` as well |
-| Collection or array of scalars | `example` as well, written as a JSON array |
-| Boolean, enum, nested model, `Map` | no `example` |
-| `Map` | the description names the keys |
+| Field or record component | `description`, on the field or on its getter |
+| Value field: a primitive other than `boolean`, or any JDK class not exempt below, such as `String`, `UUID`, `Instant`, `BigDecimal`, `Duration` or `URI` | `example` as well, on the field or on its getter |
+| Collection, array or `Optional` of values | `example` as well, written as a JSON array for a collection or array |
+| Boolean, enum, nested model, `Map`, `JsonNode`, `Object` | no `example` |
+| `Map` or `JsonNode` | the description names the keys, or says the value is passed through unread |
 | Enum constant | `@Schema(description = ...)` on the constant |
 | Field the server always emits or always needs | `requiredMode = Schema.RequiredMode.REQUIRED` |
-| Member marked `@JsonIgnore` | nothing |
+| Member marked `@JsonIgnore`, or `@Schema(hidden = true)` | nothing |
 
 Every `description` is one or more sentences, each ending in a period. A bare noun phrase becomes a sentence: "The query id." An
 `@Operation` `summary` stays a short phrase with no period. The examples in this README follow the rule.
@@ -79,7 +79,7 @@ description appears by name alone.
 Do not put `allowableValues` on an enum-typed field. swagger-core replaces the real list of values with it.
 
 An enum-typed field with no description of its own shows the enum type's description in the document, so the document cannot tell
-that the field was left undescribed. The bytecode rule can.
+that the field was left undescribed. `schema-documented-models` can.
 
 ## Testing a service's document
 
@@ -107,5 +107,5 @@ Rules in `tools/api-conventions` check the convention on compiled bytecode and r
 
 | Rule | Checks |
 |---|---|
-
-No rule has landed yet; the two that will are the last PRs of this stack.
+| `typed-handler-signatures` | Every handler's `@RequestBody` type and return type is a concrete model. No `Object`, wildcard, type variable, raw `ResponseEntity`, `Map`, `JsonNode`, `Page`, `Slice` or `@Entity` at any depth. `String`, `byte[]`, `InputStreamResource` and `Void` pass. |
+| `schema-documented-models` | Every model reachable from a handler carries a class-level `@Schema` description, a description on each field, record component and enum constant, and an example on each value field and each collection, array or `Optional` of values. A value is a primitive other than `boolean` or any JDK class except `Boolean`, `Object`, `Void`, enums and maps. Booleans, enums, nested models, `Map` and `JsonNode` fields need no example. `@JsonIgnore`d and `@Schema(hidden = true)` members are skipped. |

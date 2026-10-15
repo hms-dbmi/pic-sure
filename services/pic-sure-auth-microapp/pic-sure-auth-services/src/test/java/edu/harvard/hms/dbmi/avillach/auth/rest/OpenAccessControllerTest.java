@@ -12,6 +12,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.ApiKeyCreationResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApiKeyRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
@@ -51,6 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
@@ -58,12 +60,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Standalone MockMvc tests over a real {@link AuthorizationService} and a real {@link ApiKeyService} (repository mocked), so the JSON on
- * the wire, the {@code responseVersion} negotiation, and the enforcement table are exercised end to end.
+ * the wire, the {@code responseVersion} negotiation, and the enforcement table are exercised end to end. The binding tests mock the
+ * authorization service to check the map the typed request body becomes.
  */
 public class OpenAccessControllerTest {
 
@@ -100,7 +104,8 @@ public class OpenAccessControllerTest {
             accessRuleService, mock(SessionService.class), roleService, "fence,okta", mock(UserConsentsRepository.class), false, false,
             apiKeyService, openSessionService, apiKeyEnforcementEnabled
         );
-        return MockMvcBuilders.standaloneSetup(new OpenAccessController(authorizationService, openSessionService, openIdpProviderIsEnabled))
+        return MockMvcBuilders
+            .standaloneSetup(new OpenAccessController(authorizationService, openSessionService, objectMapper, openIdpProviderIsEnabled))
             .build();
     }
 
@@ -441,5 +446,69 @@ public class OpenAccessControllerTest {
         assertEquals(legacy, versioned);
         Map<String, Object> denied = AuditAttributes.getMetadata(validate(mockMvc, null, 2).getRequest());
         assertEquals(Map.of("validation_result", "false", "target_service", "/query/sync"), denied);
+    }
+
+    private static final String GATEWAY_BODY =
+        "{\"request\":{\"Target Service\":\"/hpds/open/query/sync\"},\"ipAddress\":\"OPEN_ACCESS:localhost\","
+            + "\"apiKey\":\"picsure_u_00000000000000000000000000000000000000000003tr27S\"}";
+
+    private MockMvc mockedServiceMvc(AuthorizationService authorizationService) {
+        return MockMvcBuilders.standaloneSetup(new OpenAccessController(authorizationService, openSessionService, objectMapper, true))
+            .build();
+    }
+
+    @Test
+    public void testServiceReceivesTheGatewayBodyAsAPlainMap() throws Exception {
+        AuthorizationService authorizationService = mock(AuthorizationService.class);
+        when(authorizationService.validateOpenAccessRequest(anyMap())).thenReturn(OpenAccessValidationResponse.granted(null));
+
+        mockedServiceMvc(authorizationService).perform(post("/open/validate").contentType(MediaType.APPLICATION_JSON).content(GATEWAY_BODY))
+            .andExpect(status().isOk());
+
+        ArgumentCaptor<Map<String, Object>> input = ArgumentCaptor.captor();
+        verify(authorizationService).validateOpenAccessRequest(input.capture());
+        assertTrue(input.getValue() instanceof HashMap);
+        assertEquals(
+            Map.of(
+                "request", Map.of("Target Service", "/hpds/open/query/sync"), "ipAddress", "OPEN_ACCESS:localhost", "apiKey",
+                "picsure_u_00000000000000000000000000000000000000000003tr27S"
+            ), input.getValue()
+        );
+    }
+
+    @Test
+    public void testResponseVersionReachesTheServiceAsSent() throws Exception {
+        AuthorizationService authorizationService = mock(AuthorizationService.class);
+        when(authorizationService.validateOpenAccessRequest(anyMap())).thenReturn(OpenAccessValidationResponse.granted(null));
+        MockMvc mockMvc = mockedServiceMvc(authorizationService);
+
+        mockMvc.perform(post("/open/validate").contentType(MediaType.APPLICATION_JSON).content("{\"responseVersion\":\"2\"}"))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/open/validate").contentType(MediaType.APPLICATION_JSON).content("{\"responseVersion\":2}"))
+            .andExpect(status().isOk());
+
+        verify(authorizationService).validateOpenAccessRequest(Map.of(OpenAccessController.RESPONSE_VERSION, "2"));
+        verify(authorizationService).validateOpenAccessRequest(Map.of(OpenAccessController.RESPONSE_VERSION, 2));
+    }
+
+    @Test
+    public void testEmptyBodyReachesTheServiceAsAnEmptyMap() throws Exception {
+        AuthorizationService authorizationService = mock(AuthorizationService.class);
+        when(authorizationService.validateOpenAccessRequest(anyMap())).thenReturn(OpenAccessValidationResponse.granted(null));
+
+        mockedServiceMvc(authorizationService).perform(post("/open/validate").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk());
+
+        verify(authorizationService).validateOpenAccessRequest(Map.of());
+    }
+
+    @Test
+    public void testGetIsNotAccepted() throws Exception {
+        AuthorizationService authorizationService = mock(AuthorizationService.class);
+
+        mockedServiceMvc(authorizationService).perform(get("/open/validate").contentType(MediaType.APPLICATION_JSON).content(GATEWAY_BODY))
+            .andExpect(status().isMethodNotAllowed());
+
+        verifyNoInteractions(authorizationService);
     }
 }

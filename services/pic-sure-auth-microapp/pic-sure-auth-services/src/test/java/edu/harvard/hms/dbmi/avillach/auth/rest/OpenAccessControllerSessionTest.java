@@ -47,8 +47,9 @@ public class OpenAccessControllerSessionTest {
     private MockMvc mockMvc(OpenSessionService service, boolean openIdpProviderIsEnabled) {
         // the application's ObjectMapper, so expiresAt goes out as PSAMA really writes it
         return MockMvcBuilders
-            .standaloneSetup(new OpenAccessController(mock(AuthorizationService.class), service, openIdpProviderIsEnabled))
-            .setMessageConverters(new MappingJackson2HttpMessageConverter(new ApplicationConfig(null).objectMapper()))
+            .standaloneSetup(
+                new OpenAccessController(mock(AuthorizationService.class), service, new ObjectMapper(), openIdpProviderIsEnabled)
+            ).setMessageConverters(new MappingJackson2HttpMessageConverter(new ApplicationConfig(null).objectMapper()))
             .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 

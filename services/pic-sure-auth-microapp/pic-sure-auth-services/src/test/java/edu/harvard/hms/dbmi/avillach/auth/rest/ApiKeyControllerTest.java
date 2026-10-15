@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.PlatformApiKeyRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserApiKeyRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.ApiKeyCreationResponse;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 
@@ -55,7 +57,7 @@ public class ApiKeyControllerTest {
         when(captchaVerifier.verify(any(), any())).thenReturn(true);
         when(apiKeyService.generateUserKey(any(), anyString())).thenReturn(creationResponse);
 
-        ResponseEntity<?> response = controller.createUserKey(new UserApiKeyRequest("captcha-token", "Jane Doe", "user@example.com"), request);
+        ResponseEntity<ApiKeyCreationResponse> response = controller.createUserKey(new UserApiKeyRequest("captcha-token", "Jane Doe", "user@example.com"), request);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(creationResponse, response.getBody());
@@ -86,9 +88,12 @@ public class ApiKeyControllerTest {
     public void testCreateUserKey_captchaFailure() {
         when(captchaVerifier.verify(any(), any())).thenReturn(false);
 
-        ResponseEntity<?> response = controller.createUserKey(new UserApiKeyRequest("bad-token", null, null), request);
+        PicSureResponseException rejected = assertThrows(
+            PicSureResponseException.class, () -> controller.createUserKey(new UserApiKeyRequest("bad-token", null, null), request)
+        );
 
-        assertNotEquals(200, response.getStatusCode().value());
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        assertEquals("CAPTCHA verification failed.", rejected.getMessage());
         verify(apiKeyService, never()).generateUserKey(any(), any());
     }
 
@@ -96,9 +101,12 @@ public class ApiKeyControllerTest {
     public void testCreateUserKey_openAccessDisabled() {
         controller = new ApiKeyController(apiKeyService, captchaVerifier, false, true);
 
-        ResponseEntity<?> response = controller.createUserKey(new UserApiKeyRequest("captcha-token", null, null), request);
+        PicSureResponseException rejected = assertThrows(
+            PicSureResponseException.class, () -> controller.createUserKey(new UserApiKeyRequest("captcha-token", null, null), request)
+        );
 
-        assertNotEquals(200, response.getStatusCode().value());
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        assertEquals("API key generation is not enabled on this deployment.", rejected.getMessage());
         verify(captchaVerifier, never()).verify(any(), any());
         verify(apiKeyService, never()).generateUserKey(any(), any());
     }
@@ -107,9 +115,11 @@ public class ApiKeyControllerTest {
     public void testCreateUserKey_generationDisabled() {
         controller = new ApiKeyController(apiKeyService, captchaVerifier, true, false);
 
-        ResponseEntity<?> response = controller.createUserKey(new UserApiKeyRequest("captcha-token", null, null), request);
+        PicSureResponseException rejected = assertThrows(
+            PicSureResponseException.class, () -> controller.createUserKey(new UserApiKeyRequest("captcha-token", null, null), request)
+        );
 
-        assertNotEquals(200, response.getStatusCode().value());
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
         verify(captchaVerifier, never()).verify(any(), any());
         verify(apiKeyService, never()).generateUserKey(any(), any());
     }
@@ -117,10 +127,13 @@ public class ApiKeyControllerTest {
     @Test
     public void testCreateUserKey_oversizedEmailRejected() {
         // no stubs: the length check must reject before the CAPTCHA or service is ever consulted
-        ResponseEntity<?> response =
-            controller.createUserKey(new UserApiKeyRequest("captcha-token", null, "a".repeat(250) + "@example.com"), request);
+        PicSureResponseException rejected = assertThrows(
+            PicSureResponseException.class,
+            () -> controller.createUserKey(new UserApiKeyRequest("captcha-token", null, "a".repeat(250) + "@example.com"), request)
+        );
 
-        assertNotEquals(200, response.getStatusCode().value());
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        assertEquals("Name and email must be at most 255 characters.", rejected.getMessage());
         verify(apiKeyService, never()).generateUserKey(any(), any());
     }
 
@@ -132,7 +145,7 @@ public class ApiKeyControllerTest {
         ApiKeyPage keyPage = new ApiKeyPage(List.of(metadata), 1, 0, 100);
         when(apiKeyService.listKeys(0, 100, null)).thenReturn(keyPage);
 
-        ResponseEntity<?> response = controller.listKeys(0, 100, null);
+        ResponseEntity<ApiKeyPage> response = controller.listKeys(0, 100, null);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(keyPage, response.getBody());
@@ -152,7 +165,7 @@ public class ApiKeyControllerTest {
     public void testCreatePlatformKey_neverExpiresPassedThrough() {
         when(apiKeyService.generatePlatformKey("Partner", "a@b.com", null, true)).thenReturn(creationResponse);
 
-        ResponseEntity<?> response = controller.createPlatformKey(new PlatformApiKeyRequest("Partner", "a@b.com", null, true), request);
+        ResponseEntity<ApiKeyCreationResponse> response = controller.createPlatformKey(new PlatformApiKeyRequest("Partner", "a@b.com", null, true), request);
 
         assertEquals(200, response.getStatusCode().value());
         verify(apiKeyService).generatePlatformKey("Partner", "a@b.com", null, true);
@@ -169,21 +182,23 @@ public class ApiKeyControllerTest {
 
     @Test
     public void testCreatePlatformKey_requiresNameAndEmail() {
-        assertNotEquals(
-            200, controller.createPlatformKey(new PlatformApiKeyRequest(null, "a@b.com", null, false), request).getStatusCode().value()
+        assertThrows(
+            PicSureResponseException.class,
+            () -> controller.createPlatformKey(new PlatformApiKeyRequest(null, "a@b.com", null, false), request)
         );
-        assertNotEquals(
-            200, controller.createPlatformKey(new PlatformApiKeyRequest("Partner", " ", null, false), request).getStatusCode().value()
+        assertThrows(
+            PicSureResponseException.class,
+            () -> controller.createPlatformKey(new PlatformApiKeyRequest("Partner", " ", null, false), request)
         );
         verify(apiKeyService, never()).generatePlatformKey(any(), any(), any(), anyBoolean());
     }
 
     @Test
     public void testCreatePlatformKey_oversizedNameRejected() {
-        ResponseEntity<?> response =
-            controller.createPlatformKey(new PlatformApiKeyRequest("x".repeat(256), "a@b.com", null, false), request);
-
-        assertNotEquals(200, response.getStatusCode().value());
+        assertThrows(
+            PicSureResponseException.class,
+            () -> controller.createPlatformKey(new PlatformApiKeyRequest("x".repeat(256), "a@b.com", null, false), request)
+        );
         verify(apiKeyService, never()).generatePlatformKey(any(), any(), any(), anyBoolean());
     }
 
@@ -192,7 +207,7 @@ public class ApiKeyControllerTest {
         Instant expiresAt = Instant.now().plusSeconds(86400);
         when(apiKeyService.generatePlatformKey("Partner", "a@b.com", expiresAt, false)).thenReturn(creationResponse);
 
-        ResponseEntity<?> response =
+        ResponseEntity<ApiKeyCreationResponse> response =
             controller.createPlatformKey(new PlatformApiKeyRequest("Partner", "a@b.com", expiresAt, false), request);
 
         assertEquals(200, response.getStatusCode().value());
@@ -203,9 +218,14 @@ public class ApiKeyControllerTest {
     public void testCreatePlatformKey_pastExpiryReturnsError() {
         when(apiKeyService.generatePlatformKey(any(), any(), any(), anyBoolean())).thenThrow(new IllegalArgumentException("API key expiration must be in the future"));
 
-        ResponseEntity<?> response = controller.createPlatformKey(new PlatformApiKeyRequest("Partner", "a@b.com", Instant.now().minusSeconds(1), false), request);
+        PicSureResponseException rejected = assertThrows(
+            PicSureResponseException.class,
+            () -> controller
+                .createPlatformKey(new PlatformApiKeyRequest("Partner", "a@b.com", Instant.now().minusSeconds(1), false), request)
+        );
 
-        assertNotEquals(200, response.getStatusCode().value());
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        assertEquals("API key expiration must be in the future", rejected.getMessage());
     }
 
     @Test
@@ -216,7 +236,7 @@ public class ApiKeyControllerTest {
         );
         when(apiKeyService.revokeKey(uuid)).thenReturn(Optional.of(metadata));
 
-        ResponseEntity<?> response = controller.revokeKey(uuid.toString(), request);
+        ResponseEntity<ApiKeyMetadata> response = controller.revokeKey(uuid.toString(), request);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(metadata, response.getBody());
@@ -226,15 +246,20 @@ public class ApiKeyControllerTest {
     public void testRevokeKey_notFound() {
         when(apiKeyService.revokeKey(any(UUID.class))).thenReturn(Optional.empty());
 
-        assertNotEquals(200, controller.revokeKey(UUID.randomUUID().toString(), request).getStatusCode().value());
+        PicSureResponseException rejected =
+            assertThrows(PicSureResponseException.class, () -> controller.revokeKey(UUID.randomUUID().toString(), request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        assertEquals("API key not found by given ID.", rejected.getMessage());
     }
 
     @Test
     public void testRevokeKey_malformedUuid() {
-        ResponseEntity<?> response = controller.revokeKey("not-a-uuid", request);
+        PicSureResponseException rejected = assertThrows(PicSureResponseException.class, () -> controller.revokeKey("not-a-uuid", request));
 
-        assertNotEquals(200, response.getStatusCode().value());
-        assertFalse(String.valueOf(response.getBody()).contains("not-a-uuid"));
+        assertEquals(HttpStatus.BAD_REQUEST, rejected.getStatus());
+        assertEquals("Invalid API key ID.", rejected.getMessage());
+        assertFalse(String.valueOf(rejected.getContent()).contains("not-a-uuid"));
         verify(apiKeyService, never()).revokeKey(any(UUID.class));
     }
 }
