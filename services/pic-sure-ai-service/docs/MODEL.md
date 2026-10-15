@@ -89,3 +89,8 @@ The final response is prose that describes searching ("Searching the data dictio
 results that no tool returned; `toolCalls=[]` on the first `Model call: n=1` log line; no `Tool call:` log line appears.
 Check the raw `ConverseResponse` at DEBUG: a model that is using tools returns `stopReason=tool_use` and a
 `ToolUse` content block.
+
+### Regression-testing a model or prompt change
+
+`scripts/chat-test/` holds the suite the prompt and guards were tuned with. It runs a fixed set of chat messages
+against a running stack and writes a report to score. See [its README](../scripts/chat-test/README.md).

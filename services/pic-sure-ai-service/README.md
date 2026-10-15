@@ -149,6 +149,5 @@ The `-Dtest` pattern keeps upstream modules' tests from running. `ArchitectureTe
 `ai.model` touches Bedrock or Spring AI types. Both this module and `pic-sure-mcp` are Spotless-clean and CI runs `spotless:check` on them, so run
 `mvn -pl services/pic-sure-ai-service spotless:apply` before you push.
 
-Model-behavior regressions are checked with a separate chat-test runner (a suite of single- and multi-turn questions run against a
-locally built service); it is not part of this repo. Unit tests cannot show them.
-
+Model-behavior regressions are checked with the chat-test suite in `scripts/chat-test/` (single- and multi-turn questions run against
+a locally built service); see [docs/MODEL.md](docs/MODEL.md#regression-testing-a-model-or-prompt-change). Unit tests cannot show them.
