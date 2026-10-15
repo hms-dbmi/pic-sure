@@ -41,14 +41,21 @@ public final class SchemaRules {
     private static final List<String> FRAMEWORK_PACKAGES =
         List.of("java.", "javax.", "jdk.", "com.fasterxml.jackson.", "org.springframework.", "reactor.");
 
-    private static final Set<String> SCALARS = Set.of(
-        "byte", "short", "int", "long", "float", "double", "char",
-        "java.lang.Byte", "java.lang.Short", "java.lang.Integer", "java.lang.Long", "java.lang.Float", "java.lang.Double",
-        "java.lang.Character", "java.lang.String", "java.util.UUID", "java.time.Instant", "java.util.Date", "java.time.LocalDate"
-    );
+    private static final List<String> JDK_PACKAGES = List.of("java.", "javax.", "jdk.");
+
+    private static final Set<String> NO_EXAMPLE =
+        Set.of("boolean", "java.lang.Boolean", "java.lang.Object", "java.lang.Void", "java.util.Optional");
+
+    private static final String OPTIONAL = "java.util.Optional";
 
     private static final String COLLECTION = "java.util.Collection";
     private static final Set<String> COLLECTIONS = Set.of(COLLECTION, "java.util.List", "java.util.Set");
+
+    private static final String MAP = "java.util.Map";
+    private static final Set<String> MAPS = Set.of(
+        MAP, "java.util.HashMap", "java.util.LinkedHashMap", "java.util.TreeMap", "java.util.SortedMap", "java.util.NavigableMap",
+        "java.util.concurrent.ConcurrentMap", "java.util.concurrent.ConcurrentHashMap"
+    );
 
     private static final Set<JavaModifier> NOT_SERIALISED = Set.of(JavaModifier.STATIC, JavaModifier.SYNTHETIC, JavaModifier.TRANSIENT);
 
@@ -67,16 +74,22 @@ public final class SchemaRules {
      * referring module as an unresolved stub with no fields and no annotations.
      *
      * <p>Every class reached carries a class-level {@code @Schema} with a non-blank description. Every
-     * serialised field carries a {@code @Schema} with a non-blank description, read from the field or from its
-     * accessor. A record component's annotation is copied onto its field by the compiler, so records are read
-     * the same way as classes. A field whose type is a scalar, or a collection or array of scalars at any
-     * depth, also carries a non-blank example. The scalars are the numeric and character primitives and their
-     * boxes, {@code String}, {@code UUID}, {@code Instant}, {@code Date} and {@code LocalDate}. Every other type
-     * is exempt from the example: booleans, enums, nested models, maps, {@code Object} and type variables. An
-     * enum carries a description on the type and on each constant, and its other fields are not read.
+     * serialised field carries a {@code @Schema} with a non-blank description. The description and the example
+     * are each read from whichever of the field and its accessors sets them, so a field can carry the example
+     * while its getter carries the description. A record component's annotation is copied onto its field by the
+     * compiler, so records are read the same way as classes. A field whose type is a value also carries a
+     * non-blank example, and so does a collection, array or {@code Optional} of values at any depth. A value is
+     * a primitive other than {@code boolean}, or a JDK class that is not exempt. The exempt types are
+     * {@code Boolean}, {@code Object}, {@code Void}, enums and maps, and every type outside the JDK: nested
+     * models, Jackson trees such as {@code JsonNode}, and type variables. Requiring the example of every JDK
+     * class rather than of a fixed list means a {@code BigDecimal} or an {@code OffsetDateTime} cannot slip
+     * through. An enum carries a description on the type and on each constant, and its other fields are not
+     * read.
      *
      * <p>A field is not serialised, and so not checked or followed, when it is static, synthetic or transient,
-     * or when it or its accessor carries {@code @JsonIgnore}.
+     * or when it or its accessor carries {@code @JsonIgnore}. A field whose {@code @Schema}, on the field or on
+     * an accessor, sets {@code hidden = true} is left out of the document, so it is neither checked nor
+     * followed either.
      *
      * @param registry the parsed registry, which names the documented modules
      * @param modules module path mapped to that module's imported classes
@@ -175,26 +188,26 @@ public final class SchemaRules {
             if (model.isEnum()) {
                 for (JavaField constant : fields(model)) {
                     boolean isConstant = constant.getModifiers().contains(JavaModifier.ENUM);
-                    if (isConstant && text(schemaOn(model, constant), "description").isEmpty()) {
+                    if (isConstant && text(model, constant, "description").isEmpty()) {
                         violations.add(SwaggerRules.at(module, model, constant.getName()) + " is missing a @Schema description");
                     }
                 }
                 return;
             }
-            List<JavaField> serialised = fields(model).stream().filter(field -> isSerialised(model, field)).toList();
-            for (JavaField field : serialised) {
+            List<JavaField> documented =
+                fields(model).stream().filter(field -> isSerialised(model, field) && !isHidden(model, field)).toList();
+            for (JavaField field : documented) {
                 String where = SwaggerRules.at(module, model, field.getName());
-                Optional<JavaAnnotation<?>> schema = schemaOn(model, field);
-                if (text(schema, "description").isEmpty()) {
+                if (text(model, field, "description").isEmpty()) {
                     violations.add(where + " is missing a @Schema description");
                 }
-                if (needsExample(field.getType()) && text(schema, "example").isEmpty()) {
+                if (needsExample(field.getType()) && text(model, field, "example").isEmpty()) {
                     violations.add(where + " is missing a @Schema example");
                 }
             }
             model.getRawSuperclass().ifPresent(parent -> reach(parent.getName(), module, at));
             subtypes(model).forEach(subtype -> reach(subtype, module, at));
-            for (JavaField field : serialised) {
+            for (JavaField field : documented) {
                 follow(field.getType(), module, SwaggerRules.at(module, model, field.getName()), new TreeSet<>());
             }
         }
@@ -215,15 +228,16 @@ public final class SchemaRules {
         return accessors(model, field).noneMatch(accessor -> accessor.isAnnotatedWith(JSON_IGNORE));
     }
 
-    private static Optional<JavaAnnotation<?>> schemaOn(JavaClass model, JavaField field) {
-        Optional<JavaAnnotation<?>> onField = field.tryGetAnnotationOfType(SCHEMA).map(annotation -> annotation);
-        if (onField.isPresent()) {
-            return onField;
-        }
-        return accessors(model, field)
+    private static boolean isHidden(JavaClass model, JavaField field) {
+        return schemas(model, field).anyMatch(schema -> Annotations.string(schema, "hidden").filter("true"::equals).isPresent());
+    }
+
+    private static Stream<JavaAnnotation<?>> schemas(JavaClass model, JavaField field) {
+        Stream<JavaAnnotation<?>> onField = field.tryGetAnnotationOfType(SCHEMA).stream().map(annotation -> annotation);
+        Stream<JavaAnnotation<?>> onAccessors = accessors(model, field)
             .flatMap(accessor -> accessor.tryGetAnnotationOfType(SCHEMA).stream())
-            .<JavaAnnotation<?>>map(annotation -> annotation)
-            .findFirst();
+            .map(annotation -> annotation);
+        return Stream.concat(onField, onAccessors);
     }
 
     private static Stream<JavaMethod> accessors(JavaClass model, JavaField field) {
@@ -250,19 +264,44 @@ public final class SchemaRules {
         return schema.flatMap(annotation -> Annotations.string(annotation, property)).filter(value -> !value.isBlank());
     }
 
+    private static Optional<String> text(JavaClass model, JavaField field, String property) {
+        return schemas(model, field)
+            .flatMap(schema -> Annotations.string(schema, property).stream())
+            .filter(value -> !value.isBlank())
+            .findFirst();
+    }
+
     private static boolean needsExample(JavaType type) {
         if (type instanceof JavaParameterizedType parameterized) {
             JavaClass raw = parameterized.toErasure();
             List<JavaType> arguments = parameterized.getActualTypeArguments();
-            boolean collection = raw.isAssignableTo(COLLECTION) || COLLECTIONS.contains(raw.getName());
-            return collection && arguments.size() == 1 && needsExample(arguments.get(0));
+            if (isCollection(raw) || raw.getName().equals(OPTIONAL)) {
+                return arguments.size() == 1 && needsExample(arguments.get(0));
+            }
+            return needsExample(raw);
         }
         if (type instanceof JavaGenericArrayType array) {
             return needsExample(array.getComponentType());
         }
         if (type instanceof JavaClass raw) {
-            return raw.isArray() ? needsExample(raw.getComponentType()) : SCALARS.contains(raw.getName());
+            return raw.isArray() ? needsExample(raw.getComponentType()) : isValue(raw);
         }
         return false;
+    }
+
+    private static boolean isValue(JavaClass type) {
+        String name = type.getName();
+        if (NO_EXAMPLE.contains(name) || type.isEnum() || isCollection(type) || isMap(type)) {
+            return false;
+        }
+        return type.isPrimitive() || JDK_PACKAGES.stream().anyMatch(name::startsWith);
+    }
+
+    private static boolean isCollection(JavaClass type) {
+        return COLLECTIONS.contains(type.getName()) || type.isAssignableTo(COLLECTION);
+    }
+
+    private static boolean isMap(JavaClass type) {
+        return MAPS.contains(type.getName()) || type.isAssignableTo(MAP);
     }
 }

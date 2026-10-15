@@ -14,7 +14,8 @@ import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.library.SharedSt
 
 /**
  * A fully documented record. It holds every scalar kind with an example, every kind of member that is exempt
- * from the example, a component Jackson ignores, and a static constant.
+ * from the example, a component Jackson ignores, a hidden component of an undocumented type, and a static
+ * constant.
  */
 @Schema(description = "A study a researcher can query")
 public record Study(
@@ -34,7 +35,8 @@ public record Study(
     @Schema(description = "Every investigator on the study") List<Investigator> investigators,
     @Schema(description = "Free-form attributes keyed by attribute name, such as sponsor") Map<String, String> attributes,
     @Schema(description = "The load status, shared with other services") SharedStatus status,
-    @JsonIgnore String loaderNote
+    @JsonIgnore String loaderNote,
+    @Schema(hidden = true) Unreached loaderState
 ) {
 
     public static final String DEFAULT_ACCESSION = "phs000007";

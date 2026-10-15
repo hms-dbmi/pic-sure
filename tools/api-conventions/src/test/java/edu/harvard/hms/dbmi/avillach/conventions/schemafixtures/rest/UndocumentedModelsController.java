@@ -16,6 +16,7 @@ import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.model.LegacyDto;
 import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.model.MissingCollectionExamples;
 import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.model.MissingFieldDescriptions;
 import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.model.MissingScalarExamples;
+import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.model.MissingValueExamples;
 import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.model.NoClassDescription;
 import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.model.Shape;
 import edu.harvard.hms.dbmi.avillach.conventions.schemafixtures.model.UndocumentedRequest;
@@ -41,6 +42,11 @@ public class UndocumentedModelsController {
 
     @GetMapping("/missing-scalar-examples")
     public MissingScalarExamples[] missingScalarExamples() {
+        return null;
+    }
+
+    @GetMapping("/missing-value-examples")
+    public MissingValueExamples missingValueExamples() {
         return null;
     }
 

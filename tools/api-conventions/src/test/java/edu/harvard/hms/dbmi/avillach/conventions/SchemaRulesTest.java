@@ -87,6 +87,21 @@ class SchemaRulesTest {
     }
 
     @Test
+    void flagsEveryJdkValueWithNoExampleAndLooksInsideOptional() {
+        String at = "services/fixture :: MissingValueExamples#";
+        assertReports(
+            VIOLATIONS,
+            at + "amount is missing a @Schema example",
+            at + "scheduled is missing a @Schema example",
+            at + "timeout is missing a @Schema example",
+            at + "homepage is missing a @Schema example",
+            at + "nickname is missing a @Schema example",
+            at + "size is missing a @Schema example"
+        );
+        assertSilentOn(VIOLATIONS, at + "deputy", "MissingValueExamples is missing", "MissingValueExamples#amount is missing a @Schema description");
+    }
+
+    @Test
     void flagsCollectionsAndArraysOfScalarsWithNoExample() {
         String at = "services/fixture :: MissingCollectionExamples#";
         assertReports(
@@ -186,12 +201,22 @@ class SchemaRulesTest {
     }
 
     @Test
+    void skipsHiddenMembersAndDoesNotFollowThem() {
+        assertSilentOn(VIOLATIONS, "#loaderState", "#reviewerCode", ":: Unreached");
+    }
+
+    @Test
+    void readsTheDescriptionAndTheExampleFromWhicheverOfTheFieldAndTheGetterSetsThem() {
+        assertSilentOn(VIOLATIONS, "#orcid", "#institution");
+    }
+
+    @Test
     void acceptsEveryDocumentedModel() {
         assertSilentOn(
             VIOLATIONS, ":: Study", ":: StudyKind", ":: Investigator", ":: Person", ":: Envelope", ":: Shelf", ":: Slot", ":: Circle",
             ":: SharedStatus"
         );
-        assertEquals(42, VIOLATIONS.size(), String.join("\n", VIOLATIONS));
+        assertEquals(48, VIOLATIONS.size(), String.join("\n", VIOLATIONS));
     }
 
     @Test
