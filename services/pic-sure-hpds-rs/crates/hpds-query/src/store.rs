@@ -204,6 +204,8 @@ pub(crate) struct CachedConcept {
     view: OnceLock<Arc<View>>,
     building: Mutex<()>,
     dropped: AtomicBool,
+    #[cfg(test)]
+    ticket: OnceLock<test_support::LiveTicket>,
 }
 
 impl CachedConcept {
@@ -214,7 +216,15 @@ impl CachedConcept {
             view: OnceLock::new(),
             building: Mutex::new(()),
             dropped: AtomicBool::new(false),
+            #[cfg(test)]
+            ticket: OnceLock::new(),
         }
+    }
+
+    /// Counts the entry in `live` until it is dropped.
+    #[cfg(test)]
+    pub(crate) fn track(&self, live: &Arc<test_support::LiveEntries>) {
+        let _ = self.ticket.set(test_support::LiveTicket::new(live));
     }
 
     /// Marks the entry as dropped by the block cache, for good: [`RecentEntries`] never
@@ -315,6 +325,12 @@ impl ConceptEntry {
             max_payload_len: concept.max_payload_len(),
             tagged: concept.tagged,
         }
+    }
+
+    /// The bound on the concept's decoded payload in bytes, which the index records and a
+    /// block read enforces: the size a read of it may decode at most.
+    pub(crate) fn decoded_bound(&self) -> u64 {
+        self.max_payload_len
     }
 }
 
@@ -725,6 +741,55 @@ fn open_error(dir: &Path, error: impl std::fmt::Display) -> QueryError {
     QueryError::Open {
         dir: dir.to_path_buf(),
         detail: error.to_string(),
+    }
+}
+
+/// Counting of decoded entries alive, for tests that bound what a read holds at once.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// The number of tracked entries alive now and the most alive at once.
+    #[derive(Debug, Default)]
+    pub(crate) struct LiveEntries {
+        live: AtomicUsize,
+        peak: AtomicUsize,
+    }
+
+    impl LiveEntries {
+        /// The most tracked entries alive at once since the last [`LiveEntries::reset_peak`].
+        pub(crate) fn peak(&self) -> usize {
+            self.peak.load(Ordering::SeqCst)
+        }
+
+        /// The tracked entries alive now.
+        pub(crate) fn live(&self) -> usize {
+            self.live.load(Ordering::SeqCst)
+        }
+
+        /// Starts the peak again from the entries alive now.
+        pub(crate) fn reset_peak(&self) {
+            self.peak.store(self.live(), Ordering::SeqCst);
+        }
+    }
+
+    /// One tracked entry, counted in its [`LiveEntries`] until dropped.
+    #[derive(Debug)]
+    pub(crate) struct LiveTicket(Arc<LiveEntries>);
+
+    impl LiveTicket {
+        pub(crate) fn new(live: &Arc<LiveEntries>) -> Self {
+            let now = live.live.fetch_add(1, Ordering::SeqCst) + 1;
+            live.peak.fetch_max(now, Ordering::SeqCst);
+            LiveTicket(Arc::clone(live))
+        }
+    }
+
+    impl Drop for LiveTicket {
+        fn drop(&mut self) {
+            self.0.live.fetch_sub(1, Ordering::SeqCst);
+        }
     }
 }
 

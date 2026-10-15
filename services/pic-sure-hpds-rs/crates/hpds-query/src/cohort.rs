@@ -250,6 +250,32 @@ pub(crate) mod fault {
         (result, recorded.unwrap_or_default())
     }
 
+    thread_local! {
+        static CHUNK_PEAK: Cell<Option<usize>> = const { Cell::new(None) };
+    }
+
+    /// Records, while [`watching_chunks`] runs on the calling thread, the tracked entries
+    /// of `set` alive once a chunk of a multi-concept read has loaded, the moment it holds
+    /// the most.
+    pub(crate) fn note_chunk_held(set: &crate::PartitionSet) {
+        CHUNK_PEAK.with(|peak| {
+            if let Some(seen) = peak.get() {
+                let live = crate::partition::test_support::live(set).live();
+                peak.set(Some(seen.max(live)));
+            }
+        });
+    }
+
+    /// Runs `work` on the calling thread and returns its result with the most tracked
+    /// entries alive at the moment any of its chunks had loaded, or `None` when it read no
+    /// chunk.
+    pub(crate) fn watching_chunks<R>(work: impl FnOnce() -> R) -> (R, Option<usize>) {
+        CHUNK_PEAK.with(|peak| peak.set(Some(0)));
+        let result = work();
+        let seen = CHUNK_PEAK.with(|peak| peak.take());
+        (result, seen.filter(|&seen| seen > 0))
+    }
+
     /// Runs `work` on the calling thread and returns its result with the number of view
     /// fallbacks it recorded.
     pub(crate) fn counting_view_fallbacks<R>(work: impl FnOnce() -> R) -> (R, usize) {
@@ -274,6 +300,8 @@ pub(crate) mod fault {
     }
 
     pub(crate) fn note_view_fallback() {}
+
+    pub(crate) fn note_chunk_held(_set: &crate::PartitionSet) {}
 
     pub(crate) fn note_cache_lookup(_index: usize) {}
 
@@ -490,20 +518,77 @@ fn required_patients(selection: &Selection<'_>, path: &str) -> Result<Found> {
 /// dictionary, a `String.startsWith` test, then `getAllKeys` for each). Concepts with no row
 /// in a selected partition are skipped without loading their blocks.
 ///
-/// Each concept's cached view is looked at once, and the views missing then are built from
-/// that same snapshot, so a view another query finishes in between is never lost. A concept
-/// read from its whole block while some of its holders are unselected (read whole, or a
-/// view-mode concept left without a view) contributes the block's patients with its overlap
-/// patients corrected by tag when the block is tagged, as [`with_selected_overlap`] does,
-/// and makes the answer inexact, so the final intersection with the selection always runs.
+/// The concepts are read in the chunks of [`Selection::read_chunks`], one chunk at a time:
+/// each chunk's entries are loaded, merged into the running union and dropped before the
+/// next chunk loads, so what the read holds outside the block cache stays within the
+/// partition set's prefix read bound however many concepts the prefix covers.
+///
+/// Missing partition views are built only when the concepts' decoded size bounds fit in
+/// the block cache ([`Selection::fits_cache`]). A read larger than the cache would evict
+/// the views it builds before any later read could use them, so its view-mode concepts
+/// without a view are read from their whole blocks instead, which the final intersection
+/// with the selection makes exact.
+///
+/// The answer is exact when every chunk's is ([`any_record_of_chunk`]).
 ///
 /// # Errors
 /// [`QueryError::Block`] when a block cannot be loaded, and
 /// [`QueryError::StoreInconsistent`] when a view cannot be built.
 fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
     let reads = selection.concepts_with_prefix(prefix);
-    let entries = selection.entries(&reads)?;
-    let pairs: Vec<(ConceptRead, _)> = reads.into_iter().zip(entries).collect();
+    let parallelism = selection.set().spare_parallelism();
+    let long_read = reads.len() >= PARALLEL_UNION_MIN_SETS;
+    let build_views = selection.fits_cache(&reads);
+    let mut partials: Vec<RoaringBitmap> = Vec::new();
+    let mut exact = true;
+    let chunks = selection.read_chunks(&reads);
+    let split = chunks.len() > 1;
+    for chunk in chunks {
+        exact &= any_record_of_chunk(
+            selection,
+            &reads[chunk],
+            &mut partials,
+            split.then_some(if long_read { parallelism } else { 1 }),
+            parallelism,
+            build_views,
+        )?;
+    }
+    Ok(Found::new(
+        Patients::Computed(union_partials(partials)),
+        exact,
+    ))
+}
+
+/// Merges the union of one chunk of an `ANY_RECORD_OF`'s concepts into `partials`, and
+/// returns whether that chunk's answer is exact. The chunk's entries are held only while
+/// this runs.
+///
+/// Each concept's cached view is looked at once, and when `build_views` is set the views
+/// missing then are built from that same snapshot, so a view another query finishes in between is never lost. A concept
+/// read from its whole block while some of its holders are unselected (read whole, or a
+/// view-mode concept left without a view) contributes the block's patients with its overlap
+/// patients corrected by tag when the block is tagged, as [`with_selected_overlap`] does,
+/// and makes the answer inexact, so the final intersection with the selection always runs.
+/// A read in one chunk (`planned` of `None`) pushes its union, spread over `parallelism`
+/// rayon threads when it holds at least [`PARALLEL_UNION_MIN_SETS`] sets ([`union_of`]).
+/// In a read split into chunks the first chunk sizes `partials`: `planned` partial unions,
+/// or `parallelism` when that chunk alone holds that many sets ([`union_into`]). Every
+/// chunk then merges into the same partials, so a split read does as many partial unions
+/// and final merges as a read in one chunk.
+///
+/// # Errors
+/// As for [`any_record_of`].
+fn any_record_of_chunk(
+    selection: &Selection<'_>,
+    reads: &[ConceptRead],
+    partials: &mut Vec<RoaringBitmap>,
+    planned: Option<usize>,
+    parallelism: usize,
+    build_views: bool,
+) -> Result<bool> {
+    let entries = selection.entries(reads)?;
+    fault::note_chunk_held(selection.set());
+    let pairs: Vec<(ConceptRead, _)> = reads.iter().copied().zip(entries).collect();
     let mut views: Vec<Option<Arc<View>>> = pairs
         .iter()
         .map(|(read, entry)| match read.mode {
@@ -517,7 +602,7 @@ fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
         }
     }
     let unbuilt: Vec<usize> = (0..pairs.len())
-        .filter(|&i| views[i].is_none() && pairs[i].0.mode == ReadMode::View)
+        .filter(|&i| build_views && views[i].is_none() && pairs[i].0.mode == ReadMode::View)
         .collect();
     let built = fan_out::map(&unbuilt, |&i| selection.view(&pairs[i].0, &pairs[i].1));
     for (i, view) in unbuilt.into_iter().zip(built) {
@@ -530,7 +615,9 @@ fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
         (ReadMode::Exact, _) | (ReadMode::View, Some(_)) => false,
         (ReadMode::Whole, _) => true,
         (ReadMode::View, None) => {
-            fault::note_view_fallback();
+            if build_views {
+                fault::note_view_fallback();
+            }
             true
         }
     };
@@ -559,28 +646,73 @@ fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
             _ => sets.push(block.all_patients()),
         }
     }
-    Ok(Found::new(
-        Patients::Computed(union_of(&sets, selection.set().spare_parallelism())),
-        exact,
-    ))
+    let wide = sets.len() >= PARALLEL_UNION_MIN_SETS;
+    let Some(planned) = planned else {
+        partials.push(union_of(&sets, if wide { parallelism } else { 1 }));
+        return Ok(exact);
+    };
+    if partials.is_empty() {
+        let count = if wide { parallelism } else { planned };
+        partials.resize_with(count.max(1), RoaringBitmap::new);
+    }
+    union_into(partials, &sets);
+    Ok(exact)
 }
 
-/// Sets below which [`union_of`] unions on the calling thread.
+/// Sets, or concepts of a whole read, below which an `ANY_RECORD_OF` unions on the calling
+/// thread.
 const PARALLEL_UNION_MIN_SETS: usize = 512;
 
-/// The union of `sets`. A long list (a study-level `ANY_RECORD_OF` reads thousands to tens
-/// of thousands of concepts) is split into up to `chunks` chunks, each unioned on its own
-/// rayon thread, and the chunk results unioned. A short list, or `chunks` of 1, is unioned
-/// in one multi-way union on the calling thread. Pass
-/// [`crate::PartitionSet::spare_parallelism`], so a busy service unions on the calling
-/// thread instead of queueing behind other queries for the pool.
+/// Adds `sets` to `partials`: `sets` is split into one run per partial, each unioned and
+/// merged into its partial on its own rayon thread; with one partial, or fewer than two
+/// sets, the sets are unioned on the calling thread. Size the partials with 1 for a short
+/// read and [`crate::PartitionSet::spare_parallelism`] for a long one (a study-level
+/// `ANY_RECORD_OF` reads thousands to tens of thousands of concepts), so a busy service
+/// unions on the calling thread instead of queueing behind other queries for the pool.
+fn union_into(partials: &mut [RoaringBitmap], sets: &[&RoaringBitmap]) {
+    if partials.len() <= 1 || sets.len() < 2 {
+        if let Some(first) = partials.first_mut() {
+            merge(first, sets.iter().copied().union());
+        }
+        return;
+    }
+    let run = sets.len().div_ceil(partials.len());
+    partials
+        .par_iter_mut()
+        .zip(sets.par_chunks(run))
+        .for_each(|(partial, run)| merge(partial, run.iter().copied().union()));
+}
+
+/// Merges `union` into `partial`, taking it as it is while the partial is still empty.
+fn merge(partial: &mut RoaringBitmap, union: RoaringBitmap) {
+    if partial.is_empty() {
+        *partial = union;
+    } else {
+        *partial |= union;
+    }
+}
+
+/// The union of the partial unions [`union_into`] built, merged pairwise on the rayon pool.
+fn union_partials(partials: Vec<RoaringBitmap>) -> RoaringBitmap {
+    if partials.len() <= 1 {
+        return partials.into_iter().next().unwrap_or_default();
+    }
+    partials
+        .into_par_iter()
+        .reduce(RoaringBitmap::new, |a, b| a | b)
+}
+
+/// The union of `sets`, as an `ANY_RECORD_OF` read in one chunk computes it. With `chunks`
+/// above 1 the list is split into up to `chunks` runs, each unioned on its own rayon
+/// thread, and the run results unioned as they finish; with `chunks` of 1, or fewer than
+/// two sets, it is unioned in one multi-way union on the calling thread.
 fn union_of(sets: &[&RoaringBitmap], chunks: usize) -> RoaringBitmap {
-    if chunks <= 1 || sets.len() < PARALLEL_UNION_MIN_SETS {
+    if chunks <= 1 || sets.len() < 2 {
         return sets.iter().copied().union();
     }
-    let chunk = sets.len().div_ceil(chunks);
-    sets.par_chunks(chunk)
-        .map(|chunk| chunk.iter().copied().union())
+    let run = sets.len().div_ceil(chunks);
+    sets.par_chunks(run)
+        .map(|run| run.iter().copied().union())
         .reduce(RoaringBitmap::new, |a, b| a | b)
 }
 
@@ -875,6 +1007,27 @@ mod tests {
         for chunks in [2, 3, 7, 64] {
             assert_eq!(union_of(odd, chunks), odd_serial, "{chunks} chunks of 997");
         }
+    }
+
+    #[test]
+    fn partials_merged_chunk_by_chunk_equal_the_serial_union() {
+        let blocks = synthetic_blocks(1_000);
+        let sets: Vec<&RoaringBitmap> = blocks.iter().map(|b| b.all_patients()).collect();
+        let serial = union_of(&sets, 1);
+        for partials in [1, 2, 7, 64] {
+            for chunk in [1, 37, 300, 1_000] {
+                let mut built = vec![RoaringBitmap::new(); partials];
+                for run in sets.chunks(chunk) {
+                    union_into(&mut built, run);
+                }
+                assert_eq!(
+                    union_partials(built),
+                    serial,
+                    "{partials} partials, chunks of {chunk}"
+                );
+            }
+        }
+        assert!(union_partials(Vec::new()).is_empty());
     }
 
     #[test]

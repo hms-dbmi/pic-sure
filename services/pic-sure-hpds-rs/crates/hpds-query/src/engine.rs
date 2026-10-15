@@ -1070,7 +1070,9 @@ mod tests {
 
         use crate::cohort::fault;
         use crate::model::{PhenotypicClause, PhenotypicFilter, PhenotypicFilterType};
-        use crate::{Engine, PartitionOptions, Query, QueryError, ResultType};
+        use roaring::RoaringBitmap;
+
+        use crate::{Engine, NARROW_VIEW_SHARE, PartitionOptions, Query, QueryError, ResultType};
 
         const KEY: &str = "0123456789ABCDEF0123456789ABCDEF";
 
@@ -1222,6 +1224,187 @@ mod tests {
             }
         }
 
+        /// The concept paths `\c\00\` to `\c\39\`.
+        fn prefix_concepts() -> Vec<String> {
+            (0..40).map(|c| format!("\\c\\{c:02}\\")).collect()
+        }
+
+        /// A store of 40 concepts under `\c\` in partitions `p1` (patients 1 to 10), `p2`
+        /// (11 to 20) and `p3` (21 to 30), patient `p` holding concept `c` when `(p + c) % 7`
+        /// is 0, and patient 31 holding `\c\03\` in `p1` and `\c\05\` in `p3`, so
+        /// two blocks are tagged, in a directory removed with the returned guard.
+        fn prefix_store(concepts: &[String]) -> (tempfile::TempDir, PathBuf) {
+            let rows = |patients: std::ops::RangeInclusive<u32>, extra: Option<usize>| {
+                let mut rows: Vec<(u32, &str)> = Vec::new();
+                for p in patients {
+                    for (c, path) in concepts.iter().enumerate() {
+                        if (p as usize + c).is_multiple_of(7) {
+                            rows.push((p, path.as_str()));
+                        }
+                    }
+                }
+                if let Some(c) = extra {
+                    rows.push((31, concepts[c].as_str()));
+                }
+                rows
+            };
+            store_with_rows(&[
+                ("p1", rows(1..=10, Some(3))),
+                ("p2", rows(11..=20, None)),
+                ("p3", rows(21..=30, Some(5))),
+            ])
+        }
+
+        fn any_record_of_prefix(prefix: &str, consents: &[&str]) -> Query {
+            Query {
+                phenotypic_clause: Some(PhenotypicClause::Filter(PhenotypicFilter::new(
+                    PhenotypicFilterType::AnyRecordOf,
+                    prefix,
+                ))),
+                ..Query::with_consents(ResultType::Patients, consents.iter().copied())
+            }
+        }
+
+        fn engine_with(out: &std::path::Path, share: f64, budget: u64, cache: u64) -> Engine {
+            let options = PartitionOptions {
+                require_consents: false,
+                narrow_view_share: share,
+                prefix_read_bytes: budget,
+                store: crate::StoreOptions {
+                    cache_bytes: cache,
+                    ..crate::StoreOptions::default()
+                },
+            };
+            Engine::open(out, &options).unwrap()
+        }
+
+        #[test]
+        fn any_record_of_in_chunks_answers_as_one_read() {
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let selections: [&[&str]; 5] = [&["p1"], &["p3"], &["p1", "p2"], &["p2", "p3"], &[]];
+            for share in [0.0, NARROW_VIEW_SHARE, 2.0] {
+                let whole = engine_with(&out, share, u64::MAX, 0);
+                for consents in selections {
+                    for prefix in ["\\c\\", "\\c\\0", "\\c\\1", "\\c\\05\\"] {
+                        let query = any_record_of_prefix(prefix, consents);
+                        let expected = whole.patients(&query).unwrap();
+                        for budget in [1, 9_000, 40_000] {
+                            let chunked = engine_with(&out, share, budget, 0);
+                            let selection = chunked.partitions().select_consents(consents).unwrap();
+                            let reads = selection.concepts_with_prefix(prefix);
+                            if budget == 1 {
+                                assert_eq!(selection.read_chunks(&reads).len(), reads.len());
+                            }
+                            assert_eq!(
+                                chunked.patients(&query).unwrap(),
+                                expected,
+                                "share {share}, {consents:?}, {prefix}, budget {budget}"
+                            );
+                            let cached = engine_with(&out, share, budget, 1 << 30);
+                            for _ in 0..2 {
+                                assert_eq!(cached.patients(&query).unwrap(), expected);
+                            }
+                            assert_eq!(chunked.partitions().cohort_guard_refusals(), 0);
+                        }
+                    }
+                }
+            }
+            let one = engine_with(&out, 2.0, 1, 0);
+            let in_p3 = one.patients(&any_record_of_prefix("\\c\\05\\", &["p3"]));
+            let expected: RoaringBitmap = (21..=30u32)
+                .filter(|p| (p + 5).is_multiple_of(7))
+                .chain([31])
+                .collect();
+            assert_eq!(in_p3.unwrap(), expected);
+        }
+
+        #[test]
+        fn a_read_larger_than_the_cache_builds_no_views() {
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let query = any_record_of_prefix("\\c\\", &["p1"]);
+            let roomy = engine_with(&out, 2.0, 20_000, 1 << 30);
+            let selection = roomy.partitions().select_consents(&["p1"]).unwrap();
+            assert!(selection.fits_cache(&selection.concepts_with_prefix("\\c\\")));
+            let expected = roomy.patients(&query).unwrap();
+            assert!(roomy.partitions().cached_views().0 > 0);
+            let tight = engine_with(&out, 2.0, 20_000, 100_000);
+            let selection = tight.partitions().select_consents(&["p1"]).unwrap();
+            assert!(!selection.fits_cache(&selection.concepts_with_prefix("\\c\\")));
+            let (found, fallbacks) =
+                fault::counting_view_fallbacks(|| tight.patients(&query).unwrap());
+            assert_eq!(found, expected);
+            assert_eq!(fallbacks, 0, "skipping a view is not a fallback");
+            assert_eq!(tight.partitions().cached_views().0, 0);
+            assert_eq!(tight.partitions().cohort_guard_refusals(), 0);
+        }
+
+        #[test]
+        fn chunks_stay_within_the_byte_bound() {
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let engine = engine_with(&out, NARROW_VIEW_SHARE, 20_000, 0);
+            let selection = engine.partitions().select_consents(&["p1"]).unwrap();
+            let reads = selection.concepts_with_prefix("\\c\\");
+            let chunks = selection.read_chunks(&reads);
+            assert_eq!(chunks.first().map(|c| c.start), Some(0));
+            assert_eq!(chunks.last().map(|c| c.end), Some(reads.len()));
+            for pair in chunks.windows(2) {
+                assert_eq!(pair[0].end, pair[1].start);
+            }
+            let set = engine.partitions();
+            for chunk in &chunks {
+                let bytes: u64 = reads[chunk.clone()]
+                    .iter()
+                    .map(|read| crate::partition::test_support::decoded_bound(set, read.index))
+                    .sum();
+                assert!(
+                    bytes <= 20_000 || chunk.len() == 1,
+                    "{chunk:?} holds {bytes} bytes"
+                );
+            }
+            assert!(chunks.len() > 1);
+            assert!(selection.read_chunks(&[]).is_empty());
+        }
+
+        #[test]
+        fn peak_live_entries_stay_under_the_chunk_bound() {
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            for share in [0.0, 2.0] {
+                for consents in [&["p1"][..], &["p1", "p2", "p3"][..]] {
+                    let engine = engine_with(&out, share, 20_000, 0);
+                    let set = engine.partitions();
+                    let selection = set.select_consents(consents).unwrap();
+                    let reads = selection.concepts_with_prefix("\\c\\");
+                    let largest = selection
+                        .read_chunks(&reads)
+                        .iter()
+                        .map(std::ops::Range::len)
+                        .max()
+                        .unwrap();
+                    assert!(largest * 4 <= reads.len(), "{largest} of {}", reads.len());
+                    let live = crate::partition::test_support::live(set);
+                    live.reset_peak();
+                    let query = any_record_of_prefix("\\c\\", consents);
+                    let (found, held) = fault::watching_chunks(|| engine.patients(&query));
+                    assert!(!found.unwrap().is_empty());
+                    assert!(
+                        held.is_some_and(|held| held <= largest),
+                        "{held:?} > {largest}"
+                    );
+                    assert!(
+                        live.peak() <= largest,
+                        "share {share}, {consents:?}: {} entries alive at once, chunks of {largest}",
+                        live.peak()
+                    );
+                    assert!(live.peak() > 0);
+                    assert_eq!(live.live(), 0, "every entry is dropped once merged");
+                }
+            }
+        }
+
         #[test]
         fn a_cohort_left_holding_another_partition_fails_every_result_type() {
             let (_dir, out) = two_partitions();
@@ -1351,6 +1534,7 @@ mod tests {
                     cache_bytes,
                     ..StoreOptions::default()
                 },
+                ..PartitionOptions::default()
             };
             Engine::open(out, &options).unwrap()
         }

@@ -56,6 +56,12 @@ pub const COMBINED_DIR_NAME: &str = ".combined";
 /// up to about three quarters of the rows, and slower above.
 pub const NARROW_VIEW_SHARE: f64 = 0.75;
 
+/// Default bound on the decoded bytes one multi-concept read holds at once
+/// ([`PartitionOptions::prefix_read_bytes`]): 512 MiB. Each chunk past the first costs a
+/// merge over the whole running union, so the bound sits above the decoded size of a
+/// typical study-level prefix, which then reads in one chunk.
+pub const DEFAULT_PREFIX_READ_BYTES: u64 = 512 << 20;
+
 /// Bytes of selection patient sets [`PartitionSet`] keeps for repeated selections.
 const SCOPE_CACHE_BYTES: u64 = 64 << 20;
 
@@ -90,6 +96,12 @@ pub struct PartitionOptions {
     /// narrow selection does not hold entirely. The answers are the same.
     #[doc(hidden)]
     pub narrow_view_share: f64,
+    /// Bound on the decoded bytes one read of many concepts (an `ANY_RECORD_OF` over a
+    /// prefix) holds at once, outside the block cache. The read loads its concepts in
+    /// consecutive chunks whose summed decoded size bound, from the index, stays within it,
+    /// merges each chunk and drops it before loading the next; a concept larger than the
+    /// bound is read alone. [`DEFAULT_PREFIX_READ_BYTES`] by default.
+    pub prefix_read_bytes: u64,
 }
 
 impl Default for PartitionOptions {
@@ -100,6 +112,7 @@ impl Default for PartitionOptions {
             store: StoreOptions::default(),
             require_consents: true,
             narrow_view_share: NARROW_VIEW_SHARE,
+            prefix_read_bytes: DEFAULT_PREFIX_READ_BYTES,
         }
     }
 }
@@ -290,6 +303,7 @@ pub struct PartitionSet {
     empty: RoaringBitmap,
     store: Store,
     narrow_view_share: f64,
+    prefix_read_bytes: u64,
     evaluating: AtomicUsize,
     cache: BlockCache,
     recent: Arc<RecentEntries>,
@@ -300,6 +314,8 @@ pub struct PartitionSet {
     scopes: Cache<Box<[u64]>, Arc<Scope>>,
     generation: u128,
     serving: ServingLock,
+    #[cfg(test)]
+    live: Arc<crate::store::test_support::LiveEntries>,
 }
 
 impl std::fmt::Debug for PartitionSet {
@@ -469,6 +485,7 @@ impl PartitionSet {
             empty: RoaringBitmap::new(),
             store,
             narrow_view_share: options.narrow_view_share,
+            prefix_read_bytes: options.prefix_read_bytes.max(1),
             evaluating: AtomicUsize::new(0),
             cache_capacity: options.store.cache_bytes,
             cache_counters,
@@ -479,6 +496,8 @@ impl PartitionSet {
                 .build(),
             generation,
             serving,
+            #[cfg(test)]
+            live: Arc::default(),
         })
     }
 
@@ -849,7 +868,12 @@ impl PartitionSet {
                 let block = self.read_block(index);
                 self.cache_counters
                     .record_load(started.elapsed(), block.is_ok());
-                block.map(|block| Arc::new(CachedConcept::new(block)))
+                block.map(|block| {
+                    let entry = Arc::new(CachedConcept::new(block));
+                    #[cfg(test)]
+                    entry.track(&self.live);
+                    entry
+                })
             })
             .map_err(|error| (*error).clone())
     }
@@ -1237,6 +1261,42 @@ impl<'a> Selection<'a> {
         range.filter(|&index| self.holds(index)).take(limit).count()
     }
 
+    /// `reads` split into consecutive chunks, as ranges of positions, for a read that loads
+    /// one chunk at a time and drops it before the next: each chunk's concepts have summed
+    /// decoded size bounds ([`crate::store::ConceptEntry::decoded_bound`]) within
+    /// [`PartitionOptions::prefix_read_bytes`], except a chunk of one concept larger than
+    /// that on its own. Empty for no reads.
+    pub(crate) fn read_chunks(&self, reads: &[ConceptRead]) -> Vec<std::ops::Range<usize>> {
+        let budget = self.set.prefix_read_bytes;
+        let mut chunks = Vec::new();
+        let (mut start, mut held) = (0, 0u64);
+        for (position, read) in reads.iter().enumerate() {
+            let size = self.set.store.entry(read.index as u32).decoded_bound();
+            if position > start && held.saturating_add(size) > budget {
+                chunks.push(start..position);
+                (start, held) = (position, 0);
+            }
+            held = held.saturating_add(size);
+        }
+        if start < reads.len() {
+            chunks.push(start..reads.len());
+        }
+        chunks
+    }
+
+    /// True when the decoded size bounds of `reads` sum to at most the block cache's
+    /// capacity, so the blocks and views a read of them builds can stay cached for the next.
+    pub(crate) fn fits_cache(&self, reads: &[ConceptRead]) -> bool {
+        let mut total = 0u64;
+        for read in reads {
+            total = total.saturating_add(self.set.store.entry(read.index as u32).decoded_bound());
+            if total > self.set.cache_capacity {
+                return false;
+            }
+        }
+        true
+    }
+
     /// The cached block and view of the concept `read` names, the block read and cached when
     /// missing. Blocking.
     ///
@@ -1249,7 +1309,9 @@ impl<'a> Selection<'a> {
     /// The entries of `reads`, in order. Looks each up in the cache (most of them through
     /// [`RecentEntries`], see [`PartitionSet::cached_entries`]), then reads every missing
     /// block on the rayon pool and remembers it. Every missing block is attempted; the
-    /// first failure in order is returned. Blocking.
+    /// first failure in order is returned. Every entry is held until the caller drops the
+    /// result, so a caller reading many concepts passes one chunk of
+    /// [`Selection::read_chunks`] at a time. Blocking.
     ///
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be read.
@@ -1457,6 +1519,16 @@ pub(crate) mod test_support {
         set.cache.run_pending_tasks();
         let entry = set.load_entry(index).unwrap();
         set.recent.remember_all(std::iter::once((index, &entry)));
+    }
+
+    /// The decoded size bound the index records for the concept at `index`.
+    pub(crate) fn decoded_bound(set: &PartitionSet, index: usize) -> u64 {
+        set.store.entry(index as u32).decoded_bound()
+    }
+
+    /// The count of decoded entries `set` has loaded that are still alive anywhere.
+    pub(crate) fn live(set: &PartitionSet) -> &Arc<crate::store::test_support::LiveEntries> {
+        &set.live
     }
 
     /// The entry the block cache holds for the concept at `index`, and the one the table of

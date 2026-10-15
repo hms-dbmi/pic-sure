@@ -53,8 +53,8 @@ pub use model::{
     ResultType, UserConsent, parse_request_body, parse_strict,
 };
 pub use partition::{
-    COMBINED_DIR_NAME, Layout, NARROW_VIEW_SHARE, Partition, PartitionOptions, PartitionSet,
-    Selection, SummaryColumnMeta, UNPARTITIONED_NAME,
+    COMBINED_DIR_NAME, DEFAULT_PREFIX_READ_BYTES, Layout, NARROW_VIEW_SHARE, Partition,
+    PartitionOptions, PartitionSet, Selection, SummaryColumnMeta, UNPARTITIONED_NAME,
 };
 pub use result_cache::{MIN_RESULT_CACHE_BYTES, ResultCacheStats, SyncAnswer};
 pub use results::{
