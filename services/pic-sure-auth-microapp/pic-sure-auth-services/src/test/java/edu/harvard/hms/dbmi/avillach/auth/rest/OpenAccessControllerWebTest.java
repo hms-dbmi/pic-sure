@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.GlobalExceptionHandler;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService;
@@ -42,7 +43,8 @@ class OpenAccessControllerWebTest {
     void setUp() {
         authorizationService = mock(AuthorizationService.class);
         when(authorizationService.validateOpenAccessRequest(any())).thenReturn(OpenAccessValidationResponse.granted(null));
-        OpenAccessController controller = new OpenAccessController(authorizationService, mock(OpenSessionService.class), true);
+        OpenAccessController controller =
+            new OpenAccessController(authorizationService, mock(OpenSessionService.class), new ObjectMapper(), true);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
