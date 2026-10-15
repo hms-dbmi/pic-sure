@@ -10,19 +10,21 @@ package edu.harvard.hms.dbmi.avillach.ai.model;
  */
 public record RequestedToolCall(String id, String name, String argumentsJson) {
 
-    /**
-     * gpt-oss sometimes leaks its harmony channel marker into the tool name (e.g. {@code search_concepts<|channel|>commentary}). Left
-     * as-is the name matches no tool, and echoing it back in history makes Bedrock reject the whole request (names must match
-     * {@code [a-zA-Z0-9_-]+}). Truncate at the first character outside that set to recover the real name.
-     */
+    /** gpt-oss leaks template tokens into names ({@code search_concepts<|channel|>commentary}), which Bedrock rejects on replay. */
     public RequestedToolCall {
-        if (name != null) {
-            int end = 0;
-            while (end < name.length() && isNameChar(name.charAt(end))) {
-                end++;
-            }
-            name = name.substring(0, end);
+        name = validPrefix(name);
+    }
+
+    /** @return the leading run of {@code [a-zA-Z0-9_-]} characters; null stays null */
+    public static String validPrefix(String name) {
+        if (name == null) {
+            return null;
         }
+        int end = 0;
+        while (end < name.length() && isNameChar(name.charAt(end))) {
+            end++;
+        }
+        return name.substring(0, end);
     }
 
     private static boolean isNameChar(char c) {

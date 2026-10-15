@@ -15,7 +15,7 @@ import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolResult;
  * The query/facets/search proposal tool. Handled entirely inside {@code ai-service} -- it is never dispatched to {@code McpToolGateway},
  * because it is not a data-access call at all: it is the model handing back structured state for the researcher to review (see
  * {@code ToolUseLoopService}, which advertises this tool's {@link #definition()} alongside the gateway's and routes a call to
- * {@link #propose(String)} by name instead of the gateway).
+ * {@link #propose(String, KnownFacets)} by name instead of the gateway).
  *
  * <p>Arguments are bound and validated for real ({@link ProposeQueryInput}/{@link ProposeQueryBinder}, mirroring {@code pic-sure-mcp}'s own
  * query binder), and every proposed facet must have been shown to the model this turn ({@link KnownFacets}; concept paths get the same
@@ -34,7 +34,8 @@ public class ProposeQueryTool {
         turn. query has select (every concept path to show: keep the researcher's current ones unless they ask to remove one), phenotypicClause, and genomicFilters. A phenotypicClause is either a filter or \
         a subquery. A filter has phenotypicFilterType, conceptPath, and, for FILTER, either values (categorical) or min and max \
         (numeric); REQUIRED and ANY_RECORD_OF take neither. A subquery has operator (AND or OR) and phenotypicClauses, each a filter \
-        or another subquery. Build every conceptPath from search_concepts results, exactly as returned; there is no not field. facets \
+        or another subquery. A filter with not set to true excludes the participants it matches; keep not exactly as it is on every \
+        filter you carry over from the researcher's query. Build every conceptPath from search_concepts results, exactly as returned. facets \
         is a list of {category, name} pairs taken from list_facets; it narrows the researcher's table of variables to those facets. search \
         is the dictionary search text, a plain string, and the researcher's screen shows the variables it matches as a table they can page \
         through: send the text that found the variables in search_concepts (several terms joined by |), or an empty string to clear it. \
@@ -136,10 +137,7 @@ public class ProposeQueryTool {
         }
     }
 
-    /**
-     * Small models send {@code {}} for a field they mean to leave out (no filter, no search). An empty object is never a valid clause or
-     * search text, so it is read as "not sent" rather than failing the call and costing an iteration.
-     */
+    /** Small models send {@code {}} for a field they mean to leave out. */
     @SuppressWarnings("unchecked")
     private static void dropEmptyPlaceholders(Map<String, Object> arguments) {
         arguments.remove("search", Map.of());
@@ -148,16 +146,13 @@ public class ProposeQueryTool {
         }
     }
 
-    /** The query's own fields, which gpt-oss sometimes sends at the top level instead of inside {@code query} (T10 in round 17). */
-    private static final List<String> QUERY_FIELDS = List.of("select", "phenotypicClause", "genomicFilters");
-
-    /** Moves query fields sent at the top level into {@code query}, when the model sent no {@code query} of its own. */
+    /** gpt-oss sometimes sends the query's fields at the top level instead of inside {@code query}. */
     private static void liftQueryFields(Map<String, Object> arguments) {
-        if (arguments.containsKey("query") || QUERY_FIELDS.stream().noneMatch(arguments::containsKey)) {
+        if (arguments.containsKey("query") || ProposeQueryInput.FIELDS.stream().noneMatch(arguments::containsKey)) {
             return;
         }
         Map<String, Object> query = new LinkedHashMap<>();
-        QUERY_FIELDS.forEach(field -> {
+        ProposeQueryInput.FIELDS.forEach(field -> {
             if (arguments.containsKey(field)) {
                 query.put(field, arguments.remove(field));
             }
@@ -165,7 +160,6 @@ public class ProposeQueryTool {
         arguments.put("query", query);
     }
 
-    /** The model-facing refusal for a facet it was never shown, shared by the proposal and by a facet-narrowed search. */
     static String unknownFacetMessage(FacetSelection unknown) {
         return "Unknown facet: category '" + clip(unknown.category()) + "', name '" + clip(unknown.name())
             + "'. A facet must come from a list_facets result in this conversation, exactly as returned. Call "

@@ -17,7 +17,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 
 /**
  * Binds {@code propose_query}'s arguments strictly, mirroring {@code pic-sure-mcp}'s own {@code query.QueryBinder}: an unknown field fails
- * instead of being silently dropped (which would hide a disallowed field, such as {@code not}, rather than rejecting it), and every binding
+ * instead of being silently dropped (which would hide a disallowed field, such as {@code authorizationFilters}, rather than rejecting it), and every binding
  * error becomes a one-sentence, model-facing message instead of a raw Jackson exception.
  */
 final class ProposeQueryBinder {
@@ -30,7 +30,7 @@ final class ProposeQueryBinder {
 
     /**
      * For the researcher's own current query arriving on the request: the UI's full query object carries fields the model may not set
-     * ({@code authorizationFilters}, {@code expectedResultType}, {@code not}, ...), and those must not make a legitimate request fail. They
+     * ({@code authorizationFilters}, {@code expectedResultType}, {@code picsureId}, ...), and those must not make a legitimate request fail. They
      * are dropped here; everything {@link ProposeQueryInput} models is still bound and type-checked.
      */
     private static final ObjectMapper LENIENT = JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)

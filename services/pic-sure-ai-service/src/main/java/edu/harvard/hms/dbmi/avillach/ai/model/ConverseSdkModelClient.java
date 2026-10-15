@@ -78,34 +78,13 @@ class ConverseSdkModelClient implements ConverseModelClient {
         );
     }
 
-    /**
-     * Some models (gpt-oss) leak their chat-template tokens into a tool name, e.g. {@code search_concepts<|channel|>commentary}. Bedrock
-     * rejects any name outside {@code [a-zA-Z0-9_-]+} when it is replayed in history, which fails the whole conversation. Keep a known
-     * tool's name when the junk follows it; otherwise keep the valid leading characters, so the loop refuses it as an unknown tool and
-     * the model can retry.
-     */
+    /** Bedrock rejects a replayed tool name outside {@code [a-zA-Z0-9_-]+}, and gpt-oss leaks template tokens into names. */
     static String toolName(String name, Set<String> knownTools) {
-        if (name == null) {
-            return UNKNOWN_TOOL;
-        }
-        if (knownTools.contains(name)) {
-            return name;
-        }
-        String known = knownTools.stream().filter(name::startsWith).max(java.util.Comparator.comparingInt(String::length)).orElse(null);
-        if (known != null && !name.substring(known.length()).matches("[a-zA-Z0-9_-]+")) {
-            return known;
-        }
-        int end = 0;
-        while (end < name.length() && (Character.isLetterOrDigit(name.charAt(end)) && name.charAt(end) < 128 || name.charAt(end) == '_' || name.charAt(end) == '-')) {
-            end++;
-        }
-        return end == 0 ? UNKNOWN_TOOL : nearestKnown(name.substring(0, end), knownTools);
+        String valid = RequestedToolCall.validPrefix(name);
+        return valid == null || valid.isEmpty() ? UNKNOWN_TOOL : nearestKnown(valid, knownTools);
     }
 
-    /**
-     * gpt-oss also garbles the name itself (e.g. {@code search_concret}, {@code search_conconcepts}), which would burn an iteration on
-     * an unknown-tool error. Snap to the one known tool the name is clearly closest to; anything ambiguous or far stays as it is.
-     */
+    /** gpt-oss also garbles names ({@code search_concret}); snap to the one clearly closest known tool. */
     private static String nearestKnown(String name, Set<String> knownTools) {
         if (knownTools.contains(name)) {
             return name;

@@ -183,6 +183,35 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void anExclusionInTheResearchersQueryIsShownToTheModelAndKeptWhenItsFiltersAreCarriedOver() throws Exception {
+        String excluding = "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\","
+            + "\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"not\":true}}";
+        ChatRequest request = new ChatRequest("add race to my columns", "c", "r", new ObjectMapper().readTree(excluding), null, null);
+        // A select-only proposal: the loop carries the researcher's filters over (ProposalRules.keepingFilters).
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"query\":\"race\"}"),
+            toolCallTurn("propose_query", "{\"query\":{\"select\":[\"\\\\demo\\\\race\\\\\"]}}"), doneTurn("Done")
+        );
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(RACE_RESULT), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+        assertTrue(((ConversationEntry.UserEntry) model.historySeenOnCall(1).get(0)).text().contains("\"not\":true"));
+        assertTrue(response.query().path("phenotypicClause").path("not").asBoolean(false), response.query().toString());
+    }
+
+    @Test
+    void aProposalDifferingOnlyByAnOmittedNotFalseIsOmittedAsUnchanged() throws Exception {
+        String withNotFalse = "{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"not\":false}}";
+        ChatRequest request = new ChatRequest("same", "c", "r", new ObjectMapper().readTree(withNotFalse), null, null);
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", "{\"query\":" + AGE_QUERY + "}"), doneTurn("Done"));
+
+        ChatResponse response = new ToolUseLoopService(model, new FakeToolGateway(), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+        assertNull(response.query());
+    }
+
+    @Test
     void theUisEmptyStartingQueryIsAcceptedButNotShownToTheModel() throws Exception {
         String empty = "{\"select\":[],\"authorizationFilters\":[],\"phenotypicClause\":null,\"genomicFilters\":[],"
             + "\"expectedResultType\":\"COUNT\",\"picsureId\":null,\"id\":null}";
@@ -271,6 +300,18 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void aFailedFacetLookupRefusesTheUnknownFacetRatherThanReportingTheProposalAsFailed() {
+        String guessed = "{\"facets\":[{\"category\":\"study\",\"name\":\"guess\"}]}";
+        FakeModelClient model = FakeModelClient.returning(toolCallTurn("propose_query", guessed), doneTurn("Done"));
+
+        new ToolUseLoopService(model, FakeToolGateway.thatFailsEveryCall(), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        String result = ((ConversationEntry.ToolResultEntry) model.historySeenOnCall(2).getLast()).content();
+        assertTrue(result.contains("Unknown facet"), result);
+        assertFalse(result.contains("lookup failed"), result);
+    }
+
+    @Test
     void theServiceLooksUpFacetsAtMostOnceATurn() {
         String guessed = "{\"facets\":[{\"category\":\"study\",\"name\":\"guess\"}]}";
         FakeModelClient model =
@@ -314,7 +355,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aSearchOnlyProposalAfterAFacetNarrowedSearchCarriesThoseFacets() {
-        // v13 T17: the model read NHANES-only results, but proposing just the search would show every dataset's variables in the table.
+        // The model read NHANES-only results, but proposing just the search would show every dataset's variables in the table.
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("list_facets", "{}"), toolCallTurn("search_concepts", NARROWED_SEARCH),
             toolCallTurn("propose_query", "{\"search\":\"age\"}"), doneTurn("Done")
@@ -331,7 +372,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aFacetOnlyBrowseProposedWithJustTheFacetsKeepsNoSearch() {
-        // v14 T19: the model had to invent a query because the tool wanted one; with none it proposes the facets alone.
+        // The model had to invent a query because the tool wanted one; with none it proposes the facets alone.
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("list_facets", "{}"), toolCallTurn("search_concepts", FACET_ONLY_SEARCH),
             toolCallTurn("propose_query", "{\"facets\":[{\"category\":\"study\",\"name\":\"demo\"}]}"), doneTurn("Done")
@@ -784,7 +825,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aSelectOnlyQueryWithNoFiltersToKeepIsReadAsTheSearchThatFoundTheVariables() {
-        // v12 T10/T12: gpt-oss wrote a lookup as a select-only query in nearly every run, then retried after the refusal.
+        // Gpt-oss wrote a lookup as a select-only query in nearly every run, then retried after the refusal.
         String selectOnly = "{\"query\":{\"select\":[\"\\\\demo\\\\age\\\\\"]}}";
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("search_concepts", "{\"query\":\"age\"}"), toolCallTurn("propose_query", selectOnly), doneTurn("The age variable is demo age.")
@@ -831,7 +872,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aReplyThatSaysTheTableNowShowsVariablesGetsTheSearchThatFoundThemWhenNoneWasProposed() {
-        // v12 T2 R2 / T17 R3: "now displayed in your results table" with no propose_query call.
+        // "now displayed in your results table" with no propose_query call.
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("search_concepts", "{\"query\":\"age\"}"), doneTurn("These variables are now displayed in your results table.")
         );
@@ -844,7 +885,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aReplyThatPointsToTheTableOfResultsCountsAsAScreenClaim() {
-        // v15 T1 R1: "You can view this variable in the table of results." with no propose_query call.
+        // "You can view this variable in the table of results." with no propose_query call.
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("search_concepts", "{\"query\":\"age\"}"), doneTurn("You can view this variable in the table of results.")
         );
@@ -857,7 +898,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aFacetNarrowedSearchTheModelNeverProposedIsAttachedWithoutAScreenClaim() {
-        // v15 T17 R1/R4/R8: list_facets and the narrowed search_concepts ran, the reply was right, but propose_query was skipped.
+        // List_facets and the narrowed search_concepts ran, the reply was right, but propose_query was skipped.
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("list_facets", "{}"), toolCallTurn("search_concepts", NARROWED_SEARCH), doneTurn("Here are the age variables in demo.")
         );
@@ -894,7 +935,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aSelectOnlyProposalKeepsTheFiltersTheResearchersQueryAlreadyHas() throws Exception {
-        // Round 5, T11 R1: "Select all race variables" with filters on screen came back with the filters dropped.
+        // "Select all race variables" with filters on screen came back with the filters dropped.
         ChatRequest request = new ChatRequest("select race", "c", "r", new ObjectMapper().readTree(AGE_QUERY), null, null);
         String raceResult = "{\"concepts\":[{\"conceptPath\":\"\\\\demo\\\\race\\\\\"}]}";
         String selectOnly = "{\"query\":{\"select\":[\"\\\\demo\\\\race\\\\\"]}}";
@@ -911,7 +952,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aSelectOnlyProposalAddsToTheVariablesTheResearcherAlreadySelected() throws Exception {
-        // Round 17, T11: "Select all race variables" came back with the race paths alone, and BMI dropped out of the researcher's columns.
+        // "Select all race variables" came back with the race paths alone, and BMI dropped out of the researcher's columns.
         String current = "{\"select\":[\"\\\\demo\\\\bmi\\\\\"]," + AGE_QUERY.substring(1);
         ChatRequest request = new ChatRequest("Select all race variables", "c", "r", new ObjectMapper().readTree(current), null, null);
         FakeModelClient model = FakeModelClient.returning(
@@ -945,8 +986,27 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void aProposedSelectIsAddedToTheCurrentOneWhenTheMessageOnlyMentionsAFilterWord() throws Exception {
+        String current = "{\"select\":[\"\\\\demo\\\\bmi\\\\\"]," + AGE_QUERY.substring(1);
+        for (String message : List.of("Add race, only for adults", "Show race for people without diabetes", "Use race instead")) {
+            ChatRequest request = new ChatRequest(message, "c", "r", new ObjectMapper().readTree(current), null, null);
+            FakeModelClient model = FakeModelClient.returning(
+                toolCallTurn("search_concepts", "{\"query\":\"race\"}"),
+                toolCallTurn("propose_query", "{\"query\":{\"select\":[\"\\\\demo\\\\race\\\\\"]}}"), doneTurn("Done")
+            );
+
+            ChatResponse response =
+                new ToolUseLoopService(model, FakeToolGateway.returning(RACE_RESULT), PROPOSE_QUERY_TOOL, 8).handle(request, CALLER);
+
+            List<String> select = new ArrayList<>();
+            response.query().path("select").forEach(path -> select.add(path.asText()));
+            assertEquals(List.of("\\demo\\bmi\\", "\\demo\\race\\", AGE_PATH), select, message);
+        }
+    }
+
+    @Test
     void anAcceptedLookupTellsTheModelNothingWasSelected() {
-        // Round 17, T10/T12: told only {"received":true}, the model said the variables were "now selected" when they were shown as a search.
+        // Told only {"received":true}, the model said the variables were "now selected" when they were shown as a search.
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("search_concepts", "{\"query\":\"race\"}"),
             toolCallTurn("propose_query", "{\"query\":{\"select\":[\"\\\\demo\\\\race\\\\\"]}}"), doneTurn("Done")
@@ -961,7 +1021,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aReplyPathMadeFromAValueIsSentBackNamingTheVariableThatHoldsIt() {
-        // Round 17, T14: the value "G47.9 Sleep disorder, unspecified" of the G47 folder was written as a path of its own.
+        // The value "G47.9 Sleep disorder, unspecified" of the G47 folder was written as a path of its own.
         String invented = "Sleep: `\\demo\\G47.9 Sleep disorder, unspecified\\`";
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("search_concepts", "{\"query\":\"sleep\"}"), doneTurn(invented), doneTurn("Sleep: `\\demo\\G47 Sleep disorders\\`")
@@ -995,7 +1055,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aCountedQueryIsProposedWhenTheReplySaysTheQueryChangedButNothingWasProposed() {
-        // Round 18, T7 R2: counted the cohort, said "I included the BMI variable in the query", never called propose_query.
+        // Counted the cohort, said "I included the BMI variable in the query", never called propose_query.
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("search_concepts", "{\"query\":\"age\"}"), toolCallTurn("count_participants", "{\"query\":" + AGE_QUERY + "}"),
             doneTurn("About 3,102 participants. I included the age variable in the query.")
@@ -1021,8 +1081,22 @@ class ToolUseLoopServiceTest {
     }
 
     @Test
+    void aCountedQueryIsNotProposedWhenTheReplyOnlyReportsTheCount() {
+        // A what-if count; "in your cohort" describes the count, it doesn't claim the query changed.
+        FakeModelClient model = FakeModelClient.returning(
+            toolCallTurn("search_concepts", "{\"query\":\"age\"}"), toolCallTurn("count_participants", "{\"query\":" + AGE_QUERY + "}"),
+            doneTurn("About 3,102 participants in your cohort have an age recorded. Your cohort includes 9,000 participants in total.")
+        );
+
+        ChatResponse response =
+            new ToolUseLoopService(model, FakeToolGateway.returning(DICTIONARY_RESULT), PROPOSE_QUERY_TOOL, 8).handle(REQUEST, CALLER);
+
+        assertNull(response.query());
+    }
+
+    @Test
     void theOneSearchThatFoundTheNamedVariablesIsProposedWhenNothingWasProposed() {
-        // Round 18, T14: one combined search, a reply listing some of its paths, and no propose_query.
+        // One combined search, a reply listing some of its paths, and no propose_query.
         FakeModelClient model = FakeModelClient.returning(
             toolCallTurn("search_concepts", "{\"query\":\"race\"}"), doneTurn("Race: `\\demo\\race\\`")
         );
@@ -1071,7 +1145,7 @@ class ToolUseLoopServiceTest {
 
     @Test
     void aProposalWrittenAsTheReplyIsCheckedAndSurfacedLikeAToolCall() throws Exception {
-        // Round 5, T9 R1: the model wrote the narrowed query as its reply instead of calling propose_query.
+        // The model wrote the narrowed query as its reply instead of calling propose_query.
         ChatRequest request = new ChatRequest("narrow it", "c", "r", new ObjectMapper().readTree(AGE_QUERY), null, null);
         String narrowed = "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\"\\\\demo\\\\age\\\\\",\"min\":50}}}";
         FakeModelClient model = FakeModelClient.returning(doneTurn(narrowed));

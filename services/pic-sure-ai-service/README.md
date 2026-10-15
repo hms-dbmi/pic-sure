@@ -78,6 +78,8 @@ touching the dispatch loop, the controller, or anything else in the service).
 | `AI_MAX_TOOL_ITERATIONS` | no, default `8` | Hard cap on tool-call round-trips per chat turn. Reaching it costs one more model call, asking the model to answer from what it has (see [Guarding against model behavior](#guarding-against-model-behavior)), so a turn makes at most this many plus one model calls. |
 | `AI_MCP_MODE` | no, default `gateway` | `gateway` (a real MCP client against `pic-sure-mcp`) or `mock`. |
 | `PICSURE_GATEWAY_URL` | yes, if `AI_MCP_MODE=gateway` | Base URL of the gateway's `/mcp` route. Same gateway URL `pic-sure-mcp` itself binds via `picsure.mcp.gateway-url` — one gateway URL, shared across both services' deploy config. |
+| `AI_MCP_CONNECT_TIMEOUT` | no, default `5s` | Connect timeout for gateway MCP calls. |
+| `AI_MCP_READ_TIMEOUT` | no, default `20s` | Read timeout for gateway MCP calls. Without one the JDK client waits forever, so a stuck dictionary call would hang the whole chat turn. |
 | `AI_MCP_EXCLUDED_TOOLS` | no, default `get_adapter_code` | Comma-separated gateway tool names withheld from the model, and refused if it requests one anyway. The default drops the adapter-code tool, which the chat UI has no use for and whose long definition is resent on every model call (tool definitions were most of the ~4,900 input tokens per call). Set it blank to offer every tool. |
 | `PICSURE_ACTUATOR_EXPOSURE` | no, default `none` | Same actuator-gating convention as every other PIC-SURE service. |
 | `PICSURE_APPLICATION_TOKEN` | no | `X-Application-Token` value for `/actuator/**`. |
@@ -115,23 +117,45 @@ bedrock:InvokeModel`), which surfaces from this service as `model_unavailable`.
 ### Telltale signs of a model that is not using its tools
 
 The final response is prose that describes searching ("Searching the data dictionary...") or lists
-results that no tool returned; `toolCalls=[]` on the first `Model call #1 result` log line; no `Tool call requested:` log line appears.
+results that no tool returned; `toolCalls=[]` on the first `Model call: n=1` log line; no `Tool call:` log line appears.
 Check the raw `ConverseResponse` at DEBUG: a model that is using tools returns `stopReason=tool_use` and a
 `ToolUse` content block.
 
 ## Debugging a chat turn
 
-`ToolUseLoopService` logs each turn, with no payloads at the default level.
+INFO is meant for dashboards and auditing: fixed `key=value` fields, no researcher text or tool payloads.
 
-- **INFO**: turn start (conversation and request ids, the tools offered, the iteration cap); each model call result
-  (`done`, tool names requested, text length, input and output tokens); each tool call (a `Tool call requested` line with name and id before it runs, so a hung call is visible, then name, id, whether it errored,
-  result size); turn end (iterations, whether the cap was hit, input and output tokens summed over every model call; input is the billed total, since each call resends the history, and the tools called in order as `name(N chars)`, e.g. `search_concepts(4210 chars), count_participants(95 chars)`, which makes an oversized result easy to spot. Those are characters of result text, not tokens: the model reports tokens only per call, and JSON with backslashes typically costs well over one token per four characters). A refused concept path, or arguments that are not valid JSON, show up as `error=true`.
-- **DEBUG** (`LOGGING_LEVEL_EDU_HARVARD_HMS_DBMI_AVILLACH_AI_CHAT=DEBUG`): additionally the model's text and each tool
-  call's arguments and result content (including the error text when a call is refused). This includes researcher text
-  and dictionary output, so keep it off outside local debugging.
+- **Access** (`ai.access` logger): one line per HTTP request, `POST /ai/chat 200 4210ms`, the same format as the gateway's
+  access log. Actuator requests are skipped.
+- **`Chat turn:`** one line per turn, whether it answers or fails:
+  - `outcome`: `answered`, `fallback` (no usable reply, so the canned fallback text went out) or `error`
+  - `stop`: `none`, `iteration_cap` or `repeated_failure` (tool use was cut short and the model answered from what it had)
+  - `proposed`: which of `query`/`facets`/`search` the response changes
+  - `userId`, `durationMs`, `modelCalls`, and `inputTokens`/`outputTokens` summed over every model call (input is the billed total,
+    since each call resends the history)
+  - `toolCalls`, `toolErrors`, and `tools` in order as `name(N chars)`, e.g. `search_concepts(4210 chars), count_participants(95 chars)`,
+    which makes an oversized result easy to spot (characters of result text, not tokens)
+  - `corrections`: each time the loop stepped in for model misbehavior (`emptyReplyRetry`, `pathRepair`, `proposalFromReplyText`,
+    `countedQueryProposal`), a model-quality signal
+
+  A failed turn logs at ERROR (WARN for a 4xx) with `status`, `errorType` (`model_unavailable`, `tools_unavailable`, `internal_error`)
+  and `error`, a one-line summary in place of a stack trace: the cause chain and the innermost frame of this service's code, e.g.
+  `ModelUnavailableException: Bedrock Converse call failed: Read timed out <- SocketTimeoutException @ ConverseSdkModelClient.send:54`.
+- **`Model call:`** per call: `n`, `durationMs`, `done`, tool names requested, text length, input and output tokens.
+- **`Tool call:`** per call: name, id, `durationMs`, `error`, result size. A refused concept path, or arguments that are not valid JSON,
+  show up as `error=true`. A tool or MCP transport failure also logs a WARN with its one-line error summary.
+- **Ids**: every line carries `[X-Request-Id|conversationId|chatRequestId]` after the level (the last two blank outside a turn,
+  including on the access line), and Spring AI and AWS SDK lines on that thread do too, so one turn can be pulled out of a full log
+  with `rg '<chatRequestId>' <logfile>`. For JSON logs, set `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` (or `logstash`); the ids then
+  arrive as MDC fields.
+- **DEBUG** (`LOGGING_LEVEL_EDU_HARVARD_HMS_DBMI_AVILLACH_AI_CHAT=DEBUG`): additionally the model's text, each tool
+  call's arguments and result content (including the error text when a call is refused), the tools offered at turn start, and
+  the detail behind each correction. This includes researcher text and dictionary output, so keep it off outside local debugging.
 - **Raw Bedrock response**: `LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI_BEDROCK=DEBUG` makes `BedrockProxyChatModel` log the
-  full `ConverseResponse`, the quickest way to see whether the model returned `toolUse` or only text.
-  `LOGGING_LEVEL_SOFTWARE_AMAZON_AWSSDK_REQUEST=DEBUG` logs each AWS call's endpoint and request id, not its body.
+  full `ConverseResponse`, the quickest way to see whether the model returned `toolUse` or only text. It mostly repeats
+  what the chat DEBUG lines show, so leave it off unless that question is open.
+  `LOGGING_LEVEL_SOFTWARE_AMAZON_AWSSDK_REQUEST=DEBUG` logs each AWS call's endpoint and AWS request id, not its body; only
+  worth turning on to hand a request id to AWS support, since `Model call:` already has each call's duration.
 - **The outgoing request body is not logged by Spring AI.** If you need to confirm that the system prompt and
   `toolConfig` actually left the service, register an AWS SDK `ExecutionInterceptor` that logs
   `context.request()` (a global one can be registered through the classpath resource
@@ -167,20 +191,23 @@ straight to its execution logic, so nothing that failed a check is ever returned
 | Leaks chat-template tokens into a tool name (`search_concepts<\|channel\|>commentary`) or misspells it (`search_conconcepts`) | Trims the junk and snaps to the clearly closest tool name. Left as-is, Bedrock rejects the whole conversation when the name is replayed | repair | `ConverseSdkModelClient.toolName`, `RequestedToolCall` |
 | Sends `{}` for a `propose_query` field it means to leave out | Reads it as not sent | repair | `ProposeQueryTool.dropEmptyPlaceholders` |
 | Sends a `propose_query` with no `query`, `facets` or `search` at all | Refuses: "The proposal is empty" | refuse | `ProposeQueryTool.propose` |
-| Proposes facets without calling `list_facets` first | Calls `list_facets` itself (once a turn, with the proposal's search text), then checks the facets against it | repair | `ToolUseLoopService.lookUpFacetsIfNeeded` |
+| Proposes facets without calling `list_facets` first | Calls `list_facets` itself (once a turn, with the proposal's search text), then checks the facets against it. If that lookup fails, the facets are checked against what is already known, so the model sees an unknown-facet refusal rather than a failure it did not cause | repair | `ToolUseLoopService.lookUpFacetsIfNeeded` |
 | Proposes a facet `list_facets` never returned | Refuses | refuse | `KnownFacets` |
 | Narrows a `search_concepts` call by a facet `list_facets` never returned | Looks facets up once a turn if none were listed, then refuses the call without reaching the dictionary | refuse | `ToolUseLoopService.refuseUnknownFacets`, `KnownFacets` |
-| Reads a facet-narrowed search but proposes (or claims on screen) only the search text | Adds the facets of the last matching search when every proposed term was in it, so the table shows what the model read. Facets the model sends itself, even an empty list, are kept | repair | `ToolUseLoopService.callToolSafely`, `TurnState.facetsForSearch` |
-| Calls `propose_query` for a lookup ("show me BMI"): a query with no filters, and the researcher has none either | Reads it as the search that found the variables (the proposal's own `search`, else the last search that matched). Refuses, telling the model to propose only `search`, only when there is no such search | repair | `ToolUseLoopService.callToolSafely` |
+| Reads a facet-narrowed search but proposes (or claims on screen) only the search text | Adds the facets of the last matching search when every proposed term was in it, so the table shows what the model read. Facets the model sends itself, even an empty list, are kept | repair | `ProposalRules.withSearchFacets`, `SearchHistory.facetsForSearch` |
+| Calls `propose_query` for a lookup ("show me BMI"): a query with no filters, and the researcher has none either | Reads it as the search that found the variables (the proposal's own `search`, else the last search that matched). Refuses, telling the model to propose only `search`, only when there is no such search | repair | `ProposalRules.keepingFilters` |
 | Sends `select`/`phenotypicClause`/`genomicFilters` at the top level of `propose_query` instead of inside `query` | Moves them into `query` | repair | `ProposeQueryTool.liftQueryFields` |
-| Proposes a query with no filters while the researcher has some (e.g. "select all race variables" with SEX and AGE filters on screen) | Keeps the existing filters. Without this, the proposal replaced the whole query and silently changed the cohort | repair | `ToolUseLoopService.callToolSafely` |
-| Proposes only the variables it is adding ("select all race variables" came back without the BMI already selected), or re-sends only the filters on a narrowing follow-up | Keeps the researcher's current `select` and adds the proposed variables after it. The proposed `select` is taken as the whole list only when the message asks to remove or replace something (remove, drop, replace, instead, without, only, ...) | repair | `ToolUseLoopService.keepingCurrentSelect` |
+| Proposes a query with no filters while the researcher has some (e.g. "select all race variables" with SEX and AGE filters on screen) | Keeps the existing filters. Without this, the proposal replaced the whole query and silently changed the cohort | repair | `ProposalRules.keepingFilters` |
+| Proposes only the variables it is adding ("select all race variables" came back without the BMI already selected), or re-sends only the filters on a narrowing follow-up | Keeps the researcher's current `select` and adds the proposed variables after it. The proposed `select` is taken as the whole list only when the message uses a removal verb (remove, drop, delete, exclude, replace, swap, take out, get rid of). Words like "only", "without" and "instead" do not count: they usually describe a filter, and a false match silently drops columns | repair | `ToolUseLoopService.keepingCurrentSelect` |
 | Leaves a filtered concept path out of `select` | Adds it back (the UI exports every variable it filters on) | repair | `ProposeQueryInput.withFilterPathsSelected` |
 | Proposes exactly what the researcher already has | Leaves `query`/`facets`/`search` out of the response | repair | `ToolUseLoopService.respond` |
+| Searches several terms joined by `\|` and one term's matches fill the page, hiding the others' | Searches each term on its own (in parallel, up to 8 terms) and interleaves the results, with each term's total in `termTotals`. The researcher's table still uses the combined ranking | repair | `TermBalancedSearch` |
+| Proposes a search containing terms that matched nothing this turn (e.g. an abbreviation whose spelled-out form did match) | Drops those terms and says so in the result; refuses when no term matched | repair | `ProposalRules.acceptDroppingUnmatchedTerms`, `SearchHistory` |
+| Gets an empty category list from `list_facets` and invents studies or counts to fill the gap | Adds a note to the result saying there are none and to propose a search instead | prevent | `ToolUseLoopService.withNoCategoriesNote` |
 | Writes query JSON, or `query:`/`facets:`/`search:` labels, into its reply | Scrubs them out. If nothing is left, the reply becomes "I've prepared an updated search for you to review." (proposal attached) or the fallback text (nothing attached) | repair | `ReplyText.withoutQueryJson` |
 | Drops a known path's trailing (or leading) backslash in a backticked path in its reply | Puts the path back exactly as the tool returned it | repair | `ReplyText.withKnownPaths` |
 | Names a path in its reply that no tool returned: a categorical value written as a path of its own (`...\G47 Sleep disorders\G47.9 Sleep disorder, unspecified\`), a parent of returned paths, or an invented one | Asks the model once, within the iteration cap, to rewrite its reply, saying what each path is in terms of the results (e.g. "is one of the values of `...\G47 Sleep disorders\`"). A reply still wrong after that goes out as written | repair (one round-trip) | `ReplyText.unknownPaths`, `ConceptPaths.ownerOfValueIn`, `ToolUseLoopService.pathRepairMessage` |
-| Says the variables are "now selected" after a lookup the service applied as a search | The `propose_query` result says what was applied ("Their table now lists the variables matching ... nothing was added to them") instead of a bare `received` | prevent | `ToolUseLoopService.accepted` |
+| Says the variables are "now selected" after a lookup the service applied as a search | The `propose_query` result says what was applied ("Their table now lists the variables matching ... nothing was added to them") instead of a bare `received` | prevent | `ProposalRules.accepted` |
 | Counts the cohort with `count_participants`, says the query changed ("I included BMI in the query"), but never calls `propose_query` | Runs the counted query through every check a real `propose_query` call gets. Only a sentence saying the query changed counts, not an offer ("let me know if you'd like ...") | repair | `ReplyText.claimsQueryChanged`, `ToolUseLoopService.proposeCountedQuery` |
 | Answers from one search, naming paths from it, but proposes nothing (often listing only some of the matches) | Proposes that search, so the table shows every match. With more than one matching search it does not guess | repair | `ToolUseLoopService.respond` |
 | Keeps retrying a tool that fails with the same error (even with different arguments) | Adds "retrying will not help" to the second identical error; on the third, stops tool use and asks for an answer, the same way as the iteration cap | repair | `ToolUseLoopService` (`MAX_REPEATED_FAILURES`) |

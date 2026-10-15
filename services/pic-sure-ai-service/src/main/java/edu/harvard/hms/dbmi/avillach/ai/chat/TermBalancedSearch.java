@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.ai.chat;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -22,31 +23,32 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolResult;
 
 /**
- * Answers a {@code search_concepts} call that joins several terms with {@code |} by searching each term itself and interleaving the
- * results, so a term with many matches (smoking) cannot fill the page and hide another term's (alcohol use). The MCP tool ranks the
- * combined search as one list, which is what the researcher's table uses, so this is only about what the model is shown. Lives here and
- * not in {@code pic-sure-mcp} because that tool is shared with other clients.
+ * Searches each {@code |}-joined term on its own and interleaves the results, so a term with many matches cannot fill the page and hide
+ * another's. Only the model sees this; the researcher's table uses the combined ranking. Lives here, not in {@code pic-sure-mcp},
+ * because that tool is shared with other clients.
  */
 final class TermBalancedSearch {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** Page size the MCP tool uses when the model sends none, and the largest it honors. */
+    /** The MCP tool's defaults. */
     static final int DEFAULT_PAGE_SIZE = 25;
     static final int MAX_PAGE_SIZE = 50;
 
-    /** More terms than this fall back to the plain combined search; each term is one extra gateway call. */
     static final int MAX_TERMS = 8;
 
     private TermBalancedSearch() {
     }
 
-    /**
-     * @param argumentsJson the model's {@code search_concepts} arguments
-     * @param searchOneTerm runs {@code search_concepts} with the given arguments JSON
-     * @return the merged result, or null when the call should run as it came: one term, too many terms, a later page, unreadable
-     *         arguments, or any per-term search that failed
-     */
+    /** @return the trimmed, non-blank terms of a {@code |}-joined search; empty for null */
+    static List<String> terms(String search) {
+        if (search == null) {
+            return List.of();
+        }
+        return Arrays.stream(search.split("\\|")).map(String::trim).filter(term -> !term.isEmpty()).toList();
+    }
+
+    /** @return the merged result, or null when the call should run as it came */
     static ToolResult search(String argumentsJson, Function<String, ToolResult> searchOneTerm) {
         JsonNode arguments;
         try {
@@ -57,12 +59,7 @@ final class TermBalancedSearch {
         if (arguments == null || !arguments.path("query").isTextual() || arguments.path("page").asInt(0) > 0) {
             return null;
         }
-        Set<String> terms = new LinkedHashSet<>();
-        for (String term : arguments.path("query").asText().split("\\|")) {
-            if (!term.isBlank()) {
-                terms.add(term.trim());
-            }
-        }
+        Set<String> terms = new LinkedHashSet<>(terms(arguments.path("query").asText()));
         if (terms.size() < 2 || terms.size() > MAX_TERMS) {
             return null;
         }
@@ -75,7 +72,6 @@ final class TermBalancedSearch {
         ObjectNode termTotals = JSON.createObjectNode();
         Map<String, String> logContext = MDC.getCopyOfContextMap();
         Map<String, CompletableFuture<ToolResult>> searches = new LinkedHashMap<>();
-        // The terms are independent, so they run at once and the wait is the slowest one, not the sum.
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             for (String term : terms) {
                 ObjectNode termArguments = ((ObjectNode) arguments).deepCopy();

@@ -21,4 +21,11 @@ public class RequestConfig {
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return registration;
     }
+
+    @Bean
+    public FilterRegistrationBean<AccessLogFilter> accessLogFilter() {
+        FilterRegistrationBean<AccessLogFilter> registration = new FilterRegistrationBean<>(new AccessLogFilter());
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+        return registration;
+    }
 }
