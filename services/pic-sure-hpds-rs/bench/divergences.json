@@ -204,6 +204,36 @@
       "reason": "Java error, invalid input: on POST /query a null element of authorizationFilters makes QueryValidator throw (it validates each element), answering 200 with no body, on both branches. Rust refuses the submit with 400 \"an authorization filter is null\". On /query/sync the consent branch ignores the element and answers, as Rust does; main applies it and fails (null-authorization-filter-main). Accepted only for an async entry whose query holds such an element, with that exact refusal against Java's bodiless 200."
     },
     {
+      "name": "duplicate-key-in-string-query",
+      "when": "duplicate-key-in-string-query",
+      "reason": "Spec, v4 hardening: a query sent as a JSON string with a key repeated in one object is refused by Rust (400 \"the query is not valid: duplicate key \\\"<key>\\\" at line <n> column <m>\"), because a proxy that rewrote the first copy (userConsents) must not be bypassed by a second; Jackson keeps the last value and Java answers. Accepted only when the string query holds that repeated key, Rust names it in that exact form, and Java answered."
+    },
+    {
+      "name": "unknown-result-type-status",
+      "when": "unknown-result-type-refused",
+      "reason": "Jackson error, invalid input: an expectedResultType string that is not a name or ordinal of Java's ResultType makes Jackson refuse the query in convertIncomingQuery, which answers 500 with an empty body. Rust refuses it with 400 and exactly \"the query is not valid: invalid value: string \\\"<value>\\\", expected one of [...]\" listing the 14 names. Accepted only for such a value, that exact message and Java's empty 500."
+    },
+    {
+      "name": "invalid-uuid-status",
+      "when": "invalid-uuid-refused",
+      "reason": "Jackson error, invalid input: a picsureId or id string Jackson's UUIDDeserializer refuses (neither the canonical form nor 16 bytes of Base64) makes convertIncomingQuery answer 500 with an empty body. Rust refuses it with 400 and exactly \"the query is not valid: \\\"<value>\\\" is not a UUID in the canonical 8-4-4-4-12 form or 16 bytes of Base64\". Accepted only for such a value, that exact message and Java's empty 500."
+    },
+    {
+      "name": "missing-operator-status",
+      "when": "missing-operator-refused",
+      "reason": "Java error, invalid input: a subquery with no operator reaches the switch in PhenotypicQueryExecutor.getReducer with null, which throws, so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses it with 400 and exactly \"a phenotypic subquery must name an operator (AND or OR)\". Accepted only when the query holds such a subquery, with that exact message against those failures."
+    },
+    {
+      "name": "consent-extra-field-status",
+      "when": "consent-extra-field-refused",
+      "reason": "Jackson error, invalid input: a userConsents object with a field other than value is refused by Jackson on the consent branch (and the main branch knows no userConsents field at all), so convertIncomingQuery answers 500 with an empty body. Rust refuses it with 400 and exactly \"the query is not valid: unknown field `<name>`, expected `value`\". Accepted only when a consent holds such a field, Rust names one of them in that exact form, and Java answered an empty 500."
+    },
+    {
+      "name": "export-type-out-of-scope",
+      "when": "export-type-out-of-scope",
+      "reason": "Spec, scope: DATAFRAME_TIMESERIES and DATAFRAME_PFB are export types v4 does not produce; POST /query accepts them and ends the query in ERROR with the reason in resultMetadata.error, where Java produces the export. Accepted only for async entries of those two result types, with the Java side named, Java's query in SUCCESS and Rust's in ERROR."
+    },
+    {
       "name": "null-authorization-filter-main",
       "when": "null-authorization-filter-ignored",
       "javaBranch": "main",

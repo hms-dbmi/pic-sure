@@ -161,6 +161,36 @@ pub enum Condition {
     /// side refused the submit with exactly `an authorization filter is null`, and the Java
     /// side answered the submit 200 with no status (its validator throws on the element).
     NullAuthorizationFilterRefused,
+    /// The entry's query is sent as a JSON string holding an object with a repeated key; the
+    /// Java side answered (Jackson keeps the last value: a sync 200 with a body, or an accepted
+    /// async submit), and the Rust side refused with 400 `the query is not valid: duplicate
+    /// key "<key>" at line <n> column <m>` naming that key.
+    DuplicateKeyInStringQuery,
+    /// The entry's query names an `expectedResultType` string Jackson's enum coercion refuses
+    /// (not a name of Java's `ResultType`, trimmed or not, nor its ordinal); the Java side
+    /// answered 500 with an empty body, and the Rust side refused with exactly `the query is
+    /// not valid: invalid value: string "<value>", expected one of [<the 14 names>]`.
+    UnknownResultTypeRefused,
+    /// The entry's query holds a `picsureId` or `id` string Jackson's `UUIDDeserializer`
+    /// refuses (see `hpds_format::jackson_uuid`); the Java side answered 500 with an empty
+    /// body, and the Rust side refused with exactly `the query is not valid: "<value>" is not
+    /// a UUID in the canonical 8-4-4-4-12 form or 16 bytes of Base64`.
+    InvalidUuidRefused,
+    /// The entry's query holds a subquery, at any depth, with no `operator` (or `null`); the
+    /// Java side failed (a sync 200 with an empty body, or an async query that ended in ERROR,
+    /// from the switch on the missing operator), and the Rust side refused with exactly `a
+    /// phenotypic subquery must name an operator (AND or OR)`.
+    MissingOperatorRefused,
+    /// The entry's query holds a `userConsents` object with a field other than `value`; the
+    /// Java side answered 500 with an empty body (Jackson refuses the unknown field, and the
+    /// main branch knows no `userConsents` at all), and the Rust side refused with exactly
+    /// `the query is not valid: unknown field `<name>`, expected `value`` naming one of those
+    /// fields.
+    ConsentExtraFieldRefused,
+    /// An async DATAFRAME_TIMESERIES or DATAFRAME_PFB entry: the Java side (which must be
+    /// known) ended the query in SUCCESS and the Rust side accepted the submit and ended it in
+    /// ERROR, as Rust does for these two export types it does not produce.
+    ExportTypeOutOfScope,
 }
 
 /// Which Java service a comparison runs against, for rules that hold for one branch only.
@@ -1211,6 +1241,308 @@ fn null_authorization_filter_refused(
         )
 }
 
+/// The names of Java's `ResultType`, in declaration order, as Rust's refusal of an unknown
+/// one lists them.
+const RESULT_TYPE_NAMES: [&str; 14] = [
+    "COUNT",
+    "DATAFRAME",
+    "CROSS_COUNT",
+    "CATEGORICAL_CROSS_COUNT",
+    "CONTINUOUS_CROSS_COUNT",
+    "INFO_COLUMN_LISTING",
+    "OBSERVATION_CROSS_COUNT",
+    "VARIANT_COUNT_FOR_QUERY",
+    "VARIANT_LIST_FOR_QUERY",
+    "VCF_EXCERPT",
+    "AGGREGATE_VCF_EXCERPT",
+    "DATAFRAME_TIMESERIES",
+    "DATAFRAME_PFB",
+    "PATIENTS",
+];
+
+/// Whether the outcome is Java's answer to a query Jackson refused while reading it: a sync
+/// or async submit 500 with an empty body.
+fn empty_500(outcome: &Outcome) -> bool {
+    matches!(outcome, Outcome::Sync(s) if s.status == 500 && s.body.is_empty())
+        || matches!(outcome, Outcome::Async(x) if x.submit_status == 500
+            && x.submit_body.as_deref().is_none_or(str::is_empty))
+}
+
+/// Whether the outcome answered: a sync 200 with a body, or an async submit accepted with 200.
+fn answered_with_body(outcome: &Outcome) -> bool {
+    match outcome {
+        Outcome::Sync(s) => s.status == 200 && !s.body.is_empty(),
+        Outcome::Async(x) => x.submit_status == 200,
+        Outcome::TimedOut | Outcome::Failed(_) => false,
+    }
+}
+
+/// Every key that appears twice in one object of the JSON `text`, at any depth, in the order
+/// the second copies appear. Empty when `text` is not JSON.
+fn repeated_keys(text: &str) -> Vec<String> {
+    struct Keys<'a>(&'a mut Vec<String>);
+
+    impl<'de> serde::de::DeserializeSeed<'de> for Keys<'_> {
+        type Value = ();
+
+        fn deserialize<D: serde::Deserializer<'de>>(
+            self,
+            d: D,
+        ) -> std::result::Result<(), D::Error> {
+            d.deserialize_any(self)
+        }
+    }
+
+    impl<'de> serde::de::Visitor<'de> for Keys<'_> {
+        type Value = ();
+
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("JSON")
+        }
+
+        fn visit_bool<E>(self, _: bool) -> std::result::Result<(), E> {
+            Ok(())
+        }
+
+        fn visit_i64<E>(self, _: i64) -> std::result::Result<(), E> {
+            Ok(())
+        }
+
+        fn visit_u64<E>(self, _: u64) -> std::result::Result<(), E> {
+            Ok(())
+        }
+
+        fn visit_f64<E>(self, _: f64) -> std::result::Result<(), E> {
+            Ok(())
+        }
+
+        fn visit_str<E>(self, _: &str) -> std::result::Result<(), E> {
+            Ok(())
+        }
+
+        fn visit_unit<E>(self) -> std::result::Result<(), E> {
+            Ok(())
+        }
+
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(
+            self,
+            mut seq: A,
+        ) -> std::result::Result<(), A::Error> {
+            while seq.next_element_seed(Keys(&mut *self.0))?.is_some() {}
+            Ok(())
+        }
+
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> std::result::Result<(), A::Error> {
+            let mut seen = std::collections::HashSet::new();
+            while let Some(key) = map.next_key::<String>()? {
+                if !seen.insert(key.clone()) {
+                    self.0.push(key);
+                }
+                map.next_value_seed(Keys(&mut *self.0))?;
+            }
+            Ok(())
+        }
+    }
+
+    let mut keys = Vec::new();
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    if serde::de::DeserializeSeed::deserialize(Keys(&mut keys), &mut deserializer).is_err() {
+        return Vec::new();
+    }
+    keys
+}
+
+fn duplicate_key_in_string_query(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(Value::String(text)) = request_value(entry).and_then(|r| r.get("query").cloned())
+    else {
+        return false;
+    };
+    let keys = repeated_keys(&text);
+    let names_a_repeated_key = |body: &str| {
+        keys.iter().any(|key| {
+            serde_json::to_string(key).is_ok_and(|quoted| {
+                body.strip_prefix(&format!(
+                    "the query is not valid: duplicate key {quoted} at line "
+                ))
+                .and_then(|rest| rest.split_once(" column "))
+                .is_some_and(|(line, column)| {
+                    !line.is_empty()
+                        && !column.is_empty()
+                        && line.bytes().all(|b| b.is_ascii_digit())
+                        && column.bytes().all(|b| b.is_ascii_digit())
+                })
+            })
+        })
+    };
+    !keys.is_empty()
+        && rust_refused_java_failed(a, b, java, names_a_repeated_key, answered_with_body)
+}
+
+/// Whether Jackson's enum coercion reads `text` as one of Java's `ResultType` constants: a
+/// name, trimmed as `String.trim` does, or a trimmed decimal ordinal without sign or leading
+/// zero.
+fn jackson_reads_result_type(text: &str) -> bool {
+    let trimmed = hpds_format::java_trim(text);
+    RESULT_TYPE_NAMES.contains(&trimmed)
+        || (!trimmed.is_empty()
+            && trimmed.bytes().all(|b| b.is_ascii_digit())
+            && (trimmed == "0" || !trimmed.starts_with('0'))
+            && trimmed
+                .parse::<usize>()
+                .is_ok_and(|i| i < RESULT_TYPE_NAMES.len()))
+}
+
+fn unknown_result_type_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(Value::String(text)) =
+        entry_query(entry).and_then(|q| q.get("expectedResultType").cloned())
+    else {
+        return false;
+    };
+    if jackson_reads_result_type(&text) {
+        return false;
+    }
+    let names: Vec<String> = RESULT_TYPE_NAMES.iter().map(|n| format!("{n:?}")).collect();
+    let Ok(quoted) = serde_json::to_string(&text) else {
+        return false;
+    };
+    let expected = format!(
+        "the query is not valid: invalid value: string {quoted}, expected one of [{}]",
+        names.join(", ")
+    );
+    rust_refused_java_failed(a, b, java, |body| body == expected, empty_500)
+}
+
+fn invalid_uuid_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(query) = entry_query(entry) else {
+        return false;
+    };
+    let refused: Vec<String> = ["picsureId", "id"]
+        .iter()
+        .filter_map(|key| query.get(*key).and_then(Value::as_str))
+        .filter(|text| {
+            let trimmed = hpds_format::java_trim(text);
+            !trimmed.is_empty() && hpds_format::jackson_uuid(trimmed).is_none()
+        })
+        .map(|text| {
+            format!(
+                "the query is not valid: {text:?} is not a UUID in the canonical 8-4-4-4-12 form or 16 bytes of Base64"
+            )
+        })
+        .collect();
+    !refused.is_empty()
+        && rust_refused_java_failed(
+            a,
+            b,
+            java,
+            |body| refused.iter().any(|m| m == body),
+            empty_500,
+        )
+}
+
+/// Whether `clause` holds, at any depth, a subquery whose `operator` is missing or `null`.
+fn holds_subquery_without_operator(clause: &Value) -> bool {
+    clause
+        .get("phenotypicClauses")
+        .and_then(Value::as_array)
+        .is_some_and(|children| {
+            clause.get("operator").is_none_or(Value::is_null)
+                || children.iter().any(holds_subquery_without_operator)
+        })
+}
+
+fn missing_operator_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    entry_query(entry)
+        .and_then(|q| q.get("phenotypicClause").cloned())
+        .is_some_and(|clause| holds_subquery_without_operator(&clause))
+        && rust_refused_java_failed(
+            a,
+            b,
+            java,
+            |body| body == "a phenotypic subquery must name an operator (AND or OR)",
+            |o| empty_sync_200(o) || async_error(o),
+        )
+}
+
+fn consent_extra_field_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let extra: Vec<String> = entry_query(entry)
+        .and_then(|q| q.get("userConsents").and_then(Value::as_array).cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(Value::as_object)
+        .flat_map(|consent| {
+            consent
+                .keys()
+                .filter(|k| *k != "value")
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    !extra.is_empty()
+        && rust_refused_java_failed(
+            a,
+            b,
+            java,
+            |body| {
+                extra.iter().any(|name| {
+                    body == format!(
+                        "the query is not valid: unknown field `{name}`, expected `value`"
+                    )
+                })
+            },
+            empty_500,
+        )
+}
+
+fn export_type_out_of_scope(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(java) = java else {
+        return false;
+    };
+    let (java_outcome, rust_outcome) = match java.side {
+        Side::A => (a, b),
+        Side::B => (b, a),
+    };
+    entry.kind == Kind::Async
+        && matches!(
+            entry.result_type.as_str(),
+            "DATAFRAME_TIMESERIES" | "DATAFRAME_PFB"
+        )
+        && matches!(java_outcome, Outcome::Async(x) if ended_in_success(x))
+        && matches!(rust_outcome, Outcome::Async(x) if ended_in_error(x))
+}
+
 impl Condition {
     fn holds(
         self,
@@ -1278,6 +1610,14 @@ impl Condition {
             Condition::NullAuthorizationFilterRefused => {
                 null_authorization_filter_refused(entry, a, b, java)
             }
+            Condition::DuplicateKeyInStringQuery => {
+                duplicate_key_in_string_query(entry, a, b, java)
+            }
+            Condition::UnknownResultTypeRefused => unknown_result_type_refused(entry, a, b, java),
+            Condition::InvalidUuidRefused => invalid_uuid_refused(entry, a, b, java),
+            Condition::MissingOperatorRefused => missing_operator_refused(entry, a, b, java),
+            Condition::ConsentExtraFieldRefused => consent_extra_field_refused(entry, a, b, java),
+            Condition::ExportTypeOutOfScope => export_type_out_of_scope(entry, a, b, java),
         }
     }
 }
@@ -2732,5 +3072,186 @@ mod tests {
             ),
             None
         );
+    }
+
+    fn raw_entry(name: &str, request: Value) -> CorpusEntry {
+        CorpusEntry {
+            name: name.into(),
+            kind: Kind::Sync,
+            result_type: "COUNT".into(),
+            request,
+            raw_body: None,
+            error_path: false,
+        }
+    }
+
+    #[test]
+    fn a_repeated_key_in_a_string_query_is_accepted_only_naming_that_key() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Main);
+        let e = raw_entry(
+            "query-as-string-duplicate-key",
+            json!({"query": r#"{"expectedResultType":"COUNT","expectedResultType":"COUNT"}"#, "resourceUUID": null}),
+        );
+        let refusal = sync(
+            400,
+            r#"the query is not valid: duplicate key "expectedResultType" at line 1 column 50"#,
+        );
+        assert_eq!(
+            rule_name(&set, &e, &sync(200, "4978"), &refusal).as_deref(),
+            Some("duplicate-key-in-string-query")
+        );
+        assert_eq!(rule_name(&set, &e, &refusal, &sync(200, "4978")), None);
+        let other_key = sync(
+            400,
+            r#"the query is not valid: duplicate key "select" at line 1 column 50"#,
+        );
+        assert_eq!(rule_name(&set, &e, &sync(200, "4978"), &other_key), None);
+        let no_repeat = raw_entry(
+            "query-as-string",
+            json!({"query": r#"{"expectedResultType":"COUNT"}"#, "resourceUUID": null}),
+        );
+        assert_eq!(
+            rule_name(&set, &no_repeat, &sync(200, "4978"), &refusal),
+            None
+        );
+        let as_object = raw_entry(
+            "query-as-object",
+            json!({"query": {"expectedResultType": "COUNT"}, "resourceUUID": null}),
+        );
+        assert_eq!(
+            rule_name(&set, &as_object, &sync(200, "4978"), &refusal),
+            None
+        );
+    }
+
+    #[test]
+    fn an_unknown_result_type_is_accepted_only_with_the_exact_refusal() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Consent);
+        let names = RESULT_TYPE_NAMES
+            .iter()
+            .map(|n| format!("{n:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let e = raw_entry(
+            "unknown-result-type",
+            json!({"query": {"expectedResultType": "FOO"}, "resourceUUID": null}),
+        );
+        let exact = sync(
+            400,
+            &format!(
+                r#"the query is not valid: invalid value: string "FOO", expected one of [{names}]"#
+            ),
+        );
+        assert_eq!(
+            rule_name(&set, &e, &sync(500, ""), &exact).as_deref(),
+            Some("unknown-result-type-status")
+        );
+        assert_eq!(rule_name(&set, &e, &sync(500, "boom"), &exact), None);
+        assert_eq!(rule_name(&set, &e, &exact, &sync(500, "")), None);
+        let known = raw_entry(
+            "padded-result-type",
+            json!({"query": {"expectedResultType": " COUNT "}, "resourceUUID": null}),
+        );
+        assert_eq!(rule_name(&set, &known, &sync(500, ""), &exact), None);
+        assert!(jackson_reads_result_type("13") && !jackson_reads_result_type("14"));
+        assert!(!jackson_reads_result_type("01") && jackson_reads_result_type(" 0 "));
+    }
+
+    #[test]
+    fn an_invalid_uuid_is_accepted_only_with_the_exact_refusal() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Main);
+        let e = raw_entry(
+            "picsureid-not-uuid",
+            json!({"query": {"expectedResultType": "COUNT", "picsureId": "not-a-uuid"}, "resourceUUID": null}),
+        );
+        let exact = sync(
+            400,
+            r#"the query is not valid: "not-a-uuid" is not a UUID in the canonical 8-4-4-4-12 form or 16 bytes of Base64"#,
+        );
+        assert_eq!(
+            rule_name(&set, &e, &sync(500, ""), &exact).as_deref(),
+            Some("invalid-uuid-status")
+        );
+        assert_eq!(rule_name(&set, &e, &sync(200, "3"), &exact), None);
+        let base64 = raw_entry(
+            "picsureid-base64",
+            json!({"query": {"expectedResultType": "COUNT", "picsureId": "hpTj1Fy0QQ+EMZk0ReY99g=="}, "resourceUUID": null}),
+        );
+        assert_eq!(rule_name(&set, &base64, &sync(500, ""), &exact), None);
+    }
+
+    #[test]
+    fn a_missing_operator_is_accepted_only_against_javas_failure() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Main);
+        let message = "a phenotypic subquery must name an operator (AND or OR)";
+        let e = raw_entry(
+            "subquery-without-operator",
+            json!({"query": {"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicClauses": [{"phenotypicFilterType": "REQUIRED", "conceptPath": "\\a\\"}]}}, "resourceUUID": null}),
+        );
+        assert_eq!(
+            rule_name(&set, &e, &sync(200, ""), &sync(400, message)).as_deref(),
+            Some("missing-operator-status")
+        );
+        assert_eq!(
+            rule_name(&set, &e, &sync(200, "3"), &sync(400, message)),
+            None
+        );
+        let with_operator = raw_entry(
+            "subquery-with-operator",
+            json!({"query": {"expectedResultType": "COUNT", "phenotypicClause": {"operator": "AND", "phenotypicClauses": [{"phenotypicFilterType": "REQUIRED", "conceptPath": "\\a\\"}]}}, "resourceUUID": null}),
+        );
+        assert_eq!(
+            rule_name(&set, &with_operator, &sync(200, ""), &sync(400, message)),
+            None
+        );
+    }
+
+    #[test]
+    fn an_extra_consent_field_is_accepted_only_naming_it() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Consent);
+        let e = raw_entry(
+            "consent-extra-field",
+            json!({"query": {"expectedResultType": "COUNT", "userConsents": [{"value": "x", "other": 1}]}, "resourceUUID": null}),
+        );
+        let exact = sync(
+            400,
+            "the query is not valid: unknown field `other`, expected `value`",
+        );
+        assert_eq!(
+            rule_name(&set, &e, &sync(500, ""), &exact).as_deref(),
+            Some("consent-extra-field-status")
+        );
+        let wrong = sync(
+            400,
+            "the query is not valid: unknown field `bogus`, expected `value`",
+        );
+        assert_eq!(rule_name(&set, &e, &sync(500, ""), &wrong), None);
+        let clean = raw_entry(
+            "consent",
+            json!({"query": {"expectedResultType": "COUNT", "userConsents": [{"value": "x"}]}, "resourceUUID": null}),
+        );
+        assert_eq!(rule_name(&set, &clean, &sync(500, ""), &exact), None);
+    }
+
+    #[test]
+    fn an_out_of_scope_export_is_accepted_only_as_javas_success_against_rusts_error() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Main);
+        let mut e = query_entry(
+            "error-l0-dataframe_pfb-async-all",
+            Kind::Async,
+            json!({"expectedResultType": "DATAFRAME_PFB"}),
+        );
+        let success = async_outcome(200, Some("SUCCESS"), Some("rows"));
+        let error = async_outcome(200, Some("ERROR"), None);
+        assert_eq!(
+            rule_name(&set, &e, &success, &error).as_deref(),
+            Some("export-type-out-of-scope")
+        );
+        assert_eq!(rule_name(&set, &e, &error, &success), None);
+        e.result_type = "DATAFRAME".into();
+        assert_eq!(rule_name(&set, &e, &success, &error), None);
+        let unknown_side = checked_in();
+        e.result_type = "DATAFRAME_TIMESERIES".into();
+        assert_eq!(rule_name(&unknown_side, &e, &success, &error), None);
     }
 }
