@@ -57,7 +57,8 @@
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-api-model</artifactId>
         </dependency>
-        <!-- v1/v3 query models + QueryTranslator (used by queryMetadata to convert stored v1 bodies to v3). -->
+        <!-- v1/v3 query models + QueryTranslator. The v1 model stays only so QueryService can translate stored v1 rows to v3,
+             for /metadata and when a read upgrades such a row in place. -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
             <artifactId>pic-sure-hpds-model</artifactId>

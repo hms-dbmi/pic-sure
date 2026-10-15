@@ -29,6 +29,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 
@@ -126,7 +127,7 @@ class AuthorizationServiceConsentDecisionTest {
         when(accessRuleService.cachedPreProcessAccessRules(any(), any())).thenReturn(Set.of());
 
         EvaluateAccessRuleResult result =
-            service(true).isAuthorized(application, Map.of("Target Service", "/hpds/auth/v3/query/sync"), user, false);
+            service(true).isAuthorized(application, Map.of("Target Service", "/hpds/auth/query/sync"), user, false);
 
         assertFalse(result.result());
         assertEquals("No access rule grants this request.", result.denialReason().orElseThrow());
@@ -135,7 +136,7 @@ class AuthorizationServiceConsentDecisionTest {
     @Test
     void consentFlagOffSkipsConsentLookup() {
         EvaluateAccessRuleResult result =
-            service(false).isAuthorized(application, Map.of("Target Service", "/hpds/auth/v3/query/sync"), user, false);
+            service(false).isAuthorized(application, Map.of("Target Service", "/hpds/auth/query/sync"), user, false);
 
         assertTrue(result.result());
         verify(userConsentsRepository, never()).findByUserId(any());
@@ -143,7 +144,8 @@ class AuthorizationServiceConsentDecisionTest {
 
     private AuthorizationService service(boolean enabled) {
         return new AuthorizationService(
-            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, enabled, false, mock(ApiKeyService.class), false
+            accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, enabled, false, mock(ApiKeyService.class),
+            mock(OpenSessionService.class), false
         );
     }
 

@@ -5,8 +5,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import edu.harvard.dbmi.avillach.dictionary.AuditAttributes;
+import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchCriteria;
+import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchQuery;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.Results;
-import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,19 +35,15 @@ class LegacySearchControllerAuditMetadataTest {
     }
 
     @Test
-    void recordsMapperProducedTsqueryInAuditMetadata() throws IOException {
-        subject.legacySearch("""
-            {"query":{"searchTerm":"tutorial-biolincc digitalis","limit":100}}
-            """);
+    void recordsMapperProducedTsqueryInAuditMetadata() {
+        subject.legacySearch(new LegacySearchQuery(new LegacySearchCriteria("tutorial-biolincc digitalis", 100)));
 
         assertEquals("tutorial:* & biolincc:* & digitalis:*", AuditAttributes.getMetadata(request).get("search_term"));
     }
 
     @Test
-    void recordsEmptyAuditMetadataForAnEmptyRawTerm() throws IOException {
-        subject.legacySearch("""
-            {"query":{"searchTerm":"","limit":100}}
-            """);
+    void recordsEmptyAuditMetadataForAnEmptyRawTerm() {
+        subject.legacySearch(new LegacySearchQuery(new LegacySearchCriteria("", 100)));
 
         assertEquals("", AuditAttributes.getMetadata(request).get("search_term"));
     }

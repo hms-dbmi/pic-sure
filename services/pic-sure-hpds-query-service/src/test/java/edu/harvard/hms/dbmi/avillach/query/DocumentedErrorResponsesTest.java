@@ -114,11 +114,11 @@ class DocumentedErrorResponsesTest {
     /** Endpoints whose consent check returns 403 when the caller's current consents do not cover the query. */
     static Stream<Arguments> consentChecked() {
         return Stream.of(
-            endpoint("submit", id -> authorized(post("/hpds/auth/v3/query")).content(QUERY_BODY)),
-            endpoint("sync", id -> authorized(post("/hpds/auth/v3/query/sync")).content(QUERY_BODY)),
-            endpoint("result", id -> authorized(post("/hpds/auth/v3/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/v3/query/{id}/signed-url", id)).content("{}")),
-            endpoint("metadata", id -> authorized(get("/hpds/auth/v3/query/{id}/metadata", id)))
+            endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
+            endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
+            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
+            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
+            endpoint("metadata", id -> authorized(get("/hpds/auth/query/{id}/metadata", id)))
         );
     }
 
@@ -143,15 +143,14 @@ class DocumentedErrorResponsesTest {
     /** Endpoints that call HPDS through {@code ResourceWebClient}, where an HPDS 5xx becomes 502. */
     static Stream<Arguments> hpdsBacked() {
         return Stream.of(
-            endpoint("submit", id -> authorized(post("/hpds/auth/v3/query")).content(QUERY_BODY)),
-            endpoint("sync", id -> authorized(post("/hpds/auth/v3/query/sync")).content(QUERY_BODY)),
-            endpoint("status", id -> authorized(post("/hpds/auth/v3/query/{id}/status", id)).content("{}")),
-            endpoint("result", id -> authorized(post("/hpds/auth/v3/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/v3/query/{id}/signed-url", id)).content("{}")),
+            endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
+            endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
+            endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id)).content("{}")),
+            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
+            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
             endpoint("search", id -> authorized(post("/hpds/auth/search")).content("{\"query\":\"age\"}")),
             endpoint("search values", id -> identified(get("/hpds/auth/search/values")).param("genomicConceptPath", "\\gene\\")),
-            endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY)),
-            endpoint("open submit v3", id -> authorized(post("/hpds/open/v3/query")).content(QUERY_BODY))
+            endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY))
         );
     }
 
@@ -166,10 +165,7 @@ class DocumentedErrorResponsesTest {
 
     /** The obfuscated sync endpoints call the open backend through {@code AggregateBackendClient}, not {@code ResourceWebClient}. */
     static Stream<Arguments> aggregateSync() {
-        return Stream.of(
-            endpoint("open sync", id -> authorized(post("/hpds/open/query/sync")).content(QUERY_BODY)),
-            endpoint("open sync v3", id -> authorized(post("/hpds/open/v3/query/sync")).content(QUERY_BODY))
-        );
+        return Stream.of(endpoint("open sync", id -> authorized(post("/hpds/open/query/sync")).content(QUERY_BODY)));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -184,10 +180,10 @@ class DocumentedErrorResponsesTest {
     /** Endpoints that load the stored query from operations-service before doing anything else. */
     static Stream<Arguments> storedQueryReads() {
         return Stream.of(
-            endpoint("status", id -> authorized(post("/hpds/auth/v3/query/{id}/status", id)).content("{}")),
-            endpoint("result", id -> authorized(post("/hpds/auth/v3/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/v3/query/{id}/signed-url", id)).content("{}")),
-            endpoint("metadata", id -> authorized(get("/hpds/auth/v3/query/{id}/metadata", id)))
+            endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id)).content("{}")),
+            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
+            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
+            endpoint("metadata", id -> authorized(get("/hpds/auth/query/{id}/metadata", id)))
         );
     }
 
@@ -215,17 +211,16 @@ class DocumentedErrorResponsesTest {
     void statusUpdateFailureIs502() throws Exception {
         downstream.stubFor(WireMock.patch(urlPathMatching(QUERIES + "/.*")).willReturn(aResponse().withStatus(500)));
 
-        mockMvc.perform(authorized(post("/hpds/auth/v3/query/{id}/status", storedId)).content("{}")).andExpect(status().isBadGateway())
+        mockMvc.perform(authorized(post("/hpds/auth/query/{id}/status", storedId)).content("{}")).andExpect(status().isBadGateway())
             .andExpect(jsonPath("$.errorType").value("bad_gateway"));
     }
 
     /** Endpoints that persist a new query through operations-service after HPDS accepts it. */
     static Stream<Arguments> persistingSubmits() {
         return Stream.of(
-            endpoint("submit", id -> authorized(post("/hpds/auth/v3/query")).content(QUERY_BODY)),
-            endpoint("sync", id -> authorized(post("/hpds/auth/v3/query/sync")).content(QUERY_BODY)),
-            endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY)),
-            endpoint("open submit v3", id -> authorized(post("/hpds/open/v3/query")).content(QUERY_BODY))
+            endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
+            endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
+            endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY))
         );
     }
 

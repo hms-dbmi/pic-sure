@@ -14,11 +14,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
+import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
-import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
 
 class ConsentAuthorizationServiceTest {
 

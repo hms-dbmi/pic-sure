@@ -21,8 +21,10 @@ import org.springframework.web.client.RestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
+import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
@@ -49,7 +51,7 @@ class ResourceWebClientTest {
     }
 
     private String base() {
-        return "http://localhost:" + hpds.port() + "/PIC-SURE";
+        return "http://localhost:" + hpds.port() + "/PIC-SURE/v3";
     }
 
     private HpdsTarget target() {
@@ -65,7 +67,7 @@ class ResourceWebClientTest {
     @Test
     void queryInjectsServiceBearerToken() {
         hpds.stubFor(
-            post(urlEqualTo("/PIC-SURE/query")).withHeader("Authorization", equalTo("Bearer " + TOKEN)) // service token preserved
+            post(urlEqualTo("/PIC-SURE/v3/query")).withHeader("Authorization", equalTo("Bearer " + TOKEN)) // service token preserved
                 .willReturn(okJson("{\"resourceResultId\":\"rr-1\",\"status\":\"PENDING\"}"))
         );
 
@@ -77,7 +79,7 @@ class ResourceWebClientTest {
     @Test
     void resultBuffersOctetStreamWithToken() {
         hpds.stubFor(
-            post(urlEqualTo("/PIC-SURE/query/rr-1/result")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
+            post(urlEqualTo("/PIC-SURE/v3/query/rr-1/result")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
                 .willReturn(aResponse().withStatus(200).withBody(new byte[] {1, 2, 3}))
         );
 
@@ -87,21 +89,21 @@ class ResourceWebClientTest {
     }
 
     @Test
-    void signedUrlBuffersJsonStringWithToken() {
+    void signedUrlReadsTheSignedUrlObjectWithToken() {
         hpds.stubFor(
-            post(urlEqualTo("/PIC-SURE/query/rr-1/signed-url")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
-                .willReturn(okJson("{\"url\":\"https://s3/x\"}"))
+            post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
+                .willReturn(okJson("{\"signedUrl\":\"https://s3/x\"}"))
         );
 
-        ResponseEntity<String> resp = client().queryResultSignedUrl(target(), "rr-1", req());
+        SignedUrlResponse resp = client().queryResultSignedUrl(target(), "rr-1", req());
 
-        assertThat(resp.getBody()).contains("https://s3/x");
+        assertThat(resp.getSignedUrl()).isEqualTo("https://s3/x");
     }
 
     @Test
     void querySyncInjectsTokenPropagatesMetadataHeaderAndSendsRequestSource() {
         hpds.stubFor(
-            post(urlEqualTo("/PIC-SURE/query/sync")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
+            post(urlEqualTo("/PIC-SURE/v3/query/sync")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
                 .withHeader("request-source", equalTo("UI"))
                 .willReturn(aResponse().withStatus(200).withHeader("queryMetadata", "rr-9").withBody("payload"))
         );
@@ -115,7 +117,7 @@ class ResourceWebClientTest {
     @Test
     void statusInjectsToken() {
         hpds.stubFor(
-            post(urlEqualTo("/PIC-SURE/query/rr-1/status")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
+            post(urlEqualTo("/PIC-SURE/v3/query/rr-1/status")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
                 .willReturn(okJson("{\"resourceResultId\":\"rr-1\",\"status\":\"AVAILABLE\"}"))
         );
 
@@ -127,7 +129,7 @@ class ResourceWebClientTest {
     @Test
     void searchDoesNotInjectServiceToken() { // Search requests do not send a service token.
         hpds.stubFor(
-            post(urlEqualTo("/PIC-SURE/search")).withHeader("Authorization", absent())
+            post(urlEqualTo("/PIC-SURE/v3/search")).withHeader("Authorization", absent())
                 .willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}"))
         );
 
@@ -139,20 +141,22 @@ class ResourceWebClientTest {
     @Test
     void searchValuesIsGetWithParamsAndNoServiceToken() {
         hpds.stubFor(
-            get(urlPathEqualTo("/PIC-SURE/search/values/")).withHeader("Authorization", absent())
+            get(urlPathEqualTo("/PIC-SURE/v3/search/values/")).withHeader("Authorization", absent())
                 .withQueryParam("genomicConceptPath", equalTo("\\gene\\")).withQueryParam("query", equalTo("BRCA"))
-                .withQueryParam("page", equalTo("1")).willReturn(okJson("{\"results\":[],\"page\":1,\"total\":0}"))
+                .withQueryParam("page", equalTo("1")).willReturn(okJson("{\"results\":[\"BRCA1\",\"BRCA2\"],\"page\":1,\"total\":2}"))
         );
 
-        var result = client().searchConceptValues(base(), req(), "\\gene\\", "BRCA", 1, 10);
+        PaginatedSearchResult<String> result = client().searchConceptValues(base(), "\\gene\\", "BRCA", 1, 10);
 
-        assertThat(result).isNotNull();
+        assertThat(result.getResults()).containsExactly("BRCA1", "BRCA2");
+        assertThat(result.getPage()).isEqualTo(1);
+        assertThat(result.getTotal()).isEqualTo(2);
     }
 
     @Test
     void hpdsClientErrorKeepsItsStatusAndBody() {
         hpds.stubFor(
-            post(urlEqualTo("/PIC-SURE/query/sync"))
+            post(urlEqualTo("/PIC-SURE/v3/query/sync"))
                 .willReturn(aResponse().withStatus(400).withBody("Result type DATAFRAME is served asynchronously."))
         );
 
@@ -163,7 +167,7 @@ class ResourceWebClientTest {
 
     @Test
     void hpdsLockedResourceSurfacesAsForbidden() {
-        hpds.stubFor(post(urlEqualTo("/PIC-SURE/query")).willReturn(aResponse().withStatus(403).withBody("Resource is locked")));
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query")).willReturn(aResponse().withStatus(403).withBody("Resource is locked")));
 
         assertThatThrownBy(() -> client().query(target(), req())).isInstanceOf(PicsureException.class)
             .satisfies(e -> assertThat(((PicsureException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN))
@@ -172,7 +176,7 @@ class ResourceWebClientTest {
 
     @Test
     void hpdsServerErrorThrowsCommunicationException() {
-        hpds.stubFor(post(urlEqualTo("/PIC-SURE/query")).willReturn(aResponse().withStatus(500)));
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query")).willReturn(aResponse().withStatus(500)));
         assertThatThrownBy(() -> client().query(target(), req())).isInstanceOf(HpdsCommunicationException.class);
     }
 }
