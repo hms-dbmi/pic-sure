@@ -5,7 +5,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -99,8 +98,7 @@ class OpenApiDocumentTest {
         );
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "ObfuscatedCount", "count", "display", "variance");
         OpenApiDocumentAssertions.assertSchemaDocumented(
-            document, Set.of("ObfuscatedCount.variance"), "VisualizationResponse", "CategoricalDistributionData",
-            "ContinuousDistributionData", "ObfuscatedCount"
+            document, "VisualizationResponse", "CategoricalDistributionData", "ContinuousDistributionData", "ObfuscatedCount"
         );
 
         JsonNode response = schema(document, "VisualizationResponse").path("properties");
