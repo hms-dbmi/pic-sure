@@ -116,6 +116,11 @@
       "reason": "README, Differences from Java: 'POST /query accepts only PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES and DATAFRAME_PFB'. Java accepts a sync result type there and then fails it. COUNT, CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT are queued and end in ERROR (CountV3Processor.java:211 throws UnsupportedOperationException on the worker). CROSS_COUNT and OBSERVATION_CROSS_COUNT make initializeResult throw RuntimeException(\"UNSUPPORTED RESULT TYPE\") (QueryV3Service.java:122), outside the IllegalArgumentException catch; on both Java images the submit still answers 200 with an empty body and no status (checked against main 7798b1c84 and feature-harmonization ecf5a5315). Rust refuses the submit with 400 \"Result type <type> is computed synchronously. Submit it with POST /query/sync.\". Accepted only for async entries with that exact message for the entry's result type, against a submit Java accepted with 200."
     },
     {
+      "name": "genomic-type-on-async-route",
+      "when": "genomic-type-on-async-route",
+      "reason": "Spec, phenotype-only scope: Rust serves no genomic result type and no INFO_COLUMN_LISTING on POST /query. Java has no processor for them in initializeResult either (QueryV3Service.java:118, the switch default throws RuntimeException outside the IllegalArgumentException catch), so its submit answers 200 with no body. Rust refuses the submit with 400 \"result type <type> is not supported by this phenotype-only HPDS\". Accepted only for async entries with that exact message for the entry's result type, against Java's bodiless 200."
+    },
+    {
       "name": "genomic-type-on-sync-route",
       "when": "genomic-type-on-sync-route",
       "reason": "Spec, phenotype-only scope: genomic result types are out of scope. Java answers some of them on /query/sync with 200 and a text such as \"VARIANT_LIST query type not allowed\"; Rust answers 400 \"result type <type> is not supported by this phenotype-only HPDS\". Accepted only for sync entries with that exact message for the entry's result type, against a Java 200."

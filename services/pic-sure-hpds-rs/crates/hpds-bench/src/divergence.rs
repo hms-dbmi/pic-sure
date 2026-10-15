@@ -63,6 +63,12 @@ pub enum Condition {
     /// A sync entry for a genomic result type that one side refused with 400 `result type
     /// <type> is not supported by this phenotype-only HPDS`, while the other answered 200.
     GenomicTypeOnSyncRoute,
+    /// An async entry for a result type Rust does not serve at all (a genomic type or
+    /// INFO_COLUMN_LISTING), whose submit the Rust side refused with exactly `result type
+    /// <type> is not supported by this phenotype-only HPDS`, while the Java side answered the
+    /// submit 200 with no status: `initializeResult` has no processor for the type and throws
+    /// outside its catch. With the Java side unknown, either side may be Java.
+    GenomicTypeOnAsyncRoute,
     /// One side refused with 400 `variant-spec concept path "<path>" is not supported by this
     /// phenotype-only HPDS`, while the other answered (a sync 200 or an accepted async
     /// submit).
@@ -573,6 +579,20 @@ fn genomic_type_on_sync_route(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> 
             |body| body == expected,
             |o| matches!(o, Outcome::Sync(s) if s.status == 200),
         )
+}
+
+fn genomic_type_on_async_route(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let expected = format!(
+        "result type {} is not supported by this phenotype-only HPDS",
+        entry.result_type
+    );
+    entry.kind == Kind::Async
+        && rust_refused_java_failed(a, b, java, |body| body == expected, submit_failed)
 }
 
 fn variant_spec_path_refused(a: &Outcome, b: &Outcome) -> bool {
@@ -1219,6 +1239,7 @@ impl Condition {
             ),
             Condition::SyncTypeOnAsyncRoute => sync_type_on_async_route(entry, a, b),
             Condition::GenomicTypeOnSyncRoute => genomic_type_on_sync_route(entry, a, b),
+            Condition::GenomicTypeOnAsyncRoute => genomic_type_on_async_route(entry, a, b, java),
             Condition::VariantSpecPathRefused => variant_spec_path_refused(a, b),
             Condition::RequestLimitRefused => request_limit_refused(a, b),
             Condition::NumberTooLongRefused => number_too_long_refused(a, b),
@@ -2616,5 +2637,38 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn an_unserved_type_on_post_query_is_accepted_only_against_javas_bodiless_200() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Main);
+        let entry = query_entry(
+            "icl-control-async-object",
+            Kind::Async,
+            json!({"expectedResultType": "INFO_COLUMN_LISTING"}),
+        );
+        let refusal = refused_submit(
+            "result type INFO_COLUMN_LISTING is not supported by this phenotype-only HPDS",
+        );
+        assert_eq!(
+            rule_name(&set, &entry, &bodiless_submit(), &refusal).as_deref(),
+            Some("genomic-type-on-async-route")
+        );
+        assert_eq!(rule_name(&set, &entry, &refusal, &bodiless_submit()), None);
+        assert_eq!(
+            rule_name(
+                &set,
+                &entry,
+                &async_outcome(200, Some("ERROR"), None),
+                &refusal
+            ),
+            None
+        );
+        let other_type =
+            refused_submit("result type COUNT is not supported by this phenotype-only HPDS");
+        assert_eq!(
+            rule_name(&set, &entry, &bodiless_submit(), &other_type),
+            None
+        );
     }
 }
