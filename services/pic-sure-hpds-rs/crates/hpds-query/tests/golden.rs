@@ -100,6 +100,7 @@ fn run_async(engine: &Engine, query: &Query) -> Outcome {
         result_content_type: None,
         result_body: body.ok(),
         timed_out: false,
+        error: None,
     })
 }
 

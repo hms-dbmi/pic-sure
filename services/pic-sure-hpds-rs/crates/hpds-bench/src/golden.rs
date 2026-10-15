@@ -387,6 +387,7 @@ mod tests {
             result_content_type: None,
             result_body: Some("PATIENT_NUM\n1\n2\n3\n".into()),
             timed_out: false,
+            error: None,
         });
         let expect = Expect {
             header: Some("PATIENT_NUM".into()),

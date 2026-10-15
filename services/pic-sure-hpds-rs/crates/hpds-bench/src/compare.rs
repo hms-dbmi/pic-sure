@@ -620,6 +620,7 @@ mod tests {
             result_content_type: Some("text/plain".into()),
             result_body: Some("PATIENT_NUM\n1\n2\n".into()),
             timed_out: false,
+            error: None,
         };
         let reordered = AsyncOutcome {
             result_body: Some("PATIENT_NUM\n2\n1\n".into()),

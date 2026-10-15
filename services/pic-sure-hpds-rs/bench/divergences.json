@@ -108,7 +108,7 @@
     {
       "name": "filter-shape-status",
       "when": "filter-shape-refused",
-      "reason": "Spec divergence, HTTP errors: POST /query runs Java's PhenotypicFilterValidator, which throws IllegalArgumentException for a REQUIRED or ANY_RECORD_OF filter with values or a bound, and for a FILTER with both values and a bound; Java catches it and ends the query in ERROR (QueryV3Service.runQuery). Rust refuses the submit with 400 and the validator's own message. Accepted only for those two messages against Java's ERROR or empty sync 200."
+      "reason": "Spec divergence, HTTP errors: POST /query runs Java's PhenotypicFilterValidator, which throws IllegalArgumentException for a REQUIRED or ANY_RECORD_OF filter with values or a bound, and for a FILTER with both values and a bound; Java catches it and ends the query in ERROR (QueryV3Service.runQuery). Rust refuses the submit with 400 and the validator's own message. Accepted only when the query holds such a filter, Rust's 400 is exactly that filter's message, and the Java side ended in ERROR or answered an empty sync 200."
     },
     {
       "name": "range-on-categorical-status",
@@ -231,7 +231,7 @@
     {
       "name": "export-type-out-of-scope",
       "when": "export-type-out-of-scope",
-      "reason": "Spec, scope: DATAFRAME_TIMESERIES and DATAFRAME_PFB are export types v4 does not produce; POST /query accepts them and ends the query in ERROR with the reason in resultMetadata.error, where Java produces the export. Accepted only for async entries of those two result types, with the Java side named, Java's query in SUCCESS and Rust's in ERROR."
+      "reason": "Spec, scope: DATAFRAME_TIMESERIES and DATAFRAME_PFB are export types v4 does not produce; POST /query accepts them and ends the query in ERROR with resultMetadata.error \"<type> exports are not supported by this phenotype-only HPDS\", where Java produces the export. Accepted only for async entries of those two result types, with the Java side named, Java's query in SUCCESS and Rust's in ERROR with exactly that reason."
     },
     {
       "name": "null-authorization-filter-main",

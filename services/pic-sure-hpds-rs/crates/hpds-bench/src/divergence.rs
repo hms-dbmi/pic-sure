@@ -57,11 +57,14 @@ pub enum Condition {
     /// concept), and the other answered the sync request 200 with an empty body or ended the
     /// accepted async query in ERROR.
     RangeOnCategoricalRefused,
-    /// One side refused with 400 naming a filter whose shape Java's `PhenotypicFilterValidator`
-    /// refuses (`Required filter with concept path <path> cannot have categorical values or
+    /// The entry's query holds a filter whose shape Java's `PhenotypicFilterValidator` refuses
+    /// (a REQUIRED or ANY_RECORD_OF filter with `values` or a bound, or a FILTER with a
+    /// non-empty `values` and a bound); the Rust side refused with exactly that filter's
+    /// message (`Required filter with concept path <path> cannot have categorical values or
     /// min/max set`, or `Filter with concept path <path> cannot have both categorical values
-    /// and min/max set`), and the other answered the sync request 200 with an empty body or
-    /// ended the accepted async query in ERROR.
+    /// and min/max set`), and the Java side answered the sync request 200 with an empty body or
+    /// ended the accepted async query in ERROR. With the Java side unknown, either side may be
+    /// Java.
     FilterShapeRefused,
     /// An async entry whose submit one side refused with 400 `Result type <type> is computed
     /// synchronously. Submit it with POST /query/sync.`, while the other accepted it (200).
@@ -189,7 +192,8 @@ pub enum Condition {
     ConsentExtraFieldRefused,
     /// An async DATAFRAME_TIMESERIES or DATAFRAME_PFB entry: the Java side (which must be
     /// known) ended the query in SUCCESS and the Rust side accepted the submit and ended it in
-    /// ERROR, as Rust does for these two export types it does not produce.
+    /// ERROR with `resultMetadata.error` exactly `<type> exports are not supported by this
+    /// phenotype-only HPDS`, as Rust does for these two export types it does not produce.
     ExportTypeOutOfScope,
 }
 
@@ -1540,7 +1544,58 @@ fn export_type_out_of_scope(
             "DATAFRAME_TIMESERIES" | "DATAFRAME_PFB"
         )
         && matches!(java_outcome, Outcome::Async(x) if ended_in_success(x))
-        && matches!(rust_outcome, Outcome::Async(x) if ended_in_error(x))
+        && matches!(rust_outcome, Outcome::Async(x) if ended_in_error(x)
+            && x.error.as_deref() == Some(format!(
+                "{} exports are not supported by this phenotype-only HPDS",
+                entry.result_type
+            ).as_str()))
+}
+
+/// The refusal Java's `PhenotypicFilterValidator` gives `filter`, if its shape is refused.
+fn filter_shape_refusal(filter: &Value) -> Option<String> {
+    let path = filter.get("conceptPath").and_then(Value::as_str)?;
+    let set = |key: &str| filter.get(key).is_some_and(|v| !v.is_null());
+    let has_bound = set("min") || set("max");
+    match filter.get("phenotypicFilterType").and_then(Value::as_str)? {
+        "REQUIRED" | "ANY_RECORD_OF" if has_bound || set("values") => Some(format!(
+            "Required filter with concept path {path} cannot have categorical values or min/max set"
+        )),
+        "FILTER"
+            if has_bound
+                && filter
+                    .get("values")
+                    .and_then(Value::as_array)
+                    .is_some_and(|v| !v.is_empty()) =>
+        {
+            Some(format!(
+                "Filter with concept path {path} cannot have both categorical values and min/max set"
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn filter_shape_refused(
+    entry: &CorpusEntry,
+    a: &Outcome,
+    b: &Outcome,
+    java: Option<JavaService>,
+) -> bool {
+    let Some(query) = entry_query(entry) else {
+        return false;
+    };
+    let refusals: Vec<String> = phenotypic_filters(&query)
+        .into_iter()
+        .filter_map(filter_shape_refusal)
+        .collect();
+    !refusals.is_empty()
+        && rust_refused_java_failed(
+            a,
+            b,
+            java,
+            |body| refusals.iter().any(|m| m == body),
+            failed_quietly,
+        )
 }
 
 impl Condition {
@@ -1569,18 +1624,7 @@ impl Condition {
                 |body| body.ends_with(" is not a categorical variable"),
                 failed_quietly,
             ),
-            Condition::FilterShapeRefused => refused_against(
-                a,
-                b,
-                |body| {
-                    (body.starts_with("Required filter with concept path ")
-                        && body.ends_with(" cannot have categorical values or min/max set"))
-                        || (body.starts_with("Filter with concept path ")
-                            && body
-                                .ends_with(" cannot have both categorical values and min/max set"))
-                },
-                failed_quietly,
-            ),
+            Condition::FilterShapeRefused => filter_shape_refused(entry, a, b, java),
             Condition::RangeOnCategoricalRefused => refused_against(
                 a,
                 b,
@@ -1955,6 +1999,7 @@ mod tests {
             result_content_type: body.map(|_| "text/plain".to_owned()),
             result_body: body.map(str::to_owned),
             timed_out: false,
+            error: None,
         })
     }
 
@@ -3033,43 +3078,53 @@ mod tests {
     #[test]
     fn filter_shape_refusals_are_accepted_against_javas_error() {
         let set = checked_in().for_java(Side::A, JavaBranch::Main);
-        let e = query_entry(
-            "required-with-values-patients",
-            Kind::Async,
-            json!({"expectedResultType": "PATIENTS"}),
+        let shaped = |clause: Value| {
+            query_entry(
+                "filter-shape-patients",
+                Kind::Async,
+                json!({"expectedResultType": "PATIENTS", "phenotypicClause": clause}),
+            )
+        };
+        let error = async_outcome(200, Some("ERROR"), None);
+        let required = shaped(
+            json!({"phenotypicFilterType": "REQUIRED", "conceptPath": "\\s\\", "values": []}),
         );
-        for message in [
-            "Required filter with concept path \\s\\ cannot have categorical values or min/max set",
-            "Filter with concept path \\s\\ cannot have both categorical values and min/max set",
+        let both = shaped(
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": "\\s\\", "values": ["x"], "min": 1}),
+        );
+        let plain = shaped(json!({"phenotypicFilterType": "REQUIRED", "conceptPath": "\\s\\"}));
+        for (e, message) in [
+            (
+                &required,
+                "Required filter with concept path \\s\\ cannot have categorical values or min/max set",
+            ),
+            (
+                &both,
+                "Filter with concept path \\s\\ cannot have both categorical values and min/max set",
+            ),
         ] {
             assert_eq!(
-                rule_name(
-                    &set,
-                    &e,
-                    &async_outcome(200, Some("ERROR"), None),
-                    &refused_submit(message)
-                )
-                .as_deref(),
+                rule_name(&set, e, &error, &refused_submit(message)).as_deref(),
                 Some("filter-shape-status"),
                 "{message}"
             );
+            assert_eq!(rule_name(&set, e, &refused_submit(message), &error), None);
             assert_eq!(
                 rule_name(
                     &set,
-                    &e,
+                    e,
                     &async_outcome(200, Some("SUCCESS"), Some("PATIENT_NUM\n")),
                     &refused_submit(message)
                 ),
                 None
             );
+            assert_eq!(
+                rule_name(&set, &plain, &error, &refused_submit(message)),
+                None
+            );
         }
         assert_eq!(
-            rule_name(
-                &set,
-                &e,
-                &async_outcome(200, Some("ERROR"), None),
-                &refused_submit("other")
-            ),
+            rule_name(&set, &required, &error, &refused_submit("other")),
             None
         );
     }
@@ -3242,13 +3297,31 @@ mod tests {
             json!({"expectedResultType": "DATAFRAME_PFB"}),
         );
         let success = async_outcome(200, Some("SUCCESS"), Some("rows"));
-        let error = async_outcome(200, Some("ERROR"), None);
+        let with_error = |text: &str| match async_outcome(200, Some("ERROR"), None) {
+            Outcome::Async(x) => Outcome::Async(AsyncOutcome {
+                error: Some(text.to_owned()),
+                ..x
+            }),
+            other => other,
+        };
+        let error =
+            with_error("DATAFRAME_PFB exports are not supported by this phenotype-only HPDS");
+        assert_eq!(
+            rule_name(&set, &e, &success, &with_error("something else")),
+            None
+        );
+        assert_eq!(
+            rule_name(&set, &e, &success, &async_outcome(200, Some("ERROR"), None)),
+            None
+        );
         assert_eq!(
             rule_name(&set, &e, &success, &error).as_deref(),
             Some("export-type-out-of-scope")
         );
         assert_eq!(rule_name(&set, &e, &error, &success), None);
         e.result_type = "DATAFRAME".into();
+        assert_eq!(rule_name(&set, &e, &success, &error), None);
+        e.result_type = "DATAFRAME_TIMESERIES".into();
         assert_eq!(rule_name(&set, &e, &success, &error), None);
         let unknown_side = checked_in();
         e.result_type = "DATAFRAME_TIMESERIES".into();

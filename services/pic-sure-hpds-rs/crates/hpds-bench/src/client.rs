@@ -44,6 +44,9 @@ pub struct AsyncOutcome {
     pub result_body: Option<String>,
     /// Whether polling gave up before a terminal state.
     pub timed_out: bool,
+    /// The `resultMetadata.error` text of the last query status, when the server sent one
+    /// (Rust names there why a query ended in ERROR).
+    pub error: Option<String>,
 }
 
 /// Result of running one corpus entry against one server.
@@ -415,6 +418,9 @@ impl Client {
             }
             status = polled.json().await.unwrap_or(Value::Null);
         }
+        outcome.error = status["resultMetadata"]["error"]
+            .as_str()
+            .map(str::to_owned);
         let service = started.elapsed();
         let mut download = None;
         let mut bytes = 0;
