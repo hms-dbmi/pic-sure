@@ -155,6 +155,11 @@ impl QueryValidator {
         for filter in query.all_filters() {
             validate_filter(filter, concepts)?;
         }
+        if query.null_authorization_filters > 0 {
+            return Err(QueryError::Invalid(
+                NULL_AUTHORIZATION_FILTER_MESSAGE.into(),
+            ));
+        }
         for filter in &query.authorization_filters {
             validate_authorization_filter(filter, concepts)?;
         }
@@ -203,6 +208,10 @@ pub fn validate_filter(filter: &PhenotypicFilter, concepts: &impl ConceptLookup)
         }
     }
 }
+
+/// Refusal, on `POST /query`, of an `authorizationFilters` list holding `null`
+/// ([`Query::null_authorization_filters`]). Java's validator throws on it.
+pub const NULL_AUTHORIZATION_FILTER_MESSAGE: &str = "an authorization filter is null";
 
 /// Refusal of an authorization filter whose `conceptPath` is `null` on `POST /query`.
 pub const NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE: &str =

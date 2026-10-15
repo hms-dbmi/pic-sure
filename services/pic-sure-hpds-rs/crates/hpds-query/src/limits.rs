@@ -69,13 +69,16 @@ impl QueryLimits {
         self.check_concepts(query, selection)
     }
 
-    /// Checks the bounds that need no dictionary: the clause tree's depth and node count,
+    /// Refuses a query whose phenotypic clause holds a construct Java fails on when it
+    /// evaluates it ([`Query::java_failure`], as [`QueryError::Invalid`] with that message),
+    /// then checks the bounds that need no dictionary: the clause tree's depth and node count,
     /// then `select`. Walks the tree without recursing, so a deep clause tree cannot
     /// overflow the stack. Repeated `select` paths count once, except for a DATAFRAME, whose
     /// rows widen with every repeat. Messages carry counts and limits, never concept paths
     /// or values.
     ///
     /// # Errors
+    /// [`QueryError::Invalid`] for [`Query::java_failure`], and
     /// [`QueryError::LimitExceeded`] naming the first bound the query breaks.
     pub fn check_shape(&self, query: &Query) -> Result<()> {
         self.check_shape_for(query, SelectUse::of(query.expected_result_type))
@@ -105,6 +108,9 @@ impl QueryLimits {
     }
 
     fn check_shape_for(&self, query: &Query, select_use: SelectUse) -> Result<()> {
+        if let Some(message) = &query.java_failure {
+            return Err(QueryError::Invalid(message.clone()));
+        }
         let mut nodes = query.authorization_filters.len();
         let mut stack: Vec<(&PhenotypicClause, usize)> = Vec::new();
         stack.extend(query.phenotypic_clause.as_ref().map(|clause| (clause, 1)));

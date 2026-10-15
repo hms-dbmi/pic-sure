@@ -47,12 +47,14 @@
 //!   or 24 ending in `==`), after trimming as `String.trim` does, and are kept in lowercase
 //!   canonical form; an empty or blank string is null.
 //!
-//! Where Jackson would accept a value that only fails later, deserialization fails here
-//! instead: a missing `phenotypicFilterType` or `conceptPath`, a missing or `null`
-//! `expectedResultType` ([`NULL_RESULT_TYPE_MESSAGE`]), a `null` `conceptPath`
-//! ([`NULL_CONCEPT_PATH_MESSAGE`]) and a `null` among a filter's `values`
-//! ([`NULL_VALUE_MESSAGE`]). A `null` where Java can still answer is kept: an element of
-//! `select` ([`Query::select_nulls`]) and anything in `authorizationFilters`.
+//! Where Jackson accepts a value that Java only fails on later, the query is still read, as
+//! Java answers INFO_COLUMN_LISTING without evaluating it: a `null` or missing
+//! `phenotypicFilterType` or `conceptPath`, a `null` among a filter's `values` or a
+//! subquery's `phenotypicClauses` ([`Query::java_failure`], refused by every computation), a
+//! `null` element of `select` ([`Query::select_nulls`]) or of `authorizationFilters`
+//! ([`Query::null_authorization_filters`]), and a `null` genomic filter or genomic value
+//! (the query stays unsupported). A missing or `null` `expectedResultType` is refused here
+//! ([`NULL_RESULT_TYPE_MESSAGE`]), since no route can answer without it.
 
 use std::fmt;
 
@@ -272,6 +274,21 @@ pub struct Query {
     pub picsure_id: Option<String>,
     /// An internally assigned UUID, lowercase.
     pub id: Option<String>,
+    /// The refusal for a construct of the phenotypic clause that Jackson reads but Java fails
+    /// on as soon as it evaluates the clause: a filter whose `conceptPath` or
+    /// `phenotypicFilterType` is `null` or missing ([`NULL_CONCEPT_PATH_MESSAGE`],
+    /// [`NULL_FILTER_TYPE_MESSAGE`]), a `null` among a filter's `values`
+    /// ([`NULL_VALUE_MESSAGE`]), or a `null` among a subquery's `phenotypicClauses`
+    /// ([`NULL_CLAUSE_MESSAGE`]). Java answers INFO_COLUMN_LISTING without evaluating the
+    /// clause, so the query is read, with the construct replaced (a placeholder path or type,
+    /// the `null` element dropped), and every computation refuses it with this message
+    /// ([`crate::QueryLimits::check_shape`]). `None` when the clause holds none.
+    pub java_failure: Option<String>,
+    /// How many `null` elements `authorizationFilters` held; they are not in
+    /// `authorization_filters`. The sync route never reads authorization filters, as on the
+    /// consent branch; `POST /query`'s validator refuses them
+    /// ([`crate::NULL_AUTHORIZATION_FILTER_MESSAGE`]), where Java's throws.
+    pub null_authorization_filters: usize,
 }
 
 /// The JSON fields of a [`Query`] as read, before the `null` elements of `select` are
@@ -282,13 +299,13 @@ struct QueryFields {
     #[serde(default, deserialize_with = "null_as_default")]
     select: Vec<Option<String>>,
     #[serde(default, deserialize_with = "null_as_default")]
-    authorization_filters: Vec<AuthorizationFilter>,
+    authorization_filters: Vec<Option<AuthorizationFilter>>,
     #[serde(default, deserialize_with = "null_as_default")]
     user_consents: Vec<UserConsent>,
     #[serde(default)]
-    phenotypic_clause: Option<PhenotypicClause>,
+    phenotypic_clause: Option<StrictValue>,
     #[serde(default, deserialize_with = "null_as_default")]
-    genomic_filters: Vec<GenomicFilter>,
+    genomic_filters: Vec<Option<GenomicFilter>>,
     #[serde(default)]
     expected_result_type: Option<ResultType>,
     #[serde(default, deserialize_with = "java_uuid")]
@@ -307,24 +324,111 @@ pub const NULL_SELECT_MESSAGE: &str = "select holds null, which Java cannot answ
 /// `POST /query` picks a processor by it.
 pub const NULL_RESULT_TYPE_MESSAGE: &str = "expectedResultType is null";
 
+/// Refusal of a phenotypic filter whose `phenotypicFilterType` is `null` or missing. Java
+/// switches on it when it validates or evaluates the filter.
+pub const NULL_FILTER_TYPE_MESSAGE: &str = "a phenotypic filter's phenotypicFilterType is null";
+
+/// Refusal of a subquery whose `phenotypicClauses` holds a `null`. Java fails on it when it
+/// evaluates the subquery.
+pub const NULL_CLAUSE_MESSAGE: &str = "a phenotypic subquery's phenotypicClauses hold null";
+
+/// Replaces, in the phenotypic clause `clause`, each construct Jackson reads but Java fails on
+/// when it evaluates the clause, and returns the refusal for the first one found (see
+/// [`Query::java_failure`]). A clause is deduced as in [`PhenotypicClause`]'s reader; one that
+/// is neither a filter nor a subquery, or both, is left for that reader to refuse, as Jackson
+/// refuses it.
+fn defer_java_failures(clause: &mut Value) -> Option<&'static str> {
+    let Value::Object(fields) = clause else {
+        return None;
+    };
+    let subquery = fields
+        .keys()
+        .any(|k| SUBQUERY_ONLY_FIELDS.contains(&k.as_str()));
+    let filter = fields
+        .keys()
+        .any(|k| FILTER_ONLY_FIELDS.contains(&k.as_str()));
+    let mut failure = None;
+    let mut note = |message: &'static str| {
+        failure.get_or_insert(message);
+    };
+    match (subquery, filter) {
+        (true, false) => {
+            if let Some(Value::Array(children)) = fields.get_mut("phenotypicClauses") {
+                let before = children.len();
+                children.retain(|child| !child.is_null());
+                if children.len() < before {
+                    note(NULL_CLAUSE_MESSAGE);
+                }
+                for child in children.iter_mut() {
+                    if let Some(message) = defer_java_failures(child) {
+                        note(message);
+                    }
+                }
+            }
+        }
+        (false, true) => {
+            if fields
+                .get("phenotypicFilterType")
+                .is_none_or(Value::is_null)
+            {
+                fields.insert("phenotypicFilterType".into(), Value::from("REQUIRED"));
+                note(NULL_FILTER_TYPE_MESSAGE);
+            }
+            if fields.get("conceptPath").is_none_or(Value::is_null) {
+                fields.insert("conceptPath".into(), Value::from(""));
+                note(NULL_CONCEPT_PATH_MESSAGE);
+            }
+            if let Some(Value::Array(values)) = fields.get_mut("values") {
+                let before = values.len();
+                values.retain(|value| !value.is_null());
+                if values.len() < before {
+                    note(NULL_VALUE_MESSAGE);
+                }
+            }
+        }
+        _ => {}
+    }
+    failure
+}
+
 impl TryFrom<QueryFields> for Query {
-    type Error = &'static str;
+    type Error = String;
 
     fn try_from(fields: QueryFields) -> std::result::Result<Self, Self::Error> {
         let expected_result_type = fields
             .expected_result_type
-            .ok_or(NULL_RESULT_TYPE_MESSAGE)?;
+            .ok_or_else(|| NULL_RESULT_TYPE_MESSAGE.to_owned())?;
         let select_nulls = fields.select.iter().filter(|path| path.is_none()).count();
+        let null_authorization_filters = fields
+            .authorization_filters
+            .iter()
+            .filter(|filter| filter.is_none())
+            .count();
+        let (phenotypic_clause, java_failure) = match fields.phenotypic_clause {
+            None | Some(StrictValue(Value::Null)) => (None, None),
+            Some(StrictValue(mut clause)) => {
+                let failure = defer_java_failures(&mut clause);
+                let clause = serde_json::from_value::<PhenotypicClause>(clause)
+                    .map_err(|e| e.to_string())?;
+                (Some(clause), failure)
+            }
+        };
         Ok(Query {
             select: fields.select.into_iter().flatten().collect(),
             select_nulls,
-            authorization_filters: fields.authorization_filters,
+            authorization_filters: fields.authorization_filters.into_iter().flatten().collect(),
             user_consents: fields.user_consents,
-            phenotypic_clause: fields.phenotypic_clause,
-            genomic_filters: fields.genomic_filters,
+            phenotypic_clause,
+            genomic_filters: fields
+                .genomic_filters
+                .into_iter()
+                .map(Option::unwrap_or_default)
+                .collect(),
             expected_result_type,
             picsure_id: fields.picsure_id,
             id: fields.id,
+            java_failure: java_failure.map(str::to_owned),
+            null_authorization_filters,
         })
     }
 }
@@ -348,6 +452,8 @@ impl Query {
         Query {
             select: Vec::new(),
             select_nulls: 0,
+            java_failure: None,
+            null_authorization_filters: 0,
             authorization_filters: Vec::new(),
             user_consents: Vec::new(),
             phenotypic_clause: None,
@@ -514,14 +620,18 @@ fn scalar_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Stri
 
 /// `v3.GenomicFilter`. Parsed so that the query is accepted as Java accepts it, then
 /// refused as unsupported when present.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+///
+/// A `null` element of `genomicFilters` reads as a filter with every field `null`, and a
+/// `null` among `values` is dropped, as Jackson accepts both; the filter stays present, so the
+/// query stays unsupported.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GenomicFilter {
     /// The variant annotation key.
     #[serde(default)]
     pub key: Option<String>,
     /// Values to match.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "strings_without_nulls")]
     pub values: Option<Vec<String>>,
     /// Lower bound.
     #[serde(default, deserialize_with = "java_double")]
@@ -813,6 +923,13 @@ impl Query {
     }
 }
 
+fn strings_without_nulls<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<String>>, D::Error> {
+    Ok(Option::<Vec<Option<String>>>::deserialize(deserializer)?
+        .map(|values| values.into_iter().flatten().collect()))
+}
+
 fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
@@ -978,24 +1095,93 @@ mod tests {
                 values: Some(vec![None, Some("x".to_owned())]),
             }]
         );
-        for (query, message) in [
+        for query in [json!({"expectedResultType": null}), json!({"select": []})] {
+            let error = parse(query.clone()).unwrap_err().to_string();
+            assert_eq!(error, NULL_RESULT_TYPE_MESSAGE, "{query}");
+        }
+    }
+
+    #[test]
+    fn clause_constructs_java_fails_on_are_read_and_deferred() {
+        let read = |clause: Value| {
+            parse(json!({"expectedResultType": "INFO_COLUMN_LISTING", "phenotypicClause": clause}))
+                .unwrap()
+        };
+        let required = json!({"phenotypicFilterType": "REQUIRED", "conceptPath": "a"});
+        for (clause, message) in [
             (
-                json!({"expectedResultType": null}),
-                NULL_RESULT_TYPE_MESSAGE,
-            ),
-            (json!({"select": []}), NULL_RESULT_TYPE_MESSAGE),
-            (
-                json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "REQUIRED", "conceptPath": null}}),
+                json!({"phenotypicFilterType": "REQUIRED", "conceptPath": null}),
                 NULL_CONCEPT_PATH_MESSAGE,
             ),
             (
-                json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": "a", "values": ["x", null]}}),
+                json!({"phenotypicFilterType": "ANY_RECORD_OF"}),
+                NULL_CONCEPT_PATH_MESSAGE,
+            ),
+            (json!({"conceptPath": "a"}), NULL_FILTER_TYPE_MESSAGE),
+            (
+                json!({"phenotypicFilterType": null, "conceptPath": "a"}),
+                NULL_FILTER_TYPE_MESSAGE,
+            ),
+            (
+                json!({"phenotypicFilterType": "FILTER", "conceptPath": "a", "values": ["x", null]}),
                 NULL_VALUE_MESSAGE,
             ),
+            (
+                json!({"operator": "AND", "phenotypicClauses": [required, null]}),
+                NULL_CLAUSE_MESSAGE,
+            ),
+            (
+                json!({"operator": "OR", "phenotypicClauses": [{"operator": "AND", "phenotypicClauses": [{"phenotypicFilterType": "REQUIRED"}]}]}),
+                NULL_CONCEPT_PATH_MESSAGE,
+            ),
         ] {
-            let error = parse(query.clone()).unwrap_err().to_string();
-            assert!(error.contains(message), "{query}: {error}");
+            assert_eq!(
+                read(clause.clone()).java_failure.as_deref(),
+                Some(message),
+                "{clause}"
+            );
         }
+        assert_eq!(read(required.clone()).java_failure, None);
+        let subquery = read(json!({"operator": "AND", "phenotypicClauses": [required, null]}));
+        match subquery.phenotypic_clause {
+            Some(PhenotypicClause::Subquery(s)) => assert_eq!(s.phenotypic_clauses.len(), 1),
+            other => panic!("expected a subquery, got {other:?}"),
+        }
+        for clause in [
+            json!({}),
+            json!({"not": true}),
+            json!({"operator": "AND", "conceptPath": "a"}),
+            json!({"phenotypicFilterType": "REQUIRED", "conceptPath": "a", "bogus": 1}),
+            json!({"phenotypicFilterType": "FILTER", "conceptPath": "a", "min": "1d"}),
+        ] {
+            assert!(
+                parse(
+                    json!({"expectedResultType": "INFO_COLUMN_LISTING", "phenotypicClause": clause})
+                )
+                .is_err(),
+                "{clause}"
+            );
+        }
+        let other = parse(json!({
+            "expectedResultType": "INFO_COLUMN_LISTING",
+            "authorizationFilters": [null, {"conceptPath": "a", "values": ["x"]}],
+            "genomicFilters": [null, {"key": "k", "values": [null, "v"]}]
+        }))
+        .unwrap();
+        assert_eq!(other.null_authorization_filters, 1);
+        assert_eq!(other.authorization_filters.len(), 1);
+        assert_eq!(
+            other.genomic_filters,
+            [
+                GenomicFilter::default(),
+                GenomicFilter {
+                    key: Some("k".into()),
+                    values: Some(vec!["v".into()]),
+                    ..GenomicFilter::default()
+                }
+            ]
+        );
+        assert_eq!(other.java_failure, None);
     }
 
     #[test]

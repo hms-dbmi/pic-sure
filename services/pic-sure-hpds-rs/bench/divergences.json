@@ -179,10 +179,25 @@
       "reason": "Java error, invalid input: a missing or null expectedResultType reaches a switch on it (PicSureV3Service.java:318 on main, :328 on the consent branch, for /query/sync; QueryV3Service.java:118 for POST /query), which throws, so Java answers 200 with no body on both routes. Rust refuses it with 400 \"expectedResultType is null\". Accepted only for such a query, with that refusal against those failures."
     },
     {
+      "name": "null-filter-type-status",
+      "when": "null-filter-type-refused",
+      "reason": "Java error, invalid input: a phenotypic filter whose phenotypicFilterType is null or missing makes Java fail where it switches on the type (the executor on /query/sync, PhenotypicFilterValidator on POST /query), answering 200 with an empty body or no body. Rust refuses it with 400 \"a phenotypic filter's phenotypicFilterType is null\". INFO_COLUMN_LISTING, which Java answers without evaluating the clause, gets Java's [] from both. Accepted only when the query holds such a filter, with that exact refusal against those failures."
+    },
+    {
+      "name": "null-clause-status",
+      "when": "null-clause-refused",
+      "reason": "Java error, invalid input: a null among a subquery's phenotypicClauses makes Java's executor fail, answering /query/sync 200 with an empty body and ending POST /query in ERROR. Rust refuses it with 400 \"a phenotypic subquery's phenotypicClauses hold null\". Accepted only when the query holds such a null, with that exact refusal against those failures."
+    },
+    {
+      "name": "null-authorization-filter-status",
+      "when": "null-authorization-filter-refused",
+      "reason": "Java error, invalid input: on POST /query a null element of authorizationFilters makes QueryValidator throw (it validates each element), answering 200 with no body, on both branches. Rust refuses the submit with 400 \"an authorization filter is null\". On /query/sync the consent branch ignores the element and answers, as Rust does; main applies it and fails (null-authorization-filter-main). Accepted only for an async entry whose query holds such an element, with that exact refusal against Java's bodiless 200."
+    },
+    {
       "name": "null-authorization-filter-main",
       "when": "null-authorization-filter-ignored",
       "javaBranch": "main",
-      "reason": "Java error, deprecated field: the main branch applies authorizationFilters, and a null conceptPath or a null value in one makes it fail, answering /query/sync 200 with an empty body and ending POST /query in ERROR. Rust never applies authorizationFilters, as the consent branch does not on /query/sync, and answers the query. Accepted only on main, only when the query holds such a null, and only with Java's failure against Rust's answer."
+      "reason": "Java error, deprecated field: the main branch applies authorizationFilters, and a null element, a null conceptPath or a null value in one makes it fail, answering /query/sync 200 with an empty body and ending POST /query in ERROR. Rust never applies authorizationFilters, as the consent branch does not on /query/sync, and answers the query. Accepted only on main, only when the query holds such a null, and only with Java's failure against Rust's answer."
     }
   ]
 }

@@ -27,7 +27,10 @@ const NO_VARIANT_FILTERS_BODY: &str =
 /// UUID (Java sends a UUIDv5 of the query text; callers treat it as opaque).
 ///
 /// - INFO_COLUMN_LISTING is `[]` as `application/json`: with no genomic data the list of
-///   variant info columns is empty, as in Java.
+///   variant info columns is empty, as in Java. Java answers it without evaluating the query,
+///   so nothing in the query is checked: no limits, consents, genomic filters, or the clause
+///   constructs every other type refuses ([`hpds_query::Query::java_failure`]). Only what
+///   Jackson refuses while reading the query is refused.
 /// - VARIANT_COUNT_FOR_QUERY with no `genomicFilters` is a 200 `application/json`
 ///   `{"count":"0","message":"No variant filters were supplied, so no query was run."}`, as in
 ///   Java, after the limits and consent checks. Java runs no consent check for this case; this

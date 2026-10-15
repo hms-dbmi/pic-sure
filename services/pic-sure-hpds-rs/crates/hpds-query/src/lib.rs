@@ -47,10 +47,10 @@ pub use limits::{
     DEFAULT_MAX_QUERY_CONCEPTS, DEFAULT_MAX_SELECT_PATHS, QueryLimits,
 };
 pub use model::{
-    AuthorizationFilter, GenomicFilter, NULL_CONCEPT_PATH_MESSAGE, NULL_RESULT_TYPE_MESSAGE,
-    NULL_SELECT_MESSAGE, NULL_VALUE_MESSAGE, Operator, PhenotypicClause, PhenotypicFilter,
-    PhenotypicFilterType, PhenotypicSubquery, Query, ResultType, UserConsent, parse_request_body,
-    parse_strict,
+    AuthorizationFilter, GenomicFilter, NULL_CLAUSE_MESSAGE, NULL_CONCEPT_PATH_MESSAGE,
+    NULL_FILTER_TYPE_MESSAGE, NULL_RESULT_TYPE_MESSAGE, NULL_SELECT_MESSAGE, NULL_VALUE_MESSAGE,
+    Operator, PhenotypicClause, PhenotypicFilter, PhenotypicFilterType, PhenotypicSubquery, Query,
+    ResultType, UserConsent, parse_request_body, parse_strict,
 };
 pub use partition::{
     COMBINED_DIR_NAME, Layout, NARROW_VIEW_SHARE, Partition, PartitionOptions, PartitionSet,
@@ -63,8 +63,8 @@ pub use results::{
 };
 pub use store::{DEFAULT_CACHE_BYTES, KEY_FILE_NAME, StoreOptions};
 pub use validate::{
-    ConceptLookup, NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE, QueryValidator, check_supported,
-    path_is_variant_spec,
+    ConceptLookup, NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE, NULL_AUTHORIZATION_FILTER_MESSAGE,
+    QueryValidator, check_supported, path_is_variant_spec,
 };
 
 /// Directory used when `HPDS_DATA_DIRECTORY` is not set. Matches the Java service, so the
