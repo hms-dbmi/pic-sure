@@ -1,9 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse.Denial;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessVerdict;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenSessionResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService;
@@ -59,7 +61,8 @@ public class OpenAccessController {
      * Issues an open-access session to an anonymous browser without requiring a credential or evaluating access rules. Records the session
      * id in the request's audit metadata without persisting the token.
      *
-     * @return HTTP 200 with the token and expiration, or HTTP 404 if sessions or the open identity provider are disabled
+     * @return HTTP 200 with the token and expiration
+     * @throws PicSureResponseException with HTTP 404 if sessions or the open identity provider are disabled
      */
     @Operation(
         summary = "Start an open-access session",
@@ -74,10 +77,10 @@ public class OpenAccessController {
     @AuditEvent(type = "ACCESS", action = "open_session.create")
     @PostMapping(value = "/session", produces = "application/json")
     @PublicEndpoint(Access.ANONYMOUS)
-    public ResponseEntity<?> createSession(HttpServletRequest request) {
+    public ResponseEntity<OpenSessionResponse> createSession(HttpServletRequest request) {
         // 404, so the browser reads "no sessions here, go keyless" the same way as a PSAMA that predates this endpoint
         if (!openSessionService.isEnabled() || !openIdpProviderIsEnabled) {
-            return PICSUREResponse.error(HttpStatus.NOT_FOUND, "Open-access sessions are not enabled on this deployment.");
+            throw new PicSureResponseException(HttpStatus.NOT_FOUND, "Open-access sessions are not enabled on this deployment.", null);
         }
 
         IssuedSession session = openSessionService.issue();
@@ -95,7 +98,7 @@ public class OpenAccessController {
     @AuditEvent(type = "ACCESS", action = "open.validate")
     @PostMapping(value = "/validate", produces = "application/json")
     @PublicEndpoint(Access.ANONYMOUS)
-    public ResponseEntity<?> validate(
+    public ResponseEntity<OpenAccessVerdict> validate(
         @Parameter(
             required = true,
             description = "The open-access request to validate, naming its target service and carrying the API key when one is enforced."
@@ -107,7 +110,9 @@ public class OpenAccessController {
         boolean objectResponse = inputMap != null && inputMap.get(RESPONSE_VERSION) instanceof Number version && version.doubleValue() == 2;
 
         if (!openIdpProviderIsEnabled) {
-            return ResponseEntity.ok(objectResponse ? OpenAccessValidationResponse.denied(Denial.RULES) : false);
+            OpenAccessVerdict denied =
+                objectResponse ? OpenAccessValidationResponse.denied(Denial.RULES) : new OpenAccessVerdict.Legacy(false);
+            return ResponseEntity.ok(denied);
         }
 
         OpenAccessValidationResponse validation = authorizationService.validateOpenAccessRequest(inputMap);
@@ -129,7 +134,8 @@ public class OpenAccessController {
             }
         }
 
-        return ResponseEntity.ok(objectResponse ? validation : isValid);
+        OpenAccessVerdict verdict = objectResponse ? validation : new OpenAccessVerdict.Legacy(isValid);
+        return ResponseEntity.ok(verdict);
     }
 
 }
