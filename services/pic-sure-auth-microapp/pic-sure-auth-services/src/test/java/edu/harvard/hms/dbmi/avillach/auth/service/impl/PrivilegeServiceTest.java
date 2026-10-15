@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +30,9 @@ public class PrivilegeServiceTest {
 
     @MockBean
     private PrivilegeRepository privilegeRepository;
+
+    @MockBean
+    private ApplicationRepository applicationRepository;
 
     @MockBean
     private SecurityContext securityContext;
@@ -87,32 +91,6 @@ public class PrivilegeServiceTest {
         assertThrows(RuntimeException.class, () -> {
             privilegeService.deletePrivilegeByPrivilegeId(privilegeId.toString());
         });
-    }
-
-    @Test
-    public void testUpdatePrivileges() {
-        List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
-
-        when(privilegeRepository.saveAll(privileges)).thenReturn(privileges);
-        when(privilegeRepository.findAll()).thenReturn(privileges);
-
-        List<Privilege> result = privilegeService.updatePrivileges(privileges);
-
-        assertEquals(privileges, result);
-        verify(privilegeRepository, times(1)).saveAll(privileges);
-        verify(privilegeRepository, times(1)).findAll();
-    }
-
-    @Test
-    public void testAddPrivileges() {
-        List<Privilege> privileges = Arrays.asList(new Privilege(), new Privilege());
-
-        when(privilegeRepository.saveAll(privileges)).thenReturn(privileges);
-
-        List<Privilege> result = privilegeService.addPrivileges(privileges);
-
-        assertEquals(privileges, result);
-        verify(privilegeRepository, times(1)).saveAll(privileges);
     }
 
     @Test

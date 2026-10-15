@@ -43,6 +43,6 @@ class AccessRuleControllerWebTest {
         mockMvc.perform(
             get(CONTEXT_PATH + "/accessRule/allTypes").contextPath(CONTEXT_PATH)
                 .with(user("rule-type-reader").authorities(() -> AuthNaming.AuthRoleNaming.SUPER_ADMIN))
-        ).andExpect(status().isOk()).andExpect(jsonPath("$.ALL_EQUALS").value(AccessRule.TypeNaming.ALL_EQUALS));
+        ).andExpect(status().isOk()).andExpect(jsonPath("$.types.ALL_EQUALS").value(AccessRule.TypeNaming.ALL_EQUALS));
     }
 }

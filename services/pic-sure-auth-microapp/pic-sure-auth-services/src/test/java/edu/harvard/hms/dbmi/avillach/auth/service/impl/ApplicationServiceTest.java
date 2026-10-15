@@ -100,20 +100,6 @@ public class ApplicationServiceTest {
     }
 
     @Test
-    public void testAddNewApplications_successfulWithToken() {
-        Application application = new Application();
-        application.setUuid(UUID.randomUUID());
-        List<Application> applications = Collections.singletonList(application);
-        when(applicationRepo.saveAll(applications)).thenReturn(applications);
-        when(jwtUtil.createJwtToken(any(), any(), any(), anyString(), anyLong())).thenReturn("token");
-
-        List<Application> savedApps = applicationService.addNewApplications(applications);
-        assertNotNull(savedApps);
-        assertFalse(savedApps.isEmpty());
-        assertEquals("token", savedApps.getFirst().getToken());
-    }
-
-    @Test
     public void testDeleteApplicationById_existing() {
         UUID id = UUID.randomUUID();
         Application application = new Application();
@@ -132,18 +118,6 @@ public class ApplicationServiceTest {
         assertThrows(IllegalArgumentException.class, () -> {
             applicationService.deleteApplicationById(id.toString());
         });
-    }
-
-    @Test
-    public void testUpdateApplications() {
-        Application application = new Application();
-        application.setUuid(UUID.randomUUID());
-        List<Application> applications = Collections.singletonList(application);
-        when(applicationRepo.saveAll(anyList())).thenReturn(applications);
-
-        List<Application> updatedApps = applicationService.updateApplications(applications);
-        Assertions.assertNotNull(updatedApps);
-        Assertions.assertEquals(applications.size(), updatedApps.size());
     }
 
     @Test

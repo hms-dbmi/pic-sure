@@ -18,8 +18,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Implements privacy-critical obfuscation math for both v1 and v3 aggregate requests. The threshold, variance, salt, randomization, and
- * "&lt; threshold" suppression rules determine which counts are suppressed or perturbed; unintended divergence is a privacy regression.
+ * Implements privacy-critical obfuscation math for aggregate requests. The threshold, variance, salt, randomization, and "&lt; threshold"
+ * suppression rules determine which counts are suppressed or perturbed; unintended divergence is a privacy regression.
  */
 @Service
 public class ObfuscationService {

@@ -1,78 +1,54 @@
 package edu.harvard.dbmi.avillach.dictionary.legacysearch;
 
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
-import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchQuery;
+import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacySearchCriteria;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.test.context.ActiveProfiles;
 
-import java.io.IOException;
+import java.util.List;
 
-@SpringBootTest
-@ActiveProfiles("test")
 class LegacySearchQueryMapperTest {
 
-    @Autowired
-    LegacySearchQueryMapper legacySearchQueryMapper;
+    private final LegacySearchQueryMapper legacySearchQueryMapper = new LegacySearchQueryMapper();
 
     @Test
-    void shouldParseSearchRequest() throws IOException {
-        String jsonString = """
-            {"query":{"searchTerm":"age","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
-            """;
+    void shouldParseSearchRequest() {
+        LegacySearchCriteria criteria = new LegacySearchCriteria("age", 100);
 
-        LegacySearchQuery legacySearchQuery = legacySearchQueryMapper.mapFromJson(jsonString);
-        Filter filter = legacySearchQuery.filter();
-        Pageable pageable = legacySearchQuery.pageable();
+        Filter filter = legacySearchQueryMapper.toFilter(criteria);
+        Pageable pageable = legacySearchQueryMapper.toPageable(criteria);
 
-        Assertions.assertEquals("age:*", filter.search());
+        Assertions.assertEquals(new Filter(List.of(), "age:*", List.of()), filter);
+        Assertions.assertEquals(0, pageable.getPageNumber());
         Assertions.assertEquals(100, pageable.getPageSize());
     }
 
     @Test
-    void shouldHandlePunct() throws IOException {
-        String jsonString =
-            """
-                {"query":{"searchTerm":"tutorial-biolincc_digitalis","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
-                """;
-
-        LegacySearchQuery legacySearchQuery = legacySearchQueryMapper.mapFromJson(jsonString);
-        Filter filter = legacySearchQuery.filter();
-        Pageable pageable = legacySearchQuery.pageable();
+    void shouldHandlePunct() {
+        Filter filter = legacySearchQueryMapper.toFilter(new LegacySearchCriteria("tutorial-biolincc_digitalis", 100));
 
         Assertions.assertEquals("tutorial:* & biolincc:* & digitalis:*", filter.search());
-        Assertions.assertEquals(100, pageable.getPageSize());
     }
 
     @Test
-    void shouldHandleOR() throws IOException {
-        String jsonString = """
-            {"query":{"searchTerm":"sex|gender","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
-            """;
-
-        LegacySearchQuery legacySearchQuery = legacySearchQueryMapper.mapFromJson(jsonString);
-        Filter filter = legacySearchQuery.filter();
-        Pageable pageable = legacySearchQuery.pageable();
+    void shouldHandleOR() {
+        Filter filter = legacySearchQueryMapper.toFilter(new LegacySearchCriteria("sex|gender", 100));
 
         Assertions.assertEquals("sex:* | gender:*", filter.search());
-        Assertions.assertEquals(100, pageable.getPageSize());
     }
 
     @Test
-    void shouldHandleORAndPunct() throws IOException {
-        String jsonString = """
-            {"query":{"searchTerm":"sex|gender age","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
-            """;
-
-        LegacySearchQuery legacySearchQuery = legacySearchQueryMapper.mapFromJson(jsonString);
-        Filter filter = legacySearchQuery.filter();
-        Pageable pageable = legacySearchQuery.pageable();
+    void shouldHandleORAndPunct() {
+        Filter filter = legacySearchQueryMapper.toFilter(new LegacySearchCriteria("sex|gender age", 100));
 
         Assertions.assertEquals("sex:* | gender:* & age:*", filter.search());
-        Assertions.assertEquals(100, pageable.getPageSize());
     }
 
+    @Test
+    void shouldSearchWithNoTextWhenTheTermIsMissing() {
+        Filter filter = legacySearchQueryMapper.toFilter(new LegacySearchCriteria(null, 100));
+
+        Assertions.assertEquals("", filter.search());
+    }
 }

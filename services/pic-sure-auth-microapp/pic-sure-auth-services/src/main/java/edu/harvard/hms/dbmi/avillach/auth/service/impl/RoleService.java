@@ -2,6 +2,9 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.EntityIdRef;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleCreateRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.RoleUpdateRequest;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,38 +44,65 @@ public class RoleService {
         return roleRepository.findAll();
     }
 
+    /**
+     * Creates roles from request records. Privileges are resolved from storage by UUID; the identifier is generated on persist.
+     *
+     * @param requests the roles to create
+     * @return the persisted roles
+     * @throws IllegalArgumentException if a referenced privilege does not exist
+     */
     @Transactional
-    public List<Role> addRoles(List<Role> roles) {
-        checkPrivilegeAssociation(roles);
+    public List<Role> createFrom(List<RoleCreateRequest> requests) {
+        List<Role> roles = new ArrayList<>(requests.size());
+        for (RoleCreateRequest request : requests) {
+            Role role = new Role();
+            role.setName(request.name());
+            role.setDescription(request.description());
+            role.setPrivileges(resolvePrivileges(request.privileges()));
+            roles.add(role);
+        }
         return roleRepository.saveAll(roles);
     }
 
     /**
-     * check if the privileges under role is in the database or not, then retrieve it from database and attach it to role object
+     * Applies request records to existing roles. A member left out of a request keeps its stored value.
      *
-     * @param roles list of roles
+     * @param requests the roles to update, each named by UUID
+     * @return the persisted roles
+     * @throws IllegalArgumentException if a role or a referenced privilege does not exist
      */
-    private void checkPrivilegeAssociation(List<Role> roles) throws RuntimeException {
-        for (Role role : roles) {
-            if (role.getPrivileges() != null) {
-                Set<Privilege> privileges = new HashSet<>();
-                for (Privilege p : role.getPrivileges()) {
-                    Optional<Privilege> privilege = this.privilegeService.findById(p.getUuid());
-                    if (privilege.isEmpty()) {
-                        throw new RuntimeException("Privilege not found - uuid: " + p.getUuid().toString());
-                    }
-                    privileges.add(privilege.get());
-                }
-                role.setPrivileges(privileges);
+    @Transactional
+    public List<Role> updateFrom(List<RoleUpdateRequest> requests) {
+        List<Role> roles = new ArrayList<>(requests.size());
+        for (RoleUpdateRequest request : requests) {
+            Role role = roleRepository.findById(request.uuid())
+                .orElseThrow(() -> new IllegalArgumentException("Role not found - uuid: " + request.uuid()));
+            if (request.name() != null) {
+                role.setName(request.name());
             }
+            if (request.description() != null) {
+                role.setDescription(request.description());
+            }
+            if (request.privileges() != null) {
+                role.setPrivileges(resolvePrivileges(request.privileges()));
+            }
+            roles.add(role);
         }
-
+        return roleRepository.saveAll(roles);
     }
 
-    @Transactional
-    public List<Role> updateRoles(List<Role> roles) {
-        checkPrivilegeAssociation(roles);
-        return roleRepository.saveAll(roles);
+    private Set<Privilege> resolvePrivileges(Set<EntityIdRef> privilegeRefs) {
+        if (privilegeRefs == null) {
+            return null;
+        }
+        Set<Privilege> privileges = new HashSet<>();
+        for (EntityIdRef ref : privilegeRefs) {
+            privileges.add(
+                this.privilegeService.findById(ref.uuid())
+                    .orElseThrow(() -> new IllegalArgumentException("Privilege not found - uuid: " + ref.uuid()))
+            );
+        }
+        return privileges;
     }
 
     @Transactional

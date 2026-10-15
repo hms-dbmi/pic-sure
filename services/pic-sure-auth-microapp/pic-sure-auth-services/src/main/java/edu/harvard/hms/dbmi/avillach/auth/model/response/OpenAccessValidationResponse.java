@@ -35,7 +35,7 @@ public record OpenAccessValidationResponse(
         description = "A replacement open-access session token, when the presented session is due for a refresh. Null otherwise.",
         example = "picsure_s_eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI4Njk0ZTNkNCJ9.sig", requiredMode = Schema.RequiredMode.REQUIRED
     ) String refreshedToken
-) {
+) implements OpenAccessVerdict {
 
     /**
      * The kind of credential a grant verified. {@link #USER} and {@link #PLATFORM} are stored API keys; {@link #SESSION} is a stateless

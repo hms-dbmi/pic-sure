@@ -75,7 +75,7 @@ class OpenAccessFilterTest {
         AuditContext ctx = new AuditContext();
         OpenAccessFilter f = filter(client, ctx, true);
 
-        BufferedRequestWrapper req = wrap(null); // URI is /v3/search/abc
+        BufferedRequestWrapper req = wrap(null); // URI is /search/abc
         f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
 
         assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_ID).toString()).startsWith("OPEN_ACCESS:");
@@ -88,7 +88,7 @@ class OpenAccessFilterTest {
         assertThat(body.get("ipAddress").toString()).startsWith("OPEN_ACCESS:");
         @SuppressWarnings("unchecked")
         Map<String, Object> request = (Map<String, Object>) body.get("request");
-        assertThat(request.get("Target Service")).isEqualTo("/v3/search/abc"); // real path verbatim
+        assertThat(request.get("Target Service")).isEqualTo("/search/abc"); // real path verbatim
     }
 
     @Test
@@ -433,9 +433,8 @@ class OpenAccessFilterTest {
     }
 
     private static BufferedRequestWrapper wrap(String authHeader) {
-        return wrap(authHeader, "/v3/search/abc", "POST");
+        return wrap(authHeader, "/search/abc", "POST");
     }
-
 
     private static BufferedRequestWrapper wrap(String authHeader, String uri, String method) {
         HttpServletRequest base = mock(HttpServletRequest.class);

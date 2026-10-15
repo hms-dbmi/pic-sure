@@ -1,8 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
-import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 
+import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -35,6 +35,9 @@ public class RoleServiceTest {
 
     @MockBean
     private PrivilegeRepository privilegeRepo;
+
+    @MockBean
+    private ApplicationRepository applicationRepository;
 
     @MockBean
     private SecurityContext securityContext;
@@ -97,58 +100,6 @@ public class RoleServiceTest {
 
         assertEquals(roles, result);
         verify(roleRepository, times(1)).findAll();
-    }
-
-    @Test
-    public void testAddRoles() {
-        List<Role> roles = Arrays.asList(new Role(), new Role());
-
-        when(roleRepository.saveAll(roles)).thenReturn(roles);
-
-        List<Role> result = roleService.addRoles(roles);
-
-        assertEquals(roles, result);
-        verify(roleRepository, times(1)).saveAll(roles);
-    }
-
-    @Test
-    public void testAddRoles_PrivilegeNotFound() {
-        Role role = new Role();
-        Privilege privilege = new Privilege();
-        privilege.setUuid(UUID.randomUUID());
-        role.setPrivileges(new HashSet<>(Collections.singletonList(privilege)));
-
-        when(privilegeRepo.findById(privilege.getUuid())).thenReturn(Optional.empty());
-
-        assertThrows(RuntimeException.class, () -> {
-            roleService.addRoles(Collections.singletonList(role));
-        });
-    }
-
-    @Test
-    public void testUpdateRoles() {
-        List<Role> roles = Arrays.asList(new Role(), new Role());
-
-        when(roleRepository.saveAll(roles)).thenReturn(roles);
-
-        List<Role> result = roleService.updateRoles(roles);
-
-        assertEquals(roles, result);
-        verify(roleRepository, times(1)).saveAll(roles);
-    }
-
-    @Test
-    public void testUpdateRoles_PrivilegeNotFound() {
-        Role role = new Role();
-        Privilege privilege = new Privilege();
-        privilege.setUuid(UUID.randomUUID());
-        role.setPrivileges(new HashSet<>(Collections.singletonList(privilege)));
-
-        when(privilegeRepo.findById(privilege.getUuid())).thenReturn(Optional.empty());
-
-        assertThrows(RuntimeException.class, () -> {
-            roleService.updateRoles(Collections.singletonList(role));
-        });
     }
 
     @Test

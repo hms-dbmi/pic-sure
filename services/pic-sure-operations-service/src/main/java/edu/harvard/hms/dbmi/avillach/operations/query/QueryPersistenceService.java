@@ -75,6 +75,12 @@ public class QueryPersistenceService {
         if (req.metadata() != null) {
             entity.setMetadata(decodeMetadata(req.metadata()));
         }
+        if (req.query() != null) {
+            entity.setQuery(stripResourceCredentials(req.query()));
+        }
+        if (req.version() != null) {
+            entity.setVersion(req.version());
+        }
         repo.save(entity);
     }
 

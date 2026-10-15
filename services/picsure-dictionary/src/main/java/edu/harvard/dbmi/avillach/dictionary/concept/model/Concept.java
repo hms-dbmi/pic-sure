@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
+import io.swagger.v3.oas.annotations.media.DiscriminatorMapping;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
 
 import java.util.List;
@@ -20,6 +22,12 @@ import java.util.Objects;
 @JsonSubTypes(
     {@JsonSubTypes.Type(value = ContinuousConcept.class, name = "Continuous"),
         @JsonSubTypes.Type(value = CategoricalConcept.class, name = "Categorical"),}
+)
+@Schema(
+    description = "A variable in the data dictionary. Every concept is categorical or continuous. The type property says which, and the other properties differ between the two.",
+    discriminatorProperty = "type",
+    discriminatorMapping = {@DiscriminatorMapping(value = "Categorical", schema = CategoricalConcept.class),
+        @DiscriminatorMapping(value = "Continuous", schema = ContinuousConcept.class)}
 )
 public sealed interface Concept permits CategoricalConcept, ConceptShell, ContinuousConcept {
 

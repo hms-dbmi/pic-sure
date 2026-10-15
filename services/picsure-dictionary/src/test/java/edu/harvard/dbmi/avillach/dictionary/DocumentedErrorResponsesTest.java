@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dictionary;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -35,14 +36,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.ConceptService;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
+import edu.harvard.dbmi.avillach.dictionary.legacysearch.LegacySearchService;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 
 /**
  * Reproduces every non-2xx response the OpenAPI document declares for this service through a real HTTP request to an embedded server. The
  * controllers, services, and repositories are the production beans, reading the seeded PostgreSQL container, so each 400 and 404 comes from
- * the handler's own check against real data. The stand-ins are the audit logging client, which talks to an external logging service, and a
- * spy on {@link ConceptService} for the one case that needs the concept query itself to fail. A 500 travels through the servlet container's
- * error handling, so its body is Spring Boot's default error document.
+ * the handler's own check against real data, except the legacy search 400s for a body Jackson cannot parse or bind. The stand-ins are the
+ * audit logging client, which talks to an external logging service, a spy on {@link ConceptService} for the one case that needs the concept
+ * query itself to fail, and a spy on {@link LegacySearchService} that proves a rejected legacy search never reaches the service. A 500, and
+ * a 400 raised while Jackson reads the body, travel through the servlet container's error handling, so their body is Spring Boot's default
+ * error document.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -78,6 +82,9 @@ class DocumentedErrorResponsesTest {
 
     @MockitoSpyBean
     private ConceptService conceptService;
+
+    @MockitoSpyBean
+    private LegacySearchService legacySearchService;
 
     @MockitoBean
     private LoggingClient loggingClient;
@@ -171,6 +178,28 @@ class DocumentedErrorResponsesTest {
         assertEmptyNotFound(response);
     }
 
+    /** A legacy search whose query names no limit is rejected before any search runs. */
+    @Test
+    void legacySearchWithoutLimitIs400() {
+        ResponseEntity<String> response = rest.postForEntity("/search", json("{\"query\":{\"searchTerm\":\"age\"}}"), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNull();
+    }
+
+    /**
+     * A legacy search whose body Jackson cannot parse, or parses but cannot bind, fails before the handler runs, so no search runs and the
+     * servlet container's error handling writes Spring Boot's default error document.
+     */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"{\"query\":", "{\"query\":{\"searchTerm\":\"age\",\"limit\":\"abc\"}}"})
+    void legacySearchWithAnUnreadableBodyIs400(String body) throws Exception {
+        ResponseEntity<String> response = rest.postForEntity("/search", json(body), String.class);
+
+        assertErrorDocument(response, HttpStatus.BAD_REQUEST, "/search");
+        verifyNoInteractions(legacySearchService);
+    }
+
     /**
      * With a dashboard layout other than {@code default}, the drawer service answers no dataset id, so even a dataset the database holds is
      * a 404.
@@ -191,9 +220,13 @@ class DocumentedErrorResponsesTest {
     }
 
     private void assertServerError(ResponseEntity<String> response, String path) throws Exception {
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertErrorDocument(response, HttpStatus.INTERNAL_SERVER_ERROR, path);
+    }
+
+    private void assertErrorDocument(ResponseEntity<String> response, HttpStatus status, String path) throws Exception {
+        assertThat(response.getStatusCode()).isEqualTo(status);
         JsonNode body = objectMapper.readTree(response.getBody());
-        assertThat(body.path("status").asInt()).isEqualTo(500);
+        assertThat(body.path("status").asInt()).isEqualTo(status.value());
         assertThat(body.path("path").asText()).isEqualTo(path);
     }
 
