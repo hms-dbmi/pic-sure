@@ -29,7 +29,8 @@ public record ObfuscatedCount(
     @Schema(
         description = "Half-width of the uncertainty band around `count`. The band runs from `max(0, count - variance)` to "
             + "`count + variance`. Null when the count is exact. A below-threshold value has a `count` of 0 and a variance of the "
-            + "threshold minus one. The variance on the open backend is configured per deployment."
+            + "threshold minus one. The variance on the open backend is configured per deployment.",
+        example = "2"
     ) Integer variance
 ) {
 

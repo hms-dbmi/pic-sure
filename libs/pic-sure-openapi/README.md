@@ -31,9 +31,8 @@ Every `description` is one or more sentences, each ending in a period. A bare no
 Nullability is stated in prose. A member the server always writes, possibly as JSON null, keeps `requiredMode = REQUIRED` and says
 "Null when ..." in its description. `nullable = true` is not used.
 
-A scalar whose only honest example is a value the deployment configures, such as an obfuscation variance, has no `example`, and
-its description says why. The service's `OpenApiDocumentTest` names it in `assertSchemaDocumented(document, Set.of("Schema.property"),
-...)`, which fails if the property gains an example or stops being a scalar of a checked schema.
+A scalar whose value the deployment configures, such as an obfuscation variance, carries an example like any other scalar, and its
+description says the value is configured per deployment so a reader does not take the example for the setting.
 
 A hidden controller's models follow the convention too. Hidden means absent from the document, not undocumented in code.
 
@@ -108,4 +107,4 @@ Rules in `tools/api-conventions` check the convention on compiled bytecode and r
 | Rule | Checks |
 |---|---|
 | `typed-handler-signatures` | Every handler's `@RequestBody` type and return type is a concrete model. No `Object`, wildcard, type variable, raw `ResponseEntity`, `Map`, `JsonNode`, `Page`, `Slice` or `@Entity` at any depth. `String`, `byte[]`, `InputStreamResource` and `Void` pass. |
-| `schema-documented-models` | Every model reachable from a handler carries a class-level `@Schema` description, a description on each field, record component and enum constant, and an example on each value field and each collection, array or `Optional` of values. A value is a primitive other than `boolean` or any JDK class except `Boolean`, `Object`, `Void`, enums and maps. Booleans, enums, nested models, `Map` and `JsonNode` fields need no example, and a field listed in `SchemaRules.WITHOUT_EXAMPLE` must have none. `@JsonIgnore`d and `@Schema(hidden = true)` members are skipped. |
+| `schema-documented-models` | Every model reachable from a handler carries a class-level `@Schema` description, a description on each field, record component and enum constant, and an example on each value field and each collection, array or `Optional` of values. A value is a primitive other than `boolean` or any JDK class except `Boolean`, `Object`, `Void`, enums and maps. Booleans, enums, nested models, `Map` and `JsonNode` fields need no example. `@JsonIgnore`d and `@Schema(hidden = true)` members are skipped. |

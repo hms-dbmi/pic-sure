@@ -4,7 +4,6 @@ import java.io.StringReader;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
@@ -128,26 +127,6 @@ class SchemaRulesTest {
             "Study#",
             "Envelope#"
         );
-    }
-
-    @Test
-    void exemptsAListedValueFieldFromTheExampleAndFlagsAnExemptionThatDoesNotApply() {
-        String models = FIXTURES_PACKAGE + ".model.";
-        Set<String> withoutExample = Set.of(
-            models + "MissingScalarExamples#name", models + "MissingFieldDescriptions#exampleOnly",
-            models + "MissingFieldDescriptions#flag", models + "Unreached#name"
-        );
-
-        List<String> violations = SchemaRules.documentedModels(REGISTRY, modules(), List.of(LIBRARY), withoutExample);
-
-        assertSilentOn(violations, "MissingScalarExamples#name is missing a @Schema example");
-        assertReports(
-            violations,
-            "services/fixture :: MissingFieldDescriptions#exampleOnly is exempt from the example rule but carries a @Schema example",
-            models + "MissingFieldDescriptions#flag is exempt from the example rule but is not a value field of a reached model",
-            models + "Unreached#name is exempt from the example rule but is not a value field of a reached model"
-        );
-        assertEquals(VIOLATIONS.size() + 2, violations.size(), String.join("\n", violations));
     }
 
     @Test

@@ -182,10 +182,7 @@ class ApiConventionsTest {
 
     @Test
     void everyReachableModelIsDocumented() {
-        report(
-            "schema-documented-models",
-            SchemaRules.documentedModels(registry, modules, SchemaRules.SHARED_MODEL_MODULES, SchemaRules.WITHOUT_EXAMPLE)
-        );
+        report("schema-documented-models", SchemaRules.documentedModels(registry, modules, SchemaRules.SHARED_MODEL_MODULES));
     }
 
     private static List<String> overAllModules(Rule rule) {

@@ -38,14 +38,6 @@ public final class SchemaRules {
     public static final List<String> SHARED_MODEL_MODULES =
         List.of("libs/pic-sure-commons/pic-sure-api-model", "libs/pic-sure-commons/pic-sure-hpds-model");
 
-    /**
-     * The value fields that must have no example, as {@code fully.qualified.Model#field}. Each names a field
-     * whose only honest example is a value the deployment configures, which the document would otherwise state
-     * as if it were fixed.
-     */
-    public static final Set<String> WITHOUT_EXAMPLE =
-        Set.of("edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount#variance");
-
     private static final List<String> FRAMEWORK_PACKAGES =
         List.of("java.", "javax.", "jdk.", "com.fasterxml.jackson.", "org.springframework.", "reactor.");
 
@@ -108,25 +100,6 @@ public final class SchemaRules {
     public static List<String> documentedModels(
         ModuleRegistry registry, Map<String, JavaClasses> modules, List<String> sharedModelModules
     ) {
-        return documentedModels(registry, modules, sharedModelModules, Set.of());
-    }
-
-    /**
-     * The same rule, except that the named value fields must have no example. An exemption is for a field whose
-     * only honest example is a value the deployment configures. Each must name a value field of a reached model
-     * that has no example, so an exemption that no longer applies fails rather than lingers: a listed field that
-     * carries an example is a violation, and so is a listed name the walk never checks as a value field.
-     *
-     * @param registry the parsed registry, which names the documented modules
-     * @param modules module path mapped to that module's imported classes
-     * @param sharedModelModules the module paths of the libraries that hold models the services share
-     * @param withoutExample the fields that must have no example, as {@code fully.qualified.Model#field}
-     * @return the violations of {@link #documentedModels(ModuleRegistry, Map, List)}, plus one per exemption
-     *     that does not apply
-     */
-    public static List<String> documentedModels(
-        ModuleRegistry registry, Map<String, JavaClasses> modules, List<String> sharedModelModules, Set<String> withoutExample
-    ) {
         List<String> violations = new ArrayList<>();
         Map<String, JavaClasses> checked = new LinkedHashMap<>();
         for (String module : registry.documentedModules()) {
@@ -142,7 +115,7 @@ public final class SchemaRules {
                 violations.add(library + " holds shared models but was not compiled (run make build)");
             }
         }
-        Walk walk = new Walk(checked, new TreeSet<>(), violations, withoutExample, new TreeSet<>());
+        Walk walk = new Walk(checked, new TreeSet<>(), violations);
         for (String module : documented) {
             for (JavaClass controller : Controllers.of(checked.get(module))) {
                 for (JavaMethod handler : Controllers.handlerMethods(controller)) {
@@ -156,11 +129,6 @@ public final class SchemaRules {
                 }
             }
         }
-        for (String label : withoutExample) {
-            if (!walk.exemptionsApplied().contains(label)) {
-                violations.add(label + " is exempt from the example rule but is not a value field of a reached model");
-            }
-        }
         return violations;
     }
 
@@ -170,13 +138,8 @@ public final class SchemaRules {
      * @param checked module path mapped to the classes of every module the rule reads
      * @param reached the names of the classes already visited, so each is checked once
      * @param violations the list every finding is added to
-     * @param withoutExample the fields that must have no example, as {@code fully.qualified.Model#field}
-     * @param exemptionsApplied the entries of {@code withoutExample} the walk has checked as value fields
      */
-    private record Walk(
-        Map<String, JavaClasses> checked, Set<String> reached, List<String> violations, Set<String> withoutExample,
-        Set<String> exemptionsApplied
-    ) {
+    private record Walk(Map<String, JavaClasses> checked, Set<String> reached, List<String> violations) {
 
         private void follow(JavaType type, String module, String from, Set<String> variables) {
             if (type instanceof JavaParameterizedType parameterized) {
@@ -238,27 +201,14 @@ public final class SchemaRules {
                 if (text(model, field, "description").isEmpty()) {
                     violations.add(where + " is missing a @Schema description");
                 }
-                if (needsExample(field.getType())) {
-                    checkExample(model, field, where);
+                if (needsExample(field.getType()) && text(model, field, "example").isEmpty()) {
+                    violations.add(where + " is missing a @Schema example");
                 }
             }
             model.getRawSuperclass().ifPresent(parent -> reach(parent.getName(), module, at));
             subtypes(model).forEach(subtype -> reach(subtype, module, at));
             for (JavaField field : documented) {
                 follow(field.getType(), module, SwaggerRules.at(module, model, field.getName()), new TreeSet<>());
-            }
-        }
-
-        private void checkExample(JavaClass model, JavaField field, String where) {
-            boolean hasExample = text(model, field, "example").isPresent();
-            String label = model.getName() + "#" + field.getName();
-            if (withoutExample.contains(label)) {
-                exemptionsApplied.add(label);
-                if (hasExample) {
-                    violations.add(where + " is exempt from the example rule but carries a @Schema example");
-                }
-            } else if (!hasExample) {
-                violations.add(where + " is missing a @Schema example");
             }
         }
     }
