@@ -8,9 +8,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "The kind of open-access API key.")
 public enum ApiKeyType {
 
-    @Schema(description = "A key an anonymous user generated for themselves on the public access page.")
+    @Schema(description = "A key an anonymous user generated for themselves.")
     USER,
 
-    @Schema(description = "A key an administrator minted for a partner service.")
+    @Schema(description = "A key an admin minted for a deployment or partner.")
     PLATFORM
 }

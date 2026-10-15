@@ -33,13 +33,8 @@ public record StoredQuery(
     @Schema(
         description = "Result metadata as base64-encoded UTF-8 JSON, or null when none was recorded.",
         example = "eyJwaWNzdXJlUXVlcnlJZCI6Ijg2OTRlM2Q0LTVjYjQtNDEwZi04NDMxLTk5MzQ0NWU2ZDNmNiJ9"
-    ) String metadata,
-    @Schema(
-        description = "When the query was saved, in epoch milliseconds, or null on a row that has no start time.", example = "1790777100000"
-    ) Long startTime,
-    @Schema(
-        description = "When the query first became AVAILABLE, in epoch milliseconds, or null until then.", example = "1790777100000"
-    ) Long readyTime
+    ) String metadata, @Schema(description = "When the query was saved, in epoch milliseconds.", example = "1790777100000") Long startTime,
+    @Schema(description = "When the query first became AVAILABLE, in epoch milliseconds.", example = "1790777100000") Long readyTime
 ) {
 
     /**

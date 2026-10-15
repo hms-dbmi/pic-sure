@@ -127,6 +127,23 @@ class UserServiceOverPostingTest {
     }
 
     @Test
+    void updateRejectsAnUnknownConnectionInsteadOfClearingTheStoredOne() {
+        User stored = userWithRoles(superAdminRole);
+        Connection storedConnection = new Connection().setId("fence").setLabel("Fence");
+        stored.setConnection(storedConnection);
+        when(userRepository.findById(stored.getUuid())).thenReturn(Optional.of(stored));
+        when(connectionRepository.findById("fenc")).thenReturn(Optional.empty());
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> userService.updateFrom(List.of(new UserUpdateRequest(stored.getUuid(), null, null, null, new ConnectionRef("fenc"), null)))
+        );
+
+        assertSame(storedConnection, stored.getConnection());
+        verify(userRepository, never()).saveAll(anyList());
+    }
+
+    @Test
     void createNeverCarriesAnIdentifierOrTokenFromTheRequest() {
         userService.createFrom(
             List.of(new UserCreateRequest("new@example.com", true, "{\"email\":\"new@example.com\"}", null, Set.of(idRef(superAdminRole))))
@@ -176,6 +193,27 @@ class UserServiceOverPostingTest {
             IllegalArgumentException.class,
             () -> userService.createFrom(List.of(new UserCreateRequest("x@example.com", true, "{}", null, Set.of(idRef(superAdminRole)))))
         );
+        verify(userRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void createRejectsAnUnknownConnection() {
+        when(connectionRepository.findById("fenc")).thenReturn(Optional.empty());
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> userService
+                .createFrom(List.of(new UserCreateRequest("x@example.com", true, "{}", new ConnectionRef("fenc"), Set.of(idRef(superAdminRole)))))
+        );
+        verify(userRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void createAndUpdateReturnNullWhenTheSecurityContextHoldsNoUser() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(new CustomUserDetails(null), null));
+
+        assertNull(userService.createFrom(List.of(new UserCreateRequest("x@example.com", true, "{}", null, Set.of(idRef(superAdminRole))))));
+        assertNull(userService.updateFrom(List.of(new UserUpdateRequest(UUID.randomUUID(), null, null, null, null, null))));
         verify(userRepository, never()).saveAll(anyList());
     }
 

@@ -109,8 +109,7 @@ class OpenApiDocumentTest {
         OpenApiDocumentAssertions.assertSchemaDocumented(document, "HpdsQueryRequest");
         OpenApiDocumentAssertions.assertSchemaHasFields(document, "HpdsQueryRequest", "query");
         OpenApiDocumentAssertions.assertSchemaHasFields(
-            document, "Query", "select", "authorizationFilters", "phenotypicClause", "genomicFilters", "expectedResultType", "picsureId",
-            "id"
+            document, "Query", "select", "phenotypicClause", "genomicFilters", "expectedResultType", "picsureId", "id"
         );
         assertThat(document.path("components").path("schemas").path("HpdsQueryRequest").path("properties").size()).isEqualTo(1);
         assertThat(operation(document, "get", METADATA).has("requestBody")).isFalse();

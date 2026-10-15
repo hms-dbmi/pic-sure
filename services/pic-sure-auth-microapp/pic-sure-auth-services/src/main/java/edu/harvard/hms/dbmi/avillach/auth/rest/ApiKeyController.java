@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
@@ -71,6 +73,7 @@ public class ApiKeyController {
     )
     @AuditEvent(type = "ACCESS", action = "api_key.create")
     @PostMapping(produces = "application/json", path = "/open/apiKey")
+    @PublicEndpoint(Access.ANONYMOUS)
     public ResponseEntity<ApiKeyCreationResponse> createUserKey(
         @Parameter(
             required = true,

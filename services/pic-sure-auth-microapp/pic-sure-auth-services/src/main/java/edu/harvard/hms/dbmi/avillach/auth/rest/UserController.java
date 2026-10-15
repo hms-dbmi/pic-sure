@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint;
+import edu.harvard.hms.dbmi.avillach.openapi.PublicEndpoint.Access;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.PicSureResponseException;
 import edu.harvard.hms.dbmi.avillach.auth.model.request.UserCreateRequest;
@@ -137,6 +139,7 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "The caller's profile, with the long-term token.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<UserProfileResponse> getCurrentUser(
         @RequestHeader("Authorization") String authorizationHeader,
         @Parameter(description = "Accepted for compatibility; the long-term token is included whether or not it is sent.") @RequestParam(
@@ -168,6 +171,7 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "A new long-term token for the caller.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<LongTermTokenResponse> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "token_type", "long_term");
         Map<String, String> refreshed = this.userService.refreshUserToken(httpHeaders);
@@ -184,6 +188,7 @@ public class UserController {
     @ApiResponse(responseCode = "200", description = "The caller's consents.")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
+    @PublicEndpoint(Access.AUTHENTICATED)
     public ResponseEntity<UserConsentsResponse> getUserConsents() {
         UserConsents userConsents = this.userService.getUserConsents();
 

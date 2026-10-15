@@ -16,6 +16,8 @@ import java.util.Map;
  * @param apiKey the open access API key the caller presented, when key enforcement is on
  * @param ipAddress the marker the gateway builds from the request host; recorded by the gateway, not read here
  * @param request a description of the request, evaluated by the open access rules
+ * @param responseVersion {@code 2} asks for an {@code OpenAccessValidationResponse} instead of a bare boolean; kept as a JSON tree so a
+ *        string {@code "2"} is not coerced to the number and still gets the boolean
  */
 @Schema(description = "An open access request to validate against the open access rules. Any other member is ignored.")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -31,7 +33,12 @@ public record OpenAccessValidationRequest(
         implementation = Map.class,
         description = "Description of the request, evaluated by the open access rules as sent. The gateway sends \"Target Service\", "
             + "the path within the application; an application may add \"query\" with the query body."
-    ) JsonNode request
+    ) JsonNode request,
+    @Schema(
+        type = "integer",
+        description = "2 to receive an OpenAccessValidationResponse instead of a bare boolean. Absent or any other value gives the boolean.",
+        example = "2"
+    ) JsonNode responseVersion
 ) {
 
     /**
@@ -52,6 +59,9 @@ public record OpenAccessValidationRequest(
         }
         if (request != null && !request.isNull()) {
             map.put("request", mapper.convertValue(request, Object.class));
+        }
+        if (responseVersion != null && !responseVersion.isNull()) {
+            map.put("responseVersion", mapper.convertValue(responseVersion, Object.class));
         }
         return map;
     }

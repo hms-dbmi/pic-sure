@@ -149,6 +149,7 @@ class ControllerAuditEventTest {
         assertAuditEvent(
             c, "validate", new Class[] {OpenAccessValidationRequest.class, HttpServletRequest.class}, "ACCESS", "open.validate"
         );
+        assertAuditEvent(c, "createSession", new Class[] {HttpServletRequest.class}, "ACCESS", "open_session.create");
     }
 
     @Test

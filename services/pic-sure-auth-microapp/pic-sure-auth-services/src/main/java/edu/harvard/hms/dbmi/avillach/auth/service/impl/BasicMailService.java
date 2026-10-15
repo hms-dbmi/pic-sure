@@ -46,7 +46,7 @@ public class BasicMailService implements MailService {
 	public BasicMailService(JavaMailSender mailSender,
 							@Value("${application.template.path}") String templatePath,
 							@Value("${application.system.name}") String systemName,
-							@Value("${application.access.grant.email.subject") String accessGrantEmailSubject,
+							@Value("${application.access.grant.email.subject}") String accessGrantEmailSubject,
 							@Value("${application.admin.users}") String adminUsers) {
         this.mailSender = mailSender;
 		this.templatePath = templatePath;
