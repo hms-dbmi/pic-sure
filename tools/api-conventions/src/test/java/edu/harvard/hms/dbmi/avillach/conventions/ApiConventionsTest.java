@@ -101,6 +101,11 @@ class ApiConventionsTest {
     }
 
     @Test
+    void catchAllExceptionAdviceKeepsFrameworkStatuses() {
+        report("catch-all-advice-extends-base", overAllModules(ExceptionAdviceRules::catchAllAdviceExtendsBaseHandler));
+    }
+
+    @Test
     void everyHandlerCarriesAnAuditEvent() {
         report("handler-has-audit-event", overAllModules(AuditRules::auditEventOnEveryHandler));
     }
@@ -108,6 +113,12 @@ class ApiConventionsTest {
     @Test
     void everyNamedPathVariableAppearsInAMappedPath() {
         report("path-variables-in-template", overAllModules(RoutingRules::pathVariablesAppearInTemplate));
+    }
+
+    @Test
+    void noHandlerBindsAnEntity() {
+        Set<String> entities = EntityBoundaryRules.entityTypes(modules);
+        report("no-entity-parameters", overAllModules((module, classes) -> EntityBoundaryRules.noEntityParameters(module, classes, entities)));
     }
 
     @Test

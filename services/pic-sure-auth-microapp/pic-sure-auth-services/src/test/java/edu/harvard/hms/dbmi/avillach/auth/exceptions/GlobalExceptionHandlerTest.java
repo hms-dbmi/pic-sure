@@ -2,9 +2,13 @@ package edu.harvard.hms.dbmi.avillach.auth.exceptions;
 
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.mock.http.MockHttpInputMessage;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,7 +48,9 @@ public class GlobalExceptionHandlerTest {
         HttpMessageNotReadableException ex =
             new HttpMessageNotReadableException("JSON parse error: raw-client-payload", new MockHttpInputMessage(new byte[0]));
 
-        ResponseEntity<?> response = handler.handleUnreadableBody(ex);
+        ResponseEntity<?> response = handler.handleHttpMessageNotReadable(
+            ex, new HttpHeaders(), HttpStatus.BAD_REQUEST, new ServletWebRequest(new MockHttpServletRequest())
+        );
 
         assertEquals(400, response.getStatusCode().value());
         assertFalse(String.valueOf(response.getBody()).contains("raw-client-payload"));

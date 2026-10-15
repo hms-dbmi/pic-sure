@@ -2,8 +2,10 @@ package edu.harvard.dbmi.avillach.visualization.error;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.context.request.ServletWebRequest;
 
 import java.io.IOException;
 import java.util.Map;
@@ -86,21 +89,21 @@ class GlobalExceptionHandlerTest {
         bindingResult.addError(new FieldError("request", "query", "must not be null"));
         MethodArgumentNotValidException e = new MethodArgumentNotValidException(null, bindingResult);
 
-        ResponseEntity<Map<String, String>> response = handler.handleValidationException(e);
+        ResponseEntity<Object> response = handler.handleMethodArgumentNotValid(e, new HttpHeaders(), HttpStatus.BAD_REQUEST, request());
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        assertTrue(response.getBody().get("error").contains("query"));
-        assertTrue(response.getBody().get("error").contains("must not be null"));
+        assertTrue(error(response).contains("query"));
+        assertTrue(error(response).contains("must not be null"));
     }
 
     @Test
     void handleUnreadableMessage_returns400() {
         HttpMessageNotReadableException e = new HttpMessageNotReadableException("Could not read JSON", (Throwable) null, null);
 
-        ResponseEntity<Map<String, String>> response = handler.handleUnreadableMessage(e);
+        ResponseEntity<Object> response = handler.handleHttpMessageNotReadable(e, new HttpHeaders(), HttpStatus.BAD_REQUEST, request());
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        assertEquals("Malformed request body", response.getBody().get("error"));
+        assertEquals("Malformed request body", error(response));
     }
 
     @Test
@@ -132,5 +135,13 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertEquals("Internal server error", response.getBody().get("error"));
+    }
+
+    private static ServletWebRequest request() {
+        return new ServletWebRequest(new MockHttpServletRequest());
+    }
+
+    private static String error(ResponseEntity<Object> response) {
+        return String.valueOf(((Map<?, ?>) response.getBody()).get("error"));
     }
 }

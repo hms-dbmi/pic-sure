@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -43,11 +46,16 @@ class GatewayExceptionHandlerTest {
 
     @Test
     void unroutedPathStays404RatherThanBeingFlattenedTo500() {
-        ResponseEntity<Map<String, Object>> r = handler.noRoute(new NoResourceFoundException(HttpMethod.GET, "/nope"));
+        ResponseEntity<Object> r = handler.handleNoResourceFoundException(
+            new NoResourceFoundException(HttpMethod.GET, "/nope"), new HttpHeaders(), HttpStatus.NOT_FOUND,
+            new ServletWebRequest(new MockHttpServletRequest())
+        );
 
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(r.getBody()).containsEntry("errorType", "not_found");
-        assertThat(String.valueOf(r.getBody().get("message"))).contains("/nope");
+        assertThat(r.getBody()).isInstanceOfSatisfying(Map.class, body -> {
+            assertThat(body).containsEntry("errorType", "not_found");
+            assertThat(String.valueOf(body.get("message"))).contains("/nope");
+        });
     }
 
     @Test
