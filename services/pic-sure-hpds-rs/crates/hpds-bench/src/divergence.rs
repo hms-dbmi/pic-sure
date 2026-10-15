@@ -115,15 +115,17 @@ pub enum Condition {
     NullSelectRefused,
     /// The entry's query holds a phenotypic filter, at any depth, whose `conceptPath` is
     /// `null` or missing, or an authorization filter whose `conceptPath` is `null`; the Rust
-    /// side refused with 400 naming the null `conceptPath`, and the Java side failed: a sync 200 with an empty body, an async
+    /// side refused with exactly `a phenotypic filter's conceptPath is null` or `an
+    /// authorization filter's conceptPath is null`, and the Java side failed: a sync 200 with an empty body, an async
     /// submit answered 200 with no status, or an async query that ended in ERROR.
     NullConceptPathRefused,
     /// The entry's query holds a phenotypic filter, at any depth, whose `values` holds `null`;
-    /// the Rust side refused with 400 `a phenotypic filter's values hold null`, and the Java
+    /// the Rust side refused with exactly `a phenotypic filter's values hold null`, and the Java
     /// side failed: a sync 200 with an empty body or an async query that ended in ERROR.
     NullFilterValueRefused,
     /// The entry's query has a missing or `null` `expectedResultType`; the Rust side refused
-    /// with 400 `expectedResultType is null`, and the Java side failed: a sync 200 with an
+    /// with exactly `the query is not valid: expectedResultType is null`, and the Java side
+    /// failed: a sync 200 with an
     /// empty body or an async submit answered 200 with no status.
     NullResultTypeRefused,
     /// The entry's query holds an authorization filter that is `null`, or whose `conceptPath`
@@ -927,8 +929,9 @@ const NULL_CONCEPT_PATHS: [&str; 2] = [
 /// The message Rust refuses a `null` among a phenotypic filter's values with.
 const NULL_FILTER_VALUE: &str = "a phenotypic filter's values hold null";
 
-/// The message Rust refuses a missing or `null` result type with.
-const NULL_RESULT_TYPE: &str = "expectedResultType is null";
+/// The body Rust refuses a missing or `null` result type with: the query reader's refusal,
+/// which no route can get past without a result type.
+const NULL_RESULT_TYPE_REFUSAL: &str = "the query is not valid: expectedResultType is null";
 
 /// Every phenotypic filter object of `clause`, at any depth; `null` children are skipped.
 fn filters<'v>(clause: &'v Value, out: &mut Vec<&'v Value>) {
@@ -1048,11 +1051,7 @@ fn null_concept_path_refused(
         a,
         b,
         java,
-        |body| {
-            NULL_CONCEPT_PATHS
-                .iter()
-                .any(|message| body.contains(message))
-        },
+        |body| NULL_CONCEPT_PATHS.contains(&body),
         |o| empty_sync_200(o) || submit_failed(o) || async_error(o),
     )
 }
@@ -1071,7 +1070,7 @@ fn null_filter_value_refused(
         a,
         b,
         java,
-        |body| body.contains(NULL_FILTER_VALUE),
+        |body| body == NULL_FILTER_VALUE,
         |o| empty_sync_200(o) || async_error(o),
     )
 }
@@ -1088,7 +1087,7 @@ fn null_result_type_refused(
             a,
             b,
             java,
-            |body| body.contains(NULL_RESULT_TYPE),
+            |body| body == NULL_RESULT_TYPE_REFUSAL,
             |o| empty_sync_200(o) || submit_failed(o),
         )
 }
@@ -2313,10 +2312,7 @@ mod tests {
             Kind::Sync,
             json!({"expectedResultType": "COUNT", "phenotypicClause": {"operator": "OR", "phenotypicClauses": [required_null]}}),
         );
-        let path_refusal = sync(
-            400,
-            "the query is not valid: a phenotypic filter's conceptPath is null at line 1 column 90",
-        );
+        let path_refusal = sync(400, "a phenotypic filter's conceptPath is null");
         assert_eq!(
             rule_name(&set, &nested, &path_refusal, &sync(200, "")).as_deref(),
             Some("null-concept-path-status")
@@ -2344,9 +2340,7 @@ mod tests {
             rule_name(
                 &set,
                 &any_record,
-                &refused_submit(
-                    "the query is not valid: a phenotypic filter's conceptPath is null"
-                ),
+                &refused_submit("a phenotypic filter's conceptPath is null"),
                 &async_outcome(200, Some("ERROR"), None)
             )
             .as_deref(),
@@ -2357,10 +2351,7 @@ mod tests {
             Kind::Sync,
             json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": "\\s\\", "values": [null, "x"]}}),
         );
-        let value_refusal = sync(
-            400,
-            "the query is not valid: a phenotypic filter's values hold null at line 1 column 99",
-        );
+        let value_refusal = sync(400, "a phenotypic filter's values hold null");
         assert_eq!(
             rule_name(&set, &values, &value_refusal, &sync(200, "")).as_deref(),
             Some("null-filter-value-status")
@@ -2589,5 +2580,41 @@ mod tests {
             rule_name(&main, &authz_sync, &sync(200, ""), &sync(200, "3")).as_deref(),
             Some("null-authorization-filter-main")
         );
+    }
+
+    #[test]
+    fn null_refusals_match_only_the_exact_message() {
+        let set = checked_in().for_java(Side::A, JavaBranch::Consent);
+        let entry = |query: Value| query_entry("exact", Kind::Sync, query);
+        let path = entry(
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "REQUIRED", "conceptPath": null}}),
+        );
+        let value = entry(
+            json!({"expectedResultType": "COUNT", "phenotypicClause": {"phenotypicFilterType": "FILTER", "conceptPath": "\\s\\", "values": [null]}}),
+        );
+        let result_type = entry(json!({"expectedResultType": null}));
+        for (e, exact) in [
+            (&path, "a phenotypic filter's conceptPath is null"),
+            (&value, "a phenotypic filter's values hold null"),
+            (
+                &result_type,
+                "the query is not valid: expectedResultType is null",
+            ),
+        ] {
+            assert!(
+                set.find(e, &sync(200, ""), &sync(400, exact)).is_some(),
+                "{exact}"
+            );
+            for near in [
+                format!("the query is not valid: {exact}"),
+                format!("{exact} at line 1 column 9"),
+                format!("{exact}."),
+            ] {
+                assert!(
+                    set.find(e, &sync(200, ""), &sync(400, &near)).is_none(),
+                    "{near}"
+                );
+            }
+        }
     }
 }

@@ -166,17 +166,17 @@
     {
       "name": "null-concept-path-status",
       "when": "null-concept-path-refused",
-      "reason": "Java error, invalid input: a phenotypic filter whose conceptPath is null makes Java fail on every route (the executor looks the path up on /query/sync and answers 200 with an empty body; on POST /query QueryValidator's dictionary lookup answers 200 with no body, or for ANY_RECORD_OF the job ends in ERROR), and so does an authorization filter whose conceptPath is null on POST /query (PhenotypicFilterValidator.java:29). Rust refuses them with 400 naming the null conceptPath. Accepted only when the query holds such a filter, Rust's 400 names it, and Java's answer is one of those three failures."
+      "reason": "Java error, invalid input: a phenotypic filter whose conceptPath is null makes Java fail on every route (the executor looks the path up on /query/sync and answers 200 with an empty body; on POST /query QueryValidator's dictionary lookup answers 200 with no body, or for ANY_RECORD_OF the job ends in ERROR), and so does an authorization filter whose conceptPath is null on POST /query (PhenotypicFilterValidator.java:29). Rust refuses them with 400 and exactly \"a phenotypic filter's conceptPath is null\" or \"an authorization filter's conceptPath is null\" (a missing conceptPath counts as null, as Jackson reads it). Accepted only when the query holds such a filter, Rust's 400 is one of those messages exactly, and Java's answer is one of those three failures."
     },
     {
       "name": "null-filter-value-status",
       "when": "null-filter-value-refused",
-      "reason": "Java error, invalid input: a null among a phenotypic filter's values makes the executor fail when it looks the value up, so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses it with 400 \"a phenotypic filter's values hold null\". Accepted only when the query holds such a value, with that refusal against those failures."
+      "reason": "Java error, invalid input: a null among a phenotypic filter's values makes the executor fail when it looks the value up, so Java answers /query/sync 200 with an empty body and ends POST /query in ERROR. Rust refuses it with 400 and exactly \"a phenotypic filter's values hold null\". Accepted only when the query holds such a value, with that exact refusal against those failures."
     },
     {
       "name": "null-result-type-status",
       "when": "null-result-type-refused",
-      "reason": "Java error, invalid input: a missing or null expectedResultType reaches a switch on it (PicSureV3Service.java:318 on main, :328 on the consent branch, for /query/sync; QueryV3Service.java:118 for POST /query), which throws, so Java answers 200 with no body on both routes. Rust refuses it with 400 \"expectedResultType is null\". Accepted only for such a query, with that refusal against those failures."
+      "reason": "Java error, invalid input: a missing or null expectedResultType reaches a switch on it (PicSureV3Service.java:318 on main, :328 on the consent branch, for /query/sync; QueryV3Service.java:118 for POST /query), which throws, so Java answers 200 with no body on both routes. Rust refuses it with 400 and exactly \"the query is not valid: expectedResultType is null\". Accepted only for such a query, with that exact refusal against those failures."
     },
     {
       "name": "null-filter-type-status",

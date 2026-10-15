@@ -41,7 +41,7 @@ async fn answer(app: &Router, path: &str, query: &Value) -> (StatusCode, String)
     (first.status, first.body)
 }
 
-/// Asserts that `query` is refused with 400 and a body holding `message`, both ways.
+/// Asserts that `query` is refused with 400 and exactly `message` as its body, both ways.
 async fn refused(app: &Router, path: &str, query: Value, message: &str) {
     for body in both_paths(&query) {
         let reply = post(app, path, body).await;
@@ -51,7 +51,7 @@ async fn refused(app: &Router, path: &str, query: Value, message: &str) {
             "{query}: {}",
             reply.body
         );
-        assert!(reply.body.contains(message), "{query}: {}", reply.body);
+        assert_eq!(reply.body, message, "{query}");
     }
 }
 
@@ -180,7 +180,13 @@ async fn null_concept_paths_values_and_result_types_are_refused_on_both_routes()
             json!({"expectedResultType": null, "phenotypicClause": required_sex()}),
             json!({"phenotypicClause": required_sex()}),
         ] {
-            refused(&f.app, path, query, NULL_RESULT_TYPE_MESSAGE).await;
+            refused(
+                &f.app,
+                path,
+                query,
+                &format!("the query is not valid: {NULL_RESULT_TYPE_MESSAGE}"),
+            )
+            .await;
         }
     }
 }
