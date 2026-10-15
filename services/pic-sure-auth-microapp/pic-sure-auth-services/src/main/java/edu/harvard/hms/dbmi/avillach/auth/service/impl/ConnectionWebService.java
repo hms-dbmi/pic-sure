@@ -12,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class ConnectionWebService {
@@ -26,34 +25,9 @@ public class ConnectionWebService {
         this.userMetadataMappingRepo = userMetadataMappingRepo;
     }
 
-    @Transactional
-    public List<Connection> addConnection(List<Connection> connections) throws IllegalArgumentException {
-        for (Connection c : connections){
-            if (c.getSubPrefix() == null || c.getRequiredFields() == null || c.getLabel() == null || c.getId() == null){
-                throw new IllegalArgumentException("Id, Label, Subprefix, and RequiredFields cannot be null");
-            }
-            Optional<Connection> conn = connectionRepo.findById(c.getId());
-            if (conn.isPresent()){
-                throw new IllegalArgumentException("Id must be unique, a connection with id " + c.getId() + " already exists in the database");
-            }
-        }
-
-        List<Connection> savedConnections = this.connectionRepo.saveAll(connections);
-
-        List<UserMetadataMapping> mappings = savedConnections.stream()
-                .map(c -> new UserMetadataMapping()
-                        .setConnection(c)
-                        .setGeneralMetadataJsonPath("$.email")
-                        .setAuth0MetadataJsonPath("$.email"))
-                .toList();
-        this.userMetadataMappingRepo.saveAll(mappings);
-
-        return savedConnections;
-    }
-
     /**
-     * Creates connections from request records, then seeds each one's default metadata mapping as {@link #addConnection} does. The
-     * identifier is generated on persist.
+     * Creates connections from request records, then seeds each one's default metadata mapping, which reads the email from
+     * {@code $.email}. The identifier is generated on persist.
      *
      * @param requests the connections to create
      * @return the persisted connections
@@ -119,10 +93,6 @@ public class ConnectionWebService {
 
     public List<Connection> getAllConnections() {
         return this.connectionRepo.findAll();
-    }
-
-    public List<Connection> updateConnections(List<Connection> connections) {
-        return this.connectionRepo.saveAll(connections);
     }
 
     @Transactional

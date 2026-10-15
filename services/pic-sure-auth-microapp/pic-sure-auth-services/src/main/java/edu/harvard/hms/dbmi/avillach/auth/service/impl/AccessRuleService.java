@@ -58,27 +58,9 @@ public class AccessRuleService {
         return accessRuleRepo.findAll();
     }
 
-    public List<AccessRule> addAccessRule(List<AccessRule> accessRules) {
-        accessRules.forEach(accessRule -> {
-            if (accessRule.getEvaluateOnlyByGates() == null) accessRule.setEvaluateOnlyByGates(false);
-
-            if (accessRule.getCheckMapKeyOnly() == null) accessRule.setCheckMapKeyOnly(false);
-
-            if (accessRule.getCheckMapNode() == null) accessRule.setCheckMapNode(false);
-
-            if (accessRule.getGateAnyRelation() == null) accessRule.setGateAnyRelation(false);
-        });
-
-        return this.accessRuleRepo.saveAll(accessRules);
-    }
-
-    public List<AccessRule> updateAccessRules(List<AccessRule> accessRules) {
-        return this.accessRuleRepo.saveAll(accessRules);
-    }
-
     /**
-     * Creates access rules from request records. The identifier is generated on persist, an absent boolean flag is stored as {@code false}
-     * as {@link #addAccessRule} does, and gates and sub-rules are resolved from storage.
+     * Creates access rules from request records. The identifier is generated on persist, an absent boolean flag is stored as {@code false},
+     * and gates and sub-rules are resolved from storage.
      *
      * @param requests the access rules to create
      * @return the persisted rules
@@ -110,7 +92,8 @@ public class AccessRuleService {
      *
      * @param requests the access rules to update, each named by UUID
      * @return the persisted rules
-     * @throws IllegalArgumentException if a rule, gate, or sub-rule does not exist
+     * @throws IllegalArgumentException if a rule, gate, or sub-rule does not exist, or a rule would reach itself through its gates and
+     *         sub-rules
      */
     @Transactional
     public List<AccessRule> updateFrom(List<AccessRuleUpdateRequest> requests) {
@@ -153,7 +136,47 @@ public class AccessRuleService {
             }
             rules.add(rule);
         }
+        for (AccessRule rule : rules) {
+            if (reachesItself(rule)) {
+                throw new IllegalArgumentException(
+                    "Access rule " + rule.getUuid() + " cannot be its own gate or sub-rule, directly or through other rules"
+                );
+            }
+        }
         return this.accessRuleRepo.saveAll(rules);
+    }
+
+    /**
+     * Walks the gates and sub-rules below a rule and reports whether the walk comes back to it. Rule evaluation and the response mapping
+     * both recurse through these links without a depth limit, so a rule on a cycle overflows the stack on every read that reaches it.
+     *
+     * @param start the rule whose links were just changed
+     * @return true if {@code start} is reachable from its own gates or sub-rules
+     */
+    private static boolean reachesItself(AccessRule start) {
+        Set<UUID> visited = new HashSet<>();
+        Deque<AccessRule> pending = new ArrayDeque<>(linkedRules(start));
+        while (!pending.isEmpty()) {
+            AccessRule next = pending.pop();
+            if (next == start || Objects.equals(next.getUuid(), start.getUuid())) {
+                return true;
+            }
+            if (visited.add(next.getUuid())) {
+                pending.addAll(linkedRules(next));
+            }
+        }
+        return false;
+    }
+
+    private static List<AccessRule> linkedRules(AccessRule rule) {
+        List<AccessRule> linked = new ArrayList<>();
+        if (rule.getGates() != null) {
+            linked.addAll(rule.getGates());
+        }
+        if (rule.getSubAccessRule() != null) {
+            linked.addAll(rule.getSubAccessRule());
+        }
+        return linked;
     }
 
     private Set<AccessRule> resolveRules(Set<EntityIdRef> refs) {

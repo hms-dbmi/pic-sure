@@ -18,6 +18,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -90,6 +92,9 @@ class AdminFormPayloadTest {
     @Autowired
     private AccessRuleRepository accessRuleRepository;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private String suffix;
     private User caller;
     private Application application;
@@ -135,7 +140,10 @@ class AdminFormPayloadTest {
         String email = "new-" + suffix + "@example.org";
         ArrayNode body = json.createArrayNode().add(userFormBody(email, true));
 
-        mockMvc.perform(asAdmin(HttpMethod.POST, "/user").content(body.toString())).andExpect(status().isOk());
+        mockMvc.perform(asAdmin(HttpMethod.POST, "/user").content(body.toString())).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].uuid").isString()).andExpect(jsonPath("$[0].email").value(email))
+            .andExpect(jsonPath("$[0].connection.uuid").value(connection.getUuid().toString()))
+            .andExpect(jsonPath("$[0].roles[0].uuid").value(role.getUuid().toString()));
 
         User created = userRepository.findAll().stream().filter(u -> email.equals(u.getEmail())).findFirst().orElseThrow();
         assertThat(created.getConnection().getUuid()).isEqualTo(connection.getUuid());
@@ -163,7 +171,11 @@ class AdminFormPayloadTest {
         spread.set("connection", connectionAsListed());
         spread.putArray("roles").add(roleAsUserFormSendsIt());
 
-        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/user").content(json.createArrayNode().add(spread).toString())).andExpect(status().isOk());
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/user").content(json.createArrayNode().add(spread).toString())).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].uuid").value(target.getUuid().toString())).andExpect(jsonPath("$[0].active").value(false))
+            .andExpect(jsonPath("$[0].connection.uuid").value(connection.getUuid().toString()))
+            .andExpect(jsonPath("$[0].roles[0].uuid").value(role.getUuid().toString())).andExpect(jsonPath("$[0].token").doesNotExist())
+            .andExpect(jsonPath("$[0].passport").doesNotExist());
 
         User saved = userRepository.findById(target.getUuid()).orElseThrow();
         assertThat(saved.isActive()).isFalse();
@@ -173,13 +185,34 @@ class AdminFormPayloadTest {
     }
 
     @Test
+    void userReadIsTheStoredEntityJsonWithoutTheDroppedMembers() throws Exception {
+        AccessRule rule = new AccessRule();
+        rule.setName("AR_READ_" + suffix);
+        rule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        rule = accessRuleRepository.save(rule);
+        privilege.setAccessRules(new HashSet<>(Set.of(rule)));
+        privilege = privilegeRepository.save(privilege);
+        String expected = new TransactionTemplate(transactionManager).execute(
+            status -> FrozenWire.json(userRepository.findById(target.getUuid()).orElseThrow(), "token", "passport", "auth0metadata")
+        );
+
+        String body = mockMvc.perform(asAdmin(HttpMethod.GET, "/user/{id}", target.getUuid())).andExpect(status().isOk()).andReturn()
+            .getResponse().getContentAsString();
+
+        assertThat(body).isEqualTo(expected);
+        assertThat(body).contains(rule.getUuid().toString()).doesNotContain(STORED_TOKEN, STORED_PASSPORT, "mergedValues", "mergedName");
+    }
+
+    @Test
     void privilegeFormCreateAndEditAreAccepted() throws Exception {
         String name = "PRIV_FORM_" + suffix;
         ObjectNode created = json.createObjectNode().put("name", name).put("description", "from the privilege form");
         created.putObject("application").put("uuid", application.getUuid().toString());
 
         mockMvc.perform(asAdmin(HttpMethod.POST, "/privilege").content(json.createArrayNode().add(created).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].uuid").isString()).andExpect(jsonPath("$[0].name").value(name))
+            .andExpect(jsonPath("$[0].application.uuid").value(application.getUuid().toString()))
+            .andExpect(jsonPath("$[0].application.token").doesNotExist());
 
         Privilege stored = privilegeRepository.findByName(name);
         assertThat(stored.getApplication().getUuid()).isEqualTo(application.getUuid());
@@ -195,13 +228,34 @@ class AdminFormPayloadTest {
     }
 
     @Test
+    void privilegeReadIsTheStoredEntityJsonWithoutTheMergedMembers() throws Exception {
+        AccessRule rule = new AccessRule();
+        rule.setName("AR_PRIV_READ_" + suffix);
+        rule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        rule = accessRuleRepository.save(rule);
+        privilege.setAccessRules(new HashSet<>(Set.of(rule)));
+        privilege = privilegeRepository.save(privilege);
+        String expected = new TransactionTemplate(transactionManager)
+            .execute(status -> FrozenWire.json(privilegeRepository.findById(privilege.getUuid()).orElseThrow()));
+
+        String body = mockMvc.perform(asAdmin(HttpMethod.GET, "/privilege/{id}", privilege.getUuid())).andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+
+        assertThat(body).isEqualTo(expected);
+        assertThat(body).contains(rule.getUuid().toString(), application.getUuid().toString())
+            .doesNotContain("stored-application-token", "mergedValues", "mergedName");
+    }
+
+    @Test
     void roleFormCreateAndEditAreAccepted() throws Exception {
         String name = "ROLE_FORM_" + suffix;
         ObjectNode created = json.createObjectNode().put("name", name).put("description", "from the role form");
         created.putArray("privileges").addObject().put("uuid", privilege.getUuid().toString());
 
         mockMvc.perform(asAdmin(HttpMethod.POST, "/role").content(json.createArrayNode().add(created).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$.message").value("All roles are added."))
+            .andExpect(jsonPath("$.content[0].uuid").isString()).andExpect(jsonPath("$.content[0].name").value(name))
+            .andExpect(jsonPath("$.content[0].privileges[0].uuid").value(privilege.getUuid().toString()));
 
         Role stored = roleRepository.findByName(name);
         assertThat(stored.getPrivileges()).extracting(Privilege::getUuid).containsExactly(privilege.getUuid());
@@ -210,7 +264,10 @@ class AdminFormPayloadTest {
         edited.putArray("privileges").addObject().put("uuid", privilege.getUuid().toString());
         edited.put("uuid", stored.getUuid().toString());
 
-        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/role").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk());
+        mockMvc.perform(asAdmin(HttpMethod.PATCH, "/role").content(json.createArrayNode().add(edited).toString())).andExpect(status().isOk())
+            .andExpect(jsonPath("$.message").value("All Roles are updated."))
+            .andExpect(jsonPath("$.content[0].uuid").value(stored.getUuid().toString()))
+            .andExpect(jsonPath("$.content[0].description").value("edited in the role form"));
 
         assertThat(roleRepository.findById(stored.getUuid()).orElseThrow().getDescription()).isEqualTo("edited in the role form");
     }
@@ -222,7 +279,8 @@ class AdminFormPayloadTest {
             json.createObjectNode().put("id", id).put("label", "Form " + suffix).put("requiredFields", "[]").put("subPrefix", id + "|");
 
         mockMvc.perform(asAdmin(HttpMethod.POST, "/connection").content(json.createArrayNode().add(created).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$.message").value("All connections are added."))
+            .andExpect(jsonPath("$.content[0].id").value(id)).andExpect(jsonPath("$.content[0].uuid").isString());
 
         Connection stored = connectionRepository.findById(id).orElseThrow();
 
@@ -231,7 +289,9 @@ class AdminFormPayloadTest {
         edited.put("uuid", stored.getUuid().toString());
 
         mockMvc.perform(asAdmin(HttpMethod.PATCH, "/connection").content(json.createArrayNode().add(edited).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].uuid").value(stored.getUuid().toString()))
+            .andExpect(jsonPath("$[0].label").value("Edited " + suffix))
+            .andExpect(jsonPath("$[0].requiredFields").value("[{\"label\":\"Email\",\"id\":\"email\"}]"));
 
         Connection saved = connectionRepository.findById(id).orElseThrow();
         assertThat(saved.getLabel()).isEqualTo("Edited " + suffix);
@@ -244,11 +304,27 @@ class AdminFormPayloadTest {
             .put("description", "edited").put("token", "forged-application-token");
 
         mockMvc.perform(asAdmin(HttpMethod.PATCH, "/application").content(json.createArrayNode().add(edited).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].uuid").value(application.getUuid().toString()))
+            .andExpect(jsonPath("$[0].description").value("edited"))
+            .andExpect(jsonPath("$[0].privileges[0].uuid").value(privilege.getUuid().toString()))
+            .andExpect(jsonPath("$[0].token").doesNotExist());
 
         Application saved = applicationRepository.findById(application.getUuid()).orElseThrow();
         assertThat(saved.getDescription()).isEqualTo("edited");
         assertThat(saved.getToken()).isEqualTo("stored-application-token");
+    }
+
+    @Test
+    void applicationUpdateIsTheStoredEntityJsonWithoutTheToken() throws Exception {
+        ObjectNode edited = json.createObjectNode().put("uuid", application.getUuid().toString()).put("description", "read back");
+
+        String body = mockMvc.perform(asAdmin(HttpMethod.PATCH, "/application").content(json.createArrayNode().add(edited).toString()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        String expected = new TransactionTemplate(transactionManager)
+            .execute(status -> FrozenWire.json(List.of(applicationRepository.findById(application.getUuid()).orElseThrow()), "token"));
+        assertThat(body).isEqualTo(expected);
+        assertThat(body).contains("\"privileges\":[", privilege.getUuid().toString()).doesNotContain("stored-application-token");
     }
 
     @Test
@@ -285,7 +361,9 @@ class AdminFormPayloadTest {
         created.putArray("privileges").addObject().put("uuid", privilege.getUuid().toString());
 
         mockMvc.perform(asAdmin(HttpMethod.POST, "/role").content(json.createArrayNode().add(created).toString()))
-            .andExpect(status().isOk());
+            .andExpect(status().isOk()).andExpect(jsonPath("$.message").value("All roles are added."))
+            .andExpect(jsonPath("$.content[0].uuid").isString()).andExpect(jsonPath("$.content[0].name").value(name))
+            .andExpect(jsonPath("$.content[0].privileges[0].uuid").value(privilege.getUuid().toString()));
 
         assertThat(roleRepository.findById(role.getUuid()).orElseThrow().getName()).isEqualTo("ROLE_" + suffix);
         assertThat(roleRepository.findByName(name).getUuid()).isNotEqualTo(role.getUuid());

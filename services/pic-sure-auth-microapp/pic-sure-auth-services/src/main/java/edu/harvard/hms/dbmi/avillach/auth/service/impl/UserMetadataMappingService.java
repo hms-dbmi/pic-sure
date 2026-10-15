@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -34,27 +33,6 @@ public class UserMetadataMappingService {
 
     public List<UserMetadataMapping> getAllMappingsForConnection(Connection connection) {
         return userMetadataMappingRepo.findByConnection(connection);
-    }
-
-    @Transactional
-    public List<UserMetadataMapping> addMappings(List<UserMetadataMapping> mappings) {
-        StringBuilder errorMessage = new StringBuilder("The following connectionIds do not exist:\n");
-        boolean error = false;
-        for (UserMetadataMapping umm : mappings) {
-            Optional<Connection> c = connectionRepo.findById(umm.getConnection().getId());
-            if (c.isEmpty()) {
-                error = true;
-                errorMessage.append(umm.getConnection().getId()).append("\n");
-            } else {
-                umm.setConnection(c.get());
-            }
-        }
-
-        if (error) {
-            throw new IllegalArgumentException(errorMessage.toString());
-        }
-
-        return this.userMetadataMappingRepo.saveAll(mappings);
     }
 
     /**
@@ -115,10 +93,6 @@ public class UserMetadataMappingService {
 
     public Connection getAllMappingsForConnection(String connectionId) {
         return this.connectionRepo.findById(connectionId).orElseThrow(() -> new IllegalArgumentException("Connection not found"));
-    }
-
-    public List<UserMetadataMapping> updateUserMetadataMappings(List<UserMetadataMapping> mappings) {
-        return this.userMetadataMappingRepo.saveAll(mappings);
     }
 
     public List<UserMetadataMapping> removeMetadataMappingByIdAndRetrieveAll(String mappingId) {
