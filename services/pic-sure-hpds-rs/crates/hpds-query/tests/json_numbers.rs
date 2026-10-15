@@ -327,3 +327,28 @@ fn an_integer_too_wide_for_64_bits_in_not_reads_as_true() {
         }
     }
 }
+
+#[test]
+fn an_integer_minus_zero_reads_as_zero_in_enum_and_boolean_fields() {
+    let json = r#"{"expectedResultType":-0,"phenotypicClause":{"operator":-0,"not":-0,"phenotypicClauses":[{"phenotypicFilterType":-0,"conceptPath":"x","not":-0}]}}"#;
+    for query in read_every_way(json) {
+        assert_eq!(query.expected_result_type, hpds_query::ResultType::Count);
+        match &query.phenotypic_clause {
+            Some(PhenotypicClause::Subquery(subquery)) => {
+                assert_eq!(subquery.operator, Some(hpds_query::Operator::And));
+                assert_eq!(subquery.not, Some(false));
+                match &subquery.phenotypic_clauses[..] {
+                    [PhenotypicClause::Filter(filter)] => {
+                        assert_eq!(
+                            filter.phenotypic_filter_type,
+                            hpds_query::PhenotypicFilterType::Required
+                        );
+                        assert_eq!(filter.not, Some(false));
+                    }
+                    other => panic!("expected one filter, got {other:?}"),
+                }
+            }
+            other => panic!("expected a subquery, got {other:?}"),
+        }
+    }
+}

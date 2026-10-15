@@ -21,8 +21,11 @@
 //!   Jackson, which `PhenotypicFilterValidator` never checks; `serde_json` refuses it. The token
 //!   is rewritten to the string `"Infinity"` or `"-Infinity"`, which the model reads as the
 //!   same double.
-//! - A `min` or `max` written as the integer `-0` is `0.0` in Jackson, which reads it as an
-//!   integer; `serde_json` reads `-0.0`. The token is rewritten to `0`.
+//! - The integer `-0` is the integer zero to Jackson; `serde_json` reads the float `-0.0`.
+//!   That makes a `min` or `max` `-0.0` instead of `0.0`, and the model refuses a float as the
+//!   value of `not` or as an enum ordinal (`expectedResultType`, `phenotypicFilterType`,
+//!   `operator`), where Jackson reads `false` or the first constant. Outside `String`
+//!   positions the token is rewritten to `0`.
 //! - A number, `true` or `false` where the v3 model holds a Java `String` (an element of
 //!   `select` or `values`, the value of `conceptPath`, `key` or a consent's `value`) is coerced
 //!   by Jackson to its source text. `serde_json` would refuse it or lose the text, so the
@@ -32,9 +35,6 @@
 //!   decimal or exponent token's `Double.toString` (`1.50` becomes `1.5`, `1e3` becomes
 //!   `1000.0`, `1e309` becomes `Infinity`). Objects and arrays in those positions are left for
 //!   the model to refuse, as Jackson refuses them.
-//! - The integer `-0` as the value of `not` is `false` to Jackson, which reads it as the
-//!   integer zero; `serde_json` reads the float `-0.0`, which the model refuses. The token is
-//!   rewritten to `0`.
 //! - An integer too wide for 64 bits as the value of `not` is true to Jackson's int to Boolean
 //!   coercion (any non-zero integer is); `serde_json` would hand it over as a float, which the
 //!   model refuses. The token is rewritten to `true`.
@@ -189,11 +189,13 @@ pub fn java_numbers(json: &[u8], source: Source) -> Result<Cow<'_, [u8]>, Number
                     .map_or(KeyKind::Other, |frame| frame.scalar_kind());
                 let replacement = if !is_json_number(token) {
                     None
+                } else if token == b"-0" && kind != KeyKind::Text {
+                    Some(Replacement::Text(b"0"))
                 } else {
                     match kind {
                         KeyKind::Bound => bound_replacement(token),
                         KeyKind::Text => Some(text_replacement(token, source)),
-                        KeyKind::Not => not_replacement(token),
+                        KeyKind::Not => wide_integer(token).then_some(Replacement::Text(b"true")),
                         KeyKind::TextList | KeyKind::Other => {
                             overflow(token).map(|_| Replacement::Quoted)
                         }
@@ -370,16 +372,6 @@ fn text_replacement(token: &[u8], source: Source) -> Replacement {
     }
 }
 
-/// What a well-formed number token as the value of `not` becomes, when Jackson's Boolean
-/// coercion reads it differently from how `serde_json` hands it to the model.
-fn not_replacement(token: &[u8]) -> Option<Replacement> {
-    if token == b"-0" {
-        Some(Replacement::Text(b"0"))
-    } else {
-        wide_integer(token).then_some(Replacement::Text(b"true"))
-    }
-}
-
 /// The infinity a number token overflows to, as its sign, or `None` when it is finite.
 fn overflow(token: &[u8]) -> Option<f64> {
     if !token.iter().any(|b| matches!(b, b'e' | b'E')) {
@@ -399,9 +391,6 @@ fn overflow(token: &[u8]) -> Option<f64> {
 /// What a `min` or `max` number token becomes, when Jackson reads it differently from
 /// `serde_json`.
 fn bound_replacement(token: &[u8]) -> Option<Replacement> {
-    if token == b"-0" {
-        return Some(Replacement::Text(b"0"));
-    }
     overflow(token).map(|infinity| {
         Replacement::Text(if infinity > 0.0 {
             b"\"Infinity\""
@@ -431,7 +420,7 @@ mod tests {
 
     #[test]
     fn ordinary_text_is_borrowed_unchanged() {
-        let json = br#"{"min":1.5,"max":-0.0,"values":["-0","1e309"],"n":[1e308,-0]}"#;
+        let json = br#"{"min":1.5,"max":-0.0,"values":["-0","1e309"],"n":[1e308,-0.0]}"#;
         for source in [Source::RequestBody, Source::QueryText] {
             assert!(matches!(java_numbers(json, source), Ok(Cow::Borrowed(_))));
         }
@@ -452,21 +441,23 @@ mod tests {
     }
 
     #[test]
-    fn integer_minus_zero_bounds_become_zero() {
+    fn integer_minus_zero_becomes_zero_outside_string_positions() {
         assert_eq!(
-            rewritten(r#"{"min":-0,"max":-0.0,"x":-0}"#),
-            r#"{"min":0,"max":-0.0,"x":-0}"#
+            rewritten(
+                r#"{"min":-0,"max":-0.0,"x":-0,"not":-0,"expectedResultType":-0,"n":[-0,-0e0]}"#
+            ),
+            r#"{"min":0,"max":-0.0,"x":0,"not":0,"expectedResultType":0,"n":[0,-0e0]}"#
         );
         assert_eq!(rewritten(r#"{"min":-0}"#), r#"{"min":0}"#);
     }
 
     #[test]
-    fn only_values_of_a_bound_key_become_infinity_or_zero() {
-        let json = r#"{"items":["min",-0],"min":"min","conceptPath":"max","other":-0}"#;
+    fn only_values_of_a_bound_key_become_infinity() {
+        let json = r#"{"items":["min",1e308],"min":"min","conceptPath":"max","other":1e308}"#;
         assert_eq!(rewritten(json), json);
         assert_eq!(
-            rewritten(r#"[{"min":[-0]},{"k":"x\"min","max":-0}]"#),
-            r#"[{"min":[-0]},{"k":"x\"min","max":0}]"#
+            rewritten(r#"[{"min":[1e309]},{"k":"x\"min","max":1e309}]"#),
+            r#"[{"min":["1e309"]},{"k":"x\"min","max":"Infinity"}]"#
         );
     }
 
@@ -527,14 +518,6 @@ mod tests {
     }
 
     #[test]
-    fn an_integer_minus_zero_in_not_becomes_zero() {
-        assert_eq!(
-            rewritten(r#"{"not":-0,"x":{"not":-0.0},"y":-0}"#),
-            r#"{"not":0,"x":{"not":-0.0},"y":-0}"#
-        );
-    }
-
-    #[test]
     fn malformed_numbers_are_never_rewritten() {
         for json in [
             r#"{"conceptPath":1.}"#,
@@ -588,10 +571,10 @@ mod tests {
 
     #[test]
     fn escaped_quotes_keep_a_string_open() {
-        let json = br#"{"k":"x\"min\":-0","l":"a\\","max":-0}"#;
+        let json = br#"{"k":"x\"min\":1e309","l":"a\\","max":1e309}"#;
         assert_eq!(
             String::from_utf8(java_numbers(json, Source::QueryText).unwrap().into_owned()).unwrap(),
-            r#"{"k":"x\"min\":-0","l":"a\\","max":0}"#
+            r#"{"k":"x\"min\":1e309","l":"a\\","max":"Infinity"}"#
         );
     }
 

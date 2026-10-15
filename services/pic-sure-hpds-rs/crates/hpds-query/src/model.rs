@@ -29,8 +29,9 @@
 //!   `FALSE` and `False` are false, and any other text (`tRuE`, `yes`, `1`) is refused.
 //! - Numbers are read from their literal text as Jackson 2.21 reads them: a number with more
 //!   than 1,000 counted digits is refused (`StreamReadConstraints`; the count differs between
-//!   query text and a request body, see `json_number`), and a `min` or `max` that
-//!   overflows a double is `±Infinity` and one written as the integer `-0` is `0.0`. Every
+//!   query text and a request body, see `json_number`), a `min` or `max` that
+//!   overflows a double is `±Infinity`, and the integer `-0` is zero (a bound of `0.0`, a `not`
+//!   of `false`, an enum's first constant). Every
 //!   other number is the correctly rounded double, as `serde_json` with `float_roundtrip`
 //!   reads it.
 //! - A JSON number, `true` or `false` where the model holds a Java `String` (an element of
@@ -657,8 +658,8 @@ impl<'de> Visitor<'de> for StrictValueVisitor {
 ///
 /// Numbers are read as Jackson's character parser reads them, through the number scan of
 /// `json_number`: a number with more than 1,000 counted digits is refused, a `min` or `max`
-/// that overflows a double or is the integer `-0` is read as `±Infinity` or `0.0`, and a
-/// number in a `String` field is read as its literal text.
+/// that overflows a double is read as `±Infinity`, the integer `-0` as zero, and a number in
+/// a `String` field as its literal text.
 ///
 /// # Errors
 /// The `serde_json` error for invalid JSON (a byte order mark, comments, trailing commas
