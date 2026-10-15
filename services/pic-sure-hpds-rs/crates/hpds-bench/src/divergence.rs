@@ -197,6 +197,11 @@ pub struct Rule {
     /// Pair of HTTP statuses, matched in either order against the two servers.
     #[serde(default)]
     pub statuses: Option<[u16; 2]>,
+    /// The status the Java side must have answered. Applies only when the comparison knows
+    /// which side is Java ([`Divergences::for_java`]); without it the rule matches either
+    /// orientation of [`Rule::statuses`].
+    #[serde(default, rename = "javaStatus")]
+    pub java_status: Option<u16>,
     /// Extra condition on the outcomes.
     #[serde(default)]
     pub when: Option<When>,
@@ -1170,6 +1175,15 @@ impl Rule {
         if let Some([first, second]) = self.statuses {
             let (x, y) = (a.status_code(), b.status_code());
             if !((x == first && y == second) || (x == second && y == first)) {
+                return false;
+            }
+        }
+        if let (Some(code), Some(java)) = (self.java_status, java) {
+            let java_outcome = match java.side {
+                Side::A => a,
+                Side::B => b,
+            };
+            if java_outcome.status_code() != code {
                 return false;
             }
         }
@@ -2314,6 +2328,37 @@ mod tests {
         assert_eq!(
             rule_name(&main, &clean, &sync(200, ""), &sync(200, "3")),
             None
+        );
+    }
+
+    #[test]
+    fn invalid_request_status_needs_the_500_on_java_when_java_is_known() {
+        let set = checked_in();
+        let e = entry("error-unknown-field", "COUNT");
+        let (java_500, rust_400) = (sync(500, ""), sync(400, "bad"));
+        let java_on_a = set.clone().for_java(Side::A, JavaBranch::Main);
+        assert_eq!(
+            rule_name(&java_on_a, &e, &java_500, &rust_400).as_deref(),
+            Some("invalid-request-status")
+        );
+        let java_on_b = set.clone().for_java(Side::B, JavaBranch::Main);
+        assert_eq!(
+            rule_name(&java_on_b, &e, &rust_400, &java_500).as_deref(),
+            Some("invalid-request-status")
+        );
+        let known = set.clone().for_java(Side::A, JavaBranch::Main);
+        assert_eq!(
+            rule_name(&known, &e, &sync(400, "bad"), &sync(500, "")),
+            None
+        );
+        let consent = set.clone().for_java(Side::B, JavaBranch::Consent);
+        assert_eq!(
+            rule_name(&consent, &e, &sync(500, ""), &sync(400, "bad")),
+            None
+        );
+        assert_eq!(
+            rule_name(&set, &e, &sync(400, "bad"), &sync(500, "")).as_deref(),
+            Some("invalid-request-status")
         );
     }
 }

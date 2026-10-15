@@ -4,7 +4,8 @@
       "name": "invalid-request-status",
       "entry": "error-*",
       "statuses": [400, 500],
-      "reason": "Spec divergence, HTTP errors: Java answers a bad sync query or a validation failure with 500 (the query service then returns 502); Rust returns 400 with a text message."
+      "javaStatus": 500,
+      "reason": "Spec divergence, HTTP errors: Java answers a bad sync query or a validation failure with 500 (the query service then returns 502); Rust returns 400 with a text message. When the comparison knows which side is Java, the 500 must be Java's: a Rust 500 against a Java 400 is a Rust failure and stays flagged."
     },
     {
       "name": "unknown-async-id-status",

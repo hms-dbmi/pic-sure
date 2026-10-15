@@ -94,7 +94,9 @@ empty body, and the entry's phenotypic clause holds a `FILTER` with a `min`); th
 the `Condition` type in `src/divergence.rs`. A rule with `javaBranch` (`main` or `consent`)
 applies only when the run names that branch with `--java <a|b> --java-branch <main|consent>`,
 which also tells conditions that need it which answer is Java's (`authorization-filters-narrow`
-accepts only a narrower answer from main):
+accepts only a narrower answer from main). With the Java side named, a rule's `javaStatus`
+requires that status on Java's side, so `invalid-request-status` takes a Java 500 against a
+Rust 400 and flags the reverse:
 
 ```bash
 hpds-bench compare --a http://127.0.0.1:18081/PIC-SURE --b http://rust:8080/PIC-SURE \
