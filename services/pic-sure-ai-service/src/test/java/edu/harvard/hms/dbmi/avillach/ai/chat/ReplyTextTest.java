@@ -15,7 +15,7 @@ class ReplyTextTest {
 
     @Test
     void pathsInProseGetAsciiHyphensAndSingleBackslashes() {
-        // Round 8, T3 R1: the path is bold, JSON-escaped, and has U+2011 where the dictionary has '-'.
+        // The path is bold, JSON-escaped, and has U+2011 where the dictionary has '-'.
         String reply = "| **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\LDL‑cholesterol (mg per dL)\\\\** | 20 – 316 |";
 
         assertEquals("| **\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\** | 20 – 316 |", ReplyText.withPlainPaths(reply));
@@ -25,7 +25,7 @@ class ReplyTextTest {
 
     @Test
     void aKnownBacktickedPathMissingItsTrailingBackslashIsRestored() {
-        // Round 9, T14 R2: every path in a long list lost its trailing backslash.
+        // Every path in a long list lost its trailing backslash.
         ConceptPaths paths = new ConceptPaths();
         paths.learnFrom("{\"conceptPath\":\"\\\\Nhanes\\\\questionnaire\\\\smoking family\\\\Does anyone smoke in home?\\\\\"}");
         String reply = "* `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?` - categorical";
@@ -37,7 +37,7 @@ class ReplyTextTest {
 
     @Test
     void anUnknownOrTruncatedBacktickedPathIsLeftAsWritten() {
-        // Round 9, T14 R1: a truncated path must stay visibly wrong rather than be guessed at.
+        // A truncated path must stay visibly wrong rather than be guessed at.
         ConceptPaths paths = new ConceptPaths();
         paths.learnFrom("{\"conceptPath\":\"\\\\Nhanes\\\\smoking behavior\\\\Do you now smoke cigarettes...\\\\\"}");
         String reply = "`\\Nhanes\\smoking behavior\\Do you now smoke cigarettes\u2026\\` and `plain code`";
@@ -48,7 +48,6 @@ class ReplyTextTest {
 
     @Test
     void aJavaScriptStyleQueryObjectWithBareKeysAndALabelledSearchAreRemoved() {
-        // Round 3, T7 R2.
         String reply = "query: {select:[\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"], phenotypicClause:{operator:\"AND\", "
             + "phenotypicClauses:[{phenotypicFilterType:\"FILTER\", conceptPath:\"\\\\Nhanes\\\\demographics\\\\SEX\", values:[\"female\"]}]}}\n\nsearch: \"sex\"";
 
@@ -57,7 +56,6 @@ class ReplyTextTest {
 
     @Test
     void bulletedUndefinedFieldEchoesAndTheHeadingAboveThemAreRemoved() {
-        // Round 3, T2 R1.
         String reply = "There are no variables returned for waist-hip ratio.\n\n**Current state of the interface**  \n- query: {}  \n- facets: undefined  \n- search: undefined";
 
         assertEquals("There are no variables returned for waist-hip ratio.", ReplyText.withoutQueryJson(reply));
@@ -65,7 +63,6 @@ class ReplyTextTest {
 
     @Test
     void aHeadingLeftDanglingAfterTheScrubIsRemovedButAnUntouchedReplyKeepsItsLastLine() {
-        // Round 3, T1 R2.
         String scrubbed = "**Variable found**\n\n- **Display name:** BMI\n\n---\n\n**Current query**\n{\"select\":[\"a\"]}";
         assertEquals("**Variable found**\n\n- **Display name:** BMI", ReplyText.withoutQueryJson(scrubbed));
 
@@ -136,7 +133,6 @@ class ReplyTextTest {
 
     @Test
     void aReplyThatIsOnlyProposeQueryArgumentsIsReadAsThem() {
-        // Round 5, T9 R1.
         String reply = "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\a\\\\\"}}}";
 
         assertEquals(reply, ReplyText.proposalArguments(reply));

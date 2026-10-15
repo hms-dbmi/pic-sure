@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.ai.mcp.gateway;
 
+import java.time.Duration;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +24,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -50,7 +52,7 @@ class GatewayMcpToolGatewayTest {
             post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("notifications/initialized")))
                 .willReturn(aResponse().withStatus(202))
         );
-        gateway = new GatewayMcpToolGateway(server.baseUrl(), new ObjectMapper());
+        gateway = new GatewayMcpToolGateway(server.baseUrl(), new ObjectMapper(), Duration.ofSeconds(5), Duration.ofSeconds(20));
     }
 
     @AfterEach
@@ -136,6 +138,43 @@ class GatewayMcpToolGatewayTest {
         ToolResult result = gateway.callTool("search_concepts", "{}", callerWith("Bearer caller-token", "req-1"));
 
         assertTrue(result.error());
+    }
+
+    @Test
+    void listToolsThrowsOnAJsonRpcErrorRatherThanReturningNoTools() {
+        server.stubFor(post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/list"))).willReturn(okRpc("""
+            {"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}""")));
+
+        IllegalStateException e =
+            assertThrows(IllegalStateException.class, () -> gateway.listTools(callerWith("Bearer caller-token", "req-1")));
+
+        assertTrue(e.getMessage().contains("Internal error"), e.getMessage());
+    }
+
+    @Test
+    void callToolSuccessWithOnlyTextContentReadsTheText() {
+        server.stubFor(post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("tools/call"))).willReturn(okRpc("""
+            {"jsonrpc":"2.0","id":2,"result":{"isError":false,"content":[{"type":"text","text":"{\\"total\\":3}"}]}}""")));
+
+        ToolResult result = gateway.callTool("search_concepts", "{}", callerWith("Bearer caller-token", "req-1"));
+
+        assertFalse(result.error());
+        assertEquals("{\"total\":3}", result.content());
+    }
+
+    @Test
+    void aFailedHandshakeBecomesTheGenericFailureAndIsRetriedOnTheNextCall() {
+        server.stubFor(
+            post(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("initialize")))
+                .willReturn(aResponse().withStatus(502).withBody("upstream http://internal-host:8080 refused"))
+        );
+
+        ToolResult first = gateway.callTool("search_concepts", "{}", callerWith("Bearer caller-token", "req-1"));
+        gateway.callTool("search_concepts", "{}", callerWith("Bearer caller-token", "req-2"));
+
+        assertTrue(first.error());
+        assertFalse(first.content().contains("internal-host"), "the raw transport error must not reach the model: " + first.content());
+        server.verify(2, postRequestedFor(urlEqualTo("/mcp")).withRequestBody(matchingJsonPath("$.method", equalTo("initialize"))));
     }
 
     @Test

@@ -13,46 +13,43 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Keeps query JSON out of the prose reply. The researcher never sees queries, and the structured {@code query} field is rebuilt from the
- * validated proposal, so any query JSON the model writes into its reply is noise at best. Small models do it despite the prompt, so
- * the reply is scrubbed here rather than trusted.
+ * Cleans the model's prose reply. The response's {@code query} is rebuilt from the validated proposal, so query JSON the model writes
+ * into its reply (small models do, despite the prompt) is only noise.
  */
 final class ReplyText {
 
-    /** Shown when scrubbing leaves nothing and a proposal is attached. */
     static final String PROPOSAL_ATTACHED_TEXT = "I've prepared an updated search for you to review.";
 
     private static final Pattern FENCED_BLOCK = Pattern.compile("```[a-zA-Z]*\\s*\\{.*?}\\s*```", Pattern.DOTALL);
-    /** A query key, quoted (JSON) or bare (JavaScript-object style, which small models also write: {@code {select:[...], phenotypicClause:{...}}}). */
+    /** Quoted (JSON) or bare (JavaScript-object style, which small models also write). */
     private static final Pattern QUERY_KEYS = Pattern.compile(
         "\"(select|phenotypicClause|phenotypicClauses|phenotypicFilterType|genomicFilters)\""
             + "|\\b(?:phenotypicClauses?|phenotypicFilterType|genomicFilters)\\s*:|\\bselect\\s*:\\s*\\["
     );
-    /** A whole line that is only a {@code query:}/{@code facets:}/{@code search:} label, optionally bulleted, with an empty or short value. */
+    /** A line that is only a {@code query:}/{@code facets:}/{@code search:} label, optionally bulleted, with an empty or short value. */
     private static final Pattern FIELD_LABEL = Pattern.compile(
         "(?m)^[ \\t]*(?:[-*][ \\t]+)?(query|facets|search)[ \\t]*:[ \\t]*(?:\"[^\"\\n]*\"|\\[[^\\]\\n]*]|\\{\\s*}|undefined|null)?[ \\t]*$"
     );
-    /** A heading or rule left at the very end once the text under it was scrubbed away. */
+    /** A heading or rule left at the end once the text under it was scrubbed away. */
     private static final Pattern DANGLING_HEADING = Pattern.compile("(?:^|\\n)[ \\t]*(?:-{3,}|\\*\\*[^*\\n]+\\*\\*:?|#{1,6}[ \\t]+[^\\n]*)[ \\t]*$");
 
-    /** An empty {@code facets: []} / {@code search: ""} the model echoes inline, e.g. after its query object was removed. */
+    /** An empty {@code facets: []} / {@code search: ""} echoed inline. */
     private static final Pattern EMPTY_INLINE_FIELD = Pattern.compile("\\b(facets|search)[ \\t]*:[ \\t]*(\\[\\s*]|\"\")");
-    /** A reply that is nothing but {@code query:}/{@code facets:}/{@code search:} labels with short values. */
+    /** Nothing but {@code query:}/{@code facets:}/{@code search:} labels with short values. */
     private static final Pattern LABELS_ONLY =
         Pattern.compile("(?s)\\s*(?:(?:query|facets|search)\\s*:\\s*(?:\"[^\"]*\"|\\[[^\\]]*]|\\{\\s*})?\\s*)+");
 
-    /** Rejects trailing text, so a reply with prose after its JSON object is not taken for a bare proposal. */
+    /** Rejects trailing text, so prose after a JSON object is not taken for a bare proposal. */
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private static final Set<String> PROPOSAL_FIELDS = Set.of("query", "facets", "search");
-    private static final Set<String> QUERY_FIELDS = Set.of("select", "phenotypicClause", "genomicFilters");
     private static final Pattern WHOLE_FENCE = Pattern.compile("(?s)^```[a-zA-Z]*\\s*(.*?)\\s*```$");
 
-    /** U+2010 HYPHEN and U+2011 NON-BREAKING HYPHEN, which gpt-oss writes in place of the ASCII hyphen. */
+    /** U+2010 and U+2011, which gpt-oss writes in place of the ASCII hyphen. */
     private static final Pattern UNICODE_HYPHEN = Pattern.compile("[\u2010\u2011]");
-    /** A run of backslashes: the JSON-escaped form of a concept path copied into prose. */
+    /** The JSON-escaped form of a concept path copied into prose. */
     private static final Pattern BACKSLASH_RUN = Pattern.compile("\\\\{2,}");
 
-    /** A backticked span on one line whose text contains a backslash: a concept path the model wrote in code style. */
+    /** A backticked span on one line containing a backslash: a concept path in code style. */
     private static final Pattern BACKTICKED_PATH = Pattern.compile("`([^`\\n]*\\\\[^`\\n]*)`");
 
     private static final Pattern SCREEN_CLAIM = Pattern.compile(
@@ -60,18 +57,21 @@ final class ReplyText {
             + "|\\b(?:results table|table of results)\\b"
     );
 
-    private ReplyText() {}
-
-    /** A statement that the researcher's query or cohort was changed: "I included BMI in the query", "your query now has...". */
+    /**
+     * "I included BMI in the query", "your query now has...". A change verb is required: a count answer says "participants in your
+     * cohort" or "your cohort includes 1,200 participants" without claiming any change, and taking that for a claim would propose the
+     * counted what-if query as the researcher's own.
+     */
     private static final Pattern QUERY_CLAIM = Pattern.compile(
-        "(?i)\\b(?:in(?:to)?|to) (?:the|your) (?:query|cohort)\\b|\\b(?:the|your) (?:query|cohort) (?:now|includes|has been|was)\\b"
-            + "|\\b(?:updated|changed|built) (?:the|your) (?:query|cohort)\\b"
+        "(?i)\\b(?:added|included|applied|updated|changed|built|created|narrowed|modified|replaced|removed)\\b.*\\b(?:query|cohort)\\b"
+            + "|\\b(?:the|your) (?:query|cohort) (?:now|(?:has been|was) (?:updated|changed))\\b"
     );
-    /** A sentence offering to do something rather than saying it was done ("let me know if you'd like to add filters to your query"). */
+    /** An offer rather than a claim: "let me know if you'd like to add filters to your query". */
     private static final Pattern OFFER = Pattern.compile("(?i)\\b(?:if you|would you|let me know|you can|you could|want|like to)\\b");
     private static final Pattern SENTENCE_END = Pattern.compile("(?<=[.!?])\\s+|\\n+");
 
-    /** Whether a reply says, outside an offer, that the researcher's query was changed. */
+    private ReplyText() {}
+
     static boolean claimsQueryChanged(String text) {
         if (text == null) {
             return false;
@@ -84,7 +84,6 @@ final class ReplyText {
         return false;
     }
 
-    /** Whether a reply names, in backticks, a concept path this turn has seen. */
     static boolean namesKnownPath(String text, ConceptPaths paths) {
         if (text == null) {
             return false;
@@ -98,18 +97,11 @@ final class ReplyText {
         return false;
     }
 
-    /** Whether a reply tells the researcher their screen now shows the variables. */
     static boolean claimsScreenChanged(String text) {
         return text != null && SCREEN_CLAIM.matcher(text).find();
     }
 
-    /**
-     * Puts concept paths in the reply back in the form the dictionary uses, so a researcher can copy one. No concept path contains a
-     * Unicode hyphen or two backslashes in a row, and both are invisible slips in prose, so they are replaced everywhere.
-     *
-     * @param text the reply, possibly null
-     * @return the reply with ASCII hyphens and single backslashes; null stays null
-     */
+    /** No concept path contains a Unicode hyphen or a doubled backslash, so both are fixed everywhere in the reply. */
     static String withPlainPaths(String text) {
         if (text == null) {
             return null;
@@ -117,16 +109,14 @@ final class ReplyText {
         return BACKSLASH_RUN.matcher(UNICODE_HYPHEN.matcher(text).replaceAll("-")).replaceAll("\\\\");
     }
 
+    /** The reply as the researcher sees it: no query JSON, and concept paths in the form a tool returned them. */
+    static String cleaned(String text, ConceptPaths paths) {
+        return withKnownPaths(withPlainPaths(withoutQueryJson(text)), paths);
+    }
+
     /**
-     * Restores the exact form of each backticked concept path this turn has seen. gpt-oss drops a path's trailing backslash in longer
-     * lists (T14 in round 9), which leaves a path the researcher cannot paste; {@link ConceptPaths} already treats that as the same path,
-     * so its canonical form is put back. A shortened path that abbreviates exactly one seen path is restored
-     * ({@link ConceptPaths#snapped}); any other path the turn never saw is left as written, since it may be invented and guessing would
-     * hide that.
-     *
-     * @param text the reply, possibly null; run {@link #withPlainPaths} first so doubled backslashes are already collapsed
-     * @param paths the concept paths this turn has seen
-     * @return the reply with known paths in their canonical form; null stays null
+     * Puts each backticked path back in the exact form a tool returned, so the researcher can paste it. A path never seen is left as
+     * written, since guessing would hide that it may be invented. Run {@link #withPlainPaths} first.
      */
     static String withKnownPaths(String text, ConceptPaths paths) {
         if (text == null) {
@@ -139,13 +129,7 @@ final class ReplyText {
         });
     }
 
-    /**
-     * The backticked concept paths in a reply that this turn never saw, each once, in the order written.
-     *
-     * @param text the reply, possibly null; run {@link #withKnownPaths} first so shortened paths are already restored
-     * @param paths the concept paths this turn has seen
-     * @return the unseen paths as written; empty when there are none
-     */
+    /** Run {@link #withKnownPaths} first so shortened paths are already restored. */
     static List<String> unknownPaths(String text, ConceptPaths paths) {
         if (text == null) {
             return List.of();
@@ -162,11 +146,8 @@ final class ReplyText {
     }
 
     /**
-     * A reply that is nothing but a proposal: the {@code propose_query} arguments ({@code {"query":{...}}}) or a bare query
-     * ({@code {"select":[...],"phenotypicClause":{...}}}), optionally fenced. gpt-oss sometimes writes its proposal this way instead of
-     * calling the tool.
+     * gpt-oss sometimes replies with nothing but its proposal: the {@code propose_query} arguments or a bare query, optionally fenced.
      *
-     * @param text the model's reply, possibly null
      * @return the {@code propose_query} arguments as JSON, or null when the reply is anything else
      */
     static String proposalArguments(String text) {
@@ -184,7 +165,7 @@ final class ReplyText {
             if (fields.stream().anyMatch(PROPOSAL_FIELDS::contains)) {
                 return MAPPER.writeValueAsString(node);
             }
-            if (fields.stream().anyMatch(QUERY_FIELDS::contains)) {
+            if (fields.stream().anyMatch(ProposeQueryInput.FIELDS::contains)) {
                 return MAPPER.writeValueAsString(MAPPER.createObjectNode().set("query", node));
             }
             return null;
@@ -193,18 +174,11 @@ final class ReplyText {
         }
     }
 
-    /**
-     * Removes fenced code blocks and bare JSON objects that look like a query, then any {@code query:}/{@code facets:}/{@code search:}
-     * label left dangling.
-     *
-     * @param text the model's reply, possibly null
-     * @return the reply without query JSON, trimmed; null stays null
-     */
     static String withoutQueryJson(String text) {
         if (text == null) {
             return null;
         }
-        String cleaned = FENCED_BLOCK.matcher(text).replaceAll(m -> QUERY_KEYS.matcher(m.group()).find() ? "" : java.util.regex.Matcher.quoteReplacement(m.group()));
+        String cleaned = FENCED_BLOCK.matcher(text).replaceAll(m -> QUERY_KEYS.matcher(m.group()).find() ? "" : Matcher.quoteReplacement(m.group()));
         cleaned = removeQueryObjects(cleaned);
         cleaned = EMPTY_INLINE_FIELD.matcher(cleaned).replaceAll("");
         cleaned = FIELD_LABEL.matcher(cleaned).replaceAll("");
@@ -212,7 +186,6 @@ final class ReplyText {
         if (!cleaned.equals(text.strip())) {
             cleaned = withoutDanglingHeadings(cleaned);
         }
-        // Residue with no words in it (a lone brace, a bare label echo) is not a reply.
         return LABELS_ONLY.matcher(cleaned).matches() || cleaned.chars().noneMatch(Character::isLetterOrDigit) ? "" : cleaned;
     }
 
@@ -227,7 +200,6 @@ final class ReplyText {
         }
     }
 
-    /** Drops each balanced {...} span (string-aware) whose text mentions a query key. */
     private static String removeQueryObjects(String text) {
         StringBuilder out = new StringBuilder();
         int i = 0;

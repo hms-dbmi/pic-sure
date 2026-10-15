@@ -3,12 +3,12 @@ package edu.harvard.hms.dbmi.avillach.ai.mcp.gateway;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -19,6 +19,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import edu.harvard.hms.dbmi.avillach.ai.chat.CallerContext;
+import edu.harvard.hms.dbmi.avillach.ai.error.ErrorSummary;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.McpToolGateway;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolDefinition;
 import edu.harvard.hms.dbmi.avillach.ai.mcp.ToolResult;
@@ -41,22 +42,17 @@ import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
 @ConditionalOnProperty(prefix = "picsure.ai.mcp", name = "mode", havingValue = "gateway", matchIfMissing = true)
 public class GatewayMcpToolGateway implements McpToolGateway {
 
+    private static final Logger log = LoggerFactory.getLogger(GatewayMcpToolGateway.class);
+
     private static final String PROTOCOL_VERSION = "2025-06-18";
     private static final MediaType EVENT_STREAM = MediaType.valueOf("text/event-stream");
+    private static final String UNAVAILABLE = "The dictionary/query service is unavailable right now. Try again shortly.";
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
-    private final AtomicBoolean initialized = new AtomicBoolean(false);
+    private volatile boolean initialized;
 
-    /** Without a timeout a stuck dictionary call hangs the whole chat turn: the JDK client waits forever by default. */
-    private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
-    private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(20);
-
-    public GatewayMcpToolGateway(String gatewayUrl, ObjectMapper objectMapper) {
-        this(gatewayUrl, objectMapper, DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT);
-    }
-
-    @Autowired
+    /** @param readTimeout without one the JDK client waits forever, hanging the chat turn */
     public GatewayMcpToolGateway(
         @Value("${picsure.ai.mcp.gateway-url:}") String gatewayUrl, ObjectMapper objectMapper,
         @Value("${picsure.ai.mcp.connect-timeout:5s}") Duration connectTimeout, @Value("${picsure.ai.mcp.read-timeout:20s}") Duration readTimeout
@@ -78,9 +74,14 @@ public class GatewayMcpToolGateway implements McpToolGateway {
     @Override
     public List<ToolDefinition> listTools(CallerContext caller) {
         ensureInitialized(caller);
-        JsonNode result = send(rpcRequest(1, "tools/list", objectMapper.createObjectNode()), caller);
+        JsonNode response = post(rpcRequest(1, "tools/list", objectMapper.createObjectNode()), caller);
+        // Thrown, not read as an empty list: with no tools the turn would still run, and the model would answer from memory.
+        if (response == null || !response.path("result").path("tools").isArray()) {
+            String message = response == null ? "empty response" : response.path("error").path("message").asText("no tool list");
+            throw new IllegalStateException("MCP tools/list failed: " + message);
+        }
         List<ToolDefinition> tools = new ArrayList<>();
-        for (JsonNode tool : result.path("tools")) {
+        for (JsonNode tool : response.path("result").path("tools")) {
             tools.add(
                 new ToolDefinition(tool.path("name").asText(), tool.path("description").asText(), tool.path("inputSchema").toString())
             );
@@ -90,16 +91,22 @@ public class GatewayMcpToolGateway implements McpToolGateway {
 
     @Override
     public ToolResult callTool(String name, String argumentsJson, CallerContext caller) {
-        ensureInitialized(caller);
         ObjectNode params = objectMapper.createObjectNode();
         params.put("name", name);
         params.set("arguments", parseOrEmptyObject(argumentsJson));
 
         JsonNode response;
         try {
+            // Inside the try: a failed handshake is the same outage to the model, and its raw message (URL, status) must not reach it.
+            ensureInitialized(caller);
             response = post(rpcRequest(2, "tools/call", params), caller);
         } catch (RestClientException e) {
-            return ToolResult.failure("The dictionary/query service is unavailable right now. Try again shortly.");
+            log.warn("MCP tools/call failed: tool={} error={}", name, ErrorSummary.of(e));
+            return ToolResult.failure(UNAVAILABLE);
+        }
+        if (response == null) {
+            log.warn("MCP tools/call returned no body: tool={}", name);
+            return ToolResult.failure(UNAVAILABLE);
         }
 
         JsonNode error = response.path("error");
@@ -111,38 +118,39 @@ public class GatewayMcpToolGateway implements McpToolGateway {
         if (result.path("isError").asBoolean(false)) {
             return ToolResult.failure(result.path("content").path(0).path("text").asText("The tool call failed."));
         }
-        return ToolResult.success(result.path("structuredContent").toString());
+        // A tool that returns only text content (no structuredContent) still answers; reading just structuredContent would send "".
+        JsonNode structured = result.path("structuredContent");
+        return ToolResult.success(structured.isMissingNode() || structured.isNull() ? result.path("content").path(0).path("text").asText("")
+            : structured.toString());
     }
 
     /**
-     * Sends {@code initialize} then {@code notifications/initialized} once; a no-op on every call after the first success. A failed
-     * handshake releases the flag so the next request retries it.
+     * Sends {@code initialize} then {@code notifications/initialized} once; a no-op on every call after the first success. Concurrent first
+     * calls wait for the one handshake rather than going ahead before it is done; a failed handshake is retried by the next call.
      */
     private void ensureInitialized(CallerContext caller) {
-        if (initialized.compareAndSet(false, true)) {
-            try {
-                ObjectNode params = objectMapper.createObjectNode();
-                params.put("protocolVersion", PROTOCOL_VERSION);
-                params.set("capabilities", objectMapper.createObjectNode());
-                ObjectNode clientInfo = objectMapper.createObjectNode();
-                clientInfo.put("name", "pic-sure-ai-service");
-                clientInfo.put("version", "1.0.0");
-                params.set("clientInfo", clientInfo);
-                post(rpcRequest(0, "initialize", params), caller);
-
-                ObjectNode notification = objectMapper.createObjectNode();
-                notification.put("jsonrpc", "2.0");
-                notification.put("method", "notifications/initialized");
-                post(notification, caller);
-            } catch (RuntimeException e) {
-                initialized.set(false);
-                throw e;
-            }
+        if (initialized) {
+            return;
         }
-    }
+        synchronized (this) {
+            if (initialized) {
+                return;
+            }
+            ObjectNode params = objectMapper.createObjectNode();
+            params.put("protocolVersion", PROTOCOL_VERSION);
+            params.set("capabilities", objectMapper.createObjectNode());
+            ObjectNode clientInfo = objectMapper.createObjectNode();
+            clientInfo.put("name", "pic-sure-ai-service");
+            clientInfo.put("version", "1.0.0");
+            params.set("clientInfo", clientInfo);
+            post(rpcRequest(0, "initialize", params), caller);
 
-    private JsonNode send(ObjectNode body, CallerContext caller) {
-        return post(body, caller).path("result");
+            ObjectNode notification = objectMapper.createObjectNode();
+            notification.put("jsonrpc", "2.0");
+            notification.put("method", "notifications/initialized");
+            post(notification, caller);
+            initialized = true;
+        }
     }
 
     private JsonNode post(ObjectNode body, CallerContext caller) {

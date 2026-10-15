@@ -1,0 +1,1829 @@
+{
+  "meta": {
+    "label": "v8",
+    "url": "https://localhost/picsure/ai/chat",
+    "started": "2026-10-13T18:44:32.080Z",
+    "suite": "/Users/samanthapiatt/Documents/Projects/Pic-Sure/base/api-mcp-testing/scripts/chat-test/suite-v7.json"
+  },
+  "runs": [
+    {
+      "test": "T1",
+      "run": 1,
+      "requestId": "v8-t1-r1",
+      "body": {
+        "conversationId": "v8-t1-r1-conv",
+        "requestId": "v8-t1-r1",
+        "message": "Find variables related to BMI"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the BMI‑related variables available in the data dictionary:\n\n| Variable (concept path) | Description | Type | Range |\n|--------------------------|-------------|------|-------|\n| **\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\** | Body Mass Index (kg per m²) | Continuous | 11.98 – 130.21 |\n\nLet me know if you’d like to see more details, add this variable to a cohort query, or explore related measures such as weight or height."
+        },
+        "ms": 3909
+      },
+      "check": {
+        "flags": [
+          "doubled backslashes in prose"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | BMI"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t1-r1 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9091 totalOutputTokens=248 toolsCalled=[search_concepts(166 chars), get_concept(232 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_VXzzCWiBw2RIDggCOcjvsk {\"query\": \"body mass index | BMI\"}",
+        "Tool call: name=search_concepts id=tooluse_VXzzCWiBw2RIDggCOcjvsk error=false chars=166",
+        "Tool call requested: name=get_concept id=tooluse_oDGAYIpQwu3zFHudk7q61v {\"conceptPath\": \"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_oDGAYIpQwu3zFHudk7q61v error=false chars=232",
+        "Chat turn end: requestId=v8-t1-r1 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9091 totalOutputTokens=248 toolsCalled=[search_concepts(166 chars), get_concept(232 chars)]"
+      ]
+    },
+    {
+      "test": "T1",
+      "run": 2,
+      "requestId": "v8-t1-r2",
+      "body": {
+        "conversationId": "v8-t1-r2-conv",
+        "requestId": "v8-t1-r2",
+        "message": "Find variables related to BMI"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "The variable **Body Mass Index (kg per m²)** is available in the **Nhanes** dataset. It is a continuous measure with values ranging from ≈ 12 to ≈ 130 kg/m²."
+        },
+        "ms": 4274
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | BMI"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t1-r2 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9091 totalOutputTokens=177 toolsCalled=[search_concepts(166 chars), get_concept(232 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_h9LSLNkPMxlt4ptt5yORlz {\"query\": \"body mass index | BMI\"}",
+        "Tool call: name=search_concepts id=tooluse_h9LSLNkPMxlt4ptt5yORlz error=false chars=166",
+        "Tool call requested: name=get_concept id=tooluse_LKyklkT1wR4vbJbLWdBlNj {\"conceptPath\": \"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_LKyklkT1wR4vbJbLWdBlNj error=false chars=232",
+        "Chat turn end: requestId=v8-t1-r2 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9091 totalOutputTokens=177 toolsCalled=[search_concepts(166 chars), get_concept(232 chars)]"
+      ]
+    },
+    {
+      "test": "T1",
+      "run": 3,
+      "requestId": "v8-t1-r3",
+      "body": {
+        "conversationId": "v8-t1-r3-conv",
+        "requestId": "v8-t1-r3",
+        "message": "Find variables related to BMI"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the BMI‑related variables available in the data dictionary:\n\n| Variable (concept path) | Type | Range (min–max) |\n|---|---|---|\n| **\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\** | Continuous | 11.98 – 130.21 |\n\nThis is the only variable that matches “body mass index” or “BMI” in the current dictionary. Let me know if you’d like to explore this variable further (e.g., see its description, get a count of participants with BMI data, or add it to a cohort query)."
+        },
+        "ms": 2719
+      },
+      "check": {
+        "flags": [
+          "doubled backslashes in prose"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | BMI"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t1-r3 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=5943 totalOutputTokens=209 toolsCalled=[search_concepts(166 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_OsGaZyBXOvzf1RD0SwiZaB {\"query\": \"body mass index | BMI\"}",
+        "Tool call: name=search_concepts id=tooluse_OsGaZyBXOvzf1RD0SwiZaB error=false chars=166",
+        "Chat turn end: requestId=v8-t1-r3 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=5943 totalOutputTokens=209 toolsCalled=[search_concepts(166 chars)]"
+      ]
+    },
+    {
+      "test": "T2",
+      "run": 1,
+      "requestId": "v8-t2-r1",
+      "body": {
+        "conversationId": "v8-t2-r1-conv",
+        "requestId": "v8-t2-r1",
+        "message": "show me variables for body mas index and other obesity measures"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the obesity‑related variables available in the NHANES data dictionary:\n\n| Variable (concept path) | Display name | Type | Range / Values |\n|---|---|---|---|\n| `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\` | Body Mass Index (kg per m²) | Continuous | 11.98 – 130.21 |\n| `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\` | Waist Circumference (cm) | Continuous | 32.0 – 170.7 |\n| `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\` | Standing Height (cm) | Continuous | 79.9 – 199.8 |\n| `\\Nhanes\\examination\\body measures\\Weight (kg)\\` | Weight (kg) | Continuous | 3.1 – 371.0 |\n| `\\Nhanes\\questionnaire\\food component recall\\Weight‑gain Diet\\` | Weight‑gain Diet (question response) | Categorical | 0, 1 |\n| `\\Nhanes\\questionnaire\\food component recall\\Weight Loss Diet\\` | Weight‑loss Diet (question response) | Categorical | 0, 1 |\n\nThese variables cover the main anthropometric measures (BMI, waist circumference, height, weight) and a few questionnaire items related to weight‑gain or weight‑loss dieting. Let me know if you’d like to filter participants by any of these measures or need counts for a specific cohort."
+        },
+        "ms": 6917
+      },
+      "check": {
+        "flags": [
+          "path not returned by any search: prose: `\\Nhanes\\questionnaire\\food component recall\\Weight‑gain Diet\\` (non-ASCII: U+2011)"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | bmi | obesity | waist circumference | waist | weight | height"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t2-r1 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12965 totalOutputTokens=664 toolsCalled=[search_concepts(776 chars), get_concept(232 chars), get_concept(215 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_CzXeFTf7NdItczMPmNqLJ6 {\"query\": \"body mass index | bmi | obesity | waist circumference | waist | weight | height\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_CzXeFTf7NdItczMPmNqLJ6 error=false chars=776",
+        "Tool call requested: name=get_concept id=tooluse_kA91umkFXh5895s8n0tzjJ {\"conceptPath\": \"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_kA91umkFXh5895s8n0tzjJ error=false chars=232",
+        "Tool call requested: name=get_concept id=tooluse_EcgmTezKNhej1rcQsUWE9V {\"conceptPath\": \"\\\\Nhanes\\\\examination\\\\body measures\\\\Waist Circumference (cm)\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_EcgmTezKNhej1rcQsUWE9V error=false chars=215",
+        "Chat turn end: requestId=v8-t2-r1 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12965 totalOutputTokens=664 toolsCalled=[search_concepts(776 chars), get_concept(232 chars), get_concept(215 chars)]"
+      ]
+    },
+    {
+      "test": "T2",
+      "run": 2,
+      "requestId": "v8-t2-r2",
+      "body": {
+        "conversationId": "v8-t2-r2-conv",
+        "requestId": "v8-t2-r2",
+        "message": "show me variables for body mas index and other obesity measures"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the variables in the dictionary that relate to body‑mass‑index and other common obesity measures:\n\n| Variable (concept path) | Type | Details |\n|---|---|---|\n| **\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\** | Continuous | Values range from **11.98** to **130.21** (kg/m²). |\n| **\\\\Nhanes\\\\examination\\\\body measures\\\\Waist Circumference (cm)\\\\** | Continuous | Values range from **32.0** to **170.7** cm. |\n| **\\\\Nhanes\\\\examination\\\\body measures\\\\Weight (kg)\\\\** | Continuous | Values range from **3.1** to **371.0** kg. |\n| **\\\\Nhanes\\\\examination\\\\body measures\\\\Standing Height (cm)\\\\** | Continuous | Values range from **79.9** to **199.8** cm (useful for calculating BMI if needed). |\n| **\\\\Nhanes\\\\questionnaire\\\\food component recall\\\\Weight‑gain Diet\\\\** | Categorical | Categories: “0”, “1” (indicates whether a weight‑gain diet was reported). |\n| **\\\\Nhanes\\\\questionnaire\\\\food component recall\\\\Weight‑Loss Diet\\\\** | Categorical | Categories: “0”, “1” (indicates whether a weight‑loss diet was reported). |\n\nThese variables cover the standard obesity metrics (BMI, waist circumference, weight, and height) as well as questionnaire items about weight‑gain or weight‑loss diet behaviors."
+        },
+        "ms": 3772
+      },
+      "check": {
+        "flags": [
+          "doubled backslashes in prose",
+          "path not returned by any search: prose: `\\Nhanes\\questionnaire\\food component recall\\Weight‑gain Diet\\` (non-ASCII: U+2011)",
+          "path not returned by any search: prose: `\\Nhanes\\questionnaire\\food component recall\\Weight‑Loss Diet\\` (non-ASCII: U+2011)"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | bmi | waist circumference | waist | weight | height"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t2-r2 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6137 totalOutputTokens=474 toolsCalled=[search_concepts(776 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_mxqMzAP8vRwWhrEbkTxuQ9 {\"query\": \"body mass index | bmi | waist circumference | waist | weight | height\"}",
+        "Tool call: name=search_concepts id=tooluse_mxqMzAP8vRwWhrEbkTxuQ9 error=false chars=776",
+        "Chat turn end: requestId=v8-t2-r2 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6137 totalOutputTokens=474 toolsCalled=[search_concepts(776 chars)]"
+      ]
+    },
+    {
+      "test": "T2",
+      "run": 3,
+      "requestId": "v8-t2-r3",
+      "body": {
+        "conversationId": "v8-t2-r3-conv",
+        "requestId": "v8-t2-r3",
+        "message": "show me variables for body mas index and other obesity measures"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the obesity‑related variables that match your search:\n\n| Variable (concept path) | Type | Value range (if continuous) |\n|---|---|---|\n| **Body Mass Index (kg per m²)** – `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\` | Continuous | 11.98 – 130.21 |\n| **Waist Circumference (cm)** – `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\` | Continuous | 32.0 – 170.7 |\n\nThese are the only obesity‑related measures currently returned by the dictionary for the terms you entered. If you need additional measures (e.g., waist‑to‑hip ratio, body‑fat percentage) let me know and I can try alternative search terms."
+        },
+        "ms": 4957
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | BMI | waist circumference | waist-to-hip ratio | body fat percentage | obesity"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t2-r3 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6018 totalOutputTokens=373 toolsCalled=[search_concepts(292 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_LJmEevMIRs04U0yIhMF34I {\"query\": \"body mass index | BMI | waist circumference | waist-to-hip ratio | body fat percentage | obesity\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_LJmEevMIRs04U0yIhMF34I error=false chars=292",
+        "Chat turn end: requestId=v8-t2-r3 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6018 totalOutputTokens=373 toolsCalled=[search_concepts(292 chars)]"
+      ]
+    },
+    {
+      "test": "T3",
+      "run": 1,
+      "requestId": "v8-t3-r1",
+      "body": {
+        "conversationId": "v8-t3-r1-conv",
+        "requestId": "v8-t3-r1",
+        "message": "My research is on cholesterol levels across different demographic groups. What variables should I look at?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the cholesterol‑related variables available in the data dictionary:\n\n| Variable (concept path) | Type | Typical range / values |\n|--------------------------|------|------------------------|\n| **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Direct HDL‑Cholesterol (mg per dL)\\\\** | Categorical (values shown are examples) | 17 – 120 mg/dL (81 additional values omitted) |\n| **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\LDL‑cholesterol (mg per dL)\\\\** | Continuous | 20 – 316 mg/dL |\n| **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\HDL‑cholesterol (mg per dL)\\\\** | Continuous | 19 – 154 mg/dL |\n| **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Triglycerides (mg per dL)\\\\** | Continuous | 14 – 5 210 mg/dL |\n| **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Triglyceride (mg per dL)\\\\** | Continuous | 19 – 3 780 mg/dL |\n| **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Cholesterol (mg per dL)\\\\** | Continuous | 70 – 649 mg/dL |\n| **\\\\Nhanes\\\\questionnaire\\\\food component recall\\\\Cholesterol (mg)\\\\** | Continuous | 0 – 3 052 mg |\n| **\\\\Nhanes\\\\questionnaire\\\\supplement use\\\\CHOLESTEROL_mg\\\\** | Continuous | 0 – 2 010 mg |\n\nThese include measured blood lipid levels (total cholesterol, LDL, HDL, triglycerides) as well as questionnaire‑based cholesterol intake estimates. You can combine any of these with demographic variables (e.g., age, sex, race/ethnicity) to study how cholesterol varies across groups."
+        },
+        "ms": 5117
+      },
+      "check": {
+        "flags": [
+          "doubled backslashes in prose",
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\Direct HDL‑Cholesterol (mg per dL)\\` (non-ASCII: U+2011)",
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\LDL‑cholesterol (mg per dL)\\` (non-ASCII: U+2011)",
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\HDL‑cholesterol (mg per dL)\\` (non-ASCII: U+2011)"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "cholesterol | LDL | HDL | triglycerides"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t3-r1 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6296 totalOutputTokens=584 toolsCalled=[search_concepts(1157 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_06BjDTX53iGrI9s0RqX0xF {\"query\": \"cholesterol | LDL | HDL | triglycerides\"}",
+        "Tool call: name=search_concepts id=tooluse_06BjDTX53iGrI9s0RqX0xF error=false chars=1157",
+        "Chat turn end: requestId=v8-t3-r1 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6296 totalOutputTokens=584 toolsCalled=[search_concepts(1157 chars)]"
+      ]
+    },
+    {
+      "test": "T3",
+      "run": 2,
+      "requestId": "v8-t3-r2",
+      "body": {
+        "conversationId": "v8-t3-r2-conv",
+        "requestId": "v8-t3-r2",
+        "message": "My research is on cholesterol levels across different demographic groups. What variables should I look at?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the variables in the PIC‑SURE dictionary that will let you study cholesterol levels and how they vary across demographic groups:\n\n**Cholesterol‑related laboratory measures (NHANes)**\n| Variable | Concept path | Type | Typical range |\n|----------|--------------|------|----------------|\n| Direct HDL‑Cholesterol (mg/dL) – categorical values | `\\Nhanes\\laboratory\\biochemistry\\Direct HDL‑Cholesterol (mg per dL)\\` | categorical (88‑120 mg/dL shown; many more values omitted) |\n| LDL‑cholesterol (mg/dL) | `\\Nhanes\\laboratory\\biochemistry\\LDL‑cholesterol (mg per dL)\\` | continuous (20 – 316 mg/dL) |\n| HDL‑cholesterol (mg/dL) | `\\Nhanes\\laboratory\\biochemistry\\HDL‑cholesterol (mg per dL)\\` | continuous (19 – 154 mg/dL) |\n| Triglycerides (mg/dL) | `\\Nhanes\\laboratory\\biochemistry\\Triglycerides (mg per dL)\\` | continuous (14 – 5 210 mg/dL) |\n| Triglyceride (mg/dL) – alternative name | `\\Nhanes\\laboratory\\biochemistry\\Triglyceride (mg per dL)\\` | continuous (19 – 3 780 mg/dL) |\n| Total cholesterol (mg/dL) | `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` | continuous (70 – 649 mg/dL) |\n| Cholesterol intake (questionnaire) – mg | `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` | continuous (0 – 3 052 mg) |\n| Cholesterol supplement use (questionnaire) – mg | `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` | continuous (0 – 2 010 mg) |\n\n**Demographic variables (NHANes)**\n| Variable | Concept path | Type | Typical range / categories |\n|----------|--------------|------|------------------------------|\n| Sex | `\\Nhanes\\demographics\\SEX\\` | categorical (female, male) |\n| Age | `\\Nhanes\\demographics\\AGE\\` | continuous (0 – 85 years) |\n| Race / ethnicity | `\\Nhanes\\demographics\\RACE\\` | categorical (white, black, mexican, other, other_hispanic) |\n\nYou can combine any of the cholesterol measures with the demographic variables (sex, age, race/ethnicity) to explore how cholesterol levels differ across population sub‑groups. If you need to filter or count participants by these variables, let me know and I can run feasibility counts for you."
+        },
+        "ms": 8314
+      },
+      "check": {
+        "flags": [
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\Direct HDL‑Cholesterol (mg per dL)\\` (non-ASCII: U+2011)",
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\LDL‑cholesterol (mg per dL)\\` (non-ASCII: U+2011)",
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\HDL‑cholesterol (mg per dL)\\` (non-ASCII: U+2011)"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "cholesterol | LDL | HDL | triglycerides",
+          "age | sex | gender | race | ethnicity"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t3-r2 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=10893 totalOutputTokens=1014 toolsCalled=[search_concepts(1157 chars), search_concepts(4116 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_XPtNipUCRyTJkXjcpEw50b {\"query\": \"cholesterol | LDL | HDL | triglycerides\"}",
+        "Tool call: name=search_concepts id=tooluse_XPtNipUCRyTJkXjcpEw50b error=false chars=1157",
+        "Tool call requested: name=search_concepts id=tooluse_dapsTzavzbC5pXyyuamPiP {\"query\": \"age | sex | gender | race | ethnicity\"}",
+        "Tool call: name=search_concepts id=tooluse_dapsTzavzbC5pXyyuamPiP error=false chars=4116",
+        "Chat turn end: requestId=v8-t3-r2 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=10893 totalOutputTokens=1014 toolsCalled=[search_concepts(1157 chars), search_concepts(4116 chars)]"
+      ]
+    },
+    {
+      "test": "T3",
+      "run": 3,
+      "requestId": "v8-t3-r3",
+      "body": {
+        "conversationId": "v8-t3-r3-conv",
+        "requestId": "v8-t3-r3",
+        "message": "My research is on cholesterol levels across different demographic groups. What variables should I look at?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are some key variables you can use for studying cholesterol across demographic groups in the NHANES dataset:\n\n**Cholesterol measurements**\n- **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Cholesterol (mg per dL)\\\\** – continuous (70 – 649 mg/dL)  \n- **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\LDL‑cholesterol (mg per dL)\\\\** – continuous (20 – 316 mg/dL)  \n- **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\HDL‑cholesterol (mg per dL)\\\\** – continuous (19 – 154 mg/dL)  \n- **\\\\Nhanes\\\\laboratory\\\\biochemistry\\\\Direct HDL‑Cholesterol (mg per dL)\\\\** – categorical values (example: 88, 89, 111 …)  \n\n**Demographic variables**\n- **\\\\Nhanes\\\\demographics\\\\SEX\\\\** – categorical (female, male)  \n- **\\\\Nhanes\\\\demographics\\\\AGE\\\\** – continuous (0 – 85 years)  \n- **\\\\Nhanes\\\\demographics\\\\RACE\\\\** – categorical (other, other_hispanic, white, black, mexican)  \n\nYou can combine any of the cholesterol measures with the demographic variables (sex, age, race) to explore how cholesterol levels differ across groups. If you’d like to build a specific cohort or get counts for any of these combinations, just let me know!"
+        },
+        "ms": 7195
+      },
+      "check": {
+        "flags": [
+          "doubled backslashes in prose",
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\LDL‑cholesterol (mg per dL)\\` (non-ASCII: U+2011)",
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\HDL‑cholesterol (mg per dL)\\` (non-ASCII: U+2011)",
+          "path not returned by any search: prose: `\\Nhanes\\laboratory\\biochemistry\\Direct HDL‑Cholesterol (mg per dL)\\` (non-ASCII: U+2011)"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "cholesterol",
+          "sex",
+          "age",
+          "race"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t3-r3 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18913 totalOutputTokens=706 toolsCalled=[search_concepts(906 chars), search_concepts(507 chars), search_concepts(3652 chars), search_concepts(165 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_bpKDcO8Xxt7oBg9rIWWtsm {\"query\": \"cholesterol\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_bpKDcO8Xxt7oBg9rIWWtsm error=false chars=906",
+        "Tool call requested: name=search_concepts id=tooluse_N7i5TM1CnxeHfNGgrMUq5l {\"pageSize\": 25,\"query\": \"sex\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_N7i5TM1CnxeHfNGgrMUq5l error=false chars=507",
+        "Tool call requested: name=search_concepts id=tooluse_2QsAH3i3TKyGw6QOCb8wZb {\"pageSize\": 25,\"query\": \"age\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_2QsAH3i3TKyGw6QOCb8wZb error=false chars=3652",
+        "Tool call requested: name=search_concepts id=tooluse_lJl1Myy22rUD4TllOGqMht {\"pageSize\": 25,\"query\": \"race\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_lJl1Myy22rUD4TllOGqMht error=false chars=165",
+        "Chat turn end: requestId=v8-t3-r3 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18913 totalOutputTokens=706 toolsCalled=[search_concepts(906 chars), search_concepts(507 chars), search_concepts(3652 chars), search_concepts(165 chars)]"
+      ]
+    },
+    {
+      "test": "T6",
+      "run": 1,
+      "requestId": "v8-t6-r1",
+      "body": {
+        "conversationId": "v8-t6-r1-conv",
+        "requestId": "v8-t6-r1",
+        "message": "I'm interested in creatinine, albumin, leukocytes, and d dimer. Are these available? Also, can I study sickle cell disease?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I found the following laboratory variables in the data dictionary:\n\n| Variable | Concept path | Type |\n|----------|--------------|------|\n| Creatinine (serum) | `\\Nhanes\\laboratory\\biochemistry\\Creatinine (mg per dL)\\` | Continuous |\n| Albumin (serum) | `\\Nhanes\\laboratory\\biochemistry\\Albumin (g per dL)\\` | Continuous |\n| White‑blood‑cell count (leukocytes) | `\\Nhanes\\laboratory\\blood\\White blood cell count (1000 cells per uL)\\` | Continuous |\n\nThese three measures are available in the NHANES study.\n\nI could not locate any concept for **D‑dimer** (or “d dimer”) in the dictionary, and there is also no concept for **sickle cell disease**. If you need those variables, they may not be collected in the current datasets, or they might be recorded under a different name that would require a more specific search. Let me know if you’d like me to try alternative terms or explore other related variables."
+        },
+        "ms": 9054
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "creatinine | albumin | leukocytes | d dimer",
+          "leukocytes | d dimer",
+          "white blood cell | D-dimer",
+          "D-dimer | D dimer",
+          "sickle cell disease"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t6-r1 iterations=6 hitCap=false answeredAfterCap=false totalInputTokens=21218 totalOutputTokens=780 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(166 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_1Yg8GtPThZPb7pzVIlbZuZ {\"query\": \"creatinine | albumin | leukocytes | d dimer\",\"pageSize\": 50}",
+        "Tool call: name=search_concepts id=tooluse_1Yg8GtPThZPb7pzVIlbZuZ error=false chars=1435",
+        "Tool call requested: name=search_concepts id=tooluse_gDkejpaeuWQLmP3KFnmexW {\"pageSize\": 50,\"query\": \"leukocytes | d dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_gDkejpaeuWQLmP3KFnmexW error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_2KZe9uNSVhEt1xKAEq4DJE {\"pageSize\": 50,\"query\": \"white blood cell | D-dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_2KZe9uNSVhEt1xKAEq4DJE error=false chars=166",
+        "Tool call requested: name=search_concepts id=tooluse_sYLAPvUwRsujYVOB6xAwrl {\"pageSize\": 50,\"query\": \"D-dimer | D dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_sYLAPvUwRsujYVOB6xAwrl error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_bqEjAwgUxyv0uhsF6bQ7XN {\"pageSize\": 50,\"query\": \"sickle cell disease\"}",
+        "Tool call: name=search_concepts id=tooluse_bqEjAwgUxyv0uhsF6bQ7XN error=false chars=34",
+        "Chat turn end: requestId=v8-t6-r1 iterations=6 hitCap=false answeredAfterCap=false totalInputTokens=21218 totalOutputTokens=780 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(166 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      ]
+    },
+    {
+      "test": "T6",
+      "run": 2,
+      "requestId": "v8-t6-r2",
+      "body": {
+        "conversationId": "v8-t6-r2-conv",
+        "requestId": "v8-t6-r2",
+        "message": "I'm interested in creatinine, albumin, leukocytes, and d dimer. Are these available? Also, can I study sickle cell disease?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here’s what the data dictionary contains for the measures you asked about:\n\n| Variable | Available in the dictionary? | Example concept path (as returned) |\n|----------|------------------------------|------------------------------------|\n| **Creatinine** | Yes – several forms are present (serum, urine, etc.) | `\\Nhanes\\laboratory\\biochemistry\\Creatinine (mg per dL)\\` |\n| **Albumin** | Yes – both serum and urine measurements are present | `\\Nhanes\\laboratory\\biochemistry\\Albumin (g per dL)\\` |\n| **Leukocytes** (white blood cell count) | Yes – appears as a continuous lab test | `\\Nhanes\\laboratory\\blood\\White blood cell count (1000 cells per uL)\\` |\n| **D‑dimer** | No – a search for “d‑dimer”, “D‑dimer”, “D dimer”, “fibrin degradation product”, etc., returned no matches. |\n| **Sickle cell disease** | No – a search for “sickle cell disease”, “sickle cell”, and related terms returned no matches. |\n\nSo, creatinine, albumin, and leukocyte (white‑blood‑cell) measurements are available in the current PIC‑SURE data dictionary, while D‑dimer and sickle‑cell‑disease variables are not present. If you need additional related lab tests or disease codes, let me know and I can explore alternative terminology or broader categories."
+        },
+        "ms": 14784
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "creatinine | albumin | leukocytes | d dimer",
+          "leukocytes | d dimer",
+          "leukocyte | white blood cell | WBC",
+          "d-dimer | D-dimer | D dimer",
+          "sickle cell disease",
+          "D-dimer | fibrin degradation product",
+          "sickle cell"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t6-r2 iterations=8 hitCap=false answeredAfterCap=false totalInputTokens=29087 totalOutputTokens=1234 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(166 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_giWJvod7XKXRR5yGbemNGr {\"query\": \"creatinine | albumin | leukocytes | d dimer\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_giWJvod7XKXRR5yGbemNGr error=false chars=1435",
+        "Tool call requested: name=search_concepts id=tooluse_Ibtv2wA7H9PxvRmifUnSWO {\"pageSize\": 25,\"query\": \"leukocytes | d dimer\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_Ibtv2wA7H9PxvRmifUnSWO error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_zAxJP7oTzQxwxbhZD8TGaw {\"pageSize\": 25,\"query\": \"leukocyte | white blood cell | WBC\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_zAxJP7oTzQxwxbhZD8TGaw error=false chars=166",
+        "Tool call requested: name=search_concepts id=tooluse_6TNYLKvMRuw5yqXnUpgqvX {\"pageSize\": 25,\"query\": \"d-dimer | D-dimer | D dimer\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_6TNYLKvMRuw5yqXnUpgqvX error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_W9xGihNXI6pFha6YJYyyt9 {\"pageSize\": 25,\"query\": \"sickle cell disease\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_W9xGihNXI6pFha6YJYyyt9 error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_I5PmjgpvBR0EnjMBPei7KE {\"pageSize\": 25,\"query\": \"D-dimer | fibrin degradation product\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_I5PmjgpvBR0EnjMBPei7KE error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_9TeS0ZrDCofOzygmPOdjDY {\"pageSize\": 25,\"query\": \"sickle cell\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_9TeS0ZrDCofOzygmPOdjDY error=false chars=34",
+        "Chat turn end: requestId=v8-t6-r2 iterations=8 hitCap=false answeredAfterCap=false totalInputTokens=29087 totalOutputTokens=1234 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(166 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      ]
+    },
+    {
+      "test": "T6",
+      "run": 3,
+      "requestId": "v8-t6-r3",
+      "body": {
+        "conversationId": "v8-t6-r3-conv",
+        "requestId": "v8-t6-r3",
+        "message": "I'm interested in creatinine, albumin, leukocytes, and d dimer. Are these available? Also, can I study sickle cell disease?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I found several laboratory variables in the NHANES data dictionary that match your request:\n\n- **Creatinine (mg per dL)** – continuous (range 0.2 – 17.8)  \n- **Creatinine, urine (mg per dL)** – continuous (range 2.0 – 774.0)  \n- **Albumin (g per dL)** – continuous (range 1.9 – 5.5)  \n- **Albumin, urine (ug per mL)** – continuous (range 0.2 – 9820.0)  \n\nThe search did not return any concepts for “leukocytes,” “D‑dimer,” or “sickle cell disease” in the open‑access dictionary, so those measures are not currently available in the searchable portion of the data. If you need more detailed information about any of the listed variables, let me know!"
+        },
+        "ms": 5012
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "creatinine | albumin | leukocytes | d dimer",
+          "leukocytes | d dimer",
+          "sickle cell disease"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t6-r3 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=13635 totalOutputTokens=431 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_GVAvN4DtRebAuZdJP4c5R4 {\"query\": \"creatinine | albumin | leukocytes | d dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_GVAvN4DtRebAuZdJP4c5R4 error=false chars=1435",
+        "Tool call requested: name=search_concepts id=tooluse_4iT1W9siET3Kdzlvi9JJTu {\"query\": \"leukocytes | d dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_4iT1W9siET3Kdzlvi9JJTu error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_0W7XLMAVTuPuUhrzYS48PC {\"query\": \"sickle cell disease\"}",
+        "Tool call: name=search_concepts id=tooluse_0W7XLMAVTuPuUhrzYS48PC error=false chars=34",
+        "Chat turn end: requestId=v8-t6-r3 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=13635 totalOutputTokens=431 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      ]
+    },
+    {
+      "test": "T6",
+      "run": 4,
+      "requestId": "v8-t6-r4",
+      "body": {
+        "conversationId": "v8-t6-r4-conv",
+        "requestId": "v8-t6-r4",
+        "message": "I'm interested in creatinine, albumin, leukocytes, and d dimer. Are these available? Also, can I study sickle cell disease?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I found laboratory measurements for **creatinine**, **albumin**, and **white blood cell count** (a leukocyte measure) in the NHANES dataset:\n\n* Creatinine (mg/dL) – continuous, range 0.2 – 17.8  \n* Albumin (g/dL) – continuous, range 1.9 – 5.5 (plus several urine albumin variables)  \n* White blood cell count (1000 cells/µL) – continuous, range 2.3 – 52.2  \n\nI was unable to locate any concept for **D‑dimer** or for **sickle‑cell disease** in the current dictionary. If you have alternative spellings or related terms (e.g., “fibrin degradation product” for D‑dimer, or “hemoglobin S” for sickle‑cell disease), you could try searching those."
+        },
+        "ms": 12550
+      },
+      "check": {
+        "flags": [
+          "hitCap (answered after cap)"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "creatinine | albumin | leukocytes | d dimer",
+          "leukocytes | d dimer",
+          "leukocyte | white blood cell",
+          "d-dimer | d dimer | D-dimer",
+          "sickle cell",
+          "sickle cell disease",
+          "D-dimer | fibrin degradation product"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t6-r4 iterations=9 hitCap=true answeredAfterCap=true totalInputTokens=32757 totalOutputTokens=960 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(166 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_f1x5ADaAptrdGOUoabtDpI {\"query\": \"creatinine | albumin | leukocytes | d dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_f1x5ADaAptrdGOUoabtDpI error=false chars=1435",
+        "Tool call requested: name=search_concepts id=tooluse_ZStobSPwrHIlH48e1SV2BB {\"query\": \"leukocytes | d dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_ZStobSPwrHIlH48e1SV2BB error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_20zlfDO5GKcRiDa2MdY6wO {\"query\": \"leukocyte | white blood cell\"}",
+        "Tool call: name=search_concepts id=tooluse_20zlfDO5GKcRiDa2MdY6wO error=false chars=166",
+        "Tool call requested: name=search_concepts id=tooluse_ldgcSexgedIv1BJvMlL5I5 {\"query\": \"d-dimer | d dimer | D-dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_ldgcSexgedIv1BJvMlL5I5 error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_BWFRGRdmU5TRLZbGdZbmpu {\"query\": \"sickle cell\"}",
+        "Tool call: name=search_concepts id=tooluse_BWFRGRdmU5TRLZbGdZbmpu error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_k9Se0IfRQxz44XZGHf0HHb {\"query\": \"sickle cell disease\"}",
+        "Tool call: name=search_concepts id=tooluse_k9Se0IfRQxz44XZGHf0HHb error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_KmPGBRTqTbO5N27eE7uGHB {\"query\": \"D-dimer | fibrin degradation product\"}",
+        "Tool call: name=search_concepts id=tooluse_KmPGBRTqTbO5N27eE7uGHB error=false chars=34",
+        "Chat turn end: requestId=v8-t6-r4 iterations=9 hitCap=true answeredAfterCap=true totalInputTokens=32757 totalOutputTokens=960 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(166 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      ]
+    },
+    {
+      "test": "T6",
+      "run": 5,
+      "requestId": "v8-t6-r5",
+      "body": {
+        "conversationId": "v8-t6-r5-conv",
+        "requestId": "v8-t6-r5",
+        "message": "I'm interested in creatinine, albumin, leukocytes, and d dimer. Are these available? Also, can I study sickle cell disease?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here’s what the open‑access data dictionary contains for the variables you asked about:\n\n| Variable | Available in the dictionary? | Example concept path |\n|----------|------------------------------|----------------------|\n| Creatinine (blood) | Yes | `\\Nhanes\\laboratory\\biochemistry\\Creatinine (mg per dL)\\` |\n| Albumin (blood) | Yes | `\\Nhanes\\laboratory\\biochemistry\\Albumin (g per dL)\\` |\n| Leukocytes (white‑blood‑cell count) | Yes | `\\Nhanes\\laboratory\\blood\\White blood cell count (1000 cells per uL)\\` |\n| D‑dimer | No matching concept was found in the current dictionary. |\n| Sickle cell disease | No matching concept was found in the current dictionary. |\n\nSo the first three laboratory measures are present and can be used in queries, while D‑dimer and a sickle‑cell‑disease diagnosis are not currently listed. If you have alternative names for those (e.g., “fibrin‑degradation products” for D‑dimer or “HbS” for sickle cell disease), let me know and I can search again."
+        },
+        "ms": 12324
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "creatinine | albumin | leukocytes | d dimer",
+          "leukocytes | d dimer",
+          "white blood cell | WBC | D-dimer",
+          "D-dimer",
+          "sickle cell disease"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t6-r5 iterations=6 hitCap=false answeredAfterCap=false totalInputTokens=21144 totalOutputTokens=838 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(166 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_yn2KKTp23phl4ytUDAUJ6J {\"query\": \"creatinine | albumin | leukocytes | d dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_yn2KKTp23phl4ytUDAUJ6J error=false chars=1435",
+        "Tool call requested: name=search_concepts id=tooluse_l4WiNLJR2ULpGup0Ew0nn1 {\"query\": \"leukocytes | d dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_l4WiNLJR2ULpGup0Ew0nn1 error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_IGAoROY9Y3qNzcZcMH9zna {\"query\": \"white blood cell | WBC | D-dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_IGAoROY9Y3qNzcZcMH9zna error=false chars=166",
+        "Tool call requested: name=search_concepts id=tooluse_4Zb4VWJHxKaC99fExn5xWX {\"query\": \"D-dimer\"}",
+        "Tool call: name=search_concepts id=tooluse_4Zb4VWJHxKaC99fExn5xWX error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_Re2kK8dpd8eeJRHiobYIbi {\"query\": \"sickle cell disease\"}",
+        "Tool call: name=search_concepts id=tooluse_Re2kK8dpd8eeJRHiobYIbi error=false chars=34",
+        "Chat turn end: requestId=v8-t6-r5 iterations=6 hitCap=false answeredAfterCap=false totalInputTokens=21144 totalOutputTokens=838 toolsCalled=[search_concepts(1435 chars), search_concepts(34 chars), search_concepts(166 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      ]
+    },
+    {
+      "test": "T7",
+      "run": 1,
+      "requestId": "v8-t7-r1",
+      "body": {
+        "conversationId": "v8-t7-r1-conv",
+        "requestId": "v8-t7-r1",
+        "message": "Show me female participants over 40 and include their BMI"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I’ve set up a cohort that includes only female participants older than 40 years and added their Body Mass Index (kg / m²) as a selected variable.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 40
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 10027
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [
+          "sex",
+          "age",
+          "body mass index | BMI"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t7-r1 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18980 totalOutputTokens=592 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_Upv4rWObSafJeP6PBmaYz4 {\"query\": \"sex\"}",
+        "Tool call: name=search_concepts id=tooluse_Upv4rWObSafJeP6PBmaYz4 error=false chars=507",
+        "Tool call requested: name=search_concepts id=tooluse_doU5Qdz5fd1X2SXrdmG3tF {\"query\": \"age\"}",
+        "Tool call: name=search_concepts id=tooluse_doU5Qdz5fd1X2SXrdmG3tF error=false chars=3652",
+        "Tool call requested: name=search_concepts id=tooluse_5OaTGesq9sKUeaGfg16bva {\"query\": \"body mass index | BMI\"}",
+        "Tool call: name=search_concepts id=tooluse_5OaTGesq9sKUeaGfg16bva error=false chars=166",
+        "Tool call requested: name=propose_query id=tooluse_taOdHmCrd91PMxglcFJmTq {\"query\": {\"select\": [\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"],\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 40}]}}}",
+        "Tool call: name=propose_query id=tooluse_taOdHmCrd91PMxglcFJmTq error=false chars=17",
+        "Chat turn end: requestId=v8-t7-r1 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18980 totalOutputTokens=592 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T7",
+      "run": 2,
+      "requestId": "v8-t7-r2",
+      "body": {
+        "conversationId": "v8-t7-r2-conv",
+        "requestId": "v8-t7-r2",
+        "message": "Show me female participants over 40 and include their BMI"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here’s a cohort of female participants older than 40 years, with their Body Mass Index (BMI) included. The participant count shown is an obfuscated open‑access estimate and not the exact authorized number.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 40,
+                  "max": 150
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 8490
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [
+          "sex",
+          "age",
+          "body mass index | bmi"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t7-r2 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=19071 totalOutputTokens=578 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_gKIcCGcjASfs602MhseqfM {\"query\": \"sex\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_gKIcCGcjASfs602MhseqfM error=false chars=507",
+        "Tool call requested: name=search_concepts id=tooluse_1SO3SbYz6BSlkFHimH2FnD {\"pageSize\": 25,\"query\": \"age\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_1SO3SbYz6BSlkFHimH2FnD error=false chars=3652",
+        "Tool call requested: name=search_concepts id=tooluse_bVJyfKtKDirDPIpx7nqD2S {\"pageSize\": 25,\"query\": \"body mass index | bmi\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_bVJyfKtKDirDPIpx7nqD2S error=false chars=166",
+        "Tool call requested: name=propose_query id=tooluse_mFRZ4gkZD6sVCAL6iueJ2k {\"search\": \"\",\"query\": {\"select\": [\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"],\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 40,\"max\": 150}]}},\"facets\": []}",
+        "Tool call: name=propose_query id=tooluse_mFRZ4gkZD6sVCAL6iueJ2k error=false chars=17",
+        "Chat turn end: requestId=v8-t7-r2 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=19071 totalOutputTokens=578 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T7",
+      "run": 3,
+      "requestId": "v8-t7-r3",
+      "body": {
+        "conversationId": "v8-t7-r3-conv",
+        "requestId": "v8-t7-r3",
+        "message": "Show me female participants over 40 and include their BMI"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I’ve set up a cohort of participants who are female and over 40 years old, and included their Body Mass Index (BMI) values.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 40
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 8113
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [
+          "sex",
+          "age",
+          "body mass index"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t7-r3 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18976 totalOutputTokens=573 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_LO3wY442ZMJcUoGWn8f2VO {\"query\": \"sex\"}",
+        "Tool call: name=search_concepts id=tooluse_LO3wY442ZMJcUoGWn8f2VO error=false chars=507",
+        "Tool call requested: name=search_concepts id=tooluse_IW9JKJveQEKbGGvf8qYciP {\"query\": \"age\"}",
+        "Tool call: name=search_concepts id=tooluse_IW9JKJveQEKbGGvf8qYciP error=false chars=3652",
+        "Tool call requested: name=search_concepts id=tooluse_pNb9ij6ACuXetf5mVKj32e {\"query\": \"body mass index\"}",
+        "Tool call: name=search_concepts id=tooluse_pNb9ij6ACuXetf5mVKj32e error=false chars=166",
+        "Tool call requested: name=propose_query id=tooluse_q4tFchFBSGoS455ZwF7yyI {\"query\": {\"select\": [\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"],\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 40}]}}}",
+        "Tool call: name=propose_query id=tooluse_q4tFchFBSGoS455ZwF7yyI error=false chars=17",
+        "Chat turn end: requestId=v8-t7-r3 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18976 totalOutputTokens=573 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T8",
+      "run": 1,
+      "requestId": "v8-t8-r1",
+      "body": {
+        "conversationId": "v8-t8-r1-conv",
+        "requestId": "v8-t8-r1",
+        "message": "Just show me BMI and waist circumference"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the two variables you asked for:\n\n| Variable | Dataset | Type | Display (description) | Observed range |\n|----------|---------|------|-----------------------|----------------|\n| **Body Mass Index (kg per m²)** | Nhanes | Continuous | Body Mass Index (kg per m**2) | 11.98 – 130.21 |\n| **Waist Circumference (cm)** | Nhanes | Continuous | Waist Circumference (cm) | 32.0 – 170.7 |\n\nThese are the exact concepts available in the dictionary. Let me know if you’d like to explore further, add them to a cohort filter, or see related measures."
+        },
+        "ms": 4661
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | waist circumference"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t8-r1 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12490 totalOutputTokens=402 toolsCalled=[search_concepts(292 chars), get_concept(232 chars), get_concept(215 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_GDTwm2sTSngXdm1qoPJQyu {\"query\": \"body mass index | waist circumference\"}",
+        "Tool call: name=search_concepts id=tooluse_GDTwm2sTSngXdm1qoPJQyu error=false chars=292",
+        "Tool call requested: name=get_concept id=tooluse_2pEtK0y6A4d54ElymbaLPv {\"conceptPath\": \"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_2pEtK0y6A4d54ElymbaLPv error=false chars=232",
+        "Tool call requested: name=get_concept id=tooluse_tR0PMKuVw3UbmEtBRd80hh {\"conceptPath\": \"\\\\Nhanes\\\\examination\\\\body measures\\\\Waist Circumference (cm)\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_tR0PMKuVw3UbmEtBRd80hh error=false chars=215",
+        "Chat turn end: requestId=v8-t8-r1 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12490 totalOutputTokens=402 toolsCalled=[search_concepts(292 chars), get_concept(232 chars), get_concept(215 chars)]"
+      ]
+    },
+    {
+      "test": "T8",
+      "run": 2,
+      "requestId": "v8-t8-r2",
+      "body": {
+        "conversationId": "v8-t8-r2-conv",
+        "requestId": "v8-t8-r2",
+        "message": "Just show me BMI and waist circumference"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "**Body Mass Index (BMI)**  \n- Path: `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`  \n- Type: Continuous  \n- Observed range in the open‑access data: **11.98 – 130.21**  \n\n**Waist Circumference**  \n- Path: `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`  \n- Type: Continuous  \n- Observed range in the open‑access data: **32.0 – 170.7**  \n\nThese variables are available in the NHANES study and can be used in cohort queries."
+        },
+        "ms": 5209
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | waist circumference"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t8-r2 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12517 totalOutputTokens=353 toolsCalled=[search_concepts(292 chars), get_concept(232 chars), get_concept(215 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_ozCUYR38jL6yWb7eUeDNqq {\"query\": \"body mass index | waist circumference\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_ozCUYR38jL6yWb7eUeDNqq error=false chars=292",
+        "Tool call requested: name=get_concept id=tooluse_oU97Q8h4gKuOIGFc8B7VFb {\"conceptPath\": \"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_oU97Q8h4gKuOIGFc8B7VFb error=false chars=232",
+        "Tool call requested: name=get_concept id=tooluse_oMWZtD3diU2iMGUGHx3haK {\"conceptPath\": \"\\\\Nhanes\\\\examination\\\\body measures\\\\Waist Circumference (cm)\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_oMWZtD3diU2iMGUGHx3haK error=false chars=215",
+        "Chat turn end: requestId=v8-t8-r2 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12517 totalOutputTokens=353 toolsCalled=[search_concepts(292 chars), get_concept(232 chars), get_concept(215 chars)]"
+      ]
+    },
+    {
+      "test": "T8",
+      "run": 3,
+      "requestId": "v8-t8-r3",
+      "body": {
+        "conversationId": "v8-t8-r3-conv",
+        "requestId": "v8-t8-r3",
+        "message": "Just show me BMI and waist circumference"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Here are the two variables you asked for:\n\n| Variable | Concept Path | Type | Range |\n|----------|--------------|------|-------|\n| Body Mass Index (kg / m²) | `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\` | Continuous | 11.98 – 130.21 |\n| Waist Circumference (cm) | `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\` | Continuous | 32.0 – 170.7 |\n\nThese are the exact concept paths you can use in further queries."
+        },
+        "ms": 2201
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "body mass index | waist circumference"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t8-r3 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=5987 totalOutputTokens=235 toolsCalled=[search_concepts(292 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_IOrcgNuBHnu6kyt9v2Rq4Y {\"query\": \"body mass index | waist circumference\"}",
+        "Tool call: name=search_concepts id=tooluse_IOrcgNuBHnu6kyt9v2Rq4Y error=false chars=292",
+        "Chat turn end: requestId=v8-t8-r3 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=5987 totalOutputTokens=235 toolsCalled=[search_concepts(292 chars)]"
+      ]
+    },
+    {
+      "test": "T9",
+      "run": 1,
+      "requestId": "v8-t9-r1",
+      "body": {
+        "conversationId": "v8-t9-r1-conv",
+        "requestId": "v8-t9-r1",
+        "message": "narrow that to people over 50",
+        "query": {
+          "select": [
+            "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+            "\\Nhanes\\demographics\\SEX\\",
+            "\\Nhanes\\demographics\\AGE\\"
+          ],
+          "phenotypicClause": {
+            "operator": "AND",
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                "min": 40
+              }
+            ]
+          }
+        }
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Your query has been updated to include only female participants who are **over 50 years old**.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 50
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 2588
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [],
+        "turnEnd": "Chat turn end: requestId=v8-t9-r1 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6260 totalOutputTokens=305 toolsCalled=[propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=propose_query id=tooluse_ZMEcGVbyzvmVffkoN7mq0T {\"query\": {\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 50.0}]}}}",
+        "Tool call: name=propose_query id=tooluse_ZMEcGVbyzvmVffkoN7mq0T error=false chars=17",
+        "Chat turn end: requestId=v8-t9-r1 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6260 totalOutputTokens=305 toolsCalled=[propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T9",
+      "run": 2,
+      "requestId": "v8-t9-r2",
+      "body": {
+        "conversationId": "v8-t9-r2-conv",
+        "requestId": "v8-t9-r2",
+        "message": "narrow that to people over 50",
+        "query": {
+          "select": [
+            "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+            "\\Nhanes\\demographics\\SEX\\",
+            "\\Nhanes\\demographics\\AGE\\"
+          ],
+          "phenotypicClause": {
+            "operator": "AND",
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                "min": 40
+              }
+            ]
+          }
+        }
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "Your cohort has been updated to include only female participants who are over 50 years old, with the selected variables BMI, sex, and age.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 50
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 4792
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [],
+        "turnEnd": "Chat turn end: requestId=v8-t9-r2 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6304 totalOutputTokens=372 toolsCalled=[propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=propose_query id=tooluse_eqZovBFPnEOTKGgpUlnbYi {\"query\": {\"select\": [\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\", \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\", \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\"],\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 50.0}]}}}",
+        "Tool call: name=propose_query id=tooluse_eqZovBFPnEOTKGgpUlnbYi error=false chars=17",
+        "Chat turn end: requestId=v8-t9-r2 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6304 totalOutputTokens=372 toolsCalled=[propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T9",
+      "run": 3,
+      "requestId": "v8-t9-r3",
+      "body": {
+        "conversationId": "v8-t9-r3-conv",
+        "requestId": "v8-t9-r3",
+        "message": "narrow that to people over 50",
+        "query": {
+          "select": [
+            "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+            "\\Nhanes\\demographics\\SEX\\",
+            "\\Nhanes\\demographics\\AGE\\"
+          ],
+          "phenotypicClause": {
+            "operator": "AND",
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                "min": 40
+              }
+            ]
+          }
+        }
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I’ve updated the query to include only female participants who are older than 50 years.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 50
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 1996
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [],
+        "turnEnd": "Chat turn end: requestId=v8-t9-r3 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6260 totalOutputTokens=237 toolsCalled=[propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=propose_query id=tooluse_0ZlytWKAFgmTKleDAHzA6l {\"query\": {\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 50.0}]}}}",
+        "Tool call: name=propose_query id=tooluse_0ZlytWKAFgmTKleDAHzA6l error=false chars=17",
+        "Chat turn end: requestId=v8-t9-r3 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=6260 totalOutputTokens=237 toolsCalled=[propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T10",
+      "run": 1,
+      "requestId": "v8-t10-r1",
+      "body": {
+        "conversationId": "v8-t10-r1-conv",
+        "requestId": "v8-t10-r1",
+        "message": "Select all race variables"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "The available race variable in the data dictionary is:\n\n- **\\\\Nhanes\\\\demographics\\\\RACE\\\\** – a categorical concept with values: other, other_hispanic, white, black, mexican."
+        },
+        "ms": 2960
+      },
+      "check": {
+        "flags": [
+          "doubled backslashes in prose"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "race",
+          "race | ethnicity"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t10-r1 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9023 totalOutputTokens=201 toolsCalled=[search_concepts(165 chars), search_concepts(165 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_xkKCahgrQPjC9ln8dckjtz {\"query\": \"race\"}",
+        "Tool call: name=search_concepts id=tooluse_xkKCahgrQPjC9ln8dckjtz error=false chars=165",
+        "Tool call requested: name=search_concepts id=tooluse_pnAlrLZW4z9BKmDsBPZef4 {\"query\": \"race | ethnicity\"}",
+        "Tool call: name=search_concepts id=tooluse_pnAlrLZW4z9BKmDsBPZef4 error=false chars=165",
+        "Chat turn end: requestId=v8-t10-r1 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9023 totalOutputTokens=201 toolsCalled=[search_concepts(165 chars), search_concepts(165 chars)]"
+      ]
+    },
+    {
+      "test": "T10",
+      "run": 2,
+      "requestId": "v8-t10-r2",
+      "body": {
+        "conversationId": "v8-t10-r2-conv",
+        "requestId": "v8-t10-r2",
+        "message": "Select all race variables"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "The dataset contains a single race variable:\n\n- **RACE** (`\\Nhanes\\demographics\\RACE\\`) – categorical with values: other, other_hispanic, white, black, mexican."
+        },
+        "ms": 6007
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "race",
+          "race | ethnicity"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t10-r2 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12221 totalOutputTokens=354 toolsCalled=[search_concepts(165 chars), search_concepts(165 chars), get_concept(181 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_ea6aCZ3QsaAxoH9K93upuB {\"query\": \"race\"}",
+        "Tool call: name=search_concepts id=tooluse_ea6aCZ3QsaAxoH9K93upuB error=false chars=165",
+        "Tool call requested: name=search_concepts id=tooluse_y9SIsGeNhEGCkIKZ1qjuGY {\"query\": \"race | ethnicity\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_y9SIsGeNhEGCkIKZ1qjuGY error=false chars=165",
+        "Tool call requested: name=get_concept id=tooluse_J1d6LojLPi0dAFDG4HSX7Y {\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\RACE\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_J1d6LojLPi0dAFDG4HSX7Y error=false chars=181",
+        "Chat turn end: requestId=v8-t10-r2 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12221 totalOutputTokens=354 toolsCalled=[search_concepts(165 chars), search_concepts(165 chars), get_concept(181 chars)]"
+      ]
+    },
+    {
+      "test": "T10",
+      "run": 3,
+      "requestId": "v8-t10-r3",
+      "body": {
+        "conversationId": "v8-t10-r3-conv",
+        "requestId": "v8-t10-r3",
+        "message": "Select all race variables"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "The data dictionary includes one race variable:\n\n- **Variable:** `RACE` (path: `\\Nhanes\\demographics\\RACE\\`)\n- **Type:** Categorical  \n- **Possible values:** other, other_hispanic, white, black, mexican  \n\nThis is the only race‑related variable returned by the search."
+        },
+        "ms": 5949
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 1,
+        "searches": [
+          "race"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t10-r3 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12245 totalOutputTokens=536 toolsCalled=[search_concepts(165 chars), propose_query(264 chars), get_concept(181 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_UNp36RbvBDWaZI6efdQnb7 {\"query\": \"race\"}",
+        "Tool call: name=search_concepts id=tooluse_UNp36RbvBDWaZI6efdQnb7 error=false chars=165",
+        "Tool call requested: name=propose_query id=tooluse_E82HpVHBUhuytsCbupNhlF {\"query\": {\"select\": [\"\\\\Nhanes\\\\demographics\\\\RACE\\\\\"]}}",
+        "Tool call: name=propose_query id=tooluse_E82HpVHBUhuytsCbupNhlF error=true chars=264",
+        "Tool call requested: name=get_concept id=tooluse_9vonWsOXrOKFQkkd1rozMM {\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\RACE\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_9vonWsOXrOKFQkkd1rozMM error=false chars=181",
+        "Chat turn end: requestId=v8-t10-r3 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12245 totalOutputTokens=536 toolsCalled=[search_concepts(165 chars), propose_query(264 chars), get_concept(181 chars)]"
+      ]
+    },
+    {
+      "test": "T11",
+      "run": 1,
+      "requestId": "v8-t11-r1",
+      "body": {
+        "conversationId": "v8-t11-r1-conv",
+        "requestId": "v8-t11-r1",
+        "message": "Select all race variables",
+        "query": {
+          "select": [
+            "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+            "\\Nhanes\\demographics\\SEX\\",
+            "\\Nhanes\\demographics\\AGE\\"
+          ],
+          "phenotypicClause": {
+            "operator": "AND",
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                "min": 40
+              }
+            ]
+          }
+        }
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I’ve added the race variable to your selection.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\",
+              "\\Nhanes\\demographics\\RACE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 40
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 4600
+      },
+      "check": {
+        "flags": [
+          "path not returned by any search: propose_query call: `\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\`",
+          "path not returned by any search: propose_query call: `\\\\Nhanes\\\\demographics\\\\SEX\\\\`",
+          "path not returned by any search: propose_query call: `\\\\Nhanes\\\\demographics\\\\AGE\\\\`",
+          "path not returned by any search: propose_query call: `\\\\Nhanes\\\\demographics\\\\RACE\\\\`"
+        ],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [
+          "race"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t11-r1 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9492 totalOutputTokens=404 toolsCalled=[search_concepts(165 chars), propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_PD5tES3Dru21YJ1AlvpQTs {\"query\": \"race\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_PD5tES3Dru21YJ1AlvpQTs error=false chars=165",
+        "Tool call requested: name=propose_query id=tooluse_mufffXG2CJXbgwfeGDM1c6 {\"query\": {\"select\": [\"\\\\\\\\Nhanes\\\\\\\\examination\\\\\\\\body measures\\\\\\\\Body Mass Index (kg per m**2)\\\\\\\\\", \"\\\\\\\\Nhanes\\\\\\\\demographics\\\\\\\\SEX\\\\\\\\\", \"\\\\\\\\Nhanes\\\\\\\\demographics\\\\\\\\AGE\\\\\\\\\", \"\\\\\\\\Nhanes\\\\\\\\demographics\\\\\\\\RACE\\\\\\\\\"]}}",
+        "Tool call: name=propose_query id=tooluse_mufffXG2CJXbgwfeGDM1c6 error=false chars=17",
+        "Chat turn end: requestId=v8-t11-r1 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9492 totalOutputTokens=404 toolsCalled=[search_concepts(165 chars), propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T11",
+      "run": 2,
+      "requestId": "v8-t11-r2",
+      "body": {
+        "conversationId": "v8-t11-r2-conv",
+        "requestId": "v8-t11-r2",
+        "message": "Select all race variables",
+        "query": {
+          "select": [
+            "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+            "\\Nhanes\\demographics\\SEX\\",
+            "\\Nhanes\\demographics\\AGE\\"
+          ],
+          "phenotypicClause": {
+            "operator": "AND",
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                "min": 40
+              }
+            ]
+          }
+        }
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I’ve added the race variable to your selection.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\",
+              "\\Nhanes\\demographics\\RACE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 40
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 4397
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [
+          "race"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t11-r2 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9544 totalOutputTokens=515 toolsCalled=[search_concepts(165 chars), propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_TCDMrO5rYXg8xS1z0BrR39 {\"query\": \"race\"}",
+        "Tool call: name=search_concepts id=tooluse_TCDMrO5rYXg8xS1z0BrR39 error=false chars=165",
+        "Tool call requested: name=propose_query id=tooluse_xuxAmKPCED7v1lchIsUvSM {\"query\": {\"select\": [\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\", \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\", \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\", \"\\\\Nhanes\\\\demographics\\\\RACE\\\\\"],\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 40.0}]}}}",
+        "Tool call: name=propose_query id=tooluse_xuxAmKPCED7v1lchIsUvSM error=false chars=17",
+        "Chat turn end: requestId=v8-t11-r2 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9544 totalOutputTokens=515 toolsCalled=[search_concepts(165 chars), propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T11",
+      "run": 3,
+      "requestId": "v8-t11-r3",
+      "body": {
+        "conversationId": "v8-t11-r3-conv",
+        "requestId": "v8-t11-r3",
+        "message": "Select all race variables",
+        "query": {
+          "select": [
+            "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+            "\\Nhanes\\demographics\\SEX\\",
+            "\\Nhanes\\demographics\\AGE\\"
+          ],
+          "phenotypicClause": {
+            "operator": "AND",
+            "phenotypicClauses": [
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                "values": [
+                  "female"
+                ]
+              },
+              {
+                "phenotypicFilterType": "FILTER",
+                "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                "min": 40
+              }
+            ]
+          }
+        }
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I’ve updated your view to show the race variable from the NHANES demographics data.",
+          "query": {
+            "select": [
+              "\\Nhanes\\demographics\\RACE\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 40
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 4338
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [
+          "race"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t11-r3 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9432 totalOutputTokens=320 toolsCalled=[search_concepts(165 chars), propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_eA3YWfhkowGMSIT3DvPyZU {\"query\": \"race\"}",
+        "Tool call: name=search_concepts id=tooluse_eA3YWfhkowGMSIT3DvPyZU error=false chars=165",
+        "Tool call requested: name=propose_query id=tooluse_ZLyOSVftoGLQPsqRzL0cOu {\"query\": {\"select\": [\"\\\\Nhanes\\\\demographics\\\\RACE\\\\\"]}}",
+        "Tool call: name=propose_query id=tooluse_ZLyOSVftoGLQPsqRzL0cOu error=false chars=17",
+        "Chat turn end: requestId=v8-t11-r3 iterations=3 hitCap=false answeredAfterCap=false totalInputTokens=9432 totalOutputTokens=320 toolsCalled=[search_concepts(165 chars), propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T12",
+      "run": 1,
+      "requestId": "v8-t12-r1",
+      "body": {
+        "conversationId": "v8-t12-r1-conv",
+        "requestId": "v8-t12-r1",
+        "message": "Select all race variables",
+        "query": {
+          "select": [],
+          "authorizationFilters": [],
+          "phenotypicClause": null,
+          "genomicFilters": [],
+          "expectedResultType": "COUNT",
+          "picsureId": null,
+          "id": null
+        },
+        "search": "",
+        "facets": []
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "The dataset includes a single race variable:\n\n- **Path:** `\\Nhanes\\demographics\\RACE\\`  \n  **Type:** Categorical (possible values: other, other_hispanic, white, black, mexican)  \n\nYou can use this variable to filter or group participants by race."
+        },
+        "ms": 1835
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "race"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t12-r1 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=5932 totalOutputTokens=165 toolsCalled=[search_concepts(165 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_MUL5H1sPo97Lv2qLrQuCzu {\"query\": \"race\"}",
+        "Tool call: name=search_concepts id=tooluse_MUL5H1sPo97Lv2qLrQuCzu error=false chars=165",
+        "Chat turn end: requestId=v8-t12-r1 iterations=2 hitCap=false answeredAfterCap=false totalInputTokens=5932 totalOutputTokens=165 toolsCalled=[search_concepts(165 chars)]"
+      ]
+    },
+    {
+      "test": "T12",
+      "run": 2,
+      "requestId": "v8-t12-r2",
+      "body": {
+        "conversationId": "v8-t12-r2-conv",
+        "requestId": "v8-t12-r2",
+        "message": "Select all race variables",
+        "query": {
+          "select": [],
+          "authorizationFilters": [],
+          "phenotypicClause": null,
+          "genomicFilters": [],
+          "expectedResultType": "COUNT",
+          "picsureId": null,
+          "id": null
+        },
+        "search": "",
+        "facets": []
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "The dataset includes a categorical variable for race:\n\n- **Variable:** `RACE` (path `\\Nhanes\\demographics\\RACE\\`)  \n- **Type:** Categorical  \n- **Possible values:** other, other_hispanic, white, black, mexican  \n\nThis is the race variable available in the NHANES study."
+        },
+        "ms": 4288
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 1,
+        "searches": [
+          "race"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t12-r2 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12272 totalOutputTokens=384 toolsCalled=[search_concepts(165 chars), propose_query(264 chars), get_concept(181 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_rmx2QKQfhqavs9uGHqiIWr {\"query\": \"race\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_rmx2QKQfhqavs9uGHqiIWr error=false chars=165",
+        "Tool call requested: name=propose_query id=tooluse_JKKFKbYV2jrTwGeRExIao9 {\"query\": {\"select\": [\"\\\\Nhanes\\\\demographics\\\\RACE\\\\\"]}}",
+        "Tool call: name=propose_query id=tooluse_JKKFKbYV2jrTwGeRExIao9 error=true chars=264",
+        "Tool call requested: name=get_concept id=tooluse_1gev5oMrG5YIOhux5Ab6Zy {\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\RACE\\\\\",\"dataset\": \"Nhanes\"}",
+        "Tool call: name=get_concept id=tooluse_1gev5oMrG5YIOhux5Ab6Zy error=false chars=181",
+        "Chat turn end: requestId=v8-t12-r2 iterations=4 hitCap=false answeredAfterCap=false totalInputTokens=12272 totalOutputTokens=384 toolsCalled=[search_concepts(165 chars), propose_query(264 chars), get_concept(181 chars)]"
+      ]
+    },
+    {
+      "test": "T13",
+      "run": 1,
+      "requestId": "v8-t13-r1",
+      "body": {
+        "conversationId": "v8-t13-r1-conv",
+        "requestId": "v8-t13-r1",
+        "message": "Show me female participants over 40 and include their BMI",
+        "query": {
+          "select": [],
+          "authorizationFilters": [],
+          "phenotypicClause": null,
+          "genomicFilters": [],
+          "expectedResultType": "COUNT",
+          "picsureId": null,
+          "id": null
+        },
+        "search": "",
+        "facets": []
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I’ve built a query that selects participants whose sex is female and whose age is ≥ 40 years, and includes their Body Mass Index (kg / m²) values. The results will show the matching participants and their BMI measurements.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 40
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 7136
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [
+          "sex",
+          "age",
+          "body mass index"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t13-r1 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18976 totalOutputTokens=658 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_18xMxF7OBB2YgPlY5h4Kj4 {\"query\": \"sex\"}",
+        "Tool call: name=search_concepts id=tooluse_18xMxF7OBB2YgPlY5h4Kj4 error=false chars=507",
+        "Tool call requested: name=search_concepts id=tooluse_EfSVdlzW4BbSUb8vVMh3DV {\"query\": \"age\"}",
+        "Tool call: name=search_concepts id=tooluse_EfSVdlzW4BbSUb8vVMh3DV error=false chars=3652",
+        "Tool call requested: name=search_concepts id=tooluse_qMRtow0dZk4PRsyVYIPWwx {\"query\": \"body mass index\"}",
+        "Tool call: name=search_concepts id=tooluse_qMRtow0dZk4PRsyVYIPWwx error=false chars=166",
+        "Tool call requested: name=propose_query id=tooluse_OsBhppMrnh1oLKg3X5uJuK {\"query\": {\"select\": [\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"],\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 40}]}}}",
+        "Tool call: name=propose_query id=tooluse_OsBhppMrnh1oLKg3X5uJuK error=false chars=17",
+        "Chat turn end: requestId=v8-t13-r1 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18976 totalOutputTokens=658 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T13",
+      "run": 2,
+      "requestId": "v8-t13-r2",
+      "body": {
+        "conversationId": "v8-t13-r2-conv",
+        "requestId": "v8-t13-r2",
+        "message": "Show me female participants over 40 and include their BMI",
+        "query": {
+          "select": [],
+          "authorizationFilters": [],
+          "phenotypicClause": null,
+          "genomicFilters": [],
+          "expectedResultType": "COUNT",
+          "picsureId": null,
+          "id": null
+        },
+        "search": "",
+        "facets": []
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I’ve set up a query that selects the Body Mass Index variable and filters for participants who are female and at least 40 years old. You can now run counts or view the resulting cohort based on this definition.",
+          "query": {
+            "select": [
+              "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+              "\\Nhanes\\demographics\\SEX\\",
+              "\\Nhanes\\demographics\\AGE\\"
+            ],
+            "phenotypicClause": {
+              "phenotypicClauses": [
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+                  "values": [
+                    "female"
+                  ]
+                },
+                {
+                  "phenotypicFilterType": "FILTER",
+                  "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+                  "min": 40
+                }
+              ],
+              "operator": "AND"
+            },
+            "empty": false
+          }
+        },
+        "ms": 5929
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": true,
+        "proposeCalls": 1,
+        "searches": [
+          "sex",
+          "age",
+          "body mass index"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t13-r2 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18976 totalOutputTokens=526 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_2BECsxbCSTHK1aWfaLHC1l {\"query\": \"sex\"}",
+        "Tool call: name=search_concepts id=tooluse_2BECsxbCSTHK1aWfaLHC1l error=false chars=507",
+        "Tool call requested: name=search_concepts id=tooluse_A0sRsbzFrKNZUAf0gRXOwe {\"query\": \"age\"}",
+        "Tool call: name=search_concepts id=tooluse_A0sRsbzFrKNZUAf0gRXOwe error=false chars=3652",
+        "Tool call requested: name=search_concepts id=tooluse_64QBIO90FTBBt0XcZlJVDm {\"query\": \"body mass index\"}",
+        "Tool call: name=search_concepts id=tooluse_64QBIO90FTBBt0XcZlJVDm error=false chars=166",
+        "Tool call requested: name=propose_query id=tooluse_FDQV1bTatPz12Vcwz4wcbw {\"query\": {\"select\": [\"\\\\Nhanes\\\\examination\\\\body measures\\\\Body Mass Index (kg per m**2)\\\\\"],\"phenotypicClause\": {\"operator\": \"AND\",\"phenotypicClauses\": [{\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\SEX\\\\\",\"values\": [\"female\"]}, {\"phenotypicFilterType\": \"FILTER\",\"conceptPath\": \"\\\\Nhanes\\\\demographics\\\\AGE\\\\\",\"min\": 40}]}}}",
+        "Tool call: name=propose_query id=tooluse_FDQV1bTatPz12Vcwz4wcbw error=false chars=17",
+        "Chat turn end: requestId=v8-t13-r2 iterations=5 hitCap=false answeredAfterCap=false totalInputTokens=18976 totalOutputTokens=526 toolsCalled=[search_concepts(507 chars), search_concepts(3652 chars), search_concepts(166 chars), propose_query(17 chars)]"
+      ]
+    },
+    {
+      "test": "T14",
+      "run": 1,
+      "requestId": "v8-t14-r1",
+      "body": {
+        "conversationId": "v8-t14-r1-conv",
+        "requestId": "v8-t14-r1",
+        "message": "Do you have anything on smoking, alcohol use, sleep, and physical activity?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I found a number of questionnaire variables related to **smoking** and **alcohol use** in the NHANES dataset (e.g., number of cigarettes smoked, current smoker status, alcohol grams, days drinking per year, etc.). However, the search did not return any variables for **sleep** or **physical activity** in the current dictionary. \n\nIf you’d like to explore sleep‑related measures, you could try broader or alternative terms such as “sleep duration,” “insomnia,” “sleep quality,” or “sleep questionnaire.” For physical activity, you might search for “exercise,” “activity level,” or “MET‑based physical activity.” Let me know if you’d like me to try any of those searches or if you’d like to focus on the smoking and alcohol variables that were found."
+        },
+        "ms": 11014
+      },
+      "check": {
+        "flags": [
+          "hitCap (answered after cap)"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "smoking | alcohol | sleep | physical activity",
+          "sleep",
+          "sleep duration | insomnia | sleep quality",
+          "sleep questionnaire",
+          "sleep habits",
+          "sleep apnea | insomnia | sleep quality | sleep duration | bedtime",
+          "sleep patterns"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t14-r1 iterations=9 hitCap=true answeredAfterCap=true totalInputTokens=41556 totalOutputTokens=834 toolsCalled=[search_concepts(5888 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_3H4btFTUw42v6ixPEgZHTw {\"query\": \"smoking | alcohol | sleep | physical activity\",\"pageSize\": 50}",
+        "Tool call: name=search_concepts id=tooluse_3H4btFTUw42v6ixPEgZHTw error=false chars=5888",
+        "Tool call requested: name=search_concepts id=tooluse_HLeIZF1WKLNFAseJSLtjl1 {\"pageSize\": 50,\"query\": \"sleep\"}",
+        "Tool call: name=search_concepts id=tooluse_HLeIZF1WKLNFAseJSLtjl1 error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_qP36lDsNsOAfLjtDyhapv1 {\"pageSize\": 50,\"query\": \"sleep duration | insomnia | sleep quality\"}",
+        "Tool call: name=search_concepts id=tooluse_qP36lDsNsOAfLjtDyhapv1 error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_fenPilGg0qeIJJ2RVktjHD {\"pageSize\": 50,\"query\": \"sleep questionnaire\"}",
+        "Tool call: name=search_concepts id=tooluse_fenPilGg0qeIJJ2RVktjHD error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_mQDU9HYUL2mVWvFAGHCHvR {\"pageSize\": 50,\"query\": \"sleep habits\"}",
+        "Tool call: name=search_concepts id=tooluse_mQDU9HYUL2mVWvFAGHCHvR error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_6W4xI5kL5yqLyqcrZ4mpri {\"pageSize\": 50,\"query\": \"sleep apnea | insomnia | sleep quality | sleep duration | bedtime\"}",
+        "Tool call: name=search_concepts id=tooluse_6W4xI5kL5yqLyqcrZ4mpri error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_9QZhoY1w3LKrFSfIlWPwKL {\"pageSize\": 50,\"query\": \"sleep patterns\"}",
+        "Tool call: name=search_concepts id=tooluse_9QZhoY1w3LKrFSfIlWPwKL error=false chars=34",
+        "Chat turn end: requestId=v8-t14-r1 iterations=9 hitCap=true answeredAfterCap=true totalInputTokens=41556 totalOutputTokens=834 toolsCalled=[search_concepts(5888 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      ]
+    },
+    {
+      "test": "T14",
+      "run": 2,
+      "requestId": "v8-t14-r2",
+      "body": {
+        "conversationId": "v8-t14-r2-conv",
+        "requestId": "v8-t14-r2",
+        "message": "Do you have anything on smoking, alcohol use, sleep, and physical activity?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I found several questionnaire variables related to smoking and alcohol use in the NHANES data set, but the current dictionary does not contain any sleep‑related variables.\n\n**Smoking‑related concepts (NHANES)**  \n- Total # of cigarettes smoked in home (continuous)  \n- Total # of smokers in home (continuous)  \n- Does anyone smoke in home? (categorical: Yes/No)  \n- Current Cigarette Smoker? (categorical)  \n- # cigarettes smoked per day now (continuous)  \n- Age started smoking cigarettes regularly (continuous)  \n- Smoked at least 100 cigarettes in life (categorical)  \n- …and several additional items about pipe, cigar, and past smoking behavior.\n\n**Alcohol‑related concept (NHANES)**  \n- Alcohol (gm) – total grams of alcohol reported (continuous).\n\nNo sleep‑related concepts were returned by the search, so they are not currently available in the open‑access dictionary. If you’d like to explore any of the smoking or alcohol variables further (e.g., get details or an approximate participant count), just let me know!"
+        },
+        "ms": 10325
+      },
+      "check": {
+        "flags": [],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "smoking | alcohol | sleep | physical activity",
+          "sleep",
+          "sleep duration | sleep quality | insomnia | sleep hours",
+          "sleep habits | sleep patterns | bedtime | wake time",
+          "sleep"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t14-r2 iterations=7 hitCap=false answeredAfterCap=false totalInputTokens=27422 totalOutputTokens=777 toolsCalled=[search_concepts(3452 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), list_facets(28 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_WclncpcbskFvv69hit4rNu {\"query\": \"smoking | alcohol | sleep | physical activity\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_WclncpcbskFvv69hit4rNu error=false chars=3452",
+        "Tool call requested: name=search_concepts id=tooluse_YJy4Z2eyh34kyJou2ENoCa {\"pageSize\": 25,\"query\": \"sleep\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_YJy4Z2eyh34kyJou2ENoCa error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_ITgJQ1tWM15EKaBlty7Qfe {\"pageSize\": 25,\"query\": \"sleep duration | sleep quality | insomnia | sleep hours\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_ITgJQ1tWM15EKaBlty7Qfe error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_KHzZVZBxvn0Py2Gi7u3iYU {\"pageSize\": 25,\"query\": \"sleep habits | sleep patterns | bedtime | wake time\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_KHzZVZBxvn0Py2Gi7u3iYU error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_bewT08YroTv5eqISX3Rxga {\"pageSize\": 25,\"query\": \"sleep\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_bewT08YroTv5eqISX3Rxga error=false chars=34",
+        "Tool call requested: name=list_facets id=tooluse_GYCoO5Fy87S6JfKxHwUIQp {\"query\": \"\"}",
+        "Tool call: name=list_facets id=tooluse_GYCoO5Fy87S6JfKxHwUIQp error=false chars=28",
+        "Chat turn end: requestId=v8-t14-r2 iterations=7 hitCap=false answeredAfterCap=false totalInputTokens=27422 totalOutputTokens=777 toolsCalled=[search_concepts(3452 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), list_facets(28 chars)]"
+      ]
+    },
+    {
+      "test": "T14",
+      "run": 3,
+      "requestId": "v8-t14-r3",
+      "body": {
+        "conversationId": "v8-t14-r3-conv",
+        "requestId": "v8-t14-r3",
+        "message": "Do you have anything on smoking, alcohol use, sleep, and physical activity?"
+      },
+      "result": {
+        "status": 200,
+        "json": {
+          "response": "I found several smoking‑related variables in the NHANES questionnaire, such as the number of cigarettes smoked per day, whether the participant currently smokes, age started smoking, and the presence of smokers in the home. There is also a variable for alcohol intake (grams of alcohol).\n\nHowever, the search did not return any concepts for sleep (e.g., sleep duration, quality, or disorders) or for physical activity beyond a single “Physical Activity (MET‑based rank)” variable.\n\nIf you’d like to explore sleep or more detailed activity measures, you might try different keywords (e.g., “sleep hours,” “insomnia,” “exercise frequency,” “moderate‑vigorous activity”) or specify a particular questionnaire name if you know it. Let me know if you’d like me to try other terms or focus on any of the smoking/alcohol variables I found."
+        },
+        "ms": 13428
+      },
+      "check": {
+        "flags": [
+          "hitCap (answered after cap)"
+        ],
+        "hasQuery": false,
+        "proposeCalls": 0,
+        "searches": [
+          "smoking | alcohol | sleep | physical activity",
+          "sleep",
+          "sleep duration | insomnia | sleep quality",
+          "sleep hours | sleep time | bedtime | wake time",
+          "sleep|sleeping|sleep pattern|sleep disorder",
+          "sleep habits",
+          "sleep questionnaire"
+        ],
+        "turnEnd": "Chat turn end: requestId=v8-t14-r3 iterations=9 hitCap=true answeredAfterCap=true totalInputTokens=36115 totalOutputTokens=1040 toolsCalled=[search_concepts(3452 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      },
+      "summaryLines": [
+        "Tool call requested: name=search_concepts id=tooluse_hrPC1nTsQU0SaIns8MKBGM {\"query\": \"smoking | alcohol | sleep | physical activity\",\"pageSize\": 25,\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_hrPC1nTsQU0SaIns8MKBGM error=false chars=3452",
+        "Tool call requested: name=search_concepts id=tooluse_ZbRdLKacnFQ1axpWuDy6eb {\"pageSize\": 25,\"query\": \"sleep\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_ZbRdLKacnFQ1axpWuDy6eb error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_vd1qilEtKOM8p0XWEJgrHg {\"pageSize\": 25,\"query\": \"sleep duration | insomnia | sleep quality\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_vd1qilEtKOM8p0XWEJgrHg error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_EsDk650yX0c40lCE4Z35qT {\"pageSize\": 25,\"query\": \"sleep hours | sleep time | bedtime | wake time\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_EsDk650yX0c40lCE4Z35qT error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_kcuqGrtkxoUw4MspB1eXpD {\"pageSize\": 25,\"query\": \"sleep|sleeping|sleep pattern|sleep disorder\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_kcuqGrtkxoUw4MspB1eXpD error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_4EDMtQQ1bbe6RN8fiqqWNX {\"pageSize\": 25,\"query\": \"sleep habits\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_4EDMtQQ1bbe6RN8fiqqWNX error=false chars=34",
+        "Tool call requested: name=search_concepts id=tooluse_IKxCvQtAgdUKlwvNoaXZSF {\"pageSize\": 25,\"query\": \"sleep questionnaire\",\"page\": 0}",
+        "Tool call: name=search_concepts id=tooluse_IKxCvQtAgdUKlwvNoaXZSF error=false chars=34",
+        "Chat turn end: requestId=v8-t14-r3 iterations=9 hitCap=true answeredAfterCap=true totalInputTokens=36115 totalOutputTokens=1040 toolsCalled=[search_concepts(3452 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars), search_concepts(34 chars)]"
+      ]
+    }
+  ]
+}

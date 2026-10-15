@@ -52,7 +52,7 @@ class ProposeQueryToolTest {
 
     @Test
     void querySentAtTheTopLevelIsReadAsTheQuery() {
-        // Round 17, T10 R1: gpt-oss sent {"select":[...]} with no query wrapper and was refused.
+        // Gpt-oss sent {"select":[...]} with no query wrapper and was refused.
         ProposeQueryTool.Outcome outcome = tool.propose("{\"select\":[\"\\\\demo\\\\race\\\\\"]}", knownFacets);
 
         assertFalse(outcome.result().error(), outcome.result().content());
@@ -194,13 +194,34 @@ class ProposeQueryToolTest {
     }
 
     @Test
-    void rejectsADisallowedFieldLikeNotOnAFilter() {
-        ToolResult result = propose(
-            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\\",\"not\":true}}}"
-        );
+    void rejectsADisallowedFieldLikeAuthorizationFilters() {
+        ToolResult result = propose("{\"query\":{\"authorizationFilters\":[]}}");
 
         assertTrue(result.error());
-        assertTrue(result.content().contains("not"), result.content());
+        assertTrue(result.content().contains("authorizationFilters"), result.content());
+    }
+
+    @Test
+    void keepsNotOnAFilterSoAnExclusionStaysAnExclusion() {
+        ProposeQueryTool.Outcome outcome = tool.propose(
+            "{\"query\":{\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\",\"conceptPath\":\"\\\\demo\\\\\",\"not\":true}}}",
+            knownFacets
+        );
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        assertTrue(((ProposeQueryInput.Filter) outcome.proposal().query().phenotypicClause()).isNegated());
+    }
+
+    @Test
+    void aSubqueryWithNotIsStillReadAsASubquery() {
+        // Both clause types carry not, so where it appears must not decide which one a clause is.
+        ProposeQueryTool.Outcome outcome = tool.propose("""
+            {"query":{"phenotypicClause":{"not":false,"operator":"AND","phenotypicClauses":[\
+            {"not":true,"phenotypicFilterType":"REQUIRED","conceptPath":"\\\\demo\\\\"}]}}}""", knownFacets);
+
+        assertFalse(outcome.result().error(), outcome.result().content());
+        ProposeQueryInput.Subquery subquery = (ProposeQueryInput.Subquery) outcome.proposal().query().phenotypicClause();
+        assertTrue(((ProposeQueryInput.Filter) subquery.phenotypicClauses().getFirst()).isNegated());
     }
 
     @Test

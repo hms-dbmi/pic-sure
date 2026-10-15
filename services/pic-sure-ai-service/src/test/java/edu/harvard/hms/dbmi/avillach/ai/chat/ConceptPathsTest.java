@@ -41,7 +41,7 @@ class ConceptPathsTest {
 
     @Test
     void snappedRestoresAPathWithItsCodeRangeSuffixesAndMiddleFolderDropped() {
-        // v15 T14: gpt-oss wrote the Synthea path without "(G00-G99)", "(G40-G47)" and the G00-G99 folder.
+        // Gpt-oss wrote the Synthea path without "(G00-G99)", "(G40-G47)" and the G00-G99 folder.
         ConceptPaths paths = learning(SLEEP_APNEA);
 
         assertEquals(SLEEP_APNEA, paths.snapped("\\Synthea\\ACT Diagnosis ICD-10\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\G47.3 Sleep apnea\\"));

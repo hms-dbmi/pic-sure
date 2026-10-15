@@ -1,0 +1,2215 @@
+# pic-sure-ai-service model tests, round 15 (same suite as v14, rerun after allowing an empty query with facets)
+
+- Label: `v15`
+- URL: `https://localhost/picsure/ai/chat`
+- Started: 2026-10-14T21:30:23.577Z
+- Log captured: yes
+
+| Test | Run | HTTP | Time | query | search | facets | propose_query | Flags |
+|---|---|---|---|---|---|---|---|---|
+| T1 | R1 | 200 | 2.3s | no |  |  | 0 |  |
+| T1 | R2 | 200 | 3.1s | no | `body mass index` |  | 1 |  |
+| T1 | R3 | 200 | 4.2s | no | `body mass index` |  | 1 |  |
+| T2 | R1 | 200 | 3.4s | no |  |  | 0 |  |
+| T2 | R2 | 200 | 5.6s | no | `body mass index \| waist circumference \| waist \| weight \| height` |  | 1 |  |
+| T2 | R3 | 200 | 3.5s | no | `body mass index \| waist circumference \| waist \| weight \| height` |  | 1 |  |
+| T2 | R4 | 200 | 3.8s | no | `body mass index \| waist circumference \| waist \| weight \| height` |  | 1 |  |
+| T2 | R5 | 200 | 3.5s | no | `body mass index \| waist circumference \| waist \| weight \| height` |  | 1 |  |
+| T2 | R6 | 200 | 3.9s | no | `body mass index \| waist circumference \| waist \| weight \| height` |  | 1 |  |
+| T2 | R7 | 200 | 7.0s | no | `body mass index \| waist circumference \| waist \| weight \| height` |  | 1 |  |
+| T2 | R8 | 200 | 2.5s | no |  |  | 0 |  |
+| T3 | R1 | 200 | 7.7s | no |  |  | 0 |  |
+| T3 | R2 | 200 | 7.4s | no |  |  | 0 |  |
+| T3 | R3 | 200 | 5.4s | no |  |  | 0 |  |
+| T3 | R4 | 200 | 4.6s | no |  |  | 0 |  |
+| T3 | R5 | 200 | 4.6s | no |  |  | 0 |  |
+| T3 | R6 | 200 | 5.0s | no |  |  | 0 |  |
+| T3 | R7 | 200 | 7.6s | no |  |  | 0 |  |
+| T3 | R8 | 200 | 9.7s | no |  |  | 0 |  |
+| T7 | R1 | 200 | 6.6s | yes |  |  | 1 |  |
+| T7 | R2 | 200 | 10.5s | yes |  |  | 1 |  |
+| T7 | R3 | 200 | 7.8s | yes |  |  | 1 |  |
+| T8 | R1 | 200 | 2.7s | no | `body mass index \| waist circumference` |  | 1 |  |
+| T8 | R2 | 200 | 2.8s | no | `body mass index \| waist circumference` |  | 1 |  |
+| T8 | R3 | 200 | 2.6s | no | `body mass index \| waist circumference` |  | 1 |  |
+| T10 | R1 | 200 | 3.3s | no | `race` |  | 1 |  |
+| T10 | R2 | 200 | 5.1s | no | `race` |  | 2 |  |
+| T10 | R3 | 200 | 5.1s | no | `race` |  | 1 |  |
+| T10 | R4 | 200 | 2.8s | no | `race` |  | 1 |  |
+| T10 | R5 | 200 | 2.8s | no | `race` |  | 1 |  |
+| T11 | R1 | 200 | 3.4s | yes |  |  | 1 |  |
+| T11 | R2 | 200 | 6.0s | yes |  |  | 1 |  |
+| T11 | R3 | 200 | 3.4s | yes |  |  | 1 |  |
+| T12 | R1 | 200 | 4.1s | no | `race` |  | 1 |  |
+| T12 | R2 | 200 | 3.2s | no | `race` |  | 1 |  |
+| T12 | R3 | 200 | 2.1s | no | `race` |  | 1 |  |
+| T12 | R4 | 200 | 3.0s | no | `race` |  | 1 |  |
+| T12 | R5 | 200 | 2.9s | no | `race` |  | 1 |  |
+| T14 | R1 | 200 | 5.0s | no |  |  | 0 | 4 (see below) |
+| T14 | R2 | 200 | 2.3s | no |  |  | 0 | 2 (see below) |
+| T14 | R3 | 200 | 7.3s | no | `smoking \| alcohol \| sleep \| physical activity` |  | 1 | 2 (see below) |
+| T14 | R4 | 200 | 7.7s | no |  |  | 0 | 4 (see below) |
+| T14 | R5 | 200 | 3.9s | no |  |  | 0 | 2 (see below) |
+| T14 | R6 | 200 | 7.6s | no |  |  | 0 | 3 (see below) |
+| T14 | R7 | 200 | 5.5s | no | `smoking \| alcohol \| sleep \| "physical activity"` |  | 1 |  |
+| T14 | R8 | 200 | 4.6s | no |  |  | 0 | 2 (see below) |
+| T16 | R1 | 200 | 6.0s | no | `laboratory` |  | 1 |  |
+| T16 | R2 | 200 | 7.7s | no | `laboratory` |  | 1 |  |
+| T16 | R3 | 200 | 6.0s | no | `laboratory` |  | 1 |  |
+| T16 | R4 | 200 | 4.7s | no |  |  | 0 |  |
+| T16 | R5 | 200 | 6.9s | no |  |  | 0 |  |
+| T16 | R6 | 200 | 5.3s | no | `laboratory` |  | 1 |  |
+| T16 | R7 | 200 | 6.3s | no |  |  | 0 |  |
+| T16 | R8 | 200 | 6.0s | no | `laboratory` |  | 1 |  |
+| T17 | R1 | 200 | 3.8s | no |  |  | 0 |  |
+| T17 | R2 | 200 | 3.7s | no | `cholesterol` | dataset_id:Nhanes | 1 |  |
+| T17 | R3 | 200 | 5.9s | no | `cholesterol` | dataset_id:Nhanes | 1 |  |
+| T17 | R4 | 200 | 5.6s | no |  |  | 0 |  |
+| T17 | R5 | 200 | 5.0s | no | `cholesterol` | dataset_id:Nhanes | 1 |  |
+| T17 | R6 | 200 | 5.3s | no | `cholesterol` | dataset_id:Nhanes | 1 |  |
+| T17 | R7 | 200 | 6.9s | no | `cholesterol` | dataset_id:Nhanes | 1 |  |
+| T17 | R8 | 200 | 6.0s | no |  |  | 0 |  |
+| T18 | R1 | 200 | 2.2s | no |  |  | 0 |  |
+| T18 | R2 | 200 | 4.6s | no |  |  | 0 |  |
+| T18 | R3 | 200 | 1.8s | no |  |  | 0 |  |
+| T18 | R4 | 200 | 3.6s | no | `alcohol` |  | 1 |  |
+| T18 | R5 | 200 | 3.5s | no | `alcohol` |  | 1 |  |
+| T18 | R6 | 200 | 2.4s | no |  |  | 0 |  |
+| T18 | R7 | 200 | 4.0s | no | `alcohol` |  | 1 |  |
+| T18 | R8 | 200 | 2.2s | no |  |  | 0 |  |
+| T19 | R1 | 200 | 4.7s | no |  | data_type:continuous | 1 |  |
+| T19 | R2 | 200 | 3.7s | no |  |  | 0 |  |
+| T19 | R3 | 200 | 2.2s | no |  | data_type:continuous | 1 |  |
+| T19 | R4 | 200 | 7.9s | no |  | data_type:continuous | 1 |  |
+| T19 | R5 | 200 | 9.0s | no |  | data_type:continuous | 1 |  |
+
+## T1 BMI lookup
+
+- **Message:** `Find variables related to BMI`
+- **Pass:** search proposed (contains body mass index) and no query; short prose names `\Nhanes\examination\body measures\Body Mass Index (kg per m**2)\` with its exact path. The proposed search holds no term that matched nothing (no bmi).
+
+### T1 R1 (`v15-t1-r1`)
+
+Result:
+
+Searches: `body mass index | BMI`
+
+Response:
+```json
+{
+  "response": "I found one variable that matches your request:\n\n- **Body Mass Index (kg per m²)** – concept path `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n\nYou can view this variable in the table of results. If you’d like to add it to a cohort query or explore more variables, just let me know."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_5NOqReUwbPT6Q82SDijSWV {"query": "body mass index | BMI"}
+Tool call: name=search_concepts id=tooluse_5NOqReUwbPT6Q82SDijSWV error=false chars=209
+Chat turn end: requestId=v15-t1-r1 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=7664 totalOutputTokens=183 toolsCalled=[search_concepts(209 chars)]
+```
+
+### T1 R2 (`v15-t1-r2`)
+
+Result:
+
+Searches: `BMI | body mass index`
+
+Response:
+```json
+{
+  "response": "I found one variable that matches your request:\n\n* **Body Mass Index (kg per m²)** – concept path `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n\nLet me know if you’d like to see more details about this variable or use it in a cohort query.",
+  "search": "body mass index"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_0BEiY0FISPs5UGK12WG3Fn {"query": "BMI | body mass index"}
+Tool call: name=search_concepts id=tooluse_0BEiY0FISPs5UGK12WG3Fn error=false chars=209
+Tool call requested: name=propose_query id=tooluse_RWYLQF1RRiXMFnuci9cnLO {"search": "BMI | body mass index"}
+Tool call: name=propose_query id=tooluse_RWYLQF1RRiXMFnuci9cnLO error=false chars=131
+Chat turn end: requestId=v15-t1-r2 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11612 totalOutputTokens=206 toolsCalled=[search_concepts(209 chars), propose_query(131 chars)]
+```
+
+### T1 R3 (`v15-t1-r3`)
+
+Result:
+
+Searches: `BMI`, `body mass index`
+
+Response:
+```json
+{
+  "response": "I found one continuous variable that matches **body mass index**:\n\n* `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n\nLet me know if you’d like to add this variable to your view, filter on it, or explore related measures.",
+  "search": "body mass index"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_mm8TWotSenzf9DLUIgx1Od {"query": "BMI"}
+Tool call: name=search_concepts id=tooluse_mm8TWotSenzf9DLUIgx1Od error=false chars=34
+Tool call requested: name=search_concepts id=tooluse_3iazhnlFWpLHv9S8dB0RIG {"query": "body mass index"}
+Tool call: name=search_concepts id=tooluse_3iazhnlFWpLHv9S8dB0RIG error=false chars=166
+Tool call requested: name=propose_query id=tooluse_ZKaHWPjlOQ7xaUbbeKdpdu {"search": "body mass index"}
+Tool call: name=propose_query id=tooluse_ZKaHWPjlOQ7xaUbbeKdpdu error=false chars=17
+Chat turn end: requestId=v15-t1-r3 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=15472 totalOutputTokens=272 toolsCalled=[search_concepts(34 chars), search_concepts(166 chars), propose_query(17 chars)]
+```
+
+## T2 Typo + obesity measures
+
+- **Message:** `show me variables for body mas index and other obesity measures`
+- **Pass:** search proposed covering BMI and at least two of height, weight, waist; prose summarizes them with exact paths; no query. No search is PARTIAL. v13: if the reply says the variables are shown/displayed in the results table, a search must have been proposed (model-called or added by the service); a claim with no search is a FAIL. Also flag duplicated reply text.
+
+### T2 R1 (`v15-t2-r1`)
+
+Result:
+
+Searches: `body mass index | waist circumference | waist | weight | height`
+
+Response:
+```json
+{
+  "response": "Here are the variables that match **body-mass-index** and other common obesity measures:\n\n| Variable | Path | Type |\n|---|---|---|\n| Body Mass Index (kg / m²) | `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\` | continuous |\n| Waist Circumference (cm) | `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\` | continuous |\n| Standing Height (cm) | `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\` | continuous |\n| Weight (kg) | `\\Nhanes\\examination\\body measures\\Weight (kg)\\` | continuous |\n| Weight-gain Diet (questionnaire) | `\\Nhanes\\questionnaire\\food component recall\\Weight-gain Diet\\` | categorical |\n| Weight-loss Diet (questionnaire) | `\\Nhanes\\questionnaire\\food component recall\\Weight Loss Diet\\` | categorical |\n\nThese are the obesity-related measures currently available in the data. Let me know if you’d like to see more details about any of them or build a cohort using any of these variables."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_I9t9Spjgr9VvW9iO1LwNef {"query": "body mass index | waist circumference | waist | weight | height"}
+Tool call: name=search_concepts id=tooluse_I9t9Spjgr9VvW9iO1LwNef error=false chars=867
+Chat turn end: requestId=v15-t2-r1 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=7871 totalOutputTokens=424 toolsCalled=[search_concepts(867 chars)]
+```
+
+### T2 R2 (`v15-t2-r2`)
+
+Result:
+
+Searches: `body mass index | bmi | waist circumference | waist | weight | height`
+
+Response:
+```json
+{
+  "response": "Here are the variables that match your request for body-mass-index and other obesity-related measures:\n\n- `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n- `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`\n- `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\`\n- `\\Nhanes\\examination\\body measures\\Weight (kg)\\`\n- `\\Nhanes\\questionnaire\\food component recall\\Weight-gain Diet\\`\n- `\\Nhanes\\questionnaire\\food component recall\\Weight Loss Diet\\`\n\nThese variables are now shown in your results table. Let me know if you’d like to filter them further, add other variables, or see counts for any specific cohort.",
+  "search": "body mass index | waist circumference | waist | weight | height"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_LyNuYUrowJPLadeYZwORZy {"query": "body mass index | bmi | waist circumference | waist | weight | height"}
+Tool call: name=search_concepts id=tooluse_LyNuYUrowJPLadeYZwORZy error=false chars=875
+Tool call requested: name=propose_query id=tooluse_qWsIxvtVwFgQRa4RYnneQb {"search": "body mass index | waist circumference | waist | weight | height"}
+Tool call: name=propose_query id=tooluse_qWsIxvtVwFgQRa4RYnneQb error=false chars=17
+Chat turn end: requestId=v15-t2-r2 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12018 totalOutputTokens=633 toolsCalled=[search_concepts(875 chars), propose_query(17 chars)]
+```
+
+### T2 R3 (`v15-t2-r3`)
+
+Result:
+
+Searches: `body mass index | bmi | waist circumference | waist | weight | height`
+
+Response:
+```json
+{
+  "response": "Here are the variables that match **body-mass-index** and other obesity-related measures:\n\n* `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n* `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`\n* `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\`\n* `\\Nhanes\\examination\\body measures\\Weight (kg)\\`\n\nThe other results are categorical diet-question items that mention “weight” but are not direct anthropometric measures. Let me know if you’d like to add any of these to a cohort filter or explore further.",
+  "search": "body mass index | waist circumference | waist | weight | height"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_w7WyUToNxVXqIY7psiZbzZ {"query": "body mass index | bmi | waist circumference | waist | weight | height"}
+Tool call: name=search_concepts id=tooluse_w7WyUToNxVXqIY7psiZbzZ error=false chars=875
+Tool call requested: name=propose_query id=tooluse_IwEDLekTizVnO9VNeOW3tF {"search": "body mass index | waist circumference | waist | weight | height"}
+Tool call: name=propose_query id=tooluse_IwEDLekTizVnO9VNeOW3tF error=false chars=17
+Chat turn end: requestId=v15-t2-r3 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12018 totalOutputTokens=404 toolsCalled=[search_concepts(875 chars), propose_query(17 chars)]
+```
+
+### T2 R4 (`v15-t2-r4`)
+
+Result:
+
+Searches: `body mass index | bmi | waist circumference | waist | weight | height`
+
+Response:
+```json
+{
+  "response": "Here are the variables related to body-mass index and other obesity measures that match the data:\n\n* `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\` – continuous (range ≈ 12 – 130 kg/m²)  \n* `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\` – continuous (range ≈ 32 – 171 cm)  \n* `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\` – continuous (range ≈ 80 – 200 cm)  \n* `\\Nhanes\\examination\\body measures\\Weight (kg)\\` – continuous (range ≈ 3 – 371 kg)  \n\nThese are the variables currently displayed in your view. Let me know if you’d like to add any of them to a cohort filter or explore additional measures.",
+  "search": "body mass index | waist circumference | waist | weight | height"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_kvbTuruXJfBHMmFa0mELnl {"query": "body mass index | bmi | waist circumference | waist | weight | height"}
+Tool call: name=search_concepts id=tooluse_kvbTuruXJfBHMmFa0mELnl error=false chars=875
+Tool call requested: name=propose_query id=tooluse_7U7tSaHGIBjl4Q3d0cE6zB {"search": "body mass index | bmi | waist circumference | waist | weight | height"}
+Tool call: name=propose_query id=tooluse_7U7tSaHGIBjl4Q3d0cE6zB error=false chars=179
+Chat turn end: requestId=v15-t2-r4 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12052 totalOutputTokens=513 toolsCalled=[search_concepts(875 chars), propose_query(179 chars)]
+```
+
+### T2 R5 (`v15-t2-r5`)
+
+Result:
+
+Searches: `body mass index | bmi | waist circumference | waist | weight | height | obesity`
+
+Response:
+```json
+{
+  "response": "Here are the variables that match your request for body-mass-index and other obesity-related measures:\n\n- `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n- `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`\n- `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\`\n- `\\Nhanes\\examination\\body measures\\Weight (kg)\\`\n- `\\Nhanes\\questionnaire\\food component recall\\Weight-gain Diet\\`\n- `\\Nhanes\\questionnaire\\food component recall\\Weight Loss Diet\\`\n\nThese are the variables currently shown in your view. Let me know if you’d like to add any of them to a cohort filter, see more details, or explore other related measures.",
+  "search": "body mass index | waist circumference | waist | weight | height"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_UQLTwUUbQSg083t3TaTMcD {"query": "body mass index | bmi | waist circumference | waist | weight | height | obesity"}
+Tool call: name=search_concepts id=tooluse_UQLTwUUbQSg083t3TaTMcD error=false chars=887
+Tool call requested: name=propose_query id=tooluse_KIW2JcjldTviHOL1JRu3Ig {"search": "body mass index | waist circumference | waist | weight | height"}
+Tool call: name=propose_query id=tooluse_KIW2JcjldTviHOL1JRu3Ig error=false chars=17
+Chat turn end: requestId=v15-t2-r5 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12032 totalOutputTokens=529 toolsCalled=[search_concepts(887 chars), propose_query(17 chars)]
+```
+
+### T2 R6 (`v15-t2-r6`)
+
+Result:
+
+Searches: `body mass index | bmi | waist circumference | waist | weight | height`
+
+Response:
+```json
+{
+  "response": "Here are the variables that match your request for body-mass-index and other obesity-related measures:\n\n- `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n- `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`\n- `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\`\n- `\\Nhanes\\examination\\body measures\\Weight (kg)\\`\n- `\\Nhanes\\questionnaire\\food component recall\\Weight-gain Diet\\` (categorical)\n- `\\Nhanes\\questionnaire\\food component recall\\Weight Loss Diet\\` (categorical)",
+  "search": "body mass index | waist circumference | waist | weight | height"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_WhiCJTaQ7wocu9sYukuXbe {"query": "body mass index | bmi | waist circumference | waist | weight | height"}
+Tool call: name=search_concepts id=tooluse_WhiCJTaQ7wocu9sYukuXbe error=false chars=875
+Tool call requested: name=propose_query id=tooluse_0BpOOe2J9NDxuYwP7uaOGk {"search": "body mass index | waist circumference | waist | weight | height"}
+Tool call: name=propose_query id=tooluse_0BpOOe2J9NDxuYwP7uaOGk error=false chars=17
+Chat turn end: requestId=v15-t2-r6 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12018 totalOutputTokens=598 toolsCalled=[search_concepts(875 chars), propose_query(17 chars)]
+```
+
+### T2 R7 (`v15-t2-r7`)
+
+Result:
+
+Searches: `body mass index | bmi | obesity | waist circumference | waist | weight | height`
+
+Response:
+```json
+{
+  "response": "Here are the variables that match your request for body-mass-index and other obesity-related measures:\n\n- `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n- `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`\n- `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\`\n- `\\Nhanes\\examination\\body measures\\Weight (kg)\\`\n\n(There are also a few questionnaire items about weight-gain and weight-loss diets.) Let me know if you’d like to add any of these to a cohort query or need more details.",
+  "search": "body mass index | waist circumference | waist | weight | height"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_brh2qWcvcfogYwkgJMXJ4Y {"query": "body mass index | bmi | obesity | waist circumference | waist | weight | height","pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_brh2qWcvcfogYwkgJMXJ4Y error=false chars=887
+Tool call requested: name=propose_query id=tooluse_6PQFCIF6qCXnrDX8NHayVk {"search": "body mass index | waist circumference | waist | weight | height"}
+Tool call: name=propose_query id=tooluse_6PQFCIF6qCXnrDX8NHayVk error=false chars=17
+Chat turn end: requestId=v15-t2-r7 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12050 totalOutputTokens=461 toolsCalled=[search_concepts(887 chars), propose_query(17 chars)]
+```
+
+### T2 R8 (`v15-t2-r8`)
+
+Result:
+
+Searches: `body mass index | bmi | obesity | waist circumference | waist | weight | height`
+
+Response:
+```json
+{
+  "response": "Here are the variables the data contain that relate to body-mass-index and other obesity-related measures:\n\n* `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n* `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`\n* `\\Nhanes\\examination\\body measures\\Standing Height (cm)\\`\n* `\\Nhanes\\examination\\body measures\\Weight (kg)\\`\n* `\\Nhanes\\questionnaire\\food component recall\\Weight-gain Diet\\`\n* `\\Nhanes\\questionnaire\\food component recall\\Weight Loss Diet\\`\n\nThese are the variables you can explore further. Let me know if you’d like more details on any of them or want to build a cohort using any of these measures."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_bXfdW5PPm2PrnP0ekN4TtN {"query": "body mass index | bmi | obesity | waist circumference | waist | weight | height","pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_bXfdW5PPm2PrnP0ekN4TtN error=false chars=887
+Chat turn end: requestId=v15-t2-r8 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=7894 totalOutputTokens=384 toolsCalled=[search_concepts(887 chars)]
+```
+
+## T3 Cholesterol research
+
+- **Message:** `My research is on cholesterol levels across different demographic groups. What variables should I look at?`
+- **Pass:** cholesterol (total, HDL, LDL) AND demographics (sex, age, race/ethnicity), grouped, exact paths; no query. A search proposal is optional (note it).
+
+### T3 R1 (`v15-t3-r1`)
+
+Result:
+
+Searches: `cholesterol`, `sex`, `age`, `race`
+
+Response:
+```json
+{
+  "response": "Here are the variables you can use to study cholesterol levels and demographic groups:\n\n**Cholesterol-related variables**\n- `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol Total\\Cholesterol total in Serum or Plasma\\` (continuous)\n- `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol in HDL\\Cholesterol in HDL in Serum or Plasma\\` (continuous)\n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` (continuous)\n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` (continuous)\n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` (continuous)\n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` (continuous)\n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` (continuous)\n\n**Demographic variables**\n- Sex: `\\Synthea\\ACT Demographics\\Sex\\` (categorical) or `\\Nhanes\\demographics\\SEX\\` (categorical)  \n- Age: `\\Synthea\\ACT Demographics\\Age\\` (continuous) or `\\Nhanes\\demographics\\AGE\\` (continuous)  \n- Race/ethnicity: `\\Synthea\\ACT Demographics\\Race\\` (categorical) or `\\Nhanes\\demographics\\RACE\\` (categorical)\n\nYou can combine any of the cholesterol measures with sex, age, and race/ethnicity to explore differences across demographic groups. Let me know if you’d like to see counts for a specific combination or need help building a query."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_diPzLXhs5Z6u9BeFHJscnv {"query": "cholesterol"}
+Tool call: name=search_concepts id=tooluse_diPzLXhs5Z6u9BeFHJscnv error=false chars=1261
+Tool call requested: name=search_concepts id=tooluse_I3Up3LgecD2Vjjj6F8vluO {"query": "sex"}
+Tool call: name=search_concepts id=tooluse_I3Up3LgecD2Vjjj6F8vluO error=false chars=720
+Tool call requested: name=search_concepts id=tooluse_FaXchncrFG8dW12XoHqlEd {"query": "age"}
+Tool call: name=search_concepts id=tooluse_FaXchncrFG8dW12XoHqlEd error=false chars=4524
+Tool call requested: name=search_concepts id=tooluse_lFWQbumiGl3ojOSbzU1tXy {"query": "race"}
+Tool call: name=search_concepts id=tooluse_lFWQbumiGl3ojOSbzU1tXy error=false chars=391
+Chat turn end: requestId=v15-t3-r1 iterations=5 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=24197 totalOutputTokens=763 toolsCalled=[search_concepts(1261 chars), search_concepts(720 chars), search_concepts(4524 chars), search_concepts(391 chars)]
+```
+
+### T3 R2 (`v15-t3-r2`)
+
+Result:
+
+Searches: `cholesterol`, `age`, `sex`, `race`
+
+Response:
+```json
+{
+  "response": "Here are the key variables you can use to explore cholesterol levels across demographic groups:\n\n| Variable | Concept Path | Type |\n|----------|--------------|------|\n| Total cholesterol (serum/plasma) | `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol Total\\Cholesterol total in Serum or Plasma\\` | Continuous |\n| HDL cholesterol (serum/plasma) | `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol in HDL\\Cholesterol in HDL in Serum or Plasma\\` | Continuous |\n| Total cholesterol (NHANES) | `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` | Continuous |\n| HDL cholesterol (NHANES) | `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` | Continuous |\n| LDL cholesterol (NHANES) | `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` | Continuous |\n| Age | `\\Synthea\\ACT Demographics\\Age\\` (or `\\Nhanes\\demographics\\AGE\\`) | Continuous |\n| Sex | `\\Synthea\\ACT Demographics\\Sex\\` (or `\\Nhanes\\demographics\\SEX\\`) | Categorical |\n| Race | `\\Synthea\\ACT Demographics\\Race\\` (or `\\Nhanes\\demographics\\RACE\\`) | Categorical |\n\nThese variables cover cholesterol measurements and the main demographic attributes (age, sex, race) you can use to stratify your analyses. Let me know if you’d like to see any additional variables (e.g., BMI, socioeconomic factors) or need help building a cohort query."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_G0cySNatb08Hto6o4mjR6F {"query": "cholesterol"}
+Tool call: name=search_concepts id=tooluse_G0cySNatb08Hto6o4mjR6F error=false chars=1261
+Tool call requested: name=search_concepts id=tooluse_DYZR2kagQXzmyd4fkM5rtU {"query": "age"}
+Tool call: name=search_concepts id=tooluse_DYZR2kagQXzmyd4fkM5rtU error=false chars=4524
+Tool call requested: name=search_concepts id=tooluse_AfHTE0zVwVDG5mmJB8Vyss {"query": "sex"}
+Tool call: name=search_concepts id=tooluse_AfHTE0zVwVDG5mmJB8Vyss error=false chars=720
+Tool call requested: name=search_concepts id=tooluse_htPP2f3F3ktAUp5ExV6CIG {"query": "race"}
+Tool call: name=search_concepts id=tooluse_htPP2f3F3ktAUp5ExV6CIG error=false chars=391
+Chat turn end: requestId=v15-t3-r2 iterations=5 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=25313 totalOutputTokens=761 toolsCalled=[search_concepts(1261 chars), search_concepts(4524 chars), search_concepts(720 chars), search_concepts(391 chars)]
+```
+
+### T3 R3 (`v15-t3-r3`)
+
+Result:
+
+Searches: `cholesterol | LDL | HDL`, `sex | age | race`
+
+Response:
+```json
+{
+  "response": "Here are the variables you can use for cholesterol and for demographic groups:\n\n**Cholesterol-related measures (8 variables)**  \n- `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol Total\\Cholesterol total in Serum or Plasma\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` (categorical)  \n- `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol in HDL\\Cholesterol in HDL in Serum or Plasma\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` (continuous)\n\n**Demographic variables (7 variables)**  \n- `\\Synthea\\ACT Demographics\\Sex\\` (categorical)  \n- `\\Synthea\\ACT Demographics\\Age\\` (continuous)  \n- `\\Synthea\\ACT Demographics\\Race\\` (categorical)  \n- `\\Nhanes\\demographics\\SEX\\` (categorical)  \n- `\\Nhanes\\demographics\\AGE\\` (continuous)  \n- `\\Nhanes\\demographics\\RACE\\` (categorical)  \n- `\\Nhanes\\questionnaire\\sexual behavior\\Ever had sexual intercourse\\` (categorical)\n\nYou can combine any of the cholesterol measures with the demographic variables to explore cholesterol levels across groups such as sex, age, or race. If you’d like to see counts of participants for a particular combination (e.g., LDL-cholesterol in females aged 40-65), let me know and I can run an open-access count for you."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_pxfdg12GqyDoEVYjCQipNa {"query": "cholesterol | LDL | HDL"}
+Tool call: name=search_concepts id=tooluse_pxfdg12GqyDoEVYjCQipNa error=false chars=1309
+Tool call requested: name=search_concepts id=tooluse_TDxry0LZueLeqsImpABtWJ {"query": "sex | age | race"}
+Tool call: name=search_concepts id=tooluse_TDxry0LZueLeqsImpABtWJ error=false chars=3883
+Chat turn end: requestId=v15-t3-r3 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=13421 totalOutputTokens=715 toolsCalled=[search_concepts(1309 chars), search_concepts(3883 chars)]
+```
+
+### T3 R4 (`v15-t3-r4`)
+
+Result:
+
+Searches: `cholesterol`, `sex`, `age`, `race`
+
+Response:
+```json
+{
+  "response": "Here are the variables you can use to explore cholesterol levels and demographic groups:\n\n**Cholesterol measures**\n- `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol Total\\Cholesterol total in Serum or Plasma\\` (continuous)\n- `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol in HDL\\Cholesterol in HDL in Serum or Plasma\\` (continuous)\n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` (continuous)\n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` (continuous)\n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` (continuous)\n\n**Demographic variables**\n- Sex: `\\Synthea\\ACT Demographics\\Sex\\` or `\\Nhanes\\demographics\\SEX\\` (categorical)\n- Age: `\\Synthea\\ACT Demographics\\Age\\` or `\\Nhanes\\demographics\\AGE\\` (continuous)\n- Race/ethnicity: `\\Synthea\\ACT Demographics\\Race\\` or `\\Nhanes\\demographics\\RACE\\` (categorical)\n\nThese variables are available in the open-access data and can be combined to examine cholesterol across different sexes, ages, and racial/ethnic groups. Let me know if you’d like to build a specific cohort or see counts for any of these variables."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_Jv633x4YI0R2QnOV44Mg2A {"query": "cholesterol"}
+Tool call: name=search_concepts id=tooluse_Jv633x4YI0R2QnOV44Mg2A error=false chars=1261
+Tool call requested: name=search_concepts id=tooluse_a2PWoct6TM4GqBGxJneA8v {"query": "sex"}
+Tool call: name=search_concepts id=tooluse_a2PWoct6TM4GqBGxJneA8v error=false chars=720
+Tool call requested: name=search_concepts id=tooluse_2dLFUND3kjZs7gr4L7jH6w {"query": "age"}
+Tool call: name=search_concepts id=tooluse_2dLFUND3kjZs7gr4L7jH6w error=false chars=4524
+Tool call requested: name=search_concepts id=tooluse_opJzms7ti7wqVqgby4XvXt {"query": "race"}
+Tool call: name=search_concepts id=tooluse_opJzms7ti7wqVqgby4XvXt error=false chars=391
+Chat turn end: requestId=v15-t3-r4 iterations=5 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=24197 totalOutputTokens=724 toolsCalled=[search_concepts(1261 chars), search_concepts(720 chars), search_concepts(4524 chars), search_concepts(391 chars)]
+```
+
+### T3 R5 (`v15-t3-r5`)
+
+Result:
+
+Searches: `cholesterol`, `age`, `sex`, `race`
+
+Response:
+```json
+{
+  "response": "For cholesterol you’ll want to include the lab measurements and any questionnaire-derived values that capture intake:\n\n**Lab (continuous)**\n- `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol Total\\Cholesterol total in Serum or Plasma\\`\n- `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol in HDL\\Cholesterol in HDL in Serum or Plasma\\`\n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\`\n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\`\n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\`\n\n**Questionnaire (continuous)**\n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\`\n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\`\n\n**Demographics for grouping**\n- Age: `\\Synthea\\ACT Demographics\\Age\\` or `\\Nhanes\\demographics\\AGE\\`\n- Sex: `\\Synthea\\ACT Demographics\\Sex\\` or `\\Nhanes\\demographics\\SEX\\`\n- Race/ethnicity: `\\Synthea\\ACT Demographics\\Race\\` or `\\Nhanes\\demographics\\RACE\\`\n\nThese variables let you examine total cholesterol, HDL, LDL, and self-reported cholesterol intake across age, sex, and race groups. Let me know if you’d like to build a cohort query or see the participant counts for any of these variables."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_JAO0Hv3PLFnKF7l24Qwscv {"query": "cholesterol"}
+Tool call: name=search_concepts id=tooluse_JAO0Hv3PLFnKF7l24Qwscv error=false chars=1261
+Tool call requested: name=search_concepts id=tooluse_jJPbnzwht0ipuedU355ZME {"query": "age"}
+Tool call: name=search_concepts id=tooluse_jJPbnzwht0ipuedU355ZME error=false chars=4524
+Tool call requested: name=search_concepts id=tooluse_LtKkx4NLrAuymnx181LymR {"query": "sex"}
+Tool call: name=search_concepts id=tooluse_LtKkx4NLrAuymnx181LymR error=false chars=720
+Tool call requested: name=search_concepts id=tooluse_RRR402sSWyQ7Xafo7xOFii {"query": "race"}
+Tool call: name=search_concepts id=tooluse_RRR402sSWyQ7Xafo7xOFii error=false chars=391
+Chat turn end: requestId=v15-t3-r5 iterations=5 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=25313 totalOutputTokens=711 toolsCalled=[search_concepts(1261 chars), search_concepts(4524 chars), search_concepts(720 chars), search_concepts(391 chars)]
+```
+
+### T3 R6 (`v15-t3-r6`)
+
+Result:
+
+Searches: `cholesterol`, `sex`, `age`, `race`
+
+Response:
+```json
+{
+  "response": "Here are the key variables you can use to study cholesterol levels across demographic groups:\n\n| Variable | Study / Category | Type | Example Path |\n|----------|------------------|------|--------------|\n| Total cholesterol (serum/plasma) | Laboratory – Lipids | Continuous | `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol Total\\Cholesterol total in Serum or Plasma\\` |\n| HDL cholesterol (serum/plasma) | Laboratory – Lipids | Continuous | `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol in HDL\\Cholesterol in HDL in Serum or Plasma\\` |\n| Total cholesterol (NHANES) | Laboratory – Biochemistry | Continuous | `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` |\n| HDL cholesterol (NHANES) | Laboratory – Biochemistry | Continuous | `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` |\n| LDL cholesterol (NHANES) | Laboratory – Biochemistry | Continuous | `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` |\n| Sex | Demographics | Categorical | `\\Synthea\\ACT Demographics\\Sex\\` (or `\\Nhanes\\demographics\\SEX\\`) |\n| Age | Demographics | Continuous | `\\Synthea\\ACT Demographics\\Age\\` (or `\\Nhanes\\demographics\\AGE\\`) |\n| Race / ethnicity | Demographics | Categorical | `\\Synthea\\ACT Demographics\\Race\\` (or `\\Nhanes\\demographics\\RACE\\`) |\n\nThese variables cover cholesterol measurements and the main demographic attributes (sex, age, race) you’ll need for subgroup analyses. Let me know if you’d like to add any other variables (e.g., BMI, socioeconomic status) or if you want to build a specific cohort query."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_996qxdDDuav6LhyjUwHitF {"query": "cholesterol"}
+Tool call: name=search_concepts id=tooluse_996qxdDDuav6LhyjUwHitF error=false chars=1261
+Tool call requested: name=search_concepts id=tooluse_bJgxUaarWsQRlS58YviGJX {"query": "sex"}
+Tool call: name=search_concepts id=tooluse_bJgxUaarWsQRlS58YviGJX error=false chars=720
+Tool call requested: name=search_concepts id=tooluse_vhMDRfxYWeOIdOmc0z4Xvy {"query": "age"}
+Tool call: name=search_concepts id=tooluse_vhMDRfxYWeOIdOmc0z4Xvy error=false chars=4524
+Tool call requested: name=search_concepts id=tooluse_Q89rABVGhc8RVR1pjKYOg5 {"query": "race"}
+Tool call: name=search_concepts id=tooluse_Q89rABVGhc8RVR1pjKYOg5 error=false chars=391
+Chat turn end: requestId=v15-t3-r6 iterations=5 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=24197 totalOutputTokens=868 toolsCalled=[search_concepts(1261 chars), search_concepts(720 chars), search_concepts(4524 chars), search_concepts(391 chars)]
+```
+
+### T3 R7 (`v15-t3-r7`)
+
+Result:
+
+Searches: `cholesterol`, `age | sex | race`
+
+Response:
+```json
+{
+  "response": "For cholesterol you have several laboratory and questionnaire measures available, and for demographics you can use the standard age, sex and race variables. Here are the exact concept paths you can work with.\n\n**Cholesterol-related variables**\n\n| Variable | Concept path |\n|----------|--------------|\n| Total cholesterol (serum/plasma) – continuous | `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol Total\\Cholesterol total in Serum or Plasma\\` |\n| HDL cholesterol (serum/plasma) – continuous | `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol in HDL\\Cholesterol in HDL in Serum or Plasma\\` |\n| Direct HDL-cholesterol (NHANES) – categorical | `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` |\n| Total cholesterol (NHANES) – continuous | `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` |\n| LDL-cholesterol (NHANES) – continuous | `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` |\n| HDL-cholesterol (NHANES) – continuous | `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` |\n| Dietary cholesterol intake (questionnaire) – continuous | `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` |\n| Supplement-use cholesterol amount (questionnaire) – continuous | `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` |\n\n**Demographic variables for grouping**\n\n| Variable | Concept path |\n|----------|--------------|\n| Age – continuous | `\\Synthea\\ACT Demographics\\Age\\` (also `\\Nhanes\\demographics\\AGE\\` if you prefer the NHANES cohort) |\n| Sex – categorical | `\\Synthea\\ACT Demographics\\Sex\\` (also `\\Nhanes\\demographics\\SEX\\`) |\n| Race – categorical | `\\Synthea\\ACT Demographics\\Race\\` (also `\\Nhanes\\demographics\\RACE\\`) |\n\nYou can combine any of the cholesterol measures with the demographic variables to explore differences across age groups, sexes, or racial/ethnic categories. If you’d like to start building a cohort or get a rough participant count for a particular combination, just let me know the filters you want to apply."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_9vJ8gMUE59EkpcUSREjOJB {"query": "cholesterol"}
+Tool call: name=search_concepts id=tooluse_9vJ8gMUE59EkpcUSREjOJB error=false chars=1261
+Tool call requested: name=search_concepts id=tooluse_01p8I4ImbEJ8YmJBxVNEq1 {"query": "age | sex | race"}
+Tool call: name=search_concepts id=tooluse_01p8I4ImbEJ8YmJBxVNEq1 error=false chars=3883
+Chat turn end: requestId=v15-t3-r7 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=13377 totalOutputTokens=1064 toolsCalled=[search_concepts(1261 chars), search_concepts(3883 chars)]
+```
+
+### T3 R8 (`v15-t3-r8`)
+
+Result:
+
+Searches: `cholesterol | HDL | LDL | "total cholesterol"`, `age | sex | race`
+
+Response:
+```json
+{
+  "response": "Here are the variables you can use to study cholesterol levels and the key demographic characteristics that let you break the results down by group:\n\n**Cholesterol-related measures**\n\n| Variable | Path |\n|----------|------|\n| Total cholesterol (continuous) | `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol Total\\Cholesterol total in Serum or Plasma\\` |\n| Total cholesterol (continuous, NHANES) | `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` |\n| HDL cholesterol – continuous (Synthea) | `\\Synthea\\ACT Lab Test Results\\Chemistry\\Lipids\\Cholesterol in HDL\\Cholesterol in HDL in Serum or Plasma\\` |\n| HDL cholesterol – continuous (NHANES) | `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` |\n| HDL cholesterol – categorical (NHANES) | `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` |\n| LDL cholesterol – continuous (NHANES) | `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` |\n| Dietary cholesterol intake (questionnaire) | `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` |\n| Supplement-derived cholesterol (questionnaire) | `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` |\n\n**Demographic variables for grouping**\n\n| Demographic | Path |\n|-------------|------|\n| Age (continuous) | `\\Synthea\\ACT Demographics\\Age\\` |\n| Sex (categorical) | `\\Synthea\\ACT Demographics\\Sex\\` |\n| Race/ethnicity (categorical) | `\\Synthea\\ACT Demographics\\Race\\` |\n| (NHANES equivalents) – Age: `\\Nhanes\\demographics\\AGE\\` |\n| (NHANES equivalents) – Sex: `\\Nhanes\\demographics\\SEX\\` |\n| (NHANES equivalents) – Race: `\\Nhanes\\demographics\\RACE\\` |\n\nYou can combine any of the cholesterol variables with the age, sex, and race variables to explore how cholesterol levels differ across demographic groups. If you need to see how many participants have data for a particular combination, let me know and I can run an (obfuscated) count for you."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_zZIvv9zgJCIl5zfJu7VNgq {"query": "cholesterol | HDL | LDL | \"total cholesterol\""}
+Tool call: name=search_concepts id=tooluse_zZIvv9zgJCIl5zfJu7VNgq error=false chars=1335
+Tool call requested: name=search_concepts id=tooluse_hT7Ju15moQ3z8rCAP4vDdl {"query": "age | sex | race"}
+Tool call: name=search_concepts id=tooluse_hT7Ju15moQ3z8rCAP4vDdl error=false chars=3883
+Chat turn end: requestId=v15-t3-r8 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=13445 totalOutputTokens=1013 toolsCalled=[search_concepts(1335 chars), search_concepts(3883 chars)]
+```
+
+## T7 Cohort query proposal
+
+- **Message:** `Show me female participants over 40 and include their BMI`
+- **Pass:** SEX [female], AGE min 40 (a max at or above 85 is noted, not failed), select has BMI + SEX + AGE; query returned; no search, no facets; prose without JSON.
+
+### T7 R1 (`v15-t7-r1`)
+
+Result:
+
+Searches: `sex`, `age`, `body mass index | bmi`
+
+Response:
+```json
+{
+  "response": "Here are the variables you asked for:\n\n- **Sex** (female) – `\\Synthea\\ACT Demographics\\Sex\\`\n- **Age** (over 40) – `\\Synthea\\ACT Demographics\\Age\\`\n- **Body-Mass Index** – `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n\nYour current view now shows these three concepts, and you can run a count on this cohort. The count will be an obfuscated open-access number (it is not an exact, authorized count).",
+  "query": {
+    "select": [
+      "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+      "\\Synthea\\ACT Demographics\\Sex\\",
+      "\\Synthea\\ACT Demographics\\Age\\"
+    ],
+    "phenotypicClause": {
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Synthea\\ACT Demographics\\Sex\\",
+          "values": [
+            "Female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Synthea\\ACT Demographics\\Age\\",
+          "min": 40
+        }
+      ],
+      "operator": "AND"
+    }
+  }
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_GCTUKozDkIN5mOgoOp9KY7 {"query": "sex"}
+Tool call: name=search_concepts id=tooluse_GCTUKozDkIN5mOgoOp9KY7 error=false chars=720
+Tool call requested: name=search_concepts id=tooluse_8uGxMM4r9GMaBnM4eEBGSr {"query": "age"}
+Tool call: name=search_concepts id=tooluse_8uGxMM4r9GMaBnM4eEBGSr error=false chars=4524
+Tool call requested: name=search_concepts id=tooluse_dprctOHLTD7eTW6X9T0ycf {"query": "body mass index | bmi"}
+Tool call: name=search_concepts id=tooluse_dprctOHLTD7eTW6X9T0ycf error=false chars=209
+Tool call requested: name=propose_query id=tooluse_AOR9w5itwTfaeNTzkWhvWT {"query": {"select": ["\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\"],"phenotypicClause": {"operator": "AND","phenotypicClauses": [{"phenotypicFilterType": "FILTER","conceptPath": "\\Synthea\\ACT Demographics\\Sex\\","values": ["Female"]}, {"phenotypicFilterType": "FILTER","conceptPath": "\\Synthea\\ACT Demographics\\Age\\","min": 40}]}}}
+Tool call: name=propose_query id=tooluse_AOR9w5itwTfaeNTzkWhvWT error=false chars=17
+Chat turn end: requestId=v15-t7-r1 iterations=5 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=24223 totalOutputTokens=705 toolsCalled=[search_concepts(720 chars), search_concepts(4524 chars), search_concepts(209 chars), propose_query(17 chars)]
+```
+
+### T7 R2 (`v15-t7-r2`)
+
+Result:
+
+Searches: `sex`, `body mass index | BMI`, `age`
+
+Response:
+```json
+{
+  "response": "Here are the variables you asked for:\n\n- Sex: `\\Nhanes\\demographics\\SEX\\`\n- Age: `\\Nhanes\\demographics\\AGE\\`\n- Body-mass index: `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n\nYour screen now shows these three variables and a query that selects female participants older than 40 years and includes their BMI. The counts you’ll see are obfuscated open-access estimates, not exact or authorized numbers. Let me know if you’d like to add more filters or view the cohort size.",
+  "query": {
+    "select": [
+      "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+      "\\Nhanes\\demographics\\SEX\\",
+      "\\Nhanes\\demographics\\AGE\\"
+    ],
+    "phenotypicClause": {
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+          "values": [
+            "female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+          "min": 40
+        }
+      ],
+      "operator": "AND"
+    }
+  }
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_tXdx3y4Z0DUJxlfWDx2Nu7 {"query": "sex","pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_tXdx3y4Z0DUJxlfWDx2Nu7 error=false chars=720
+Tool call requested: name=search_concepts id=tooluse_KWPaAi8zDbKEuai6kODTjP {"pageSize": 25,"query": "body mass index | BMI","page": 0}
+Tool call: name=search_concepts id=tooluse_KWPaAi8zDbKEuai6kODTjP error=false chars=209
+Tool call requested: name=search_concepts id=tooluse_rhESiNHPPpVcl5qNhrf2sy {"pageSize": 25,"query": "age","page": 0}
+Tool call: name=search_concepts id=tooluse_rhESiNHPPpVcl5qNhrf2sy error=false chars=4524
+Tool call requested: name=propose_query id=tooluse_lX97640gQs3KPYCAdUMPBs {"search": "","query": {"select": ["\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\"],"phenotypicClause": {"operator": "AND","phenotypicClauses": [{"phenotypicFilterType": "FILTER","conceptPath": "\\Nhanes\\demographics\\SEX\\","values": ["female"]}, {"phenotypicFilterType": "FILTER","conceptPath": "\\Nhanes\\demographics\\AGE\\","min": 40}]}},"facets": []}
+Tool call: name=propose_query id=tooluse_lX97640gQs3KPYCAdUMPBs error=false chars=17
+Chat turn end: requestId=v15-t7-r2 iterations=5 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=23063 totalOutputTokens=892 toolsCalled=[search_concepts(720 chars), search_concepts(209 chars), search_concepts(4524 chars), propose_query(17 chars)]
+```
+
+### T7 R3 (`v15-t7-r3`)
+
+Result:
+
+Searches: `sex`, `body mass index`, `age`
+
+Response:
+```json
+{
+  "response": "Here are the variables you asked for:\n\n* **Sex** – `\\Synthea\\ACT Demographics\\Sex\\` (categorical: Female, Male)  \n* **Age** – `\\Synthea\\ACT Demographics\\Age\\` (continuous)  \n* **Body-Mass Index** – `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\` (continuous)\n\nYour current query will return female participants older than 40 years and include their BMI values. The counts you see are obfuscated, open-access estimates—not exact numbers. Let me know if you’d like to refine the age range, add more variables, or see the (approximate) participant count.",
+  "query": {
+    "select": [
+      "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+      "\\Synthea\\ACT Demographics\\Sex\\",
+      "\\Synthea\\ACT Demographics\\Age\\"
+    ],
+    "phenotypicClause": {
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Synthea\\ACT Demographics\\Sex\\",
+          "values": [
+            "Female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Synthea\\ACT Demographics\\Age\\",
+          "min": 40,
+          "max": 120
+        }
+      ],
+      "operator": "AND"
+    }
+  }
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_ETdXu4yKcKaBmhuWY0zKk7 {"query": "sex"}
+Tool call: name=search_concepts id=tooluse_ETdXu4yKcKaBmhuWY0zKk7 error=false chars=720
+Tool call requested: name=search_concepts id=tooluse_JbupjwZMRp1zx2upYByx2G {"query": "body mass index"}
+Tool call: name=search_concepts id=tooluse_JbupjwZMRp1zx2upYByx2G error=false chars=166
+Tool call requested: name=search_concepts id=tooluse_JSFCQvSqgAtNwrftcFIphB {"query": "age"}
+Tool call: name=search_concepts id=tooluse_JSFCQvSqgAtNwrftcFIphB error=false chars=4524
+Tool call requested: name=propose_query id=tooluse_Bupkv2NxB7akUsykq6I5fh {"query": {"select": ["\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\"],"phenotypicClause": {"operator": "AND","phenotypicClauses": [{"phenotypicFilterType": "FILTER","conceptPath": "\\Synthea\\ACT Demographics\\Sex\\","values": ["Female"]}, {"phenotypicFilterType": "FILTER","conceptPath": "\\Synthea\\ACT Demographics\\Age\\","min": 40,"max": 120}]}}}
+Tool call: name=propose_query id=tooluse_Bupkv2NxB7akUsykq6I5fh error=false chars=17
+Chat turn end: requestId=v15-t7-r3 iterations=5 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=22939 totalOutputTokens=815 toolsCalled=[search_concepts(720 chars), search_concepts(166 chars), search_concepts(4524 chars), propose_query(17 chars)]
+```
+
+## T8 "Show me" is a lookup
+
+- **Message:** `Just show me BMI and waist circumference`
+- **Pass:** search proposed covering both (e.g. `body mass index | waist circumference`); no query; prose names both with exact paths. The proposed search must find BMI: body mass index in it, no bare BMI.
+
+### T8 R1 (`v15-t8-r1`)
+
+Result:
+
+Searches: `body mass index | waist circumference`
+
+Response:
+```json
+{
+  "response": "Here are the two variables that match your request:\n\n- `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n- `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`",
+  "search": "body mass index | waist circumference"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_C2wbQCXKOH8LuXCYkudkkE {"query": "body mass index | waist circumference"}
+Tool call: name=search_concepts id=tooluse_C2wbQCXKOH8LuXCYkudkkE error=false chars=351
+Tool call requested: name=propose_query id=tooluse_AQLb1HFrtZBAuQ698CwLK0 {"search": "body mass index | waist circumference"}
+Tool call: name=propose_query id=tooluse_AQLb1HFrtZBAuQ698CwLK0 error=false chars=17
+Chat turn end: requestId=v15-t8-r1 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11680 totalOutputTokens=223 toolsCalled=[search_concepts(351 chars), propose_query(17 chars)]
+```
+
+### T8 R2 (`v15-t8-r2`)
+
+Result:
+
+Searches: `body mass index | waist circumference`
+
+Response:
+```json
+{
+  "response": "Here are the two variables that match your request:\n\n* `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n* `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`",
+  "search": "body mass index | waist circumference"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_QCUVTJnlUWaIZgtsl4KRvF {"query": "body mass index | waist circumference"}
+Tool call: name=search_concepts id=tooluse_QCUVTJnlUWaIZgtsl4KRvF error=false chars=351
+Tool call requested: name=propose_query id=tooluse_IDJMXMAvWevPpRv5Bh9rmd {"search": "body mass index | waist circumference"}
+Tool call: name=propose_query id=tooluse_IDJMXMAvWevPpRv5Bh9rmd error=false chars=17
+Chat turn end: requestId=v15-t8-r2 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11680 totalOutputTokens=229 toolsCalled=[search_concepts(351 chars), propose_query(17 chars)]
+```
+
+### T8 R3 (`v15-t8-r3`)
+
+Result:
+
+Searches: `body mass index | waist circumference`
+
+Response:
+```json
+{
+  "response": "Here are the two variables that match your request:\n\n* Body Mass Index (kg / m²) – `\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\`\n* Waist Circumference (cm) – `\\Nhanes\\examination\\body measures\\Waist Circumference (cm)\\`",
+  "search": "body mass index | waist circumference"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_owYdr7mneSxUIJXAGXhUj9 {"query": "body mass index | waist circumference"}
+Tool call: name=search_concepts id=tooluse_owYdr7mneSxUIJXAGXhUj9 error=false chars=351
+Tool call requested: name=propose_query id=tooluse_e1nzIF8S6y968Osy3iDV7P {"search": "body mass index | waist circumference"}
+Tool call: name=propose_query id=tooluse_e1nzIF8S6y968Osy3iDV7P error=false chars=17
+Chat turn end: requestId=v15-t8-r3 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11680 totalOutputTokens=258 toolsCalled=[search_concepts(351 chars), propose_query(17 chars)]
+```
+
+## T10 Select with no filters
+
+- **Message:** `Select all race variables`
+- **Pass:** search proposed (contains race); no query; prose names `\Nhanes\demographics\RACE\`. Note any refused select-only propose_query first. v13: a select-only propose_query is now read as the search that found the variables, so there should be NO refused propose_query (error=true) in the log; count any that remain.
+
+### T10 R1 (`v15-t10-r1`)
+
+Result:
+
+Searches: `race`
+
+Response:
+```json
+{
+  "response": "I’ve added the two race variables that match your request:\n\n* `\\Synthea\\ACT Demographics\\Race\\`\n* `\\Nhanes\\demographics\\RACE\\`\n\nThese are now selected and shown in your view.",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_exoyfMUmjCilagK6rTwfM0 {"query": "race"}
+Tool call: name=search_concepts id=tooluse_exoyfMUmjCilagK6rTwfM0 error=false chars=391
+Tool call requested: name=propose_query id=tooluse_PvNIaFp3PGAr9wdi6UNF42 {"search": "race","query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_PvNIaFp3PGAr9wdi6UNF42 error=false chars=17
+Chat turn end: requestId=v15-t10-r1 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11664 totalOutputTokens=266 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T10 R2 (`v15-t10-r2`)
+
+Result:
+
+Searches: `race`
+
+Response:
+```json
+{
+  "response": "I’ve added the two race variables to your view:\n\n- `\\Synthea\\ACT Demographics\\Race\\`\n- `\\Nhanes\\demographics\\RACE\\`\n\nThese variables are now selected and ready for you to explore or include in any cohort queries.",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_itrHNFsTgCI2M0cBLDRehW {"query": "race"}
+Tool call: name=search_concepts id=tooluse_itrHNFsTgCI2M0cBLDRehW error=false chars=391
+Tool call requested: name=propose_query id=tooluse_zURmLTTGEnFttWBywkMwQN {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}
+Tool call: name=propose_query id=tooluse_zURmLTTGEnFttWBywkMwQN error=true chars=48
+Tool call requested: name=propose_query id=tooluse_FSl7YOm7Yk6N6ODA1OYlAU {"query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_FSl7YOm7Yk6N6ODA1OYlAU error=false chars=17
+Chat turn end: requestId=v15-t10-r2 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=15704 totalOutputTokens=383 toolsCalled=[search_concepts(391 chars), propose_query(48 chars), propose_query(17 chars)]
+```
+
+### T10 R3 (`v15-t10-r3`)
+
+Result:
+
+Searches: `race`
+
+Response:
+```json
+{
+  "response": "Here are the race variables available in the data:\n\n- `\\Synthea\\ACT Demographics\\Race\\`\n- `\\Nhanes\\demographics\\RACE\\`\n\nThese are the only variables that matched your request. Let me know if you’d like to explore any of them further or apply additional filters.",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_fDBTHUhzw3wYnsnogCjA2N {"query": "race"}
+Tool call: name=search_concepts id=tooluse_fDBTHUhzw3wYnsnogCjA2N error=false chars=391
+Tool call requested: name=propose_query id=tooluse_tgHYam1PqsSJc3xRLRdwfQ {"search": "race"}
+Tool call: name=propose_query id=tooluse_tgHYam1PqsSJc3xRLRdwfQ error=false chars=17
+Chat turn end: requestId=v15-t10-r3 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11636 totalOutputTokens=274 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T10 R4 (`v15-t10-r4`)
+
+Result:
+
+Searches: `race`
+
+Response:
+```json
+{
+  "response": "Here are the race variables available in the data:\n\n- `\\Synthea\\ACT Demographics\\Race\\`\n- `\\Nhanes\\demographics\\RACE\\`\n\nThese variables are now selected for you.",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_cPEStbeo7djOxBDEzacVK3 {"query": "race"}
+Tool call: name=search_concepts id=tooluse_cPEStbeo7djOxBDEzacVK3 error=false chars=391
+Tool call requested: name=propose_query id=tooluse_9tlg07ffuh6lMn8M6II5si {"query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_9tlg07ffuh6lMn8M6II5si error=false chars=17
+Chat turn end: requestId=v15-t10-r4 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11660 totalOutputTokens=260 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T10 R5 (`v15-t10-r5`)
+
+Result:
+
+Searches: `race`
+
+Response:
+```json
+{
+  "response": "I’ve added the two race variables found in the data:\n\n* `\\Synthea\\ACT Demographics\\Race\\`\n* `\\Nhanes\\demographics\\RACE\\`",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_QZmTIxKi54GRgYNNK3yRsZ {"query": "race"}
+Tool call: name=search_concepts id=tooluse_QZmTIxKi54GRgYNNK3yRsZ error=false chars=391
+Tool call requested: name=propose_query id=tooluse_eV9ZS4gJU2Y6HvjvGZGQ21 {"query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_eV9ZS4gJU2Y6HvjvGZGQ21 error=false chars=17
+Chat turn end: requestId=v15-t10-r5 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11660 totalOutputTokens=272 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+## T11 Select with existing filters
+
+- **Message:** `Select all race variables`
+- **Pass:** query returned keeping SEX and AGE filters; select has RACE + SEX + AGE + BMI; no search.
+
+### T11 R1 (`v15-t11-r1`)
+
+Result:
+
+Searches: `race`
+
+Request body:
+```json
+{
+  "conversationId": "v15-t11-r1-conv",
+  "requestId": "v15-t11-r1",
+  "message": "Select all race variables",
+  "query": {
+    "select": [
+      "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+      "\\Nhanes\\demographics\\SEX\\",
+      "\\Nhanes\\demographics\\AGE\\"
+    ],
+    "phenotypicClause": {
+      "operator": "AND",
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+          "values": [
+            "female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+          "min": 40
+        }
+      ]
+    }
+  }
+}
+```
+Response:
+```json
+{
+  "response": "Here are the race variables available in the data:\n\n- `\\Synthea\\ACT Demographics\\Race\\`\n- `\\Nhanes\\demographics\\RACE\\`",
+  "query": {
+    "select": [
+      "\\Synthea\\ACT Demographics\\Race\\",
+      "\\Nhanes\\demographics\\RACE\\",
+      "\\Nhanes\\demographics\\SEX\\",
+      "\\Nhanes\\demographics\\AGE\\"
+    ],
+    "phenotypicClause": {
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+          "values": [
+            "female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+          "min": 40
+        }
+      ],
+      "operator": "AND"
+    }
+  }
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_NA4EMHjll47hMnFuY0BwsY {"query": "race"}
+Tool call: name=search_concepts id=tooluse_NA4EMHjll47hMnFuY0BwsY error=false chars=391
+Tool call requested: name=propose_query id=tooluse_I6k0nmK3DdLbmV1J0YOZlV {"query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_I6k0nmK3DdLbmV1J0YOZlV error=false chars=17
+Chat turn end: requestId=v15-t11-r1 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12089 totalOutputTokens=378 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T11 R2 (`v15-t11-r2`)
+
+Result:
+
+Searches: `race`
+
+Request body:
+```json
+{
+  "conversationId": "v15-t11-r2-conv",
+  "requestId": "v15-t11-r2",
+  "message": "Select all race variables",
+  "query": {
+    "select": [
+      "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+      "\\Nhanes\\demographics\\SEX\\",
+      "\\Nhanes\\demographics\\AGE\\"
+    ],
+    "phenotypicClause": {
+      "operator": "AND",
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+          "values": [
+            "female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+          "min": 40
+        }
+      ]
+    }
+  }
+}
+```
+Response:
+```json
+{
+  "response": "I’ve added the two race variables to your selection. The current variables shown are:\n\n* `\\Synthea\\ACT Demographics\\Race\\`\n* `\\Nhanes\\demographics\\RACE\\`\n\nalong with your previously selected BMI, sex, and age variables.",
+  "query": {
+    "select": [
+      "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+      "\\Nhanes\\demographics\\SEX\\",
+      "\\Nhanes\\demographics\\AGE\\",
+      "\\Synthea\\ACT Demographics\\Race\\",
+      "\\Nhanes\\demographics\\RACE\\"
+    ],
+    "phenotypicClause": {
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+          "values": [
+            "female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+          "min": 40
+        }
+      ],
+      "operator": "AND"
+    }
+  }
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_p1qzj0GL547Vlhpgx9IkOM {"query": "race","pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_p1qzj0GL547Vlhpgx9IkOM error=false chars=391
+Tool call requested: name=propose_query id=tooluse_wbBU8swTdfeeszTWDrypyk {"query": {"select": ["\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\", "\\Nhanes\\demographics\\SEX\\", "\\Nhanes\\demographics\\AGE\\", "\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_wbBU8swTdfeeszTWDrypyk error=false chars=17
+Chat turn end: requestId=v15-t11-r2 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12149 totalOutputTokens=643 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T11 R3 (`v15-t11-r3`)
+
+Result:
+
+Searches: `race`
+
+Request body:
+```json
+{
+  "conversationId": "v15-t11-r3-conv",
+  "requestId": "v15-t11-r3",
+  "message": "Select all race variables",
+  "query": {
+    "select": [
+      "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+      "\\Nhanes\\demographics\\SEX\\",
+      "\\Nhanes\\demographics\\AGE\\"
+    ],
+    "phenotypicClause": {
+      "operator": "AND",
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+          "values": [
+            "female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+          "min": 40
+        }
+      ]
+    }
+  }
+}
+```
+Response:
+```json
+{
+  "response": "I’ve added the two race variables to your selection. Your current query now includes:\n\n- `\\Synthea\\ACT Demographics\\Race\\`\n- `\\Nhanes\\demographics\\RACE\\`\n\nAll other selected variables and filters remain unchanged.",
+  "query": {
+    "select": [
+      "\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\",
+      "\\Nhanes\\demographics\\SEX\\",
+      "\\Nhanes\\demographics\\AGE\\",
+      "\\Synthea\\ACT Demographics\\Race\\",
+      "\\Nhanes\\demographics\\RACE\\"
+    ],
+    "phenotypicClause": {
+      "phenotypicClauses": [
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\SEX\\",
+          "values": [
+            "female"
+          ]
+        },
+        {
+          "phenotypicFilterType": "FILTER",
+          "conceptPath": "\\Nhanes\\demographics\\AGE\\",
+          "min": 40
+        }
+      ],
+      "operator": "AND"
+    }
+  }
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_LPoB3oBPJC3RNi9zTN7EAp {"query": "race"}
+Tool call: name=search_concepts id=tooluse_LPoB3oBPJC3RNi9zTN7EAp error=false chars=391
+Tool call requested: name=propose_query id=tooluse_61IfIWeQBOlGcqb3VCP2M9 {"query": {"select": ["\\Nhanes\\examination\\body measures\\Body Mass Index (kg per m**2)\\", "\\Nhanes\\demographics\\SEX\\", "\\Nhanes\\demographics\\AGE\\", "\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_61IfIWeQBOlGcqb3VCP2M9 error=false chars=17
+Chat turn end: requestId=v15-t11-r3 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12131 totalOutputTokens=416 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+## T12 Lookup from the UI's empty query
+
+- **Message:** `Select all race variables`
+- **Pass:** same as T10; no 400. v13: a select-only propose_query is now read as the search that found the variables, so there should be NO refused propose_query (error=true) in the log; count any that remain.
+
+### T12 R1 (`v15-t12-r1`)
+
+Result:
+
+Searches: `race`
+
+Request body:
+```json
+{
+  "conversationId": "v15-t12-r1-conv",
+  "requestId": "v15-t12-r1",
+  "message": "Select all race variables",
+  "query": {
+    "select": [],
+    "authorizationFilters": [],
+    "phenotypicClause": null,
+    "genomicFilters": [],
+    "expectedResultType": "COUNT",
+    "picsureId": null,
+    "id": null
+  },
+  "search": "",
+  "facets": []
+}
+```
+Response:
+```json
+{
+  "response": "I’ve added both race variables to your selection:\n\n- `\\Synthea\\ACT Demographics\\Race\\`\n- `\\Nhanes\\demographics\\RACE\\`\n\nThese will now appear in your results table.",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_rg9HA3b7eQdtac3u2rzuRK {"query": "race"}
+Tool call: name=search_concepts id=tooluse_rg9HA3b7eQdtac3u2rzuRK error=false chars=391
+Tool call requested: name=propose_query id=tooluse_Ax897RySBEcURn0cb9dxiW {"query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_Ax897RySBEcURn0cb9dxiW error=false chars=17
+Chat turn end: requestId=v15-t12-r1 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11660 totalOutputTokens=676 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T12 R2 (`v15-t12-r2`)
+
+Result:
+
+Searches: `race`
+
+Request body:
+```json
+{
+  "conversationId": "v15-t12-r2-conv",
+  "requestId": "v15-t12-r2",
+  "message": "Select all race variables",
+  "query": {
+    "select": [],
+    "authorizationFilters": [],
+    "phenotypicClause": null,
+    "genomicFilters": [],
+    "expectedResultType": "COUNT",
+    "picsureId": null,
+    "id": null
+  },
+  "search": "",
+  "facets": []
+}
+```
+Response:
+```json
+{
+  "response": "I’ve added the two race variables that match your request:\n\n* `\\Synthea\\ACT Demographics\\Race\\`\n* `\\Nhanes\\demographics\\RACE\\`\n\nThese variables are now selected for you. Let me know if you’d like to add any filters or explore the data further.",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_09LMLjS5xepHt932NTQQmX {"query": "race"}
+Tool call: name=search_concepts id=tooluse_09LMLjS5xepHt932NTQQmX error=false chars=391
+Tool call requested: name=propose_query id=tooluse_RDesYCrkc8dftK0Q9UOFkz {"query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_RDesYCrkc8dftK0Q9UOFkz error=false chars=17
+Chat turn end: requestId=v15-t12-r2 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11660 totalOutputTokens=338 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T12 R3 (`v15-t12-r3`)
+
+Result:
+
+Searches: `race`
+
+Request body:
+```json
+{
+  "conversationId": "v15-t12-r3-conv",
+  "requestId": "v15-t12-r3",
+  "message": "Select all race variables",
+  "query": {
+    "select": [],
+    "authorizationFilters": [],
+    "phenotypicClause": null,
+    "genomicFilters": [],
+    "expectedResultType": "COUNT",
+    "picsureId": null,
+    "id": null
+  },
+  "search": "",
+  "facets": []
+}
+```
+Response:
+```json
+{
+  "response": "Your results include two race variables:\n\n- `\\Synthea\\ACT Demographics\\Race\\` (categorical)\n- `\\Nhanes\\demographics\\RACE\\` (categorical)",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_6IFH45YmJUTB9Gop6FCVoc {"query": "race"}
+Tool call: name=search_concepts id=tooluse_6IFH45YmJUTB9Gop6FCVoc error=false chars=391
+Tool call requested: name=propose_query id=tooluse_6IylEw5JhRbQi2kVYb2vfs {"query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_6IylEw5JhRbQi2kVYb2vfs error=false chars=17
+Chat turn end: requestId=v15-t12-r3 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11660 totalOutputTokens=256 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T12 R4 (`v15-t12-r4`)
+
+Result:
+
+Searches: `race`
+
+Request body:
+```json
+{
+  "conversationId": "v15-t12-r4-conv",
+  "requestId": "v15-t12-r4",
+  "message": "Select all race variables",
+  "query": {
+    "select": [],
+    "authorizationFilters": [],
+    "phenotypicClause": null,
+    "genomicFilters": [],
+    "expectedResultType": "COUNT",
+    "picsureId": null,
+    "id": null
+  },
+  "search": "",
+  "facets": []
+}
+```
+Response:
+```json
+{
+  "response": "Here are the two race variables found in the data:\n\n- `\\Synthea\\ACT Demographics\\Race\\` (categorical)\n- `\\Nhanes\\demographics\\RACE\\` (categorical)",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_jvBuCKaEGzKWWIKviifkvf {"query": "race"}
+Tool call: name=search_concepts id=tooluse_jvBuCKaEGzKWWIKviifkvf error=false chars=391
+Tool call requested: name=propose_query id=tooluse_QjXrSLTA2NI7O2BPvhlunq {"search": "race"}
+Tool call: name=propose_query id=tooluse_QjXrSLTA2NI7O2BPvhlunq error=false chars=17
+Chat turn end: requestId=v15-t12-r4 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11636 totalOutputTokens=255 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+### T12 R5 (`v15-t12-r5`)
+
+Result:
+
+Searches: `race`
+
+Request body:
+```json
+{
+  "conversationId": "v15-t12-r5-conv",
+  "requestId": "v15-t12-r5",
+  "message": "Select all race variables",
+  "query": {
+    "select": [],
+    "authorizationFilters": [],
+    "phenotypicClause": null,
+    "genomicFilters": [],
+    "expectedResultType": "COUNT",
+    "picsureId": null,
+    "id": null
+  },
+  "search": "",
+  "facets": []
+}
+```
+Response:
+```json
+{
+  "response": "Your screen now shows two race variables:\n\n* `\\Synthea\\ACT Demographics\\Race\\`\n* `\\Nhanes\\demographics\\RACE\\`\n\nThese are the categorical race concepts available in the data. Let me know if you’d like to view details about either variable or add filters to create a cohort.",
+  "search": "race"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_Fu68T7FQVpQsSYkJhBmOc9 {"query": "race"}
+Tool call: name=search_concepts id=tooluse_Fu68T7FQVpQsSYkJhBmOc9 error=false chars=391
+Tool call requested: name=propose_query id=tooluse_zFGoqSnnuTbYomto8AqEme {"search": "race","query": {"select": ["\\Synthea\\ACT Demographics\\Race\\", "\\Nhanes\\demographics\\RACE\\"]}}
+Tool call: name=propose_query id=tooluse_zFGoqSnnuTbYomto8AqEme error=false chars=17
+Chat turn end: requestId=v15-t12-r5 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11664 totalOutputTokens=364 toolsCalled=[search_concepts(391 chars), propose_query(17 chars)]
+```
+
+## T14 Several topics in one question
+
+- **Message:** `Do you have anything on smoking, alcohol use, sleep, and physical activity?`
+- **Pass:** each topic answered (smoking and alcohol with exact paths, physical activity found); sleep is found now as three Synthea G47 sleep-disorder paths, so it must be reported with them, not as not found; alcohol lists all seven: the four `\Nhanes\questionnaire\alcohol use\` items (days drink in year, drink 5 in a day, drink per day, days 5 drinks in year), `food component recall\Alcohol (gm)`, `supplement use\ALCOHOL_PERCENT`, and the Synthea F10 path; short summary, not the full smoking list; no query; finishes under the cap. A search proposal is optional (note it). Any path flag is a FAIL for that path. A topic with about eight or fewer matches written as "examples include" is a FAIL. Note the search terms used in any failing run.
+
+### T14 R1 (`v15-t14-r1`)
+
+Result:
+
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\F10-F19 Mental and behavioral disorders due to psychoactive substance use\F10 Alcohol related disorders\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G40-G47 Episodic and paroxysmal disorders\G47 Sleep disorders\G47.3 Sleep apnea\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G40-G47 Episodic and paroxysmal disorders\G47 Sleep disorders\G47.9 Sleep disorder, unspecified\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G00-G99 Diseases of the nervous system\G40-G47 Episodic and paroxysmal disorders\G47 Sleep disorders\`
+
+Searches: `smoking | alcohol | sleep | physical activity`
+
+Response:
+```json
+{
+  "response": "Yes – the data dictionary contains a number of variables related to each of those topics.\n\n**Smoking (≈ 37 variables)** – here are a few of the most common ones:  \n* `\\Nhanes\\questionnaire\\smoking family\\Total # of cigarettes smoked in home\\` (continuous)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\Current Cigarette Smoker?\\` (categorical)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\# cigarettes smoked per day now\\` (continuous)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\Age started smoking cigarettes regularly\\` (continuous)  \n\n**Alcohol use (7 variables)** – all are listed below:  \n* `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` (continuous)  \n* `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` (continuous)  \n* `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` (categorical) – “Yes/No”  \n* `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` (continuous)  \n* `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` (continuous)  \n* `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` (continuous)  \n* `\\Synthea\\ACT Diagnosis ICD-10\\F10-F19 Mental and behavioral disorders due to psychoactive substance use\\F10 Alcohol related disorders\\` (categorical)  \n\n**Sleep (3 variables)** – all are listed below:  \n* `\\Synthea\\ACT Diagnosis ICD-10\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\G47.3 Sleep apnea\\` (categorical)  \n* `\\Synthea\\ACT Diagnosis ICD-10\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\G47.9 Sleep disorder, unspecified\\` (categorical)  \n* `\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\` (categorical)  \n\n**Physical activity (1 variable)** – the main measure is:  \n* `\\Nhanes\\questionnaire\\physical fitness\\Physical Activity (MET-based rank)\\` (continuous)  \n\nSo the data set does contain a range of smoking, alcohol-use, sleep, and physical-activity measures that you can use for cohort building or analysis. Let me know if you’d like to see any of these variables in more detail or build a specific query around them."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_iNdhQ6q6QwLqkZo9Nv45QC {"query": "smoking | alcohol | sleep | physical activity","pageSize": 50,"page": 0}
+Tool call: name=search_concepts id=tooluse_iNdhQ6q6QwLqkZo9Nv45QC error=false chars=7335
+Chat turn end: requestId=v15-t14-r1 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=9708 totalOutputTokens=1045 toolsCalled=[search_concepts(7335 chars)]
+```
+
+### T14 R2 (`v15-t14-r2`)
+
+Result:
+
+- ⚠ path not returned by any search: prose: `\Nhanes\questionnaire\smoking family\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\`
+
+Searches: `smoking | alcohol | sleep | physical activity`
+
+Response:
+```json
+{
+  "response": "Here are the variables that match each of the topics you asked about.\n\n**Smoking (37 matches)** – the search returned a large set of smoking-related questionnaire items. A few of the most relevant examples are:\n\n* `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\`\n* `\\Nhanes\\questionnaire\\smoking family\\Total # of smokers in home`\n* `\\Nhanes\\questionnaire\\smoking family\\Total # of cigarettes smoked in home\\`\n* `\\Nhanes\\questionnaire\\smoking behavior\\Current Cigarette Smoker?\\`\n* `\\Nhanes\\questionnaire\\smoking behavior\\# cigarettes smoked per day when quit\\`\n* `\\Nhanes\\questionnaire\\smoking behavior\\# days smoked cigs during past 30 days\\`\n\n(There are many more smoking variables in the data; the full list contains 37 items.)\n\n**Alcohol use (7 matches)** – the alcohol-related items include both questionnaire-based consumption measures and diagnostic codes:\n\n* `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\`\n* `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\`\n* `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` (categorical “Yes/No”)\n* `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\`\n* `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\`\n* `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\`\n* `\\Synthea\\ACT Diagnosis ICD-10\\F10 Alcohol related disorders` (categorical diagnosis code)\n\n**Sleep (3 matches)** – sleep-related concepts include both diagnostic codes and questionnaire items:\n\n* `\\Synthea\\ACT Diagnosis ICD-10\\G47.3 Sleep apnea`\n* `\\Synthea\\ACT Diagnosis ICD-10\\G47.9 Sleep disorder, unspecified`\n* `\\Synthea\\ACT Diagnosis ICD-10\\G47 Sleep disorders` (parent category)\n\n**Physical activity (1 match)** – the only physical-activity variable returned is:\n\n* `\\Nhanes\\questionnaire\\physical fitness\\Physical Activity (MET-based rank)\\`\n\nIf you’d like to see any of these variables in more detail (e.g., descriptions, value ranges) or to build a cohort using any of them, just let me know and I can retrieve the additional information for you."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_HBx9FoTOJUHrPOSbGIX0xx {"query": "smoking | alcohol | sleep | physical activity"}
+Tool call: name=search_concepts id=tooluse_HBx9FoTOJUHrPOSbGIX0xx error=false chars=3956
+Chat turn end: requestId=v15-t14-r2 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=8757 totalOutputTokens=716 toolsCalled=[search_concepts(3956 chars)]
+```
+
+### T14 R3 (`v15-t14-r3`)
+
+Result:
+
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G47 Sleep disorders\G47.3 Sleep apnea\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G47 Sleep disorders\G47.9 Sleep disorder, unspecified\`
+
+Searches: `smoking | alcohol | sleep | physical activity`
+
+Response:
+```json
+{
+  "response": "Here are the variables that match each of those topics:\n\n**Smoking (37 matches)** – the first few include  \n- `\\Nhanes\\questionnaire\\smoking family\\Total # of cigarettes smoked in home\\` (continuous)  \n- `\\Nhanes\\questionnaire\\smoking family\\Total number of smokers in home\\` (continuous)  \n- `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\` (categorical)  \n- `\\Nhanes\\questionnaire\\smoking behavior\\Current Cigarette Smoker?\\` (categorical)  \n\n**Alcohol (7 matches)** – examples:  \n- `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` (continuous)  \n- `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` (continuous)  \n\n**Sleep (3 matches)** – examples:  \n- `\\Synthea\\ACT Diagnosis ICD-10\\G47 Sleep disorders\\G47.3 Sleep apnea\\` (categorical)  \n- `\\Synthea\\ACT Diagnosis ICD-10\\G47 Sleep disorders\\G47.9 Sleep disorder, unspecified\\` (categorical)  \n\n**Physical activity (1 match)** –  \n- `\\Nhanes\\questionnaire\\physical fitness\\Physical Activity (MET-based rank)\\` (continuous)  \n\nThese results are from the open-access view of the data dictionary; they show the variable names, paths, and basic data types. Let me know if you’d like more detail on any of them or want to filter/count participants using any of these variables.",
+  "search": "smoking | alcohol | sleep | physical activity"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_yjKYPditevBZMhBAfnho2u {"query": "smoking | alcohol | sleep | physical activity"}
+Tool call: name=search_concepts id=tooluse_yjKYPditevBZMhBAfnho2u error=false chars=3956
+Tool call requested: name=propose_query id=tooluse_GF7TU63pmBuSpBQznOmevi {"search": "smoking | alcohol | sleep | physical activity"}
+Tool call: name=propose_query id=tooluse_GF7TU63pmBuSpBQznOmevi error=false chars=17
+Chat turn end: requestId=v15-t14-r3 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=13768 totalOutputTokens=812 toolsCalled=[search_concepts(3956 chars), propose_query(17 chars)]
+```
+
+### T14 R4 (`v15-t14-r4`)
+
+Result:
+
+- ⚠ path not returned by any search: prose: `\Nhanes\questionnaire\smoking family\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\F10-F19 Mental and behavioral disorders due to psychoactive substance use\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G47 Sleep disorders\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G00-G99 Diseases of the nervous system\G40-G47 Episodic and paroxysmal disorders\`
+
+Searches: `smoking | alcohol | sleep | physical activity`
+
+Response:
+```json
+{
+  "response": "Yes – the data dictionary contains a number of variables that capture smoking, alcohol use, sleep, and physical activity.\n\n**Smoking (many variables – 37 matches)**  \nA few of the most directly useful ones are:\n\n* `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\` – categorical (Yes/No)  \n* `\\Nhanes\\questionnaire\\smoking family\\Total # of smokers in home` – continuous (count)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\Current Cigarette Smoker?\\` – categorical (Yes/No)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\# cigarettes smoked per day when quit\\` – continuous (0-90)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\# days smoked cigs during past 30 days\\` – continuous (0-30)  \n\n(There are many additional smoking-related items such as total cigarettes smoked in the home, pipe/cigar use, age last smoked, etc.)\n\n**Alcohol use (7 matches – all listed)**  \n\n* `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` – continuous (1-365)  \n* `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` – continuous (1-50)  \n* `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` – categorical (Yes/No)  \n* `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` – continuous (1-365)  \n* `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` – continuous (0-636.2)  \n* `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` – continuous (0-18.7)  \n* `\\Synthea\\ACT Diagnosis ICD-10\\F10-F19 Mental and behavioral disorders due to psychoactive substance use\\F10 Alcohol related disorders` – categorical (e.g., “F10.2 Alcohol dependence”)  \n\n**Sleep (3 matches – all listed)**  \n\n* `\\Synthea\\ACT Diagnosis ICD-10\\G47 Sleep disorders\\G47.3 Sleep apnea` – categorical (e.g., “Obstructive sleep apnea”)  \n* `\\Synthea\\ACT Diagnosis ICD-10\\G47 Sleep disorders\\G47.9 Sleep disorder, unspecified` – categorical  \n* `\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders` – categorical (general “Sleep disorders” label)  \n\n**Physical activity (1 match)**  \n\n* `\\Nhanes\\questionnaire\\physical fitness\\Physical Activity (MET-based rank)\\` – continuous (0-3)  \n\nThese variables are available in the open-access view of the data dictionary. If you’d like to see more details about any specific variable or to build a cohort using any of them, just let me know!"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_TbTvxoOJtNma1vGFoBzKCt {"query": "smoking | alcohol | sleep | physical activity"}
+Tool call: name=search_concepts id=tooluse_TbTvxoOJtNma1vGFoBzKCt error=false chars=3956
+Chat turn end: requestId=v15-t14-r4 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=8757 totalOutputTokens=1138 toolsCalled=[search_concepts(3956 chars)]
+```
+
+### T14 R5 (`v15-t14-r5`)
+
+Result:
+
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G00-G99 Diseases of the nervous system\G40-G47 Episodic and paroxysmal disorders\G47 Sleep disorders\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G00-G99 Diseases of the nervous system\G40-G47 Episodic and paroxysmal disorders\`
+
+Searches: `smoking | alcohol | sleep | physical activity`
+
+Response:
+```json
+{
+  "response": "I found a range of questionnaire-type variables for each of the topics you mentioned:\n\n**Smoking (≈ 37 variables)** – examples include  \n* `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\` (categorical)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\Current Cigarette Smoker?\\` (categorical)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\# cigarettes smoked per day when quit\\` (continuous)  \n* `\\Nhanes\\questionnaire\\smoking family\\Total # of cigarettes smoked in home\\` (continuous)  \n\n**Alcohol use (≈ 7 variables)** – examples include  \n* `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` (continuous)  \n* `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` (continuous)  \n* `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` (continuous)  \n* `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` (continuous)  \n\n**Sleep (≈ 3 variables)** – examples include  \n* `\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\G47.3 Sleep apnea` (categorical)  \n* `\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders` (categorical)  \n\n**Physical activity (≈ 1 variable)** –  \n* `\\Nhanes\\questionnaire\\physical fitness\\Physical Activity (MET-based rank)\\` (continuous)  \n\nThese variables are all available in the open-access view of the data. Let me know if you’d like to see more details for any of them, or if you’d like to start building a cohort filter using any of these measures."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_u1UQt4peURRLPPHFTCwXGU {"query": "smoking | alcohol | sleep | physical activity"}
+Tool call: name=search_concepts id=tooluse_u1UQt4peURRLPPHFTCwXGU error=false chars=3956
+Chat turn end: requestId=v15-t14-r5 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=8757 totalOutputTokens=672 toolsCalled=[search_concepts(3956 chars)]
+```
+
+### T14 R6 (`v15-t14-r6`)
+
+Result:
+
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\F10 Alcohol related disorders\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G47 Sleep disorders\G47.3 Sleep apnea\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G47 Sleep disorders\G47.9 Sleep disorder, unspecified\`
+
+Searches: `smoking | alcohol | sleep | physical activity`
+
+Response:
+```json
+{
+  "response": "Yes – the data dictionary includes a number of variables for each of those topics.\n\n**Smoking (8 examples)**  \n- `\\Nhanes\\questionnaire\\smoking family\\Total # of cigarettes smoked in home\\` (continuous)  \n- `\\Nhanes\\questionnaire\\smoking family\\Total number of smokers in home\\` (continuous)  \n- `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\` (categorical)  \n- `\\Nhanes\\questionnaire\\smoking behavior\\Current Cigarette Smoker?\\` (categorical)  \n- `\\Nhanes\\questionnaire\\smoking behavior\\# cigarettes smoked per day when quit\\` (continuous)  \n- `\\Nhanes\\questionnaire\\smoking behavior\\# days smoked cigs during past 30 days\\` (continuous)  \n- `\\Nhanes\\questionnaire\\smoking behavior\\Age last smoked cigarettes regularly\\` (continuous)  \n- `\\Nhanes\\questionnaire\\smoking behavior\\Smoked cigars at least 20 times in life\\` (categorical)  \n\n**Alcohol use (7 variables)**  \n- `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` (continuous)  \n- `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` (continuous)  \n- `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` (continuous)  \n- `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` (categorical)  \n- `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` (continuous)  \n- `\\Synthea\\ACT Diagnosis ICD-10\\F10 Alcohol related disorders\\` (categorical diagnosis code)  \n\n**Sleep (3 variables)**  \n- `\\Synthea\\ACT Diagnosis ICD-10\\G47 Sleep disorders\\G47.3 Sleep apnea\\` (categorical)  \n- `\\Synthea\\ACT Diagnosis ICD-10\\G47 Sleep disorders\\G47.9 Sleep disorder, unspecified\\` (categorical)  \n- (additional sleep-related codes are grouped under the same ICD-10 branch)  \n\n**Physical activity (1 variable)**  \n- `\\Nhanes\\questionnaire\\physical fitness\\Physical Activity (MET-based rank)\\` (continuous)  \n\nSo the dictionary does contain a range of smoking, alcohol, sleep, and physical-activity measures you can work with. Let me know if you’d like to see more details about any of these variables or want to build a cohort using them."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_mpVDFM34MZY0gjKf9vAXWF {"query": "smoking | alcohol | sleep | physical activity"}
+Tool call: name=search_concepts id=tooluse_mpVDFM34MZY0gjKf9vAXWF error=false chars=3956
+Chat turn end: requestId=v15-t14-r6 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=8757 totalOutputTokens=1323 toolsCalled=[search_concepts(3956 chars)]
+```
+
+### T14 R7 (`v15-t14-r7`)
+
+Result:
+
+Searches: `smoking | alcohol | sleep | "physical activity"`
+
+Response:
+```json
+{
+  "response": "Here are some variables that match your topics:\n\n- Smoking: `\\Nhanes\\questionnaire\\smoking family\\Total # of cigarettes smoked in home\\`, `\\Nhanes\\questionnaire\\smoking family\\Total number of smokers in home\\`, `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\`, `\\Nhanes\\questionnaire\\smoking behavior\\Current Cigarette Smoker?\\`, and several others related to cigarettes, pipes, and cigars.\n\n- Alcohol use: `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\`, `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\`, `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\`, and `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\`.\n\n- Sleep: `\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system (G00-G99)\\G40-G47 Episodic and paroxysmal disorders (G40-G47)\\G47 Sleep disorders\\G47.3 Sleep apnea\\`, and `\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system (G00-G99)\\G40-G47 Episodic and paroxysmal disorders (G40-G47)\\G47 Sleep disorders\\`.\n\n- Physical activity: `\\Nhanes\\questionnaire\\physical fitness\\Physical Activity (MET-based rank)\\`.\n\nThese are the variables currently displayed in your results. Let me know if you’d like to add any of them to a cohort, see more details, or explore additional related measures.",
+  "search": "smoking | alcohol | sleep | \"physical activity\""
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_XEXEKfoIwQ1bq5kEkv4UDS {"query": "smoking | alcohol | sleep | \"physical activity\"","pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_XEXEKfoIwQ1bq5kEkv4UDS error=false chars=3960
+Tool call requested: name=propose_query id=tooluse_EnXzPydYTX1bPTOGnk5cel {"search": "smoking | alcohol | sleep | \"physical activity\""}
+Tool call: name=propose_query id=tooluse_EnXzPydYTX1bPTOGnk5cel error=false chars=17
+Chat turn end: requestId=v15-t14-r7 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=13796 totalOutputTokens=707 toolsCalled=[search_concepts(3960 chars), propose_query(17 chars)]
+```
+
+### T14 R8 (`v15-t14-r8`)
+
+Result:
+
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G00-G99 Diseases of the nervous system\G40-G47 Episodic and paroxysmal disorders\G47 Sleep disorders\G47.3 Sleep apnea\`
+- ⚠ path not returned by any search: prose: `\Synthea\ACT Diagnosis ICD-10\G00-G99 Diseases of the nervous system\G40-G47 Episodic and paroxysmal disorders\G47 Sleep disorders\G47.9 Sleep disorder, unspecified\`
+
+Searches: `smoking | alcohol | sleep | physical activity`
+
+Response:
+```json
+{
+  "response": "I found a good set of variables that cover each of the topics you asked about.\n\n**Smoking** – the data include many questionnaire items from the NHANES study, for example:  \n\n* `\\Nhanes\\questionnaire\\smoking family\\Total # of cigarettes smoked in home\\` (continuous)  \n* `\\Nhanes\\questionnaire\\smoking family\\Total number of smokers in home\\` (continuous)  \n* `\\Nhanes\\questionnaire\\smoking family\\Does anyone smoke in home?\\` (categorical – Yes/No)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\Current Cigarette Smoker?\\` (categorical – Yes/No)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\# cigarettes smoked per day when quit\\` (continuous)  \n* `\\Nhanes\\questionnaire\\smoking behavior\\# days smoked cigs during past 30 days\\` (continuous)  \n\nThere are dozens of additional smoking-related items (e.g., pipe and cigar use) that you can explore.\n\n**Alcohol use** – several NHANES questionnaire variables capture alcohol consumption, such as:  \n\n* `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` (continuous)  \n* `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` (continuous)  \n* `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` (categorical – Yes/No)  \n* `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` (continuous)  \n* `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` (continuous)  \n\n**Sleep** – the data contain a few sleep-related diagnosis codes from the Synthea synthetic cohort, for example:  \n\n* `\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\G47.3 Sleep apnea\\` (categorical)  \n* `\\Synthea\\ACT Diagnosis ICD-10\\G00-G99 Diseases of the nervous system\\G40-G47 Episodic and paroxysmal disorders\\G47 Sleep disorders\\G47.9 Sleep disorder, unspecified\\` (categorical)  \n\n**Physical activity** – a single continuous metric is available:  \n\n* `\\Nhanes\\questionnaire\\physical fitness\\Physical Activity (MET-based rank)\\` (continuous, range 0-3)  \n\nOverall, the data set contains many more smoking-related variables (≈ 37 concepts) and a handful of additional alcohol, sleep, and physical-activity items. If you’d like to see the full list, or to start building a cohort using any of these variables, just let me know!"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_82AD5ozUdkF9fpHeammrPj {"query": "smoking | alcohol | sleep | physical activity"}
+Tool call: name=search_concepts id=tooluse_82AD5ozUdkF9fpHeammrPj error=false chars=3956
+Chat turn end: requestId=v15-t14-r8 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=8757 totalOutputTokens=1103 toolsCalled=[search_concepts(3956 chars)]
+```
+
+## T16 Browse by category
+
+- **Message:** `Show me all the laboratory variables`
+- **Pass:** list_facets called; no query. list_facets now returns categories (dataset_id, data_type) but none for laboratory, so a search for laboratory is proposed; nothing guessed, and no facet that list_facets did not return. Any offer to narrow by dataset or data type must be a real category. Flag a proposal that lists non-laboratory matches (Labetalol, laborer) as laboratory variables.
+
+### T16 R1 (`v15-t16-r1`)
+
+Result:
+
+Searches: `laboratory`
+
+Response:
+```json
+{
+  "response": "Here are the laboratory variables found in the data (showing the first few matches):\n\n- `\\Nhanes\\laboratory\\furans\\` – continuous (range 75 – 615)  \n- `\\Nhanes\\laboratory\\polybrominated ethers\\` – categorical (No, Yes)  \n- `\\Nhanes\\laboratory\\bacterial infection\\` – continuous (range 0 – 13.904)  \n- `\\Nhanes\\laboratory\\heavy metals\\` – continuous (range 0 – 2884.22)  \n- `\\Nhanes\\laboratory\\dioxins\\` – continuous (range 0.4 – 45.2)  \n- `\\Nhanes\\laboratory\\allergen test\\` – continuous (range 0 – 164.144)  \n- `\\Nhanes\\laboratory\\diakyl\\` – continuous (range 0.14 – 4.1)  \n- `\\Nhanes\\laboratory\\phytoestrogens\\` – continuous (range 1 – 1)  \n\nThere are many more laboratory concepts (over 500 total). Let me know if you’d like to explore a specific subset, filter by a study, or see counts for any of these variables.",
+  "search": "laboratory"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_17gTIB9t5tZcDNuJfUWbPU {"query": ""}
+Tool call: name=list_facets id=tooluse_17gTIB9t5tZcDNuJfUWbPU error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_rdjoFV5hsypJ01Aw2Wnira {"query": "laboratory"}
+Tool call: name=search_concepts id=tooluse_rdjoFV5hsypJ01Aw2Wnira error=false chars=3585
+Tool call requested: name=propose_query id=tooluse_eh4MkdLtlBEUwMch4oL95m {"search": "laboratory"}
+Tool call: name=propose_query id=tooluse_eh4MkdLtlBEUwMch4oL95m error=false chars=17
+Chat turn end: requestId=v15-t16-r1 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=17741 totalOutputTokens=573 toolsCalled=[list_facets(510 chars), search_concepts(3585 chars), propose_query(17 chars)]
+```
+
+### T16 R2 (`v15-t16-r2`)
+
+Result:
+
+Searches: `laboratory`
+
+Response:
+```json
+{
+  "response": "Here are the laboratory variables that match your request. Your screen now shows a table of these variables:\n\n* `\\Nhanes\\laboratory\\furans\\` (continuous)  \n* `\\Nhanes\\laboratory\\polybrominated ethers\\` (categorical)  \n* `\\Nhanes\\laboratory\\bacterial infection\\` (continuous)  \n* `\\Nhanes\\laboratory\\heavy metals\\` (continuous)  \n* `\\Nhanes\\laboratory\\dioxins\\` (continuous)  \n* `\\Nhanes\\laboratory\\allergen test\\` (continuous)  \n* `\\Nhanes\\laboratory\\diakyl\\` (continuous)  \n* `\\Nhanes\\laboratory\\phytoestrogens\\` (continuous)  \n* `\\Nhanes\\laboratory\\acrylamide\\` (categorical)  \n* `\\Nhanes\\laboratory\\phenols\\` (continuous)  \n* `\\Nhanes\\laboratory\\melamine\\` (categorical)  \n* `\\Nhanes\\laboratory\\phthalates\\` (categorical)  \n* `\\Nhanes\\laboratory\\biochemistry\\` (categorical)  \n* `\\Nhanes\\laboratory\\hormone\\` (continuous)  \n* `\\Nhanes\\laboratory\\cotinine\\` (categorical)  \n* `\\Nhanes\\laboratory\\viral infection\\Herpes I\\` (categorical)  \n* `\\Nhanes\\laboratory\\viral infection\\Varicella antibody\\` (categorical)  \n* `\\Nhanes\\laboratory\\viral infection\\Hepatitis A Antibody (Anti-HAV)\\` (categorical)  \n* `\\Nhanes\\laboratory\\viral infection\\HIV antibody test result\\` (categorical)  \n* `\\Nhanes\\laboratory\\viral infection\\HPV 11 (Merck competitive Luminex assay)\\` (categorical)  \n* `\\Nhanes\\laboratory\\viral infection\\HPV 06 (Merck competitive Luminex assay)\\` (categorical)  \n\n(plus a few additional laboratory concepts from the Synthea dataset). Let me know if you’d like to filter these further, add them to a cohort, or explore any of them in more detail.",
+  "search": "laboratory"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_7i1b4XEuT0TBqeSThOV9GY {"query": {}}
+Tool call: name=list_facets id=tooluse_7i1b4XEuT0TBqeSThOV9GY error=false chars=512
+Tool call requested: name=search_concepts id=tooluse_k540FFlq0sqdgqmpHpDC99 {"query": "laboratory"}
+Tool call: name=search_concepts id=tooluse_k540FFlq0sqdgqmpHpDC99 error=false chars=3585
+Tool call requested: name=propose_query id=tooluse_31U3QBwcXKlHXAZxvfUvUA {"search": "laboratory"}
+Tool call: name=propose_query id=tooluse_31U3QBwcXKlHXAZxvfUvUA error=false chars=17
+Chat turn end: requestId=v15-t16-r2 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=17747 totalOutputTokens=840 toolsCalled=[list_facets(512 chars), search_concepts(3585 chars), propose_query(17 chars)]
+```
+
+### T16 R3 (`v15-t16-r3`)
+
+Result:
+
+Searches: `laboratory`
+
+Response:
+```json
+{
+  "response": "Here are the laboratory variables that matched your search. The results include 516 items, so only a few representative examples are shown:\n\n- `\\Nhanes\\laboratory\\furans\\` (continuous)  \n- `\\Nhanes\\laboratory\\polybrominated ethers\\` (categorical)  \n- `\\Nhanes\\laboratory\\heavy metals\\` (continuous)  \n- `\\Nhanes\\laboratory\\phthalates\\` (categorical)  \n- `\\Synthea\\ACT Procedures CPT\\Pathology and Laboratory Procedures\\Organ or Disease Oriented Panels\\` (categorical)  \n- `\\Synthea\\ACT Procedures CPT\\Pathology and Laboratory Procedures\\Urinalysis Procedures\\` (categorical)  \n\nYour screen now shows the matching variables. Let me know if you’d like to narrow the list, view details for any variable, or build a cohort using any of these measures.",
+  "search": "laboratory"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_kXwRueaERuMGLlqJU5nELP {"query": ""}
+Tool call: name=list_facets id=tooluse_kXwRueaERuMGLlqJU5nELP error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_c9Phuff1JaaTpLYqcPZ7mb {"query": "laboratory"}
+Tool call: name=search_concepts id=tooluse_c9Phuff1JaaTpLYqcPZ7mb error=false chars=3585
+Tool call requested: name=propose_query id=tooluse_oUFB2MKhlLr5VPDwrJsk2H {"search": "laboratory"}
+Tool call: name=propose_query id=tooluse_oUFB2MKhlLr5VPDwrJsk2H error=false chars=17
+Chat turn end: requestId=v15-t16-r3 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=17741 totalOutputTokens=459 toolsCalled=[list_facets(510 chars), search_concepts(3585 chars), propose_query(17 chars)]
+```
+
+### T16 R4 (`v15-t16-r4`)
+
+Result:
+
+Searches: `laboratory`
+
+Response:
+```json
+{
+  "response": "Your search for “laboratory” returned a large set of variables (516 matches). Here are a few of the most relevant concepts that were found:\n\n* `\\Nhanes\\laboratory\\furans\\` – continuous (range 75 – 615)  \n* `\\Nhanes\\laboratory\\polybrominated ethers\\` – categorical (values No, Yes)  \n* `\\Nhanes\\laboratory\\bacterial infection\\` – continuous (range 0 – 13.904)  \n* `\\Nhanes\\laboratory\\heavy metals\\` – continuous (range 0 – 2884.22)  \n* `\\Nhanes\\laboratory\\dioxins\\` – continuous (range 0.4 – 45.2)  \n* `\\Nhanes\\laboratory\\allergen test\\` – continuous (range 0 – 164.144)  \n* `\\Nhanes\\laboratory\\acrylamide\\` – categorical (values No, Yes)  \n* `\\Nhanes\\laboratory\\phenols\\` – continuous (range 38 – 200)  \n\nThese are only a small sample; the full list includes many additional lab-related measurements from the NHANES and Synthea datasets. Let me know if you’d like to narrow the results (for example by dataset, variable type, or a specific lab test) or see more of the matching variables."
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_La7RpKk9L9urBOfNV3IRys {"query": ""}
+Tool call: name=list_facets id=tooluse_La7RpKk9L9urBOfNV3IRys error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_pN6rIolqXhCzU2IEtK2zJx {"query": "laboratory"}
+Tool call: name=search_concepts id=tooluse_pN6rIolqXhCzU2IEtK2zJx error=false chars=3585
+Chat turn end: requestId=v15-t16-r4 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12712 totalOutputTokens=535 toolsCalled=[list_facets(510 chars), search_concepts(3585 chars)]
+```
+
+### T16 R5 (`v15-t16-r5`)
+
+Result:
+
+Searches: `lab | laboratory`
+
+Response:
+```json
+{
+  "response": "Your search for “lab | laboratory” returned **1,088 laboratory variables** across the available studies. Below are a few representative examples:\n\n- `\\Nhanes\\laboratory\\furans\\`\n- `\\Nhanes\\laboratory\\polybrominated ethers\\`\n- `\\Nhanes\\laboratory\\heavy metals\\`\n- `\\Nhanes\\laboratory\\viral infection\\HIV antibody test result\\`\n- `\\Synthea\\ACT Lab Test Results\\Urinalysis\\Protein in Urine by Test strip\\`\n\nBecause the list is long, the interface will show the full table of matches (you can page through it). Let me know if you’d like to narrow the set—for example by a specific study, data type (continuous vs. categorical), or a particular laboratory test."
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_7PCBO9lQ9UXaBp2Fi5MM7b {"query": ""}
+Tool call: name=list_facets id=tooluse_7PCBO9lQ9UXaBp2Fi5MM7b error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_CIhPKOCVb7J41aewQBPgwF {"query": "lab | laboratory","pageSize": 50}
+Tool call: name=search_concepts id=tooluse_CIhPKOCVb7J41aewQBPgwF error=false chars=7468
+Chat turn end: requestId=v15-t16-r5 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=14024 totalOutputTokens=510 toolsCalled=[list_facets(510 chars), search_concepts(7468 chars)]
+```
+
+### T16 R6 (`v15-t16-r6`)
+
+Result:
+
+Searches: `laboratory`
+
+Response:
+```json
+{
+  "response": "Here are some of the laboratory variables that match your request (the full list contains many more):\n\n- `\\Nhanes\\laboratory\\furans\\` (continuous)\n- `\\Nhanes\\laboratory\\polybrominated ethers\\` (categorical: No, Yes)\n- `\\Nhanes\\laboratory\\bacterial infection\\` (continuous)\n- `\\Nhanes\\laboratory\\heavy metals\\` (continuous)\n- `\\Nhanes\\laboratory\\dioxins\\` (continuous)\n- `\\Nhanes\\laboratory\\allergen test\\` (continuous)\n- `\\Nhanes\\laboratory\\diakyl\\` (continuous)\n- `\\Nhanes\\laboratory\\phytoestrogens\\` (continuous)\n\nThese are shown in the table on your screen; you can scroll to see the remaining laboratory concepts.",
+  "search": "laboratory"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_i61imC7ZlgH73CV5krxh4C {"query": ""}
+Tool call: name=list_facets id=tooluse_i61imC7ZlgH73CV5krxh4C error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_ieScDypmBNIPblv4M7kK5f {"query": "laboratory"}
+Tool call: name=search_concepts id=tooluse_ieScDypmBNIPblv4M7kK5f error=false chars=3585
+Tool call requested: name=propose_query id=tooluse_8jiAsDwCx4C9Ve7iBxJ06H {"search": "laboratory"}
+Tool call: name=propose_query id=tooluse_8jiAsDwCx4C9Ve7iBxJ06H error=false chars=17
+Chat turn end: requestId=v15-t16-r6 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=17741 totalOutputTokens=498 toolsCalled=[list_facets(510 chars), search_concepts(3585 chars), propose_query(17 chars)]
+```
+
+### T16 R7 (`v15-t16-r7`)
+
+Result:
+
+Searches: `lab`, `laboratory`
+
+Response:
+```json
+{
+  "response": "Your search for **laboratory** variables returned a total of **516** concepts across the available datasets. Here are a few of the most relevant matches:\n\n* `\\Nhanes\\laboratory\\furans\\` – continuous (range 75 – 615)  \n* `\\Nhanes\\laboratory\\polybrominated ethers\\` – categorical (values “No”, “Yes”)  \n* `\\Nhanes\\laboratory\\bacterial infection\\` – continuous (range 0 – 13.904)  \n* `\\Nhanes\\laboratory\\heavy metals\\` – continuous (range 0 – 2884.22)  \n* `\\Nhanes\\laboratory\\dioxins\\` – continuous (range 0.4 – 45.2)  \n* `\\Nhanes\\laboratory\\allergen test\\` – continuous (range 0 – 164.144)  \n* `\\Nhanes\\laboratory\\diakyl\\` – continuous (range 0.14 – 4.1)  \n* `\\Nhanes\\laboratory\\phytoestrogens\\` – continuous (range 1 – 1)  \n\nThese are just a sample; the full list includes many additional laboratory measures (e.g., acrylamide, phenols, melamine, phthalates, biochemistry, hormone, cotinine, and a range of viral-infection tests) as well as some laboratory-related procedure codes from the Synthea dataset.\n\nIf you’d like to explore any of these variables in more detail (e.g., see their full metadata or filter participants by them), just let me know which ones you’re interested in."
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_kiajyGlBejCUo2M7WtttHw {"query": ""}
+Tool call: name=list_facets id=tooluse_kiajyGlBejCUo2M7WtttHw error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_5w7JDsFKxVbMTlKDamZncO {"query": "lab"}
+Tool call: name=search_concepts id=tooluse_5w7JDsFKxVbMTlKDamZncO error=false chars=3823
+Tool call requested: name=search_concepts id=tooluse_scvWWbKPfhE1TKvGJUQExz {"query": "laboratory"}
+Tool call: name=search_concepts id=tooluse_scvWWbKPfhE1TKvGJUQExz error=false chars=3585
+Chat turn end: requestId=v15-t16-r7 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=18930 totalOutputTokens=746 toolsCalled=[list_facets(510 chars), search_concepts(3823 chars), search_concepts(3585 chars)]
+```
+
+### T16 R8 (`v15-t16-r8`)
+
+Result:
+
+Searches: `laboratory`
+
+Response:
+```json
+{
+  "response": "Here are the laboratory variables that match your request (the first page of results).  \n\n**NHANES laboratory variables**  \n- `\\Nhanes\\laboratory\\furans\\` (continuous)  \n- `\\Nhanes\\laboratory\\polybrominated ethers\\` (categorical)  \n- `\\Nhanes\\laboratory\\bacterial infection\\` (continuous)  \n- `\\Nhanes\\laboratory\\heavy metals\\` (continuous)  \n- `\\Nhanes\\laboratory\\dioxins\\` (continuous)  \n- `\\Nhanes\\laboratory\\allergen test\\` (continuous)  \n- `\\Nhanes\\laboratory\\diakyl\\` (continuous)  \n- `\\Nhanes\\laboratory\\phytoestrogens\\` (continuous)  \n- `\\Nhanes\\laboratory\\acrylamide\\` (categorical)  \n- `\\Nhanes\\laboratory\\phenols\\` (continuous)  \n- `\\Nhanes\\laboratory\\melamine\\` (categorical)  \n- `\\Nhanes\\laboratory\\phthalates\\` (categorical)  \n- `\\Nhanes\\laboratory\\biochemistry\\` (categorical)  \n- `\\Nhanes\\laboratory\\hormone\\` (continuous)  \n- `\\Nhanes\\laboratory\\cotinine\\` (categorical)  \n- `\\Nhanes\\laboratory\\viral infection\\Herpes I\\` (categorical)  \n- `\\Nhanes\\laboratory\\viral infection\\Varicella antibody\\` (categorical)  \n- `\\Nhanes\\laboratory\\viral infection\\Hepatitis A Antibody (Anti-HAV)\\` (categorical)  \n- `\\Nhanes\\laboratory\\viral infection\\HIV antibody test result\\` (categorical)  \n- `\\Nhanes\\laboratory\\viral infection\\HPV 11 (Merck competitive Luminex assay)\\` (categorical)  \n- `\\Nhanes\\laboratory\\viral infection\\HPV 06 (Merck competitive Luminex assay)\\` (categorical)  \n\n**Synthea laboratory-related variables**  \n- `\\Synthea\\ACT Diagnosis ICD-10\\R00-R99 Symptoms, signs and abnormal clinical and laboratory findings, not elsewhere classified (R00-R99)\\R00-R09 Symptoms and signs involving the circulatory and respiratory systems (R00-R09)\\` (categorical)  \n- `\\Synthea\\ACT Diagnosis ICD-10\\R00-R99 Symptoms, signs and abnormal clinical and laboratory findings, not elsewhere classified (R00-R99)\\R50-R69 General symptoms and signs (R50-R69)\\` (categorical)  \n- `\\Synthea\\ACT Procedures CPT\\Pathology and Laboratory Procedures\\Organ or Disease Oriented Panels\\` (categorical)  \n- `\\Synthea\\ACT Procedures CPT\\Pathology and Laboratory Procedures\\Urinalysis Procedures\\` (categorical)  \n\nThese are the first set of matches; there are many more laboratory concepts in the data. Let me know if you’d like to see additional pages, focus on a specific study (e.g., NHANES only), or filter by type (continuous vs. categorical).",
+  "search": "laboratory"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_AL8MbKsSu318jDlpQU35RC {"query": ""}
+Tool call: name=list_facets id=tooluse_AL8MbKsSu318jDlpQU35RC error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_rhTuaDs5YWklqQLydIuv1y {"query": "laboratory"}
+Tool call: name=search_concepts id=tooluse_rhTuaDs5YWklqQLydIuv1y error=false chars=3585
+Tool call requested: name=propose_query id=tooluse_srnvJAu1SWHXbfBqovyA31 {"search": "laboratory"}
+Tool call: name=propose_query id=tooluse_srnvJAu1SWHXbfBqovyA31 error=false chars=17
+Chat turn end: requestId=v15-t16-r8 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=17741 totalOutputTokens=973 toolsCalled=[list_facets(510 chars), search_concepts(3585 chars), propose_query(17 chars)]
+```
+
+## T17 Topic within a dataset
+
+- **Message:** `Show me the cholesterol variables in the NHANES dataset`
+- **Pass:** list_facets called, search_concepts called with the facet {category: dataset_id, name: Nhanes}, and the response carries search containing cholesterol AND facets [{dataset_id, Nhanes}]; no query. The prose names only NHANES cholesterol paths and no Synthea ones (the narrowed search returns six). If the reply says the variables are shown/displayed in the results table, a search must have been proposed (model-called or added by the service); a claim with no search is a FAIL. A facet that list_facets did not return is a FAIL. Also flag duplicated reply text.
+
+### T17 R1 (`v15-t17-r1`)
+
+Result:
+
+Searches: `cholesterol`
+
+Response:
+```json
+{
+  "response": "Here are the cholesterol-related variables available in the NHANES dataset:\n\n* `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` – categorical  \n* `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` – continuous (range 70 – 649)  \n* `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` – continuous (range 20 – 316)  \n* `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` – continuous (range 19 – 154)  \n* `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` – continuous (range 0 – 3052)  \n* `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` – continuous (range 0 – 2010)"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_pCgl8U2ozIw7V8tjUllQQh {"query": ""}
+Tool call: name=list_facets id=tooluse_pCgl8U2ozIw7V8tjUllQQh error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_JqFtAHkmlo3Bgug9PsyH4w {"facets": [{"category": "dataset_id","name": "Nhanes"}],"query": "cholesterol"}
+Tool call: name=search_concepts id=tooluse_JqFtAHkmlo3Bgug9PsyH4w error=false chars=919
+Chat turn end: requestId=v15-t17-r1 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12020 totalOutputTokens=460 toolsCalled=[list_facets(510 chars), search_concepts(919 chars)]
+```
+
+### T17 R2 (`v15-t17-r2`)
+
+Result:
+
+Searches: `cholesterol`
+
+Response:
+```json
+{
+  "response": "Here are the cholesterol-related variables available in the **NHANES** dataset:\n\n- `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` (categorical)  \n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` (continuous)",
+  "facets": [
+    {
+      "category": "dataset_id",
+      "name": "Nhanes"
+    }
+  ],
+  "search": "cholesterol"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_Dg1FcSsfvQJ3aPMdZYwLyz {"query": ""}
+Tool call: name=list_facets id=tooluse_Dg1FcSsfvQJ3aPMdZYwLyz error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_NvhDg9lzrUFd3PW8j1mDCD {"query": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=search_concepts id=tooluse_NvhDg9lzrUFd3PW8j1mDCD error=false chars=919
+Tool call requested: name=propose_query id=tooluse_xDToTfa2Ez03a0ObxfxXAz {"search": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=propose_query id=tooluse_xDToTfa2Ez03a0ObxfxXAz error=false chars=17
+Chat turn end: requestId=v15-t17-r2 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=16362 totalOutputTokens=498 toolsCalled=[list_facets(510 chars), search_concepts(919 chars), propose_query(17 chars)]
+```
+
+### T17 R3 (`v15-t17-r3`)
+
+Result:
+
+Searches: `cholesterol`
+
+Response:
+```json
+{
+  "response": "Here are the cholesterol variables available in the **NHANES** dataset:\n\n- `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` (categorical)  \n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` (continuous)  \n\nThese are the variables you can explore further or use in a cohort query. Let me know if you’d like more details on any of them or want to build a filter.",
+  "facets": [
+    {
+      "category": "dataset_id",
+      "name": "Nhanes"
+    }
+  ],
+  "search": "cholesterol"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_MBNtQQp2aTSZuqyg62AAGa {"query": ""}
+Tool call: name=list_facets id=tooluse_MBNtQQp2aTSZuqyg62AAGa error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_8FTBjVNExvfjrTaKTRIUnz {"query": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=search_concepts id=tooluse_8FTBjVNExvfjrTaKTRIUnz error=false chars=919
+Tool call requested: name=propose_query id=tooluse_EwhbGNEK2vGer9KlcdwKLt {"search": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=propose_query id=tooluse_EwhbGNEK2vGer9KlcdwKLt error=false chars=17
+Chat turn end: requestId=v15-t17-r3 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=16362 totalOutputTokens=512 toolsCalled=[list_facets(510 chars), search_concepts(919 chars), propose_query(17 chars)]
+```
+
+### T17 R4 (`v15-t17-r4`)
+
+Result:
+
+Searches: `cholesterol`
+
+Response:
+```json
+{
+  "response": "Here are the cholesterol-related variables available in the **NHANES** dataset:\n\n- `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` – categorical  \n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` – continuous (70 – 649 mg/dL)  \n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` – continuous (20 – 316 mg/dL)  \n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` – continuous (19 – 154 mg/dL)  \n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` – continuous (0 – 3052 mg)  \n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` – continuous (0 – 2010 mg)"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_AhJ7h2F4bZ6BtTJzsTzsFp {"query": ""}
+Tool call: name=list_facets id=tooluse_AhJ7h2F4bZ6BtTJzsTzsFp error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_5UbHrGnjeDDEQu4554znCJ {"query": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}],"pageSize": 50}
+Tool call: name=search_concepts id=tooluse_5UbHrGnjeDDEQu4554znCJ error=false chars=919
+Chat turn end: requestId=v15-t17-r4 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12025 totalOutputTokens=478 toolsCalled=[list_facets(510 chars), search_concepts(919 chars)]
+```
+
+### T17 R5 (`v15-t17-r5`)
+
+Result:
+
+Searches: `cholesterol`
+
+Response:
+```json
+{
+  "response": "Here are the cholesterol-related variables available in the **NHANES** dataset:\n\n- `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` (categorical)  \n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` (continuous)",
+  "facets": [
+    {
+      "category": "dataset_id",
+      "name": "Nhanes"
+    }
+  ],
+  "search": "cholesterol"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_8bacgzHJn4KCy8t0CgeeOt {"query": ""}
+Tool call: name=list_facets id=tooluse_8bacgzHJn4KCy8t0CgeeOt error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_IfCnS7XMzCWHsJpiwH0WYS {"query": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=search_concepts id=tooluse_IfCnS7XMzCWHsJpiwH0WYS error=false chars=919
+Tool call requested: name=propose_query id=tooluse_GYUHa5L8ztHBOwxaF4yZw5 {"search": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=propose_query id=tooluse_GYUHa5L8ztHBOwxaF4yZw5 error=false chars=17
+Chat turn end: requestId=v15-t17-r5 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=16362 totalOutputTokens=535 toolsCalled=[list_facets(510 chars), search_concepts(919 chars), propose_query(17 chars)]
+```
+
+### T17 R6 (`v15-t17-r6`)
+
+Result:
+
+Searches: `cholesterol`
+
+Response:
+```json
+{
+  "response": "Here are the cholesterol variables available in the **NHANES** dataset:\n\n- `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` (categorical)  \n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` (continuous)\n\nThese are the variables you can explore further or use in a cohort query. Let me know if you’d like to see details for any of them or build a specific filter.",
+  "facets": [
+    {
+      "category": "dataset_id",
+      "name": "Nhanes"
+    }
+  ],
+  "search": "cholesterol"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_MWXjvVyCqJRDPVi8VCfRnw {"query": ""}
+Tool call: name=list_facets id=tooluse_MWXjvVyCqJRDPVi8VCfRnw error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_9dzagtsXrvHeplzeUmKYNR {"query": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=search_concepts id=tooluse_9dzagtsXrvHeplzeUmKYNR error=false chars=919
+Tool call requested: name=propose_query id=tooluse_X2mImdEKK3C1H4b3Z577Mr {"search": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=propose_query id=tooluse_X2mImdEKK3C1H4b3Z577Mr error=false chars=17
+Chat turn end: requestId=v15-t17-r6 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=16362 totalOutputTokens=691 toolsCalled=[list_facets(510 chars), search_concepts(919 chars), propose_query(17 chars)]
+```
+
+### T17 R7 (`v15-t17-r7`)
+
+Result:
+
+Searches: `cholesterol`
+
+Response:
+```json
+{
+  "response": "Here are the cholesterol variables available in the **NHANES** dataset:\n\n- `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` (categorical)  \n- `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` (continuous)  \n- `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` (continuous)",
+  "facets": [
+    {
+      "category": "dataset_id",
+      "name": "Nhanes"
+    }
+  ],
+  "search": "cholesterol"
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_rhPZCTEgWp6Uy2CaxernC3 {"query": ""}
+Tool call: name=list_facets id=tooluse_rhPZCTEgWp6Uy2CaxernC3 error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_YPE0wi9aVNru4LNOE2Uaqb {"query": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}],"pageSize": 50}
+Tool call: name=search_concepts id=tooluse_YPE0wi9aVNru4LNOE2Uaqb error=false chars=919
+Tool call requested: name=propose_query id=tooluse_NCRG49KQ9pIlbQTxN7UwYe {"search": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=propose_query id=tooluse_NCRG49KQ9pIlbQTxN7UwYe error=false chars=17
+Chat turn end: requestId=v15-t17-r7 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=16372 totalOutputTokens=637 toolsCalled=[list_facets(510 chars), search_concepts(919 chars), propose_query(17 chars)]
+```
+
+### T17 R8 (`v15-t17-r8`)
+
+Result:
+
+Searches: `cholesterol`
+
+Response:
+```json
+{
+  "response": "Here are the cholesterol-related variables available in the **NHANES** dataset:\n\n| Variable (concept path) | Type | Details |\n|---|---|---|\n| `\\Nhanes\\laboratory\\biochemistry\\Direct HDL-Cholesterol (mg per dL)\\` | Categorical | 20 sample values shown; many more omitted |\n| `\\Nhanes\\laboratory\\biochemistry\\Cholesterol (mg per dL)\\` | Continuous | Range 70 – 649 mg/dL |\n| `\\Nhanes\\laboratory\\biochemistry\\LDL-cholesterol (mg per dL)\\` | Continuous | Range 20 – 316 mg/dL |\n| `\\Nhanes\\laboratory\\biochemistry\\HDL-cholesterol (mg per dL)\\` | Continuous | Range 19 – 154 mg/dL |\n| `\\Nhanes\\questionnaire\\food component recall\\Cholesterol (mg)\\` | Continuous | Range 0 – 3052 mg |\n| `\\Nhanes\\questionnaire\\supplement use\\CHOLESTEROL_mg\\` | Continuous | Range 0 – 2010 mg |\n\nThese are the cholesterol measures you can explore in NHANES. Let me know if you’d like more details on any of them or want to build a cohort using any of these variables."
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_TwV4de6XQFwrmiFFbF7FlZ {"query": ""}
+Tool call: name=list_facets id=tooluse_TwV4de6XQFwrmiFFbF7FlZ error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_tFz1wWjOCGUMgRnlJEkZZG {"query": "cholesterol","facets": [{"category": "dataset_id","name": "Nhanes"}]}
+Tool call: name=search_concepts id=tooluse_tFz1wWjOCGUMgRnlJEkZZG error=false chars=919
+Chat turn end: requestId=v15-t17-r8 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12020 totalOutputTokens=583 toolsCalled=[list_facets(510 chars), search_concepts(919 chars)]
+```
+
+## T18 Alcohol on its own
+
+- **Message:** `What alcohol variables do you have?`
+- **Pass:** names all six local paths: the four `\Nhanes\questionnaire\alcohol use\` items, `food component recall\Alcohol (gm)`, `supplement use\ALCOHOL_PERCENT` (plus the Synthea F10 path in the target env); exact paths; no query. A search proposal is optional (note it). If this passes while T14 fails, the cause is the combined search crowding the page; if it fails too, the dictionary search is not returning them. v13: the prompt now asks for one-word topic terms (alcohol, not alcohol use) and for every path when about eight or fewer matched; note the search terms used in any failing run.
+
+### T18 R1 (`v15-t18-r1`)
+
+Result:
+
+Searches: `alcohol`
+
+Response:
+```json
+{
+  "response": "Here are the alcohol-related variables available in the data:\n\n| Variable | Type | Details |\n|---|---|---|\n| `\\Synthea\\ACT Diagnosis ICD-10\\F01-F99 Mental, Behavioral and Neurodevelopmental disorders (F01-F99)\\F10-F19 Mental and behavioral disorders due to psychoactive substance use (F10-F19)\\F10 Alcohol related disorders\\` | categorical | Values include **F10.2 Alcohol dependence** |\n| `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` | continuous | Range 0 – 636.2 g |\n| `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` | continuous | Range 0 – 18.7 % |\n| `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` | continuous | Range 1 – 365 days |\n| `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` | categorical | Values **No**, **Yes** |\n| `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` | continuous | Range 1 – 50 drinks |\n| `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` | continuous | Range 1 – 365 days |\n\nThese are the alcohol-related concepts currently indexed in the dictionary. Let me know if you’d like more details on any of them or want to build a cohort using any of these variables."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_t0ullz2BbOBZjRPaMbcYeO {"query": "alcohol"}
+Tool call: name=search_concepts id=tooluse_t0ullz2BbOBZjRPaMbcYeO error=false chars=1044
+Chat turn end: requestId=v15-t18-r1 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=7902 totalOutputTokens=451 toolsCalled=[search_concepts(1044 chars)]
+```
+
+### T18 R2 (`v15-t18-r2`)
+
+Result:
+
+Searches: `alcohol`
+
+Response:
+```json
+{
+  "response": "Here are the alcohol-related variables currently in the data:\n\n* `\\Synthea\\ACT Diagnosis ICD-10\\F01-F99 Mental, Behavioral and Neurodevelopmental disorders (F01-F99)\\F10-F19 Mental and behavioral disorders due to psychoactive substance use (F10-F19)\\F10 Alcohol related disorders\\` – categorical (e.g., “F10.2 Alcohol dependence”)\n\n* `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` – continuous (grams of alcohol, 0 – 636.2)\n\n* `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` – continuous (percentage of alcohol intake, 0 – 18.7)\n\n* `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` – continuous (number of drinking days in a year, 1 – 365)\n\n* `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` – categorical (Yes / No)\n\n* `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` – continuous (drinks per day, 1 – 50)\n\n* `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` – continuous (days with 5+ drinks in a year, 1 – 365)"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_DRzhV2AWbl0m905Bw1rW01 {"query": "alcohol"}
+Tool call: name=search_concepts id=tooluse_DRzhV2AWbl0m905Bw1rW01 error=false chars=1044
+Chat turn end: requestId=v15-t18-r2 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=7902 totalOutputTokens=420 toolsCalled=[search_concepts(1044 chars)]
+```
+
+### T18 R3 (`v15-t18-r3`)
+
+Result:
+
+Searches: `alcohol`
+
+Response:
+```json
+{
+  "response": "The data include the following alcohol-related variables:\n\n* `\\Synthea\\ACT Diagnosis ICD-10\\F01-F99 Mental, Behavioral and Neurodevelopmental disorders (F01-F99)\\F10-F19 Mental and behavioral disorders due to psychoactive substance use (F10-F19)\\F10 Alcohol related disorders\\` – categorical (e.g., “F10.2 Alcohol dependence”)\n* `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` – continuous (grams of alcohol)\n* `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` – continuous (percentage of alcohol in supplements)\n* `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` – continuous (number of drinking days per year)\n* `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` – categorical (Yes/No)\n* `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` – continuous (average drinks per day)\n* `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` – continuous (days with ≥5 drinks per year)"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_zdsp1A8xjA9E3KRpZFCzLK {"query": "alcohol"}
+Tool call: name=search_concepts id=tooluse_zdsp1A8xjA9E3KRpZFCzLK error=false chars=1044
+Chat turn end: requestId=v15-t18-r3 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=7902 totalOutputTokens=336 toolsCalled=[search_concepts(1044 chars)]
+```
+
+### T18 R4 (`v15-t18-r4`)
+
+Result:
+
+Searches: `alcohol`
+
+Response:
+```json
+{
+  "response": "I found seven alcohol-related variables in the data:\n\n| Variable | Path |\n|---|---|\n| Alcohol-related disorders (ICD-10 F10) – categorical | `\\Synthea\\ACT Diagnosis ICD-10\\F01-F99 Mental, Behavioral and Neurodevelopmental disorders (F01-F99)\\F10-F19 Mental and behavioral disorders due to psychoactive substance use (F10-F19)\\F10 Alcohol related disorders\\` |\n| Alcohol (gm) – continuous (food recall) | `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` |\n| Alcohol % – continuous (supplement use) | `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` |\n| Days drank in a year – continuous | `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` |\n| Consumed 5 drinks in a day – categorical | `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` |\n| Drinks per day – continuous | `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` |\n| Days with 5 drinks in a year – continuous | `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` |\n\nLet me know if you’d like to view any of these variables in more detail or build a cohort using them.",
+  "search": "alcohol"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_KPbuRQGrQH5vUdLaZV9PQJ {"query": "alcohol"}
+Tool call: name=search_concepts id=tooluse_KPbuRQGrQH5vUdLaZV9PQJ error=false chars=1044
+Tool call requested: name=propose_query id=tooluse_YQKh8SFyVKT5t4vJ3jYuOK {"search": "alcohol"}
+Tool call: name=propose_query id=tooluse_YQKh8SFyVKT5t4vJ3jYuOK error=false chars=17
+Chat turn end: requestId=v15-t18-r4 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12060 totalOutputTokens=493 toolsCalled=[search_concepts(1044 chars), propose_query(17 chars)]
+```
+
+### T18 R5 (`v15-t18-r5`)
+
+Result:
+
+Searches: `alcohol`
+
+Response:
+```json
+{
+  "response": "Here are the alcohol-related variables currently available in the data:\n\n- `\\Synthea\\ACT Diagnosis ICD-10\\F01-F99 Mental, Behavioral and Neurodevelopmental disorders (F01-F99)\\F10-F19 Mental and behavioral disorders due to psychoactive substance use (F10-F19)\\F10 Alcohol related disorders\\` (categorical – e.g., “F10.2 Alcohol dependence”)\n- `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` (continuous, 0 – 636.2 g)\n- `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` (continuous, 0 – 18.7 %)\n- `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` (continuous, 1 – 365 days)\n- `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` (categorical – “No”, “Yes”)\n- `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` (continuous, 1 – 50 drinks)\n- `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` (continuous, 1 – 365 days)\n\nLet me know if you’d like more details on any of these variables or want to build a cohort using them.",
+  "search": "alcohol"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_5hddhS7gT1GEf5hm74KXOd {"query": "alcohol"}
+Tool call: name=search_concepts id=tooluse_5hddhS7gT1GEf5hm74KXOd error=false chars=1044
+Tool call requested: name=propose_query id=tooluse_Jy2BBJeS44ZVtjjXOwzx5S {"search": "alcohol"}
+Tool call: name=propose_query id=tooluse_Jy2BBJeS44ZVtjjXOwzx5S error=false chars=17
+Chat turn end: requestId=v15-t18-r5 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12060 totalOutputTokens=505 toolsCalled=[search_concepts(1044 chars), propose_query(17 chars)]
+```
+
+### T18 R6 (`v15-t18-r6`)
+
+Result:
+
+Searches: `alcohol`
+
+Response:
+```json
+{
+  "response": "Here are the alcohol-related variables currently available:\n\n| Variable | Path |\n|---|---|\n| Alcohol-related disorders (categorical) | `\\Synthea\\ACT Diagnosis ICD-10\\F01-F99 Mental, Behavioral and Neurodevelopmental disorders (F01-F99)\\F10-F19 Mental and behavioral disorders due to psychoactive substance use (F10-F19)\\F10 Alcohol related disorders\\` |\n| Alcohol intake (grams, continuous) | `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` |\n| Alcohol percent of total calories (continuous) | `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` |\n| Days drank in a year (continuous) | `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` |\n| Consumed 5 or more drinks in a day (categorical) | `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` |\n| Drinks per day (continuous) | `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` |\n| Days with ≥5 drinks in a year (continuous) | `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` |\n\nThese are the alcohol-related concepts you can explore further. Let me know if you’d like details on any of them or want to build a cohort using any of these variables."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_WI0WHucagbP6TogrpO3doo {"query": "alcohol"}
+Tool call: name=search_concepts id=tooluse_WI0WHucagbP6TogrpO3doo error=false chars=1044
+Chat turn end: requestId=v15-t18-r6 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=7902 totalOutputTokens=397 toolsCalled=[search_concepts(1044 chars)]
+```
+
+### T18 R7 (`v15-t18-r7`)
+
+Result:
+
+Searches: `alcohol`
+
+Response:
+```json
+{
+  "response": "I found several alcohol-related variables in the data:\n\n- `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` (continuous, grams of alcohol)\n- `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` (continuous, percent of total calories)\n- `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` (continuous, days with any drinking)\n- `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` (categorical, “No” / “Yes”)\n- `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` (continuous, drinks per day)\n- `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` (continuous, days with ≥5 drinks)\n- `\\Synthea\\ACT Diagnosis ICD-10\\F01-F99 Mental, Behavioral and Neurodevelopmental disorders (F01-F99)\\F10-F19 Mental and behavioral disorders due to psychoactive substance use (F10-F19)\\F10 Alcohol related disorders\\` (categorical, e.g., “F10.2 Alcohol dependence”)",
+  "search": "alcohol"
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_V80xMYnqQJdFLSWinlrgtJ {"query": "alcohol"}
+Tool call: name=search_concepts id=tooluse_V80xMYnqQJdFLSWinlrgtJ error=false chars=1044
+Tool call requested: name=propose_query id=tooluse_kdWw3wyAHIHxaGuVruXpYD {"search": "alcohol"}
+Tool call: name=propose_query id=tooluse_kdWw3wyAHIHxaGuVruXpYD error=false chars=17
+Chat turn end: requestId=v15-t18-r7 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12060 totalOutputTokens=480 toolsCalled=[search_concepts(1044 chars), propose_query(17 chars)]
+```
+
+### T18 R8 (`v15-t18-r8`)
+
+Result:
+
+Searches: `alcohol`
+
+Response:
+```json
+{
+  "response": "Here are the alcohol-related variables currently available in the data:\n\n| Variable | Type | Brief description |\n|----------|------|-------------------|\n| `\\Synthea\\ACT Diagnosis ICD-10\\F01-F99 Mental, Behavioral and Neurodevelopmental disorders (F01-F99)\\F10-F19 Mental and behavioral disorders due to psychoactive substance use (F10-F19)\\F10 Alcohol related disorders\\` | categorical | Diagnosis code for alcohol-related disorders (e.g., “F10.2 Alcohol dependence”). |\n| `\\Nhanes\\questionnaire\\food component recall\\Alcohol (gm)\\` | continuous | Total grams of alcohol consumed (from dietary recall). |\n| `\\Nhanes\\questionnaire\\supplement use\\ALCOHOL_PERCENT\\` | continuous | Percentage of total calories that come from alcohol. |\n| `\\Nhanes\\questionnaire\\alcohol use\\days drink in year\\` | continuous | Number of days the participant reported drinking alcohol in the past year. |\n| `\\Nhanes\\questionnaire\\alcohol use\\drink 5 in a day\\` | categorical | Whether the participant ever consumed 5 or more drinks on a single occasion (Yes/No). |\n| `\\Nhanes\\questionnaire\\alcohol use\\drink per day\\` | continuous | Average number of alcoholic drinks per day. |\n| `\\Nhanes\\questionnaire\\alcohol use\\days 5 drinks in year\\` | continuous | Number of days in the past year the participant reported drinking 5 or more drinks. |\n\nThese are the alcohol-related concepts you can explore further or use in cohort queries. Let me know if you’d like to see any of them in more detail or build a specific filter."
+}
+```
+Log summary:
+```log
+Tool call requested: name=search_concepts id=tooluse_S2M0glhFWzS2gTi7Q0jPcP {"query": "alcohol"}
+Tool call: name=search_concepts id=tooluse_S2M0glhFWzS2gTi7Q0jPcP error=false chars=1044
+Chat turn end: requestId=v15-t18-r8 iterations=2 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=7902 totalOutputTokens=486 toolsCalled=[search_concepts(1044 chars)]
+```
+
+## T19 Facet-only browse
+
+- **Message:** `Show me all the continuous variables`
+- **Pass:** list_facets called; the response carries facets [{data_type, continuous}] copied from list_facets, with or without a search; no query. Prose gives the count or a few examples with exact paths, not the whole list; nothing guessed.
+
+### T19 R1 (`v15-t19-r1`)
+
+Result:
+
+Searches: `undefined`
+
+Response:
+```json
+{
+  "response": "Here are the continuous variables currently in the data (showing the first few results):  \n\n- `\\Nhanes\\SUBJECT_ID\\` – numeric, range 2 to 41,472  \n- `\\Synthea\\ACT Demographics\\Age\\` – numeric, range 0 to 111  \n- `\\1000Genomes\\open_access-1000Genomes\\SIMULATED AGE\\` – numeric, range 18.2 to 78.8  \n- `\\1000Genomes\\open_access-1000Genomes\\SIMULATED PHENOTYPE\\` – numeric, range -3.08 to 3.63  \n- `\\Nhanes\\demographics\\SDDSRVYR\\` – numeric, range 1 to 4  \n- `\\Nhanes\\demographics\\SES_LEVEL\\` – numeric, range 0 to 2  \n- `\\Nhanes\\demographics\\AGE\\` – numeric, range 0 to 85  \n- `\\Nhanes\\demographics\\DMDMARTL\\` – numeric, range 1 to 77  \n\nThere are 863 continuous variables in total across the available studies. Let me know if you’d like to see more, filter them, or explore any specific ones.",
+  "facets": [
+    {
+      "category": "data_type",
+      "name": "continuous"
+    }
+  ]
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_pjKNb52PfLUDBEGttxpjD3 {"query": ""}
+Tool call: name=list_facets id=tooluse_pjKNb52PfLUDBEGttxpjD3 error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_aBLa9ZR1ZgQjysj4PSH960 {"facets": [{"category": "data_type","name": "continuous"}],"pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_aBLa9ZR1ZgQjysj4PSH960 error=false chars=2480
+Tool call requested: name=propose_query id=tooluse_0RAPBePEvmpYXGWjAuaZ59 {"search": "","facets": [{"category": "data_type","name": "continuous"}]}
+Tool call: name=propose_query id=tooluse_0RAPBePEvmpYXGWjAuaZ59 error=false chars=17
+Chat turn end: requestId=v15-t19-r1 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=17394 totalOutputTokens=671 toolsCalled=[list_facets(510 chars), search_concepts(2480 chars), propose_query(17 chars)]
+```
+
+### T19 R2 (`v15-t19-r2`)
+
+Result:
+
+Searches: `undefined`
+
+Response:
+```json
+{
+  "response": "Here are the first 25 continuous variables returned by the data dictionary (the list is truncated to fit the screen):\n\n- `\\Nhanes\\SUBJECT_ID\\`\n- `\\Synthea\\ACT Demographics\\Age\\`\n- `\\1000Genomes\\open_access-1000Genomes\\SIMULATED AGE\\`\n- `\\1000Genomes\\open_access-1000Genomes\\SIMULATED PHENOTYPE\\`\n- `\\Nhanes\\demographics\\SDDSRVYR\\`\n- `\\Nhanes\\demographics\\SES_LEVEL\\`\n- `\\Nhanes\\demographics\\AGE\\`\n- `\\Nhanes\\demographics\\DMDMARTL\\`\n- `\\Nhanes\\demographics\\WTMEC2YR\\`\n- `\\Nhanes\\demographics\\SDMVSTRA\\`\n- `\\Nhanes\\demographics\\WTMEC4YR\\`\n- `\\Nhanes\\demographics\\SDMVPSU\\`\n- `\\Nhanes\\demographics\\INDFMPIR\\`\n- `\\Nhanes\\demographics\\DMDBORN\\`\n- `\\Nhanes\\demographics\\education\\`\n- `\\Nhanes\\laboratory\\furans\\`\n- `\\Nhanes\\laboratory\\bacterial infection\\`\n- `\\Nhanes\\laboratory\\heavy metals\\`\n- `\\Nhanes\\laboratory\\dioxins\\`\n- `\\Nhanes\\laboratory\\allergen test\\`\n- `\\Nhanes\\laboratory\\diakyl\\`\n- `\\Nhanes\\laboratory\\phytoestrogens\\`\n- `\\Nhanes\\laboratory\\phenols\\`\n- `\\Nhanes\\laboratory\\hormone\\`\n- `\\Nhanes\\questionnaire\\occupation\\`\n\nThere are **863** continuous variables in total across the available studies. Let me know if you’d like to explore a particular subset (e.g., by study, by a specific measurement, or with filters)."
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_wlgvpNuGrwtef8TzJ9MWgj {"query": ""}
+Tool call: name=list_facets id=tooluse_wlgvpNuGrwtef8TzJ9MWgj error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_fWx5SsggJcCoYbuKf1woZH {"facets": [{"category": "data_type","name": "continuous"}],"pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_fWx5SsggJcCoYbuKf1woZH error=false chars=2480
+Chat turn end: requestId=v15-t19-r2 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=12533 totalOutputTokens=606 toolsCalled=[list_facets(510 chars), search_concepts(2480 chars)]
+```
+
+### T19 R3 (`v15-t19-r3`)
+
+Result:
+
+Response:
+```json
+{
+  "response": "Here are the continuous variables available in the data.",
+  "facets": [
+    {
+      "category": "data_type",
+      "name": "continuous"
+    }
+  ]
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_mhiu0GWqva1Jkv9tqsmYKg {"query": ""}
+Tool call: name=list_facets id=tooluse_mhiu0GWqva1Jkv9tqsmYKg error=false chars=510
+Tool call requested: name=propose_query id=tooluse_b1mBbI20h7l4frk1qtJUD3 {"facets": [{"category": "data_type","name": "continuous"}],"search": ""}
+Tool call: name=propose_query id=tooluse_b1mBbI20h7l4frk1qtJUD3 error=false chars=17
+Chat turn end: requestId=v15-t19-r3 iterations=3 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=11710 totalOutputTokens=195 toolsCalled=[list_facets(510 chars), propose_query(17 chars)]
+```
+
+### T19 R4 (`v15-t19-r4`)
+
+Result:
+
+Searches: `undefined`
+
+Response:
+```json
+{
+  "response": "Here are the continuous variables found (the first page of results):\n\n- `\\Nhanes\\SUBJECT_ID\\`\n- `\\Synthea\\ACT Demographics\\Age\\`\n- `\\1000Genomes\\open_access-1000Genomes\\SIMULATED AGE\\`\n- `\\1000Genomes\\open_access-1000Genomes\\SIMULATED PHENOTYPE\\`\n- `\\Nhanes\\demographics\\SDDSRVYR\\`\n- `\\Nhanes\\demographics\\SES_LEVEL\\`\n- `\\Nhanes\\demographics\\AGE\\`\n- `\\Nhanes\\demographics\\DMDMARTL\\`\n- `\\Nhanes\\demographics\\WTMEC2YR\\`\n- `\\Nhanes\\demographics\\SDMVSTRA\\`\n- `\\Nhanes\\demographics\\WTMEC4YR\\`\n- `\\Nhanes\\demographics\\SDMVPSU\\`\n- `\\Nhanes\\demographics\\INDFMPIR\\`\n- `\\Nhanes\\demographics\\DMDBORN\\`\n- `\\Nhanes\\demographics\\education\\`\n- `\\Nhanes\\laboratory\\furans\\`\n- `\\Nhanes\\laboratory\\bacterial infection\\`\n- `\\Nhanes\\laboratory\\heavy metals\\`\n- `\\Nhanes\\laboratory\\dioxins\\`\n- `\\Nhanes\\laboratory\\allergen test\\`\n- `\\Nhanes\\laboratory\\diakyl\\`\n- `\\Nhanes\\laboratory\\phytoestrogens\\`\n- `\\Nhanes\\laboratory\\phenols\\`\n- `\\Nhanes\\laboratory\\hormone\\`\n- `\\Nhanes\\questionnaire\\occupation\\`\n\nThese are the variables currently displayed. If you’d like to see more, refine the search, or add filters, let me know!",
+  "facets": [
+    {
+      "category": "data_type",
+      "name": "continuous"
+    }
+  ]
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_VDjdsjxuwOZFMI7DTcpE1G {"query": ""}
+Tool call: name=list_facets id=tooluse_VDjdsjxuwOZFMI7DTcpE1G error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_xtpJ9pROKijNBz9jBPe3jT {"facets": [{"category": "data_type","name": "continuous"}],"pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_xtpJ9pROKijNBz9jBPe3jT error=false chars=2480
+Tool call requested: name=propose_query id=tooluse_YciLLdtJKqJ0nOq5EDAQG2 {"search": "","facets": [{"category": "data_type","name": "continuous"}]}
+Tool call: name=propose_query id=tooluse_YciLLdtJKqJ0nOq5EDAQG2 error=false chars=17
+Chat turn end: requestId=v15-t19-r4 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=17394 totalOutputTokens=917 toolsCalled=[list_facets(510 chars), search_concepts(2480 chars), propose_query(17 chars)]
+```
+
+### T19 R5 (`v15-t19-r5`)
+
+Result:
+
+Searches: `undefined`
+
+Response:
+```json
+{
+  "response": "Here are the first 25 continuous variables in the data (the list continues beyond these):\n\n* `\\Nhanes\\SUBJECT_ID\\`\n* `\\Synthea\\ACT Demographics\\Age\\`\n* `\\1000Genomes\\open_access-1000Genomes\\SIMULATED AGE\\`\n* `\\1000Genomes\\open_access-1000Genomes\\SIMULATED PHENOTYPE\\`\n* `\\Nhanes\\demographics\\SDDSRVYR\\`\n* `\\Nhanes\\demographics\\SES_LEVEL\\`\n* `\\Nhanes\\demographics\\AGE\\`\n* `\\Nhanes\\demographics\\DMDMARTL\\`\n* `\\Nhanes\\demographics\\WTMEC2YR\\`\n* `\\Nhanes\\demographics\\SDMVSTRA\\`\n* `\\Nhanes\\demographics\\WTMEC4YR\\`\n* `\\Nhanes\\demographics\\SDMVPSU\\`\n* `\\Nhanes\\demographics\\INDFMPIR\\`\n* `\\Nhanes\\demographics\\DMDBORN\\`\n* `\\Nhanes\\demographics\\education\\`\n* `\\Nhanes\\laboratory\\furans\\`\n* `\\Nhanes\\laboratory\\bacterial infection\\`\n* `\\Nhanes\\laboratory\\heavy metals\\`\n* `\\Nhanes\\laboratory\\dioxins\\`\n* `\\Nhanes\\laboratory\\allergen test\\`\n* `\\Nhanes\\laboratory\\diakyl\\`\n* `\\Nhanes\\laboratory\\phytoestrogens\\`\n* `\\Nhanes\\laboratory\\phenols\\`\n* `\\Nhanes\\laboratory\\hormone\\`\n* `\\Nhanes\\questionnaire\\occupation\\`\n\nIf you need more variables, let me know and I can retrieve additional pages.",
+  "facets": [
+    {
+      "category": "data_type",
+      "name": "continuous"
+    }
+  ]
+}
+```
+Log summary:
+```log
+Tool call requested: name=list_facets id=tooluse_PWYUz9K2ypbLElWG8Nhb4h {"query": ""}
+Tool call: name=list_facets id=tooluse_PWYUz9K2ypbLElWG8Nhb4h error=false chars=510
+Tool call requested: name=search_concepts id=tooluse_AwaCwVUvWLAtVfWXoEh50i {"facets": [{"category": "data_type","name": "continuous"}],"pageSize": 25,"page": 0}
+Tool call: name=search_concepts id=tooluse_AwaCwVUvWLAtVfWXoEh50i error=false chars=2480
+Tool call requested: name=propose_query id=tooluse_bN69l4nP18XabEniQzel1O {"search": "","facets": [{"category": "data_type","name": "continuous"}]}
+Tool call: name=propose_query id=tooluse_bN69l4nP18XabEniQzel1O error=false chars=17
+Chat turn end: requestId=v15-t19-r5 iterations=4 hitCap=false answeredAfterCap=false stoppedOnRepeatedFailure=false totalInputTokens=17394 totalOutputTokens=936 toolsCalled=[list_facets(510 chars), search_concepts(2480 chars), propose_query(17 chars)]
+```
