@@ -109,8 +109,8 @@ public class TokenServiceTest {
     }
 
     /**
-     * ALS-12756: the gateway authorizes every resource request through this endpoint, so a token from a session the
-     * user has already logged out of must be reported inactive here too — not just on PSAMA's own endpoints.
+     * ALS-12756: the gateway authorizes every resource request through this endpoint, so a token from a session the user has already logged
+     * out of must be reported inactive here too — not just on PSAMA's own endpoints.
      */
     @Test
     public void testInspectToken_rejectsTokenIssuedBeforeTheCurrentSession() {
@@ -443,7 +443,6 @@ public class TokenServiceTest {
 
         // User privileges should be a subset of the application's privileges
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
 
         String authorizationHeader = "Bearer " + token;
         RefreshToken response = tokenService.refreshToken(authorizationHeader);
@@ -465,7 +464,6 @@ public class TokenServiceTest {
 
         // User privileges should be a subset of the application's privileges
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
 
         String authorizationHeader = "Bearer " + token;
         RefreshToken response = tokenService.refreshToken(authorizationHeader);
@@ -487,7 +485,6 @@ public class TokenServiceTest {
             jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, claims.get("sub").toString(), testTokenExpiration);
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(null);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.empty());
 
         String authorizationHeader = "Bearer " + token;
         RefreshToken refreshToken = tokenService.refreshToken(authorizationHeader);
@@ -510,35 +507,11 @@ public class TokenServiceTest {
 
         // User privileges should be a subset of the application's privileges
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
 
         String authorizationHeader = "Bearer " + token;
         RefreshToken refreshToken = tokenService.refreshToken(authorizationHeader);
         assertTrue(refreshToken instanceof InvalidRefreshToken);
         assertEquals("User has been deactivated.", ((InvalidRefreshToken) refreshToken).error());
-    }
-
-    @Test
-    public void testRefreshToken_whereUserSubjectHasChanged() {
-        User user = createTestUser();
-        configureUserSecurityContext(user);
-        user.setSubject(user.getSubject());
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("sub", user.getSubject());
-
-        // Application Long term token
-        String token =
-            jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, claims.get("sub").toString(), testTokenExpiration);
-        user.setSubject("CHANGED_SUBJECT");
-
-        // User privileges should be a subset of the application's privileges
-        when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
-
-        String authorizationHeader = "Bearer " + token;
-        RefreshToken refreshToken = tokenService.refreshToken(authorizationHeader);
-        assertTrue(refreshToken instanceof InvalidRefreshToken);
-        assertEquals("User doesn't exist anymore.", ((InvalidRefreshToken) refreshToken).error());
     }
 
     private User createTestUser() {

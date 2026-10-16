@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
@@ -263,30 +264,62 @@ public class AuthorizationServiceTest {
     public void testIsAuthorized_AccessRuleFailed() {
         Application application = createTestApplication();
         User user = createTestUser();
+
+        AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
+        accessRule.setRule("$.test");
+        accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        accessRule.setValue("value");
+
+        for (Privilege privilege1 : user.getRoles().iterator().next().getPrivileges()) {
+            privilege1.setAccessRules(Collections.singleton(accessRule));
+            privilege1.setApplication(application);
+        }
         configureUserSecurityContext(user);
         user.setConnection(createFenceTestConnection());
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, requestBody, user, false);
 
-        assertFalse(result);
+        assertFalse(result.result());
+        assertEquals(Set.of(accessRule), result.failedRules());
+        assertTrue(result.denialReason().isEmpty());
     }
 
+    /**
+     * Strict connections are matched against the constructor's label set case-sensitively, so the label here must be exactly {@code fence},
+     * not the {@code FENCE} the non-strict tests use.
+     */
     @Test
     public void testIsAuthorized_AccessRuleFailed_strict() {
         Application application = createTestApplication();
         User user = createTestUser();
+
+        AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
+        accessRule.setRule("$.test");
+        accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        accessRule.setValue("value");
+
+        for (Privilege privilege1 : user.getRoles().iterator().next().getPrivileges()) {
+            privilege1.setAccessRules(Collections.singleton(accessRule));
+            privilege1.setApplication(application);
+        }
         configureUserSecurityContext(user);
-        user.setConnection(createFenceTestConnection());
+        Connection strictConnection = createFenceTestConnection();
+        strictConnection.setLabel("fence");
+        user.setConnection(strictConnection);
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, requestBody, user, false);
 
-        assertFalse(result);
+        assertFalse(result.result());
+        assertEquals(Set.of(accessRule), result.failedRules());
+        assertTrue(result.denialReason().isEmpty());
     }
 
     private Connection createFenceTestConnection() {

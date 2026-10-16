@@ -4,6 +4,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 
 import edu.harvard.hms.dbmi.avillach.auth.enums.ApiKeyType;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse.Denial;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.OpenAccessValidationResponse.KeyType;
@@ -403,14 +404,27 @@ public class AuthorizationServiceTest {
     public void testIsAuthorized_AccessRuleFailed() {
         Application application = createTestApplication();
         User user = createTestUser();
+
+        AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
+        accessRule.setRule("$.test");
+        accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        accessRule.setValue("value");
+
+        for (Privilege privilege1 : user.getRoles().iterator().next().getPrivileges()) {
+            privilege1.setAccessRules(Collections.singleton(accessRule));
+            privilege1.setApplication(application);
+        }
         configureUserSecurityContext(user);
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, requestBody, user, false);
 
-        assertFalse(result);
+        assertFalse(result.result());
+        assertEquals(Set.of(accessRule), result.failedRules());
+        assertTrue(result.denialReason().isEmpty());
     }
 
     @Test

@@ -96,11 +96,19 @@ public class UserServiceTest {
     @Test
     public void testGetUserProfileResponse() {
         User user = createTestUser();
-        when(userRepository.findByEmail(user.getEmail())).thenReturn(user);
-
         UserClaims userClaims = buildTestUserClaims(user);
+        when(mockJwtUtil.createJwtToken(anyString(), anyString(), anyMap(), eq(user.getSubject()), anyLong())).thenReturn("profile-token");
+        when(tosService.hasUserAcceptedLatest(user.getSubject())).thenReturn(true);
+
         HashMap<String, String> result = userService.getUserProfileResponse(userClaims);
-        assertNotNull(result);
+
+        assertEquals("profile-token", result.get("token"));
+        assertEquals(user.getSubject(), result.get("userId"));
+        assertEquals(user.getEmail(), result.get("email"));
+        assertEquals(user.getUuid().toString(), result.get("uuid"));
+        assertEquals("true", result.get("acceptedTOS"));
+        assertNotNull(result.get("expirationDate"));
+        verify(sessionService).startSession(eq(user.getSubject()), anyString());
     }
 
     @Test
@@ -273,10 +281,15 @@ public class UserServiceTest {
         Jws<Claims> claimsJws = this.jwtUtil.parseToken(token);
         System.out.println(claimsJws);
         when(mockJwtUtil.parseToken(anyString())).thenReturn(claimsJws);
+        String longTermSubject = AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + user.getSubject();
+        when(mockJwtUtil.createJwtToken(anyString(), anyString(), anyMap(), eq(longTermSubject), anyLong()))
+            .thenReturn("generated-long-term-token");
         when(tosService.hasUserAcceptedLatest(any())).thenReturn(true);
         UserProfileResponse currentUser = userService.getCurrentUser("Bearer " + token, true);
         assertNotNull(currentUser);
-        assertEquals(user.getToken(), currentUser.token());
+        assertEquals("generated-long-term-token", currentUser.token());
+        assertEquals("generated-long-term-token", user.getToken());
+        verify(userRepository).save(user);
     }
 
     @Test

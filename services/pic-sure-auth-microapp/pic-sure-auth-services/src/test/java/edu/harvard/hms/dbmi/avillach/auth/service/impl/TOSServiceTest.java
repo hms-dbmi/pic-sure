@@ -13,11 +13,11 @@ import org.springframework.test.context.ContextConfiguration;
 
 import java.util.Date;
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
@@ -57,16 +57,16 @@ public class TOSServiceTest {
     @Test
     public void testHasUserAcceptedLatest_UserNotAcceptedLatestTOS() {
         User user = new User();
-        user.setAcceptedTOS(new Date(0)); // Set an old date
+        user.setAcceptedTOS(new Date(0));
 
         TermsOfService latestTOS = new TermsOfService();
         latestTOS.setDateUpdated(new Date());
         latestTOS.setContent("Latest TOS content");
 
-        when(userRepo.findById(any(UUID.class))).thenReturn(Optional.of(user));
+        when(userRepo.findBySubject("user-id")).thenReturn(user);
         when(termsOfServiceRepo.findTopByOrderByDateUpdatedDesc()).thenReturn(Optional.of(latestTOS));
 
-        boolean result = tosService.hasUserAcceptedLatest(UUID.randomUUID().toString());
+        boolean result = tosService.hasUserAcceptedLatest("user-id");
         assertFalse(result);
     }
 
@@ -76,13 +76,29 @@ public class TOSServiceTest {
         user.setAcceptedTOS(new Date());
 
         TermsOfService latestTOS = new TermsOfService();
-        latestTOS.setDateUpdated(new Date(0)); // Set an old date
+        latestTOS.setDateUpdated(new Date(0));
+        latestTOS.setContent("Latest TOS content");
 
-        when(userRepo.findBySubject(any(String.class))).thenReturn(user);
+        when(userRepo.findBySubject("user-id")).thenReturn(user);
         when(termsOfServiceRepo.findTopByOrderByDateUpdatedDesc()).thenReturn(Optional.of(latestTOS));
 
-        boolean result = tosService.hasUserAcceptedLatest(UUID.randomUUID().toString());
+        boolean result = tosService.hasUserAcceptedLatest("user-id");
         assertTrue(result);
+    }
+
+    @Test
+    public void testHasUserAcceptedLatest_UserNeverAcceptedTOS() {
+        User user = new User();
+
+        TermsOfService latestTOS = new TermsOfService();
+        latestTOS.setDateUpdated(new Date());
+        latestTOS.setContent("Latest TOS content");
+
+        when(userRepo.findBySubject("user-id")).thenReturn(user);
+        when(termsOfServiceRepo.findTopByOrderByDateUpdatedDesc()).thenReturn(Optional.of(latestTOS));
+
+        boolean result = tosService.hasUserAcceptedLatest("user-id");
+        assertFalse(result);
     }
 
     @Test
@@ -159,48 +175,17 @@ public class TOSServiceTest {
     }
 
     @Test
-    public void testCheckAgainstTOSDate_UserAcceptedLatestTOS() {
-        User user = new User();
-        user.setAcceptedTOS(new Date());
-
-        TermsOfService tos = new TermsOfService();
-        tos.setDateUpdated(new Date(0)); // Set an old date
-
-        when(userRepo.findById(any(UUID.class))).thenReturn(Optional.of(user));
-        when(termsOfServiceRepo.findTopByOrderByDateUpdatedDesc()).thenReturn(Optional.of(tos));
-
-        boolean result = tosService.hasUserAcceptedLatest(UUID.randomUUID().toString());
-        assertTrue(result);
-    }
-
-    @Test
-    public void testCheckAgainstTOSDate_UserNotAcceptedLatestTOS() {
-        User user = new User();
-        user.setAcceptedTOS(new Date(0));
-
+    public void testHasUserAcceptedLatest_UserNotFound() {
         TermsOfService tos = new TermsOfService();
         tos.setDateUpdated(new Date());
         tos.setContent("Latest TOS content");
 
-        when(userRepo.findById(any(UUID.class))).thenReturn(Optional.of(user));
+        when(userRepo.findBySubject("user-id")).thenReturn(null);
         when(termsOfServiceRepo.findTopByOrderByDateUpdatedDesc()).thenReturn(Optional.of(tos));
 
-        boolean result = tosService.hasUserAcceptedLatest(UUID.randomUUID().toString());
+        boolean result = tosService.hasUserAcceptedLatest("user-id");
         assertFalse(result);
-    }
-
-    @Test
-    public void testCheckAgainstTOSDate_UserNotFound() {
-        when(userRepo.findById(any(UUID.class))).thenReturn(Optional.empty());
-
-        TermsOfService tos = new TermsOfService();
-        tos.setDateUpdated(new Date());
-        tos.setContent("Latest TOS content");
-
-        when(termsOfServiceRepo.findTopByOrderByDateUpdatedDesc()).thenReturn(Optional.of(tos));
-
-        boolean result = tosService.hasUserAcceptedLatest(UUID.randomUUID().toString());
-        assertFalse(result);
+        verify(userRepo).findBySubject("user-id");
     }
 
 }
