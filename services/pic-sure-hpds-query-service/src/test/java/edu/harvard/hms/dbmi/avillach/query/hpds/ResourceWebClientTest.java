@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.query.hpds;
 import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
@@ -19,6 +20,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
@@ -58,6 +61,11 @@ class ResourceWebClientTest {
         return new HpdsTarget(base(), TOKEN);
     }
 
+    /** The body HPDS receives on status, result and signed-url: an envelope with no query, which HPDS requires and does not read. */
+    private static String emptyEnvelope() throws JsonProcessingException {
+        return new ObjectMapper().writeValueAsString(new GeneralQueryRequest());
+    }
+
     private QueryRequest req() {
         GeneralQueryRequest r = new GeneralQueryRequest();
         r.setQuery("q");
@@ -77,25 +85,25 @@ class ResourceWebClientTest {
     }
 
     @Test
-    void resultBuffersOctetStreamWithToken() {
+    void resultBuffersOctetStreamWithTokenAndPostsTheEmptyEnvelope() throws JsonProcessingException {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/v3/query/rr-1/result")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
-                .willReturn(aResponse().withStatus(200).withBody(new byte[] {1, 2, 3}))
+                .withRequestBody(equalToJson(emptyEnvelope())).willReturn(aResponse().withStatus(200).withBody(new byte[] {1, 2, 3}))
         );
 
-        ResponseEntity<byte[]> resp = client().queryResult(target(), "rr-1", req());
+        ResponseEntity<byte[]> resp = client().queryResult(target(), "rr-1");
 
         assertThat(resp.getBody()).containsExactly(1, 2, 3);
     }
 
     @Test
-    void signedUrlReadsTheSignedUrlObjectWithToken() {
+    void signedUrlReadsTheSignedUrlObjectWithTokenAndPostsTheEmptyEnvelope() throws JsonProcessingException {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/v3/query/rr-1/signed-url")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
-                .willReturn(okJson("{\"signedUrl\":\"https://s3/x\"}"))
+                .withRequestBody(equalToJson(emptyEnvelope())).willReturn(okJson("{\"signedUrl\":\"https://s3/x\"}"))
         );
 
-        SignedUrlResponse resp = client().queryResultSignedUrl(target(), "rr-1", req());
+        SignedUrlResponse resp = client().queryResultSignedUrl(target(), "rr-1");
 
         assertThat(resp.getSignedUrl()).isEqualTo("https://s3/x");
     }
@@ -115,13 +123,14 @@ class ResourceWebClientTest {
     }
 
     @Test
-    void statusInjectsToken() {
+    void statusInjectsTokenAndPostsTheEmptyEnvelope() throws JsonProcessingException {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/v3/query/rr-1/status")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
+                .withRequestBody(equalToJson(emptyEnvelope()))
                 .willReturn(okJson("{\"resourceResultId\":\"rr-1\",\"status\":\"AVAILABLE\"}"))
         );
 
-        var status = client().queryStatus(target(), "rr-1", req());
+        var status = client().queryStatus(target(), "rr-1");
 
         assertThat(status.getStatus().name()).isEqualTo("AVAILABLE");
     }

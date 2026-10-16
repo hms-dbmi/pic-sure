@@ -5,8 +5,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,10 +42,10 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 
 /**
- * Reproduces every 403, 502, and 504 the OpenAPI document declares, one case per endpoint, through the real controllers, services, and HTTP
- * clients. A single WireMock server stands in for HPDS ({@code /PIC-SURE}), the aggregate open backend ({@code /OPEN}), PSAMA's consent
- * lookup, and operations-service's internal query store, so each status comes from the production throw site rather than a mocked bean. The
- * 503 cases need an unconfigured backend and live in {@link UnconfiguredBackendResponsesTest}.
+ * Reproduces every 403, 405, 502, and 504 the OpenAPI document declares, one case per endpoint, through the real controllers, services, and
+ * HTTP clients. A single WireMock server stands in for HPDS ({@code /PIC-SURE}), the aggregate open backend ({@code /OPEN}), PSAMA's
+ * consent lookup, and operations-service's internal query store, so each status comes from the production throw site rather than a mocked
+ * bean. The 503 cases need an unconfigured backend and live in {@link UnconfiguredBackendResponsesTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -116,8 +118,8 @@ class DocumentedErrorResponsesTest {
         return Stream.of(
             endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
             endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
-            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
+            endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id))),
             endpoint("metadata", id -> authorized(get("/hpds/auth/query/{id}/metadata", id)))
         );
     }
@@ -145,9 +147,9 @@ class DocumentedErrorResponsesTest {
         return Stream.of(
             endpoint("submit", id -> authorized(post("/hpds/auth/query")).content(QUERY_BODY)),
             endpoint("sync", id -> authorized(post("/hpds/auth/query/sync")).content(QUERY_BODY)),
-            endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id)).content("{}")),
-            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
+            endpoint("status", id -> authorized(get("/hpds/auth/query/{id}/status", id))),
+            endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id))),
             endpoint("search", id -> authorized(post("/hpds/auth/search")).content("{\"query\":\"age\"}")),
             endpoint("search values", id -> identified(get("/hpds/auth/search/values")).param("genomicConceptPath", "\\gene\\")),
             endpoint("open submit", id -> authorized(post("/hpds/open/query")).content(QUERY_BODY))
@@ -180,9 +182,9 @@ class DocumentedErrorResponsesTest {
     /** Endpoints that load the stored query from operations-service before doing anything else. */
     static Stream<Arguments> storedQueryReads() {
         return Stream.of(
-            endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id)).content("{}")),
-            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id)).content("{}")),
-            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)).content("{}")),
+            endpoint("status", id -> authorized(get("/hpds/auth/query/{id}/status", id))),
+            endpoint("result", id -> authorized(get("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(get("/hpds/auth/query/{id}/signed-url", id))),
             endpoint("metadata", id -> authorized(get("/hpds/auth/query/{id}/metadata", id)))
         );
     }
@@ -211,7 +213,7 @@ class DocumentedErrorResponsesTest {
     void statusUpdateFailureIs502() throws Exception {
         downstream.stubFor(WireMock.patch(urlPathMatching(QUERIES + "/.*")).willReturn(aResponse().withStatus(500)));
 
-        mockMvc.perform(authorized(post("/hpds/auth/query/{id}/status", storedId)).content("{}")).andExpect(status().isBadGateway())
+        mockMvc.perform(authorized(get("/hpds/auth/query/{id}/status", storedId))).andExpect(status().isBadGateway())
             .andExpect(jsonPath("$.errorType").value("bad_gateway"));
     }
 
@@ -244,6 +246,23 @@ class DocumentedErrorResponsesTest {
 
         mockMvc.perform(request.build(storedId)).andExpect(status().isGatewayTimeout())
             .andExpect(jsonPath("$.errorType").value("gateway_timeout"));
+    }
+
+    /** Stored-query reads that are GET only, so a POST to them is answered with 405 and an {@code Allow} header. */
+    static Stream<Arguments> getOnlyStoredQueryReads() {
+        return Stream.of(
+            endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id))),
+            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)))
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getOnlyStoredQueryReads")
+    void postToAGetOnlyStoredQueryReadIs405WithAnAllowHeader(String name, RequestFor request) throws Exception {
+        mockMvc.perform(request.build(storedId)).andExpect(status().isMethodNotAllowed())
+            .andExpect(header().string(HttpHeaders.ALLOW, containsString("GET")))
+            .andExpect(jsonPath("$.errorType").value("method_not_allowed"));
     }
 
     /** Builds one request against the stored query id the test stubbed. */
