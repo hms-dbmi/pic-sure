@@ -24,9 +24,15 @@ for (const file of reports) {
 const gh = client(token, repo);
 const files = await gh.paginate(`/repos/${repo}/pulls/${prNumber}/files`);
 const addedByFile = new Map();
+const noPatch = [];
 for (const f of files) {
-  if (f.status === 'removed' || !f.patch) continue;
+  if (f.status === 'removed') continue;
   if (!matchAny(cfg.include, f.filename) || matchAny(cfg.exclude, f.filename)) continue;
+  // GitHub omits `patch` for very large or binary diffs. Treat that as unverifiable, not as zero added lines.
+  if (!f.patch) {
+    if (f.additions > 0) noPatch.push(f.filename);
+    continue;
+  }
   addedByFile.set(f.filename, parsePatch(f.patch).added);
 }
 
@@ -38,8 +44,11 @@ for (const f of r.perFile.filter((x) => x.uncovered.length)) {
 if (r.missing.length) {
   out.push('', `No coverage data for: ${r.missing.map((m) => `\`${m}\``).join(', ')}${cfg.failOnMissingFile ? ' (counted as failure)' : ' (warning only; set coverage.failOnMissingFile to enforce)'}`);
 }
+if (noPatch.length) {
+  out.push('', `Could not read the diff of: ${noPatch.map((m) => `\`${m}\``).join(', ')} (counted as failure)`);
+}
 summary(out.join('\n'));
 console.log(out.join('\n'));
 
-const failed = r.pct < cfg.min || (cfg.failOnMissingFile && r.missing.length > 0);
+const failed = r.pct < cfg.min || (cfg.failOnMissingFile && r.missing.length > 0) || noPatch.length > 0;
 process.exit(failed ? 1 : 0);
