@@ -45,7 +45,8 @@ public class BinningController {
         @Valid @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
     ) {
         AuditLoggingContext.addBinningRequestMetadata(servletRequest, request.query());
-        ContinuousBinningResponse response = new ContinuousBinningResponse(visualizationService.binContinuousData(request.query()));
+        ContinuousBinningResponse response =
+            new ContinuousBinningResponse(visualizationService.binContinuousData(request.query(), request.ranges(), request.maxBins()));
         AuditLoggingContext.addBinningResponseMetadata(servletRequest, response.bins());
         return ResponseEntity.ok(response);
     }
