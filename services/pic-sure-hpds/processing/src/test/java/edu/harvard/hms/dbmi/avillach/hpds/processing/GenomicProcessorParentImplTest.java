@@ -45,17 +45,37 @@ class GenomicProcessorParentImplTest {
         ));
     }
 
+    /**
+     * Pins the element comparison in initializePatientIds: every partition reports the same number of patients and exactly one element
+     * differs. The stubs are lenient because the partitions are read on boundedElastic and reduced in completion order, so the first
+     * mismatch can cancel the fan-out before every partition has been asked.
+     */
     @Test
     public void patientIdInit_patientsDiffer_exception() {
-        // initializePatientIds fans the nodes out on boundedElastic and reduces in completion order, so the mismatch
-        // can be found against the unstubbed third mock's empty list and cancel the rest before mockProcessor2 is
-        // ever called. Which stubs get consumed is a race; strict stubbing would fail the run whenever it loses.
         lenient().when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "42", "99"));
         lenient().when(mockProcessor2.getPatientIds()).thenReturn(List.of("1", "43", "99"));
+        lenient().when(mockProcessor3.getPatientIds()).thenReturn(List.of("1", "42", "99"));
 
-        assertThrows(IllegalStateException.class, () -> {
-            parentProcessor = new GenomicProcessorParentImpl(List.of(mockProcessor1, mockProcessor2, mockProcessor3));
-        });
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class, () -> new GenomicProcessorParentImpl(List.of(mockProcessor1, mockProcessor2, mockProcessor3))
+        );
+        assertEquals("Patient lists from partitions do not match", exception.getMessage());
+    }
+
+    /**
+     * Pins the size comparison in initializePatientIds: one partition reports fewer patients than the others. Lenient for the same
+     * completion-order reason as the element-mismatch case.
+     */
+    @Test
+    public void patientIdInit_patientCountsDiffer_exception() {
+        lenient().when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "42", "99"));
+        lenient().when(mockProcessor2.getPatientIds()).thenReturn(List.of("1", "42"));
+        lenient().when(mockProcessor3.getPatientIds()).thenReturn(List.of("1", "42", "99"));
+
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class, () -> new GenomicProcessorParentImpl(List.of(mockProcessor1, mockProcessor2, mockProcessor3))
+        );
+        assertEquals("Patient lists from partitions do not match", exception.getMessage());
     }
 
 
