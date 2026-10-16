@@ -29,6 +29,7 @@ use rayon::prelude::*;
 use roaring::{MultiOps, RoaringBitmap};
 use serde_json::Value;
 
+use crate::budget::{BudgetPermit, ByteBudget, PrefixReadStats};
 use crate::counters::{BlockCacheCounters, BlockCacheStats};
 use crate::error::{QueryError, Result};
 use crate::model::Query;
@@ -61,6 +62,11 @@ pub const NARROW_VIEW_SHARE: f64 = 0.75;
 /// merge over the whole running union, so the bound sits above the decoded size of a
 /// typical study-level prefix, which then reads in one chunk.
 pub const DEFAULT_PREFIX_READ_BYTES: u64 = 512 << 20;
+
+/// Default bound on the decoded bytes every multi-concept read of the process holds at once
+/// ([`PartitionOptions::prefix_read_budget_bytes`]): 1 GiB, two chunks of the default
+/// [`DEFAULT_PREFIX_READ_BYTES`].
+pub const DEFAULT_PREFIX_READ_BUDGET_BYTES: u64 = 1 << 30;
 
 /// Bytes of selection patient sets [`PartitionSet`] keeps for repeated selections.
 const SCOPE_CACHE_BYTES: u64 = 64 << 20;
@@ -102,6 +108,13 @@ pub struct PartitionOptions {
     /// merges each chunk and drops it before loading the next; a concept larger than the
     /// bound is read alone. [`DEFAULT_PREFIX_READ_BYTES`] by default.
     pub prefix_read_bytes: u64,
+    /// Bound on the decoded bytes every read of many concepts in the process holds at once
+    /// outside the block cache, summed over queries and filters. Each chunk takes its
+    /// share before it loads, for the concepts the cache does not hold, and gives it back
+    /// once merged; a chunk that does not fit waits. A chunk larger than the whole budget
+    /// waits for it to empty and then runs alone. [`DEFAULT_PREFIX_READ_BUDGET_BYTES`] by
+    /// default.
+    pub prefix_read_budget_bytes: u64,
 }
 
 impl Default for PartitionOptions {
@@ -113,6 +126,7 @@ impl Default for PartitionOptions {
             require_consents: true,
             narrow_view_share: NARROW_VIEW_SHARE,
             prefix_read_bytes: DEFAULT_PREFIX_READ_BYTES,
+            prefix_read_budget_bytes: DEFAULT_PREFIX_READ_BUDGET_BYTES,
         }
     }
 }
@@ -304,6 +318,7 @@ pub struct PartitionSet {
     store: Store,
     narrow_view_share: f64,
     prefix_read_bytes: u64,
+    prefix_budget: ByteBudget,
     evaluating: AtomicUsize,
     cache: BlockCache,
     recent: Arc<RecentEntries>,
@@ -486,6 +501,7 @@ impl PartitionSet {
             store,
             narrow_view_share: options.narrow_view_share,
             prefix_read_bytes: options.prefix_read_bytes.max(1),
+            prefix_budget: ByteBudget::new(options.prefix_read_budget_bytes),
             evaluating: AtomicUsize::new(0),
             cache_capacity: options.store.cache_bytes,
             cache_counters,
@@ -735,6 +751,11 @@ impl PartitionSet {
             views,
             view_bytes,
         }
+    }
+
+    /// The prefix read budget, what it holds and how often reads waited for it.
+    pub fn prefix_read_stats(&self) -> PrefixReadStats {
+        self.prefix_budget.stats()
     }
 
     /// Queries refused because a cohort held patients outside the selected partitions,
@@ -1306,19 +1327,33 @@ impl<'a> Selection<'a> {
         self.set.entry_at(read.index)
     }
 
-    /// The entries of `reads`, in order. Looks each up in the cache (most of them through
-    /// [`RecentEntries`], see [`PartitionSet::cached_entries`]), then reads every missing
-    /// block on the rayon pool and remembers it. Every missing block is attempted; the
-    /// first failure in order is returned. Every entry is held until the caller drops the
-    /// result, so a caller reading many concepts passes one chunk of
-    /// [`Selection::read_chunks`] at a time. Blocking.
+    /// The entries of one chunk of a multi-concept read ([`Selection::read_chunks`]), in
+    /// order, and the permit of the process prefix read budget charged for them. Looks each
+    /// up in the cache (most of them through [`RecentEntries`], see
+    /// [`PartitionSet::cached_entries`]); then takes a permit for the decoded size bounds
+    /// of the concepts still missing, waiting when the budget is short; then reads every
+    /// missing block on the rayon pool and remembers it. Every missing block is attempted;
+    /// the first failure in order is returned. The caller holds the entries and the permit
+    /// until it has merged the chunk, then drops the entries and the permit. Concepts found
+    /// in the cache are charged to the cache, not the budget. Blocking.
+    ///
+    /// Call it only on the thread that runs the query, never on a rayon worker, and never
+    /// while holding another permit (see [`crate::budget`]).
     ///
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be read.
-    pub(crate) fn entries(&self, reads: &[ConceptRead]) -> Result<Vec<Arc<CachedConcept>>> {
+    pub(crate) fn charged_entries(
+        &self,
+        reads: &[ConceptRead],
+    ) -> Result<(Vec<Arc<CachedConcept>>, BudgetPermit<'a>)> {
         let indexes: Vec<usize> = reads.iter().map(|read| read.index).collect();
         let mut entries = self.set.cached_entries(&indexes);
         let missing: Vec<usize> = (0..reads.len()).filter(|&i| entries[i].is_none()).collect();
+        let bytes = missing
+            .iter()
+            .map(|&i| self.set.store.entry(reads[i].index as u32).decoded_bound())
+            .fold(0u64, u64::saturating_add);
+        let permit = self.set.prefix_budget.acquire(bytes);
         let loaded: Vec<Result<Arc<CachedConcept>>> = if missing.len() < 2 {
             missing
                 .iter()
@@ -1338,7 +1373,7 @@ impl<'a> Selection<'a> {
                 .iter()
                 .filter_map(|&i| Some((indexes[i], entries[i].as_ref()?))),
         );
-        Ok(entries.into_iter().flatten().collect())
+        Ok((entries.into_iter().flatten().collect(), permit))
     }
 
     /// The partition view of the concept `read` names, whose entry is `entry`, built and

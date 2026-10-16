@@ -6,8 +6,8 @@ use std::time::Duration;
 use hpds_query::{
     DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_MAX_CLAUSE_DEPTH,
     DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_QUERY_CONCEPTS,
-    DEFAULT_MAX_SELECT_PATHS, DEFAULT_PREFIX_READ_BYTES, PartitionOptions, QueryLimits,
-    StoreOptions,
+    DEFAULT_MAX_SELECT_PATHS, DEFAULT_PREFIX_READ_BUDGET_BYTES, DEFAULT_PREFIX_READ_BYTES,
+    PartitionOptions, QueryLimits, StoreOptions,
 };
 
 /// Port used when `SERVER_PORT` is not set.
@@ -57,6 +57,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `ID_BATCH_SIZE` | 0 | Java's export switch: 0 disables DATAFRAME exports, any larger value enables them |
 /// | `HPDS_EXPORT_PIN_BYTES` | 2 GiB | Cap on the decoded blocks one DATAFRAME export holds; a wider export ends in ERROR |
 /// | `HPDS_PREFIX_READ_BYTES` | 512 MiB | Bound on the decoded blocks one `ANY_RECORD_OF` holds outside the block cache; a prefix covering more is read in chunks within it |
+/// | `HPDS_PREFIX_READ_BUDGET_BYTES` | 1 GiB | Bound on the decoded blocks every `ANY_RECORD_OF` of the process holds at once outside the block cache; a chunk that does not fit waits |
 /// | `HPDS_RESULT_MAX_FILE_BYTES` | 4 GiB | Cap on one export file, checked as it is written; a larger export ends in ERROR and its partial file is deleted |
 /// | `HPDS_MAX_SELECT_PATHS` | 5,000 | Most distinct `select` paths in a query |
 /// | `HPDS_MAX_CLAUSE_DEPTH` | 64 | Deepest nesting of phenotypic subqueries |
@@ -237,6 +238,11 @@ impl Config {
                     &lookup,
                     "HPDS_PREFIX_READ_BYTES",
                     DEFAULT_PREFIX_READ_BYTES,
+                )?,
+                prefix_read_budget_bytes: positive_u64(
+                    &lookup,
+                    "HPDS_PREFIX_READ_BUDGET_BYTES",
+                    DEFAULT_PREFIX_READ_BUDGET_BYTES,
                 )?,
                 ..PartitionOptions::default()
             },
@@ -420,6 +426,7 @@ mod tests {
         assert_eq!(c.id_batch_size, 0);
         assert_eq!(c.export_pin_bytes, 2 << 30);
         assert_eq!(c.partitions.prefix_read_bytes, 512 << 20);
+        assert_eq!(c.partitions.prefix_read_budget_bytes, 1 << 30);
         assert_eq!(c.sync_timeout, Duration::from_secs(300));
         assert_eq!(c.result_limit, 1000);
         assert!(c.engine_concurrency < c.blocking_threads);
@@ -448,6 +455,14 @@ mod tests {
         );
         assert!(config(&[("HPDS_PREFIX_READ_BYTES", "0")]).is_err());
         assert!(config(&[("HPDS_PREFIX_READ_BYTES", "x")]).is_err());
+        assert_eq!(
+            config(&[("HPDS_PREFIX_READ_BUDGET_BYTES", "2097152")])
+                .unwrap()
+                .partitions
+                .prefix_read_budget_bytes,
+            2 << 20
+        );
+        assert!(config(&[("HPDS_PREFIX_READ_BUDGET_BYTES", "0")]).is_err());
     }
 
     #[test]

@@ -15,7 +15,7 @@ use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use hpds_query::{BlockCacheStats, ResultType};
+use hpds_query::{BlockCacheStats, PrefixReadStats, ResultType};
 
 use crate::state::AppState;
 
@@ -264,6 +264,7 @@ pub fn render(state: &AppState) -> String {
     if let Ok(engine) = state.engine() {
         let partitions = engine.partitions();
         render_block_cache(&mut family, &partitions.block_cache_stats());
+        render_prefix_reads(&mut family, &partitions.prefix_read_stats());
         family.single(
             "hpds_store_superseded",
             "gauge",
@@ -436,6 +437,45 @@ fn render_results(family: &mut Family<'_>, state: &AppState) {
         "gauge",
         "Budget of the export results held in memory; 0 when every result goes to a file.",
         results.memory_budget(),
+    );
+}
+
+fn render_prefix_reads(family: &mut Family<'_>, stats: &PrefixReadStats) {
+    family.single(
+        "hpds_prefix_read_budget_bytes",
+        "gauge",
+        "Bound on the decoded bytes ANY_RECORD_OF reads hold at once outside the block cache.",
+        stats.budget,
+    );
+    family.single(
+        "hpds_prefix_read_held_bytes",
+        "gauge",
+        "Decoded bytes ANY_RECORD_OF reads hold now under the budget.",
+        stats.held,
+    );
+    family.single(
+        "hpds_prefix_read_held_peak_bytes",
+        "gauge",
+        "The most decoded bytes ANY_RECORD_OF reads have held at once.",
+        stats.peak_held,
+    );
+    family.single(
+        "hpds_prefix_read_permits_total",
+        "counter",
+        "Chunks of ANY_RECORD_OF reads granted bytes of the budget.",
+        stats.permits,
+    );
+    family.single(
+        "hpds_prefix_read_waits_total",
+        "counter",
+        "Chunks that waited for bytes of the budget to be released.",
+        stats.waits,
+    );
+    family.single(
+        "hpds_prefix_read_wait_seconds_total",
+        "counter",
+        "Seconds chunks spent waiting for the budget, summed over threads.",
+        stats.wait_seconds,
     );
 }
 

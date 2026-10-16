@@ -24,6 +24,7 @@
 //! `tokio::task::spawn_blocking`; the `tokio` feature adds [`Engine::run_blocking`] for
 //! that.
 
+mod budget;
 mod cohort;
 mod counters;
 mod engine;
@@ -39,6 +40,7 @@ mod store;
 pub mod validate;
 mod view;
 
+pub use budget::PrefixReadStats;
 pub use counters::BlockCacheStats;
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine, ReadPlan};
 pub use error::{QueryError, Result};
@@ -53,8 +55,9 @@ pub use model::{
     ResultType, UserConsent, parse_request_body, parse_strict,
 };
 pub use partition::{
-    COMBINED_DIR_NAME, DEFAULT_PREFIX_READ_BYTES, Layout, NARROW_VIEW_SHARE, Partition,
-    PartitionOptions, PartitionSet, Selection, SummaryColumnMeta, UNPARTITIONED_NAME,
+    COMBINED_DIR_NAME, DEFAULT_PREFIX_READ_BUDGET_BYTES, DEFAULT_PREFIX_READ_BYTES, Layout,
+    NARROW_VIEW_SHARE, Partition, PartitionOptions, PartitionSet, Selection, SummaryColumnMeta,
+    UNPARTITIONED_NAME,
 };
 pub use result_cache::{MIN_RESULT_CACHE_BYTES, ResultCacheStats, SyncAnswer};
 pub use results::{

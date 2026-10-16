@@ -1072,6 +1072,7 @@ mod tests {
         use crate::model::{PhenotypicClause, PhenotypicFilter, PhenotypicFilterType};
         use roaring::RoaringBitmap;
 
+        use crate::model::{Operator, PhenotypicSubquery};
         use crate::{Engine, NARROW_VIEW_SHARE, PartitionOptions, Query, QueryError, ResultType};
 
         const KEY: &str = "0123456789ABCDEF0123456789ABCDEF";
@@ -1266,10 +1267,21 @@ mod tests {
         }
 
         fn engine_with(out: &std::path::Path, share: f64, budget: u64, cache: u64) -> Engine {
+            engine_budgeted(out, share, budget, u64::MAX, cache)
+        }
+
+        fn engine_budgeted(
+            out: &std::path::Path,
+            share: f64,
+            chunk: u64,
+            budget: u64,
+            cache: u64,
+        ) -> Engine {
             let options = PartitionOptions {
                 require_consents: false,
                 narrow_view_share: share,
-                prefix_read_bytes: budget,
+                prefix_read_bytes: chunk,
+                prefix_read_budget_bytes: budget,
                 store: crate::StoreOptions {
                     cache_bytes: cache,
                     ..crate::StoreOptions::default()
@@ -1317,6 +1329,110 @@ mod tests {
                 .chain([31])
                 .collect();
             assert_eq!(in_p3.unwrap(), expected);
+        }
+
+        /// A PATIENTS query, under `consents`, of `clause`.
+        fn patients_of(clause: PhenotypicClause, consents: &[&str]) -> Query {
+            Query {
+                phenotypic_clause: Some(clause),
+                ..Query::with_consents(ResultType::Patients, consents.iter().copied())
+            }
+        }
+
+        fn any_record(prefix: &str) -> PhenotypicClause {
+            PhenotypicClause::Filter(PhenotypicFilter::new(
+                PhenotypicFilterType::AnyRecordOf,
+                prefix,
+            ))
+        }
+
+        fn subquery(operator: Operator, clauses: Vec<PhenotypicClause>) -> PhenotypicClause {
+            PhenotypicClause::Subquery(PhenotypicSubquery {
+                phenotypic_clauses: clauses,
+                operator: Some(operator),
+                not: None,
+            })
+        }
+
+        /// An OR of eight broad `ANY_RECORD_OF` filters, an AND of two nested in it, and a
+        /// value filter evaluated beside them.
+        fn broad_or() -> PhenotypicClause {
+            let mut clauses: Vec<PhenotypicClause> = ["\\c\\0", "\\c\\1", "\\c\\2", "\\c\\3"]
+                .iter()
+                .chain(&["\\c\\", "\\c\\0", "\\c\\1", "\\c\\2"])
+                .map(|prefix| any_record(prefix))
+                .collect();
+            clauses.push(subquery(
+                Operator::And,
+                vec![any_record("\\c\\3"), any_record("\\c\\")],
+            ));
+            let mut range = PhenotypicFilter::new(PhenotypicFilterType::Filter, "\\c\\05\\");
+            range.min = Some(0.0);
+            clauses.push(PhenotypicClause::Filter(range));
+            subquery(Operator::Or, clauses)
+        }
+
+        #[test]
+        fn parallel_broad_filters_finish_within_the_process_budget() {
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let consents: [&[&str]; 2] = [&["p1"], &["p1", "p2", "p3"]];
+            let unbounded = engine_with(&out, NARROW_VIEW_SHARE, u64::MAX, 0);
+            let expected: Vec<RoaringBitmap> = consents
+                .iter()
+                .map(|c| unbounded.patients(&patients_of(broad_or(), c)).unwrap())
+                .collect();
+            assert!(expected.iter().all(|found| !found.is_empty()));
+            let engine = engine_budgeted(&out, NARROW_VIEW_SHARE, 20_000, 30_000, 0);
+            let set = engine.partitions();
+            let selection = set.select_consents(&["p1"]).unwrap();
+            let one_prefix: u64 = selection
+                .concepts_with_prefix("\\c\\0")
+                .iter()
+                .map(|read| crate::partition::test_support::decoded_bound(set, read.index))
+                .sum();
+            assert!(
+                one_prefix * 8 > 3 * 30_000,
+                "eight filters need several times the budget"
+            );
+            std::thread::scope(|scope| {
+                for thread in 0..6 {
+                    let (engine, expected, consents) = (&engine, &expected, &consents);
+                    scope.spawn(move || {
+                        for round in 0..3 {
+                            let which = (thread + round) % 2;
+                            let query = patients_of(broad_or(), consents[which]);
+                            assert_eq!(engine.patients(&query).unwrap(), expected[which]);
+                        }
+                    });
+                }
+            });
+            let stats = set.prefix_read_stats();
+            assert_eq!(stats.held, 0, "every permit is released");
+            assert!(stats.peak_held <= 30_000, "{stats:?}");
+            assert!(stats.peak_held > 0);
+            assert!(
+                stats.waits > 0,
+                "six queries at once wait for each other: {stats:?}"
+            );
+            assert_eq!(set.cohort_guard_refusals(), 0);
+        }
+
+        #[test]
+        fn a_chunk_larger_than_the_budget_runs_alone() {
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let unbounded = engine_with(&out, 2.0, u64::MAX, 0);
+            let query = patients_of(broad_or(), &["p3"]);
+            let expected = unbounded.patients(&query).unwrap();
+            let engine = engine_budgeted(&out, 2.0, u64::MAX, 1, 0);
+            std::thread::scope(|scope| {
+                for _ in 0..4 {
+                    scope.spawn(|| assert_eq!(engine.patients(&query).unwrap(), expected));
+                }
+            });
+            let stats = engine.partitions().prefix_read_stats();
+            assert_eq!((stats.held, stats.peak_held), (0, 1));
         }
 
         #[test]

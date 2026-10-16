@@ -428,7 +428,7 @@ fn evaluate_checked(selection: &Selection<'_>, clause: &PhenotypicClause) -> Res
     }
 }
 
-/// Evaluates `clauses` in parallel and combines them with `operator`: one multi-way union
+/// Evaluates `clauses` ([`evaluate_all`]) and combines them with `operator`: one multi-way union
 /// for OR, and for AND one multi-way intersection over the sets ordered smallest first,
 /// which stops once the result is empty. Borrowed bitmaps are read in place (an AND copies
 /// only its starting operand), and a single clause is returned as it is.
@@ -441,9 +441,7 @@ fn combine(
     clauses: &[PhenotypicClause],
     operator: Operator,
 ) -> Result<Found> {
-    let mut sets = fan_out::map(clauses, |clause| evaluate_checked(selection, clause))
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
+    let mut sets = evaluate_all(selection, clauses)?;
     if sets.len() <= 1 {
         return sets.pop().ok_or(QueryError::EmptySubquery);
     }
@@ -461,6 +459,51 @@ fn combine(
             )
         }
     })
+}
+
+/// Each of `clauses` evaluated, in order. Clauses holding no `ANY_RECORD_OF` run in
+/// parallel ([`fan_out::map`]); the others run one after another on the calling thread,
+/// since an `ANY_RECORD_OF` waits on the process prefix read budget, and a wait on a rayon
+/// worker could sit above a permit that same worker holds lower on its stack, one it took
+/// for another clause before stealing this one. The first error in clause order is returned,
+/// as when every clause ran in parallel.
+fn evaluate_all(selection: &Selection<'_>, clauses: &[PhenotypicClause]) -> Result<Vec<Found>> {
+    let reads_many: Vec<bool> = clauses.iter().map(holds_any_record_of).collect();
+    if !reads_many.contains(&true) {
+        return fan_out::map(clauses, |clause| evaluate_checked(selection, clause))
+            .into_iter()
+            .collect();
+    }
+    let parallel: Vec<&PhenotypicClause> = clauses
+        .iter()
+        .zip(&reads_many)
+        .filter_map(|(clause, &many)| (!many).then_some(clause))
+        .collect();
+    let mut parallel =
+        fan_out::map(&parallel, |clause| evaluate_checked(selection, clause)).into_iter();
+    clauses
+        .iter()
+        .zip(&reads_many)
+        .map(|(clause, &many)| {
+            if many {
+                evaluate_checked(selection, clause)
+            } else {
+                parallel.next().unwrap_or(Err(QueryError::EmptySubquery))
+            }
+        })
+        .collect()
+}
+
+/// True when `clause` is or holds an `ANY_RECORD_OF` filter.
+fn holds_any_record_of(clause: &PhenotypicClause) -> bool {
+    match clause {
+        PhenotypicClause::Filter(filter) => {
+            filter.phenotypic_filter_type == PhenotypicFilterType::AnyRecordOf
+        }
+        PhenotypicClause::Subquery(subquery) => {
+            subquery.phenotypic_clauses.iter().any(holds_any_record_of)
+        }
+    }
 }
 
 fn evaluate_filter(selection: &Selection<'_>, filter: &PhenotypicFilter) -> Result<Found> {
@@ -561,7 +604,8 @@ fn any_record_of(selection: &Selection<'_>, prefix: &str) -> Result<Found> {
 
 /// Merges the union of one chunk of an `ANY_RECORD_OF`'s concepts into `partials`, and
 /// returns whether that chunk's answer is exact. The chunk's entries are held only while
-/// this runs.
+/// this runs, under a permit of the process prefix read budget for the ones it loads
+/// ([`Selection::charged_entries`]), released once they are merged and dropped.
 ///
 /// Each concept's cached view is looked at once, and when `build_views` is set the views
 /// missing then are built from that same snapshot, so a view another query finishes in between is never lost. A concept
@@ -586,7 +630,7 @@ fn any_record_of_chunk(
     parallelism: usize,
     build_views: bool,
 ) -> Result<bool> {
-    let entries = selection.entries(reads)?;
+    let (entries, permit) = selection.charged_entries(reads)?;
     fault::note_chunk_held(selection.set());
     let pairs: Vec<(ConceptRead, _)> = reads.iter().copied().zip(entries).collect();
     let mut views: Vec<Option<Arc<View>>> = pairs
@@ -649,6 +693,11 @@ fn any_record_of_chunk(
     let wide = sets.len() >= PARALLEL_UNION_MIN_SETS;
     let Some(planned) = planned else {
         partials.push(union_of(&sets, if wide { parallelism } else { 1 }));
+        drop(sets);
+        drop(corrected);
+        drop(views);
+        drop(pairs);
+        drop(permit);
         return Ok(exact);
     };
     if partials.is_empty() {
@@ -656,6 +705,11 @@ fn any_record_of_chunk(
         partials.resize_with(count.max(1), RoaringBitmap::new);
     }
     union_into(partials, &sets);
+    drop(sets);
+    drop(corrected);
+    drop(views);
+    drop(pairs);
+    drop(permit);
     Ok(exact)
 }
 
