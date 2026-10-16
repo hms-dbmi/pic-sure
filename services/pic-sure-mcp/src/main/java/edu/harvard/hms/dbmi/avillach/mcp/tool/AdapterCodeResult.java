@@ -1,0 +1,94 @@
+package edu.harvard.hms.dbmi.avillach.mcp.tool;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import edu.harvard.hms.dbmi.avillach.mcp.codegen.Language;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIRED;
+
+/**
+ * What {@code get_adapter_code} returns: the code and, as separate fields, what it needs, how to check for it, and how to install it, so an
+ * agent can act on each. {@code warnings} appears only when there is something to report.
+ *
+ * @param language the language of the code
+ * @param requires the connector the code needs
+ * @param check a command that prints the installed connector version
+ * @param install a command that installs the connector, to show the user before running it
+ * @param code the code for the user to run in their own environment
+ * @param warnings notes about the query for this site: genomic filters on a site without declared genomic support, a concept path check cut
+ *        off at {@link AdapterCodeTool#MAX_CHECKED_PATHS} paths, concept paths the dictionary did not know, or why the check could not run
+ */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record AdapterCodeResult(
+    @Schema(description = "python, r, or bash") String language, @Schema(description = "The connector the code needs") Requires requires,
+    @Schema(description = "A command that prints the installed connector version; run it before the code") String check,
+    @Schema(description = "A command that installs the connector; show it to the user and run it only after they confirm") String install,
+    @Schema(description = "The code for the user to run in their own environment") String code,
+    @Schema(requiredMode = NOT_REQUIRED, description = WARNINGS_DESCRIPTION) List<String> warnings
+) {
+
+    /** The schema description of {@code warnings}, which tells the model to pass every warning on to the user. */
+    public static final String WARNINGS_DESCRIPTION =
+        "Notes to pass on to the user: genomic filters this site may refuse because it does not declare genomic support, "
+            + "a concept path check that stopped at the first " + AdapterCodeTool.MAX_CHECKED_PATHS
+            + " paths, concept paths the dictionary did not know, or why the paths could not be checked";
+
+    /**
+     * The setup line R code adds, because the R adapter's {@code minVersion} is a release tag and {@code check} prints both the package
+     * version and the tag it was installed from. A GitHub install from a branch prints the branch name, and an install from elsewhere
+     * prints no tag, so the line tells the agent to treat either as older than the minimum.
+     */
+    public static final String R_MIN_VERSION_NOTE =
+        "For r, requires.minVersion is a release tag. Compare it with the release tag check prints, not with the package version. "
+            + "If check prints no release tag, such as a branch name or nothing after the version, treat the connector as older than "
+            + "requires.minVersion.";
+
+    /** The setup line that keeps an agent that runs the code from reading its result files. */
+    public static final String REPORT_ONLY_PRINTED_NOTE =
+        "Report only what the code prints. Do not open picsure_results/ unless the user asks.";
+
+    /**
+     * The connector a piece of generated code needs.
+     *
+     * @param packageName the connector package
+     * @param minVersion the oldest connector release the code supports, or null when the code needs no versioned connector
+     * @param runtime the runtime the connector needs
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Requires(
+        @JsonProperty("package") @Schema(description = "The connector package") String packageName,
+        @Schema(
+            requiredMode = NOT_REQUIRED, description = "The oldest connector release the code supports; absent when there is no connector"
+        ) String minVersion, @Schema(description = "The runtime the connector needs") String runtime
+    ) {
+    }
+
+    /**
+     * The setup as short lines for the model: what the code needs, the check, the install command, for R how to read its version, how to
+     * hand the code over, what to report from a run, and any warnings. The code itself is not included.
+     *
+     * @return the setup text, lines separated by newlines
+     */
+    public String setupText() {
+        List<String> lines = new ArrayList<>();
+        String version = requires.minVersion() == null ? "" : " >= " + requires.minVersion();
+        lines.add("Requires " + requires.packageName() + version + " (" + requires.runtime() + ").");
+        lines.add("Check, before running the code: " + check);
+        lines.add("Install, only after the user confirms, if the check fails or shows an older version: " + install);
+        if (Language.r.name().equals(language)) {
+            lines.add(R_MIN_VERSION_NOTE);
+        }
+        lines.add(
+            "Show the code to the user. It runs in the user's environment with their token from PICSURE_TOKEN. Do not run it unless the user asks."
+        );
+        lines.add(REPORT_ONLY_PRINTED_NOTE);
+        if (warnings != null) {
+            warnings.forEach(warning -> lines.add("Warning: " + warning));
+        }
+        return String.join("\n", lines);
+    }
+}

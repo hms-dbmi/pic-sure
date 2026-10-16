@@ -59,6 +59,7 @@
         <springdoc.version>2.9.1</springdoc.version>
         <swagger-core.version>2.2.55</swagger-core.version>
         <swagger-ui.version>5.32.14</swagger-ui.version>
+        <spring-ai.version>1.1.8</spring-ai.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -137,6 +138,13 @@
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
                 <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
