@@ -18,6 +18,7 @@ jobs:
   # SECURITY: this job runs PR code (the build and its tests), so its token stays read-only and
   # is not left in .git/config. With checks: write, test code could post a fake "Review policy"
   # check run as the github-actions app. Jobs that write (report, below) only read artifacts.
+  # A PR that adds its own workflow is not stopped here; code-owner review of .github/ is (RISK_REVIEW.md).
   build:
     name: Full reactor
     runs-on: ubuntu-latest
