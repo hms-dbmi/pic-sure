@@ -76,6 +76,7 @@ class ConceptServiceTest {
         Optional<Concept> expected = Optional.of(new ContinuousConcept(concept, meta));
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(meta, actual.orElseThrow().meta());
     }
 
     @Test
@@ -90,6 +91,7 @@ class ConceptServiceTest {
         Optional<Concept> expected = Optional.of(new CategoricalConcept(concept, meta));
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(meta, actual.orElseThrow().meta());
     }
 
     @Test
@@ -114,25 +116,29 @@ class ConceptServiceTest {
         List<Concept> expected = List.of(new CategoricalConcept(conceptA, metaA), new ContinuousConcept(conceptB, metaB));
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(List.of(metaA, metaB), actual.stream().map(Concept::meta).toList());
     }
 
     @Test
     void shouldGetTree() {
-        CategoricalConcept concept = new CategoricalConcept("ds", "\\A\\B\\C\\")
-            .withChildren(List.of(new CategoricalConcept("ds", "\\A\\B\\C\\1\\"), new ContinuousConcept("ds", "\\A\\B\\C\\2\\")));
+        List<Concept> children = List.of(new CategoricalConcept("\\A\\B\\C\\1\\", "ds"), new ContinuousConcept("\\A\\B\\C\\2\\", "ds"));
+        CategoricalConcept concept = new CategoricalConcept("\\A\\B\\C\\", "ds").withChildren(children);
         Mockito.when(repository.getConceptTree("ds", "\\A\\B\\C\\", 2)).thenReturn(Optional.of(concept));
 
         Optional<Concept> actual = subject.conceptTree("ds", "\\A\\B\\C\\", 2);
 
         Assertions.assertTrue(actual.isPresent());
-        Assertions.assertEquals(concept, actual.get());
+        Assertions.assertSame(concept, actual.get());
+        Assertions.assertEquals(children, actual.get().children());
     }
 
     @Test
     void shouldGetAllTrees() {
         int depth = 1;
-        CategoricalConcept conceptA = new CategoricalConcept("\\Root A\\", "ref_A");
-        CategoricalConcept conceptB = new CategoricalConcept("\\Root B\\", "ref_B");
+        List<Concept> childrenA = List.of(new CategoricalConcept("\\Root A\\1\\", "ref_a"));
+        List<Concept> childrenB = List.of(new ContinuousConcept("\\Root B\\1\\", "ref_b"));
+        CategoricalConcept conceptA = new CategoricalConcept("\\Root A\\", "ref_a").withChildren(childrenA);
+        CategoricalConcept conceptB = new CategoricalConcept("\\Root B\\", "ref_b").withChildren(childrenB);
         Mockito.when(datasetService.getAllDatasets())
             .thenReturn(List.of(new Dataset("ref_a", "", "", ""), new Dataset("ref_b", "", "", "")));
         Mockito.when(repository.getConceptTree("ref_a", null, depth)).thenReturn(Optional.of(conceptA));
@@ -142,5 +148,8 @@ class ConceptServiceTest {
         List<CategoricalConcept> expected = List.of(conceptA, conceptB);
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(List.of(childrenA, childrenB), actual.stream().map(Concept::children).toList());
+        Mockito.verify(repository).getConceptTree("ref_a", null, depth);
+        Mockito.verify(repository).getConceptTree("ref_b", null, depth);
     }
 }
