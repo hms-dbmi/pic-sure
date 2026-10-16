@@ -83,7 +83,7 @@ The classifier runs from the **base branch** and never executes PR code, so a PR
 | `risk:needs-review`, approved by a human other than the author **on the latest commit** (default) | success |
 | anyone has an outstanding "changes requested" (either risk level) | failure |
 
-Approvals from bots and from the author never count. Raise `review.minApprovals` in the policy for two reviewers.
+Approvals and change requests count only from humans who currently have write access (checked through the collaborators permission API), so a read-only account on this public repo can neither approve nor block. Approvals from bots and from the author never count. Raise `review.minApprovals` in the policy for two reviewers.
 
 #### Approval on the latest commit: `review.requireApprovalOnLatestCommit`
 
