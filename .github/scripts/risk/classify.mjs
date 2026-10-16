@@ -16,7 +16,7 @@ if (!prNumber) {
 
 const pr = await gh.must('GET', `/repos/${repo}/pulls/${prNumber}`);
 const files = await gh.paginate(`/repos/${repo}/pulls/${prNumber}/files`);
-const reviews = await gh.paginate(`/repos/${repo}/pulls/${prNumber}/reviews`);
+const reviews = await reviewsWithWritePermission(await gh.paginate(`/repos/${repo}/pulls/${prNumber}/reviews`));
 const result = evaluate({ pr, files, policy });
 const review = reviewDecision({ pr, reviews, risk: result.risk, policy });
 
@@ -54,4 +54,22 @@ async function findForkPr() {
   const head = encodeURIComponent(`${HEAD_OWNER}:${HEAD_BRANCH}`);
   const prs = await gh.must('GET', `/repos/${repo}/pulls?state=open&head=${head}&per_page=100`);
   return prs.find((p) => p.head.sha === HEAD_SHA)?.number ?? null;
+}
+
+// On a public repo anyone with read access can submit an APPROVED or CHANGES_REQUESTED review,
+// and the API reports them like any other. Only reviewers who can push count, whether they
+// approve or block, as for branch protection. author_association is not the current permission.
+async function reviewsWithWritePermission(all) {
+  const logins = [...new Set(all.filter((r) => r.user?.type === 'User' && r.user.login).map((r) => r.user.login))];
+  const writers = new Set();
+  await Promise.all(
+    logins.map(async (login) => {
+      const path = `/repos/${repo}/collaborators/${encodeURIComponent(login)}/permission`;
+      const r = await gh.request('GET', path);
+      if (r.status === 404) return;
+      if (!r.ok) throw new Error(`GET ${path} -> ${r.status}`);
+      if (['admin', 'maintain', 'write'].includes(r.data.role_name) || ['admin', 'write'].includes(r.data.permission)) writers.add(login);
+    }),
+  );
+  return all.filter((r) => writers.has(r.user?.login));
 }
