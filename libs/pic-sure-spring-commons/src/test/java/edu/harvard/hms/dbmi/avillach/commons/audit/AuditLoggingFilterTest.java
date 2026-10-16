@@ -71,8 +71,12 @@ class AuditLoggingFilterTest {
         assertThat(filter.shouldNotFilter(new MockHttpServletRequest("POST", "/query/sync"))).isFalse();
     }
 
+    /**
+     * The request is one the base class would audit (enabled client, matched route), so the only reason no event is sent is the subclass
+     * override.
+     */
     @Test
-    void shouldNotFilterIsOverridableBySubclasses() {
+    void subclassOverrideOfShouldNotFilterSuppressesTheAuditEvent() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of()) {
@@ -82,7 +86,14 @@ class AuditLoggingFilterTest {
             }
         };
 
-        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("POST", "/query/sync"))).isTrue();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        verify(client, never()).send(any(LoggingEvent.class));
+        verify(client, never()).send(any(LoggingEvent.class), any(), any());
     }
 
     @Test
