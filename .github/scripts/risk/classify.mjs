@@ -23,7 +23,8 @@ const review = reviewDecision({ pr, reviews, risk: result.risk, policy });
 // The required check, posted first so a label failure cannot leave the head commit without it.
 // A new run on every evaluation; GitHub uses the latest one per name. Only GitHub Apps can
 // create check runs, so a personal token cannot forge this one. The github-actions app can, so
-// no job that runs PR code may hold checks: write (see github-actions-test.yml).
+// no job in the existing workflows that runs PR code may hold checks: write. A PR that adds its own
+// workflow is stopped by code-owner review of .github/, not by this (see RISK_REVIEW.md).
 await gh.must('POST', `/repos/${repo}/check-runs`, checkRunPayload({ name: policy.review.checkName, sha: pr.head.sha, result, review }));
 
 const wanted = result.risk === 'low' ? policy.labels.low : policy.labels.review;

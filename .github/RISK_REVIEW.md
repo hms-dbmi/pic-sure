@@ -34,7 +34,7 @@ Keep the review event out of `risk-classifier.yml` for the same reason.
 
 The root `pom.xml` declares `jacoco-maven-plugin` (version `jacoco.version`) in `pluginManagement` for **Diff coverage**, so Dependabot updates it too.
 
-`github-actions-test.yml` was changed so that no job running PR code holds `checks: write`: test code could otherwise post a fake `Review policy` check as the same GitHub Actions app the ruleset trusts. The surefire report is published from a separate job that only reads the uploaded XML. Keep it that way when adding jobs.
+`github-actions-test.yml` was changed so that no job running PR code holds `checks: write`: test code in the existing workflows could otherwise post a fake `Review policy` check as the same GitHub Actions app the ruleset trusts. This does not stop a PR that adds or edits a workflow itself; code-owner review of `.github/` does (see "Who can forge `Review policy`"). The surefire report is published from a separate job that only reads the uploaded XML. Keep it that way when adding jobs.
 
 ## How a PR is judged
 
@@ -103,7 +103,7 @@ Approving re-runs the classifier (`Review Trigger` → `Risk Classifier`), so an
 It is a check run created with `GITHUB_TOKEN`, so it belongs to the GitHub Actions app, and the ruleset accepts it only from that app (see settings below).
 
 - **Blocked:** posting it with a personal token. Only GitHub Apps can create check runs; a commit status with the same name from anyone else does not satisfy the rule.
-- **Blocked:** a PR adding its own workflow to post it. That PR touches `.github/`, which CODEOWNERS requires an owner to approve.
+- **Blocked by code-owner review, not by permissions:** a PR adding its own `on: pull_request` workflow with `checks: write`, which runs from the PR's own copy and posts a passing `Review policy`. The fake result replaces the classifier's, so the check alone proves nothing for that PR. What stops the merge is that the PR touches `.github/`, so the ruleset's "Require review from Code Owners" still needs an owner other than the author to approve. **This holds only if that ruleset setting is on and `CODEOWNERS` covers `/.github/`.** Treat both as prerequisites for making `Review policy` required.
 - **Not blocked:** someone with write access pushing a workflow on a branch outside any PR that posts a passing check on another PR's commit. That run is visible in the Actions history under their name. Push rulesets that restrict `.github/workflows/**` on all branches would close it if the org's plan offers them. A GitHub App owned by the org, with its key in an environment limited to `main`, would close it fully.
 
 ### Why source code is safe to include
@@ -121,7 +121,7 @@ red-flag patterns are the only security analysis on `risk:low` source changes, s
    `Review policy` check, but the check is not required yet, so nothing changes for anyone. Compare `risk:low`
    verdicts with what your reviewers would have said, especially for source changes. Tune `risk/policy.json`.
 2. **Waive review for low risk.** In the branch ruleset, set required approvals to 0 and add `Review policy` as a required status check
-   (keep "Require review from Code Owners" on). From now on `risk:low` PRs merge without review and everything else waits for a human.
+   (**"Require review from Code Owners" must be on and `/.github/` must be in `CODEOWNERS`**: they are what stop a PR from forging `Review policy`, see "Who can forge"). From now on `risk:low` PRs merge without review and everything else waits for a human.
 3. **Widen or tighten.** Review about 10 percent of `risk:low` merges each week. Raise `lowRiskMaxLines` if audits come back clean; lower it
    (0 turns source back into human-review-only) if they don't.
 
