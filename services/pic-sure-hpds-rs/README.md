@@ -39,6 +39,16 @@ docker build -f docker/hpds-rs.Dockerfile -t hms-dbmi/pic-sure-hpds-rs:LATEST .
 docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:LATEST .
 ```
 
+`hpds-rs` allocates with jemalloc, which fixes its page size when it is compiled. A binary
+built for 4 KiB pages fails to start on a kernel with larger ones, which some arm64
+distributions use (16 KiB on Asahi Linux, 64 KiB on RHEL for arm64).
+The Dockerfile therefore sets `JEMALLOC_SYS_WITH_LG_PAGE=16` (64 KiB pages, which run on all
+three) when it builds for arm64. Do the same for a native arm64 build meant for other hosts:
+
+```bash
+JEMALLOC_SYS_WITH_LG_PAGE=16 cargo build --release -p hpds-rs
+```
+
 `hpds-rs` reads these environment variables:
 
 | Variable | Default | Meaning |
