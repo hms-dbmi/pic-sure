@@ -289,8 +289,9 @@ public class AuthorizationServiceTest {
     }
 
     /**
-     * Strict connections are matched against the constructor's label set case-sensitively, so the label here must be exactly {@code fence},
-     * not the {@code FENCE} the non-strict tests use.
+     * Pins that the strict path evaluates the privilege's rules and reports the failing one in failedRules, the same denial a non-strict
+     * connection gets. Strict connections are matched against the constructor's label set case-sensitively, so the label must be exactly
+     * {@code fence}, not the {@code FENCE} the non-strict tests use.
      */
     @Test
     public void testIsAuthorized_AccessRuleFailed_strict() {
@@ -320,6 +321,25 @@ public class AuthorizationServiceTest {
         assertFalse(result.result());
         assertEquals(Set.of(accessRule), result.failedRules());
         assertTrue(result.denialReason().isEmpty());
+    }
+
+    /**
+     * Only the strict path reports a user with no privileges for the application as a missing access rule; the non-strict path denies the
+     * same user with no reason at all.
+     */
+    @Test
+    public void testIsAuthorized_strictConnectionWithoutPrivilegesIsDeniedWithNoRulesReason() {
+        Application application = createTestApplication();
+        User user = createTestUser();
+        Connection strictConnection = createFenceTestConnection();
+        strictConnection.setLabel("fence");
+        user.setConnection(strictConnection);
+
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, Map.of("test", "value"), user, false);
+
+        assertFalse(result.result());
+        assertTrue(result.failedRules().isEmpty());
+        assertEquals(Optional.of(AuthorizationService.NO_ACCESS_RULES_MESSAGE), result.denialReason());
     }
 
     private Connection createFenceTestConnection() {
