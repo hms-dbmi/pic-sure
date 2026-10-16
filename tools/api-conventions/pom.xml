@@ -113,6 +113,10 @@
                     <systemPropertyVariables>
                         <reactor.root>${project.basedir}/../..</reactor.root>
                     </systemPropertyVariables>
+                    <excludes>
+                        <exclude>**/*$*</exclude>
+                        <exclude>**/testconventionfixtures/**</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
         </plugins>
