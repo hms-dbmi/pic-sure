@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.commons.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -72,25 +73,29 @@ class AuditLoggingFilterTest {
     }
 
     /**
-     * The request is one the base class would audit (enabled client, matched route), so the only reason no event is sent is the subclass
-     * override.
+     * Runs the same request through the unsubclassed filter first and checks it emits, so the later silence can only come from the subclass
+     * override and not from the base skip rules.
      */
     @Test
     void subclassOverrideOfShouldNotFilterSuppressesTheAuditEvent() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
-        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of()) {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        new AuditLoggingFilter(client, routes, new AuditContext(), List.of()).doFilter(request, response, new MockFilterChain());
+        verify(client, times(1)).send(any(LoggingEvent.class));
+        clearInvocations(client);
+
+        AuditLoggingFilter subclass = new AuditLoggingFilter(client, routes, new AuditContext(), List.of()) {
             @Override
             protected boolean shouldNotFilter(jakarta.servlet.http.HttpServletRequest request) {
                 return true;
             }
         };
 
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        response.setStatus(200);
-
-        filter.doFilter(request, response, new MockFilterChain());
+        subclass.doFilter(request, response, new MockFilterChain());
 
         verify(client, never()).send(any(LoggingEvent.class));
         verify(client, never()).send(any(LoggingEvent.class), any(), any());
