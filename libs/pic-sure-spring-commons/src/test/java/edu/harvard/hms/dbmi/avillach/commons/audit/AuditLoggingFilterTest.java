@@ -173,6 +173,7 @@ class AuditLoggingFilterTest {
         assertThat(eventCaptor.getValue().getCaller()).isNull();
     }
 
+    @Test
     void srcIpIsTheRightmostXffEntrySoAClientSuppliedLeadingEntryIsNeverUsed() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
