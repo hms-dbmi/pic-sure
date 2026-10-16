@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -247,10 +248,20 @@ class DocumentedErrorResponsesTest {
             .andExpect(jsonPath("$.errorType").value("gateway_timeout"));
     }
 
-    @Test
-    void postToAGetOnlyRouteIs405WithAnAllowHeader() throws Exception {
-        mockMvc.perform(identified(post("/hpds/auth/search/values")).param("genomicConceptPath", "\\gene\\"))
-            .andExpect(status().isMethodNotAllowed()).andExpect(header().string(HttpHeaders.ALLOW, "GET"))
+    /** Stored-query reads that are GET only, so a POST to them is answered with 405 and an {@code Allow} header. */
+    static Stream<Arguments> getOnlyStoredQueryReads() {
+        return Stream.of(
+            endpoint("status", id -> authorized(post("/hpds/auth/query/{id}/status", id))),
+            endpoint("result", id -> authorized(post("/hpds/auth/query/{id}/result", id))),
+            endpoint("signed-url", id -> authorized(post("/hpds/auth/query/{id}/signed-url", id)))
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getOnlyStoredQueryReads")
+    void postToAGetOnlyStoredQueryReadIs405WithAnAllowHeader(String name, RequestFor request) throws Exception {
+        mockMvc.perform(request.build(storedId)).andExpect(status().isMethodNotAllowed())
+            .andExpect(header().string(HttpHeaders.ALLOW, containsString("GET")))
             .andExpect(jsonPath("$.errorType").value("method_not_allowed"));
     }
 
