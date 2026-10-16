@@ -4,11 +4,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMaskBitmaskImpl;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.context.event.annotation.BeforeTestClass;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,6 +22,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 public class PatientVariantJoinHandlerTest {
 
+    @Mock
     private VariantService variantService;
 
     private PatientVariantJoinHandler patientVariantJoinHandler;
@@ -32,16 +33,16 @@ public class PatientVariantJoinHandlerTest {
         "16,61642256,C,T,ABC,consequence2", "16,61642257,G,A,ABC,consequence3", "16,61642258,G,A,ABC,consequence3",
         "16,61642259,G,A,ABC,consequence1", "16,61642260,G,A,ABC,consequence1", "16,61642261,G,A,ABC,consequence1"};
 
-    public PatientVariantJoinHandlerTest(@Mock VariantService variantService) {
-        this.variantService = variantService;
+    @BeforeEach
+    public void setup() {
         patientVariantJoinHandler = new PatientVariantJoinHandler(variantService);
-        when(variantService.getVariantIndex()).thenReturn(VARIANT_INDEX);
     }
 
     @Test
     public void getPatientIdsForIntersectionOfVariantSets_allPatientsMatchOneVariant() {
         VariantIndex intersectionOfInfoFilters = new SparseVariantIndex(Set.of(0, 2, 4));
         when(variantService.getPatientIds()).thenReturn(PATIENT_IDS);
+        when(variantService.getVariantIndex()).thenReturn(VARIANT_INDEX);
 
         VariantMask maskForAllPatients =
             new VariantMaskBitmaskImpl(patientVariantJoinHandler.createMaskForPatientSet(PATIENT_IDS_INTEGERS));
@@ -65,6 +66,7 @@ public class PatientVariantJoinHandlerTest {
     public void getPatientIdsForIntersectionOfVariantSets_allPatientsMatchOneVariantWithNoVariantFound() {
         VariantIndex intersectionOfInfoFilters = new SparseVariantIndex(Set.of(0, 2, 4));
         when(variantService.getPatientIds()).thenReturn(PATIENT_IDS);
+        when(variantService.getVariantIndex()).thenReturn(VARIANT_INDEX);
 
         VariantMask maskForAllPatients =
             new VariantMaskBitmaskImpl(patientVariantJoinHandler.createMaskForPatientSet(PATIENT_IDS_INTEGERS));
@@ -88,6 +90,7 @@ public class PatientVariantJoinHandlerTest {
     public void getPatientIdsForIntersectionOfVariantSets_noPatientsMatchVariants() {
         VariantIndex intersectionOfInfoFilters = new SparseVariantIndex(Set.of(0, 2, 4));
         when(variantService.getPatientIds()).thenReturn(PATIENT_IDS);
+        when(variantService.getVariantIndex()).thenReturn(VARIANT_INDEX);
 
         VariantMask maskForNoPatients = VariantMask.emptyInstance();
         VariableVariantMasks emptyVariantMasks = new VariableVariantMasks();
@@ -121,6 +124,7 @@ public class PatientVariantJoinHandlerTest {
     public void getPatientIdsForIntersectionOfVariantSets_somePatientsMatchVariants() {
         VariantIndex intersectionOfInfoFilters = new SparseVariantIndex(Set.of(0, 2, 4));
         when(variantService.getPatientIds()).thenReturn(PATIENT_IDS);
+        when(variantService.getVariantIndex()).thenReturn(VARIANT_INDEX);
 
         VariantMask maskForPatients1 = new VariantMaskBitmaskImpl(patientVariantJoinHandler.createMaskForPatientSet(Set.of(101, 103)));
         VariantMask maskForPatients2 = new VariantMaskBitmaskImpl(patientVariantJoinHandler.createMaskForPatientSet(Set.of(103, 105)));
@@ -130,6 +134,7 @@ public class PatientVariantJoinHandlerTest {
         variantMasks2.heterozygousMask = maskForPatients2;
         when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(Optional.of(variantMasks));
         when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.of(variantMasks2));
+        when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(Optional.empty());
 
         Set<Integer> patientIdsForIntersectionOfVariantSets = patientVariantJoinHandler
             .getPatientIdsForIntersectionOfVariantSets(null, intersectionOfInfoFilters).patientMaskToPatientIdSet(List.of(PATIENT_IDS));
@@ -140,18 +145,19 @@ public class PatientVariantJoinHandlerTest {
     @Test
     public void getPatientIdsForIntersectionOfVariantSets_noVariants() {
         VariantIndex intersectionOfInfoFilters = VariantIndex.empty();
-        when(variantService.getPatientIds()).thenReturn(PATIENT_IDS);
 
         Set<Integer> patientIdsForIntersectionOfVariantSets = patientVariantJoinHandler
             .getPatientIdsForIntersectionOfVariantSets(null, intersectionOfInfoFilters).patientMaskToPatientIdSet(List.of(PATIENT_IDS));
         // this should be empty, as there are no variants
         assertEquals(Set.of(), patientIdsForIntersectionOfVariantSets);
+        verifyNoInteractions(variantService);
     }
 
     @Test
     public void getPatientIdsForIntersectionOfVariantSets_patientSubsetPassed() {
         VariantIndex intersectionOfInfoFilters = new SparseVariantIndex(Set.of(0, 2, 4));
         when(variantService.getPatientIds()).thenReturn(PATIENT_IDS);
+        when(variantService.getVariantIndex()).thenReturn(VARIANT_INDEX);
 
         VariantMask maskForPatients1 = new VariantMaskBitmaskImpl(patientVariantJoinHandler.createMaskForPatientSet(Set.of(101, 103, 105)));
         VariantMask maskForPatients2 = new VariantMaskBitmaskImpl(patientVariantJoinHandler.createMaskForPatientSet(Set.of(103, 105, 107)));
@@ -161,6 +167,7 @@ public class PatientVariantJoinHandlerTest {
         variantMasks2.heterozygousMask = maskForPatients2;
         when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(Optional.of(variantMasks));
         when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.of(variantMasks2));
+        when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(Optional.empty());
 
         Set<Integer> patientIdsForIntersectionOfVariantSets =
             patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(102, 103, 104, 105, 106), intersectionOfInfoFilters)

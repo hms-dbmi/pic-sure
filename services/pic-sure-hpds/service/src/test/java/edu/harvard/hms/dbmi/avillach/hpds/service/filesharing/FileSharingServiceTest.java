@@ -9,46 +9,45 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.patient.PatientProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.QueryService;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@EnableAutoConfiguration
-@SpringBootTest(classes = FileSharingService.class)
+@ExtendWith(MockitoExtension.class)
 public class FileSharingServiceTest {
 
-    @MockBean
+    @Mock
     QueryService queryService;
 
-    @MockBean
+    @Mock
     FileSystemService fileWriter;
 
-    @MockBean
+    @Mock
     VariantListProcessor variantListProcessor;
 
-    @MockBean
+    @Mock
     PatientProcessor patientProcessor;
 
-    @MockBean
+    @Mock
     ResultWriter resultWriter;
 
-    @MockBean
+    @Mock
     LoggingClient loggingClient;
 
-    @Autowired
     FileSharingService subject;
+
+    @BeforeEach
+    public void setup() {
+        subject = new FileSharingService(queryService, fileWriter, variantListProcessor, loggingClient);
+    }
 
     @Test
     public void shouldCreatePhenotypicData() {
