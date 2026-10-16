@@ -13,6 +13,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionTokenRejectedException;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
@@ -96,11 +97,13 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             // flattening it into a generic 502 below.
             mapPicsureException(resp, e);
             return;
+        } catch (IntrospectionTokenRejectedException e) {
+            log.error(e.getMessage());
+            introspectionFailed(resp, "introspection_token_rejected");
+            return;
         } catch (Exception e) {
             log.error("PSAMA introspection failed", e);
-            audit.put("auth_result", "failure");
-            audit.put("auth_failure_reason", "introspection_unreachable");
-            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "introspection_unreachable", "Token introspection failed.");
+            introspectionFailed(resp, "introspection_unreachable");
             return;
         }
 
@@ -129,6 +132,12 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             req.setAttribute(ATTR_REFRESHED_TOKEN, intro.token());
         }
         chain.doFilter(req, resp);
+    }
+
+    private void introspectionFailed(HttpServletResponse resp, String reason) throws IOException {
+        audit.put("auth_result", "failure");
+        audit.put("auth_failure_reason", reason);
+        GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "introspection_unreachable", "Token introspection failed.");
     }
 
     private void denied(HttpServletResponse resp, String reason, String message) throws IOException {
