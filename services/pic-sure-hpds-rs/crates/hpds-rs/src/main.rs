@@ -13,6 +13,21 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
 
+/// The process allocator: jemalloc. glibc's malloc keeps most of what a broad query frees
+/// in its per-thread arenas, so resident memory stays gigabytes above live memory after the
+/// query ends; jemalloc returns freed pages to the system on its own schedule
+/// ([`MALLOC_CONF`]) without the throughput loss of capping glibc's arenas.
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+/// jemalloc's options, read at its first allocation: a background thread purges freed
+/// pages, and dirty and muzzy pages are returned to the system after one second instead
+/// of ten. The environment variable `_RJEM_MALLOC_CONF` is applied after these and
+/// overrides them.
+#[unsafe(export_name = "_rjem_malloc_conf")]
+pub static MALLOC_CONF: Option<&'static u8> =
+    Some(&b"background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000\0"[0]);
+
 const REAPER_PERIOD: Duration = Duration::from_secs(60);
 const RESULT_CACHE_REPORT_PERIOD: Duration = Duration::from_secs(60);
 const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);

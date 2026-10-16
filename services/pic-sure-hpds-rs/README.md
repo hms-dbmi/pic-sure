@@ -76,6 +76,7 @@ docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:L
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
 | `HPDS_SEARCH_GZIP` | `off` | `on` compresses `POST /search` answers for requests whose `Accept-Encoding` accepts gzip (see [Search compression](#search-compression)). Off, every answer has the bytes and headers it had before compression existed, whatever the request accepts. Read like `HPDS_METRICS`. |
 | `HPDS_METRICS` | `off` | `on` serves `GET /metrics` in the Prometheus text format and counts requests (see [Metrics](#metrics)). Off, `/metrics` is a 404 like any unknown path. `true`, `false`, `1`, `0`, `yes` and `no` are also read; anything else fails startup. |
+| `_RJEM_MALLOC_CONF` | unset | Options for the service's allocator, jemalloc, in its `MALLOC_CONF` syntax. The service sets `background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000`, so memory a broad query frees goes back to the system within about a second; this variable is applied after those and overrides them. glibc's `MALLOC_ARENA_MAX` and `MALLOC_TRIM_THRESHOLD_` have no effect. |
 
 A query over a limit is a 400 naming the setting, before any block is read. Checks run in
 this order on both query routes: the query's shape (select paths, clause depth and nodes), then
