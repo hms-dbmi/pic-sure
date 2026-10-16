@@ -5,6 +5,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
 
+/**
+ * The gateway's reader of the PSAMA token introspection verdict. PSAMA's {@code TokenInspectionResponse} is the writer of these members.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record IntrospectionResponse(
     boolean active,

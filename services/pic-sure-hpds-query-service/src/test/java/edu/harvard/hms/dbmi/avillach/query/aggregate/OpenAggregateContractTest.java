@@ -57,6 +57,7 @@ import edu.harvard.dbmi.avillach.domain.ContinuousBinningResponse;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
@@ -291,7 +292,7 @@ class OpenAggregateContractTest {
 
         for (String path : List.of("/hpds/open/query/sync", "/hpds/open/query")) {
             mockMvc.perform(open(path).content(v1)).andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Malformed request body"));
+                .andExpect(jsonPath("$.message").value(PicsureExceptionAdvice.BODY_UNREADABLE));
         }
 
         downstream.verify(0, anyRequestedFor(anyUrl()));

@@ -23,8 +23,8 @@ spring:
 
 picsure:
   operations:
-    # Shared secret enforced by InternalTokenFilter on /internal/** (the gateway's QueryAuthFetcher dispatch calls,
-    # and any future hpds-query-service caller). Fail-closed: left blank, InternalTokenFilter rejects every
+    # Shared secret enforced by InternalTokenFilter on /internal/**, which hpds-query-service calls to save, read
+    # and update queries. Fail-closed: left blank, InternalTokenFilter rejects every
     # /internal/** request rather than treating an unconfigured secret as "wide open".
     internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
   # The X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared

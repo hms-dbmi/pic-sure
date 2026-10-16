@@ -6,12 +6,18 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.http.MockHttpInputMessage;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.context.request.ServletWebRequest;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 
 /**
@@ -41,30 +47,56 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void mapsUnknownExceptionTo500WithCommonsShape() {
-        ResponseEntity<Map<String, Object>> resp = handler.unknown(new RuntimeException("boom"));
+    void mapsUnknownExceptionTo500WithCommonsShape() throws Exception {
+        ResponseEntity<Object> resp = handler.handleUnexpected(new RuntimeException("boom"), request());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(resp.getBody()).containsKey("errorType").containsKey("message").containsKey("requestId");
+        assertThat(resp.getBody()).isInstanceOfSatisfying(
+            Map.class,
+            body -> assertThat(body).containsEntry("errorType", "internal_error")
+                .containsEntry("message", PicsureExceptionAdvice.SERVER_ERROR).containsKey("requestId")
+        );
     }
 
     @Test
-    void mapsUnreadableBodyTo400WithAFixedMessage() {
-        ResponseEntity<Map<String, Object>> resp = handler.unreadableBody();
+    void mapsUnreadableBodyTo400WithAFixedMessage() throws Exception {
+        ResponseEntity<Object> resp = handler.handleException(
+            new HttpMessageNotReadableException("JSON parse error: raw-client-payload", new MockHttpInputMessage(new byte[0])), request()
+        );
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(resp.getBody()).containsEntry("errorType", "bad_request").containsEntry("message", "Malformed request body")
-            .containsKey("requestId");
+        assertThat(resp.getBody()).isInstanceOfSatisfying(
+            Map.class,
+            body -> assertThat(body).containsEntry("errorType", "bad_request")
+                .containsEntry("message", PicsureExceptionAdvice.BODY_UNREADABLE).containsKey("requestId")
+        );
+        assertThat(resp.getBody().toString()).doesNotContain("raw-client-payload");
     }
 
     @Test
-    void mapsUnsupportedMethodTo405WithTheAllowedMethods() {
-        ResponseEntity<Map<String, Object>> resp =
-            handler.methodNotAllowed(new HttpRequestMethodNotSupportedException("POST", List.of("GET")));
+    void typeMismatchWithoutAPropertyNameStillReadsCleanly() throws Exception {
+        ResponseEntity<Object> resp = handler.handleException(new TypeMismatchException("abc", Integer.class), request());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(resp.getBody())
+            .isInstanceOfSatisfying(Map.class, body -> assertThat(body).containsEntry("message", PicsureExceptionAdvice.CLIENT_ERROR));
+    }
+
+    private static ServletWebRequest request() {
+        return new ServletWebRequest(new MockHttpServletRequest());
+    }
+
+    @Test
+    void mapsUnsupportedMethodTo405WithTheAllowedMethods() throws Exception {
+        ResponseEntity<Object> resp =
+            handler.handleException(new HttpRequestMethodNotSupportedException("POST", List.of("GET")), request());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
         assertThat(resp.getHeaders().getFirst(HttpHeaders.ALLOW)).isEqualTo("GET");
-        assertThat(resp.getBody()).containsEntry("errorType", "method_not_allowed").containsEntry("message", "Method POST is not allowed")
-            .containsKey("requestId");
+        assertThat(resp.getBody()).isInstanceOfSatisfying(
+            Map.class,
+            body -> assertThat(body).containsEntry("errorType", "method_not_allowed")
+                .containsEntry("message", PicsureExceptionAdvice.METHOD_NOT_ALLOWED).containsKey("requestId")
+        );
     }
 }

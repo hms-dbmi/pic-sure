@@ -4,7 +4,7 @@ import org.springframework.http.HttpStatus;
 
 /**
  * Fail-closed exception used by the gateway's auth filters. Carries an HTTP status and a machine-readable error type so callers (e.g.
- * {@link GatewayExceptionAdvice}) can render a consistent error body without inspecting the exception message.
+ * {@link PicsureErrorBodyAdvice}) can render a consistent error body without inspecting the exception message.
  */
 public class PicsureException extends RuntimeException {
 

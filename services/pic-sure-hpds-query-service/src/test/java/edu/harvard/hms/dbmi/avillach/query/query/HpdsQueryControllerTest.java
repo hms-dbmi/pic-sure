@@ -40,6 +40,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import edu.harvard.dbmi.avillach.domain.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
 import edu.harvard.dbmi.avillach.domain.UpdateQueryRequest;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.query.consent.ConsentAuthorizationService;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
@@ -282,7 +283,7 @@ class HpdsQueryControllerTest {
                 post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                     .content("{\"query\":")
             ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"))
-            .andExpect(jsonPath("$.message").value("Malformed request body"));
+            .andExpect(jsonPath("$.message").value(PicsureExceptionAdvice.BODY_UNREADABLE));
     }
 
     @Test

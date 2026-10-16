@@ -9,7 +9,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Writes the commons additive error-body shape ({@code {errorType, message, requestId}}, matching
- * {@code edu.harvard.hms.dbmi.avillach.commons.error.GatewayExceptionAdvice}) directly to a servlet response, for filters that run before
+ * {@code edu.harvard.hms.dbmi.avillach.commons.error.PicsureErrorBodyAdvice}) directly to a servlet response, for filters that run before
  * Spring MVC's exception-handling machinery is reachable (e.g. {@code BufferingFilter}'s 413 short-circuit). {@code requestId} comes from
  * {@code MDC[requestId]}, set by {@code edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter}.
  */

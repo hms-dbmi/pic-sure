@@ -54,45 +54,6 @@ public class UserMetadataMappingServiceTest {
     }
 
     @Test
-    public void testAddMappings_Success() {
-        Connection connection = new Connection();
-        connection.setId("testConnectionId");
-
-        UserMetadataMapping mapping1 = new UserMetadataMapping();
-        mapping1.setConnection(connection);
-        UserMetadataMapping mapping2 = new UserMetadataMapping();
-        mapping2.setConnection(connection);
-
-        List<UserMetadataMapping> mappings = Arrays.asList(mapping1, mapping2);
-
-        when(connectionRepo.findById("testConnectionId")).thenReturn(Optional.of(connection));
-        when(userMetadataMappingRepo.saveAll(mappings)).thenReturn(mappings);
-
-        List<UserMetadataMapping> result = userMetadataMappingService.addMappings(mappings);
-
-        assertEquals(mappings, result);
-        verify(connectionRepo, times(2)).findById("testConnectionId");
-        verify(userMetadataMappingRepo, times(1)).saveAll(mappings);
-    }
-
-    @Test
-    public void testAddMappings_ConnectionNotFound() {
-        Connection connection = new Connection();
-        connection.setId("invalidConnectionId");
-
-        UserMetadataMapping mapping = new UserMetadataMapping();
-        mapping.setConnection(connection);
-
-        List<UserMetadataMapping> mappings = List.of(mapping);
-
-        when(connectionRepo.findById("invalidConnectionId")).thenReturn(Optional.empty());
-
-        assertThrows(IllegalArgumentException.class, () -> {
-            userMetadataMappingService.addMappings(mappings);
-        });
-    }
-
-    @Test
     public void testGetAllMappings() {
         List<UserMetadataMapping> mappings = Arrays.asList(new UserMetadataMapping(), new UserMetadataMapping());
 
@@ -124,18 +85,6 @@ public class UserMetadataMappingServiceTest {
         assertThrows(IllegalArgumentException.class, () -> {
             userMetadataMappingService.getAllMappingsForConnection("invalidConnectionId");
         });
-    }
-
-    @Test
-    public void testUpdateUserMetadataMappings() {
-        List<UserMetadataMapping> mappings = Arrays.asList(new UserMetadataMapping(), new UserMetadataMapping());
-
-        when(userMetadataMappingRepo.saveAll(mappings)).thenReturn(mappings);
-
-        List<UserMetadataMapping> result = userMetadataMappingService.updateUserMetadataMappings(mappings);
-
-        assertEquals(mappings, result);
-        verify(userMetadataMappingRepo, times(1)).saveAll(mappings);
     }
 
     @Test

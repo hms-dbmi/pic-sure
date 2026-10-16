@@ -314,7 +314,10 @@ public final class OpenApiDocumentAssertions {
         }
         boolean scalar = types(valueSchema).stream().anyMatch(SCALAR_TYPES::contains) && !valueSchema.has("enum")
             && !BINARY_FORMATS.contains(valueSchema.path("format").asText());
-        if (scalar && !property.has("example")) {
+        if (!scalar) {
+            return;
+        }
+        if (!property.has("example")) {
             problems.add(label + " has no example");
         }
     }

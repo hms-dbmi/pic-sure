@@ -45,6 +45,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 
 import edu.harvard.dbmi.avillach.domain.StoredQuery;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureExceptionAdvice;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
@@ -204,7 +205,7 @@ class HpdsQueryRequestBindingTest {
     @MethodSource("endpointsThatBindAQuery")
     void v1BodyIsRefusedWith400BeforeAnythingRuns(String name, String path) throws Exception {
         mockMvc.perform(identified(post(path)).content(V1_BODY)).andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.errorType").value("bad_request")).andExpect(jsonPath("$.message").value("Malformed request body"));
+            .andExpect(jsonPath("$.errorType").value("bad_request")).andExpect(jsonPath("$.message").value(PicsureExceptionAdvice.BODY_UNREADABLE));
 
         verifyNoInteractions(operationsClient);
         hpds.verify(0, anyRequestedFor(anyUrl()));
