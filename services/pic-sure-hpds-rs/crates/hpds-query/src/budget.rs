@@ -110,12 +110,12 @@ impl ByteBudget {
             "a thread holding a prefix read permit asked for another"
         );
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-        if !nested && (state.queued() || state.held + bytes > self.capacity) {
+        if !nested && (state.queued() || !self.fits(&state, bytes)) {
             self.waits.fetch_add(1, Ordering::Relaxed);
             let started = Instant::now();
             let ticket = state.next_ticket;
             state.next_ticket += 1;
-            while state.serving != ticket || state.held + bytes > self.capacity {
+            while state.serving != ticket || !self.fits(&state, bytes) {
                 state = self
                     .released
                     .wait(state)
@@ -130,7 +130,7 @@ impl ByteBudget {
                 self.released.notify_all();
             }
         }
-        state.held += bytes;
+        state.held = state.held.saturating_add(bytes);
         self.peak.fetch_max(state.held, Ordering::Relaxed);
         drop(state);
         self.permits.fetch_add(1, Ordering::Relaxed);
@@ -140,6 +140,14 @@ impl ByteBudget {
             bytes,
             _here: PhantomData,
         }
+    }
+
+    /// True when `bytes` more fit beside what `state` holds.
+    fn fits(&self, state: &State, bytes: u64) -> bool {
+        state
+            .held
+            .checked_add(bytes)
+            .is_some_and(|total| total <= self.capacity)
     }
 
     /// The budget's capacity, what it holds and what it has done.
@@ -179,7 +187,7 @@ impl Drop for BudgetPermit<'_> {
             .state
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        state.held -= self.bytes;
+        state.held = state.held.saturating_sub(self.bytes);
         let queued = state.queued();
         drop(state);
         #[cfg(test)]
