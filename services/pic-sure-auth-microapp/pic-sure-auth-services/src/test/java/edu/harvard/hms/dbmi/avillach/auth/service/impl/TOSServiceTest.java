@@ -6,10 +6,9 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.TermsOfServiceRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.ContextConfiguration;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Date;
 import java.util.Optional;
@@ -20,21 +19,19 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SpringBootTest
-@ContextConfiguration(classes = {TOSService.class})
+@ExtendWith(MockitoExtension.class)
 public class TOSServiceTest {
 
-    @MockBean
+    @Mock
     private TermsOfServiceRepository termsOfServiceRepo;
 
-    @MockBean
+    @Mock
     private UserRepository userRepo;
 
     private TOSService tosService;
 
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
         tosService = new TOSService(termsOfServiceRepo, userRepo, true);
     }
 

@@ -2,24 +2,18 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
-import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.ContextConfiguration;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.util.*;
@@ -27,33 +21,29 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@SpringBootTest
-@ContextConfiguration(classes = {AuthorizationService.class, AccessRuleService.class})
+@ExtendWith(MockitoExtension.class)
 public class AuthorizationServiceTest {
-
-    @MockBean
-    private SecurityContext securityContext;
 
     private AuthorizationService authorizationService;
 
     private AccessRuleService accessRuleService;
 
-    @MockBean
+    @Mock
     private SessionService sessionService;
 
-    @MockBean
+    @Mock
     private AccessRuleRepository accessRuleRepository;
 
-    @MockBean
+    @Mock
     private RoleService roleService;
 
-    @MockBean
+    @Mock
     private UserConsentsRepository userConsentsRepository;
 
-    @MockBean
+    @Mock
     private edu.harvard.hms.dbmi.avillach.auth.service.impl.ApiKeyService apiKeyService;
 
-    @MockBean
+    @Mock
     private edu.harvard.hms.dbmi.avillach.auth.service.impl.OpenSessionService openSessionService;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -212,17 +202,8 @@ public class AuthorizationServiceTest {
         AR_Fields_IS_NOT_EMPTY.setType(AccessRule.TypeNaming.IS_NOT_EMPTY);
     }
 
-    @AfterEach
-    void clearSecurityContext() {
-        SecurityContextHolder.clearContext();
-    }
-
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
-        SecurityContextHolder.setContext(securityContext);
-
-        when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false");
         authorizationService = new AuthorizationService(
             accessRuleService, sessionService, roleService, "fence,okta", userConsentsRepository, false, false, apiKeyService,
@@ -248,7 +229,6 @@ public class AuthorizationServiceTest {
             privilege1.setAccessRules(Collections.singleton(accessRule));
             privilege1.setApplication(application);
         }
-        configureUserSecurityContext(user);
         user.setConnection(createFenceTestConnection());
 
         Map<String, Object> requestBody = new HashMap<>();
@@ -275,7 +255,6 @@ public class AuthorizationServiceTest {
             privilege1.setAccessRules(Collections.singleton(accessRule));
             privilege1.setApplication(application);
         }
-        configureUserSecurityContext(user);
         user.setConnection(createFenceTestConnection());
 
         Map<String, Object> requestBody = new HashMap<>();
@@ -308,7 +287,6 @@ public class AuthorizationServiceTest {
             privilege1.setAccessRules(Collections.singleton(accessRule));
             privilege1.setApplication(application);
         }
-        configureUserSecurityContext(user);
         Connection strictConnection = createFenceTestConnection();
         strictConnection.setLabel("fence");
         user.setConnection(strictConnection);
@@ -437,7 +415,6 @@ public class AuthorizationServiceTest {
     public void testIsAuthorized_RulelessPrivilegeIsDenied() {
         Application application = createTestApplication();
         User user = createTestUser();
-        configureUserSecurityContext(user);
         user.getRoles().iterator().next().getPrivileges().forEach(privilege -> {
             privilege.setApplication(application);
             privilege.setAccessRules(Set.of());
@@ -462,7 +439,6 @@ public class AuthorizationServiceTest {
             privilege.setAccessRules(Set.of(accessRule));
             privilege.setApplication(application);
         }
-        configureUserSecurityContext(user);
         application.setPrivileges(user.getPrivilegesByApplication(application));
 
         boolean result = authorizationService.isAuthorized(application, null, user, false).result();
@@ -882,13 +858,6 @@ public class AuthorizationServiceTest {
         privilege.setName("TEST_PRIVILEGE");
         privilege.setUuid(UUID.randomUUID());
         return privilege;
-    }
-
-    private void configureUserSecurityContext(User user) {
-        CustomUserDetails customUserDetails = new CustomUserDetails(user);
-        UsernamePasswordAuthenticationToken authentication =
-            new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
-        when(securityContext.getAuthentication()).thenReturn(authentication);
     }
 
     private User createTestUser() {
