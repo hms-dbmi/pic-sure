@@ -80,6 +80,9 @@ public class AggregateService {
         this.props = props;
         this.queryService = queryService;
         this.conceptMetadata = conceptMetadata;
+        if (!props.hasVisualization()) {
+            logger.warn("No visualization service configured (VISUALIZATION_URL); open continuous charts are disabled");
+        }
     }
 
     /**
@@ -143,6 +146,10 @@ public class AggregateService {
                     return obfuscation
                         .processCategoricalCrossCounts(entityString, getCrossCountForQuery(query), categoryValuesFor(entityString));
                 case CONTINUOUS_CROSS_COUNT:
+                    // Without binning the response would be keyed by every observed value, revealing them all.
+                    if (!props.hasVisualization()) {
+                        return null;
+                    }
                     return processContinuousCrossCounts(entityString, getCrossCountForQuery(query));
                 default:
                     return entityString;
@@ -176,14 +183,9 @@ public class AggregateService {
             return null;
         }
 
-        if (props.hasVisualization()) {
-            Map<String, Map<String, Integer>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
-            Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(continuous, obfuscation.maxChartBins(crossCounts));
-            return objectMapper.writeValueAsString(obfuscation.obfuscateChartCounts(binned));
-        } else {
-            Map<String, Map<String, Object>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
-            return objectMapper.writeValueAsString(obfuscation.obfuscateChartCounts(continuous));
-        }
+        Map<String, Map<String, Integer>> continuous = objectMapper.readValue(continuousJson, new TypeReference<>() {});
+        Map<String, Map<String, Object>> binned = getBinnedContinuousCrossCount(continuous, obfuscation.maxChartBins(crossCounts));
+        return objectMapper.writeValueAsString(obfuscation.obfuscateChartCounts(binned));
     }
 
     /**
