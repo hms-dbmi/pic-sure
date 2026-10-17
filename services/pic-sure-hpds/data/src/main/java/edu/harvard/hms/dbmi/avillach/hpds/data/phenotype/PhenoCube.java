@@ -129,6 +129,9 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
     private int seekForMinIndex(int minSearchIndex, KeyAndValue<V> minEntry, KeyAndValue<V>[] sortedByValue) {
 
         minSearchIndex--;
+        // Arrays.binarySearch reports the insertion point when there is no exact match, and that is sortedByValue.length when the
+        // minimum is above every value. Start at the last element then, so the array is never read out of bounds.
+        minSearchIndex = Math.min(minSearchIndex, sortedByValue.length - 1);
 
         Comparator<KeyAndValue<V>> comparator = (a, b) -> {
             return a.value.compareTo(b.value);
