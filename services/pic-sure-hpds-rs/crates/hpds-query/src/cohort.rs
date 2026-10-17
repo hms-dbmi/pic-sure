@@ -256,8 +256,9 @@ pub(crate) mod fault {
 
     /// Records, while [`watching_chunks`] runs on the calling thread, the tracked entries
     /// of `set` alive once a chunk of a multi-concept read has loaded, the moment it holds
-    /// the most.
+    /// the most; and records in `set` the thread that loaded the chunk.
     pub(crate) fn note_chunk_held(set: &crate::PartitionSet) {
+        crate::partition::test_support::note_chunk_thread(set);
         CHUNK_PEAK.with(|peak| {
             if let Some(seen) = peak.get() {
                 let live = crate::partition::test_support::live(set).live();
@@ -461,12 +462,15 @@ fn combine(
     })
 }
 
-/// Each of `clauses` evaluated, in order. Clauses holding no `ANY_RECORD_OF` run in
-/// parallel ([`fan_out::map`]); the others run one after another on the calling thread,
-/// since an `ANY_RECORD_OF` waits on the process prefix read budget, and a wait on a rayon
-/// worker could sit above a permit that same worker holds lower on its stack, one it took
-/// for another clause before stealing this one. The first error in clause order is returned,
-/// as when every clause ran in parallel.
+/// Each of `clauses` evaluated, in order. The first error in clause order is returned, as
+/// when every clause ran in parallel.
+///
+/// Clauses holding no `ANY_RECORD_OF` run in parallel on the rayon pool ([`fan_out::map`]).
+/// The others run on threads of their own ([`on_clause_threads`]): an `ANY_RECORD_OF`
+/// waits on the process prefix read budget, and a wait on a rayon worker could sit above a
+/// permit that same worker holds lower on its stack, one it took for another clause before
+/// stealing this one. A clause thread runs one clause at a time and holds no permit while
+/// it waits for one, so those threads never wait on each other.
 fn evaluate_all(selection: &Selection<'_>, clauses: &[PhenotypicClause]) -> Result<Vec<Found>> {
     let reads_many: Vec<bool> = clauses.iter().map(holds_any_record_of).collect();
     if !reads_many.contains(&true) {
@@ -474,24 +478,75 @@ fn evaluate_all(selection: &Selection<'_>, clauses: &[PhenotypicClause]) -> Resu
             .into_iter()
             .collect();
     }
-    let parallel: Vec<&PhenotypicClause> = clauses
+    debug_assert!(
+        rayon::current_thread_index().is_none(),
+        "a clause holding an ANY_RECORD_OF was evaluated on a rayon worker"
+    );
+    let (many, parallel): (Vec<&PhenotypicClause>, Vec<&PhenotypicClause>) = clauses
         .iter()
-        .zip(&reads_many)
-        .filter_map(|(clause, &many)| (!many).then_some(clause))
-        .collect();
+        .partition(|clause| holds_any_record_of(clause));
     let mut parallel =
         fan_out::map(&parallel, |clause| evaluate_checked(selection, clause)).into_iter();
-    clauses
+    let threads = selection.set().spare_parallelism();
+    let mut many =
+        on_clause_threads(&many, threads, |clause| evaluate_checked(selection, clause)).into_iter();
+    reads_many
         .iter()
-        .zip(&reads_many)
-        .map(|(clause, &many)| {
-            if many {
-                evaluate_checked(selection, clause)
+        .map(|&many_reads| {
+            if many_reads {
+                many.next()
+                    .expect("one result for each clause holding an ANY_RECORD_OF")
             } else {
                 parallel
                     .next()
                     .expect("one result for each clause holding no ANY_RECORD_OF")
             }
+        })
+        .collect()
+}
+
+/// `evaluate` applied to each of `items`, in order, on up to `threads` threads that are not
+/// rayon workers: the calling thread and scoped threads spawned for this call, each taking
+/// the next item until none is left. With one thread, or at most one item, everything runs
+/// on the calling thread. A panic in `evaluate` is raised again on the calling thread.
+fn on_clause_threads<T, R, F>(items: &[T], threads: usize, evaluate: F) -> Vec<R>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync,
+{
+    let threads = threads.min(items.len());
+    if threads <= 1 {
+        return items.iter().map(evaluate).collect();
+    }
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let results: Vec<std::sync::Mutex<Option<R>>> =
+        items.iter().map(|_| std::sync::Mutex::new(None)).collect();
+    let work = || {
+        loop {
+            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let Some(item) = items.get(i) else {
+                break;
+            };
+            let result = evaluate(item);
+            *results[i]
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(result);
+        }
+    };
+    std::thread::scope(|scope| {
+        for _ in 1..threads {
+            scope.spawn(work);
+        }
+        work();
+    });
+    results
+        .into_iter()
+        .map(|result| {
+            result
+                .into_inner()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .expect("every item is evaluated once the threads are joined")
         })
         .collect()
 }

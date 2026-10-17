@@ -332,6 +332,12 @@ impl ConceptEntry {
     pub(crate) fn decoded_bound(&self) -> u64 {
         self.max_payload_len
     }
+
+    /// Where the concept's block is stored.
+    #[cfg(test)]
+    pub(crate) fn location(&self) -> BlockLocation {
+        self.location
+    }
 }
 
 /// A store's files, opened and its index verified, before its concept table is read.

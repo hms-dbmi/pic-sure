@@ -331,6 +331,8 @@ pub struct PartitionSet {
     serving: ServingLock,
     #[cfg(test)]
     live: Arc<crate::store::test_support::LiveEntries>,
+    #[cfg(test)]
+    chunk_threads: std::sync::Mutex<test_support::ChunkThreads>,
 }
 
 impl std::fmt::Debug for PartitionSet {
@@ -514,6 +516,8 @@ impl PartitionSet {
             serving,
             #[cfg(test)]
             live: Arc::default(),
+            #[cfg(test)]
+            chunk_threads: std::sync::Mutex::default(),
         })
     }
 
@@ -1344,8 +1348,8 @@ impl<'a> Selection<'a> {
     /// one covering the whole chunk. A waiting read therefore holds nothing outside the
     /// budget and the cache.
     ///
-    /// Call it only on the thread that runs the query, never on a rayon worker, and never
-    /// while holding another permit (see [`crate::budget`]).
+    /// Call it only on a thread that runs the query's clauses, never on a rayon worker, and
+    /// never while holding another permit (see [`crate::budget`]).
     ///
     /// # Errors
     /// [`QueryError::Block`] when a block cannot be read.
@@ -1609,6 +1613,35 @@ pub(crate) mod test_support {
     /// A permit of `bytes` of the process prefix read budget, held until dropped.
     pub(crate) fn hold_budget(set: &PartitionSet, bytes: u64) -> crate::budget::BudgetPermit<'_> {
         set.prefix_budget.acquire(bytes)
+    }
+
+    /// The threads that loaded chunks of multi-concept reads, and how many of those chunks a
+    /// rayon worker loaded.
+    #[derive(Debug, Default)]
+    pub(crate) struct ChunkThreads {
+        pub(crate) threads: std::collections::HashSet<std::thread::ThreadId>,
+        pub(crate) on_workers: usize,
+    }
+
+    /// Records that the calling thread loaded a chunk of a multi-concept read.
+    pub(crate) fn note_chunk_thread(set: &PartitionSet) {
+        let mut seen = set.chunk_threads.lock().unwrap();
+        seen.threads.insert(std::thread::current().id());
+        if rayon::current_thread_index().is_some() {
+            seen.on_workers += 1;
+        }
+    }
+
+    /// The distinct threads that loaded chunks since the last call, and how many chunks a
+    /// rayon worker loaded; both start again from none.
+    pub(crate) fn take_chunk_threads(set: &PartitionSet) -> (usize, usize) {
+        let seen = std::mem::take(&mut *set.chunk_threads.lock().unwrap());
+        (seen.threads.len(), seen.on_workers)
+    }
+
+    /// Where in `pheno.blocks` the block of the concept at `index` is stored.
+    pub(crate) fn block_location(set: &PartitionSet, index: usize) -> hpds_format::BlockLocation {
+        set.store.entry(index as u32).location()
     }
 
     /// The decoded size bound the index records for the concept at `index`.

@@ -1419,6 +1419,90 @@ mod tests {
         }
 
         #[test]
+        fn broad_filters_run_on_threads_of_their_own() {
+            use crate::partition::test_support::take_chunk_threads;
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            for (cache, consents) in [(0, &["p1"][..]), (1 << 30, &["p1", "p2", "p3"][..])] {
+                let query = patients_of(broad_or(), consents);
+                let expected = engine_with(&out, NARROW_VIEW_SHARE, u64::MAX, 0)
+                    .patients(&query)
+                    .unwrap();
+                let engine = engine_budgeted(&out, NARROW_VIEW_SHARE, 20_000, 30_000, cache);
+                let set = engine.partitions();
+                take_chunk_threads(set);
+                for _ in 0..2 {
+                    assert_eq!(engine.patients(&query).unwrap(), expected);
+                    let (threads, on_workers) = take_chunk_threads(set);
+                    assert_eq!(on_workers, 0, "no chunk is read on a rayon worker");
+                    if set.spare_parallelism() > 1 {
+                        assert!(threads > 1, "the filters run on several threads");
+                    }
+                }
+                let stats = set.prefix_read_stats();
+                assert_eq!(stats.held, 0);
+                assert!(stats.peak_held <= 30_000, "{stats:?}");
+                assert_eq!(set.cohort_guard_refusals(), 0);
+            }
+        }
+
+        #[test]
+        fn the_first_failing_clause_in_order_fails_the_query() {
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let engine = engine_budgeted(&out, NARROW_VIEW_SHARE, 20_000, 30_000, 1 << 30);
+            let set = engine.partitions();
+            let selection = set.select_consents(&["p1"]).unwrap();
+            let blocks = out.join(hpds_format::BLOCKS_FILE_NAME);
+            let meta = std::fs::metadata(&blocks).unwrap();
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&blocks)
+                .unwrap();
+            for path in ["\\c\\05\\", "\\c\\25\\"] {
+                let index = selection.concept(path).unwrap().index;
+                let location = crate::partition::test_support::block_location(set, index);
+                let at = location.offset + location.length / 2;
+                let mut bytes = [0u8; 8];
+                std::os::unix::fs::FileExt::read_exact_at(&file, &mut bytes, at).unwrap();
+                let flipped = bytes.map(|b| !b);
+                std::os::unix::fs::FileExt::write_all_at(&file, &flipped, at).unwrap();
+            }
+            file.set_modified(meta.modified().unwrap()).unwrap();
+            drop(file);
+            let failing = |clauses: Vec<PhenotypicClause>| match engine
+                .patients(&patients_of(subquery(Operator::Or, clauses), &["p1"]))
+            {
+                Err(QueryError::Block { concept_path, .. }) => concept_path,
+                other => panic!("{other:?}"),
+            };
+            let required = |path: &str| {
+                PhenotypicClause::Filter(PhenotypicFilter::new(
+                    PhenotypicFilterType::Required,
+                    path,
+                ))
+            };
+            let clauses = || {
+                vec![
+                    any_record("\\c\\0"),
+                    any_record("\\c\\1"),
+                    required("\\c\\25\\"),
+                    any_record("\\c\\3"),
+                ]
+            };
+            assert_eq!(
+                failing(clauses()),
+                "\\c\\05\\",
+                "the first clause fails on the query's thread after the third failed on the pool"
+            );
+            let mut reversed = clauses();
+            reversed.swap(0, 2);
+            assert_eq!(failing(reversed), "\\c\\25\\");
+            assert_eq!(set.prefix_read_stats().held, 0);
+        }
+
+        #[test]
         fn a_chunk_larger_than_the_budget_runs_alone() {
             let concepts = prefix_concepts();
             let (_dir, out) = prefix_store(&concepts);

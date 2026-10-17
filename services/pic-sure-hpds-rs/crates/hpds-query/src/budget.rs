@@ -3,8 +3,8 @@
 //! back once it is merged.
 //!
 //! A reader takes one permit at a time and releases it before it asks for the next, and the
-//! engine takes permits only on the thread that runs the query, never on a rayon worker
-//! (see [`crate::cohort`]), so no thread waits for bytes while it holds some. That rules out
+//! engine takes permits only on the threads that run the query's clauses, never on a rayon
+//! worker (see [`crate::cohort`]), so no thread waits for bytes while it holds some. That rules out
 //! a cycle of readers each waiting on the others. A permit asks for at most the whole budget,
 //! so a request larger than the budget waits for every other permit to end and then runs
 //! alone.
@@ -131,6 +131,10 @@ impl ByteBudget {
         debug_assert!(
             !nested,
             "a thread holding a prefix read permit asked for another"
+        );
+        debug_assert!(
+            rayon::current_thread_index().is_none(),
+            "a prefix read permit was asked for on a rayon worker"
         );
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         if !nested && (state.queued() || !self.fits(&state, bytes)) {
