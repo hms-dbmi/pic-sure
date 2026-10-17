@@ -1,0 +1,19 @@
+name: pic-sure-hpds-etl-picsure-loader
+services:
+  picsure-loader:
+    image: pic-sure-hpds-etl:local
+    user: "${ETL_UID:-1000}:${ETL_GID:-1000}"
+    build:
+      context: ../..
+      dockerfile: docker/pic-sure-hpds-etl/Dockerfile
+    environment:
+      - HEAPSIZE=8192
+      - LOADER_NAME=PICSURELoader
+      # The base directory: holds encryption_key and the <partition>-allConcepts.csv files; the stores are written next to the files.
+      - LOADER_ARGS=/opt/local/hpds
+      # Optional tuning by system properties, for example a spool on fast local disk (mount it below and make it writable by ETL_UID):
+      #   JAVA_OPTS=-Dpicsure.loader.spoolDir=/opt/local/spool -Dpicsure.loader.dedup=true
+      - JAVA_OPTS=
+    volumes:
+      - ./hpds:/opt/local/hpds
+      # - ./spool:/opt/local/spool

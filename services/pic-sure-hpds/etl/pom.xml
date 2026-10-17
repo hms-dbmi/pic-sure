@@ -182,6 +182,26 @@
 						</goals>
 					</execution>
 					<execution>
+						<id>buildPICSURELoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.picsure.PICSURELoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>PICSURELoader</classifier>
+							<finalName>PICSURELoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
 						<id>buildSQLLoader</id>
 						<configuration>
 							<archive>
