@@ -1558,7 +1558,7 @@ mod tests {
             assert_eq!(
                 failing(clauses()),
                 "\\c\\05\\",
-                "the first clause fails on the query's thread after the third failed on the pool"
+                "the first clause's error is returned, though the third, run alone on the calling thread, fails before it"
             );
             let mut reversed = clauses();
             reversed.swap(0, 2);
