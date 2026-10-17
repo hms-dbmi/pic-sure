@@ -17,7 +17,10 @@ class LoaderConfigTest {
         assertEquals(10_000, config.batchSize());
         assertEquals(16, config.storeCacheSize());
         assertEquals(12, config.fileProcessingThreads());
-        assertEquals(5_000_000, config.maxObservationsPerConcept());
+        assertEquals(0, config.maxObservationsPerConcept(), "unlimited by default");
+        assertFalse(config.dedup());
+        assertTrue(config.failFast());
+        assertFalse(config.overwrite());
         assertEquals(12, config.finalizationConcurrency());
         assertEquals(1000, config.finalizationChunkSize());
     }

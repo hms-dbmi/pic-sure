@@ -47,6 +47,12 @@
 			<artifactId>htsjdk</artifactId>
 			<version>3.0.1</version>
 		</dependency>
+		<!-- Tests read the stores back through the reader the HPDS service uses (processing does not depend on etl, so no cycle). -->
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+			<artifactId>processing</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>
