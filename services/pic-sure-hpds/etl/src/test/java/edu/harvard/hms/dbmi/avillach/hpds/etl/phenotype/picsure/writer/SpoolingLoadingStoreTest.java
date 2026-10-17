@@ -55,6 +55,10 @@ class SpoolingLoadingStoreTest {
         return new SpoolingLoadingStore(spool, out, Crypto.DEFAULT_KEY_NAME, cacheSize, maxObservationsPerConcept, 4, 10);
     }
 
+    private SpoolingLoadingStore dedupStore(int cacheSize) {
+        return new SpoolingLoadingStore(spool, out, Crypto.DEFAULT_KEY_NAME, cacheSize, 0, 4, 10, true);
+    }
+
     private static Date at(long epochMillis) {
         return new Date(epochMillis);
     }
@@ -164,7 +168,7 @@ class SpoolingLoadingStoreTest {
 
     @Test
     void duplicateObservationsAreDroppedEvenWhenTheyLandInDifferentPartials() throws Exception {
-        SpoolingLoadingStore store = store(1, 1_000);
+        SpoolingLoadingStore store = dedupStore(1);
         store.addObservation(1, A, 5.0, at(100));
         store.addObservation(1, B, "z", null); // evicts A
         store.addObservation(1, A, 5.0, at(100)); // exact duplicate, lands in a later partial
@@ -178,6 +182,24 @@ class SpoolingLoadingStoreTest {
         List<Object> values = valuesByPatient(StoreFixture.readCube(out, A)).get(1);
         assertEquals(3, values.size());
         assertEquals(Set.of(5.0, 6.0), Set.copyOf(values));
+        assertEquals(2, store.getStats().duplicatesDropped());
+        assertEquals(6, store.getStats().accepted());
+        assertEquals(4, store.getObservationsWritten());
+    }
+
+    @Test
+    void duplicatesAreKeptByDefaultLikeCsvLoaderAndCountedAsWritten() throws Exception {
+        SpoolingLoadingStore store = store(1, 1_000);
+        store.addObservation(1, A, 5.0, at(100));
+        store.addObservation(1, B, "z", null); // evicts A
+        store.addObservation(1, A, 5.0, at(100)); // exact duplicate in a later partial
+        store.addObservation(1, A, 5.0, at(100)); // and in the live cube
+        store.saveStore();
+
+        assertEquals(3, StoreFixture.readColumnMeta(out).get(A).getObservationCount());
+        assertEquals(0, store.getStats().duplicatesDropped());
+        assertEquals(4, store.getStats().accepted());
+        assertEquals(4, store.getObservationsWritten());
     }
 
     @Test
@@ -218,8 +240,8 @@ class SpoolingLoadingStoreTest {
         SpoolingLoadingStore store = store(16, 1_000);
         assertEquals(AddResult.ADDED, store.addObservation(1, A, 1.0, null));
         assertEquals(AddResult.ADDED, store.addObservation(2, A, "2.5", null)); // numeric text into a numeric concept
-        assertEquals(AddResult.SKIPPED_NULL_SENTINEL, store.addObservation(3, A, "NA", null));
-        assertEquals(AddResult.SKIPPED_NULL_SENTINEL, store.addObservation(4, A, " None ", null));
+        assertEquals(AddResult.HELD_NULL_SENTINEL, store.addObservation(3, A, "NA", null));
+        assertEquals(AddResult.HELD_NULL_SENTINEL, store.addObservation(4, A, " None ", null));
         assertEquals(AddResult.ADDED, store.addObservation(1, B, "low", null));
         assertEquals(AddResult.ADDED, store.addObservation(2, B, 7.0, null)); // number into a categorical concept
         store.saveStore();
@@ -281,7 +303,7 @@ class SpoolingLoadingStoreTest {
     void conceptOverTheMergeLimitFailsButTheOthersAreStillWritten() throws Exception {
         // guard path of the 2 GB limit, with a tiny limit: A would have more observations than fit in one array
         SpoolingLoadingStore store = new SpoolingLoadingStore(
-            spool, out, Crypto.DEFAULT_KEY_NAME, 16, 1_000_000, 2, 10, 3, SpoolingLoadingStore.DEFAULT_MAX_SERIALIZED_BYTES
+            spool, out, Crypto.DEFAULT_KEY_NAME, 16, 1_000_000, 2, 10, false, 3, SpoolingLoadingStore.DEFAULT_MAX_SERIALIZED_BYTES, 1L << 30
         );
         for (int p = 1; p <= 4; p++) {
             store.addObservation(p, A, (double) p, null);
@@ -297,7 +319,8 @@ class SpoolingLoadingStoreTest {
     @Test
     void conceptOverTheEncryptionSizeLimitFailsButTheOthersAreStillWritten() throws Exception {
         SpoolingLoadingStore store = new SpoolingLoadingStore(
-            spool, out, Crypto.DEFAULT_KEY_NAME, 16, 1_000_000, 2, 10, SpoolingLoadingStore.DEFAULT_MAX_MERGED_OBSERVATIONS, 2_000
+            spool, out, Crypto.DEFAULT_KEY_NAME, 16, 1_000_000, 2, 10, false, SpoolingLoadingStore.DEFAULT_MAX_MERGED_OBSERVATIONS, 2_000,
+            1L << 30
         );
         for (int p = 1; p <= 500; p++) {
             store.addObservation(p, A, (double) p, null);

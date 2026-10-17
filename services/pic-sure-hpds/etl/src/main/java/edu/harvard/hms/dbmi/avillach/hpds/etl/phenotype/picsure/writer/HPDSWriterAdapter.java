@@ -16,37 +16,58 @@ import java.util.concurrent.atomic.AtomicLong;
  * Facade between the observation producers and the {@link SpoolingLoadingStore}.
  *
  * <p>Thread-safety: {@link #acceptBatch} may be called concurrently; {@link #closeAndSave()} must be called once, after the last batch.
+ * {@link #close()} never finalizes: it removes the spool of a store that was not saved, so a failed load leaves no store behind.
  *
  * <p>Nothing is dropped silently: every row that is not stored is counted in {@link #getStats()}, and a failure to store a row (for example
- * a full spool disk) is thrown to the caller instead of being logged and skipped.
+ * a full spool disk) is thrown to the caller instead of being logged and skipped. After {@link #closeAndSave()} the caller must check
+ * {@link #getFailedConcepts()} and {@code getStats().rejectedConceptLimit()}: either being non-zero means the store is incomplete.
  */
 public class HPDSWriterAdapter implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(HPDSWriterAdapter.class);
 
-    /** Counts of what happened to the rows passed to {@link #acceptBatch}. */
-    public record WriterStats(long accepted, long invalid, long rejectedConceptLimit, long skippedNullSentinel) {
+    /**
+     * Counts of what happened to the rows passed to {@link #acceptBatch}; final after {@link #closeAndSave()}.
+     *
+     * @param accepted rows put into a concept, before duplicate removal
+     * @param invalid rows with no value or two values (the producers resolve that before rows get here)
+     * @param rejectedConceptLimit rows refused because their concept reached the observation limit
+     * @param skippedNullSentinel null sentinels dropped (see {@link SpoolingLoadingStore})
+     * @param duplicatesDropped exact duplicates removed (only with dedup)
+     */
+    public record WriterStats(long accepted, long invalid, long rejectedConceptLimit, long skippedNullSentinel, long duplicatesDropped) {
     }
 
     private final SpoolingLoadingStore store;
     private final AtomicBoolean finalizing = new AtomicBoolean(false);
-    private final AtomicLong accepted = new AtomicLong();
     private final AtomicLong invalid = new AtomicLong();
-    private final AtomicLong rejectedConceptLimit = new AtomicLong();
-    private final AtomicLong skippedNullSentinel = new AtomicLong();
 
     public HPDSWriterAdapter(
         Path spoolDirectory, Path outputDirectory, String encryptionKeyName, int cacheSize, int maxObservationsPerConcept,
         int finalizationConcurrency, int finalizationChunkSize
     ) {
         this(
+            spoolDirectory, outputDirectory, encryptionKeyName, cacheSize, maxObservationsPerConcept, finalizationConcurrency,
+            finalizationChunkSize, false
+        );
+    }
+
+    /**
+     * @param maxObservationsPerConcept 0 = unlimited
+     * @param dedup drop exact duplicate rows at finalization
+     */
+    public HPDSWriterAdapter(
+        Path spoolDirectory, Path outputDirectory, String encryptionKeyName, int cacheSize, int maxObservationsPerConcept,
+        int finalizationConcurrency, int finalizationChunkSize, boolean dedup
+    ) {
+        this(
             new SpoolingLoadingStore(
                 spoolDirectory, outputDirectory, encryptionKeyName, cacheSize, maxObservationsPerConcept, finalizationConcurrency,
-                finalizationChunkSize
+                finalizationChunkSize, dedup
             )
         );
         log.info(
-            "Initialized HPDS writer adapter: spool={}, output={}, cacheSize={}, maxObsPerConcept={}, finalizationConcurrency={}, chunkSize={}",
-            spoolDirectory, outputDirectory, cacheSize, maxObservationsPerConcept, finalizationConcurrency, finalizationChunkSize
+            "Initialized HPDS writer adapter: spool={}, output={}, cacheSize={}, maxObsPerConcept={}, finalizationConcurrency={}, chunkSize={}, dedup={}",
+            spoolDirectory, outputDirectory, cacheSize, maxObservationsPerConcept, finalizationConcurrency, finalizationChunkSize, dedup
         );
     }
 
@@ -58,7 +79,8 @@ public class HPDSWriterAdapter implements AutoCloseable {
      * Adds a batch of observations. A row must carry exactly one value (numeric or text); a row with none or both is counted as invalid and
      * not stored (the producers resolve that before rows get here).
      *
-     * @return the number of rows stored
+     * @return the number of rows handed to the store without being refused or skipped on the spot (held null sentinels count here; see
+     *         {@link #getStats()} for the final outcome)
      */
     public int acceptBatch(List<ObservationRow> batch) {
         if (finalizing.get()) {
@@ -77,12 +99,9 @@ public class HPDSWriterAdapter implements AutoCloseable {
             }
             Date timestamp = row.dateTime() != null ? Date.from(row.dateTime()) : null;
             switch (store.addObservation(row.patientNum(), row.conceptPath(), row.getValue(), timestamp)) {
-                case ADDED -> {
-                    accepted.incrementAndGet();
-                    stored++;
+                case ADDED, HELD_NULL_SENTINEL -> stored++;
+                case REJECTED_CONCEPT_LIMIT -> {
                 }
-                case REJECTED_CONCEPT_LIMIT -> rejectedConceptLimit.incrementAndGet();
-                case SKIPPED_NULL_SENTINEL -> skippedNullSentinel.incrementAndGet();
             }
         }
         return stored;
@@ -110,9 +129,16 @@ public class HPDSWriterAdapter implements AutoCloseable {
             .log("HPDS writer adapter closed ({} ms)", System.currentTimeMillis() - start);
     }
 
+    /**
+     * Releases the store. A store that was not saved with {@link #closeAndSave()} is discarded (its spool is removed and nothing is
+     * written): finalizing a partial store on a failure path would leave something that looks valid.
+     */
     @Override
-    public void close() throws IOException {
-        closeAndSave();
+    public synchronized void close() {
+        if (finalizing.compareAndSet(false, true)) {
+            log.info("Writer adapter closed without saving: discarding the spool");
+        }
+        store.abort();
     }
 
     public int getPatientCount() {
@@ -132,7 +158,25 @@ public class HPDSWriterAdapter implements AutoCloseable {
         return store.getFailedConcepts();
     }
 
+    /** Concepts that hit the observation limit, with the observations refused; non-empty means the load is incomplete. */
+    public Map<String, Long> getRejectedConcepts() {
+        return store.getRejectedConcepts();
+    }
+
+    /** Observations in the concepts that were written. Valid after {@link #closeAndSave()}. */
+    public long getObservationsWritten() {
+        return store.getObservationsWritten();
+    }
+
+    /** Observations accepted into concepts that could not be written. Valid after {@link #closeAndSave()}. */
+    public long getFailedConceptObservations() {
+        return store.getFailedConceptObservations();
+    }
+
     public WriterStats getStats() {
-        return new WriterStats(accepted.get(), invalid.get(), rejectedConceptLimit.get(), skippedNullSentinel.get());
+        SpoolingLoadingStore.StoreStats stats = store.getStats();
+        return new WriterStats(
+            stats.accepted(), invalid.get(), stats.rejectedConceptLimit(), stats.skippedNullSentinel(), stats.duplicatesDropped()
+        );
     }
 }

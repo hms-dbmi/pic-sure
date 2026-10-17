@@ -45,7 +45,7 @@ class HPDSWriterAdapterTest {
             )
         );
         assertEquals(4, stored);
-        assertEquals(new WriterStats(4, 0, 0, 0), adapter.getStats());
+        assertEquals(new WriterStats(4, 0, 0, 0, 0), adapter.getStats());
         adapter.closeAndSave();
 
         ColumnMeta numeric = StoreFixture.readColumnMeta(out).get(A);
@@ -71,7 +71,7 @@ class HPDSWriterAdapterTest {
         );
 
         assertEquals(1, stored);
-        assertEquals(new WriterStats(1, 2, 0, 0), adapter.getStats());
+        assertEquals(new WriterStats(1, 2, 0, 0, 0), adapter.getStats());
         adapter.closeAndSave();
         assertEquals(1, StoreFixture.readColumnMeta(out).get(A).getObservationCount());
     }
@@ -87,8 +87,9 @@ class HPDSWriterAdapterTest {
             )
         );
 
-        assertEquals(new WriterStats(2, 0, 1, 1), limited.getStats());
+        assertEquals(new WriterStats(2, 0, 1, 0, 0), limited.getStats(), "held sentinels are settled when the store is saved");
         limited.closeAndSave();
+        assertEquals(new WriterStats(2, 0, 1, 1, 0), limited.getStats());
     }
 
     @Test

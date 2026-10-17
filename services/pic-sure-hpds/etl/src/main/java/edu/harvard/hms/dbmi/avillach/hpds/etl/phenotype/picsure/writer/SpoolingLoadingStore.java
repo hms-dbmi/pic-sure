@@ -46,11 +46,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -60,10 +63,22 @@ import java.util.zip.GZIPOutputStream;
  * <p>The legacy {@code LoadingStore} needs its input sorted by concept: a concept that is evicted from its 16-entry cache and then seen
  * again would be written a second time and overwrite its own metadata. This store instead: <ul> <li>accepts observations for any concept in
  * any order, keeping at most {@code cacheSize} concepts in memory;</li> <li>spools an evicted concept's raw observations to a compressed
- * partial file on disk (several partials per concept are fine);</li> <li>at {@link #saveStore()} merges all partials of each concept, drops
- * exact duplicates, sorts, and writes every concept exactly once to {@code allObservationsStore.javabin} (Java-serialized
- * {@link PhenoCube}, AES-GCM encrypted with {@code encryptionKeyName}), plus {@code columnMeta.javabin} / {@code columnMeta.csv}.</li>
- * </ul>
+ * partial file on disk (several partials per concept are fine);</li> <li>at {@link #saveStore()} merges all partials of each concept
+ * (optionally dropping exact duplicates), sorts, and writes every concept exactly once to {@code allObservationsStore.javabin}
+ * (Java-serialized {@link PhenoCube}, AES-GCM encrypted with {@code encryptionKeyName}), plus {@code columnMeta.javabin} /
+ * {@code columnMeta.csv} (the legacy 11 column format the dictionary ETL reads).</li> </ul>
+ *
+ * <p><b>Null sentinels and concept types.</b> A null sentinel ("NA", "None", ...) never creates or types a concept, and what happens to it
+ * does not depend on the order of the rows: sentinels are held next to the real values and settled when the store is saved, by the
+ * <i>final</i> type of the concept. A concept whose real values are all numbers drops its sentinels (they are not values of a numeric
+ * concept); a concept with any real text keeps them as categories; a concept with no real value at all is not written. Numbers in a concept
+ * with real text are stored as {@link Double#toString(double)} text, in any order. The one input the store cannot make order independent is
+ * a caller that passes numeric-looking {@link String}s: the first real value decides whether such text is a number or a category (the CSV
+ * producer never does; it turns numeric-looking text into numbers first).
+ *
+ * <p><b>Memory.</b> Finalization merges and serializes whole concepts. A heap budget (half of the max heap by default, about
+ * {@value #BYTES_PER_OBSERVATION} bytes per observation) gates how many run at once, so memory stays bounded however many threads are
+ * configured; a concept bigger than the budget runs alone.
  *
  * <p>The output files use the same javabin format as the legacy loaders, so {@code PartitionedPhenotypicObservationStore} reads them
  * unchanged (use {@link Crypto#DEFAULT_KEY_NAME} as the key name for stores that service reads).
@@ -79,6 +94,12 @@ public class SpoolingLoadingStore {
     static final long DEFAULT_MAX_SERIALIZED_BYTES = Integer.MAX_VALUE - 100_000_000L;
 
     private static final int MAX_CACHE_RETRIES = 1000;
+    /** Failed attempts after which an add takes the eviction gate exclusively. */
+    private static final int EXCLUSIVE_AFTER_ATTEMPTS = 4;
+
+    /** Rough heap needed to merge, sort, serialize and encrypt one observation of a concept (list entry, boxed values, byte copies). */
+    static final long BYTES_PER_OBSERVATION = 400;
+    private static final double DEFAULT_HEAP_BUDGET_FRACTION = 0.5;
 
     /** What happened to an observation passed to {@link #addObservation}. */
     public enum AddResult {
@@ -86,18 +107,43 @@ public class SpoolingLoadingStore {
         ADDED,
         /** The concept already holds {@code maxObservationsPerConcept} observations; counted in the rejection report. */
         REJECTED_CONCEPT_LIMIT,
-        /** A null-sentinel string ("NA", "None", ...) arriving for a numeric concept; skipped, not a value. */
-        SKIPPED_NULL_SENTINEL
+        /**
+         * A null-sentinel string ("NA", "None", ...). Held; it is stored if the concept turns out categorical and dropped if it turns out
+         * numeric or never gets a real value. The final counts are in {@link #getStats()}.
+         */
+        HELD_NULL_SENTINEL
+    }
+
+    /**
+     * Counts of what happened to the observations passed to {@link #addObservation}. Final after {@link #saveStore()}: held sentinels are
+     * resolved then.
+     *
+     * @param accepted observations put into a concept (before duplicate removal)
+     * @param skippedNullSentinel null sentinels dropped
+     * @param rejectedConceptLimit observations refused because their concept reached {@code maxObservationsPerConcept}
+     * @param duplicatesDropped exact duplicates removed at finalization (only with dedup)
+     */
+    public record StoreStats(long accepted, long skippedNullSentinel, long rejectedConceptLimit, long duplicatesDropped) {
     }
 
     private final Path spoolDirectory;
     private final Path outputDirectory;
     private final String encryptionKeyName;
-    private final int maxObservationsPerConcept;
+    private final long maxObservationsPerConcept;
+    private final boolean dedup;
     private final int finalizationConcurrency;
     private final int finalizationChunkSize;
     private final long maxMergedObservations;
     private final long maxSerializedBytes;
+    private final Semaphore heapBudgetKb;
+    private final long heapBudgetTotalKb;
+
+    private final AtomicLong accepted = new AtomicLong();
+    private final AtomicLong skippedNullSentinel = new AtomicLong();
+    private final AtomicLong duplicatesDropped = new AtomicLong();
+    private final AtomicLong failedConceptObservations = new AtomicLong();
+    private volatile long observationsWritten;
+    private volatile boolean aborted;
 
     private final NullSentinelDetector nullSentinelDetector = new NullSentinelDetector();
 
@@ -111,17 +157,26 @@ public class SpoolingLoadingStore {
     private final ConcurrentHashMap<String, ReentrantLock> conceptLocks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> conceptRejections = new ConcurrentHashMap<>();
     /** Guava swallows exceptions thrown by removal listeners; a failed spool is parked here and rethrown on the caller's thread. */
+    private final ReentrantReadWriteLock evictionGate = new ReentrantReadWriteLock();
     private final AtomicReference<Throwable> spoolFailure = new AtomicReference<>();
     /** Concepts that could not be finalized (concept path to reason). Valid after {@link #saveStore()}. */
     private final Map<String, String> failedConcepts = new ConcurrentHashMap<>();
 
     private static final class ConceptMetadata {
         volatile boolean categorical;
+        /** False until the concept has seen a real (non-sentinel) value. */
+        volatile boolean typed;
+        /** Null sentinels held for this concept; settled in {@link #saveStore()}. */
+        volatile long sentinelCount;
+        /** The patients of kept sentinels are added to the patient set when the concept is finalized. */
+        volatile boolean addIdsAtFinalize;
         final AtomicInteger partialCount = new AtomicInteger();
+        /** Real values accepted (the cap applies to these); after {@link #saveStore()} settles the sentinels, kept ones are included. */
         final AtomicLong observationCount = new AtomicLong();
 
-        ConceptMetadata(boolean categorical) {
+        ConceptMetadata(boolean categorical, boolean typed) {
             this.categorical = categorical;
+            this.typed = typed;
         }
     }
 
@@ -135,24 +190,41 @@ public class SpoolingLoadingStore {
         }
     }
 
+    /** Keeps duplicates, no concept limit semantics change: see the full constructor. */
     public SpoolingLoadingStore(
         Path spoolDirectory, Path outputDirectory, String encryptionKeyName, int cacheSize, int maxObservationsPerConcept,
         int finalizationConcurrency, int finalizationChunkSize
     ) {
         this(
             spoolDirectory, outputDirectory, encryptionKeyName, cacheSize, maxObservationsPerConcept, finalizationConcurrency,
-            finalizationChunkSize, DEFAULT_MAX_MERGED_OBSERVATIONS, DEFAULT_MAX_SERIALIZED_BYTES
+            finalizationChunkSize, false
         );
     }
 
-    /** Package-private so tests can exercise the 2 GB guards with small limits. */
+    /**
+     * @param maxObservationsPerConcept observations accepted per concept, 0 = unlimited
+     * @param dedup drop exact duplicate observations (same patient, value and timestamp) when a concept is finalized
+     */
+    public SpoolingLoadingStore(
+        Path spoolDirectory, Path outputDirectory, String encryptionKeyName, int cacheSize, int maxObservationsPerConcept,
+        int finalizationConcurrency, int finalizationChunkSize, boolean dedup
+    ) {
+        this(
+            spoolDirectory, outputDirectory, encryptionKeyName, cacheSize, maxObservationsPerConcept, finalizationConcurrency,
+            finalizationChunkSize, dedup, DEFAULT_MAX_MERGED_OBSERVATIONS, DEFAULT_MAX_SERIALIZED_BYTES,
+            (long) (Runtime.getRuntime().maxMemory() * DEFAULT_HEAP_BUDGET_FRACTION)
+        );
+    }
+
+    /** Package-private so tests can exercise the 2 GB guards and the heap gate with small limits. */
     SpoolingLoadingStore(
         Path spoolDirectory, Path outputDirectory, String encryptionKeyName, int cacheSize, int maxObservationsPerConcept,
-        int finalizationConcurrency, int finalizationChunkSize, long maxMergedObservations, long maxSerializedBytes
+        int finalizationConcurrency, int finalizationChunkSize, boolean dedup, long maxMergedObservations, long maxSerializedBytes,
+        long heapBudgetBytes
     ) {
-        if (cacheSize < 1 || maxObservationsPerConcept < 1 || finalizationConcurrency < 1 || finalizationChunkSize < 1) {
+        if (cacheSize < 1 || maxObservationsPerConcept < 0 || finalizationConcurrency < 1 || finalizationChunkSize < 1) {
             throw new IllegalArgumentException(
-                "cacheSize, maxObservationsPerConcept, finalizationConcurrency and finalizationChunkSize must be >= 1"
+                "cacheSize, finalizationConcurrency and finalizationChunkSize must be >= 1 and maxObservationsPerConcept >= 0"
             );
         }
         if (!Crypto.hasKey(encryptionKeyName)) {
@@ -161,11 +233,14 @@ public class SpoolingLoadingStore {
         this.spoolDirectory = spoolDirectory;
         this.outputDirectory = outputDirectory;
         this.encryptionKeyName = encryptionKeyName;
-        this.maxObservationsPerConcept = maxObservationsPerConcept;
+        this.maxObservationsPerConcept = maxObservationsPerConcept == 0 ? Long.MAX_VALUE : maxObservationsPerConcept;
+        this.dedup = dedup;
         this.finalizationConcurrency = finalizationConcurrency;
         this.finalizationChunkSize = finalizationChunkSize;
         this.maxMergedObservations = maxMergedObservations;
         this.maxSerializedBytes = maxSerializedBytes;
+        this.heapBudgetTotalKb = Math.max(1, Math.min(Integer.MAX_VALUE, heapBudgetBytes / 1024));
+        this.heapBudgetKb = new Semaphore((int) heapBudgetTotalKb);
 
         try {
             Files.createDirectories(spoolDirectory);
@@ -183,7 +258,7 @@ public class SpoolingLoadingStore {
                 synchronized (active) {
                     if (!active.spooled) {
                         active.spooled = true;
-                        if (active.cube.getLoadingMap() != null && !active.cube.getLoadingMap().isEmpty()) {
+                        if (!aborted && active.cube.getLoadingMap() != null && !active.cube.getLoadingMap().isEmpty()) {
                             spoolPartial(notification.getKey(), active.cube);
                         }
                     }
@@ -205,9 +280,10 @@ public class SpoolingLoadingStore {
     }
 
     /**
-     * Adds an observation to a concept. The concept's type (numeric or categorical) is fixed by its first observation. A text value
-     * arriving for a numeric concept is parsed as a number when possible, skipped when it is a null sentinel, and otherwise promotes the
-     * whole concept to categorical. A number arriving for a categorical concept is stored as text.
+     * Adds an observation to a concept. A concept's type (numeric or categorical) is fixed by its first real (non-sentinel) observation. A
+     * text value arriving for a numeric concept is parsed as a number when possible and otherwise promotes the whole concept to
+     * categorical. A number arriving for a categorical concept is stored as text. See the class comment for how null sentinels are held and
+     * settled.
      *
      * @param value a {@link Double} or a {@link String}
      */
@@ -217,60 +293,103 @@ public class SpoolingLoadingStore {
             throw new IllegalArgumentException("Observation value must be a Double or a String, got: " + value);
         }
         checkSpoolHealth();
+        boolean sentinel = value instanceof String text && nullSentinelDetector.isNullSentinel(text);
 
         ReentrantLock lock = conceptLocks.computeIfAbsent(conceptPath, k -> new ReentrantLock());
         lock.lock();
         try {
-            ConceptMetadata meta = conceptMetadata.computeIfAbsent(conceptPath, k -> new ConceptMetadata(value instanceof String));
-
-            if (meta.observationCount.get() >= maxObservationsPerConcept) {
-                long rejected = conceptRejections.computeIfAbsent(conceptPath, k -> new AtomicLong()).incrementAndGet();
-                if (rejected == 1) {
-                    log.atWarn().addKeyValue("event_type", "concept.limit.reached").addKeyValue("event_schema_version", "1.0")
-                        .addKeyValue("concept_path", conceptPath).addKeyValue("observations_accepted", meta.observationCount.get())
-                        .addKeyValue("limit_value", maxObservationsPerConcept).log(
-                            "Concept '{}' reached observation limit ({}), rejecting further observations", conceptPath,
-                            maxObservationsPerConcept
-                        );
-                }
-                return AddResult.REJECTED_CONCEPT_LIMIT;
+            ConceptMetadata meta = conceptMetadata.get(conceptPath);
+            if (meta == null) {
+                meta = new ConceptMetadata(value instanceof String && !sentinel, !sentinel);
+                conceptMetadata.put(conceptPath, meta);
             }
 
             Comparable<?> coerced = value;
-            if (meta.categorical && value instanceof Double) {
-                coerced = value.toString();
-            } else if (!meta.categorical && value instanceof String text) {
-                if (nullSentinelDetector.isNullSentinel(text)) {
-                    return AddResult.SKIPPED_NULL_SENTINEL;
+            if (!sentinel) {
+                if (meta.observationCount.get() >= maxObservationsPerConcept) {
+                    long rejected = conceptRejections.computeIfAbsent(conceptPath, k -> new AtomicLong()).incrementAndGet();
+                    if (rejected == 1) {
+                        log.atWarn().addKeyValue("event_type", "concept.limit.reached").addKeyValue("event_schema_version", "1.0")
+                            .addKeyValue("concept_path", conceptPath).addKeyValue("observations_accepted", meta.observationCount.get())
+                            .addKeyValue("limit_value", maxObservationsPerConcept).log(
+                                "Concept '{}' reached observation limit ({}), rejecting further observations", conceptPath,
+                                maxObservationsPerConcept
+                            );
+                    }
+                    return AddResult.REJECTED_CONCEPT_LIMIT;
                 }
-                try {
-                    coerced = Double.parseDouble(text);
-                } catch (NumberFormatException e) {
-                    // Not a number and not a null marker: the concept is really categorical. Flip it in place (never replace the
-                    // metadata: its partial counter and observation count must survive) and spool the numeric cube; already spooled
-                    // numeric partials are converted to text when merged.
-                    log.warn("Concept '{}' was numeric but received non-numeric text '{}': promoting to categorical", conceptPath, text);
-                    meta.categorical = true;
-                    cache.invalidate(conceptPath);
-                    coerced = text;
+                if (!meta.typed) {
+                    meta.categorical = value instanceof String;
+                    meta.typed = true;
+                } else if (meta.categorical && value instanceof Double) {
+                    coerced = value.toString();
+                } else if (!meta.categorical && value instanceof String text) {
+                    try {
+                        coerced = Double.parseDouble(text);
+                    } catch (NumberFormatException e) {
+                        // Real text in a numeric concept: it is really categorical. Flip it in place (never replace the metadata: its
+                        // partial counter and observation count must survive). Numbers already stored are converted to text when merged.
+                        log.warn(
+                            "Concept '{}' was numeric but received non-numeric text '{}': promoting to categorical", conceptPath, text
+                        );
+                        meta.categorical = true;
+                        coerced = text;
+                    }
                 }
             }
 
             for (int attempt = 0; attempt < MAX_CACHE_RETRIES; attempt++) {
-                ActiveCube active = getActive(conceptPath);
-                synchronized (active) {
-                    if (!active.spooled) {
-                        ((PhenoCube) active.cube).add(patientNum, coerced, timestamp);
-                        meta.observationCount.incrementAndGet();
-                        allIds.add(patientNum);
-                        return AddResult.ADDED;
+                // A cube can be evicted between cache.get() and the monitor below, and cache.get() itself spools the cubes it evicts, so
+                // with a small cache and many threads a thread can lose that race again and again. After a few losses it takes the gate
+                // exclusively: nobody else touches the cache, so its cube cannot be evicted before it is used.
+                Lock gate = attempt < EXCLUSIVE_AFTER_ATTEMPTS ? evictionGate.readLock() : evictionGate.writeLock();
+                gate.lock();
+                try {
+                    ActiveCube active = getActive(conceptPath);
+                    synchronized (active) {
+                        if (!active.spooled) {
+                            // The loading list holds whatever was added; the type of the cube is only a label until the concept is merged
+                            ((PhenoCube) active.cube).add(patientNum, coerced, timestamp);
+                            if (sentinel) {
+                                meta.sentinelCount++;
+                                return AddResult.HELD_NULL_SENTINEL;
+                            }
+                            meta.observationCount.incrementAndGet();
+                            accepted.incrementAndGet();
+                            allIds.add(patientNum);
+                            return AddResult.ADDED;
+                        }
                     }
+                } finally {
+                    gate.unlock();
                 }
                 // Evicted by another thread between get() and the monitor: fetch (and re-create) the cube.
             }
             throw new IllegalStateException("Could not obtain an active cube for concept: " + conceptPath);
         } finally {
             lock.unlock();
+        }
+    }
+
+    /**
+     * Settles the held null sentinels by the final type of each concept. Concepts without a real value are removed: they never existed.
+     * Single-threaded, after the last add.
+     */
+    private void settleSentinels() {
+        for (Map.Entry<String, ConceptMetadata> entry : conceptMetadata.entrySet()) {
+            ConceptMetadata meta = entry.getValue();
+            long held = meta.sentinelCount;
+            if (!meta.typed) {
+                skippedNullSentinel.addAndGet(held);
+                log.info("Concept {} holds only null sentinels ({}); not written", entry.getKey(), held);
+                conceptMetadata.remove(entry.getKey());
+            } else if (!meta.categorical) {
+                skippedNullSentinel.addAndGet(held); // dropped when the concept is merged
+            } else if (held > 0) {
+                accepted.addAndGet(held);
+                meta.observationCount.addAndGet(held);
+                meta.addIdsAtFinalize = true;
+            }
         }
     }
 
@@ -347,6 +466,8 @@ public class SpoolingLoadingStore {
     /**
      * Flushes the cache, merges the partials of every concept and writes the store files. A concept that cannot be finalized (for example
      * one over the 2 GB limit) is left out of the store and reported by {@link #getFailedConcepts()}; the other concepts are still written.
+     * The caller must treat a store with failed concepts, or with {@code rejectedConceptLimit > 0} in {@link #getStats()}, as incomplete.
+     * The files are written in the order store, columnMeta.csv, columnMeta.javabin, so an interrupted write lacks the last one.
      *
      * @throws IOException if a spool file could not be written earlier or the store files cannot be written
      */
@@ -361,14 +482,16 @@ public class SpoolingLoadingStore {
             );
         }
 
+        settleSentinels();
+
         ConcurrentHashMap<String, ColumnMeta> metadataMap = new ConcurrentHashMap<>();
         List<String> allConcepts = new ArrayList<>(conceptMetadata.keySet());
         int totalConcepts = allConcepts.size();
         int totalChunks = (totalConcepts + finalizationChunkSize - 1) / finalizationChunkSize;
         long finalizationStart = System.currentTimeMillis();
         log.info(
-            "Finalizing {} concepts in {} chunks of up to {} ({} concurrent)", totalConcepts, totalChunks, finalizationChunkSize,
-            finalizationConcurrency
+            "Finalizing {} concepts in {} chunks of up to {} ({} concurrent, heap budget {} MB)", totalConcepts, totalChunks,
+            finalizationChunkSize, finalizationConcurrency, heapBudgetTotalKb / 1024
         );
 
         try (
@@ -394,6 +517,8 @@ public class SpoolingLoadingStore {
 
         // Same layout as the legacy LoadingStore: TreeMap<String, ColumnMeta> followed by the TreeSet of all patient ids.
         TreeMap<String, ColumnMeta> sortedMetadata = new TreeMap<>(metadataMap);
+        observationsWritten = sortedMetadata.values().stream().mapToLong(ColumnMeta::getObservationCount).sum();
+        LegacyColumnMetaCsv.write(sortedMetadata, outputDirectory.resolve("columnMeta.csv"));
         try (
             ObjectOutputStream metaOut =
                 new ObjectOutputStream(new GZIPOutputStream(Files.newOutputStream(outputDirectory.resolve("columnMeta.javabin"))))
@@ -403,11 +528,22 @@ public class SpoolingLoadingStore {
                 metaOut.writeObject(new TreeSet<>(allIds));
             }
         }
-        ColumnMetaBuilder.writeColumnMetaCsv(sortedMetadata, outputDirectory.resolve("columnMeta.csv"));
 
         cleanupSpool();
         writeConceptRejectionReport();
         log.info("Store finalized: {} concepts, {} patients", metadataMap.size(), allIds.size());
+    }
+
+    /** Discards what was collected without writing a store, and removes the spool files. Safe after {@link #saveStore()} too. */
+    public void abort() {
+        aborted = true;
+        cache.invalidateAll();
+        cache.cleanUp();
+        try {
+            cleanupSpool();
+        } catch (IOException e) {
+            log.warn("Could not remove all spool files of an aborted store: {}", e.getMessage());
+        }
     }
 
     private void processChunk(List<String> chunk, RandomAccessFile store, ConcurrentHashMap<String, ColumnMeta> metadataMap) {
@@ -425,6 +561,7 @@ public class SpoolingLoadingStore {
                         String reason = t.getClass().getSimpleName() + ": " + t.getMessage();
                         log.error("Failed to finalize concept: {} | {}", conceptPath, reason, t);
                         failedConcepts.put(conceptPath, reason);
+                        failedConceptObservations.addAndGet(conceptMetadata.get(conceptPath).observationCount.get());
                     }
                 }));
             }
@@ -459,10 +596,31 @@ public class SpoolingLoadingStore {
     private ColumnMeta finalizeConcept(String conceptPath, RandomAccessFile store) throws IOException {
         long start = System.currentTimeMillis();
         ConceptMetadata meta = conceptMetadata.get(conceptPath);
+        int permits = (int) Math.max(1, Math.min(heapBudgetTotalKb, meta.observationCount.get() * BYTES_PER_OBSERVATION / 1024 + 1));
+        try {
+            heapBudgetKb.acquire(permits);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while waiting for heap budget to finalize " + conceptPath, e);
+        }
+        try {
+            return finalizeConceptWithBudget(conceptPath, meta, store, start);
+        } finally {
+            heapBudgetKb.release(permits);
+        }
+    }
+
+    private ColumnMeta finalizeConceptWithBudget(String conceptPath, ConceptMetadata meta, RandomAccessFile store, long start)
+        throws IOException {
         PhenoCube<?> cube = mergePartials(conceptPath, meta);
         if (cube.getLoadingMap().isEmpty()) {
             log.warn("Concept {} has no observations; not written", conceptPath);
             return null;
+        }
+        if (meta.addIdsAtFinalize) {
+            for (KeyAndValue<?> entry : cube.getLoadingMap()) {
+                allIds.add(entry.getKey());
+            }
         }
         complete(cube);
 
@@ -513,8 +671,9 @@ public class SpoolingLoadingStore {
     }
 
     /**
-     * Reads all partials of a concept into one cube, dropping exact duplicate observations (same patient, value and timestamp). Partials
-     * written while the concept was still numeric are converted to text when the concept was promoted to categorical.
+     * Reads all partials of a concept into one cube, dropping exact duplicate observations (same patient, value and timestamp) when
+     * {@code dedup} is on. Partials written while the concept was still numeric are converted to text when the concept was promoted to
+     * categorical; text sentinels left in the partials of a concept that turned out numeric are dropped (already counted as skipped).
      */
     @SuppressWarnings("unchecked")
     private PhenoCube<?> mergePartials(String conceptPath, ConceptMetadata meta) throws IOException {
@@ -524,15 +683,15 @@ public class SpoolingLoadingStore {
         if (totalObservations > maxMergedObservations) {
             throw new IOException(
                 String.format(
-                    "Concept %s has %d observations, more than the %d that fit in one Java array. Lower maxObservationsPerConcept.",
+                    "Concept %s has %d observations, more than the %d that fit in one Java array. Split the concept or its partition.",
                     conceptPath, totalObservations, maxMergedObservations
                 )
             );
         }
 
         PhenoCube<?> merged = newCube(conceptPath, meta);
-        Set<ObservationFingerprint> seen = new HashSet<>();
-        List<KeyAndValue> entries = new ArrayList<>();
+        Set<ObservationFingerprint> seen = dedup ? new HashSet<>() : null;
+        List<KeyAndValue> entries = new ArrayList<>((int) Math.min(totalObservations, 10_000_000L));
         long read = 0;
         for (Path partial : partials) {
             try (
@@ -540,23 +699,33 @@ public class SpoolingLoadingStore {
                     new ObjectInputStream(gzis)
             ) {
                 List<KeyAndValue> partialEntries = (List<KeyAndValue>) ois.readObject();
-                read += partialEntries.size();
                 for (KeyAndValue entry : partialEntries) {
                     if (meta.categorical && entry.getValue() instanceof Double) {
                         entry.setValue(entry.getValue().toString());
+                    } else if (!meta.categorical && entry.getValue() instanceof String text) {
+                        if (nullSentinelDetector.isNullSentinel(text)) {
+                            continue;
+                        }
+                        entry.setValue(Double.parseDouble(text));
                     }
-                    ObservationFingerprint fingerprint = new ObservationFingerprint(
-                        entry.getKey(), conceptPath, entry.getValue().toString(), entry.getTimestamp() != null ? entry.getTimestamp() : 0L
-                    );
-                    if (seen.add(fingerprint)) {
-                        entries.add(entry);
+                    read++;
+                    if (seen != null) {
+                        ObservationFingerprint fingerprint = new ObservationFingerprint(
+                            entry.getKey(), conceptPath, entry.getValue().toString(),
+                            entry.getTimestamp() != null ? entry.getTimestamp() : 0L
+                        );
+                        if (!seen.add(fingerprint)) {
+                            continue;
+                        }
                     }
+                    entries.add(entry);
                 }
             } catch (ClassNotFoundException e) {
                 throw new IOException("Failed to deserialize partial: " + partial, e);
             }
         }
         if (read != entries.size()) {
+            duplicatesDropped.addAndGet(read - entries.size());
             log.info("Concept {}: {} observations read, {} duplicates dropped", conceptPath, read, read - entries.size());
         }
         ((PhenoCube) merged).setLoadingMap(entries);
@@ -593,6 +762,7 @@ public class SpoolingLoadingStore {
         return width;
     }
 
+    /** One line per concept that is missing observations or entirely: over the limit, or failed at finalization. */
     private void writeConceptRejectionReport() {
         Path reportPath = outputDirectory.resolve("concept_rejections.jsonl");
         ObjectMapper mapper = new ObjectMapper();
@@ -610,7 +780,21 @@ public class SpoolingLoadingStore {
                 writer.write(mapper.writeValueAsString(record));
                 writer.newLine();
             }
-            log.info("Concept rejection report written: {} ({} concepts with rejections)", reportPath, conceptRejections.size());
+            for (Map.Entry<String, String> entry : new TreeMap<>(failedConcepts).entrySet()) {
+                ConceptMetadata meta = conceptMetadata.get(entry.getKey());
+                Map<String, Object> record = new LinkedHashMap<>();
+                record.put("conceptPath", entry.getKey());
+                record.put("observationsAccepted", meta != null ? meta.observationCount.get() : 0);
+                record.put("observationsRejected", meta != null ? meta.observationCount.get() : 0);
+                record.put("rejectionRate", 100.0);
+                record.put("reason", "finalization_failed: " + entry.getValue());
+                writer.write(mapper.writeValueAsString(record));
+                writer.newLine();
+            }
+            log.info(
+                "Concept rejection report written: {} ({} concepts over the limit, {} failed)", reportPath, conceptRejections.size(),
+                failedConcepts.size()
+            );
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to write concept rejection report " + reportPath, e);
         }
@@ -645,12 +829,35 @@ public class SpoolingLoadingStore {
         return Collections.unmodifiableMap(failedConcepts);
     }
 
+    /** Concepts that have a type: not counting those that saw only null sentinels. */
     public int getConceptCount() {
-        return conceptMetadata.size();
+        return (int) conceptMetadata.values().stream().filter(meta -> meta.typed).count();
     }
 
     /** Total observations rejected because their concept hit {@code maxObservationsPerConcept}. */
     public long getRejectedObservationCount() {
         return conceptRejections.values().stream().mapToLong(AtomicLong::get).sum();
+    }
+
+    /** Concepts that hit {@code maxObservationsPerConcept}, with the number of observations rejected. */
+    public Map<String, Long> getRejectedConcepts() {
+        Map<String, Long> rejected = new TreeMap<>();
+        conceptRejections.forEach((concept, count) -> rejected.put(concept, count.get()));
+        return rejected;
+    }
+
+    /** Observations in the concepts that were written. Valid after {@link #saveStore()}. */
+    public long getObservationsWritten() {
+        return observationsWritten;
+    }
+
+    /** Observations that had been accepted into concepts that could not be written. Valid after {@link #saveStore()}. */
+    public long getFailedConceptObservations() {
+        return failedConceptObservations.get();
+    }
+
+    /** What happened to the observations passed in; final after {@link #saveStore()}. */
+    public StoreStats getStats() {
+        return new StoreStats(accepted.get(), skippedNullSentinel.get(), getRejectedObservationCount(), duplicatesDropped.get());
     }
 }

@@ -48,10 +48,11 @@ class CsvToStoreTest {
 
         try (
             HPDSWriterAdapter adapter = new HPDSWriterAdapter(
-                tempDir.resolve("spool-" + outputDir.getFileName()), outputDir, Crypto.DEFAULT_KEY_NAME, 1, 1000, 2, 10
+                tempDir.resolve("spool-" + outputDir.getFileName()), outputDir, Crypto.DEFAULT_KEY_NAME, 1, 1000, 2, 10, true
             )
         ) {
             producer.processFile(input, adapter::acceptBatch, 3);
+            adapter.closeAndSave();
         }
         return StoreFixture.readColumnMeta(outputDir);
     }
