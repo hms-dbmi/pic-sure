@@ -1421,6 +1421,7 @@ mod tests {
         #[test]
         fn broad_filters_run_on_threads_of_their_own() {
             use crate::partition::test_support::take_chunk_threads;
+            let _slots = crate::cohort::clause_threads_to_itself();
             let concepts = prefix_concepts();
             let (_dir, out) = prefix_store(&concepts);
             for (cache, consents) in [(0, &["p1"][..]), (1 << 30, &["p1", "p2", "p3"][..])] {

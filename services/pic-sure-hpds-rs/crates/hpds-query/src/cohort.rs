@@ -517,6 +517,55 @@ thread_local! {
     static ON_CLAUSE_THREAD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// Held shared by every [`on_clause_threads`] call that may take slots, and exclusively by a
+/// test that needs every slot free ([`clause_threads_to_itself`]).
+#[cfg(test)]
+static CLAUSE_THREAD_GATE: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
+#[cfg(test)]
+thread_local! {
+    static HOLDS_CLAUSE_THREAD_GATE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Every clause thread slot left to the thread holding it, until dropped.
+#[cfg(test)]
+pub(crate) struct ClauseThreadsToItself {
+    _gate: std::sync::RwLockWriteGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl Drop for ClauseThreadsToItself {
+    fn drop(&mut self) {
+        HOLDS_CLAUSE_THREAD_GATE.with(|holds| holds.set(false));
+    }
+}
+
+/// Waits until no other thread holds clause thread slots, then keeps every other test from
+/// taking any until the returned guard drops. Calls on the holding thread and on the
+/// clause threads it spawns go on as usual, so a test that asserts on free slots sees all
+/// of them.
+#[cfg(test)]
+pub(crate) fn clause_threads_to_itself() -> ClauseThreadsToItself {
+    let guard = CLAUSE_THREAD_GATE
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    HOLDS_CLAUSE_THREAD_GATE.with(|holds| holds.set(true));
+    ClauseThreadsToItself { _gate: guard }
+}
+
+/// A shared hold on [`CLAUSE_THREAD_GATE`], or none on the thread holding it exclusively.
+#[cfg(test)]
+fn share_clause_thread_gate() -> Option<std::sync::RwLockReadGuard<'static, ()>> {
+    if HOLDS_CLAUSE_THREAD_GATE.with(std::cell::Cell::get) {
+        return None;
+    }
+    Some(
+        CLAUSE_THREAD_GATE
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
+}
+
 /// The most clause threads the process runs at once: the rayon pool's thread count.
 pub(crate) fn clause_thread_cap() -> usize {
     rayon::current_num_threads()
@@ -591,6 +640,8 @@ where
     if wanted == 0 || ON_CLAUSE_THREAD.with(std::cell::Cell::get) {
         return items.iter().map(evaluate).collect();
     }
+    #[cfg(test)]
+    let _gate = share_clause_thread_gate();
     let slots = take_clause_threads(wanted);
     if slots.is_empty() {
         return items.iter().map(evaluate).collect();
