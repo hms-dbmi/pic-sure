@@ -132,15 +132,27 @@ public class CsvObservationProducer {
     }
 
     public CsvObservationProducer(String runId, FailureSink failureSink) {
-        this(runId, failureSink, DEFAULT_LARGE_FILE_THRESHOLD_BYTES, CsvChunkProcessor.DEFAULT_CHUNK_SIZE_ROWS);
+        this(runId, failureSink, CsvChunkProcessor.defaultConcurrency(LoaderConfig.DEFAULT_STORE_CACHE_SIZE));
+    }
+
+    /** @param chunkConcurrency chunks of a large file parsed at once (see {@link LoaderConfig#effectiveChunkConcurrency()}) */
+    public CsvObservationProducer(String runId, FailureSink failureSink, int chunkConcurrency) {
+        this(runId, failureSink, DEFAULT_LARGE_FILE_THRESHOLD_BYTES, CsvChunkProcessor.DEFAULT_CHUNK_SIZE_ROWS, chunkConcurrency);
     }
 
     /** Package-private so tests can exercise the parallel path with small files. */
     CsvObservationProducer(String runId, FailureSink failureSink, long largeFileThresholdBytes, long chunkSizeRows) {
+        this(
+            runId, failureSink, largeFileThresholdBytes, chunkSizeRows,
+            CsvChunkProcessor.defaultConcurrency(LoaderConfig.DEFAULT_STORE_CACHE_SIZE)
+        );
+    }
+
+    CsvObservationProducer(String runId, FailureSink failureSink, long largeFileThresholdBytes, long chunkSizeRows, int chunkConcurrency) {
         this.runId = runId;
         this.failureSink = failureSink;
         this.largeFileThresholdBytes = largeFileThresholdBytes;
-        this.chunkProcessor = new CsvChunkProcessor(runId, failureSink, chunkSizeRows);
+        this.chunkProcessor = new CsvChunkProcessor(runId, failureSink, chunkSizeRows, chunkConcurrency);
     }
 
     /**
@@ -478,9 +490,11 @@ public class CsvObservationProducer {
         String nvalRaw = record.get(2) == null ? "" : record.get(2).trim();
         Double numericValue = null;
         String textValue = null;
+        String numericText = null; // the cell the number was read from, kept in case the concept ends up categorical
 
         if (!nvalRaw.isEmpty()) {
             numericValue = parseFinite(nvalRaw);
+            numericText = numericValue == null ? null : nvalRaw;
             if (numericValue == null) {
                 if (text.isEmpty()) {
                     reject(
@@ -513,6 +527,8 @@ public class CsvObservationProducer {
             numericValue = parseFinite(text);
             if (numericValue == null) {
                 textValue = text;
+            } else {
+                numericText = text;
             }
         }
 
@@ -536,7 +552,7 @@ public class CsvObservationProducer {
             );
         }
 
-        return new ObservationRow(patientNum, conceptPath, numericValue, textValue, timestamp);
+        return new ObservationRow(patientNum, conceptPath, numericValue, textValue, timestamp, numericText);
     }
 
     private FileStats fileStats(Path filePath) {

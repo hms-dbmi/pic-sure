@@ -273,4 +273,45 @@ class CsvLoaderSemanticsTest {
         assertEquals(300, rows.size());
         assertEquals(300, result.recordsRead());
     }
+
+    @Test
+    void numbersCarryTheTextTheyWereReadFrom() throws IOException {
+        List<ObservationRow> rows = rows("1,\\a\\,,007,", "2,\\a\\,1.50,,", "3,\\a\\,5,,", "4,\\a\\,2.5,,");
+
+        assertEquals(List.of("007", "1.50", "5", "2.5"), rows.stream().map(ObservationRow::numericText).toList());
+        assertEquals(List.of(7.0, 1.5, 5.0, 2.5), rows.stream().map(ObservationRow::numericValue).toList());
+    }
+
+    @Test
+    void chunkConcurrencyIsBounded() throws IOException {
+        StringBuilder csv = new StringBuilder();
+        for (int i = 1; i <= 2000; i++) {
+            csv.append(i).append(",\\a\\,").append(i).append(",,\n");
+        }
+        Path file = tempDir.resolve("bounded.csv");
+        Files.writeString(file, csv.toString());
+        for (int limit : new int[] {1, 2}) {
+            java.util.concurrent.atomic.AtomicInteger running = new java.util.concurrent.atomic.AtomicInteger();
+            java.util.concurrent.atomic.AtomicInteger highest = new java.util.concurrent.atomic.AtomicInteger();
+            java.util.concurrent.atomic.AtomicInteger rows = new java.util.concurrent.atomic.AtomicInteger();
+            try (FailureSink sink = new FailureSink(tempDir.resolve("bounded-" + limit + ".jsonl"))) {
+                new CsvObservationProducer("run", sink, 1, 100, limit).processFile(file, batch -> {
+                    highest.accumulateAndGet(running.incrementAndGet(), Math::max);
+                    rows.addAndGet(batch.size());
+                    try {
+                        Thread.sleep(2);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    running.decrementAndGet();
+                }, 10);
+            }
+            assertEquals(2000, rows.get());
+            assertTrue(highest.get() <= limit, "at most " + limit + " chunks at once, saw " + highest.get());
+        }
+        assertEquals(1, CsvChunkProcessor.defaultConcurrency(1));
+        assertEquals(1, CsvChunkProcessor.defaultConcurrency(2));
+        assertTrue(CsvChunkProcessor.defaultConcurrency(16) <= 8);
+        assertThrows(IllegalArgumentException.class, () -> new CsvChunkProcessor("run", null, 10, 0));
+    }
 }

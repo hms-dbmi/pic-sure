@@ -68,13 +68,15 @@ import java.util.zip.GZIPOutputStream;
  * (Java-serialized {@link PhenoCube}, AES-GCM encrypted with {@code encryptionKeyName}), plus {@code columnMeta.javabin} /
  * {@code columnMeta.csv} (the legacy 11 column format the dictionary ETL reads).</li> </ul>
  *
- * <p><b>Null sentinels and concept types.</b> A null sentinel ("NA", "None", ...) never creates or types a concept, and what happens to it
- * does not depend on the order of the rows: sentinels are held next to the real values and settled when the store is saved, by the
- * <i>final</i> type of the concept. A concept whose real values are all numbers drops its sentinels (they are not values of a numeric
- * concept); a concept with any real text keeps them as categories; a concept with no real value at all is not written. Numbers in a concept
- * with real text are stored as {@link Double#toString(double)} text, in any order. The one input the store cannot make order independent is
- * a caller that passes numeric-looking {@link String}s: the first real value decides whether such text is a number or a category (the CSV
- * producer never does; it turns numeric-looking text into numbers first).
+ * <p><b>Null sentinels and concept types.</b> A null sentinel ("NA", "None", ...) never types a concept, and what happens to it does not
+ * depend on the order of the rows: sentinels are held next to the real values and settled when the store is saved, by the <i>final</i> type
+ * of the concept. A concept whose real values are all numbers drops its sentinels (they are not values of a numeric concept); a concept
+ * with any real text keeps them as categories; a concept with no real value at all is written as a categorical concept of its sentinels, as
+ * {@code CSVLoader} does (so a consent whose patients all answered {@code NA} keeps them). Kept sentinels count against a non-zero
+ * {@code maxObservationsPerConcept}. Numbers in a concept with real text are stored as the text they were written as ({@code 007} stays
+ * {@code 007}, see {@link NumericText}), in any order. The one input the store cannot make order independent is a caller that passes
+ * numeric-looking {@link String}s: the first real value decides whether such text is a number or a category (the CSV producer never does;
+ * it turns numeric-looking text into numbers first).
  *
  * <p><b>Memory.</b> Finalization merges and serializes whole concepts. A heap budget (half of the max heap by default, about
  * {@value #BYTES_PER_OBSERVATION} bytes per observation) gates how many run at once, so memory stays bounded however many threads are
@@ -129,6 +131,7 @@ public class SpoolingLoadingStore {
     private final Path spoolDirectory;
     private final Path outputDirectory;
     private final String encryptionKeyName;
+    private final int cacheSize;
     private final long maxObservationsPerConcept;
     private final boolean dedup;
     private final int finalizationConcurrency;
@@ -142,6 +145,7 @@ public class SpoolingLoadingStore {
     private final AtomicLong skippedNullSentinel = new AtomicLong();
     private final AtomicLong duplicatesDropped = new AtomicLong();
     private final AtomicLong failedConceptObservations = new AtomicLong();
+    private final AtomicLong spooledPartials = new AtomicLong();
     private volatile long observationsWritten;
     private volatile boolean aborted;
 
@@ -170,6 +174,8 @@ public class SpoolingLoadingStore {
         volatile long sentinelCount;
         /** The patients of kept sentinels are added to the patient set when the concept is finalized. */
         volatile boolean addIdsAtFinalize;
+        /** How many of the held sentinels the limit leaves room for; set when the sentinels are settled. */
+        volatile long sentinelsToKeep;
         final AtomicInteger partialCount = new AtomicInteger();
         /** Real values accepted (the cap applies to these); after {@link #saveStore()} settles the sentinels, kept ones are included. */
         final AtomicLong observationCount = new AtomicLong();
@@ -234,6 +240,7 @@ public class SpoolingLoadingStore {
         this.outputDirectory = outputDirectory;
         this.encryptionKeyName = encryptionKeyName;
         this.maxObservationsPerConcept = maxObservationsPerConcept == 0 ? Long.MAX_VALUE : maxObservationsPerConcept;
+        this.cacheSize = cacheSize;
         this.dedup = dedup;
         this.finalizationConcurrency = finalizationConcurrency;
         this.finalizationChunkSize = finalizationChunkSize;
@@ -285,12 +292,12 @@ public class SpoolingLoadingStore {
      * categorical. A number arriving for a categorical concept is stored as text. See the class comment for how null sentinels are held and
      * settled.
      *
-     * @param value a {@link Double} or a {@link String}
+     * @param value a {@link String}, or a number: a {@link Double}, a {@link Long} or a {@link NumericText} (see there)
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public AddResult addObservation(int patientNum, String conceptPath, Comparable<?> value, Date timestamp) {
-        if (!(value instanceof Double) && !(value instanceof String)) {
-            throw new IllegalArgumentException("Observation value must be a Double or a String, got: " + value);
+        if (!NumericText.isNumber(value) && !(value instanceof String)) {
+            throw new IllegalArgumentException("Observation value must be a number or a String, got: " + value);
         }
         checkSpoolHealth();
         boolean sentinel = value instanceof String text && nullSentinelDetector.isNullSentinel(text);
@@ -321,8 +328,8 @@ public class SpoolingLoadingStore {
                 if (!meta.typed) {
                     meta.categorical = value instanceof String;
                     meta.typed = true;
-                } else if (meta.categorical && value instanceof Double) {
-                    coerced = value.toString();
+                } else if (meta.categorical && NumericText.isNumber(value)) {
+                    coerced = NumericText.textOf(value);
                 } else if (!meta.categorical && value instanceof String text) {
                     try {
                         coerced = Double.parseDouble(text);
@@ -372,23 +379,36 @@ public class SpoolingLoadingStore {
     }
 
     /**
-     * Settles the held null sentinels by the final type of each concept. Concepts without a real value are removed: they never existed.
-     * Single-threaded, after the last add.
+     * Settles the held null sentinels by the final type of each concept. Concepts without a real value become categorical concepts of their
+     * sentinels. Kept sentinels count against the observation limit. Single-threaded, after the last add.
      */
     private void settleSentinels() {
         for (Map.Entry<String, ConceptMetadata> entry : conceptMetadata.entrySet()) {
             ConceptMetadata meta = entry.getValue();
             long held = meta.sentinelCount;
             if (!meta.typed) {
-                skippedNullSentinel.addAndGet(held);
-                log.info("Concept {} holds only null sentinels ({}); not written", entry.getKey(), held);
-                conceptMetadata.remove(entry.getKey());
+                meta.typed = true;
+                meta.categorical = true;
+                log.info("Concept {} holds only null sentinels ({}); written as a categorical concept", entry.getKey(), held);
             } else if (!meta.categorical) {
                 skippedNullSentinel.addAndGet(held); // dropped when the concept is merged
-            } else if (held > 0) {
-                accepted.addAndGet(held);
-                meta.observationCount.addAndGet(held);
-                meta.addIdsAtFinalize = true;
+                continue;
+            }
+            if (held > 0) {
+                long room = Math.max(0, maxObservationsPerConcept - meta.observationCount.get());
+                long keep = Math.min(held, room);
+                long refused = held - keep;
+                if (refused > 0) {
+                    conceptRejections.computeIfAbsent(entry.getKey(), k -> new AtomicLong()).addAndGet(refused);
+                    log.warn(
+                        "Concept '{}' reached observation limit ({}) with its null sentinels: {} of them are refused", entry.getKey(),
+                        maxObservationsPerConcept, refused
+                    );
+                }
+                accepted.addAndGet(keep);
+                meta.observationCount.addAndGet(keep);
+                meta.sentinelsToKeep = keep;
+                meta.addIdsAtFinalize = keep > 0;
             }
         }
     }
@@ -419,6 +439,7 @@ public class SpoolingLoadingStore {
         long start = System.currentTimeMillis();
         try {
             int partialNum = meta.partialCount.getAndIncrement();
+            spooledPartials.incrementAndGet();
             Path spoolFile = getSpoolFilePath(conceptPath, partialNum);
             spoolFiles.computeIfAbsent(conceptPath, k -> Collections.synchronizedList(new ArrayList<>())).add(spoolFile);
 
@@ -531,7 +552,10 @@ public class SpoolingLoadingStore {
 
         cleanupSpool();
         writeConceptRejectionReport();
-        log.info("Store finalized: {} concepts, {} patients", metadataMap.size(), allIds.size());
+        log.info(
+            "Store finalized: {} concepts, {} patients, {} partial files were spooled (a large number means the cache of {} concepts is too small)",
+            metadataMap.size(), allIds.size(), spooledPartials.get(), cacheSize
+        );
     }
 
     /** Discards what was collected without writing a store, and removes the spool files. Safe after {@link #saveStore()} too. */
@@ -693,6 +717,7 @@ public class SpoolingLoadingStore {
         Set<ObservationFingerprint> seen = dedup ? new HashSet<>() : null;
         List<KeyAndValue> entries = new ArrayList<>((int) Math.min(totalObservations, 10_000_000L));
         long read = 0;
+        long keptSentinels = 0;
         for (Path partial : partials) {
             try (
                 InputStream fis = Files.newInputStream(partial); GZIPInputStream gzis = new GZIPInputStream(fis); ObjectInputStream ois =
@@ -700,13 +725,22 @@ public class SpoolingLoadingStore {
             ) {
                 List<KeyAndValue> partialEntries = (List<KeyAndValue>) ois.readObject();
                 for (KeyAndValue entry : partialEntries) {
-                    if (meta.categorical && entry.getValue() instanceof Double) {
-                        entry.setValue(entry.getValue().toString());
-                    } else if (!meta.categorical && entry.getValue() instanceof String text) {
+                    Object stored = entry.getValue();
+                    if (meta.categorical) {
+                        if (NumericText.isNumber(stored)) {
+                            entry.setValue(NumericText.textOf(stored)); // the text it was written as
+                        } else if (nullSentinelDetector.isNullSentinel(stored)) {
+                            if (keptSentinels++ >= meta.sentinelsToKeep) {
+                                continue; // the limit leaves no room for it (already counted as refused)
+                            }
+                        }
+                    } else if (stored instanceof String text) {
                         if (nullSentinelDetector.isNullSentinel(text)) {
                             continue;
                         }
                         entry.setValue(Double.parseDouble(text));
+                    } else if (!(stored instanceof Double)) {
+                        entry.setValue(NumericText.doubleOf(stored));
                     }
                     read++;
                     if (seen != null) {
@@ -844,6 +878,11 @@ public class SpoolingLoadingStore {
         Map<String, Long> rejected = new TreeMap<>();
         conceptRejections.forEach((concept, count) -> rejected.put(concept, count.get()));
         return rejected;
+    }
+
+    /** Partial files written to the spool so far: how often concepts were evicted from the in-memory cache. */
+    public long getSpooledPartials() {
+        return spooledPartials.get();
     }
 
     /** Observations in the concepts that were written. Valid after {@link #saveStore()}. */

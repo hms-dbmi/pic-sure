@@ -21,6 +21,10 @@ class LoaderConfigTest {
         assertFalse(config.dedup());
         assertTrue(config.failFast());
         assertFalse(config.overwrite());
+        assertEquals(0, config.maxRejectedRows());
+        assertEquals(0, config.maxTimestampFailures());
+        assertEquals(0, config.chunkConcurrency());
+        assertTrue(config.effectiveChunkConcurrency() >= 1);
         assertEquals(12, config.finalizationConcurrency());
         assertEquals(1000, config.finalizationChunkSize());
     }
@@ -70,6 +74,32 @@ class LoaderConfigTest {
         assertThrows(IllegalArgumentException.class, () -> LoaderConfig.fromProperties(Map.of("picsure.loader.storeCacheSize", "0")::get));
         assertThrows(
             IllegalArgumentException.class, () -> LoaderConfig.fromProperties(Map.of("picsure.loader.finalizationChunkSize", "-5")::get)
+        );
+    }
+
+    @Test
+    void chunkConcurrencyIsBoundedByTheCoresAndHalfTheStoreCache() {
+        LoaderConfig tinyCache = LoaderConfig.fromProperties(Map.of("picsure.loader.storeCacheSize", "2")::get);
+        assertEquals(1, tinyCache.effectiveChunkConcurrency());
+        LoaderConfig oneEntry = LoaderConfig.fromProperties(Map.of("picsure.loader.storeCacheSize", "1")::get);
+        assertEquals(1, oneEntry.effectiveChunkConcurrency(), "at least one");
+        LoaderConfig bigCache = LoaderConfig.fromProperties(Map.of("picsure.loader.storeCacheSize", "100000")::get);
+        assertEquals(Runtime.getRuntime().availableProcessors(), bigCache.effectiveChunkConcurrency());
+        LoaderConfig explicit = LoaderConfig.fromProperties(Map.of("picsure.loader.chunkConcurrency", "3")::get);
+        assertEquals(3, explicit.effectiveChunkConcurrency());
+    }
+
+    @Test
+    void dataQualityLimitsCanBeSetAndMayNotBeNegative() {
+        LoaderConfig config =
+            LoaderConfig.fromProperties(Map.of("picsure.loader.maxRejectedRows", "7", "picsure.loader.maxTimestampFailures", "3")::get);
+        assertEquals(7, config.maxRejectedRows());
+        assertEquals(3, config.maxTimestampFailures());
+        assertThrows(
+            IllegalArgumentException.class, () -> LoaderConfig.fromProperties(Map.of("picsure.loader.maxRejectedRows", "-1")::get)
+        );
+        assertThrows(
+            IllegalArgumentException.class, () -> LoaderConfig.fromProperties(Map.of("picsure.loader.chunkConcurrency", "-2")::get)
         );
     }
 }

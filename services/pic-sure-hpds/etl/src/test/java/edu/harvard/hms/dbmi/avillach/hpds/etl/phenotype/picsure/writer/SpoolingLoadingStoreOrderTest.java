@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
@@ -79,21 +80,40 @@ class SpoolingLoadingStoreOrderTest {
     }
 
     @Test
-    void aSentinelNeverCreatesAConcept() throws Exception {
+    void aConceptOfOnlySentinelsIsWrittenAsACategoricalConceptLikeCsvLoader() throws Exception {
         SpoolingLoadingStore store = store(tempDir.resolve("out1"), 16);
         assertEquals(AddResult.HELD_NULL_SENTINEL, store.addObservation(1, A, "NA", null));
         assertEquals(AddResult.HELD_NULL_SENTINEL, store.addObservation(2, A, "None", null));
         store.addObservation(1, B, 1.0, null);
         store.saveStore();
 
-        assertEquals(Set.of(B), StoreFixture.readColumnMeta(tempDir.resolve("out1")).keySet());
-        assertEquals(1, store.getConceptCount());
-        assertEquals(
-            Set.of(1), StoreFixture.readAllIds(tempDir.resolve("out1")), "the patients of dropped sentinels are not patients of the store"
-        );
+        Path out = tempDir.resolve("out1");
+        assertEquals(Set.of(A, B), StoreFixture.readColumnMeta(out).keySet());
+        ColumnMeta sentinels = StoreFixture.readColumnMeta(out).get(A);
+        assertTrue(sentinels.isCategorical());
+        assertEquals(List.of("NA", "None"), sentinels.getCategoryValues());
+        assertEquals(2, sentinels.getObservationCount());
+        assertEquals(2, store.getConceptCount());
+        assertEquals(Set.of(1, 2), StoreFixture.readAllIds(out), "the patients of the sentinels are patients of the store");
         SpoolingLoadingStore.StoreStats stats = store.getStats();
-        assertEquals(1, stats.accepted());
-        assertEquals(2, stats.skippedNullSentinel());
+        assertEquals(3, stats.accepted());
+        assertEquals(0, stats.skippedNullSentinel());
+    }
+
+    @Test
+    void aConceptOfOnlySentinelsIsTheSameInAnyOrderAndInAnyCache() throws Exception {
+        List<Row> rows = new ArrayList<>(
+            List.of(new Row(1, A, "NA"), new Row(2, A, "none"), new Row(3, A, "NA"), new Row(1, B, 4.0), new Row(2, B, "N/A"))
+        );
+        TreeMap<String, String> expected = load(rows, 1, "expected");
+        assertTrue(expected.get(A).startsWith("cat 3 "), expected.get(A));
+        assertTrue(expected.get(B).startsWith("num 1 "), expected.get(B));
+
+        Random random = new Random(3);
+        for (int i = 0; i < 15; i++) {
+            Collections.shuffle(rows, random);
+            assertEquals(expected, load(rows, 1 + i % 2, "s" + i), "permutation " + rows);
+        }
     }
 
     @Test
@@ -171,13 +191,104 @@ class SpoolingLoadingStoreOrderTest {
         store.saveStore();
 
         SpoolingLoadingStore.StoreStats stats = store.getStats();
-        // A: NA held then dropped (1), 5.0 twice, NA skipped (1), 6.0 refused at the limit of 3 (observations: 5.0, 5.0, 6.0), 7.0 and 8.0
-        // refused
+        // A: 5.0 twice and 6.0 (the limit of 3), 7.0 and 8.0 refused, both sentinels dropped from the numeric concept; B: both sentinels
+        // kept as a categorical concept; C: 1.0 and "x"
         assertEquals(rows, stats.accepted() + stats.skippedNullSentinel() + stats.rejectedConceptLimit());
         assertEquals(stats.accepted(), store.getObservationsWritten() + stats.duplicatesDropped() + store.getFailedConceptObservations());
         assertEquals(1, stats.duplicatesDropped());
-        assertEquals(4, stats.skippedNullSentinel(), "A: two, B: both sentinels, never typed");
+        assertEquals(2, stats.skippedNullSentinel(), "the two sentinels of the numeric concept A");
+        assertEquals(7, stats.accepted());
         assertEquals(2, stats.rejectedConceptLimit());
+    }
+
+    // ---- numbers in a categorical concept keep the text they were written as ---------------------------------------------------
+
+    private static Comparable<?> number(String text) {
+        return NumericText.encode(Double.parseDouble(text), text);
+    }
+
+    @Test
+    void numbersInACategoricalConceptKeepTheirTextInAnyOrder() throws Exception {
+        List<Row> rows = new ArrayList<>(
+            List.of(
+                new Row(1, A, number("007")), new Row(2, A, number("1")), new Row(3, A, number("1.50")), new Row(4, A, number("1e2")),
+                new Row(5, A, number("2.5")), new Row(6, A, "yes"), new Row(7, A, "NA")
+            )
+        );
+        TreeMap<String, String> expected = load(rows, 1, "expected");
+        assertEquals("cat 7 [1=007, 2=1, 3=1.50, 4=1e2, 5=2.5, 6=yes, 7=NA]", expected.get(A));
+
+        Random random = new Random(5);
+        for (int i = 0; i < 20; i++) {
+            Collections.shuffle(rows, random);
+            assertEquals(expected, load(rows, 1 + i % 3, "n" + i), "permutation " + rows);
+        }
+    }
+
+    @Test
+    void theSameNumbersInANumericConceptAreNumbers() throws Exception {
+        TreeMap<String, String> numeric = load(
+            List.of(new Row(1, A, number("007")), new Row(2, A, number("1")), new Row(3, A, number("1.50")), new Row(4, A, number("1e2"))),
+            1, "num"
+        );
+
+        assertTrue(numeric.get(A).startsWith("num 4 "), numeric.get(A));
+        assertTrue(
+            numeric.get(A).contains("1=7.0") && numeric.get(A).contains("2=1.0") && numeric.get(A).contains("4=100.0"), numeric.get(A)
+        );
+    }
+
+    @Test
+    void numericTextIsOnlyCarriedWhenItIsNotWhatTheNumberPrintsAs() {
+        assertEquals(40.0, NumericText.encode(40.0, "40.0"));
+        assertEquals(40L, NumericText.encode(40.0, "40"));
+        assertEquals(40.0, NumericText.encode(40.0, null));
+        assertInstanceOf(NumericText.class, NumericText.encode(7.0, "007"));
+        assertInstanceOf(NumericText.class, NumericText.encode(1.5, "1.50"));
+        assertInstanceOf(NumericText.class, NumericText.encode(-0.0, "-0"));
+        assertEquals("007", NumericText.textOf(NumericText.encode(7.0, "007")));
+        assertEquals("40", NumericText.textOf(NumericText.encode(40.0, "40")));
+        assertEquals("1.5", NumericText.textOf(NumericText.encode(1.5, "1.5")));
+        assertEquals(7.0, NumericText.doubleOf(NumericText.encode(7.0, "007")));
+        assertEquals(40.0, NumericText.doubleOf(NumericText.encode(40.0, "40")));
+    }
+
+    // ---- kept sentinels count against the limit ------------------------------------------------------------------------------
+
+    @Test
+    void keptSentinelsCountAgainstTheObservationLimit() throws Exception {
+        Path out = tempDir.resolve("limit");
+        SpoolingLoadingStore store =
+            new SpoolingLoadingStore(tempDir.resolve("limit-spool"), out, Crypto.DEFAULT_KEY_NAME, 4, 4, 2, 10, false);
+        store.addObservation(1, A, "red", null);
+        store.addObservation(2, A, "blue", null);
+        for (int p = 3; p <= 8; p++) {
+            store.addObservation(p, A, "NA", null); // six held sentinels, room for two
+        }
+        store.saveStore();
+
+        assertEquals(4, StoreFixture.readColumnMeta(out).get(A).getObservationCount(), "the limit is respected");
+        assertEquals(Map.of(A, 4L), store.getRejectedConcepts(), "and the refused sentinels are reported, which fails the partition");
+        SpoolingLoadingStore.StoreStats stats = store.getStats();
+        assertEquals(4, stats.accepted(), "two real values and the two sentinels there was room for");
+        assertEquals(4, stats.rejectedConceptLimit());
+        assertEquals(stats.accepted(), store.getObservationsWritten() + stats.duplicatesDropped());
+    }
+
+    @Test
+    void droppedSentinelsOfANumericConceptDoNotCountAgainstTheLimit() throws Exception {
+        Path out = tempDir.resolve("limit2");
+        SpoolingLoadingStore store =
+            new SpoolingLoadingStore(tempDir.resolve("limit2-spool"), out, Crypto.DEFAULT_KEY_NAME, 4, 2, 2, 10, false);
+        store.addObservation(1, A, 1.0, null);
+        store.addObservation(2, A, 2.0, null);
+        for (int p = 3; p <= 8; p++) {
+            store.addObservation(p, A, "NA", null);
+        }
+        store.saveStore();
+
+        assertEquals(0, store.getRejectedObservationCount());
+        assertEquals(2, store.getObservationsWritten());
     }
 
     // ---- close without saving, heap gate -------------------------------------------------------------------------------

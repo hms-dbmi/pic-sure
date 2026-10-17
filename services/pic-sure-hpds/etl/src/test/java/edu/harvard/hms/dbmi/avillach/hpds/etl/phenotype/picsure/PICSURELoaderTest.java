@@ -301,21 +301,138 @@ class PICSURELoaderTest {
     @Test
     void aPartitionWithoutAnyStorableRowFailsInsteadOfWritingAnEmptyStore() throws Exception {
         Path base = newBase("nothing");
-        write(base.resolve("a-allConcepts.csv"), "not-a-patient,\\a\\,1,,", "2,\\a\\,,,");
-        write(base.resolve("b-allConcepts.csv"), "1,\\b\\,,NA,", "2,\\b\\,,None,");
+        write(base.resolve("a-allConcepts.csv"), "1,\\a\\,,,", "2,\\a\\,,,", "3,short");
 
-        assertEquals(1, run(base, Map.of("picsure.loader.failFast", "false")));
+        assertEquals(1, run(base, Map.of()));
 
         assertNoStore(base.resolve("a"));
-        assertNoStore(base.resolve("b"));
-        JsonNode summary = summary(base);
-        JsonNode a = partitionReport(summary, "a");
-        assertEquals(2, a.get("rowsRead").asLong());
-        assertEquals(1, a.get("rowsRejected").get("INVALID_PATIENT_ID").asLong());
-        assertEquals(1, a.get("rowsRejected").get("MISSING_VALUE").asLong());
-        JsonNode b = partitionReport(summary, "b");
-        assertEquals(2, b.get("writer").get("skippedNullSentinel").asLong(), "sentinels never create a concept");
-        assertEquals(0, b.get("concepts").asInt());
+        JsonNode a = partitionReport(summary(base), "a");
+        assertEquals(3, a.get("rowsRead").asLong());
+        assertEquals(2, a.get("rowsRejected").get("MISSING_VALUE").asLong());
+        assertEquals(1, a.get("rowsRejected").get("MALFORMED_RECORD").asLong());
+        assertTrue(a.get("error").asText().contains("no observation"), a.get("error").asText());
+    }
+
+    @Test
+    void aPartitionOfOnlyNullSentinelsIsWrittenAsACategoricalConceptLikeCsvLoader() throws Exception {
+        Path base = newBase("sentinels-only");
+        write(base.resolve("b-allConcepts.csv"), "1,\\b\\,,NA,", "2,\\b\\,,None,");
+
+        assertEquals(0, run(base, Map.of()));
+
+        assertHasStore(base.resolve("b"));
+        JsonNode b = partitionReport(summary(base), "b");
+        assertEquals(1, b.get("concepts").asInt());
+        assertEquals(2, b.get("observationsWritten").asLong());
+        assertEquals(0, b.get("writer").get("skippedNullSentinel").asLong());
+        StoreFixture.loadDefaultKey(tempDir);
+        ColumnMeta meta = StoreFixture.readColumnMeta(base.resolve("b")).get("\\b\\");
+        assertTrue(meta.isCategorical());
+        assertEquals(List.of("NA", "None"), meta.getCategoryValues());
+    }
+
+    // ---- rows CSVLoader would have stopped on fail the partition by default ----------------------------------------------------
+
+    private static final List<String> CRASH_CLASS_ROWS =
+        List.of("not-a-patient,\\a\\,1,,", ",\\a\\,1,,", "9,\\a\\,abc,,", "9,\\a\\,NaN,,", "9,\\a\\,Infinity,,");
+
+    @Test
+    void rowsThatWouldHaveStoppedCsvLoaderFailThePartitionByDefault() throws Exception {
+        for (int i = 0; i < CRASH_CLASS_ROWS.size(); i++) {
+            Path base = newBase("crash-" + i);
+            write(base.resolve("p-allConcepts.csv"), "1,\\a\\,1,,", CRASH_CLASS_ROWS.get(i));
+
+            assertEquals(1, run(base, Map.of()), CRASH_CLASS_ROWS.get(i));
+
+            assertNoStore(base.resolve("p"));
+            JsonNode p = partitionReport(summary(base), "p");
+            assertTrue(p.get("error").asText().contains("CSVLoader would have stopped on"), p.get("error").asText());
+            assertEquals(1, p.get("dataQuality").get("rowsRejectedLikeCsvLoaderCrashes").asLong());
+            assertEquals(0, p.get("dataQuality").get("maxRejectedRows").asLong());
+            // the failure file says which row
+            assertEquals(1, Files.readAllLines(base.resolve("p/failures.jsonl")).size());
+        }
+    }
+
+    @Test
+    void maxRejectedRowsAllowsThatManyOfThem() throws Exception {
+        Path base = newBase("crash-allowed");
+        write(base.resolve("p-allConcepts.csv"), "1,\\a\\,1,,", "not-a-patient,\\a\\,1,,", "9,\\a\\,abc,,");
+
+        assertEquals(1, run(base, Map.of("picsure.loader.maxRejectedRows", "1")));
+        assertNoStore(base.resolve("p"));
+
+        Path again = newBase("crash-allowed-2");
+        write(again.resolve("p-allConcepts.csv"), "1,\\a\\,1,,", "not-a-patient,\\a\\,1,,", "9,\\a\\,abc,,");
+        assertEquals(0, run(again, Map.of("picsure.loader.maxRejectedRows", "2")));
+        assertHasStore(again.resolve("p"));
+        JsonNode p = partitionReport(summary(again), "p");
+        assertEquals(2, p.get("dataQuality").get("rowsRejectedLikeCsvLoaderCrashes").asLong());
+        assertEquals(1, p.get("dataQuality").get("byReason").get("INVALID_PATIENT_ID").asLong());
+        assertEquals(1, p.get("dataQuality").get("byReason").get("NUMERIC_PARSE_ERROR").asLong());
+    }
+
+    @Test
+    void anUnparseableTimestampFailsThePartitionUnlessAllowed() throws Exception {
+        Path base = newBase("timestamp");
+        write(base.resolve("p-allConcepts.csv"), "1,\\a\\,1,,", "2,\\a\\,2,,yesterday", "3,\\a\\,3,,tomorrow");
+
+        assertEquals(1, run(base, Map.of()));
+        assertNoStore(base.resolve("p"));
+        JsonNode p = partitionReport(summary(base), "p");
+        assertTrue(p.get("error").asText().contains("2 timestamp(s)"), p.get("error").asText());
+        assertEquals(2, p.get("dataQuality").get("timestampFailures").asLong());
+
+        assertEquals(
+            1,
+            run(
+                newBaseWith("timestamp-1", "p-allConcepts.csv", "1,\\a\\,1,,", "2,\\a\\,2,,yesterday", "3,\\a\\,3,,tomorrow"),
+                Map.of("picsure.loader.maxTimestampFailures", "1")
+            )
+        );
+        Path allowed = newBaseWith("timestamp-2", "p-allConcepts.csv", "1,\\a\\,1,,", "2,\\a\\,2,,yesterday", "3,\\a\\,3,,tomorrow");
+        assertEquals(0, run(allowed, Map.of("picsure.loader.maxTimestampFailures", "2")));
+        assertHasStore(allowed.resolve("p"));
+    }
+
+    private Path newBaseWith(String name, String file, String... lines) throws IOException {
+        Path base = newBase(name);
+        write(base.resolve(file), lines);
+        return base;
+    }
+
+    @Test
+    void theRowsCsvLoaderSkipsSilentlyNeverCountAsCrashes() throws Exception {
+        Path base = newBase("silent-skips");
+        write(base.resolve("p-allConcepts.csv"), "1,\\a\\,1,,", "2,\\a\\,,,", "3,short", "4,\\a\\,,\"\",");
+
+        assertEquals(0, run(base, Map.of()));
+
+        JsonNode p = partitionReport(summary(base), "p");
+        assertEquals(0, p.get("dataQuality").get("rowsRejectedLikeCsvLoaderCrashes").asLong());
+        assertEquals(2, p.get("rowsRejected").get("MISSING_VALUE").asLong());
+        assertEquals(1, p.get("rowsRejected").get("MALFORMED_RECORD").asLong());
+    }
+
+    // ---- numbers in a categorical concept ------------------------------------------------------------------------------------
+
+    @Test
+    void numbersInACategoricalConceptKeepTheTextTheyWereWrittenAs() throws Exception {
+        Path base = newBase("numbers-as-text");
+        write(
+            base.resolve("p-allConcepts.csv"), "1,\\a\\,,yes,", "2,\\a\\,,007,", "3,\\a\\,1,,", "4,\\a\\,1.50,,", "5,\\a\\,,1e2,",
+            "6,\\b\\,,007,", "7,\\b\\,1,,"
+        );
+
+        assertEquals(0, run(base, Map.of()));
+
+        StoreFixture.loadDefaultKey(tempDir);
+        var metas = StoreFixture.readColumnMeta(base.resolve("p"));
+        assertTrue(metas.get("\\a\\").isCategorical());
+        assertEquals(List.of("007", "1", "1.50", "1e2", "yes"), metas.get("\\a\\").getCategoryValues());
+        assertFalse(metas.get("\\b\\").isCategorical(), "the same numbers in a concept without real text are numbers");
+        assertEquals(1.0, metas.get("\\b\\").getMin());
+        assertEquals(7.0, metas.get("\\b\\").getMax());
     }
 
     @Test
@@ -454,7 +571,13 @@ class PICSURELoaderTest {
             "5,\\a\\,abc,text,", "6,\\b\\,,NA,", "7,\\b\\,,word,"
         );
 
-        assertEquals(0, run(base, Map.of("picsure.loader.runId", "run-42")));
+        assertEquals(
+            0,
+            run(
+                base,
+                Map.of("picsure.loader.runId", "run-42", "picsure.loader.maxRejectedRows", "9", "picsure.loader.maxTimestampFailures", "9")
+            )
+        );
 
         JsonNode summary = summary(base);
         assertEquals("run-42", summary.get("runId").asText());
@@ -472,6 +595,11 @@ class PICSURELoaderTest {
         assertTrue(p.get("timingsMs").get("ingestMs").asLong() >= 0);
         assertTrue(p.get("timingsMs").get("finalizeMs").asLong() >= 0);
         assertTrue(p.get("timingsMs").get("totalMs").asLong() >= 0);
+        assertTrue(p.get("spooledPartials").asLong() >= 0);
+        assertEquals(1, p.get("dataQuality").get("timestampFailures").asLong());
+        assertEquals(1, p.get("dataQuality").get("rowsRejectedLikeCsvLoaderCrashes").asLong());
+        assertEquals(9, summary.get("settings").get("maxRejectedRows").asLong());
+        assertTrue(summary.get("settings").get("chunkConcurrency").asInt() >= 1);
         assertEquals(1, summary.get("totals").get("partitionsOk").asInt());
     }
 }

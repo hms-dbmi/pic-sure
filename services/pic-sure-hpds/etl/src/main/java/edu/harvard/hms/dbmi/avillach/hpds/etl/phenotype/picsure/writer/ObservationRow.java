@@ -11,8 +11,14 @@ import java.time.Instant;
 public record ObservationRow(
     int patientNum, String conceptPath, Double numericValue, // nullable - only for numeric observations
     String textValue, // nullable - only for categorical observations
-    Instant dateTime // timestamp from configured dataset column
+    Instant dateTime, // timestamp from configured dataset column
+    String numericText // nullable - the cell a numeric value was read from, as written; used if the concept ends up categorical
 ) {
+
+    public ObservationRow(int patientNum, String conceptPath, Double numericValue, String textValue, Instant dateTime) {
+        this(patientNum, conceptPath, numericValue, textValue, dateTime, null);
+    }
+
     /**
      * Validates that this observation has exactly one value type set.
      */
@@ -35,14 +41,14 @@ public record ObservationRow(
     }
 
     /**
-     * Gets the value as a Comparable for use with PhenoCube. Returns either String or Double.
+     * Gets the value as a Comparable for use with the writer: a String, or a number (see {@link NumericText}).
      */
     @SuppressWarnings("unchecked")
     public <V extends Comparable<V>> V getValue() {
         if (isCategorical()) {
             return (V) textValue;
         } else {
-            return (V) numericValue;
+            return (V) NumericText.encode(numericValue, numericText);
         }
     }
 }

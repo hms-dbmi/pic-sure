@@ -26,12 +26,17 @@ import java.util.function.Function;
  * before any work</td></tr> <tr><td>{@code picsure.loader.runId}</td><td>generated</td><td>run id written into failures.jsonl and
  * ingest-summary.json</td></tr> </table>
  *
+ * @param maxRejectedRows rows dropped for a reason that would have stopped {@code CSVLoader} (see {@link FailureReason#crashesCsvLoader()})
+ *        that a partition tolerates; more fails it
+ * @param maxTimestampFailures timestamps that cannot be parsed (the row is kept without one) that a partition tolerates; more fails it
+ * @param chunkConcurrency chunks of a large file parsed at once, 0 = derive (see {@link #effectiveChunkConcurrency()})
  * @param spoolDir spool root, or null to use {@code <base>/.picsure-spool}
  * @param maxObservationsPerConcept 0 = unlimited
  */
 public record LoaderConfig(
     Path spoolDir, int batchSize, int storeCacheSize, int fileProcessingThreads, int maxObservationsPerConcept, int finalizationConcurrency,
-    int finalizationChunkSize, boolean dedup, boolean failFast, boolean overwrite, String runId
+    int finalizationChunkSize, boolean dedup, boolean failFast, boolean overwrite, String runId, int maxRejectedRows,
+    int maxTimestampFailures, int chunkConcurrency
 ) {
 
     public static final String PREFIX = "picsure.loader.";
@@ -54,6 +59,15 @@ public record LoaderConfig(
         }
         requirePositive("finalizationConcurrency", finalizationConcurrency);
         requirePositive("finalizationChunkSize", finalizationChunkSize);
+        if (maxRejectedRows < 0 || maxTimestampFailures < 0 || chunkConcurrency < 0) {
+            throw new IllegalArgumentException(PREFIX + "maxRejectedRows, maxTimestampFailures and chunkConcurrency may not be negative");
+        }
+    }
+
+    /** Chunks of a large file parsed at once: the configured value, or min(cores, storeCacheSize/2) and at least 1. */
+    public int effectiveChunkConcurrency() {
+        return chunkConcurrency > 0 ? chunkConcurrency
+            : Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), storeCacheSize / 2));
     }
 
     public static LoaderConfig defaults() {
@@ -79,7 +93,8 @@ public record LoaderConfig(
             intProperty(properties, "finalizationConcurrency", DEFAULT_FINALIZATION_CONCURRENCY),
             intProperty(properties, "finalizationChunkSize", DEFAULT_FINALIZATION_CHUNK_SIZE), booleanProperty(properties, "dedup", false),
             booleanProperty(properties, "failFast", true), booleanProperty(properties, "overwrite", false),
-            runId == null || runId.isBlank() ? null : runId.trim()
+            runId == null || runId.isBlank() ? null : runId.trim(), nonNegativeIntProperty(properties, "maxRejectedRows", 0),
+            nonNegativeIntProperty(properties, "maxTimestampFailures", 0), nonNegativeIntProperty(properties, "chunkConcurrency", 0)
         );
     }
 
@@ -93,6 +108,14 @@ public record LoaderConfig(
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException(PREFIX + name + " must be an integer, got '" + raw + "'", e);
         }
+    }
+
+    private static int nonNegativeIntProperty(Function<String, String> properties, String name, int defaultValue) {
+        int value = intProperty(properties, name, defaultValue);
+        if (value < 0) {
+            throw new IllegalArgumentException(PREFIX + name + " may not be negative, got " + value);
+        }
+        return value;
     }
 
     private static boolean booleanProperty(Function<String, String> properties, String name, boolean defaultValue) {

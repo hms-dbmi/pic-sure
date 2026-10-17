@@ -31,6 +31,7 @@ public class CsvChunkProcessor {
     private final String runId;
     private final FailureSink failureSink;
     private final long chunkSizeRows;
+    private final int concurrency;
 
     /**
      * Chunk boundary record: byte offsets for a segment of the file.
@@ -50,9 +51,26 @@ public class CsvChunkProcessor {
 
     /** Package-private so tests can get several chunks out of a small file. */
     CsvChunkProcessor(String runId, FailureSink failureSink, long chunkSizeRows) {
+        this(runId, failureSink, chunkSizeRows, defaultConcurrency(LoaderConfig.DEFAULT_STORE_CACHE_SIZE));
+    }
+
+    /** @param concurrency chunks parsed at once; each chunk feeds the writer, whose cache only holds a few concepts */
+    CsvChunkProcessor(String runId, FailureSink failureSink, long chunkSizeRows, int concurrency) {
+        if (concurrency < 1) {
+            throw new IllegalArgumentException("chunk concurrency must be at least 1, got " + concurrency);
+        }
         this.runId = runId;
         this.failureSink = failureSink;
         this.chunkSizeRows = chunkSizeRows;
+        this.concurrency = concurrency;
+    }
+
+    /**
+     * Chunks parsed at once by default: the number of cores, but at most half the writer's cache of concepts. Every chunk touches many
+     * concepts, so more chunks than that evict each other's concepts from the cache and the writer spools partials back and forth.
+     */
+    static int defaultConcurrency(int storeCacheSize) {
+        return Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), storeCacheSize / 2));
     }
 
     /**
@@ -80,8 +98,8 @@ public class CsvChunkProcessor {
             return;
         }
 
-        // Step 2: Process chunks in parallel with virtual threads
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        // Step 2: Process chunks in parallel with virtual threads, at most `concurrency` at a time
+        ExecutorService executor = Executors.newFixedThreadPool(concurrency, Thread.ofVirtual().factory());
         List<Future<ChunkResult>> futures = new ArrayList<>();
 
         try {

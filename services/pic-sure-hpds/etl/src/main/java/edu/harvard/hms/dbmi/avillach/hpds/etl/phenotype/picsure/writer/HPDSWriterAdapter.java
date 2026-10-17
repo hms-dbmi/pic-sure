@@ -168,6 +168,11 @@ public class HPDSWriterAdapter implements AutoCloseable {
         return store.getObservationsWritten();
     }
 
+    /** Partial files spooled so far: how often concepts were evicted from the in-memory cache. */
+    public long getSpooledPartials() {
+        return store.getSpooledPartials();
+    }
+
     /** Observations accepted into concepts that could not be written. Valid after {@link #closeAndSave()}. */
     public long getFailedConceptObservations() {
         return store.getFailedConceptObservations();

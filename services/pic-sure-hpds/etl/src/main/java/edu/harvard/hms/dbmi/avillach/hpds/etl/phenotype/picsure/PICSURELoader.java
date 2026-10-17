@@ -271,7 +271,7 @@ public final class PICSURELoader {
                 spool, plan.outputDir(), Crypto.DEFAULT_KEY_NAME, config.storeCacheSize(), config.maxObservationsPerConcept(),
                 config.finalizationConcurrency(), config.finalizationChunkSize(), config.dedup()
             );
-            CsvObservationProducer producer = new CsvObservationProducer(runId, failureSink);
+            CsvObservationProducer producer = new CsvObservationProducer(runId, failureSink, config.effectiveChunkConcurrency());
 
             long ingestStart = System.nanoTime();
             FileResult fileResult = producer.processFile(plan.inputFile(), adapter::acceptBatch, config.batchSize());
@@ -281,7 +281,7 @@ public final class PICSURELoader {
             adapter.closeAndSave();
             long finalizeMs = (System.nanoTime() - finalizeStart) / 1_000_000;
 
-            error = evaluate(report, plan, fileResult, adapter, ingestMs, finalizeMs);
+            error = evaluate(report, config, fileResult, adapter, ingestMs, finalizeMs);
         } catch (Throwable t) {
             log.error("Partition {} failed", plan.name(), t);
             error = t.getClass().getSimpleName() + ": " + t.getMessage();
@@ -328,7 +328,7 @@ public final class PICSURELoader {
      * @return null if the partition succeeded, otherwise why it did not
      */
     private static String evaluate(
-        Map<String, Object> report, PartitionPlan plan, FileResult file, HPDSWriterAdapter adapter, long ingestMs, long finalizeMs
+        Map<String, Object> report, LoaderConfig config, FileResult file, HPDSWriterAdapter adapter, long ingestMs, long finalizeMs
     ) {
         WriterStats stats = adapter.getStats();
         Map<String, String> failedConcepts = adapter.getFailedConcepts();
@@ -353,6 +353,26 @@ public final class PICSURELoader {
         writer.put("duplicatesDropped", stats.duplicatesDropped());
         report.put("writer", writer);
         report.put("observationsWritten", written);
+        report.put("spooledPartials", adapter.getSpooledPartials());
+
+        // Rows CSVLoader would have stopped on are errors, not data to lose quietly (its silent skips, fewer than 4 columns and rows
+        // without a value, are not counted)
+        Map<String, Long> crashClass = new TreeMap<>();
+        long crashClassRows = 0;
+        for (Map.Entry<FailureReason, Long> entry : file.rejected().entrySet()) {
+            if (entry.getKey().crashesCsvLoader()) {
+                crashClass.put(entry.getKey().name(), entry.getValue());
+                crashClassRows += entry.getValue();
+            }
+        }
+        long timestampFailures = file.warnings().getOrDefault(FailureReason.TIMESTAMP_PARSE_ERROR, 0L);
+        Map<String, Object> tolerance = new LinkedHashMap<>();
+        tolerance.put("rowsRejectedLikeCsvLoaderCrashes", crashClassRows);
+        tolerance.put("byReason", crashClass);
+        tolerance.put("maxRejectedRows", config.maxRejectedRows());
+        tolerance.put("timestampFailures", timestampFailures);
+        tolerance.put("maxTimestampFailures", config.maxTimestampFailures());
+        report.put("dataQuality", tolerance);
         report.put("concepts", concepts);
         report.put("patients", adapter.getPatientCount());
         report.put("failedConceptCount", failedConcepts.size());
@@ -379,6 +399,14 @@ public final class PICSURELoader {
         if (!failedConcepts.isEmpty()) {
             return failedConcepts.size() + " concept(s) could not be written (see concept_rejections.jsonl); first: "
                 + failedConcepts.entrySet().iterator().next();
+        }
+        if (crashClassRows > config.maxRejectedRows()) {
+            return crashClassRows + " row(s) were dropped that CSVLoader would have stopped on " + crashClass + ", more than the "
+                + config.maxRejectedRows() + " allowed (-D" + LoaderConfig.PREFIX + "maxRejectedRows); see failures.jsonl";
+        }
+        if (timestampFailures > config.maxTimestampFailures()) {
+            return timestampFailures + " timestamp(s) could not be parsed, more than the " + config.maxTimestampFailures() + " allowed (-D"
+                + LoaderConfig.PREFIX + "maxTimestampFailures); see failures.jsonl";
         }
         if (stats.invalid() > 0) {
             return stats.invalid() + " row(s) reached the writer without exactly one value";
@@ -454,6 +482,9 @@ public final class PICSURELoader {
         settings.put("storeCacheSize", config.storeCacheSize());
         settings.put("finalizationConcurrency", config.finalizationConcurrency());
         settings.put("failFast", config.failFast());
+        settings.put("maxRejectedRows", config.maxRejectedRows());
+        settings.put("maxTimestampFailures", config.maxTimestampFailures());
+        settings.put("chunkConcurrency", config.effectiveChunkConcurrency());
         summary.put("settings", settings);
         summary.put("partitions", partitions);
         long rows = 0;
