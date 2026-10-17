@@ -543,7 +543,8 @@ impl Drop for ClauseThreadsToItself {
 /// Waits until no other thread holds clause thread slots, then keeps every other test from
 /// taking any until the returned guard drops. Calls on the holding thread and on the
 /// clause threads it spawns go on as usual, so a test that asserts on free slots sees all
-/// of them.
+/// of them. A call from any other thread blocks until the guard drops, so a test holding
+/// it must not wait on threads of its own that ask for clause threads.
 #[cfg(test)]
 pub(crate) fn clause_threads_to_itself() -> ClauseThreadsToItself {
     let guard = CLAUSE_THREAD_GATE
