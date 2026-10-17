@@ -622,7 +622,9 @@ fn as_clause_thread<R>(work: impl FnOnce() -> R) -> R {
 
 /// `evaluate` applied to each of `items`, in order, on the calling thread and up to
 /// `threads - 1` clause threads: scoped threads, not rayon workers, each taking the next
-/// item until none is left. A panic in `evaluate` is raised again on the calling thread.
+/// item until none is left. A panic in `evaluate` stops every thread from taking another
+/// item, and the first one caught is raised again on the calling thread with its own
+/// payload once all of them are joined.
 ///
 /// Clause threads are bounded across the process by [`clause_thread_cap`]. The slots are
 /// taken without waiting, so a call that finds none free, or fewer than it wants, runs its
@@ -649,18 +651,35 @@ where
         return as_clause_thread(|| items.iter().map(evaluate).collect());
     }
     let next = std::sync::atomic::AtomicUsize::new(0);
+    let panicked = std::sync::atomic::AtomicBool::new(false);
+    let first_panic: std::sync::Mutex<Option<Box<dyn std::any::Any + Send>>> =
+        std::sync::Mutex::new(None);
     let results: Vec<std::sync::Mutex<Option<R>>> =
         items.iter().map(|_| std::sync::Mutex::new(None)).collect();
     let work = || {
         loop {
+            if panicked.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
             let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let Some(item) = items.get(i) else {
                 break;
             };
-            let result = evaluate(item);
-            *results[i]
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(result);
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| evaluate(item))) {
+                Ok(result) => {
+                    *results[i]
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(result);
+                }
+                Err(payload) => {
+                    panicked.store(true, std::sync::atomic::Ordering::Relaxed);
+                    first_panic
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .get_or_insert(payload);
+                    break;
+                }
+            }
         }
     };
     let work = &work;
@@ -678,6 +697,12 @@ where
         }
         as_clause_thread(work);
     });
+    if let Some(payload) = first_panic
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    {
+        std::panic::resume_unwind(payload);
+    }
     results
         .into_iter()
         .map(|result| {
@@ -1283,6 +1308,32 @@ mod tests {
         assert!(
             nested.into_iter().flatten().any(|running| running > 0),
             "the children of a lone clause get clause threads"
+        );
+    }
+
+    #[test]
+    fn a_panic_on_a_clause_thread_reaches_the_caller_with_its_payload() {
+        let _slots = clause_threads_to_itself();
+        let caller = std::thread::current().id();
+        let (clause_thread_ran, ran) = std::sync::mpsc::channel();
+        let ran = std::sync::Mutex::new(ran);
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            on_clause_threads(&[0, 1], 2, |_| {
+                if std::thread::current().id() == caller {
+                    let _ = ran
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(std::time::Duration::from_secs(30));
+                } else {
+                    let _ = clause_thread_ran.send(());
+                    std::panic::panic_any("a clause failed on its own thread");
+                }
+            })
+        }));
+        let payload = caught.expect_err("the panic reaches the calling thread");
+        assert_eq!(
+            payload.downcast_ref::<&str>(),
+            Some(&"a clause failed on its own thread")
         );
     }
 
