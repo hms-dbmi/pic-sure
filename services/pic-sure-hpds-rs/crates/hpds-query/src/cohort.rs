@@ -629,7 +629,9 @@ fn as_clause_thread<R>(work: impl FnOnce() -> R) -> R {
 /// items on the threads it got and the calling thread. A thread that cannot be spawned
 /// gives its slot back and its share of the items runs on the others. Only one level
 /// spawns: while the calling thread and its clause threads work through `items`, a nested
-/// call on any of them runs everything on its own calling thread.
+/// call on any of them runs everything on its own calling thread. That holds as well when
+/// the call found no slot free and runs every item itself. A call with a single item, or
+/// allowed a single thread, runs it as a plain call, so a nested call under it may spawn.
 fn on_clause_threads<T, R, F>(items: &[T], threads: usize, evaluate: F) -> Vec<R>
 where
     T: Sync,
@@ -644,7 +646,7 @@ where
     let _gate = share_clause_thread_gate();
     let slots = take_clause_threads(wanted);
     if slots.is_empty() {
-        return items.iter().map(evaluate).collect();
+        return as_clause_thread(|| items.iter().map(evaluate).collect());
     }
     let next = std::sync::atomic::AtomicUsize::new(0);
     let results: Vec<std::sync::Mutex<Option<R>>> =
@@ -1240,6 +1242,47 @@ mod tests {
         assert!(
             nested.into_iter().all(|inline| inline),
             "every nested item runs on the thread that made the nested call"
+        );
+    }
+
+    #[test]
+    fn a_nested_call_under_a_call_that_found_no_slot_spawns_nothing() {
+        use std::sync::atomic::Ordering;
+        let _slots = clause_threads_to_itself();
+        let held = std::sync::Mutex::new(take_clause_threads(clause_thread_cap()));
+        assert_eq!(held.lock().unwrap().len(), clause_thread_cap());
+        let caller = std::thread::current().id();
+        let outer: Vec<usize> = (0..2).collect();
+        let inner: Vec<usize> = (0..8).collect();
+        let nested = on_clause_threads(&outer, 8, |_| {
+            held.lock().unwrap().clear();
+            on_clause_threads(&inner, 8, |_| {
+                (
+                    std::thread::current().id(),
+                    CLAUSE_THREADS.load(Ordering::SeqCst),
+                )
+            })
+        });
+        for (thread, running) in nested.into_iter().flatten() {
+            assert_eq!(
+                thread, caller,
+                "every nested item runs on the calling thread"
+            );
+            assert_eq!(running, 0, "the nested call takes no clause thread slot");
+        }
+    }
+
+    #[test]
+    fn a_nested_call_under_a_single_item_call_runs_on_clause_threads() {
+        use std::sync::atomic::Ordering;
+        let _slots = clause_threads_to_itself();
+        let inner: Vec<usize> = (0..8).collect();
+        let nested = on_clause_threads(&[()], 8, |_| {
+            on_clause_threads(&inner, 8, |_| CLAUSE_THREADS.load(Ordering::SeqCst))
+        });
+        assert!(
+            nested.into_iter().flatten().any(|running| running > 0),
+            "the children of a lone clause get clause threads"
         );
     }
 
