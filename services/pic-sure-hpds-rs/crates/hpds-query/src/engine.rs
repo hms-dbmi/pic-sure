@@ -1431,19 +1431,82 @@ mod tests {
                 let engine = engine_budgeted(&out, NARROW_VIEW_SHARE, 20_000, 30_000, cache);
                 let set = engine.partitions();
                 take_chunk_threads(set);
-                for _ in 0..2 {
+                let mut most_threads = 0;
+                for _ in 0..10 {
                     assert_eq!(engine.patients(&query).unwrap(), expected);
                     let (threads, on_workers) = take_chunk_threads(set);
                     assert_eq!(on_workers, 0, "no chunk is read on a rayon worker");
-                    if set.spare_parallelism() > 1 {
-                        assert!(threads > 1, "the filters run on several threads");
+                    most_threads = most_threads.max(threads);
+                    if most_threads > 1 {
+                        break;
                     }
                 }
+                assert!(
+                    most_threads > 1 || set.spare_parallelism() <= 1,
+                    "the filters run on several threads, given free clause threads"
+                );
                 let stats = set.prefix_read_stats();
                 assert_eq!(stats.held, 0);
                 assert!(stats.peak_held <= 30_000, "{stats:?}");
                 assert_eq!(set.cohort_guard_refusals(), 0);
             }
+        }
+
+        #[test]
+        fn concurrent_queries_stay_under_the_clause_thread_cap() {
+            use crate::cohort::{CLAUSE_THREADS_PEAK, clause_thread_cap};
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let query = patients_of(broad_or(), &["p1"]);
+            let expected = engine_with(&out, NARROW_VIEW_SHARE, u64::MAX, 0)
+                .patients(&query)
+                .unwrap();
+            let engine = engine_budgeted(&out, NARROW_VIEW_SHARE, 20_000, 30_000, 1 << 30);
+            std::thread::scope(|scope| {
+                for _ in 0..8 {
+                    scope.spawn(|| {
+                        for _ in 0..2 {
+                            assert_eq!(engine.patients(&query).unwrap(), expected);
+                        }
+                    });
+                }
+            });
+            let peak = CLAUSE_THREADS_PEAK.load(std::sync::atomic::Ordering::SeqCst);
+            assert!(peak <= clause_thread_cap(), "{peak} clause threads at once");
+        }
+
+        #[test]
+        fn nested_broad_filters_spawn_threads_at_one_level_only() {
+            use crate::partition::test_support::take_chunk_threads;
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let half = |prefixes: [&str; 3]| {
+                subquery(
+                    Operator::Or,
+                    prefixes.iter().map(|p| any_record(p)).collect(),
+                )
+            };
+            let clause = subquery(
+                Operator::Or,
+                vec![
+                    half(["\\c\\0", "\\c\\1", "\\c\\2"]),
+                    half(["\\c\\3", "\\c\\0", "\\c\\1"]),
+                ],
+            );
+            let query = patients_of(clause, &["p1"]);
+            let expected = engine_with(&out, NARROW_VIEW_SHARE, u64::MAX, 0)
+                .patients(&query)
+                .unwrap();
+            let engine = engine_budgeted(&out, NARROW_VIEW_SHARE, 20_000, 30_000, 0);
+            let set = engine.partitions();
+            take_chunk_threads(set);
+            assert_eq!(engine.patients(&query).unwrap(), expected);
+            let (threads, on_workers) = take_chunk_threads(set);
+            assert_eq!(on_workers, 0);
+            assert!(
+                threads <= 2,
+                "{threads} threads read chunks; two top-level clauses use at most two"
+            );
         }
 
         #[test]

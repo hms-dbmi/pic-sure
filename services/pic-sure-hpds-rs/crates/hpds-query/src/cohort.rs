@@ -505,18 +505,94 @@ fn evaluate_all(selection: &Selection<'_>, clauses: &[PhenotypicClause]) -> Resu
         .collect()
 }
 
-/// `evaluate` applied to each of `items`, in order, on up to `threads` threads that are not
-/// rayon workers: the calling thread and scoped threads spawned for this call, each taking
-/// the next item until none is left. With one thread, or at most one item, everything runs
-/// on the calling thread. A panic in `evaluate` is raised again on the calling thread.
+/// Clause threads ([`on_clause_threads`]) running now across the process.
+static CLAUSE_THREADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// The most clause threads that ran at once since the process started.
+#[cfg(test)]
+pub(crate) static CLAUSE_THREADS_PEAK: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+thread_local! {
+    static ON_CLAUSE_THREAD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The most clause threads the process runs at once: the rayon pool's thread count.
+pub(crate) fn clause_thread_cap() -> usize {
+    rayon::current_num_threads()
+}
+
+/// One clause thread counted in [`CLAUSE_THREADS`] until dropped.
+struct ClauseThreadSlot;
+
+impl Drop for ClauseThreadSlot {
+    fn drop(&mut self) {
+        CLAUSE_THREADS.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
+
+/// Up to `wanted` clause thread slots, as many as are free under [`clause_thread_cap`] now,
+/// taken without waiting.
+fn take_clause_threads(wanted: usize) -> Vec<ClauseThreadSlot> {
+    use std::sync::atomic::Ordering;
+    let cap = clause_thread_cap();
+    let mut running = CLAUSE_THREADS.load(Ordering::Acquire);
+    loop {
+        let take = wanted.min(cap.saturating_sub(running));
+        if take == 0 {
+            return Vec::new();
+        }
+        match CLAUSE_THREADS.compare_exchange_weak(
+            running,
+            running + take,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => {
+                #[cfg(test)]
+                CLAUSE_THREADS_PEAK.fetch_max(running + take, Ordering::AcqRel);
+                return (0..take).map(|_| ClauseThreadSlot).collect();
+            }
+            Err(now) => running = now,
+        }
+    }
+}
+
+/// Runs `work` with the calling thread marked as running clauses, and puts back what it
+/// had before when `work` returns or panics.
+fn as_clause_thread<R>(work: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ON_CLAUSE_THREAD.with(|on| on.set(self.0));
+        }
+    }
+    let _restore = Restore(ON_CLAUSE_THREAD.with(|on| on.replace(true)));
+    work()
+}
+
+/// `evaluate` applied to each of `items`, in order, on the calling thread and up to
+/// `threads - 1` clause threads: scoped threads, not rayon workers, each taking the next
+/// item until none is left. A panic in `evaluate` is raised again on the calling thread.
+///
+/// Clause threads are bounded across the process by [`clause_thread_cap`]. The slots are
+/// taken without waiting, so a call that finds none free, or fewer than it wants, runs its
+/// items on the threads it got and the calling thread. A thread that cannot be spawned
+/// gives its slot back and its share of the items runs on the others. Only one level
+/// spawns: while the calling thread and its clause threads work through `items`, a nested
+/// call on any of them runs everything on its own calling thread.
 fn on_clause_threads<T, R, F>(items: &[T], threads: usize, evaluate: F) -> Vec<R>
 where
     T: Sync,
     R: Send,
     F: Fn(&T) -> R + Sync,
 {
-    let threads = threads.min(items.len());
-    if threads <= 1 {
+    let wanted = threads.min(items.len()).saturating_sub(1);
+    if wanted == 0 || ON_CLAUSE_THREAD.with(std::cell::Cell::get) {
+        return items.iter().map(evaluate).collect();
+    }
+    let slots = take_clause_threads(wanted);
+    if slots.is_empty() {
         return items.iter().map(evaluate).collect();
     }
     let next = std::sync::atomic::AtomicUsize::new(0);
@@ -534,11 +610,20 @@ where
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(result);
         }
     };
+    let work = &work;
     std::thread::scope(|scope| {
-        for _ in 1..threads {
-            scope.spawn(work);
+        for slot in slots {
+            let spawned = std::thread::Builder::new()
+                .name("hpds-clause".to_owned())
+                .spawn_scoped(scope, move || {
+                    let _slot = slot;
+                    as_clause_thread(work);
+                });
+            if spawned.is_err() {
+                break;
+            }
         }
-        work();
+        as_clause_thread(work);
     });
     results
         .into_iter()
@@ -1067,6 +1152,45 @@ pub(crate) fn for_each_row_of(
 mod tests {
     use super::*;
     use hpds_format::{AlignedBuf, NO_TIMESTAMP, NumericObservation, encode_numeric_payload};
+
+    #[test]
+    fn clause_threads_across_callers_stay_under_the_cap() {
+        use std::sync::atomic::Ordering;
+        let cap = clause_thread_cap();
+        let items: Vec<usize> = (0..32).collect();
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    for _ in 0..3 {
+                        let doubled = on_clause_threads(&items, 64, |&i| {
+                            std::thread::sleep(std::time::Duration::from_millis(1));
+                            i * 2
+                        });
+                        assert_eq!(doubled, items.iter().map(|i| i * 2).collect::<Vec<_>>());
+                    }
+                });
+            }
+        });
+        let peak = CLAUSE_THREADS_PEAK.load(Ordering::SeqCst);
+        assert!(peak > 0, "some caller got clause threads");
+        assert!(peak <= cap, "{peak} clause threads at once, cap {cap}");
+    }
+
+    #[test]
+    fn a_nested_call_on_a_clause_thread_spawns_nothing() {
+        let outer: Vec<usize> = (0..8).collect();
+        let inner: Vec<usize> = (0..8).collect();
+        let nested = on_clause_threads(&outer, 8, |_| {
+            let here = std::thread::current().id();
+            on_clause_threads(&inner, 8, |_| std::thread::current().id())
+                .into_iter()
+                .all(|id| id == here)
+        });
+        assert!(
+            nested.into_iter().all(|inline| inline),
+            "every nested item runs on the thread that made the nested call"
+        );
+    }
 
     /// A numeric block holding one observation for each of `patients`.
     fn block_of(patients: &[u32]) -> Arc<Block> {
