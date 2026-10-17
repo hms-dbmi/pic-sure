@@ -43,12 +43,23 @@ thread_local! {
     static HELD_HERE: Cell<usize> = const { Cell::new(0) };
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Permits released between the calling thread's last wait taking its ticket and its
+    /// grant, counted under the lock.
+    static RELEASES_WHILE_QUEUED: Cell<Option<u64>> = const { Cell::new(None) };
+}
+
 /// The bytes held and the ticket queue of a [`ByteBudget`], under its lock.
 #[derive(Debug, Default)]
 struct State {
     held: u64,
     next_ticket: u64,
     serving: u64,
+    #[cfg(test)]
+    releases: u64,
+    #[cfg(test)]
+    wakes: u64,
 }
 
 impl State {
@@ -68,8 +79,6 @@ pub(crate) struct ByteBudget {
     permits: AtomicU64,
     waits: AtomicU64,
     wait_nanos: AtomicU64,
-    #[cfg(test)]
-    releases: AtomicU64,
 }
 
 impl ByteBudget {
@@ -83,8 +92,6 @@ impl ByteBudget {
             permits: AtomicU64::new(0),
             waits: AtomicU64::new(0),
             wait_nanos: AtomicU64::new(0),
-            #[cfg(test)]
-            releases: AtomicU64::new(0),
         }
     }
 
@@ -115,12 +122,20 @@ impl ByteBudget {
             let started = Instant::now();
             let ticket = state.next_ticket;
             state.next_ticket += 1;
+            #[cfg(test)]
+            let released_before = state.releases;
             while state.serving != ticket || !self.fits(&state, bytes) {
                 state = self
                     .released
                     .wait(state)
                     .unwrap_or_else(PoisonError::into_inner);
+                #[cfg(test)]
+                {
+                    state.wakes += 1;
+                }
             }
+            #[cfg(test)]
+            RELEASES_WHILE_QUEUED.with(|count| count.set(Some(state.releases - released_before)));
             state.serving += 1;
             self.wait_nanos.fetch_add(
                 u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX),
@@ -188,10 +203,12 @@ impl Drop for BudgetPermit<'_> {
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         state.held = state.held.saturating_sub(self.bytes);
+        #[cfg(test)]
+        {
+            state.releases += 1;
+        }
         let queued = state.queued();
         drop(state);
-        #[cfg(test)]
-        self.budget.releases.fetch_add(1, Ordering::SeqCst);
         if queued {
             self.budget.released.notify_all();
         }
@@ -245,7 +262,7 @@ mod tests {
         let budget = ByteBudget::new(100);
         let stop = AtomicBool::new(false);
         let deadline = Instant::now() + Duration::from_secs(3);
-        let (before, after) = std::thread::scope(|scope| {
+        let released = std::thread::scope(|scope| {
             for _ in 0..STREAMS {
                 scope.spawn(|| {
                     while !stop.load(Ordering::SeqCst) && Instant::now() < deadline {
@@ -255,19 +272,19 @@ mod tests {
                 });
             }
             std::thread::sleep(Duration::from_millis(50));
-            let before = budget.releases.load(Ordering::SeqCst);
+            RELEASES_WHILE_QUEUED.with(|count| count.set(None));
             let large = budget.acquire(100);
-            let after = budget.releases.load(Ordering::SeqCst);
+            let released = RELEASES_WHILE_QUEUED.with(Cell::get);
             assert_eq!(budget.stats().held, 100, "the large request runs alone");
             drop(large);
             stop.store(true, Ordering::SeqCst);
-            (before, after)
+            released
         });
+        let released = released.expect("the large request waits behind the small ones");
         assert!(
-            after - before <= 2 * STREAMS,
-            "granted after {} releases; at most the {STREAMS} small permits held and \
-             {STREAMS} queued ahead of it should go first",
-            after - before
+            released <= STREAMS,
+            "granted after {released} releases; each of the {STREAMS} small streams holds or \
+             queues at most one permit ahead of it"
         );
         assert_eq!(budget.stats().held, 0);
     }
@@ -303,6 +320,98 @@ mod tests {
             small.join().unwrap();
         });
         assert_eq!(*order.lock().unwrap(), ["large", "small"]);
+    }
+
+    /// The test holds 60 bytes for a stand-in holder, queues a large and then a small waiter,
+    /// frees the 60 bytes by hand and wakes one waiter at a time, each wake seen through
+    /// before the next, until the large one is granted. A small waiter woken before that
+    /// grant has gone back to sleep, so only the wake-up that follows the grant can reach it.
+    #[test]
+    fn a_later_waiter_that_fits_beside_a_new_grant_is_granted_at_once() {
+        let budget = ByteBudget::new(100);
+        budget.state.lock().unwrap().held = 60;
+        let small_granted = AtomicBool::new(false);
+        let release_large = AtomicBool::new(false);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                let _large = budget.acquire(80);
+                while !release_large.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            });
+            while budget.stats().waits < 1 {
+                std::thread::yield_now();
+            }
+            scope.spawn(|| {
+                let _small = budget.acquire(10);
+                small_granted.store(true, Ordering::SeqCst);
+            });
+            while budget.stats().waits < 2 {
+                std::thread::yield_now();
+            }
+            let mut released = false;
+            loop {
+                let mut state = budget.state.lock().unwrap();
+                if state.serving >= 1 || Instant::now() >= deadline {
+                    break;
+                }
+                if !released {
+                    state.held -= 60;
+                    released = true;
+                }
+                let wakes = state.wakes;
+                budget.released.notify_one();
+                drop(state);
+                while budget.state.lock().unwrap().wakes == wakes && Instant::now() < deadline {
+                    std::thread::yield_now();
+                }
+            }
+            assert!(
+                budget.state.lock().unwrap().serving >= 1,
+                "the large waiter is granted"
+            );
+            while !small_granted.load(Ordering::SeqCst) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let granted = small_granted.load(Ordering::SeqCst);
+            release_large.store(true, Ordering::SeqCst);
+            assert!(
+                granted,
+                "10 fits beside 80 once the large waiter is granted, and no release follows \
+                 to wake the small one"
+            );
+        });
+        assert_eq!(budget.stats().held, 0);
+    }
+
+    #[test]
+    #[cfg(not(debug_assertions))]
+    fn a_nested_request_is_granted_past_a_full_budget_and_the_queue() {
+        let budget = ByteBudget::new(100);
+        let outer = budget.acquire(100);
+        std::thread::scope(|scope| {
+            let waiter = scope.spawn(|| drop(budget.acquire(10)));
+            while budget.stats().waits < 1 {
+                std::thread::yield_now();
+            }
+            let inner = budget.acquire(50);
+            assert_eq!(budget.stats().held, 150);
+            drop(inner);
+            drop(outer);
+            waiter.join().unwrap();
+        });
+        let stats = budget.stats();
+        assert_eq!((stats.held, stats.permits, stats.waits), (0, 3, 1));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "asked for another")]
+    fn a_nested_request_panics_in_a_debug_build() {
+        let budget = ByteBudget::new(100);
+        let _outer = budget.acquire(10);
+        let _inner = budget.acquire(10);
     }
 
     #[test]
