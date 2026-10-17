@@ -488,7 +488,9 @@ fn evaluate_all(selection: &Selection<'_>, clauses: &[PhenotypicClause]) -> Resu
             if many {
                 evaluate_checked(selection, clause)
             } else {
-                parallel.next().unwrap_or(Err(QueryError::EmptySubquery))
+                parallel
+                    .next()
+                    .expect("one result for each clause holding no ANY_RECORD_OF")
             }
         })
         .collect()
