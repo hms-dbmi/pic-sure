@@ -1331,11 +1331,18 @@ impl<'a> Selection<'a> {
     /// order, and the permit of the process prefix read budget charged for them. Looks each
     /// up in the cache (most of them through [`RecentEntries`], see
     /// [`PartitionSet::cached_entries`]); then takes a permit for the decoded size bounds
-    /// of the concepts still missing, waiting when the budget is short; then reads every
-    /// missing block on the rayon pool and remembers it. Every missing block is attempted;
-    /// the first failure in order is returned. The caller holds the entries and the permit
-    /// until it has merged the chunk, then drops the entries and the permit. Concepts found
-    /// in the cache are charged to the cache, not the budget. Blocking.
+    /// of the concepts still missing; then reads every missing block on the rayon pool and
+    /// remembers it. Every missing block is attempted; the first failure in order is
+    /// returned. The caller holds the entries and the permit until it has merged the chunk,
+    /// then drops the entries and the permit. Blocking.
+    ///
+    /// Concepts found in the cache are charged to the cache, not the budget, so they are
+    /// never held while the read waits: when the permit is not granted at once, the entries
+    /// found are dropped, the read waits for its permit, and then looks the chunk up again.
+    /// When the cache dropped some of them meanwhile and the permit does not cover what is
+    /// missing now, the read gives the permit back and waits, again holding no entry, for
+    /// one covering the whole chunk. A waiting read therefore holds nothing outside the
+    /// budget and the cache.
     ///
     /// Call it only on the thread that runs the query, never on a rayon worker, and never
     /// while holding another permit (see [`crate::budget`]).
@@ -1347,13 +1354,25 @@ impl<'a> Selection<'a> {
         reads: &[ConceptRead],
     ) -> Result<(Vec<Arc<CachedConcept>>, BudgetPermit<'a>)> {
         let indexes: Vec<usize> = reads.iter().map(|read| read.index).collect();
+        let budget = &self.set.prefix_budget;
         let mut entries = self.set.cached_entries(&indexes);
+        let bytes = self.missing_bytes(reads, &entries);
+        let permit = match budget.try_acquire(bytes) {
+            Some(permit) => permit,
+            None => {
+                drop(entries);
+                let mut permit = budget.acquire(bytes);
+                entries = self.set.cached_entries(&indexes);
+                if !permit.covers(self.missing_bytes(reads, &entries)) {
+                    drop(entries);
+                    drop(permit);
+                    permit = budget.acquire(self.decoded_bound(reads.iter()));
+                    entries = self.set.cached_entries(&indexes);
+                }
+                permit
+            }
+        };
         let missing: Vec<usize> = (0..reads.len()).filter(|&i| entries[i].is_none()).collect();
-        let bytes = missing
-            .iter()
-            .map(|&i| self.set.store.entry(reads[i].index as u32).decoded_bound())
-            .fold(0u64, u64::saturating_add);
-        let permit = self.set.prefix_budget.acquire(bytes);
         let loaded: Vec<Result<Arc<CachedConcept>>> = if missing.len() < 2 {
             missing
                 .iter()
@@ -1374,6 +1393,25 @@ impl<'a> Selection<'a> {
                 .filter_map(|&i| Some((indexes[i], entries[i].as_ref()?))),
         );
         Ok((entries.into_iter().flatten().collect(), permit))
+    }
+
+    /// The summed decoded size bounds of the concepts of `reads` whose entry in `entries`
+    /// (one per read, in order) is missing.
+    fn missing_bytes(&self, reads: &[ConceptRead], entries: &[Option<Arc<CachedConcept>>]) -> u64 {
+        self.decoded_bound(
+            reads
+                .iter()
+                .zip(entries)
+                .filter(|(_, entry)| entry.is_none())
+                .map(|(read, _)| read),
+        )
+    }
+
+    /// The summed decoded size bounds of the concepts of `reads`.
+    fn decoded_bound<'r>(&self, reads: impl Iterator<Item = &'r ConceptRead>) -> u64 {
+        reads
+            .map(|read| self.set.store.entry(read.index as u32).decoded_bound())
+            .fold(0u64, u64::saturating_add)
     }
 
     /// The partition view of the concept `read` names, whose entry is `entry`, built and
@@ -1554,6 +1592,17 @@ pub(crate) mod test_support {
         set.cache.run_pending_tasks();
         let entry = set.load_entry(index).unwrap();
         set.recent.remember_all(std::iter::once((index, &entry)));
+    }
+
+    /// Drops the concept at `index` from the block cache.
+    pub(crate) fn evict(set: &PartitionSet, index: usize) {
+        set.cache.invalidate(&(index as u32));
+        set.cache.run_pending_tasks();
+    }
+
+    /// A permit of `bytes` of the process prefix read budget, held until dropped.
+    pub(crate) fn hold_budget(set: &PartitionSet, bytes: u64) -> crate::budget::BudgetPermit<'_> {
+        set.prefix_budget.acquire(bytes)
     }
 
     /// The decoded size bound the index records for the concept at `index`.

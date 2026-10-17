@@ -103,13 +103,29 @@ impl ByteBudget {
     /// waiting there could wait on itself. The engine never asks twice on one thread; the
     /// grant keeps a mistake from hanging the service, and a debug build panics on it.
     pub(crate) fn acquire(&self, bytes: u64) -> BudgetPermit<'_> {
+        self.grant(bytes, true)
+            .expect("a request that may wait is always granted")
+    }
+
+    /// A permit for `bytes`, capped at the whole budget, when it is granted without waiting:
+    /// no earlier request waits and that many bytes are free. `None` otherwise, having
+    /// neither waited nor queued. A request for 0 bytes, and a nested request (see
+    /// [`ByteBudget::acquire`]), are always granted.
+    pub(crate) fn try_acquire(&self, bytes: u64) -> Option<BudgetPermit<'_>> {
+        self.grant(bytes, false)
+    }
+
+    /// A permit for `bytes`, capped at the whole budget: granted at once when nothing waits
+    /// and the bytes are free, otherwise queued and waited for when `wait` is set, and
+    /// `None` when it is not.
+    fn grant(&self, bytes: u64, wait: bool) -> Option<BudgetPermit<'_>> {
         let bytes = bytes.min(self.capacity);
         if bytes == 0 {
-            return BudgetPermit {
+            return Some(BudgetPermit {
                 budget: self,
                 bytes,
                 _here: PhantomData,
-            };
+            });
         }
         let nested = HELD_HERE.with(Cell::get) > 0;
         debug_assert!(
@@ -118,6 +134,9 @@ impl ByteBudget {
         );
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         if !nested && (state.queued() || !self.fits(&state, bytes)) {
+            if !wait {
+                return None;
+            }
             self.waits.fetch_add(1, Ordering::Relaxed);
             let started = Instant::now();
             let ticket = state.next_ticket;
@@ -150,11 +169,11 @@ impl ByteBudget {
         drop(state);
         self.permits.fetch_add(1, Ordering::Relaxed);
         HELD_HERE.with(|count| count.set(count.get() + 1));
-        BudgetPermit {
+        Some(BudgetPermit {
             budget: self,
             bytes,
             _here: PhantomData,
-        }
+        })
     }
 
     /// True when `bytes` more fit beside what `state` holds.
@@ -189,6 +208,14 @@ pub(crate) struct BudgetPermit<'a> {
     budget: &'a ByteBudget,
     bytes: u64,
     _here: PhantomData<*const ()>,
+}
+
+impl BudgetPermit<'_> {
+    /// True when this permit holds at least as much of its budget as a request for `bytes`
+    /// would be granted.
+    pub(crate) fn covers(&self, bytes: u64) -> bool {
+        bytes.min(self.budget.capacity) <= self.bytes
+    }
 }
 
 impl Drop for BudgetPermit<'_> {
@@ -230,6 +257,36 @@ mod tests {
         assert_eq!(budget.stats().held, 0);
         assert_eq!(budget.acquire(0).bytes, 0);
         assert_eq!(budget.stats().permits, 1);
+    }
+
+    #[test]
+    fn a_try_never_waits_nor_queues() {
+        let budget = ByteBudget::new(100);
+        let first = budget.try_acquire(70).expect("70 is free");
+        assert!(first.covers(70) && first.covers(0) && !first.covers(71));
+        let budget = &budget;
+        std::thread::scope(|scope| {
+            let elsewhere = |bytes| scope.spawn(move || budget.try_acquire(bytes).is_some());
+            assert!(!elsewhere(40).join().unwrap(), "40 does not fit beside 70");
+            assert!(elsewhere(0).join().unwrap());
+            let waiter = scope.spawn(|| drop(budget.acquire(40)));
+            while budget.stats().waits < 1 {
+                std::thread::yield_now();
+            }
+            assert!(
+                !elsewhere(10).join().unwrap(),
+                "10 fits beside 70 but a request waits ahead of it"
+            );
+            drop(first);
+            waiter.join().unwrap();
+        });
+        let whole = budget
+            .try_acquire(1_000)
+            .expect("capped at the whole budget");
+        assert!(whole.covers(1_000));
+        drop(whole);
+        let stats = budget.stats();
+        assert_eq!((stats.held, stats.permits, stats.waits), (0, 3, 1));
     }
 
     #[test]

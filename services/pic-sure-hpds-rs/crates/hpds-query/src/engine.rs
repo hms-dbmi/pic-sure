@@ -1436,6 +1436,58 @@ mod tests {
         }
 
         #[test]
+        fn a_read_waiting_for_the_budget_holds_no_cached_entry() {
+            use crate::partition::test_support::{evict, hold_budget, live};
+            let concepts = prefix_concepts();
+            let (_dir, out) = prefix_store(&concepts);
+            let query = any_record_of_prefix("\\c\\", &["p1"]);
+            let expected = engine_with(&out, 2.0, 20_000, 0).patients(&query).unwrap();
+            let engine = engine_budgeted(&out, 2.0, 20_000, 30_000, 1 << 30);
+            let set = engine.partitions();
+            assert_eq!(engine.patients(&query).unwrap(), expected);
+            let selection = set.select_consents(&["p1"]).unwrap();
+            let reads = selection.concepts_with_prefix("\\c\\");
+            let chunks = selection.read_chunks(&reads);
+            let first = &reads[chunks[0].clone()];
+            assert!(first.len() > 1);
+            evict(set, first[0].index);
+            let live = live(set);
+            assert!(
+                live.live() >= first.len() - 1,
+                "the rest of the first chunk is cached"
+            );
+            let permits = set.prefix_read_stats().permits;
+            let held = hold_budget(set, 30_000);
+            let waits = set.prefix_read_stats().waits;
+            std::thread::scope(|scope| {
+                let reader = scope.spawn(|| engine.patients(&query));
+                while set.prefix_read_stats().waits == waits {
+                    std::thread::yield_now();
+                }
+                for read in &reads {
+                    evict(set, read.index);
+                }
+                assert_eq!(
+                    live.live(),
+                    0,
+                    "a read waiting for the budget pins none of the entries the cache dropped"
+                );
+                drop(held);
+                assert_eq!(reader.join().unwrap().unwrap(), expected);
+            });
+            let stats = set.prefix_read_stats();
+            assert_eq!(
+                stats.permits - permits,
+                chunks.len() as u64 + 2,
+                "the test's permit, one per chunk, and a second for the first chunk, whose \
+                 entries the cache dropped while it waited"
+            );
+            assert_eq!(stats.held, 0);
+            assert!(stats.peak_held <= 30_000, "{stats:?}");
+            assert_eq!(set.cohort_guard_refusals(), 0);
+        }
+
+        #[test]
         fn a_read_larger_than_the_cache_builds_no_views() {
             let concepts = prefix_concepts();
             let (_dir, out) = prefix_store(&concepts);
