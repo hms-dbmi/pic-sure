@@ -1600,6 +1600,12 @@ pub(crate) mod test_support {
         set.cache.run_pending_tasks();
     }
 
+    /// Runs the block cache's pending maintenance, which lets go of the entries it has
+    /// dropped but still records reads of.
+    pub(crate) fn settle(set: &PartitionSet) {
+        set.cache.run_pending_tasks();
+    }
+
     /// A permit of `bytes` of the process prefix read budget, held until dropped.
     pub(crate) fn hold_budget(set: &PartitionSet, bytes: u64) -> crate::budget::BudgetPermit<'_> {
         set.prefix_budget.acquire(bytes)

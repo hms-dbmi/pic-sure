@@ -1437,7 +1437,7 @@ mod tests {
 
         #[test]
         fn a_read_waiting_for_the_budget_holds_no_cached_entry() {
-            use crate::partition::test_support::{evict, hold_budget, live};
+            use crate::partition::test_support::{evict, hold_budget, live, settle};
             let concepts = prefix_concepts();
             let (_dir, out) = prefix_store(&concepts);
             let query = any_record_of_prefix("\\c\\", &["p1"]);
@@ -1466,6 +1466,11 @@ mod tests {
                 }
                 for read in &reads {
                     evict(set, read.index);
+                }
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                while live.live() > 0 && std::time::Instant::now() < deadline {
+                    settle(set);
+                    std::thread::sleep(std::time::Duration::from_millis(1));
                 }
                 assert_eq!(
                     live.live(),
