@@ -1609,7 +1609,7 @@ mod tests {
             std::thread::scope(|scope| {
                 let reader = scope.spawn(|| engine.patients(&query));
                 while set.prefix_read_stats().waits == waits {
-                    std::thread::yield_now();
+                    std::thread::sleep(std::time::Duration::from_micros(50));
                 }
                 for read in &reads {
                     evict(set, read.index);

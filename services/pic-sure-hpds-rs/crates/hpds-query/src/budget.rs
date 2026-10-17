@@ -275,7 +275,7 @@ mod tests {
             assert!(elsewhere(0).join().unwrap());
             let waiter = scope.spawn(|| drop(budget.acquire(40)));
             while budget.stats().waits < 1 {
-                std::thread::yield_now();
+                std::thread::sleep(Duration::from_micros(50));
             }
             assert!(
                 !elsewhere(10).join().unwrap(),
@@ -362,14 +362,14 @@ mod tests {
                 order.lock().unwrap().push("large");
             });
             while budget.stats().waits < 1 && Instant::now() < deadline {
-                std::thread::yield_now();
+                std::thread::sleep(Duration::from_micros(50));
             }
             let small = scope.spawn(|| {
                 let _permit = budget.acquire(30);
                 order.lock().unwrap().push("small");
             });
             while budget.stats().waits < 2 && Instant::now() < deadline {
-                std::thread::yield_now();
+                std::thread::sleep(Duration::from_micros(50));
             }
             std::thread::sleep(Duration::from_millis(30));
             assert!(
@@ -402,14 +402,14 @@ mod tests {
                 }
             });
             while budget.stats().waits < 1 {
-                std::thread::yield_now();
+                std::thread::sleep(Duration::from_micros(50));
             }
             scope.spawn(|| {
                 let _small = budget.acquire(10);
                 small_granted.store(true, Ordering::SeqCst);
             });
             while budget.stats().waits < 2 {
-                std::thread::yield_now();
+                std::thread::sleep(Duration::from_micros(50));
             }
             let mut released = false;
             loop {
@@ -425,7 +425,7 @@ mod tests {
                 budget.released.notify_one();
                 drop(state);
                 while budget.state.lock().unwrap().wakes == wakes && Instant::now() < deadline {
-                    std::thread::yield_now();
+                    std::thread::sleep(Duration::from_micros(50));
                 }
             }
             assert!(
@@ -454,7 +454,7 @@ mod tests {
         std::thread::scope(|scope| {
             let waiter = scope.spawn(|| drop(budget.acquire(10)));
             while budget.stats().waits < 1 {
-                std::thread::yield_now();
+                std::thread::sleep(Duration::from_micros(50));
             }
             let inner = budget.acquire(50);
             assert_eq!(budget.stats().held, 150);
