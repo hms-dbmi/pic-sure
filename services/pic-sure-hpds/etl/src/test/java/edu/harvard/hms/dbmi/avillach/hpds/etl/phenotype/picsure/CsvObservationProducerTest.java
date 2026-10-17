@@ -453,10 +453,11 @@ class CsvObservationProducerTest {
     }
 
     /**
-     * Header detection is structural (column count + non-integer first cell), so any header naming convention is accepted.
+     * Only known header names make a header (step-1 review issue 9). Any other first row is data: here it fails as an invalid patient id
+     * and is reported instead of being swallowed as a header.
      */
     @Test
-    void testProcessFile_ArbitraryHeaderNames_DetectedAsHeader() throws IOException {
+    void testProcessFile_UnknownHeaderNames_AreDataAndReported() throws IOException {
         Path csvFile = tempDir.resolve("arbitrary-headers.csv");
         String csvContent = """
             Patient ID,Concept,Numeric Value,Text Value,Date
@@ -467,10 +468,27 @@ class CsvObservationProducerTest {
         List<ObservationRow> allRows = new ArrayList<>();
         Consumer<List<ObservationRow>> consumer = allRows::addAll;
 
-        producer.processFile(csvFile, consumer, 1000);
+        CsvObservationProducer.FileResult result = producer.processFile(csvFile, consumer, 1000);
 
         assertEquals(1, allRows.size());
         assertEquals(1, allRows.get(0).patientNum());
+        assertEquals(2, result.recordsRead());
+        assertEquals(java.util.Map.of(FailureReason.INVALID_PATIENT_ID, 1L), result.rejected());
+        verify(mockFailureSink, org.mockito.Mockito.times(1)).recordFailure(any());
+    }
+
+    @Test
+    void testProcessFile_ByteOrderMarkBeforeAHeaderAndBeforeData() throws IOException {
+        Path withHeader = tempDir.resolve("bom-header.csv");
+        Files.writeString(withHeader, "\uFEFFPATIENT_NUM,CONCEPT_PATH,NVAL_NUM,TVAL_CHAR,DATE_TIME\n1,\\a\\,5,,\n");
+        Path withoutHeader = tempDir.resolve("bom-data.csv");
+        Files.writeString(withoutHeader, "\uFEFF2,\\a\\,6,,\n");
+
+        List<ObservationRow> rows = new ArrayList<>();
+        producer.processFile(withHeader, rows::addAll, 1000);
+        producer.processFile(withoutHeader, rows::addAll, 1000);
+
+        assertEquals(List.of(1, 2), rows.stream().map(ObservationRow::patientNum).toList());
         verify(mockFailureSink, never()).recordFailure(any());
     }
 
@@ -520,7 +538,7 @@ class CsvObservationProducerTest {
     }
 
     /**
-     * Invalid timestamps remain non-fatal: rows are produced with null dateTime and no failure records.
+     * Invalid timestamps remain non-fatal: rows are produced with null dateTime, and each one is recorded as TIMESTAMP_PARSE_ERROR.
      */
     @Test
     void testProcessFile_ManyInvalidTimestamps_RowsStillProduced() throws IOException {
@@ -540,6 +558,9 @@ class CsvObservationProducerTest {
 
         assertEquals(3, allRows.size(), "Rows with invalid timestamps must still be produced");
         allRows.forEach(row -> assertNull(row.dateTime()));
-        verify(mockFailureSink, never()).recordFailure(any());
+        org.mockito.ArgumentCaptor<FailureRecord> failures = org.mockito.ArgumentCaptor.forClass(FailureRecord.class);
+        verify(mockFailureSink, org.mockito.Mockito.times(3)).recordFailure(failures.capture());
+        failures.getAllValues().forEach(f -> assertEquals(FailureReason.TIMESTAMP_PARSE_ERROR, f.reasonCode()));
+        assertEquals("not-a-date", failures.getAllValues().get(0).timestampRaw());
     }
 }

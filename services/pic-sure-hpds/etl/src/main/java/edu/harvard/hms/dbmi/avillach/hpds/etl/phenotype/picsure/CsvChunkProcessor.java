@@ -151,7 +151,7 @@ public class CsvChunkProcessor {
 
         // Step 1: Estimate bytes per row from first N rows
         long estimatedBytesPerRow;
-        try (BufferedReader reader = Files.newBufferedReader(filePath)) {
+        try (BufferedReader reader = CsvObservationProducer.openReader(filePath)) {
             long bytesRead = 0;
             int rowsRead = 0;
             String line;
@@ -161,25 +161,17 @@ public class CsvChunkProcessor {
                 rowsRead++;
             }
 
-            estimatedBytesPerRow = rowsRead > 0 ? bytesRead / rowsRead : 1000; // Fallback: 1KB/row
+            estimatedBytesPerRow = rowsRead > 0 ? Math.max(1, bytesRead / rowsRead) : 1000; // Fallback: 1KB/row
             log.debug("Estimated bytes per row: {} (sampled {} rows)", estimatedBytesPerRow, rowsRead);
         }
 
         // Step 2: Calculate chunk boundaries
         long targetChunkBytes = chunkSizeRows * estimatedBytesPerRow;
-        long currentOffset = 0;
+        long currentOffset;
         int chunkIndex = 0;
 
         try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r")) {
-            // Skip header if present
-            String firstLine = raf.readLine();
-            if (firstLine != null && detectHeader(firstLine)) {
-                currentOffset = raf.getFilePointer();
-                log.info("Detected header, skipping first line (starting at offset: {})", currentOffset);
-            } else {
-                raf.seek(0); // No header, reset to start
-                currentOffset = 0;
-            }
+            currentOffset = dataStartOffset(raf);
 
             while (currentOffset < fileSize) {
                 long chunkEndTarget = Math.min(currentOffset + targetChunkBytes, fileSize);
@@ -204,6 +196,34 @@ public class CsvChunkProcessor {
     }
 
     /**
+     * Byte offset at which the data starts: after a UTF-8 byte order mark and, when the first non-blank line is a header (same gate as the
+     * sequential path), after that line.
+     */
+    private long dataStartOffset(RandomAccessFile raf) throws IOException {
+        raf.seek(0);
+        byte[] bom = new byte[3];
+        long start = 0;
+        if (raf.read(bom) == 3 && bom[0] == (byte) 0xEF && bom[1] == (byte) 0xBB && bom[2] == (byte) 0xBF) {
+            start = 3;
+        }
+        raf.seek(start);
+        String line;
+        while ((line = raf.readLine()) != null) {
+            // readLine maps each byte to a char, so decode the bytes as UTF-8 for the header check
+            String decoded = new String(line.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
+            if (decoded.isBlank()) {
+                continue;
+            }
+            if (detectHeader(decoded)) {
+                log.info("Detected header, skipping it (starting at offset: {})", raf.getFilePointer());
+                return raf.getFilePointer();
+            }
+            break;
+        }
+        return start;
+    }
+
+    /**
      * Processes a single chunk using bounded file reading.
      */
     private ChunkResult processChunk(
@@ -225,7 +245,10 @@ public class CsvChunkProcessor {
 
                 // Use producer's parsing logic for this chunk
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(boundedInput, StandardCharsets.UTF_8))) {
-                    long rowsProcessed = producer.processStream(reader, filePath, consumer, batchSize, false);
+                    long rowsProcessed = producer.processStream(
+                        reader, filePath, consumer, batchSize,
+                        new CsvObservationProducer.RecordContext(chunk.chunkIndex(), chunk.startOffset())
+                    );
 
                     log.debug("Chunk {} complete: {} rows processed", chunk.chunkIndex(), rowsProcessed);
                     return new ChunkResult(chunk.chunkIndex(), rowsProcessed, null);
@@ -238,7 +261,8 @@ public class CsvChunkProcessor {
                 new FailureRecord(
                     runId, filePath.getFileName().toString(), filePath.toString(), null, null, null, null, null, null,
                     FailureReason.FILE_READ_ERROR,
-                    "Chunk " + chunk.chunkIndex() + " (bytes " + chunk.startOffset() + "-" + chunk.endOffset() + ") failed: " + e
+                    "Chunk " + chunk.chunkIndex() + " (bytes " + chunk.startOffset() + "-" + chunk.endOffset() + ") failed: " + e,
+                    chunk.chunkIndex(), chunk.startOffset()
                 )
             );
             return new ChunkResult(chunk.chunkIndex(), 0, e);

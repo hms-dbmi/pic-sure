@@ -234,11 +234,11 @@ class CsvProducerContractTest {
         }
 
         @Override
-        ObservationRow parseRecord(CSVRecord record, Path filePath, boolean useHeaders) {
+        ObservationRow parseRecord(CSVRecord record, Path filePath, RecordContext context) {
             if (record.get(0).equals("3")) {
                 throw new IllegalStateException("boom");
             }
-            return super.parseRecord(record, filePath, useHeaders);
+            return super.parseRecord(record, filePath, context);
         }
     }
 
