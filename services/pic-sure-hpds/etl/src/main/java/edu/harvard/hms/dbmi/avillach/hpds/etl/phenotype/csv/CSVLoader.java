@@ -38,6 +38,8 @@ public class CSVLoader {
 
     private static final int DATETIME = 4;
 
+    private static final String ALL_CONCEPTS_SUFFIX = "-allConcepts.csv";
+
     private LoadingStore store;
     private Path partitionDirectory;
     private Path allConceptsPath;
@@ -58,7 +60,7 @@ public class CSVLoader {
 
             for (Path allConceptFile : allConceptFiles) {
                 String fileName = allConceptFile.getFileName().toString();
-                String partitionName = fileName.split("-")[0];
+                String partitionName = partitionNameFor(fileName);
 
                 Path partitionDirectory = allConceptFile.getParent().resolve(partitionName);
                 Files.createDirectories(partitionDirectory);
@@ -71,6 +73,17 @@ public class CSVLoader {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * The partition is the file name without the "-allConcepts.csv" suffix, so consent values that contain "-" (for example
+     * "tutorial-biolincc_camp") keep their full name. Other names fall back to the text before the first "-".
+     */
+    static String partitionNameFor(String fileName) {
+        if (fileName.endsWith(ALL_CONCEPTS_SUFFIX) && fileName.length() > ALL_CONCEPTS_SUFFIX.length()) {
+            return fileName.substring(0, fileName.length() - ALL_CONCEPTS_SUFFIX.length());
+        }
+        return fileName.split("-")[0];
     }
 
     public CSVLoader(Path allConceptsPath, Path partitionDirectory) {
