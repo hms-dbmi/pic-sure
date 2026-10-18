@@ -2,6 +2,9 @@
 """Compares what the loader lanes put into HPDS with the ground truth computed from the input. Standard library only.
 
   compare.py run    DATASET   query every running lane HPDS, check each lane's columnMeta.csv, write work/report/DATASET.json
+  compare.py run    DATASET --via=api [--store laneN]   the same, and then the same queries through the API (query-service,
+                    POST /hpds/auth/v3/query/sync with X-User-Id) in front of that lane's HPDS, diffed against what the HPDS answered
+                    directly: any difference is an unexplained mismatch (category api-vs-hpds)
   compare.py report [DATASET ...]  merge work/report/*.json into compare.json and compare.md; exit 1 on unexplained mismatches
 
 What is compared, for each lane that loaded something:
@@ -42,6 +45,9 @@ UNKNOWN_CONSENT = "unknown.c9"
 MAX_VALUES_PER_CONCEPT = 6
 MAX_UNKNOWN_QUERIES = 5
 QUERY_PATH = "/PIC-SURE/v3/query/sync"
+API_QUERY_PATH = "/hpds/auth/v3/query/sync"
+DEFAULT_API_PORT = 8091
+DEFAULT_API_USER = "local-stack"
 
 # What is known to differ, written from evidence (each entry carries the proof it found in this run). `lanes` are the flows whose
 # answers differ from the truth; a mismatch is explained when its concept (or the whole partition) is in the entry's evidence.
@@ -135,8 +141,10 @@ KNOWN_DIFFERENCES = [
 
 
 class Hpds(object):
-    def __init__(self, base_url):
+    def __init__(self, base_url, path=QUERY_PATH, headers=None):
         self.base_url = base_url.rstrip("/")
+        self.path = path
+        self.headers = dict(headers or {})
 
     def health(self):
         try:
@@ -147,8 +155,8 @@ class Hpds(object):
 
     def count(self, consents, clause):
         body = {"query": {"userConsents": [{"value": c} for c in consents], "phenotypicClause": clause, "expectedResultType": "COUNT"}}
-        req = urllib.request.Request(self.base_url + QUERY_PATH, data=json.dumps(body).encode(), method="POST",
-                                     headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(self.base_url + self.path, data=json.dumps(body).encode(), method="POST",
+                                     headers=dict(self.headers, **{"Content-Type": "application/json"}))
         try:
             with urllib.request.urlopen(req, timeout=60) as r:
                 text = r.read().decode().strip()
@@ -160,6 +168,14 @@ class Hpds(object):
             return int(text), None
         except ValueError:
             return None, "not a count: %r" % text[:200]
+
+
+class Api(Hpds):
+    """The query-service in front of an HPDS: same body, the identity in X-User-Id (the service trusts the header and does no token
+    check). The consents travel in the query, as for HPDS, which needs the service to run with consent-based authorization off."""
+
+    def __init__(self, base_url, user_id=DEFAULT_API_USER):
+        super().__init__(base_url, path=API_QUERY_PATH, headers={"X-User-Id": user_id})
 
 
 def required(concept):
@@ -335,6 +351,36 @@ def lane_diff_answers(a, b, fields, ma, mb):
 
 
 # ----------------------------------------------------------------------------------------------------------------------------
+# through the API
+
+
+def api_diffs(battery, direct, via, flow, lane):
+    """The API's answers against the HPDS's own, query by query. direct and via are lists of (count, error) in battery order.
+
+    Returns (mismatches, stats). The API in front of an HPDS must change nothing: a count that differs, an error where the HPDS
+    answered, or an answer where the HPDS errored is a mismatch of category `api-vs-hpds` (never explained). When both sides failed the
+    query is not a new finding: the HPDS report already has it as a query:error."""
+    mms = []
+    stats = {"asked": len(battery), "answered": 0, "errors": 0, "differences": 0}
+    for q, (dn, derr), (an, aerr) in zip(battery, direct, via):
+        if aerr:
+            stats["errors"] += 1
+        else:
+            stats["answered"] += 1
+        if dn is None and an is None:
+            continue
+        if dn is not None and an is not None and dn == an:
+            continue
+        stats["differences"] += 1
+        mms.append({"category": "api-vs-hpds", "kind": "api:error" if (aerr or derr) else "api:diff", "values": [],
+                    "partitions": q.consents if q.scope != "unknown-consent" else [], "lanes": [flow], "concept": q.concept,
+                    "scope": q.scope, "query": q.desc, "truth": derr if derr else dn,
+                    "answers": {"hpds": derr if derr else dn, "api": aerr if aerr else an},
+                    "detail": "%s: the API answered differently from the HPDS it serves" % lane, "explained_by": None})
+    return mms, stats
+
+
+# ----------------------------------------------------------------------------------------------------------------------------
 # run
 
 
@@ -399,6 +445,8 @@ def explain(mm, evidence):
     All the rules are about the CSVLoader: the mismatch must be that lane's alone, or a difference between it and another lane. It must
     be about a concept the evidence names in one of its partitions, and of a kind the rule lists. evidence: key -> partition ->
     concepts (a list, or for fffd a dict concept -> cleaned values)."""
+    if mm.get("category") == "api-vs-hpds":
+        return None  # nothing explains a difference the API introduces
     if mm.get("category") == "load":
         for r in PARTITION_FAILURE_RULES:
             if mm.get("kind") == "load:partition-failed" and mm.get("lanes") == [r["flow"]] and mm.get("partitions") == [r["partition"]] and r.get("reason"):
@@ -484,7 +532,38 @@ def requested_flows(dataset, applicable):
         return [x for x in json.load(f).get("flows", [])]
 
 
-def run_dataset(dataset, ports, host):
+def run_api(mm, battery, answers, active, store, api_base, api_user):
+    """The --via=api part of a run: sends the battery through the API and records the differences from the store's direct answers.
+    Returns the report's `api` section. A store that was not queried directly (not loaded, unhealthy) or an API that is down is a
+    mismatch: nothing was compared."""
+    flow = lanemod.FLOWS.get(store or "")
+    sec = {"store": store, "flow": flow, "url": api_base, "path": API_QUERY_PATH, "user": api_user, "health": None, "queries": None}
+    if flow is None:
+        mm(category="api-vs-hpds", kind="api:setup", partitions=[], lanes=[], concept=None, query="--store %s" % store, truth="lane1|lane2|lane3",
+           answers={"api": "unknown store"}, detail="the store the API serves must be one of lane1, lane2, lane3")
+        return sec
+    api = Api(api_base, api_user)
+    sec["health"] = api.health()
+    if flow not in answers:
+        mm(category="api-vs-hpds", kind="api:setup", partitions=[], lanes=[flow], concept=None, query="queries of %s" % store,
+           truth="direct HPDS answers", answers={"api": "none"},
+           detail="the store %s (%s) was not queried directly (not loaded, skipped or unhealthy): nothing to compare the API with" % (store, flow))
+        return sec
+    if sec["health"] != "UP":
+        mm(category="api-vs-hpds", kind="api:health", partitions=[], lanes=[flow], concept=None, query="GET /actuator/health", truth="UP",
+           answers={"api": sec["health"]}, detail="the query-service is not healthy at %s" % api_base)
+        return sec
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        via_results = list(ex.map(lambda q: api.count(q.consents, q.clause), battery))
+    diffs, stats = api_diffs(battery, answers[flow], via_results, flow, store)
+    for d in diffs:
+        mm(**d)
+    sec["queries"] = stats
+    return sec
+
+
+def run_dataset(dataset, ports, host, via="hpds", api_store=None, api_base=None, api_user=DEFAULT_API_USER):
+    """via="api" also sends the battery through the API at api_base and diffs it against the direct answers of api_store (laneN)."""
     spec = lanemod.DATASETS[dataset]
     kind = spec["kind"]
     t0 = time.time()
@@ -592,6 +671,9 @@ def run_dataset(dataset, ports, host):
                 qstats[flow]["errors"] += 1
             else:
                 qstats[flow]["answered"] += 1
+    api_section = None
+    if via == "api":
+        api_section = run_api(mm, battery, answers, active, api_store, api_base, api_user)
     for k, q in enumerate(battery):
         per = {}
         bad = []
@@ -696,6 +778,7 @@ def run_dataset(dataset, ports, host):
             "scopes": sorted({q.scope if not q.scope.startswith("partition:") else "partition" for q in battery}),
         },
         "lanes": lane_summary,
+        "api": api_section,
         "requested_flows": requested,
         "not_run": not_run,
         "skipped": skipped,
@@ -711,6 +794,10 @@ def run_dataset(dataset, ports, host):
     s = report["summary"]
     print("compare %s: %d queries x %d lanes, %d mismatches (%d explained, %d unexplained)" % (
         dataset, len(battery), len(answers), s["mismatches"], s["explained"], s["unexplained"]))
+    if api_section:
+        aq = api_section.get("queries") or {}
+        print("compare %s via api (%s, %s): %s queries, %s answered, %s differences from the HPDS" % (
+            dataset, api_section.get("store"), api_section.get("health"), aq.get("asked", 0), aq.get("answered", 0), aq.get("differences", "-")))
     return 0
 
 
@@ -770,6 +857,20 @@ def render_md(reports, summary):
                 ", ".join("%s=%d" % kv for kv in sorted(rej.items())) or "-", l.get("health", ""),
                 q.get("asked", ""), q.get("answered", ""), q.get("mismatches", "")))
     out.append("")
+    apis = [(r["dataset"], r["api"]) for r in reports if r.get("api")]
+    if apis:
+        out.append("## Through the API")
+        out.append("")
+        out.append("The same queries sent through the query-service (`POST %s`, header `X-User-Id`) and compared with the answers of the HPDS "
+                   "it serves. Any difference is an unexplained mismatch (category `api-vs-hpds`)." % apis[0][1].get("path", API_QUERY_PATH))
+        out.append("")
+        out.append("| dataset | store | API | health | queries | answered | differences |")
+        out.append("|---|---|---|---|---|---|---|")
+        for ds, a in apis:
+            aq = a.get("queries") or {}
+            out.append("| %s | %s | %s | %s | %s | %s | %s |" % (ds, a.get("store"), a.get("url"), a.get("health"), aq.get("asked", "-"),
+                                                           aq.get("answered", "-"), aq.get("differences", "-")))
+        out.append("")
     out.append("## Mismatches")
     out.append("")
     unexplained = [(r["dataset"], m) for r in reports for m in r["mismatches"] if not m["explained_by"]]
@@ -853,6 +954,16 @@ def summarize(reports, names):
         for flow, l in r["lanes"].items():
             if l.get("status") == "ok" and (l.get("queries") or {}).get("asked", 0) == 0 and per_dataset:
                 problems.append("%s %s loaded but asked 0 queries" % (r["dataset"], flow))
+    api = []
+    for r in reports:
+        a = r.get("api")
+        if not a:
+            continue
+        aq = a.get("queries") or {}
+        api.append({"dataset": r["dataset"], "store": a.get("store"), "url": a.get("url"), "health": a.get("health"),
+                    "asked": aq.get("asked", 0), "answered": aq.get("answered", 0), "differences": aq.get("differences", 0)})
+        if not aq.get("asked"):
+            problems.append("%s: no query went through the API (%s)" % (r["dataset"], "health " + str(a.get("health"))))
     not_run = sorted({f for r in reports for f in r.get("not_run") or []})
     skipped = []
     for r in reports:
@@ -861,7 +972,7 @@ def summarize(reports, names):
             if item not in skipped:
                 skipped.append(item)
     return {"datasets": names, "unexplained": unexplained, "explained": explained, "queries_asked": asked, "queries_answered": answered,
-            "problems": problems, "not_run": not_run, "skipped": skipped,
+            "problems": problems, "not_run": not_run, "skipped": skipped, "api": api,
             "pass": unexplained == 0 and answered == asked and not problems}
 
 
@@ -903,6 +1014,9 @@ def report(datasets):
                 "%d/%d" % (len(l.get("partitions_loaded") or []), len(l.get("partitions_loaded") or []) + len(l.get("partitions_failed") or [])),
                 q.get("asked", "-"), q.get("answered", "-"), q.get("mismatches", "-")))
     print("mismatches: %d explained by known differences, %d unexplained; queries answered %d of %d" % (explained, unexplained, answered, asked))
+    for a in summary.get("api") or []:
+        print("api: %s via %s (store %s): %d queries, %d answered, %d differences from the HPDS" % (
+            a["dataset"], a["url"], a["store"], a["asked"], a["answered"], a["differences"]))
     for r in reports:
         for f in r.get("not_run") or []:
             print("WARN not run: %s %s" % (r["dataset"], f))
@@ -923,13 +1037,21 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("dataset", choices=sorted(lanemod.DATASETS))
     r.add_argument("--host", default=os.environ.get("HPDS_HOST", "localhost"))
+    r.add_argument("--via", choices=["hpds", "api"], default="hpds",
+                   help="api: also send the battery through the query-service and diff it against the HPDS of --store")
+    r.add_argument("--store", choices=sorted(lanemod.FLOWS), default=os.environ.get("STORE", "lane3"),
+                   help="the lane whose HPDS the API serves (--via=api)")
+    r.add_argument("--api-host", default=os.environ.get("API_HOST") or os.environ.get("HPDS_HOST", "localhost"))
+    r.add_argument("--api-port", type=int, default=int(os.environ.get("API_QUERY_PORT", DEFAULT_API_PORT)))
+    r.add_argument("--api-user", default=os.environ.get("API_USER_ID", DEFAULT_API_USER), help="X-User-Id sent with the queries")
     for lane, port in DEFAULT_PORTS.items():
         r.add_argument("--%s-port" % lane, type=int, default=int(os.environ.get("HPDS_%s_PORT" % lane.upper(), port)))
     p = sub.add_parser("report")
     p.add_argument("datasets", nargs="*")
     a = ap.parse_args()
     if a.cmd == "run":
-        return run_dataset(a.dataset, {"lane1": a.lane1_port, "lane2": a.lane2_port, "lane3": a.lane3_port}, a.host)
+        return run_dataset(a.dataset, {"lane1": a.lane1_port, "lane2": a.lane2_port, "lane3": a.lane3_port}, a.host, via=a.via, api_store=a.store,
+                           api_base="http://%s:%d" % (a.api_host, a.api_port), api_user=a.api_user)
     return report(a.datasets)
 
 
