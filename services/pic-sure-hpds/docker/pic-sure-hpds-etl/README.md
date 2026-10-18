@@ -89,11 +89,45 @@ PICSURELoader (phenotype data, partitioned by consent)
 - **Re-running in the same base directory is refused**: a partition directory that already holds a store stops the run (exit 2) before
   any work. Use a fresh base directory, or `-Dpicsure.loader.overwrite=true` to replace the stores.
 
+**Two inputs.** The default input is the split one above: `<partition>-allConcepts.csv` files under the base directory. The other
+is the **combined** file that production hpds-ingest reads (every study plus the global variables, `patient_num, concept_path, nval,
+tval, timestamp`), given with `-Dpicsure.loader.input=<file>` (any file name, anywhere; for example `allConcepts_data_analyzer.csv`).
+The output still goes under the base directory, which also holds `encryption_key`.
+
+`-Dpicsure.loader.partitionBy` says what to do with a combined file (it is refused, exit 2, without `input`):
+
+- `consent` (the default): the loader partitions the file itself, with the rules of the `split-allconcepts-by-consent` job of
+  pic-sure-hpds-etl (`--globals=by-patient --partition-naming=suffix`, commit 6416d91, written to the summary as `consentRulesMatch`).
+  Pass 1 reads the file and learns each patient's consents from the `\_consents\` rows (the text value is the consent). Pass 2 writes one
+  routed CSV per consent under `<spoolDir>/.routed/`, and each is then loaded as a split partition, one at a time, and deleted once its
+  partition succeeded (kept after a failure). Rows of a study (first path node = the study of a consent, `phs000000.c1` has the study
+  `phs000000`) go to the patient's consents of that study; every other row, the `\_consents\` rows included, is copied to all of the
+  patient's consents. A patient with no consent for a study row's study, or no consent at all for a global row, is dropped and counted
+  (`NO_CONSENT`). A consent value that cannot name a partition (see the name rule above) is dropped for everybody and listed in the
+  summary with its row count, the run goes on. Rows that cannot be routed (fewer than 4 columns, a missing or non-integer patient id,
+  a header in the middle) are counted and recorded in `<base>/routing-failures.jsonl`; more than `maxRejectedRows` of the kind
+  `CSVLoader` stops on fails the run before any partition is loaded. Everything else (bad numbers, timestamps) is judged by the
+  partition's loader as before.
+- `none`: one flat store in the base directory (`allObservationsStore.javabin`, `columnMeta.javabin`, `columnMeta.csv`, as hpds-ingest
+  writes it), for parity checks against hpds-ingest only. HPDS refuses such a directory when `hpds.requireAuthorizationFilter` is true,
+  as it is in production.
+
+A base directory that already holds a flat store is refused in `consent` mode, and one with partition stores is refused in `none`
+mode (also with `overwrite`). **Disk:** besides the stores, the routing needs space for the routed files, about the size of the
+input plus one copy of every global row for each consent of its patient; point `picsure.loader.spoolDir` at fast local disk (outside the base
+if the base is served by HPDS, since a left-over `.picsure-spool` directory would be read as a partition). The input is read twice,
+one thread. `ingest-summary.json` gains `inputMode` (`split` or `combined`), `partitionBy`, `inputFile`, `inputSizeBytes`,
+`consentRulesMatch` and a `routing` object (rows read, routed, per partition, copies of global rows, `NO_CONSENT` rows dropped,
+patients without consent, invalid consent names with their rows, unroutable rows by reason). Record numbers in a partition's
+`failures.jsonl` count the routed file, not the combined input.
+
 Tuning is by system properties, passed in `JAVA_OPTS` (see `LoaderConfig` for the full list):
 
 | Property | Default | |
 |---|---|---|
 | `picsure.loader.spoolDir` | `<base>/.picsure-spool` | spool root, one subdirectory per partition, removed afterwards; use fast local disk |
+| `picsure.loader.input` | unset (split input) | a combined allConcepts file, routed by consent |
+| `picsure.loader.partitionBy` | `consent` for a combined input | `consent` or `none` (flat store, parity checks only) |
 | `picsure.loader.maxObservationsPerConcept` | `0` (no limit) | a concept that reaches a non-zero limit fails the partition (kept null markers count) |
 | `picsure.loader.maxRejectedRows` | `0` | rows dropped for a patient id or number `CSVLoader` cannot parse that a partition tolerates |
 | `picsure.loader.maxTimestampFailures` | `0` | unparseable timestamps that a partition tolerates (the row is kept without one) |

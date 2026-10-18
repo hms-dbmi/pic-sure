@@ -15,7 +15,11 @@ public enum FailureReason {
         "Row has both a numeric and a text value; the numeric value was kept and the text value discarded", false
     ), TIMESTAMP_PARSE_ERROR("Timestamp present but unparseable; the row was kept without a timestamp", false), MALFORMED_RECORD(
         "Record has too few columns", true
-    ), FILE_READ_ERROR("Unable to read source file", true), UNKNOWN("Unknown failure", true);
+    ), FILE_READ_ERROR("Unable to read source file", true), UNKNOWN("Unknown failure", true), NO_CONSENT(
+        "The patient has no consent that covers the row (combined input); the row was not written to any partition", true
+    ), INVALID_CONSENT_NAME(
+        "Every consent the row was meant for has a name that cannot name a partition (combined input); the row was not written", true
+    );
 
     private final String description;
     private final boolean rejectsRow;

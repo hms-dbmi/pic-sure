@@ -48,6 +48,16 @@ import java.util.stream.Stream;
  * at all) has its three store files deleted, and the run ends non-zero. With {@code failFast} (the default) the remaining partitions are
  * not run;</li> <li>{@code <base>/ingest-summary.json} is written last, also when the run fails.</li> </ul>
  *
+ * <p><b>Combined input.</b> With {@code -Dpicsure.loader.input=<file>} the input is one combined allConcepts file (the input of the
+ * production hpds-ingest, any file name) instead of the files under {@code <base>}; the output still goes under {@code <base>}.
+ * {@code -Dpicsure.loader.partitionBy=consent} (the default for a combined input) routes the rows by consent first, with the rules of the
+ * {@code split-allconcepts-by-consent} job (see {@link ConsentRouter}): pass 1 learns the consents of every patient, pass 2 writes one
+ * spool CSV per consent under {@code <spoolDir>/.routed}, and each of them is then loaded as above, one adapter at a time and deleted after
+ * its partition succeeded (kept after a failure). The partitions are {@code <base>/<consent>/}. {@code partitionBy=none} loads the file as
+ * one flat store in {@code <base>} (hpds-ingest's layout), for parity checks only: HPDS refuses a flat store when it requires the
+ * authorization filter. Rows that cannot be routed are recorded in {@code <base>/routing-failures.jsonl}. {@code partitionBy} is refused
+ * without {@code input}; a base that holds a flat store is refused in consent mode, and one that holds partition stores in none mode.
+ *
  * <p>Exit status: 0 every partition loaded; 1 a partition failed; 2 the input or configuration was refused before any work.
  */
 public final class PICSURELoader {
@@ -64,6 +74,11 @@ public final class PICSURELoader {
     static final String ALL_CONCEPTS_SUFFIX = "-allConcepts.csv";
     static final Pattern PARTITION_NAME = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$");
     static final String SPOOL_DIR_NAME = ".picsure-spool";
+    /** Under the spool root; no partition name can start with a dot, so it cannot collide with a partition's spool. */
+    static final String ROUTED_DIR_NAME = ".routed";
+    static final String ROUTING_FAILURES_FILE = "routing-failures.jsonl";
+    /** Name of the one store of {@code partitionBy=none}; it is only used for the report and the spool directory. */
+    static final String FLAT_NAME = "_flat";
     static final String SUMMARY_FILE = "ingest-summary.json";
     static final List<String> STORE_FILES = List.of("allObservationsStore.javabin", "columnMeta.javabin", "columnMeta.csv");
 
@@ -82,7 +97,11 @@ public final class PICSURELoader {
         }
     }
 
-    record PartitionPlan(String name, Path inputFile, Path outputDir) {
+    /** @param routedRows the lines the router wrote for this partition, or null when the input is not a routed file */
+    record PartitionPlan(String name, Path inputFile, Path outputDir, Long routedRows) {
+        PartitionPlan(String name, Path inputFile, Path outputDir) {
+            this(name, inputFile, outputDir, null);
+        }
     }
 
     private PICSURELoader() {}
@@ -117,19 +136,63 @@ public final class PICSURELoader {
             return EXIT_REFUSED;
         }
 
+        boolean consentMode = config.combinedInput() && LoaderConfig.PARTITION_BY_CONSENT.equals(config.effectivePartitionBy());
+        Path spoolRoot = config.spoolDir() != null ? config.spoolDir() : base.resolve(SPOOL_DIR_NAME);
+        Path routedDir = spoolRoot.resolve(ROUTED_DIR_NAME);
         List<PartitionPlan> plans;
+        ConsentRouter router = null;
         try {
+            if (!config.combinedInput() && config.partitionBy() != null) {
+                throw new RefusedException(
+                    LoaderConfig.PREFIX + "partitionBy is only valid with " + LoaderConfig.PREFIX + "input (a combined file)"
+                );
+            }
             loadKey(base.resolve("encryption_key"));
-            plans = plan(base, config);
+            if (!config.combinedInput()) {
+                plans = plan(base, config);
+            } else {
+                checkCombinedInput(config.input());
+                if (consentMode) {
+                    router = new ConsentRouter(config.input(), runId);
+                    plans = planConsents(base, config, router);
+                } else {
+                    plans = planFlat(base, config);
+                }
+            }
         } catch (RefusedException | IOException e) {
             log.error("PICSURELoader refused: {}", e.getMessage());
             System.err.println("PICSURELoader refused: " + e.getMessage());
-            writeSummary(base, summary(runId, base, config, startedAt, "refused", e.getMessage(), List.of()));
+            writeSummary(base, summary(runId, base, config, startedAt, "refused", e.getMessage(), List.of(), null));
             return EXIT_REFUSED;
         }
 
         log.info("PICSURELoader run {}: {} partition(s) under {}", runId, plans.size(), base);
-        Path spoolRoot = config.spoolDir() != null ? config.spoolDir() : base.resolve(SPOOL_DIR_NAME);
+        ConsentRouter.Counts routing = null;
+        if (consentMode) {
+            try {
+                routing = routeRows(router, base, routedDir, runId);
+            } catch (IOException | RuntimeException e) {
+                log.error("Routing {} failed", config.input(), e);
+                return finish(base, runId, config, startedAt, "failed", "routing failed: " + e, plans, null);
+            }
+            if (routing.unroutableCrashClassRows() > config.maxRejectedRows()) {
+                deleteTree(routedDir);
+                removeEmptySpool(config, spoolRoot, routedDir);
+                return finish(
+                    base, runId, config, startedAt, "failed",
+                    routing.unroutableCrashClassRows() + " row(s) could not be routed that CSVLoader would have stopped on "
+                        + routing.unroutableByReason() + ", more than the " + config.maxRejectedRows() + " allowed (-D"
+                        + LoaderConfig.PREFIX + "maxRejectedRows); see " + ROUTING_FAILURES_FILE,
+                    plans, routing
+                );
+            }
+            Map<String, Long> lines = routing.rowsPerPartition();
+            plans = plans.stream().filter(p -> lines.containsKey(p.name()))
+                .map(
+                    p -> new PartitionPlan(p.name(), routedDir.resolve(p.name() + ALL_CONCEPTS_SUFFIX), p.outputDir(), lines.get(p.name()))
+                ).toList();
+        }
+
         List<Map<String, Object>> reports = new ArrayList<>();
         boolean allOk = true;
         for (PartitionPlan plan : plans) {
@@ -143,21 +206,41 @@ public final class PICSURELoader {
                 allOk = false;
             }
         }
-        if (config.spoolDir() == null) {
-            try {
-                Files.deleteIfExists(spoolRoot); // only when empty
-            } catch (IOException e) {
-                log.debug("Spool root {} not removed: {}", spoolRoot, e.getMessage());
-            }
-        }
+        removeEmptySpool(config, spoolRoot, consentMode ? routedDir : null);
 
-        writeSummary(base, summary(runId, base, config, startedAt, allOk ? "ok" : "failed", null, reports));
+        writeSummary(base, summary(runId, base, config, startedAt, allOk ? "ok" : "failed", null, reports, routing));
         if (allOk) {
             log.info("PICSURELoader run {} finished: all {} partition(s) loaded", runId, plans.size());
             return EXIT_OK;
         }
         log.error("PICSURELoader run {} finished with failed partitions; see {}", runId, base.resolve(SUMMARY_FILE));
         System.err.println("PICSURELoader: at least one partition failed; see " + base.resolve(SUMMARY_FILE));
+        return EXIT_PARTITION_FAILED;
+    }
+
+    /** Removes the routed directory and the default spool root when they are empty; the files of a failed partition keep them. */
+    private static void removeEmptySpool(LoaderConfig config, Path spoolRoot, Path routedDir) {
+        try {
+            if (routedDir != null) {
+                Files.deleteIfExists(routedDir);
+            }
+            if (config.spoolDir() == null) {
+                Files.deleteIfExists(spoolRoot);
+            }
+        } catch (IOException e) {
+            log.debug("Spool {} not removed: {}", spoolRoot, e.getMessage());
+        }
+    }
+
+    /** Ends a run that failed before any partition was loaded: every partition is reported as not run. */
+    private static int finish(
+        Path base, String runId, LoaderConfig config, Instant startedAt, String status, String error, List<PartitionPlan> plans,
+        ConsentRouter.Counts routing
+    ) {
+        System.err.println("PICSURELoader: " + error);
+        writeSummary(
+            base, summary(runId, base, config, startedAt, status, error, plans.stream().map(PICSURELoader::notRun).toList(), routing)
+        );
         return EXIT_PARTITION_FAILED;
     }
 
@@ -240,6 +323,92 @@ public final class PICSURELoader {
         return byLowerName.values().stream().sorted(Comparator.comparing(PartitionPlan::name)).toList();
     }
 
+    /** The combined input must be a readable file; it may sit anywhere, also outside the base. */
+    static void checkCombinedInput(Path input) throws RefusedException {
+        if (!Files.isRegularFile(input) || !Files.isReadable(input)) {
+            throw new RefusedException("the input " + input + " (-D" + LoaderConfig.PREFIX + "input) is not a readable file");
+        }
+    }
+
+    /** A store directly in the base directory: the layout of hpds-ingest, which HPDS refuses when it requires the authorization filter. */
+    private static boolean hasRootStore(Path base) {
+        return STORE_FILES.stream().anyMatch(f -> Files.exists(base.resolve(f)));
+    }
+
+    /** Subdirectories of the base that hold a store: partitions, as HPDS reads them. */
+    private static List<String> partitionStores(Path base) throws IOException {
+        try (Stream<Path> children = Files.list(base)) {
+            return children.filter(Files::isDirectory).filter(d -> STORE_FILES.stream().anyMatch(f -> Files.exists(d.resolve(f))))
+                .map(d -> d.getFileName().toString()).sorted().toList();
+        }
+    }
+
+    /**
+     * Combined input, {@code partitionBy=consent}: learns the consents (pass 1) and decides the partitions before anything is written. The
+     * partitions are {@code <base>/<consent>/}; a flat store in the base is refused.
+     */
+    static List<PartitionPlan> planConsents(Path base, LoaderConfig config, ConsentRouter router) throws RefusedException, IOException {
+        if (hasRootStore(base)) {
+            throw new RefusedException(
+                "the base " + base + " holds a flat store (" + String.join(", ", STORE_FILES)
+                    + "); partitions would sit next to it and HPDS refuses such a directory. Use a fresh base directory"
+            );
+        }
+        router.learnConsents();
+        List<String> names = router.partitionNames();
+        if (names.isEmpty()) {
+            throw new RefusedException("no valid consent found under " + ConsentRouter.CONSENTS_PATH + " in " + config.input());
+        }
+        List<String> clashes = ConsentRouter.caseClashes(names);
+        if (!clashes.isEmpty()) {
+            throw new RefusedException("consents that differ only by case would share a partition directory: " + clashes);
+        }
+        List<PartitionPlan> plans = new ArrayList<>();
+        for (String name : names) {
+            PartitionPlan plan = new PartitionPlan(name, null, base.resolve(name));
+            checkOutputDir(plan, config);
+            plans.add(plan);
+        }
+        return plans;
+    }
+
+    /** Combined input, {@code partitionBy=none}: one flat store in the base, for parity checks. */
+    static List<PartitionPlan> planFlat(Path base, LoaderConfig config) throws RefusedException, IOException {
+        List<String> stores = partitionStores(base);
+        if (!stores.isEmpty()) {
+            throw new RefusedException(
+                "the base " + base + " already holds partition stores " + stores + "; a flat store next to them would mix two layouts"
+            );
+        }
+        PartitionPlan plan = new PartitionPlan(FLAT_NAME, config.input(), base);
+        checkOutputDir(plan, config);
+        return List.of(plan);
+    }
+
+    private static void checkOutputDir(PartitionPlan plan, LoaderConfig config) throws RefusedException {
+        if (Files.exists(plan.outputDir()) && !Files.isDirectory(plan.outputDir())) {
+            throw new RefusedException("the output path " + plan.outputDir() + " exists and is not a directory");
+        }
+        if (!config.overwrite()) {
+            for (String stale : STORE_FILES) {
+                if (Files.exists(plan.outputDir().resolve(stale))) {
+                    throw new RefusedException(
+                        "partition " + plan.name() + " already has " + stale + " in " + plan.outputDir() + " (set -D" + LoaderConfig.PREFIX
+                            + "overwrite=true to replace it)"
+                    );
+                }
+            }
+        }
+    }
+
+    /** Pass 2: writes the routed files under {@code routedDir} (leftovers of an earlier run are removed first). */
+    private static ConsentRouter.Counts routeRows(ConsentRouter router, Path base, Path routedDir, String runId) throws IOException {
+        deleteTree(routedDir);
+        try (FailureSink sink = new FailureSink(base.resolve(ROUTING_FAILURES_FILE))) {
+            return router.route(routedDir, sink);
+        }
+    }
+
     // ---------------------------------------------------------------------------------------------------------------------------
     // One partition
     // ---------------------------------------------------------------------------------------------------------------------------
@@ -247,7 +416,9 @@ public final class PICSURELoader {
     private static Map<String, Object> notRun(PartitionPlan plan) {
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("name", plan.name());
-        report.put("inputFile", plan.inputFile().toString());
+        if (plan.inputFile() != null) {
+            report.put("inputFile", plan.inputFile().toString());
+        }
         report.put("outputDir", plan.outputDir().toString());
         report.put("status", "not_run");
         return report;
@@ -281,7 +452,7 @@ public final class PICSURELoader {
             adapter.closeAndSave();
             long finalizeMs = (System.nanoTime() - finalizeStart) / 1_000_000;
 
-            error = evaluate(report, config, fileResult, adapter, ingestMs, finalizeMs);
+            error = evaluate(report, config, plan.routedRows(), fileResult, adapter, ingestMs, finalizeMs);
         } catch (Throwable t) {
             log.error("Partition {} failed", plan.name(), t);
             error = t.getClass().getSimpleName() + ": " + t.getMessage();
@@ -306,6 +477,9 @@ public final class PICSURELoader {
             log.error("Partition {} FAILED: {}. Its store files were removed.", plan.name(), error);
         } else {
             report.put("status", "ok");
+            if (plan.routedRows() != null) {
+                deleteRoutedFile(plan.inputFile()); // a failed partition keeps its routed file for diagnosis
+            }
             log.info(
                 "Partition {} loaded: {} concepts, {} observations", plan.name(), report.get("concepts"), report.get("observationsWritten")
             );
@@ -328,7 +502,8 @@ public final class PICSURELoader {
      * @return null if the partition succeeded, otherwise why it did not
      */
     private static String evaluate(
-        Map<String, Object> report, LoaderConfig config, FileResult file, HPDSWriterAdapter adapter, long ingestMs, long finalizeMs
+        Map<String, Object> report, LoaderConfig config, Long routedRows, FileResult file, HPDSWriterAdapter adapter, long ingestMs,
+        long finalizeMs
     ) {
         WriterStats stats = adapter.getStats();
         Map<String, String> failedConcepts = adapter.getFailedConcepts();
@@ -392,6 +567,9 @@ public final class PICSURELoader {
         boolean storeAdds = stats.accepted() == written + stats.duplicatesDropped() + adapter.getFailedConceptObservations();
         report.put("reconciled", producerAdds && writerAdds && storeAdds);
 
+        if (routedRows != null && routedRows != file.recordsRead()) {
+            return "the routed file of the partition has " + routedRows + " row(s) but " + file.recordsRead() + " were read";
+        }
         if (!rejectedConcepts.isEmpty()) {
             return rejectedConcepts.size()
                 + " concept(s) reached the observation limit and lost observations (see concept_rejections.jsonl)";
@@ -442,6 +620,14 @@ public final class PICSURELoader {
         }
     }
 
+    private static void deleteRoutedFile(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            log.warn("Could not delete the routed file {}: {}", file, e.getMessage());
+        }
+    }
+
     private static void deleteTree(Path dir) {
         if (!Files.exists(dir)) {
             return;
@@ -460,7 +646,8 @@ public final class PICSURELoader {
     // ---------------------------------------------------------------------------------------------------------------------------
 
     private static Map<String, Object> summary(
-        String runId, Path base, LoaderConfig config, Instant startedAt, String status, String error, List<Map<String, Object>> partitions
+        String runId, Path base, LoaderConfig config, Instant startedAt, String status, String error, List<Map<String, Object>> partitions,
+        ConsentRouter.Counts routing
     ) {
         Instant finishedAt = Instant.now();
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -472,6 +659,14 @@ public final class PICSURELoader {
             summary.put("error", error);
         }
         summary.put("base", base.toString());
+        summary.put("inputMode", config.combinedInput() ? "combined" : "split");
+        summary.put("partitionBy", config.combinedInput() ? config.effectivePartitionBy() : null);
+        summary.put("inputFile", config.combinedInput() ? config.input().toString() : null);
+        summary.put("inputSizeBytes", config.combinedInput() ? sizeOrNull(config.input()) : null);
+        if (routing != null) {
+            summary.put("consentRulesMatch", ConsentRouter.RULES_MATCH);
+            summary.put("routing", routingSummary(routing));
+        }
         summary.put("startedAt", startedAt.toString());
         summary.put("finishedAt", finishedAt.toString());
         summary.put("durationMs", finishedAt.toEpochMilli() - startedAt.toEpochMilli());
@@ -503,6 +698,40 @@ public final class PICSURELoader {
         totals.put("concepts", concepts);
         summary.put("totals", totals);
         return summary;
+    }
+
+    private static Long sizeOrNull(Path file) {
+        try {
+            return Files.size(file);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static Map<String, Object> routingSummary(ConsentRouter.Counts counts) {
+        Map<String, Object> routing = new LinkedHashMap<>();
+        routing.put("rowsRead", counts.rowsRead());
+        routing.put("headerRowSkipped", counts.headerSkipped());
+        routing.put("rowsRouted", counts.rowsRouted());
+        routing.put("studyRows", counts.studyRows());
+        routing.put("studyRowCopies", counts.studyRowCopies());
+        routing.put("globalRows", counts.globalRows());
+        routing.put("globalRowCopies", counts.globalRowCopies());
+        routing.put("linesWritten", counts.linesWritten());
+        routing.put("rowsPerPartition", counts.rowsPerPartition());
+        routing.put("noConsentRowsDropped", counts.noConsentRowsDropped());
+        routing.put("noConsentStudyRows", counts.noConsentStudyRows());
+        routing.put("noConsentGlobalRows", counts.noConsentGlobalRows());
+        routing.put("patientsWithConsents", counts.patientsWithConsents());
+        routing.put("patientsWithoutConsent", counts.patientsWithoutConsent());
+        routing.put("invalidConsentNamesDropped", counts.invalidConsentNames());
+        routing.put("invalidConsentRowsRejected", counts.invalidConsentRows());
+        routing.put("unroutableRows", counts.unroutableRows());
+        routing.put("unroutableByReason", counts.unroutableByReason());
+        routing.put("studyNodesWithoutConsents", counts.studyNodesWithoutConsents());
+        routing.put("blankConsentRowsIgnored", counts.blankConsentRows());
+        routing.put("balanced", counts.balanced());
+        return routing;
     }
 
     /** Written through a temporary file so a reader never sees half a summary; a failure to write it is logged, not thrown. */

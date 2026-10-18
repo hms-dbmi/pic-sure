@@ -24,22 +24,30 @@ import java.util.function.Function;
  * the first failed partition; false loads the remaining partitions too (the exit code is non-zero either way)</td></tr>
  * <tr><td>{@code picsure.loader.overwrite}</td><td>false</td><td>replace a store that is already in a partition directory; false refuses
  * before any work</td></tr> <tr><td>{@code picsure.loader.runId}</td><td>generated</td><td>run id written into failures.jsonl and
- * ingest-summary.json</td></tr> </table>
+ * ingest-summary.json</td></tr> <tr><td>{@code picsure.loader.input}</td><td>unset (split input)</td><td>one combined allConcepts file (any
+ * name) that is routed to the partitions by consent; unset reads the {@code <partition>-allConcepts.csv} files under the base</td></tr>
+ * <tr><td>{@code picsure.loader.partitionBy}</td><td>{@code consent} for a combined input</td><td>{@code consent}: one partition per
+ * consent; {@code none}: one flat store in the base (parity checks only). Invalid without {@code input}</td></tr> </table>
  *
  * @param maxRejectedRows rows dropped for a reason that would have stopped {@code CSVLoader} (see {@link FailureReason#crashesCsvLoader()})
  *        that a partition tolerates; more fails it
  * @param maxTimestampFailures timestamps that cannot be parsed (the row is kept without one) that a partition tolerates; more fails it
  * @param chunkConcurrency chunks of a large file parsed at once, 0 = derive (see {@link #effectiveChunkConcurrency()})
  * @param spoolDir spool root, or null to use {@code <base>/.picsure-spool}
+ * @param input the combined input file, or null for split input
+ * @param partitionBy {@link #PARTITION_BY_CONSENT} or {@link #PARTITION_BY_NONE}, or null when not set
  * @param maxObservationsPerConcept 0 = unlimited
  */
 public record LoaderConfig(
     Path spoolDir, int batchSize, int storeCacheSize, int fileProcessingThreads, int maxObservationsPerConcept, int finalizationConcurrency,
     int finalizationChunkSize, boolean dedup, boolean failFast, boolean overwrite, String runId, int maxRejectedRows,
-    int maxTimestampFailures, int chunkConcurrency
+    int maxTimestampFailures, int chunkConcurrency, Path input, String partitionBy
 ) {
 
     public static final String PREFIX = "picsure.loader.";
+
+    public static final String PARTITION_BY_CONSENT = "consent";
+    public static final String PARTITION_BY_NONE = "none";
 
     public static final int DEFAULT_BATCH_SIZE = 10_000;
     public static final int DEFAULT_STORE_CACHE_SIZE = 16;
@@ -62,6 +70,21 @@ public record LoaderConfig(
         if (maxRejectedRows < 0 || maxTimestampFailures < 0 || chunkConcurrency < 0) {
             throw new IllegalArgumentException(PREFIX + "maxRejectedRows, maxTimestampFailures and chunkConcurrency may not be negative");
         }
+        if (partitionBy != null && !PARTITION_BY_CONSENT.equals(partitionBy) && !PARTITION_BY_NONE.equals(partitionBy)) {
+            throw new IllegalArgumentException(
+                PREFIX + "partitionBy must be " + PARTITION_BY_CONSENT + " or " + PARTITION_BY_NONE + ", got '" + partitionBy + "'"
+            );
+        }
+    }
+
+    /** True when one combined file is the input ({@code picsure.loader.input}) instead of the split files under the base. */
+    public boolean combinedInput() {
+        return input != null;
+    }
+
+    /** {@code partitionBy} with its default: {@code consent}. Only meaningful for a combined input. */
+    public String effectivePartitionBy() {
+        return partitionBy != null ? partitionBy : PARTITION_BY_CONSENT;
     }
 
     /** Chunks of a large file parsed at once: the configured value, or min(cores, storeCacheSize/2) and at least 1. */
@@ -85,6 +108,8 @@ public record LoaderConfig(
     public static LoaderConfig fromProperties(Function<String, String> properties) {
         String spool = properties.apply(PREFIX + "spoolDir");
         String runId = properties.apply(PREFIX + "runId");
+        String input = properties.apply(PREFIX + "input");
+        String partitionBy = properties.apply(PREFIX + "partitionBy");
         return new LoaderConfig(
             spool == null || spool.isBlank() ? null : Path.of(spool.trim()), intProperty(properties, "batchSize", DEFAULT_BATCH_SIZE),
             intProperty(properties, "storeCacheSize", DEFAULT_STORE_CACHE_SIZE),
@@ -94,7 +119,9 @@ public record LoaderConfig(
             intProperty(properties, "finalizationChunkSize", DEFAULT_FINALIZATION_CHUNK_SIZE), booleanProperty(properties, "dedup", false),
             booleanProperty(properties, "failFast", true), booleanProperty(properties, "overwrite", false),
             runId == null || runId.isBlank() ? null : runId.trim(), nonNegativeIntProperty(properties, "maxRejectedRows", 0),
-            nonNegativeIntProperty(properties, "maxTimestampFailures", 0), nonNegativeIntProperty(properties, "chunkConcurrency", 0)
+            nonNegativeIntProperty(properties, "maxTimestampFailures", 0), nonNegativeIntProperty(properties, "chunkConcurrency", 0),
+            input == null || input.isBlank() ? null : Path.of(input.trim()),
+            partitionBy == null || partitionBy.isBlank() ? null : partitionBy.trim().toLowerCase(java.util.Locale.ROOT)
         );
     }
 
