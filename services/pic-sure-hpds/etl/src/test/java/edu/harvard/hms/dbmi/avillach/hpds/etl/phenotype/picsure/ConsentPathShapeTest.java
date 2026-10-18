@@ -162,7 +162,8 @@ class ConsentPathShapeTest {
         // the consents-like row is not canonical, so it is rejected or unroutable, never routed
         ConsentRouter.Counts counts = route("1,\\_consents\\,,phs000000.c1,0", "1,_consents\\phs999999.c1\\,,phs999999.c1,0", "1,\\Global\\G\\,1,,");
         assertEquals(1, counts.patientsWithConsents());
-        assertEquals(Map.of("MALFORMED_CONCEPT_PATH", 1L), counts.unroutableByReason());
+        assertEquals(Map.of(), counts.unroutableByReason(), "round 6: a consents-like row that breaks R1 is a rejected consents row");
+        assertEquals(Map.of("MALFORMED_CONCEPT_PATH", 1L), counts.consentRowsRejectedByReason());
         assertFalse(partitionText(lastRouted, "phs000000.c1").contains("phs999999"));
         RoutedInvariant.assertHolds(lastInput, lastRouted);
     }
@@ -261,10 +262,11 @@ class ConsentPathShapeTest {
         assertEquals(want.get("globalRows").asLong(), counts.globalRows());
         assertEquals(want.get("noConsentStudyRows").asLong(), counts.noConsentStudyRows());
         assertEquals(want.get("noConsentGlobalRows").asLong(), counts.noConsentGlobalRows());
-        assertEquals(want.get("unroutableRows").asLong(), counts.unroutableRows());
+        // round 6 reclassifies one row of this vector (patient 7: `_consents\\` with a text value): from unroutable (R1) to a rejected consents row
+        assertEquals(want.get("unroutableRows").asLong() - 1, counts.unroutableRows());
         assertEquals(want.get("invalidStudyNodeRows").asLong(), counts.unroutableByReason().get("INVALID_STUDY_NODE"));
-        assertEquals(want.get("malformedConceptPathRows").asLong(), counts.unroutableByReason().get("MALFORMED_CONCEPT_PATH"));
-        assertEquals(want.get("consentRowsRejected").asLong(), counts.consentRowsRejected());
+        assertEquals(want.get("malformedConceptPathRows").asLong() - 1, counts.unroutableByReason().get("MALFORMED_CONCEPT_PATH"));
+        assertEquals(want.get("consentRowsRejected").asLong() + 1, counts.consentRowsRejected());
         assertEquals(want.get("linesWritten").asLong(), counts.linesWritten());
         assertEquals(want.get("patientsWithConsents").asLong(), counts.patientsWithConsents());
         assertEquals(want.get("consentsSubtreeRowsNotConsents").asLong(), counts.consentsSubtreeRowsNotConsents());
@@ -277,15 +279,16 @@ class ConsentPathShapeTest {
         Path input = writeInput("v5.csv", resource(V5, INPUT));
 
         Path refused = newBase("v5-default");
-        assertEquals(1, run(refused, props(input)));
+        assertEquals(1, run(refused, props(input, "picsure.loader.maxRejectedConsentRows", "1")));
         String error = summary(refused).get("error").asText();
-        assertTrue(error.contains("10 row(s) could not be routed"), error);
-        assertTrue(error.contains("MALFORMED_CONCEPT_PATH=2") && error.contains("INVALID_STUDY_NODE=8"), error);
+        assertTrue(error.contains("9 row(s) could not be routed"), error); // round 6: the tenth is a rejected consents row (limit raised to 1)
+        assertTrue(error.contains("MALFORMED_CONCEPT_PATH=1") && error.contains("INVALID_STUDY_NODE=8"), error);
         assertEquals(Set.of(), subdirectories(refused), "nothing was loaded");
 
         Path base = newBase("v5-raised");
-        assertEquals(0, run(base, props(input, "picsure.loader.maxRejectedRows", "10", "picsure.loader.keepRouted", "true")));
-        assertEquals(2, summary(base).get("routing").get("unroutableByReason").get("MALFORMED_CONCEPT_PATH").asLong());
+        assertEquals(0, run(base, props(input, "picsure.loader.maxRejectedRows", "9", "picsure.loader.maxRejectedConsentRows", "1", "picsure.loader.keepRouted", "true")));
+        assertEquals(1, summary(base).get("routing").get("unroutableByReason").get("MALFORMED_CONCEPT_PATH").asLong());
+        assertEquals(1, summary(base).get("routing").get("consentRowsRejectedByReason").get("MALFORMED_CONCEPT_PATH").asLong());
         assertEquals(Set.of("phs000000.c1", "PHS999999.c1"), subdirectories(base));
         Path routed = CombinedInputTest.spoolOf(base).resolve(".routed");
         assertEquals(27, RoutedInvariant.assertHolds(input, routed));
@@ -299,7 +302,8 @@ class ConsentPathShapeTest {
         for (String line : Files.readAllLines(base.resolve("routing-failures.jsonl"))) {
             reasons.add(JSON.readTree(line).get("reasonCode").asText());
         }
-        assertEquals(2, reasons.stream().filter("MALFORMED_CONCEPT_PATH"::equals).count());
+        assertEquals(1, reasons.stream().filter("MALFORMED_CONCEPT_PATH"::equals).count());
+        assertEquals(1, reasons.stream().filter("CONSENT_ROW_REJECTED"::equals).count());
     }
 
     // ---- 3: a partition name that differs by case from an entry of the base ---------------------------------------------------------

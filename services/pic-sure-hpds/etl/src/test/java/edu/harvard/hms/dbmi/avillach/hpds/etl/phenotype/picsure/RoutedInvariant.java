@@ -130,7 +130,7 @@ final class RoutedInvariant {
                 assertFalse(line.replace("\uFFFD", "").contains("_consents"), "an unparsable consents line has an unknown study: " + line);
                 continue;
             }
-            if (f.size() < 2 || !readsAsConsentsVariable(f.get(1), f.size() > 3 ? f.get(3) : "")) {
+            if (f.size() < 2 || !(readsAsConsentsVariable(f.get(1), f.size() > 3 ? f.get(3) : "") || mightBeBrokenConsentsRow(f.get(1)))) {
                 continue; // not a consents row as the loader reads the path (a row under \_consents\x\ is an ordinary variable)
             }
             List<String> values = new ArrayList<>();
@@ -161,6 +161,24 @@ final class RoutedInvariant {
             }
         }
         return new Facts(folded, grants);
+    }
+
+    /**
+     * A path that mentions {@code _consents} (any case, also with U+FFFD inside) and breaks R1 (text before the first delimiter) or R2
+     * (empty study node, or a node that normalization changes) might be a consents row: its study counts, whatever the router decides.
+     */
+    private static boolean mightBeBrokenConsentsRow(String path) {
+        String lower = path.toLowerCase(Locale.ROOT).replace("\uFFFD", "");
+        if (!lower.contains("_consents")) {
+            return false;
+        }
+        String[] raw = path.split("[\\\\µ]", -1); // the text before each delimiter
+        if (!raw[0].isEmpty()) {
+            return true; // R1
+        }
+        String[] normalized = CsvObservationProducer.normalizeConceptPath(path).split("\\\\", -1);
+        String node = raw.length > 1 ? raw[1] : "";
+        return node.isEmpty() || normalized.length < 2 || !node.equals(normalized[1]); // R2
     }
 
     /** The line as one CSV record by commons-csv itself, or null when it is not exactly one. */

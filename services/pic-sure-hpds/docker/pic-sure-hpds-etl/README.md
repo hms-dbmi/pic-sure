@@ -141,13 +141,18 @@ The output still goes under the base directory, which also holds `encryption_key
   - **A study node with leading or trailing whitespace is not routed** (`INVALID_STUDY_NODE`): `\ phs000000\A\` is `phs000000` once the
     partition's loader trims the path, but would be a global row (copied to every consent of the patient) as written. The same for a
     node with U+FFFD.
-  - **Path shape: two proposed contract rules (ADR-0014 amendment), both count against `maxRejectedRows`.** *R1*: the text before the
+  - **Path shape: two proposed contract rules (ADR-0014 amendment); a data row that breaks one counts against `maxRejectedRows`.** *R1*: the text before the
     first delimiter (`\` or `µ`) must be empty, so the path starts with a delimiter. `phs999999\X\` is `MALFORMED_CONCEPT_PATH`: the
     partition's loader would store it as written, with the study at a place no reader looks at, and the node at depth 1 (`X`) would have
     made it a global row copied into every partition of the patient. It applies to data rows and `_consents` rows alike: a consents-like
     path with a leading text (`_consents\`) never grants. *R2*: the study node (the first node after the leading delimiter) must not be
     empty: `\\phs999999\X\` is `INVALID_STUDY_NODE`, as is a node that normalization changes or that folds to a consents study. There is
     no rule for a study id at another depth: `\_studies_consents\phs000000\...` is a legitimate global row.
+    **Exception, a consents-like path:** a path that mentions `_consents` (any case, also with U+FFFD inside) and breaks R1 or R2
+    (`_consents\`, `x\_consents\`, `\\_consents\`) might be a consents row, so it is a *rejected consents row*, not a data row: it grants
+    nothing, **registers the study of its text value** (the rows of that study of patients without a valid consent of it are dropped, never
+    global) and counts against `maxRejectedConsentRows` as `MALFORMED_CONCEPT_PATH` (R1) or `INVALID_STUDY_NODE` (R2). Raising a limit
+    therefore never turns the well-formed rows of such a study into global rows.
   - **Folding is by code point.** Supplementary format characters (tag characters U+E0001 to U+E007F) are removed from a study node like
     the basic-plane ones, so `\phs999999<U+E0020>\X\` is `INVALID_STUDY_NODE`.
   - **A partition name that differs only by case from an entry already in the base** (`phs000000.c1` planned, `PHS000000.C1` present)

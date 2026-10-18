@@ -554,6 +554,10 @@ public final class PICSURELoader {
         return plans;
     }
 
+    private static String caseFold(String name) {
+        return name.toUpperCase(Locale.ROOT).toLowerCase(Locale.ROOT); // upper first: 'ſ' (long s) and 'ß' meet 'S' and 'SS' too
+    }
+
     /**
      * Planned partition names that equal an entry of the base case-insensitively but not exactly ({@code planned -> existing}), sorted.
      * A case-insensitive file system would resolve the planned directory to the existing one and write into it.
@@ -561,12 +565,12 @@ public final class PICSURELoader {
     static List<String> existingCaseClashes(Path base, List<String> names) throws IOException {
         Map<String, String> planned = new TreeMap<>();
         for (String name : names) {
-            planned.put(name.toLowerCase(Locale.ROOT), name);
+            planned.put(caseFold(name), name);
         }
         List<String> clashes = new ArrayList<>();
         try (Stream<Path> children = Files.list(base)) {
             children.map(c -> c.getFileName().toString()).forEach(existing -> {
-                String want = planned.get(existing.toLowerCase(Locale.ROOT));
+                String want = planned.get(caseFold(existing));
                 if (want != null && !want.equals(existing)) {
                     clashes.add(want + " -> " + existing);
                 }

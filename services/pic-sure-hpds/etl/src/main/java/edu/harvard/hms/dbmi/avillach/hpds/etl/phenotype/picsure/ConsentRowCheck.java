@@ -40,6 +40,14 @@ final class ConsentRowCheck {
          * segment). The partition's loader would read the row as a consents row; the router grants nothing for it.
          */
         NON_CANONICAL_PATH,
+        /**
+         * Not a check of the fields: the path is no consents path as the loader reads it but mentions {@code _consents} and breaks R1 (text
+         * before the first delimiter: {@code _consents\}, {@code x\_consents\}). It might be a consents row: it grants nothing and its
+         * study is registered.
+         */
+        MALFORMED_CONCEPT_PATH,
+        /** As {@link #MALFORMED_CONCEPT_PATH}, for a path that mentions {@code _consents} and breaks R2 (empty or changed study node). */
+        INVALID_STUDY_NODE,
         /** Not a check of the fields: the line could not be parsed as CSV and mentions the consents variable. */
         UNPARSABLE_LINE
     }
