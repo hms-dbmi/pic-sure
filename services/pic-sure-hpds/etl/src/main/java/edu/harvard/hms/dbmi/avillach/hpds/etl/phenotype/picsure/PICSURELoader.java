@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.function.LongConsumer;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -60,17 +61,18 @@ import java.util.stream.Stream;
  * spool CSV per consent under {@code <spoolDir>/.routed}, and each of them is then loaded as above, one adapter at a time and deleted after
  * its partition succeeded. The routed directory is deleted on every exit path unless {@code -Dpicsure.loader.keepRouted=true}. The spool
  * directory is outside the base by default ({@code <parent of base>/<base name>.picsure-spool}) and may not be inside it, because HPDS
- * reads every subdirectory of the base as a partition. The input file is pinned (size and modification time) before pass 1 and the run is
- * refused if either changed by the end of pass 2. Partition directories in the base that this run did not produce are listed as
- * {@code stalePartitions} in the summary and warned about, never deleted. The partitions are {@code <base>/<consent>/}.
- * {@code partitionBy=none} loads the file as one flat store in {@code <base>} (hpds-ingest's layout), for parity checks only: HPDS refuses
- * a flat store when it requires the authorization filter. Rows that cannot be routed are recorded in {@code <base>/routing-failures.jsonl}.
- * {@code partitionBy} is refused without {@code input}; a base that holds a flat store is refused in consent mode, and one that holds
- * partition stores in none mode.
+ * reads every subdirectory of the base as a partition; a configured one that is the base, inside it or contains it is refused. The input
+ * file is pinned (size and modification time) before pass 1 and the run is refused if either changed by the end of pass 2. Partition
+ * directories in the base that this run did not produce are listed as {@code stalePartitions} in the summary and warned about, never
+ * deleted. The partitions are {@code <base>/<consent>/}. {@code partitionBy=none} loads the file as one flat store in {@code <base>}
+ * (hpds-ingest's layout), for parity checks only: HPDS refuses a flat store when it requires the authorization filter. Rows that cannot be
+ * routed are recorded in {@code <base>/routing-failures.jsonl}. {@code partitionBy} is refused without {@code input}; a base that holds a
+ * flat store is refused in consent mode, and one that holds partition stores in none mode.
  *
- * <p>Exit status: 0 every partition loaded; 1 a partition failed, or the routing failed or found more rows that grant nothing or cannot be
- * routed than {@code maxRejectedRows} allows (no partition is loaded then); 2 the input or configuration was refused before any work, or
- * the input changed while it was routed.
+ * <p>Exit status: 0 every partition loaded; 1 a partition failed, or the routing failed or found more consents rows that grant nothing than
+ * {@code maxRejectedConsentRows} allows, or more rows that cannot be routed than {@code maxRejectedRows} allows (no partition is loaded
+ * then); 2 the input or configuration was refused before any work (a consents row on a line that cannot be parsed is always one), or the
+ * input changed while it was routed.
  */
 public final class PICSURELoader {
 
@@ -146,13 +148,18 @@ public final class PICSURELoader {
         System.exit(run(args, System::getProperty));
     }
 
+    static int run(String[] args, Function<String, String> properties) {
+        return run(args, properties, null);
+    }
+
     /**
      * Runs the loader.
      *
      * @param properties looks up a {@code picsure.loader.*} property
+     * @param spoolWriteHook test seam handed to the {@link ConsentRouter}, or null
      * @return the exit status
      */
-    static int run(String[] args, Function<String, String> properties) {
+    static int run(String[] args, Function<String, String> properties, LongConsumer spoolWriteHook) {
         Instant startedAt = Instant.now();
         if (args.length != 1 || args[0].isBlank()) {
             System.err.println("usage: java -jar PICSURELoader-jar-with-dependencies.jar <base directory>");
@@ -191,7 +198,7 @@ public final class PICSURELoader {
                 checkCombinedInput(config.input());
                 if (consentMode) {
                     pin = InputPin.of(config.input());
-                    router = new ConsentRouter(config.input(), runId, config.effectiveMaxOpenWriters());
+                    router = new ConsentRouter(config.input(), runId, config.effectiveMaxOpenWriters(), spoolWriteHook);
                     plans = planConsents(base, config, router);
                 } else {
                     plans = planFlat(base, config);
@@ -236,12 +243,21 @@ public final class PICSURELoader {
                     log.error("Routing {} failed", config.input(), e);
                     return finish(base, runId, config, startedAt, "failed", "routing failed: " + e, plans, null, layout);
                 }
-                if (routing.refusedClassRows() > config.maxRejectedRows()) {
+                if (routing.consentRowsRejected() > config.maxRejectedConsentRows()) {
                     return finish(
                         base, runId, config, startedAt, "failed",
-                        routing.refusedClassRows() + " row(s) could not be routed or may not grant a consent (unroutable rows "
-                            + routing.unroutableByReason() + ", rejected consents rows " + routing.consentRowsRejectedByReason()
-                            + "), more than the " + config.maxRejectedRows() + " allowed (-D" + LoaderConfig.PREFIX
+                        routing.consentRowsRejected() + " row(s) of the consents variable may not grant a consent "
+                            + routing.consentRowsRejectedByReason() + ", more than the " + config.maxRejectedConsentRows() + " allowed (-D"
+                            + LoaderConfig.PREFIX + "maxRejectedConsentRows); each still makes its study known, so the study's rows of "
+                            + "patients without a valid consent of it are dropped; see " + ROUTING_FAILURES_FILE,
+                        plans, routing, layout
+                    );
+                }
+                if (routing.unroutableCrashClassRows() > config.maxRejectedRows()) {
+                    return finish(
+                        base, runId, config, startedAt, "failed",
+                        routing.unroutableCrashClassRows() + " row(s) could not be routed " + routing.unroutableByReason()
+                            + ", more than the " + config.maxRejectedRows() + " allowed (-D" + LoaderConfig.PREFIX
                             + "maxRejectedRows); see " + ROUTING_FAILURES_FILE,
                         plans, routing, layout
                     );
@@ -311,10 +327,18 @@ public final class PICSURELoader {
         }
         Path realBase = realPath(base);
         if (config.spoolDir() != null) {
-            if (realPath(config.spoolDir()).startsWith(realBase)) {
+            Path realSpool = realPath(config.spoolDir());
+            if (realSpool.startsWith(realBase)) {
                 throw new RefusedException(
                     "the spool directory " + config.spoolDir() + " (-D" + LoaderConfig.PREFIX + "spoolDir) is inside the base " + base
                         + ": HPDS reads every subdirectory of the base as a partition. Use a directory outside the base"
+                );
+            }
+            if (realBase.startsWith(realSpool)) {
+                throw new RefusedException(
+                    "the spool directory " + config.spoolDir() + " (-D" + LoaderConfig.PREFIX + "spoolDir) contains the base " + base
+                        + ": the run deletes what it spools there, and a partition could be named like a directory on the way to the base."
+                        + " Use a directory that neither contains nor is inside the base"
                 );
             }
             return config.spoolDir();
@@ -492,6 +516,13 @@ public final class PICSURELoader {
             );
         }
         router.learnConsents();
+        if (router.unparsableConsentRows() > 0) {
+            throw new RefusedException(
+                router.unparsableConsentRows() + " line(s) of " + config.input()
+                    + " mention the consents variable but cannot be parsed as CSV" + " (physical line(s) " + router.unparsableConsentLines()
+                    + "): their study is unknown, so rows of it could be taken for" + " global rows. No limit tolerates this; fix the lines"
+            );
+        }
         List<String> names = router.partitionNames();
         if (names.isEmpty()) {
             throw new RefusedException("no valid consent found under " + ConsentRouter.CONSENTS_PATH + " in " + config.input());
@@ -822,6 +853,7 @@ public final class PICSURELoader {
         settings.put("finalizationConcurrency", config.finalizationConcurrency());
         settings.put("failFast", config.failFast());
         settings.put("maxRejectedRows", config.maxRejectedRows());
+        settings.put("maxRejectedConsentRows", config.maxRejectedConsentRows());
         settings.put("maxTimestampFailures", config.maxTimestampFailures());
         settings.put("chunkConcurrency", config.effectiveChunkConcurrency());
         summary.put("settings", settings);
@@ -877,6 +909,7 @@ public final class PICSURELoader {
         routing.put("maxOpenWriters", counts.maxOpenWriters());
         routing.put("spoolWriterEvictions", counts.spoolWriterEvictions());
         routing.put("studyNodesWithoutConsents", counts.studyNodesWithoutConsents());
+        routing.put("studiesOnlyInRejectedConsentRows", counts.studiesOnlyInRejectedConsentRows());
         routing.put("blankConsentRowsIgnored", counts.blankConsentRows());
         routing.put("balanced", counts.balanced());
         return routing;

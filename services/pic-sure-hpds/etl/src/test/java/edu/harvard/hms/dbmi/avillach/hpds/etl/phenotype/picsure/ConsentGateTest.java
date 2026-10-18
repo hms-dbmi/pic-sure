@@ -6,7 +6,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.picsure.writer.StoreFixt
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.PartitionedPhenotypicObservationStore;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,6 +27,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -51,11 +51,6 @@ class ConsentGateTest {
     @TempDir
     Path tempDir;
 
-    @AfterEach
-    void resetHook() {
-        ConsentRouter.spoolWriteHook = null;
-    }
-
     // ---- helpers --------------------------------------------------------------------------------------------------------
 
     private static String resource(String dir, String name) throws IOException {
@@ -76,6 +71,14 @@ class ConsentGateTest {
         return writeInput("v2.csv", resource(V2, INPUT));
     }
 
+    /** v2 without its one unparsable consents line (which refuses a run whatever the limits): the rest loads with raised limits. */
+    private Path v2InputWithoutTheUnparsableConsentsLine() throws IOException {
+        String text = resource(V2, INPUT);
+        String line = "15,\"\\_consents\\,,phs000000.c1,0\n";
+        assertTrue(text.contains(line));
+        return writeInput("v2-parsable.csv", text.replace(line, ""));
+    }
+
     private Path writeInput(String name, String text) throws IOException {
         Path input = tempDir.resolve("data").resolve(name);
         Files.createDirectories(input.getParent());
@@ -94,6 +97,10 @@ class ConsentGateTest {
 
     private static int run(Path base, Map<String, String> properties) {
         return PICSURELoader.run(new String[] {base.toString()}, properties::get);
+    }
+
+    private static int run(Path base, Map<String, String> properties, LongConsumer spoolWriteHook) {
+        return PICSURELoader.run(new String[] {base.toString()}, properties::get, spoolWriteHook);
     }
 
     private static JsonNode summary(Path base) throws IOException {
@@ -192,7 +199,6 @@ class ConsentGateTest {
         assertEquals(4, counts.noConsentStudyRows(), "the study rows of the four patients (1, 2, 5, 6) whose consents rows were rejected");
         assertEquals(1, counts.noConsentGlobalRows());
         assertEquals(0, counts.unroutableRows(), "a rejected consents row is not one of the unroutable rows");
-        assertEquals(6, counts.refusedClassRows());
         assertTrue(counts.balanced());
         assertEquals(6, reasons(tempDir.resolve("small-failures.jsonl")).stream().filter("CONSENT_ROW_REJECTED"::equals).count());
     }
@@ -270,32 +276,81 @@ class ConsentGateTest {
     }
 
     @Test
+    void aConsentsRowOnAnUnparsableLineRefusesTheRunWhateverTheLimits() throws Exception {
+        Path base = newBase("v2-unparsable");
+
+        int rc = run(base, props(v2Input(), "picsure.loader.maxRejectedRows", "1000", "picsure.loader.maxRejectedConsentRows", "1000"));
+
+        assertEquals(2, rc);
+        JsonNode summary = summary(base);
+        assertEquals("refused", summary.get("status").asText());
+        assertTrue(summary.get("error").asText().contains("cannot be parsed as CSV"), summary.get("error").asText());
+        assertTrue(
+            summary.get("error").asText().contains("their study is unknown") || summary.get("error").asText().contains("study is unknown")
+        );
+        assertEquals(0, summary.get("totals").get("partitionsOk").asLong());
+        assertEquals(Set.of(), subdirectories(base), "refused before any work");
+        assertFalse(Files.exists(spoolOf(base)));
+        assertFalse(Files.exists(base.resolve("routing-failures.jsonl")), "refused before the routing started");
+    }
+
+    @Test
     void theV2RunIsRefusedByDefaultBeforeAnyPartitionLoads() throws Exception {
         Path base = newBase("v2-default");
 
-        int rc = run(base, props(v2Input()));
+        int rc = run(base, props(v2InputWithoutTheUnparsableConsentsLine()));
 
         assertEquals(1, rc);
         JsonNode summary = summary(base);
         assertEquals("failed", summary.get("status").asText());
         assertTrue(summary.get("error").asText().contains("may not grant a consent"), summary.get("error").asText());
-        assertEquals(8, summary.get("routing").get("consentRowsRejected").asLong());
+        assertTrue(summary.get("error").asText().contains("maxRejectedConsentRows"), summary.get("error").asText());
+        assertEquals(7, summary.get("routing").get("consentRowsRejected").asLong());
         assertEquals(2, summary.get("routing").get("consentRowsRejectedByReason").get("NUMERIC_NVAL").asLong());
         assertEquals(2, summary.get("routing").get("unroutableByReason").get("INVALID_STUDY_NODE").asLong());
         assertEquals(0, summary.get("totals").get("partitionsOk").asLong());
         assertEquals(Set.of(), subdirectories(base), "no partition was written, and no spool in the base");
         assertFalse(Files.exists(spoolOf(base)), "the routed files are gone");
         List<String> reasons = reasons(base.resolve("routing-failures.jsonl"));
-        assertEquals(8, reasons.stream().filter("CONSENT_ROW_REJECTED"::equals).count());
+        assertEquals(7, reasons.stream().filter("CONSENT_ROW_REJECTED"::equals).count());
         assertEquals(2, reasons.stream().filter("INVALID_STUDY_NODE"::equals).count());
+    }
+
+    @Test
+    void theTwoLimitsAreIndependent() throws Exception {
+        Path input = v2InputWithoutTheUnparsableConsentsLine();
+
+        // enough for the 8 unroutable rows, none for the 7 rejected consents rows
+        Path onlyRows = newBase("limit-rows-only");
+        assertEquals(1, run(onlyRows, props(input, "picsure.loader.maxRejectedRows", "1000")));
+        assertTrue(summary(onlyRows).get("error").asText().contains("maxRejectedConsentRows"), summary(onlyRows).get("error").asText());
+
+        // enough for the consents rows, none for the unroutable rows
+        Path onlyConsents = newBase("limit-consents-only");
+        assertEquals(1, run(onlyConsents, props(input, "picsure.loader.maxRejectedConsentRows", "1000")));
+        assertTrue(summary(onlyConsents).get("error").asText().contains("maxRejectedRows"), summary(onlyConsents).get("error").asText());
+        assertFalse(summary(onlyConsents).get("error").asText().contains("maxRejectedConsentRows"));
+
+        // exactly the numbers of v2: 8 unroutable rows, 7 consents rows
+        Path exact = newBase("limit-exact");
+        assertEquals(0, run(exact, props(input, "picsure.loader.maxRejectedRows", "8", "picsure.loader.maxRejectedConsentRows", "7")));
+        Path oneShort = newBase("limit-one-short");
+        assertEquals(1, run(oneShort, props(input, "picsure.loader.maxRejectedRows", "8", "picsure.loader.maxRejectedConsentRows", "6")));
+        assertEquals(6, summary(oneShort).get("settings").get("maxRejectedConsentRows").asLong());
     }
 
     @Test
     void theV2RunLoadsWithAnExplicitLimitAndTheRejectedRowsOpenNothing() throws Exception {
         Path base = newBase("v2-limit");
 
-        // 8 consents rows + 8 unroutable rows (3 of them in v1); the 2402L number is judged per partition
-        int rc = run(base, props(v2Input(), "picsure.loader.maxRejectedRows", "16"));
+        // 7 consents rows and 8 unroutable rows (3 of them in v1); the 2402L number is judged per partition
+        int rc = run(
+            base,
+            props(
+                v2InputWithoutTheUnparsableConsentsLine(), "picsure.loader.maxRejectedRows", "8", "picsure.loader.maxRejectedConsentRows",
+                "7"
+            )
+        );
 
         assertEquals(0, rc);
         assertEquals(Set.of("phs000000.c1", "phs000000.c2", "phs123456.c1", "tutorial-biolincc_test"), subdirectories(base));
@@ -312,16 +367,18 @@ class ConsentGateTest {
         }
         JsonNode routing = summary(base).get("routing");
         assertEquals("ok", summary(base).get("status").asText());
-        assertEquals(8, routing.get("consentRowsRejected").asLong());
+        assertEquals(7, routing.get("consentRowsRejected").asLong());
         assertEquals(2, routing.get("unroutableByReason").get("INVALID_STUDY_NODE").asLong());
         assertEquals(4, routing.get("unroutableByReason").get("MALFORMED_RECORD").asLong(), "v1's 3 fields, a bad quote, 4 and 6 fields");
         assertEquals(2, routing.get("unroutableByReason").get("INVALID_PATIENT_ID").asLong());
-        assertEquals(1, routing.get("consentRowsRejectedByReason").get("UNPARSABLE_LINE").asLong());
+        assertNull(routing.get("consentRowsRejectedByReason").get("UNPARSABLE_LINE"));
         assertTrue(routing.get("balanced").asBoolean());
         JsonNode want = JSON.readTree(resource(V2, COUNTS));
         assertEquals(want.get("rowsPerPartition"), routing.get("rowsPerPartition"));
         assertEquals(want.get("linesWritten"), routing.get("linesWritten"));
-        assertEquals(want.get("consentRowsRejectedByReason"), routing.get("consentRowsRejectedByReason"));
+        com.fasterxml.jackson.databind.node.ObjectNode wantReasons = want.get("consentRowsRejectedByReason").deepCopy();
+        wantReasons.remove("UNPARSABLE_LINE");
+        assertEquals(wantReasons, routing.get("consentRowsRejectedByReason"));
     }
 
     // ---- 2. lines that cannot be parsed ---------------------------------------------------------------------------------
@@ -370,7 +427,6 @@ class ConsentGateTest {
         assertEquals(Map.of("MALFORMED_RECORD", 1L), counts.unroutableByReason(), "a bad line that is not a consents row");
         assertEquals(1, counts.patientsWithConsents(), "only patient 1");
         assertEquals(2, counts.noConsentStudyRows(), "patients 2 and 3 got no consent from their unparsable lines");
-        assertEquals(3, counts.refusedClassRows());
         assertEquals(1, counts.unroutableCrashClassRows());
         assertEquals(2, counts.consentRowsRejected());
         assertTrue(counts.balanced());
@@ -392,7 +448,7 @@ class ConsentGateTest {
     @Test
     void theLineParserEqualsTheCsvParserOnLinesWithoutQuotesAndFailsClosedOnBrokenOnes() throws Exception {
         Random random = new Random(7);
-        char[] alphabet = {',', ',', 'a', ' ', '\\', 'µ', '1'};
+        char[] alphabet = {',', ',', 'a', ' ', '\\', 'µ', '1', '\t', '\u0000', '\u00a0'};
         for (int i = 0; i < 20_000; i++) {
             StringBuilder line = new StringBuilder();
             for (int j = random.nextInt(12) + 1; j > 0; j--) {
@@ -417,7 +473,7 @@ class ConsentGateTest {
         Path base = newBase("spool-default");
         AtomicReference<Set<String>> baseDirsDuringRouting = new AtomicReference<>();
         AtomicReference<Boolean> routedDuringRouting = new AtomicReference<>();
-        ConsentRouter.spoolWriteHook = n -> {
+        LongConsumer hook = n -> {
             if (n == 1) {
                 try {
                     baseDirsDuringRouting.set(subdirectories(base));
@@ -428,7 +484,7 @@ class ConsentGateTest {
             }
         };
 
-        assertEquals(0, run(base, props(writeInput("v1.csv", resource(V1, INPUT)), "picsure.loader.maxRejectedRows", "3")));
+        assertEquals(0, run(base, props(writeInput("v1.csv", resource(V1, INPUT)), "picsure.loader.maxRejectedRows", "3"), hook));
 
         assertEquals(Set.of(), baseDirsDuringRouting.get(), "HPDS would read any directory in the base as a partition");
         assertTrue(routedDuringRouting.get(), "the routed files are in <base>.picsure-spool/.routed");
@@ -516,15 +572,15 @@ class ConsentGateTest {
         Path base = newBase("disk-full");
         Path explicit = newBase("disk-full-explicit");
         Path spool = tempDir.resolve("fast-disk");
-        ConsentRouter.spoolWriteHook = n -> {
+        LongConsumer hook = n -> {
             if (n == 5) {
                 throw new UncheckedIOException(new IOException("No space left on device"));
             }
         };
         Path input = writeInput("v1.csv", resource(V1, INPUT));
 
-        assertEquals(1, run(base, props(input)));
-        assertEquals(1, run(explicit, props(input, "picsure.loader.spoolDir", spool.toString())));
+        assertEquals(1, run(base, props(input), hook));
+        assertEquals(1, run(explicit, props(input, "picsure.loader.spoolDir", spool.toString()), hook));
 
         assertTrue(summary(base).get("error").asText().contains("routing failed"), summary(base).get("error").asText());
         assertEquals("failed", summary(base).get("status").asText());
@@ -653,7 +709,7 @@ class ConsentGateTest {
     void anInputThatChangesItsModificationTimeWhileRoutingIsRefused() throws Exception {
         Path base = newBase("pin-mtime");
         Path input = writeInput("v1.csv", resource(V1, INPUT));
-        ConsentRouter.spoolWriteHook = n -> {
+        LongConsumer hook = n -> {
             if (n == 3) {
                 try {
                     Files.setLastModifiedTime(input, FileTime.fromMillis(Files.getLastModifiedTime(input).toMillis() + 3_600_000));
@@ -663,7 +719,7 @@ class ConsentGateTest {
             }
         };
 
-        int rc = run(base, props(input, "picsure.loader.maxRejectedRows", "3"));
+        int rc = run(base, props(input, "picsure.loader.maxRejectedRows", "3"), hook);
 
         assertEquals(2, rc);
         JsonNode summary = summary(base);
@@ -677,7 +733,7 @@ class ConsentGateTest {
     void anInputThatGrowsWhileRoutingIsRefused() throws Exception {
         Path base = newBase("pin-size");
         Path input = writeInput("v1.csv", resource(V1, INPUT));
-        ConsentRouter.spoolWriteHook = n -> {
+        LongConsumer hook = n -> {
             if (n == 3) {
                 try {
                     Files.writeString(input, "9,\\Global\\Late\\,1,,\n", java.nio.file.StandardOpenOption.APPEND);
@@ -687,7 +743,7 @@ class ConsentGateTest {
             }
         };
 
-        assertEquals(2, run(base, props(input, "picsure.loader.maxRejectedRows", "3")));
+        assertEquals(2, run(base, props(input, "picsure.loader.maxRejectedRows", "3"), hook));
 
         assertEquals("refused", summary(base).get("status").asText());
         assertTrue(summary(base).get("error").asText().contains("changed"), summary(base).get("error").asText());
@@ -727,7 +783,7 @@ class ConsentGateTest {
         Path base = newBase("stale-failed");
         Files.createDirectories(base.resolve("old-study"));
 
-        assertEquals(1, run(base, props(v2Input())));
+        assertEquals(1, run(base, props(v2InputWithoutTheUnparsableConsentsLine())));
 
         assertEquals("old-study", summary(base).get("stalePartitions").get(0).asText());
     }

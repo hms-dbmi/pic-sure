@@ -34,6 +34,12 @@ final class ConsentRowCheck {
     /** Why a consent row grants nothing. */
     enum Problem {
         BAD_FIELD_COUNT, BAD_PATIENT_NUM, BAD_NVAL, NUMERIC_NVAL, BAD_TIMESTAMP,
+        /**
+         * Not a check of the fields: the concept path reads as the consents variable once the loader has normalized it, but is not written
+         * exactly {@code \_consents\} or {@code µ_consentsµ} (whitespace, a missing or doubled delimiter, U+FFFD, or the consent as a last
+         * segment). The partition's loader would read the row as a consents row; the router grants nothing for it.
+         */
+        NON_CANONICAL_PATH,
         /** Not a check of the fields: the line could not be parsed as CSV and mentions the consents variable. */
         UNPARSABLE_LINE
     }

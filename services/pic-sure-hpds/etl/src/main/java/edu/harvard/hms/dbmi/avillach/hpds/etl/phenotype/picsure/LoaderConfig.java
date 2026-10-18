@@ -32,11 +32,18 @@ import java.util.function.Function;
  * consent; {@code none}: one flat store in the base (parity checks only). Invalid without {@code input}</td></tr>
  * <tr><td>{@code picsure.loader.keepRouted}</td><td>false</td><td>keep the routed files of a combined input after the run (success or
  * failure); false deletes the routed directory on every exit path. Kept files are outside the base</td></tr>
+ * <tr><td>{@code picsure.loader.maxRejectedConsentRows}</td><td>0</td><td>combined input: rows of {@code \_consents\} that grant nothing
+ * (wrong field count, patient id, nval, timestamp, a path that is not written exactly {@code \_consents\}) tolerated; more ends the run
+ * before any partition loads. Each such row still makes its study known, so the study's rows of patients without a valid consent of it are
+ * dropped. A consents row on a line that cannot be parsed ends the run whatever this is</td></tr>
  * <tr><td>{@code picsure.loader.maxOpenWriters}</td><td>min(1024, open-file limit - 256), 128 if the limit is unknown</td><td>routed files
  * open at once while routing; beyond it the least recently used is closed and reopened for append (slower, order kept)</td></tr> </table>
  *
  * @param maxRejectedRows rows dropped for a reason that would have stopped {@code CSVLoader} (see {@link FailureReason#crashesCsvLoader()})
  *        that a partition tolerates; more fails it
+ * @param maxRejectedConsentRows rows of the consents variable that grant nothing (a combined input; see {@link ConsentRouter}) that the
+ *        routing tolerates; more refuses the run before any partition loads. Independent of {@code maxRejectedRows}. A consents row on a
+ *        line that cannot be parsed is never tolerated, whatever this is
  * @param maxTimestampFailures timestamps that cannot be parsed (the row is kept without one) that a partition tolerates; more fails it
  * @param chunkConcurrency chunks of a large file parsed at once, 0 = derive (see {@link #effectiveChunkConcurrency()})
  * @param spoolDir spool root, or null to use {@code <base>/.picsure-spool}
@@ -49,7 +56,8 @@ import java.util.function.Function;
 public record LoaderConfig(
     Path spoolDir, int batchSize, int storeCacheSize, int fileProcessingThreads, int maxObservationsPerConcept, int finalizationConcurrency,
     int finalizationChunkSize, boolean dedup, boolean failFast, boolean overwrite, String runId, int maxRejectedRows,
-    int maxTimestampFailures, int chunkConcurrency, Path input, String partitionBy, boolean keepRouted, int maxOpenWriters
+    int maxRejectedConsentRows, int maxTimestampFailures, int chunkConcurrency, Path input, String partitionBy, boolean keepRouted,
+    int maxOpenWriters
 ) {
 
     public static final String PREFIX = "picsure.loader.";
@@ -80,8 +88,10 @@ public record LoaderConfig(
         }
         requirePositive("finalizationConcurrency", finalizationConcurrency);
         requirePositive("finalizationChunkSize", finalizationChunkSize);
-        if (maxRejectedRows < 0 || maxTimestampFailures < 0 || chunkConcurrency < 0) {
-            throw new IllegalArgumentException(PREFIX + "maxRejectedRows, maxTimestampFailures and chunkConcurrency may not be negative");
+        if (maxRejectedRows < 0 || maxRejectedConsentRows < 0 || maxTimestampFailures < 0 || chunkConcurrency < 0) {
+            throw new IllegalArgumentException(
+                PREFIX + "maxRejectedRows, maxRejectedConsentRows, maxTimestampFailures and chunkConcurrency may not be negative"
+            );
         }
         if (maxOpenWriters < 0) {
             throw new IllegalArgumentException(PREFIX + "maxOpenWriters may not be negative, got " + maxOpenWriters);
@@ -152,8 +162,8 @@ public record LoaderConfig(
             intProperty(properties, "finalizationChunkSize", DEFAULT_FINALIZATION_CHUNK_SIZE), booleanProperty(properties, "dedup", false),
             booleanProperty(properties, "failFast", true), booleanProperty(properties, "overwrite", false),
             runId == null || runId.isBlank() ? null : runId.trim(), nonNegativeIntProperty(properties, "maxRejectedRows", 0),
-            nonNegativeIntProperty(properties, "maxTimestampFailures", 0), nonNegativeIntProperty(properties, "chunkConcurrency", 0),
-            input == null || input.isBlank() ? null : Path.of(input.trim()),
+            nonNegativeIntProperty(properties, "maxRejectedConsentRows", 0), nonNegativeIntProperty(properties, "maxTimestampFailures", 0),
+            nonNegativeIntProperty(properties, "chunkConcurrency", 0), input == null || input.isBlank() ? null : Path.of(input.trim()),
             partitionBy == null || partitionBy.isBlank() ? null : partitionBy.trim().toLowerCase(java.util.Locale.ROOT),
             booleanProperty(properties, "keepRouted", false), nonNegativeIntProperty(properties, "maxOpenWriters", 0)
         );

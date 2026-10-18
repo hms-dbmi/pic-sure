@@ -111,16 +111,31 @@ The output still goes under the base directory, which also holds `encryption_key
     reads the consent from the text value and ignores the number; the loader would store that number while routing by the text, so
     the row would mean two things. A rejected row grants nothing, is written to no partition, is counted by reason
     (`routing.consentRowsRejectedByReason`) and recorded in `routing-failures.jsonl`.
+  - **Only the canonical path may grant.** A row is a consents row when its path, as the partition's loader reads it (segments trimmed,
+    U+FFFD removed, doubled and missing delimiters repaired, and a last segment equal to the text value dropped), is `\_consents\`. Only
+    a path written exactly `\_consents\` or `µ_consentsµ` may grant. Every other spelling (`\_consents\ `, `\_consents`,
+    `\_consents\\`, `  \_consents\`, `\_consents\phs999999.c1\` with that text value, `µ_consents\`) is rejected as
+    `NON_CANONICAL_PATH`, in both passes alike, and is never routed as a global row.
+  - **A rejected consents row still makes its study known.** For every `_consents` row that can be parsed into fields, the study of its
+    trimmed text value (`phs999999.c1` gives `phs999999`) is registered, even when the row grants nothing. A data row of that study of a
+    patient without a *valid* consent of it is dropped as `NO_CONSENT` (counted), never copied as a global row into the patient's other
+    partitions. The studies that only rejected rows name are listed in `routing.studiesOnlyInRejectedConsentRows`. A node that no
+    `_consents` row names at all (a `phsNNNNNN` with no consents rows anywhere) stays a global variable, as in the splitter, and is listed
+    in `routing.studyNodesWithoutConsents` (a separately tracked policy question).
+  - **A consents row on a line that cannot be parsed refuses the run (exit 2, before any work), whatever the limits**: its study cannot
+    be known, so rows of it could not be kept out of the global rows. The message gives the physical line numbers. Fix the lines.
   - **Every line is one CSV record.** allConcepts has no line breaks inside a field, so a line that cannot be parsed (an unterminated
-    quote) costs that line only (`MALFORMED_RECORD`, with its input line number; a line that mentions `_consents` is a rejected consents
-    row), and the rows after it are routed. The splitter fails the whole job instead.
+    quote) costs that line only (`MALFORMED_RECORD`, with its input line number; a line that mentions `_consents` refuses the run,
+    see below), and the rows after it are routed. The splitter fails the whole job instead.
   - **A data row is exactly 5 fields** (the allConcepts contract); others are `MALFORMED_RECORD`. A missing or non-integer patient id, a
     header in the middle: unroutable too.
   - **A study node with leading or trailing whitespace is not routed** (`INVALID_STUDY_NODE`): `\ phs000000\A\` is `phs000000` once the
     partition's loader trims the path, but would be a global row (copied to every consent of the patient) as written. The same for a
     node with U+FFFD.
-  - **Rows that are not routed and rejected `_consents` rows count against `maxRejectedRows`** (default 0): the run ends with status
-    `failed`, exit 1, before any partition is loaded. Set `maxRejectedRows` to the number you accept, after reading `routing-failures.jsonl`.
+  - **Two limits, both default 0.** Rows that are not routed count against `maxRejectedRows`; rejected `_consents` rows count against
+    `maxRejectedConsentRows`, independently. Above either the run ends with status `failed`, exit 1, before any partition is loaded.
+    Set them to the numbers you accept, after reading `routing-failures.jsonl`; raising the second only lets the run go on without the
+    rejected consents, it never grants them.
   Everything else (bad numbers, timestamps) is judged by the partition's loader as before.
 - `none`: one flat store in the base directory (`allObservationsStore.javabin`, `columnMeta.javabin`, `columnMeta.csv`, as hpds-ingest
   writes it), for parity checks against hpds-ingest only. HPDS refuses such a directory when `hpds.requireAuthorizationFilter` is true,
@@ -131,7 +146,7 @@ mode (also with `overwrite`).
 
 **Spool and routed files.** HPDS reads every subdirectory of the base as a partition, so with a combined input the spool is **outside
 the base**: by default `<parent of base>/<base name>.picsure-spool` (the routed files are in `.routed` under it), and a
-`picsure.loader.spoolDir` inside the base is refused (exit 2). The routed directory is deleted on every exit path (success, a failed
+`picsure.loader.spoolDir` that is the base, inside it, or contains it (an ancestor) is refused (exit 2, before any work). The routed directory is deleted on every exit path (success, a failed
 partition, a routing failure such as a full disk) unless `-Dpicsure.loader.keepRouted=true`; kept files stay outside the base and the
 summary names them (`routing.routedDirKept`). **Disk:** besides the stores, the routing needs space for the routed files, about the size
 of the input plus one copy of every global row for each consent of its patient; point `spoolDir` at fast local disk. The input is read
@@ -144,20 +159,21 @@ before pass 1 and the run is refused (exit 2, summary written, nothing loaded) i
 passes disagree on the rows. **Stale partitions**: directories in the base that this run did not produce are listed in the summary as
 `stalePartitions` and warned about, never deleted; HPDS would read them as partitions, so remove them or use a fresh base. `ingest-summary.json` gains `inputMode` (`split` or `combined`), `partitionBy`, `inputFile`, `inputSizeBytes`,
 `consentRulesMatch` and a `routing` object (rows read, routed, per partition, copies of global rows, `NO_CONSENT` rows dropped,
-patients without consent, invalid consent names with their rows, unroutable rows by reason, rejected `_consents` rows by reason). Record numbers in a partition's
+patients without consent, invalid consent names with their rows, unroutable rows by reason, rejected `_consents` rows by reason, the studies only rejected rows name, the study nodes without any consents row). Record numbers in a partition's
 `failures.jsonl` count the routed file, not the combined input.
 
 Tuning is by system properties, passed in `JAVA_OPTS` (see `LoaderConfig` for the full list):
 
 | Property | Default | |
 |---|---|---|
-| `picsure.loader.spoolDir` | split input: `<base>/.picsure-spool`; combined input: `<parent of base>/<base name>.picsure-spool` | spool root (a combined input routes into `.routed` under it, and may not use a directory inside the base); one subdirectory per partition, removed afterwards; use fast local disk |
+| `picsure.loader.spoolDir` | split input: `<base>/.picsure-spool`; combined input: `<parent of base>/<base name>.picsure-spool` | spool root (a combined input routes into `.routed` under it, and may not be the base, inside it or contain it); one subdirectory per partition, removed afterwards; use fast local disk |
 | `picsure.loader.keepRouted` | `false` | `true` keeps the routed files of a combined input after the run (outside the base) |
 | `picsure.loader.maxOpenWriters` | min(1024, open-file limit - 256), 128 if unknown | routed files open at once while routing |
 | `picsure.loader.input` | unset (split input) | a combined allConcepts file, routed by consent |
 | `picsure.loader.partitionBy` | `consent` for a combined input | `consent` or `none` (flat store, parity checks only) |
 | `picsure.loader.maxObservationsPerConcept` | `0` (no limit) | a concept that reaches a non-zero limit fails the partition (kept null markers count) |
-| `picsure.loader.maxRejectedRows` | `0` | rows dropped for a patient id or number `CSVLoader` cannot parse that a partition tolerates; with a combined input also the rows that cannot be routed and the rejected `_consents` rows |
+| `picsure.loader.maxRejectedRows` | `0` | rows dropped for a patient id or number `CSVLoader` cannot parse that a partition tolerates; with a combined input also the rows that cannot be routed |
+| `picsure.loader.maxRejectedConsentRows` | `0` | combined input: `_consents` rows that grant nothing (bad fields, `NON_CANONICAL_PATH`, ...) that the routing tolerates; each still makes its study known. A consents row on an unparsable line is never tolerated |
 | `picsure.loader.maxTimestampFailures` | `0` | unparseable timestamps that a partition tolerates (the row is kept without one) |
 | `picsure.loader.dedup` | `false` | `true` drops exact duplicate rows (`CSVLoader` keeps them) |
 | `picsure.loader.failFast` | `true` | `false` loads the other partitions after a failure |

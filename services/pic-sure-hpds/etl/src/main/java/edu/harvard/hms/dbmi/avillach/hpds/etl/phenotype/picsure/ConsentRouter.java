@@ -36,29 +36,35 @@ import java.util.regex.Pattern;
  * vectors in {@code src/test/resources/consent-vectors}:
  *
  * <p>Pass 1 reads the file and records, for each patient, the consent strings of the rows whose concept path is {@code \_consents\} (the
- * consent is the trimmed text value). <b>Only a row that passes {@link ConsentRowCheck} grants a consent</b>; a consents row that does not
- * (not 5 fields, a patient id that is not an integer as written, an nval that is not blank, a timestamp that is not blank, an integer or
- * ISO) grants nothing, is written to no partition, is counted by reason and counts against {@code maxRejectedRows} (default 0: the run is
- * refused before any partition loads, as the splitter's default {@code bad-rows=fail} does). Pass 2 takes the path node at depth 1
- * ({@code \phs000000\...} is {@code phs000000}; {@code µ} is a delimiter too): <ul> <li>a node that is the study of any consent string
- * ({@code phs000000.c1} has the study {@code phs000000}, a string without a dot is its own study) makes the row a <b>study row</b>, written
- * to every consent of the patient for that study. A patient without a consent for that study: the row is dropped and counted
- * ({@link FailureReason#NO_CONSENT}); </li> <li>any other node is a <b>global row</b>, copied to every consent of the patient (also the
- * {@code \_consents\} rows themselves, and a {@code phsNNNNNN} node that has no consent at all, which is only reported). A patient without
- * any consent: dropped and counted; </li> <li>a consent value that cannot name a partition (it must match
- * {@link PICSURELoader#PARTITION_NAME}) is dropped for every patient; a row whose consents are all dropped is not written
- * ({@link FailureReason#INVALID_CONSENT_NAME}), a row with other consents only loses the copy for the dropped one;</li> <li>a row whose
- * study node (depth 1) is not the same after {@link CsvObservationProducer#normalizeConceptPath} (the partition's loader trims segments and
- * removes U+FFFD: {@code \ phs000000\A\} would become a study row there, but is a global row here) is unroutable
+ * consent is the trimmed text value). A row is a consents row when its path is that variable <b>as the partition's loader reads it</b>:
+ * after {@link CsvObservationProducer#normalizeConceptPath} and after the loader's rule that drops a last segment equal to the text value.
+ * <b>Only a row written exactly {@code \_consents\} (or {@code µ_consentsµ}) that passes {@link ConsentRowCheck} grants a consent</b>;
+ * every other consents row ({@link ConsentRowCheck.Problem#NON_CANONICAL_PATH}: {@code \_consents\ }, {@code \_consents},
+ * {@code \_consents\phs000000.c1\} with that text value; not 5 fields, a patient id that is not an integer as written, an nval that is not
+ * blank, a timestamp that is not blank, an integer or ISO) grants nothing, is written to no partition, is counted by reason and counts
+ * against {@code maxRejectedConsentRows} (default 0: the run is refused before any partition loads). <b>A rejected consents row still
+ * registers its study</b> (the study of its trimmed text value): a data row of that study of a patient without a valid consent of it is
+ * dropped ({@link FailureReason#NO_CONSENT}), never treated as a global row. A line that cannot be parsed and mentions the consents
+ * variable ({@link ConsentRowCheck.Problem#UNPARSABLE_LINE}) has an unknown study: the run is always refused, whatever the limits. Pass 2
+ * takes the path node at depth 1 ({@code \phs000000\...} is {@code phs000000}; {@code µ} is a delimiter too): <ul> <li>a node that is the
+ * study of any consent string ({@code phs000000.c1} has the study {@code phs000000}, a string without a dot is its own study) makes the row
+ * a <b>study row</b>, written to every consent of the patient for that study. A patient without a consent for that study: the row is
+ * dropped and counted ({@link FailureReason#NO_CONSENT}); </li> <li>any other node is a <b>global row</b>, copied to every consent of the
+ * patient (also the valid {@code \_consents\} rows themselves, and a {@code phsNNNNNN} node that no consents row names at all, which is
+ * only reported, as the splitter does). A patient without any consent: dropped and counted; </li> <li>a consent value that cannot name a
+ * partition (it must match {@link PICSURELoader#PARTITION_NAME}) is dropped for every patient; a row whose consents are all dropped is not
+ * written ({@link FailureReason#INVALID_CONSENT_NAME}), a row with other consents only loses the copy for the dropped one;</li> <li>a row
+ * whose study node (depth 1) is not the same after {@link CsvObservationProducer#normalizeConceptPath} (the partition's loader trims
+ * segments and removes U+FFFD: {@code \ phs000000\A\} would become a study row there, but is a global row here) is unroutable
  * ({@link FailureReason#INVALID_STUDY_NODE}), never global;</li> <li>a row that cannot be routed (not exactly 5 fields, the allConcepts
  * contract; a patient id that is missing or not an integer; a header row that is not the first line; a line that cannot be parsed as CSV)
- * is counted and recorded with its own reason. <b>Every row that is not routed counts against {@code maxRejectedRows}</b> (default 0),
- * because it is data that does not reach HPDS.</li> </ul>
+ * is counted and recorded with its own reason. <b>Every such row counts against {@code maxRejectedRows}</b> (default 0), because it is data
+ * that does not reach HPDS.</li> </ul>
  *
  * <p>The input is read line by line and every line is parsed as one record of its own (allConcepts has no line breaks inside a field), so
- * an unterminated quote costs that line, not the lines after it. A line that cannot be parsed and mentions {@code _consents} is a rejected
- * consents row (it grants nothing), any other one is a {@link FailureReason#MALFORMED_RECORD}. Line numbers in the failure records are the
- * physical line numbers of the input.
+ * an unterminated quote costs that line, not the lines after it. A line that cannot be parsed and mentions {@code _consents} is a consents
+ * row that grants nothing and refuses the run, any other one is a {@link FailureReason#MALFORMED_RECORD}. Line numbers in the failure
+ * records are the physical line numbers of the input.
  *
  * <p>Rows are written unchanged in content and in input order, every field quoted. The routing reads fields as they are (no trimming); only
  * the patient id is trimmed, as the loader does.
@@ -71,8 +77,9 @@ import java.util.regex.Pattern;
  *
  * <p><b>One deliberate difference that changes who gets access:</b> a consents row with a non-blank nval does not grant, also when the
  * number is valid. The splitter ignores the nval and grants from the text value; the loader would store that number while routing by the
- * text. The row is rejected ({@link ConsentRowCheck.Problem#NUMERIC_NVAL}) and the splitter should adopt the same rule. A second rule the
- * splitter lacks: the study-node check against the loader's path normalization above.
+ * text. The row is rejected ({@link ConsentRowCheck.Problem#NUMERIC_NVAL}) and the splitter should adopt the same rule. More rules the
+ * splitter lacks, all fail closed: the study-node check against the loader's path normalization above, the canonical form of the consents
+ * path, and the registration of the study of a rejected consents row.
  *
  * <p>Memory of pass 1: one entry per patient with consents (an {@code Integer} key, a map node and a reference to a shared, interned set of
  * consents: about 60 bytes, measured with 2 million patients), so about 60 MB of heap per million patients plus a few KB for the distinct
@@ -89,8 +96,11 @@ final class ConsentRouter {
 
     /** Individually recorded rows per reason; the rest are counted and summarized in one record. */
     static final int MAX_RECORDS_PER_REASON = 1000;
-    /** Test seam: called with the number of spool lines written so far; may throw {@link UncheckedIOException} to simulate a full disk. */
-    static volatile LongConsumer spoolWriteHook;
+    private static final int MAX_LISTED_LINES = 10;
+    /** The path of the consents variable as the loader reads it, and its legacy form with µ: the only spellings that may grant. */
+    static final String CONSENTS_PATH_MU = "µ_consentsµ";
+    private static final String CONSENTS_NAME = "_consents";
+    private static final char REPLACEMENT_CHARACTER = '\uFFFD';
 
     private static final Pattern STUDY_ID = Pattern.compile("phs[0-9]{6}");
     private static final char MU = 'µ';
@@ -98,6 +108,7 @@ final class ConsentRouter {
     private final Path input;
     private final String runId;
     private final int maxOpenWriters;
+    private final LongConsumer spoolWriteHook;
     private FailureSink failures;
 
     // Pass 1
@@ -105,6 +116,8 @@ final class ConsentRouter {
     private final Map<Integer, ConsentSet> consentsByPatient = new HashMap<>();
     private final Map<ConsentSet, ConsentSet> internedSets = new HashMap<>();
     private final Set<String> studies = new HashSet<>();
+    private final Set<String> studiesOfRejectedRows = new TreeSet<>();
+    private final List<Long> unparsableConsentLines = new ArrayList<>();
     private boolean learned;
     private boolean headerSkipped;
     private long blankConsentRows;
@@ -200,19 +213,14 @@ final class ConsentRouter {
         long unroutableRows, long unroutableCrashClassRows, Map<String, Long> unroutableByReason, long patientsWithConsents,
         long patientsWithoutConsent, Map<String, Long> rowsPerPartition, List<DroppedConsent> invalidConsentNames,
         List<String> studyNodesWithoutConsents, long blankConsentRows, long consentRowsRejected,
-        Map<String, Long> consentRowsRejectedByReason, long spoolWriterEvictions, int maxOpenWriters
+        Map<String, Long> consentRowsRejectedByReason, long spoolWriterEvictions, int maxOpenWriters,
+        List<String> studiesOnlyInRejectedConsentRows
     ) {
         /** Every row read is routed, dropped, rejected for its consents, a rejected consents row, or unroutable. */
         boolean balanced() {
             return rowsRead == rowsRouted + noConsentRowsDropped + invalidConsentRows + unroutableRows + consentRowsRejected;
         }
 
-        /**
-         * Rows lost that the run does not tolerate beyond {@code maxRejectedRows}: crash-class unroutable rows and rejected consents rows.
-         */
-        long refusedClassRows() {
-            return unroutableCrashClassRows + consentRowsRejected;
-        }
     }
 
     /** The input is not what pass 1 read. */
@@ -227,12 +235,21 @@ final class ConsentRouter {
     }
 
     ConsentRouter(Path input, String runId, int maxOpenWriters) {
+        this(input, runId, maxOpenWriters, null);
+    }
+
+    /**
+     * @param spoolWriteHook test seam, may be null: called with the number of spool lines written so far; may throw
+     *        {@link UncheckedIOException} to simulate a full disk
+     */
+    ConsentRouter(Path input, String runId, int maxOpenWriters, LongConsumer spoolWriteHook) {
         if (maxOpenWriters < 1) {
             throw new IllegalArgumentException("maxOpenWriters must be at least 1, got " + maxOpenWriters);
         }
         this.input = input;
         this.runId = runId;
         this.maxOpenWriters = maxOpenWriters;
+        this.spoolWriteHook = spoolWriteHook;
     }
 
     // ---------------------------------------------------------------------------------------------------------------------------
@@ -247,15 +264,20 @@ final class ConsentRouter {
                 if (record.fields() == null) { // a line that cannot be parsed: if it might be a consents row, it grants nothing
                     if (mightBeConsentsRow(record.raw())) {
                         pass1Rejected.computeIfAbsent(ConsentRowCheck.Problem.UNPARSABLE_LINE, k -> new long[1])[0]++;
+                        if (unparsableConsentLines.size() < MAX_LISTED_LINES) {
+                            unparsableConsentLines.add(record.line());
+                        }
                     }
                     continue;
                 }
-                if (!isConsentsRow(record)) {
+                PathForm form = pathForm(record.fields());
+                if (form == PathForm.NOT_CONSENTS) {
                     continue;
                 }
-                ConsentRowCheck.Problem problem = ConsentRowCheck.check(record.fields());
+                ConsentRowCheck.Problem problem = judge(form, record.fields());
                 if (problem != null) {
                     pass1Rejected.computeIfAbsent(problem, k -> new long[1])[0]++;
+                    registerStudyOfRejectedRow(record.fields());
                     continue;
                 }
                 String consent = record.get(3).trim();
@@ -280,16 +302,80 @@ final class ConsentRouter {
         );
     }
 
-    /** A record of the consents variable, whatever its other fields are (a rejected one must not slip through as a global row). */
-    private static boolean isConsentsRow(Row record) {
-        if (record.fields() == null) {
-            return false;
+    /** How a record relates to the consents variable. */
+    enum PathForm {
+        NOT_CONSENTS,
+        /** Written exactly {@code \_consents\} or {@code µ_consentsµ}: may grant when the rest of the row passes. */
+        CANONICAL,
+        /** Reads as the consents variable in the partition's loader but is written otherwise: grants nothing. */
+        NON_CANONICAL
+    }
+
+    /**
+     * Whether the record is a row of the consents variable <b>as the partition's loader reads it</b> (a rejected one must never slip
+     * through as a global row): the path after {@link CsvObservationProducer#normalizeConceptPath}, and after the loader's rule that drops
+     * a last segment equal to the (trimmed, U+FFFD-free) text value, is {@code \_consents\}. Both the path before and after that drop
+     * count, so a row is never less consents-like than the loader says. Only the two canonical spellings are {@link PathForm#CANONICAL}.
+     */
+    static PathForm pathForm(List<String> fields) {
+        if (fields == null || fields.size() < 2) {
+            return PathForm.NOT_CONSENTS;
         }
-        if (record.size() < 2) {
-            return false;
+        String path = fields.get(1);
+        if (path.equals(CONSENTS_PATH) || path.equals(CONSENTS_PATH_MU)) {
+            return PathForm.CANONICAL;
         }
-        String path = record.get(1);
-        return path.length() == CONSENTS_PATH.length() && CONSENTS_PATH.equals(normalize(path));
+        if (path.indexOf(CONSENTS_NAME) < 0 && path.indexOf(REPLACEMENT_CHARACTER) < 0) { // cheap exit: normalization only removes text
+            return PathForm.NOT_CONSENTS;
+        }
+        String normalized = CsvObservationProducer.normalizeConceptPath(path);
+        if (CONSENTS_PATH.equals(normalized)) {
+            return PathForm.NON_CANONICAL;
+        }
+        String text = fields.size() > 3 ? fields.get(3).trim().replace(String.valueOf(REPLACEMENT_CHARACTER), "") : "";
+        if (!text.isEmpty() && normalized.endsWith("\\" + text + "\\")) {
+            String dropped = normalized.substring(0, normalized.lastIndexOf('\\', normalized.length() - 2) + 1);
+            if (CONSENTS_PATH.equals(dropped)) {
+                return PathForm.NON_CANONICAL;
+            }
+        }
+        return PathForm.NOT_CONSENTS;
+    }
+
+    /** Why a row of the consents variable may not grant, or null when it may. */
+    private static ConsentRowCheck.Problem judge(PathForm form, List<String> fields) {
+        return form == PathForm.NON_CANONICAL ? ConsentRowCheck.Problem.NON_CANONICAL_PATH : ConsentRowCheck.check(fields);
+    }
+
+    /**
+     * A rejected consents row grants nothing but names a study: data rows of that study must not be taken for global rows. The text value
+     * is read trimmed (as the router reads a consent) and also as the loader reads it (U+FFFD removed); a row with only three fields offers
+     * its last field, the one a missing field would have shifted.
+     */
+    private void registerStudyOfRejectedRow(List<String> fields) {
+        String value = fields.size() > 3 ? fields.get(3) : fields.size() == 3 ? fields.get(2) : null;
+        if (value == null) {
+            return;
+        }
+        for (String candidate : List.of(value.trim(), value.trim().replace(String.valueOf(REPLACEMENT_CHARACTER), ""))) {
+            if (!candidate.isEmpty()) {
+                String study = studyOf(candidate);
+                if (!study.isEmpty()) {
+                    studies.add(study);
+                    studiesOfRejectedRows.add(study);
+                }
+            }
+        }
+    }
+
+    /** Consents rows on lines that cannot be parsed, which could not be read at all: their study is unknown, so the run must not go on. */
+    long unparsableConsentRows() {
+        return pass1Rejected.getOrDefault(ConsentRowCheck.Problem.UNPARSABLE_LINE, new long[1])[0];
+    }
+
+    /** The first physical line numbers of the unparsable consents rows (at most 10). */
+    List<Long> unparsableConsentLines() {
+        return List.copyOf(unparsableConsentLines);
     }
 
     private Consent consent(String value) {
@@ -304,6 +390,13 @@ final class ConsentRouter {
             studies.add(study);
             return new Consent(v, study, problem);
         });
+    }
+
+    /** Studies that only rejected consents rows name: their data rows are dropped, never global. Call after {@link #learnConsents()}. */
+    private List<String> studiesOnlyInRejectedConsentRows() {
+        Set<String> valid = new HashSet<>();
+        consentsByValue.values().forEach(c -> valid.add(c.study()));
+        return studiesOfRejectedRows.stream().filter(s -> !valid.contains(s)).toList();
     }
 
     /** Patients with at least one consent; call after {@link #learnConsents()}. */
@@ -375,8 +468,9 @@ final class ConsentRouter {
             }
             return;
         }
-        if (isConsentsRow(record)) {
-            ConsentRowCheck.Problem problem = ConsentRowCheck.check(record.fields());
+        PathForm form = pathForm(record.fields());
+        if (form != PathForm.NOT_CONSENTS) {
+            ConsentRowCheck.Problem problem = judge(form, record.fields());
             if (problem != null) {
                 rejectConsentRow(record, problem);
                 return;
@@ -502,7 +596,8 @@ final class ConsentRouter {
 
     /** A line that cannot be parsed may be a consents row; fail closed on anything that mentions the consents variable. */
     private static boolean mightBeConsentsRow(String raw) {
-        return raw.contains("_consents");
+        return raw.contains(CONSENTS_NAME)
+            || (raw.indexOf(REPLACEMENT_CHARACTER) >= 0 && raw.replace("\uFFFD", "").contains(CONSENTS_NAME));
     }
 
     /** A row that is not routed is a lost row: all of them count against {@code maxRejectedRows} (default 0). */
@@ -574,7 +669,7 @@ final class ConsentRouter {
             noConsentStudyRows + noConsentGlobalRows, noConsentStudyRows, noConsentGlobalRows, invalidConsentRows, unroutableRows,
             unroutableCrashClassRows, unroutable, consentsByPatient.size(), patientsWithoutConsent.size(), rowsPerPartition, dropped,
             List.copyOf(studyNodesWithoutConsents), blankConsentRows, consentRowsRejected, rejectedConsentRows, spoolWriterEvictions,
-            maxOpenWriters
+            maxOpenWriters, studiesOnlyInRejectedConsentRows()
         );
     }
 
