@@ -10,7 +10,8 @@ x-hpds: &hpds
   profiles: ["hpds"]
   restart: "no"
   environment:
-    JAVA_OPTS: ${HPDS_JAVA_OPTS:--Xmx1g}
+    # set explicitly: the stack's queries always carry userConsents, and a default that changed must not silently open the data
+    JAVA_OPTS: ${HPDS_JAVA_OPTS:--Xmx1g} -Dhpds.requireAuthorizationFilter=true
     PICSURE_ACTUATOR_EXPOSURE: health
     # without it the asynchronous DATAFRAME result type fails (Lists.partition with size 0)
     ID_BATCH_SIZE: ${HPDS_ID_BATCH_SIZE:-1000}

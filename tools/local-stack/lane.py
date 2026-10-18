@@ -4,7 +4,11 @@
   lane.py prepare DATASET          make work/DATASET/{input,split} and the key (generates combined/synth, links mini/1000g)
   lane.py split   DATASET          prepare, then run the splitter (combined/synth); writes work/DATASET/split.json
   lane.py load    DATASET FLOW     run one loader flow; writes work/DATASET/FLOW/{store,load.json,load.log}
-  lane.py flows   DATASET          print the flows that apply to the dataset, one per line
+  lane.py flows   DATASET          print the flows that apply to the dataset, space separated
+  lane.py request DATASET FLOW...  record which flows this run asked for (work/DATASET/requested-flows.json), for the report
+
+Environment: LANE1=auto|require|off  lane 1 (needs a PICSURELoader that reads the combined file, checked by running it on a tiny
+file): auto runs it when the jar can and skips it otherwise, require turns a skip into a failure, off never runs it.
 
 Flows (named like the future runner's flows; lane numbers are used for the HPDS ports):
   lane1  picsureloader-combined   PICSURELoader reads the combined file and routes it by consent itself
@@ -17,13 +21,14 @@ That directory is what an HPDS container mounts at /opt/local/hpds.
 """
 from __future__ import annotations
 
+import csv
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
-import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))  # the pic-sure checkout
@@ -46,10 +51,22 @@ FLOW_NAMES = list(FLOWS.values())
 PHENO_1000G = os.path.join(ROOT, "services", "pic-sure-hpds", "service", "src", "test", "resources", "phenotypic")
 DATASETS = {
     "mini": {"kind": "split", "source": os.path.join(HERE, "fixtures", "mini", "split"), "key": os.path.join(HERE, "fixtures", "mini", "test-only-encryption_key")},
+    "edge": {"kind": "split", "source": os.path.join(HERE, "fixtures", "edge", "split"), "key": os.path.join(HERE, "fixtures", "mini", "test-only-encryption_key")},
     "1000g": {"kind": "split", "source": PHENO_1000G, "key": os.path.join(PHENO_1000G, "encryption_key")},
     "combined": {"kind": "combined", "key": os.path.join(HERE, "fixtures", "mini", "test-only-encryption_key")},
     "synth": {"kind": "combined", "key": os.path.join(HERE, "fixtures", "mini", "test-only-encryption_key")},
 }
+
+
+LANE1_MODES = ("auto", "require", "off")
+COMBINED_FLOW = "picsureloader-combined"
+
+
+def lane1_mode():
+    mode = (os.environ.get("LANE1") or "auto").strip().lower()
+    if mode not in LANE1_MODES:
+        raise SystemExit("LANE1=%s: one of %s" % (mode, ", ".join(LANE1_MODES)))
+    return mode
 
 
 def dpath(dataset, *parts):
@@ -105,6 +122,8 @@ def prepare(dataset):
     os.makedirs(base, exist_ok=True)
     for flow in FLOW_NAMES:  # stores of an earlier input must not be served or compared against the new one
         shutil.rmtree(dpath(dataset, flow), ignore_errors=True)
+    if os.path.exists(dpath(dataset, "requested-flows.json")):
+        os.remove(dpath(dataset, "requested-flows.json"))
     shutil.copyfile(spec["key"], dpath(dataset, "encryption_key"))
     if spec["kind"] == "split":
         split = dpath(dataset, "split")
@@ -182,19 +201,89 @@ def jar(name):
     return os.path.join(LOADER_JARS, name + "-jar-with-dependencies.jar")
 
 
+PROBE_ROWS = [
+    ["1", "\\_consents\\", "", "phs000000.c1", "0"],
+    ["2", "\\_consents\\", "", "phs000000.c2", "0"],
+    ["1", "\\phs000000\\t\\num\\", "5", "", "0"],
+    ["2", "\\phs000000\\t\\cat\\", "", "Yes", "0"],
+]
+
+
 def picsureloader_supports_combined_input():
-    """True when the PICSURELoader jar knows the combined-file options (picsure.loader.input / partitionBy)."""
+    """(capable, reason). Runs the PICSURELoader jar on a tiny combined file with -Dpicsure.loader.input and
+    -Dpicsure.loader.partitionBy=consent into a temporary base under work/; capable when it exits 0 and wrote a store per consent.
+    A jar without those options finds no split files in the base and fails."""
     path = jar("PICSURELoader")
     if not os.path.exists(path):
-        return False
+        return False, "PICSURELoader jar not found: %s" % path
+    os.makedirs(WORK, exist_ok=True)
+    base = tempfile.mkdtemp(prefix=".lane1-probe-", dir=WORK)
     try:
-        with zipfile.ZipFile(path) as z:
-            for name in z.namelist():
-                if name.endswith("phenotype/picsure/LoaderConfig.class"):
-                    return b"partitionBy" in z.read(name)
-    except (OSError, zipfile.BadZipFile):
-        return False
-    return False
+        inp = os.path.join(base, "probe-input.csv")
+        with open(inp, "w", newline="") as f:
+            csv.writer(f, quoting=csv.QUOTE_ALL, lineterminator="\n").writerows(PROBE_ROWS)
+        out = os.path.join(base, "out")
+        os.makedirs(out)
+        shutil.copyfile(DATASETS["combined"]["key"], os.path.join(out, "encryption_key"))
+        cmd = ["java", "-Xmx256m", "-Dpicsure.loader.failFast=false", "-Dpicsure.loader.input=" + inp,
+               "-Dpicsure.loader.partitionBy=consent", "-jar", path, out]
+        try:
+            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return False, "probe did not run: %s" % e
+        stores = [d for d in ("phs000000.c1", "phs000000.c2") if has_store(os.path.join(out, d))]
+        if r.returncode == 0 and len(stores) == 2:
+            return True, ""
+        return False, "PICSURELoader without combined input"
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def lane1_unavailable():
+    """None when lane 1 would run here, else the reason it cannot or may not (LANE1=off, or a jar without combined input)."""
+    if lane1_mode() == "off":
+        return "LANE1=off"
+    ok, reason = picsureloader_supports_combined_input()
+    return None if ok else reason
+
+
+def load_status(rc, loaded, failed):
+    """ok only when the loader exited 0, something was loaded and no partition failed; partial when only some loaded."""
+    if rc == 0 and loaded and not failed:
+        return "ok"
+    return "partial" if loaded else "failed"
+
+
+def check_sortable(path):
+    """(non-empty lines, CSV records): the runner's check before sorting. They differ when a quoted field holds a line break, which
+    `sort` would tear apart. Blank lines are not records (commons-csv ignores them)."""
+    lines = 0
+    with open(path, "rb") as f:
+        for line in f:
+            if line.rstrip(b"\r\n") != b"":
+                lines += 1
+    records = 0
+    with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
+        for row in csv.reader(f):
+            if row:
+                records += 1
+    return lines, records
+
+
+def request(dataset, flows):
+    """Record the flows this run asked for; compare.py lists the applicable flows that were not asked for as 'not run'."""
+    flows = [flow_name(f) for f in flows]
+    if not flows:
+        sys.stderr.write("request: no flows\n")
+        return 2
+    bad = [f for f in flows if f not in applicable_flows(dataset)]
+    if bad:
+        sys.stderr.write("%s: flow(s) %s do not apply to dataset %s (flows: %s)\n" % (
+            "request", ", ".join(bad), dataset, " ".join(applicable_flows(dataset))))
+        return 2
+    os.makedirs(dpath(dataset), exist_ok=True)
+    write_json(dpath(dataset, "requested-flows.json"), {"dataset": dataset, "flows": flows})
+    return 0
 
 
 def load(dataset, flow):
@@ -224,10 +313,14 @@ def load(dataset, flow):
                 result["reason"] = "dataset is already split"
                 say("%s lane1 skipped: dataset is already split" % dataset)
                 return finish("skipped", None, 0, [], [], msg="dataset is already split")
-            if not picsureloader_supports_combined_input():
-                say("lane1 skipped: PICSURELoader without combined input")
-                result["reason"] = "PICSURELoader without combined input"
-                return finish("skipped", None, 0, [], [], msg="PICSURELoader without combined input")
+            why = lane1_unavailable()
+            if why:
+                result["reason"] = why
+                if lane1_mode() == "require":
+                    say("%s lane1 FAILED: LANE1=require and %s" % (dataset, why))
+                    return finish("failed", None, 0, [], [], msg="LANE1=require: " + why)
+                say("%s lane1 skipped: %s" % (dataset, why))
+                return finish("skipped", None, 0, [], [], msg=why)
             return load_picsureloader_combined(dataset, lane, result, finish)
         if not os.path.isdir(dpath(dataset, "split")):
             sys.stderr.write("no split directory for %s: run split first\n" % dataset)
@@ -259,7 +352,13 @@ def load_csvloader(dataset, lane, result, finish):
         shutil.copyfile(dpath(dataset, "encryption_key"), os.path.join(base, "encryption_key"))
         # CSVLoader keeps 16 concepts in memory and silently loses data on input that is not grouped by concept
         env = dict(os.environ, LC_ALL="C")
-        rc, _ = run(["sort", "-t,", "-k2", "-o", os.path.join(base, part + "-allConcepts.csv"), os.path.realpath(path)], log, env=env)
+        lines, records = check_sortable(path)
+        if lines != records:  # as pipelines/hpds-pheno-load/entrypoint.sh: embedded line breaks cannot be sorted safely
+            with open(log, "a") as lg:
+                lg.write("%s: %d non-empty lines but %d CSV records (embedded line breaks cannot be sorted safely)\n" % (part, lines, records))
+            rc = 1
+        else:
+            rc, _ = run(["sort", "-t,", "-k2", "-o", os.path.join(base, part + "-allConcepts.csv"), os.path.realpath(path)], log, env=env)
         if rc == 0:
             rc, _ = run(["java", "-Xmx" + LOADER_XMX, "-jar", jar("CSVLoader"), base], log)
         rcs[part] = rc
@@ -275,7 +374,7 @@ def load_csvloader(dataset, lane, result, finish):
     shutil.rmtree(os.path.join(lane, "base"), ignore_errors=True)
     secs = time.time() - t0
     rc = 0 if not failed else 1
-    return finish("ok" if not failed else "partial", rc, secs, loaded, failed,
+    return finish(load_status(rc, loaded, failed), rc, secs, loaded, failed,
                   {"loader": "CSVLoader", "partition_exit_codes": rcs, "sorted": "LC_ALL=C sort -t, -k2"})
 
 
@@ -329,7 +428,7 @@ def load_picsureloader_split(dataset, lane, result, finish):
     shutil.rmtree(base, ignore_errors=True)
     extra = {"loader": "PICSURELoader", "command": " ".join(cmd)}
     extra.update(summary)
-    return finish("ok" if rc == 0 and not failed else "partial" if loaded else "failed", rc, secs, loaded, failed, extra)
+    return finish(load_status(rc, loaded, failed), rc, secs, loaded, failed, extra)
 
 
 def load_picsureloader_combined(dataset, lane, result, finish):
@@ -349,14 +448,14 @@ def load_picsureloader_combined(dataset, lane, result, finish):
     shutil.rmtree(base, ignore_errors=True)
     extra = {"loader": "PICSURELoader", "command": " ".join(cmd)}
     extra.update(summary)
-    return finish("ok" if rc == 0 and loaded else "partial" if loaded else "failed", rc, secs, loaded, failed, extra)
+    return finish(load_status(rc, loaded, failed), rc, secs, loaded, failed, extra)
 
 
 # ----------------------------------------------------------------------------------------------------------------------------
 
 
 def main(argv):
-    if len(argv) < 3 or argv[1] not in ("prepare", "split", "load", "flows"):
+    if len(argv) < 3 or argv[1] not in ("prepare", "split", "load", "flows", "request"):
         sys.stderr.write(__doc__)
         return 2
     cmd, dataset = argv[1], argv[2]
@@ -370,6 +469,8 @@ def main(argv):
     if cmd == "flows":
         print(" ".join(applicable_flows(dataset)))
         return 0
+    if cmd == "request":
+        return request(dataset, argv[3:])
     if len(argv) != 4:
         sys.stderr.write("usage: lane.py load DATASET FLOW\n")
         return 2

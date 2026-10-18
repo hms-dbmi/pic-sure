@@ -11,8 +11,11 @@ What is compared, for each lane that loaded something:
   - a battery of COUNT queries on the lane's HPDS (POST /PIC-SURE/v3/query/sync): per partition, for all partitions together and
     for an unknown consent. REQUIRED per concept, FILTER per categorical value, FILTER min..max on numeric concepts
     (the bounds are inclusive in HPDS).
-A difference is "explained" when it matches an entry of KNOWN_DIFFERENCES below. Everything else is an unexplained mismatch and the exit
-code is 1.
+A difference is "explained" when it matches a rule of KNOWN_DIFFERENCES below, and a rule explains only the kinds of mismatch it lists
+(see RULES): for example the U+FFFD difference can explain a category list, never a REQUIRED count. Everything else is an unexplained
+mismatch and the exit code is 1. So is a flow that was asked for and did not load every partition, a dataset that asked no query, and a
+query that was not answered. A flow the run did not ask for (make FLOWS=...) is a warning: the result then reads
+`PASS (partial: <flows> not run)`; a lane that was skipped (lane 1 without a capable jar) is named on the PASS line too.
 """
 from __future__ import annotations
 
@@ -65,6 +68,27 @@ KNOWN_DIFFERENCES = [
             "(`\"\"` sorts before `\"5`), so the concept ends up with 0 observations; a concept whose rows are all empty is stored with "
             "0 observations. PICSURELoader keeps the numeric values and stores no concept for empty rows. Checked by hand on a three-row "
             "file (CSVLoader: 0 observations, PICSURELoader: 2). The datasets of the stack avoid it on numeric concepts; real data does not."
+        ),
+    },
+    {
+        "id": "csvloader-whitespace-nval",
+        "title": "A whitespace-only nval drops the row in the CSVLoader and falls back to the text value in the PICSURELoader",
+        "lanes": ["csvloader-split"],
+        "description": (
+            "The CSVLoader tests the raw cell (`numericValue.isEmpty()`), so an nval of spaces makes the row numeric; the value trims to "
+            "nothing and the row is dropped, whatever the text value says. The PICSURELoader trims first, finds the nval empty and keeps "
+            "the text value (a number when it parses). With no text value both drop the row. The truth is the PICSURELoader result. "
+            "Only split datasets can carry such a row to the loaders: the splitter quarantines it as BAD_NVAL."
+        ),
+    },
+    {
+        "id": "csvloader-nonfinite-numbers",
+        "title": "NaN and Infinity are numbers in the CSVLoader and text (or nothing) in the PICSURELoader",
+        "lanes": ["csvloader-split"],
+        "description": (
+            "`Double.parseDouble` accepts NaN and Infinity, so the CSVLoader stores them as numeric observations, in nval or (with an "
+            "empty nval) in the text value. The PICSURELoader keeps finite numbers only: NaN in nval falls back to the text value (the "
+            "row is rejected without one), NaN in the text value is the categorical value `NaN`. The truth is the PICSURELoader result."
         ),
     },
     {
@@ -290,25 +314,115 @@ def meta_between_lanes(meta_a, meta_b):
 # run
 
 
-EXPLAINERS = (("fffd-in-text", "fffd"), ("csvloader-empty-row-first", "empty_first"))
+# Which mismatch kinds a rule may explain (the `kind` of a mismatch: meta:<what> for columnMeta against the truth, meta-lane-diff,
+# query:required / query:values / query:range, query:error for a query that got no count, load:*, health, splitter).
+CSV = "csvloader-split"
+DATA_KINDS = {"meta:categorical flag", "meta:observationCount", "meta:patientCount", "meta:min", "meta:max", "meta:category values",
+              "meta:concept missing from columnMeta", "meta:concept not in the input", "meta-lane-diff",
+              "query:required", "query:values", "query:range"}
+# partition failures that are known and why: {"flow": ..., "partition": ..., "reason": ...}. None today.
+PARTITION_FAILURE_RULES = []
+
+
+def _fffd_kind_ok(mm, concept_values):
+    """U+FFFD touches the stored text, so: the category list, the column width, and filters on a value that differs only by U+FFFD.
+    Presence (REQUIRED), observation and patient counts, min/max and HTTP errors are not explained by it."""
+    kind = mm.get("kind")
+    if kind == "meta:category values":
+        return True
+    if kind == "meta-lane-diff":
+        fields = set(mm.get("fields") or [])
+        return bool(fields) and fields <= {"values", "width"}
+    if kind == "query:values":
+        clean = set(concept_values)
+        return any(v.replace("\ufffd", "") in clean for v in mm.get("values") or [])
+    return False
+
+
+def _data_kind_ok(mm, _):
+    return mm.get("kind") in DATA_KINDS
+
+
+# rule id -> (evidence key, kind test); every one of them is CSVLoader-only
+RULES = (
+    ("fffd-in-text", "fffd", _fffd_kind_ok),
+    ("csvloader-empty-row-first", "empty_first", _data_kind_ok),
+    ("csvloader-whitespace-nval", "whitespace-nval", _data_kind_ok),
+    ("csvloader-nonfinite-numbers", "nonfinite", _data_kind_ok),
+)
 
 
 def explain(mm, evidence):
-    """The id of the known difference that explains a mismatch, or None. Both known differences are CSVLoader-only: the mismatch must
-    be that lane's alone (or a difference between it and another lane) and be about a concept the evidence names in that partition."""
+    """The id of the known difference that explains a mismatch, or None.
+
+    All the rules are about the CSVLoader: the mismatch must be that lane's alone, or a difference between it and another lane. It must
+    be about a concept the evidence names in one of its partitions, and of a kind the rule lists. evidence: key -> partition ->
+    concepts (a list, or for fffd a dict concept -> cleaned values)."""
+    if mm.get("category") == "load":
+        for r in PARTITION_FAILURE_RULES:
+            if mm.get("kind") == "load:partition-failed" and mm.get("lanes") == [r["flow"]] and mm.get("partitions") == [r["partition"]] and r.get("reason"):
+                return "partition-failure:" + r["partition"]
+        return None
     lanes = set(mm.get("lanes", []))
     concept = mm.get("concept")
-    if not concept:
+    if not concept or not lanes:
         return None
-    for rule, key in EXPLAINERS:
+    if mm.get("kind") == "meta-lane-diff":
+        if CSV not in lanes:
+            return None
+    elif not lanes <= {CSV}:
+        return None
+    for rule, key, kind_ok in RULES:
         named = evidence.get(key, {})
-        if not any(concept in named.get(p, ()) for p in mm.get("partitions", [])):
-            continue
-        if mm.get("category") == "columnMeta-lane-diff" and "csvloader-split" in lanes:
-            return rule
-        if lanes and lanes <= {"csvloader-split"}:
-            return rule
+        for p in mm.get("partitions", []):
+            entry = named.get(p, ())
+            if concept not in entry:
+                continue
+            if kind_ok(mm, entry[concept] if isinstance(entry, dict) else ()):
+                return rule
     return None
+
+
+def check_loads(applicable, requested, loads, lane1_unavailable):
+    """Judge the load.json of each applicable flow. loads: flow -> parsed load.json or None; requested: the flows this run asked for;
+    lane1_unavailable: callable returning why lane 1 cannot run here, or None.
+
+    Returns (mismatches, not_run, skipped, not_applicable). A flow that was asked for must have a load.json with status ok and no failed
+    partition: anything else is a `load` mismatch. A flow that was not asked for is `not run` (a warning), except lane 1 when it cannot
+    run here. Lane 1 may be `skipped` (its own load.json says why); that is reported, not failed."""
+    mms, not_run, skipped, n_a = [], [], [], {}
+
+    def add(flow, kind, detail, partitions=(), answers=None, truth="all partitions loaded"):
+        mms.append({"category": "load", "kind": kind, "partitions": list(partitions), "lanes": [flow], "concept": None,
+                    "query": "load %s" % flow, "truth": truth, "answers": answers or {flow: kind}, "detail": detail})
+
+    for flow in applicable:
+        load = loads.get(flow)
+        if flow not in requested:
+            if load is not None:
+                pass  # present although not asked for in this run's record: judge it like any other
+            else:
+                why = lane1_unavailable() if flow == lanemod.COMBINED_FLOW else None
+                if why:
+                    n_a[flow] = why
+                else:
+                    not_run.append(flow)
+                continue
+        if load is None:
+            add(flow, "load:missing", "no load.json: the flow was asked for and did not run", answers={flow: "no load.json"})
+            continue
+        status = load.get("status")
+        failed = list(load.get("partitions_failed") or [])
+        if status == "skipped" and flow == lanemod.COMBINED_FLOW:
+            skipped.append({"flow": flow, "lane": LANE_OF[flow], "reason": load.get("reason") or "skipped"})
+            continue
+        for part in failed:
+            add(flow, "load:partition-failed", "partition %s was not loaded" % part, [part], {flow: "failed"}, "loaded")
+        if status == "ok" and not failed and not load.get("partitions_loaded"):
+            add(flow, "load:status", "status ok but nothing was loaded", answers={flow: "nothing loaded"})
+        elif status != "ok" and not (status == "partial" and failed):
+            add(flow, "load:status", "status %s%s" % (status, (": " + load["reason"]) if load.get("reason") else ""), answers={flow: status})
+    return mms, not_run, skipped, n_a
 
 
 def rejected_by_loader(load):
@@ -318,6 +432,15 @@ def rejected_by_loader(load):
         for reason, n in (s.get("rowsRejected") or {}).items():
             total[reason] = total.get(reason, 0) + n
     return total
+
+
+def requested_flows(dataset, applicable):
+    """The flows this run asked for (work/DATASET/requested-flows.json, written by `make load`); all applicable ones when not recorded."""
+    path = os.path.join(WORK, dataset, "requested-flows.json")
+    if not os.path.exists(path):
+        return list(applicable)
+    with open(path) as f:
+        return [x for x in json.load(f).get("flows", [])]
 
 
 def run_dataset(dataset, ports, host):
@@ -337,10 +460,6 @@ def run_dataset(dataset, ports, host):
         mismatches.append(kw)
         return kw
 
-    evidence = {"fffd": {p: [c for c, cc in pt.concepts.items() if cc.fffd] for p, pt in truth.items()}}
-    evidence["fffd"] = {p: v for p, v in evidence["fffd"].items() if v}
-    evidence["empty_first"] = {p: pt.empty_row_concepts() for p, pt in truth.items() if pt.empty_row_concepts()}
-
     # the splitter against the truth's routing
     split_info = None
     if kind == "combined":
@@ -350,30 +469,31 @@ def run_dataset(dataset, ports, host):
         got = {p["name"]: (p["rows"], p["patients"]) for p in man.get("partitions", [])}
         want = {p: (len(rows), len({int(r[0]) for r in rows})) for p, rows in routed.partitions.items()}
         if got != want:
-            mm(category="splitter-vs-truth", partitions=[], lanes=[], concept=None, query="partition rows/patients",
+            mm(category="splitter-vs-truth", kind="splitter", partitions=[], lanes=[], concept=None, query="partition rows/patients",
                truth=want, answers={"splitter": got}, detail="split_manifest.json disagrees with the independent routing")
         rej = (man.get("rows") or {}).get("rejected")
         if rej != len(routed.rejected):
-            mm(category="splitter-vs-truth", partitions=[], lanes=[], concept=None, query="rejected rows",
+            mm(category="splitter-vs-truth", kind="splitter", partitions=[], lanes=[], concept=None, query="rejected rows",
                truth=len(routed.rejected), answers={"splitter": rej}, detail="quarantined row count differs")
 
     # the lanes
-    lanes = OrderedDict()
+    loads = OrderedDict()
     for flow in lanemod.FLOW_NAMES:
         lj = os.path.join(WORK, dataset, flow, "load.json")
-        if not os.path.exists(lj):
-            continue
-        with open(lj) as f:
-            load = json.load(f)
-        lane = LANE_OF[flow]
-        entry = {"flow": flow, "lane": lane, "load": load, "status": load.get("status")}
-        lanes[flow] = entry
+        loads[flow] = None
+        if os.path.exists(lj):
+            with open(lj) as f:
+                loads[flow] = json.load(f)
+    applicable = lanemod.applicable_flows(dataset)
+    requested = requested_flows(dataset, applicable)
+    load_mms, not_run, skipped, not_applicable = check_loads(applicable, requested, loads, lanemod.lane1_unavailable)
+    for m in load_mms:
+        mm(**m)
+    lanes = OrderedDict()
+    for flow, load in loads.items():
+        if load is not None:
+            lanes[flow] = {"flow": flow, "lane": LANE_OF[flow], "load": load, "status": load.get("status")}
     active = OrderedDict((f, e) for f, e in lanes.items() if e["status"] in ("ok", "partial") and e["load"].get("partitions_loaded"))
-    for flow, e in lanes.items():
-        if e["status"] in ("failed", "partial") or (e["status"] == "ok" and not e["load"].get("partitions_loaded")):
-            mm(category="load", partitions=e["load"].get("partitions_failed", []), lanes=[flow], concept=None,
-               query="load %s" % flow, truth="all partitions loaded", answers={flow: e["status"]},
-               detail="partitions not loaded: %s" % (", ".join(e["load"].get("partitions_failed", [])) or "nothing loaded"))
 
     # columnMeta
     lane_meta = OrderedDict()
@@ -385,14 +505,14 @@ def run_dataset(dataset, ports, host):
             lane_meta[flow][part] = pheno.parse_column_meta(p) if os.path.exists(p) else {}
         loaded = set(e["load"]["partitions_loaded"])
         for part in sorted(set(truth) - loaded - set(e["load"].get("partitions_failed", []))):
-            mm(category="partition-missing", partitions=[part], lanes=[flow], concept=None, query="partition %s" % part,
+            mm(category="partition-missing", kind="partition", partitions=[part], lanes=[flow], concept=None, query="partition %s" % part,
                truth="loaded", answers={flow: "absent"}, detail="the lane has no store for this partition")
         for part in sorted(loaded - set(truth)):
-            mm(category="partition-extra", partitions=[part], lanes=[flow], concept=None, query="partition %s" % part,
+            mm(category="partition-extra", kind="partition", partitions=[part], lanes=[flow], concept=None, query="partition %s" % part,
                truth="not in the input", answers={flow: "present"}, detail="the lane loaded a partition the input does not have")
         for part in sorted(loaded & set(truth)):
             for path, what, want, got in meta_vs_truth(flow, part, lane_meta[flow][part], truth[part]):
-                mm(category="columnMeta-vs-truth", partitions=[part], lanes=[flow], concept=path, query="columnMeta " + what,
+                mm(category="columnMeta-vs-truth", kind="meta:" + what, partitions=[part], lanes=[flow], concept=path, query="columnMeta " + what,
                    truth=want, answers={flow: got}, detail="")
     flows = list(lane_meta)
     for i in range(len(flows)):
@@ -400,7 +520,7 @@ def run_dataset(dataset, ports, host):
             a, b = flows[i], flows[j]
             for part in sorted(set(lane_meta[a]) & set(lane_meta[b])):
                 for path, fields, ma, mb in meta_between_lanes(lane_meta[a][part], lane_meta[b][part]):
-                    mm(category="columnMeta-lane-diff", partitions=[part], lanes=[a, b], concept=path,
+                    mm(category="columnMeta-lane-diff", kind="meta-lane-diff", fields=fields, partitions=[part], lanes=[a, b], concept=path,
                        query="columnMeta %s" % ",".join(fields), truth=None, answers={a: ma and {k: ma[k] for k in fields if k in ma},
                                                                                   b: mb and {k: mb[k] for k in fields if k in mb}},
                        detail="")
@@ -420,7 +540,7 @@ def run_dataset(dataset, ports, host):
         e["health"] = health
         qstats[flow] = {"asked": 0, "answered": 0, "errors": 0, "mismatches": 0}
         if health != "UP":
-            mm(category="hpds-health", partitions=[], lanes=[flow], concept=None, query="GET /actuator/health", truth="UP",
+            mm(category="hpds-health", kind="health", partitions=[], lanes=[flow], concept=None, query="GET /actuator/health", truth="UP",
                answers={flow: health}, detail="HPDS of %s is not healthy at %s" % (flow, base))
             continue
         with ThreadPoolExecutor(max_workers=4) as ex:
@@ -442,9 +562,27 @@ def run_dataset(dataset, ports, host):
                 bad.append(flow)
                 qstats[flow]["mismatches"] += 1
         if bad:
-            mm(category="query", partitions=q.consents if q.scope != "unknown-consent" else [], lanes=bad, concept=q.concept,
+            errored = any(answers[f][k][1] for f in bad)
+            kind = ("query:error" if errored else "query:required" if q.clause["phenotypicFilterType"] == "REQUIRED"
+                    else "query:values" if "values" in q.clause else "query:range")
+            mm(category="query", kind=kind, values=list(q.clause.get("values") or []),
+               partitions=q.consents if q.scope != "unknown-consent" else [], lanes=bad, concept=q.concept,
                scope=q.scope, query=q.desc, truth=q.truth, answers=per, detail="")
 
+    # what the known differences may explain: only concepts the input (and for empty rows the CSVLoader's own columnMeta) shows
+    evidence = {"fffd": {}, "empty_first": {}, "whitespace-nval": {}, "nonfinite": {}}
+    csv_meta = lane_meta.get(CSV, {})
+    for p, pt in truth.items():
+        fv = {c: sorted(cc.fffd_values) for c, cc in pt.concepts.items() if cc.fffd}
+        if fv:
+            evidence["fffd"][p] = fv
+        confirmed = [c for c in pt.empty_row_concepts()
+                     if (csv_meta.get(p, {}).get(c) or {}).get("categorical") and csv_meta[p][c]["observations"] == 0]
+        if confirmed:
+            evidence["empty_first"][p] = confirmed
+        for kind, key in ((pheno.WS_NVAL, "whitespace-nval"), (pheno.NONFINITE, "nonfinite")):
+            if pt.csv_differs[kind]:
+                evidence[key][p] = sorted(pt.csv_differs[kind])
     for m in mismatches:
         m["explained_by"] = explain(m, evidence)
 
@@ -452,9 +590,13 @@ def run_dataset(dataset, ports, host):
     ev = {k["id"]: {} for k in KNOWN_DIFFERENCES}
     for p, pt in truth.items():
         if pt.fffd_rows:
-            ev["fffd-in-text"][p] = {"rows": pt.fffd_rows, "concepts": evidence["fffd"].get(p, [])}
+            ev["fffd-in-text"][p] = {"rows": pt.fffd_rows, "concepts": sorted(evidence["fffd"].get(p, {}))}
         if pt.empty_row_concepts():
-            ev["csvloader-empty-row-first"][p] = {"concepts": pt.empty_row_concepts()}
+            ev["csvloader-empty-row-first"][p] = {"concepts": pt.empty_row_concepts(), "confirmed_in_csvloader_columnMeta": evidence["empty_first"].get(p, [])}
+        if pt.csv_differs[pheno.WS_NVAL]:
+            ev["csvloader-whitespace-nval"][p] = {"rows": pt.csv_differs[pheno.WS_NVAL]}
+        if pt.csv_differs[pheno.NONFINITE]:
+            ev["csvloader-nonfinite-numbers"][p] = {"rows": pt.csv_differs[pheno.NONFINITE]}
         if pt.rolled_up_rows:
             ev["rollup-last-node"][p] = {"rows": pt.rolled_up_rows}
         if pt.short_rows:
@@ -486,9 +628,12 @@ def run_dataset(dataset, ports, host):
             "url": e.get("url"), "health": e.get("health"), "queries": qstats.get(flow),
             "rows_rejected_by_loader": rejected_by_loader(ld),
         }
-    for flow in lanemod.applicable_flows(dataset):
+    for flow in applicable:
         if flow not in lane_summary:
-            lane_summary[flow] = {"lane": LANE_OF[flow], "status": "not run"}
+            if flow in not_applicable:
+                lane_summary[flow] = {"lane": LANE_OF[flow], "status": "n/a", "reason": not_applicable[flow]}
+            else:
+                lane_summary[flow] = {"lane": LANE_OF[flow], "status": "not run"}
 
     report = {
         "dataset": dataset, "kind": kind, "generated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -507,6 +652,9 @@ def run_dataset(dataset, ports, host):
             "scopes": sorted({q.scope if not q.scope.startswith("partition:") else "partition" for q in battery}),
         },
         "lanes": lane_summary,
+        "requested_flows": requested,
+        "not_run": not_run,
+        "skipped": skipped,
         "mismatches": mismatches,
         "known_differences": known,
         "summary": {"mismatches": len(mismatches), "explained": sum(1 for m in mismatches if m["explained_by"]),
@@ -541,9 +689,22 @@ def md_escape(s):
 def render_md(reports, summary):
     out = ["# Local stack comparison", "", "Generated %s." % time.strftime("%Y-%m-%d %H:%M:%S"), ""]
     out.append("Result: **%s**. %d unexplained mismatches, %d explained by known differences; %d of %d queries answered." % (
-        "PASS" if summary["pass"] else "FAIL", summary["unexplained"], summary["explained"], summary["queries_answered"],
+        pass_line(summary) if summary["pass"] else "FAIL", summary["unexplained"], summary["explained"], summary["queries_answered"],
         summary["queries_asked"]))
     out.append("")
+    if summary.get("problems"):
+        for pr in summary["problems"]:
+            out.append("- FAIL: %s" % pr)
+        out.append("")
+    warns = [("not run", r["dataset"], f, "applicable, but this run asked for %s only" % ", ".join(r.get("requested_flows") or []))
+             for r in reports for f in r.get("not_run") or []]
+    warns += [("skipped", r["dataset"], s_["flow"], s_["reason"]) for r in reports for s_ in r.get("skipped") or []]
+    if warns:
+        out.append("## Warnings")
+        out.append("")
+        for what, ds, flow, why in warns:
+            out.append("- WARN %s: %s %s (%s)" % (what, ds, flow, why))
+        out.append("")
     out.append("## Lanes")
     out.append("")
     for r in reports:
@@ -635,6 +796,42 @@ def render_md(reports, summary):
     return "\n".join(out)
 
 
+def summarize(reports, names):
+    unexplained = sum(r["summary"]["unexplained"] for r in reports)
+    explained = sum(r["summary"]["explained"] for r in reports)
+    answered = sum((l.get("queries") or {}).get("answered", 0) for r in reports for l in r["lanes"].values())
+    asked = sum((l.get("queries") or {}).get("asked", 0) for r in reports for l in r["lanes"].values())
+    problems = []
+    for r in reports:
+        per_dataset = sum((l.get("queries") or {}).get("asked", 0) for l in r["lanes"].values())
+        if per_dataset == 0:
+            problems.append("%s asked 0 queries (nothing was compared)" % r["dataset"])
+        for flow, l in r["lanes"].items():
+            if l.get("status") == "ok" and (l.get("queries") or {}).get("asked", 0) == 0 and per_dataset:
+                problems.append("%s %s loaded but asked 0 queries" % (r["dataset"], flow))
+    not_run = sorted({f for r in reports for f in r.get("not_run") or []})
+    skipped = []
+    for r in reports:
+        for s_ in r.get("skipped") or []:
+            item = {"lane": s_["lane"], "flow": s_["flow"], "reason": s_["reason"]}
+            if item not in skipped:
+                skipped.append(item)
+    return {"datasets": names, "unexplained": unexplained, "explained": explained, "queries_asked": asked, "queries_answered": answered,
+            "problems": problems, "not_run": not_run, "skipped": skipped,
+            "pass": unexplained == 0 and answered == asked and not problems}
+
+
+def pass_line(summary):
+    """`PASS` when every applicable flow ran and none was skipped; otherwise what did not: `PASS (partial: <flows> not run; lane1
+    skipped: <why>)`."""
+    parts = []
+    if summary.get("not_run"):
+        parts.append("partial: %s not run" % ", ".join(summary["not_run"]))
+    for s_ in summary.get("skipped") or []:
+        parts.append("%s skipped: %s" % (s_["lane"], s_["reason"]))
+    return "PASS (%s)" % "; ".join(parts) if parts else "PASS"
+
+
 def report(datasets):
     names = datasets or sorted(f[:-5] for f in os.listdir(REPORT_DIR) if f.endswith(".json") and f not in ("compare.json",))
     reports = []
@@ -645,12 +842,8 @@ def report(datasets):
             return 2
         with open(path) as f:
             reports.append(json.load(f))
-    unexplained = sum(r["summary"]["unexplained"] for r in reports)
-    explained = sum(r["summary"]["explained"] for r in reports)
-    answered = sum((l.get("queries") or {}).get("answered", 0) for r in reports for l in r["lanes"].values())
-    asked = sum((l.get("queries") or {}).get("asked", 0) for r in reports for l in r["lanes"].values())
-    summary = {"datasets": names, "unexplained": unexplained, "explained": explained, "queries_asked": asked, "queries_answered": answered,
-               "pass": unexplained == 0 and answered == asked}
+    summary = summarize(reports, names)
+    unexplained, explained, answered, asked = (summary[k] for k in ("unexplained", "explained", "queries_answered", "queries_asked"))
     with open(os.path.join(REPORT_DIR, "compare.json"), "w") as f:
         json.dump({"summary": summary, "datasets": reports}, f, indent=2)
         f.write("\n")
@@ -666,10 +859,17 @@ def report(datasets):
                 "%d/%d" % (len(l.get("partitions_loaded") or []), len(l.get("partitions_loaded") or []) + len(l.get("partitions_failed") or [])),
                 q.get("asked", "-"), q.get("answered", "-"), q.get("mismatches", "-")))
     print("mismatches: %d explained by known differences, %d unexplained; queries answered %d of %d" % (explained, unexplained, answered, asked))
+    for r in reports:
+        for f in r.get("not_run") or []:
+            print("WARN not run: %s %s" % (r["dataset"], f))
+        for s_ in r.get("skipped") or []:
+            print("WARN skipped: %s %s (%s)" % (r["dataset"], s_["flow"], s_["reason"]))
     if not summary["pass"]:
-        print("FAIL: unexplained mismatches or unanswered queries (see compare.md)")
+        for pr in summary["problems"]:
+            print("FAIL: %s" % pr)
+        print("FAIL: unexplained mismatches, unanswered queries or nothing compared (see compare.md)")
         return 1
-    print("PASS")
+    print(pass_line(summary))
     return 0
 
 

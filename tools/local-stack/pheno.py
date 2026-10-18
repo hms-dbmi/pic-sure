@@ -184,6 +184,12 @@ class Observation(object):
 def observation(row):
     """(Observation or None, note). note is None, 'short' (fewer than four columns: skipped), 'no_value' or 'bad_patient'.
 
+    The truth follows the PICSURELoader (CsvObservationProducer.parseRecord):
+    - nval is trimmed; a finite number in it is the numeric value (it wins over a text value). Anything else in it (empty,
+      whitespace, NaN, Infinity, text) is not a number, and the row falls back to the text value
+    - the text value is trimmed and has U+FFFD removed; text that parses as a finite number is a number (the legacy rule), other
+      text is a categorical value; no value at all stores nothing
+    The CSVLoader differs in two places, see csv_difference(): the rows with a whitespace-only nval and the non-finite numbers.
     The text value of a categorical observation has U+FFFD removed, as the PICSURELoader does. The CSVLoader keeps it in the stored
     value; `fffd` flags that case (known difference `fffd-in-text`).
     """
@@ -197,13 +203,13 @@ def observation(row):
     if tval and path.endswith("\\" + tval + "\\"):
         path = path[: path[:-1].rfind("\\") + 1]
         rolled = True
-    nval = row[2]
     numeric = None
-    if nval != "" and java_trim(nval) != "":
+    nval = java_trim(row[2])
+    if nval:
         d = java_double(nval)
         if is_finite(d):
             numeric = d
-    elif tval:
+    if numeric is None and tval:
         d = java_double(tval)
         if is_finite(d):
             numeric = d
@@ -217,6 +223,42 @@ def observation(row):
     return Observation(patient, path, False, tval, rolled, fffd), None
 
 
+WS_NVAL = "whitespace-nval"
+NONFINITE = "nonfinite"
+
+
+def csv_difference(row):
+    """(kind, concept path) when the CSVLoader treats the row differently from the PICSURELoader (and so from the truth), else None.
+
+    CSVLoader.processRecord, read with the PICSURELoader's code next to it:
+    - whitespace-nval: an nval that is only whitespace is not empty for the CSVLoader (`numericValue.isEmpty()` is on the raw cell), so
+      the row is numeric, its value trims to nothing and the row is dropped, even when a text value is there. The PICSURELoader trims
+      first, finds nval empty and keeps the text value (a number if it parses). With no text value both drop the row.
+    - nonfinite: `Double.parseDouble` takes NaN and Infinity, so the CSVLoader stores them as numbers, whether they stand in nval or
+      (with an empty nval) in the text value. The PICSURELoader accepts finite numbers only: NaN or Infinity in nval falls back to the
+      text value (the row is rejected without one), in the text value it is a categorical value `NaN`.
+    """
+    if len(row) < 4:
+        return None
+    path = concept_path(row[1])
+    tval = java_trim(row[3].replace(FFFD, ""))
+    if tval and path.endswith("\\" + tval + "\\"):
+        path = path[: path[:-1].rfind("\\") + 1]
+    nval_raw, nval = row[2], java_trim(row[2])
+    if nval_raw != "" and nval == "":
+        return (WS_NVAL, path) if tval else None
+    if nval:
+        d = java_double(nval)
+        if d is not None and not is_finite(d):
+            return NONFINITE, path
+        return None
+    if tval:
+        d = java_double(tval)
+        if d is not None and not is_finite(d):
+            return NONFINITE, path
+    return None
+
+
 class Concept(object):
     """One concept of one partition: type (decided by the first observation) and observations."""
 
@@ -224,6 +266,7 @@ class Concept(object):
         self.numeric = numeric
         self.obs = []  # (patient, value)
         self.fffd = False
+        self.fffd_values = set()  # the cleaned text of the values that carried U+FFFD
         self.mixed_dropped = 0
 
     @property
@@ -246,6 +289,7 @@ class PartitionTruth(object):
         self.fffd_rows = 0
         self.mixed_type_dropped = 0
         self.empty_rows = {}  # concept -> rows without a value
+        self.csv_differs = {WS_NVAL: {}, NONFINITE: {}}  # kind -> concept -> rows the CSVLoader treats differently
 
     def empty_row_concepts(self):
         """Concepts with a row without a value that are numeric, or have no value at all: where the CSVLoader can go wrong.
@@ -264,6 +308,9 @@ def build_partition(name, rows):
     pt = PartitionTruth(name)
     for row in rows:
         pt.rows += 1
+        diff = csv_difference(row)
+        if diff:
+            pt.csv_differs[diff[0]][diff[1]] = pt.csv_differs[diff[0]].get(diff[1], 0) + 1
         ob, note = observation(row)
         if note == "short":
             pt.short_rows += 1
@@ -289,6 +336,7 @@ def build_partition(name, rows):
         if ob.fffd and not ob.numeric:
             pt.fffd_rows += 1
             c.fffd = True
+            c.fffd_values.add(ob.value)
     return pt
 
 

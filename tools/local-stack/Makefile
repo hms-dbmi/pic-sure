@@ -4,9 +4,15 @@
 #   make compare DATASET=all              the same for mini, 1000g, combined and synth, then one report
 #   make jars | split | load | up | down | restart | clean
 #
-# Variables: DATASET (mini 1000g combined synth all), FLOWS (loader flows, default: those that apply), LAYERS (default hpds),
-# PATIENTS CONCEPTS SEED (dataset synth), REBUILD=1 (rebuild the jars). Ports and hosts: .env.defaults, local.env.
-# Needs GNU make 3.81 or newer, Java 25, Maven, Python 3, Docker.
+# Variables: DATASET (mini 1000g combined synth edge all; all does not include edge), FLOWS (loader flows, default: those that apply; a subset is a debug run and
+# the result reads PASS (partial: ... not run)), LANE1 (auto|require|off, default auto: lane 1 runs when the PICSURELoader jar can read
+# a combined file, else it is skipped; require makes a skip a failure), LAYERS (default hpds), PATIENTS CONCEPTS SEED (dataset synth),
+# REBUILD=1 (rebuild the jars). Ports and hosts: .env.defaults, local.env.
+# Needs GNU make 3.81 or newer, Java 25, Maven, Python 3, Docker. The checkout path must not contain spaces.
+
+ifneq ($(words $(CURDIR)),1)
+$(error the path of this directory contains spaces ($(CURDIR)): move the checkout, make cannot handle it)
+endif
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -16,6 +22,7 @@ SHELL := /bin/bash
 
 DATASET ?= combined
 LAYERS ?= hpds
+LANE1 ?= auto
 DATASETS_ALL := mini 1000g combined synth
 DATASETS_SEL := $(if $(filter all,$(DATASET)),$(DATASETS_ALL),$(DATASET))
 
@@ -33,7 +40,7 @@ export WORK_DIR := $(WORK)
 export SPLITTER_JAR
 export LOADER_JAR_DIR := $(LOADER_JARS_DIR)
 export LOADER_XMX SPLIT_MAX_REJECT PATIENTS CONCEPTS SEED HPDS_HOST
-export HPDS_LANE1_PORT HPDS_LANE2_PORT HPDS_LANE3_PORT
+export HPDS_LANE1_PORT HPDS_LANE2_PORT HPDS_LANE3_PORT LANE1
 # what docker compose reads
 export DATASET
 export STORE_ROOT := $(WORK)
@@ -43,41 +50,51 @@ COMPOSE = docker compose -f docker-compose.yml --env-file .env.defaults $(if $(w
 CSV_JAR := $(LOADER_JARS_DIR)/CSVLoader-jar-with-dependencies.jar
 PIC_JAR := $(LOADER_JARS_DIR)/PICSURELoader-jar-with-dependencies.jar
 
+# every recipe that removes something runs this first: WORK must end in /tools/local-stack/work (WORK can be set on the command line)
+GUARD_WORK = case "$(WORK)" in */tools/local-stack/work) test ! -L "$(WORK)" ;; *) echo "refusing to touch $(WORK): not .../tools/local-stack/work" >&2; exit 1 ;; esac
+
 ifeq ($(REBUILD),1)
-.PHONY: $(PIC_JAR) $(HPDS_SERVICE_JAR) $(SPLITTER_JAR)
+.PHONY: $(SPLITTER_JAR)
 endif
 
-.PHONY: help jars split load up down restart clean clean-data run compare urls _up-hpds
+.PHONY: help jars _mvn split load up down restart clean clean-data run compare urls _up-hpds
 
 help:
 	@sed -n '1,/^SHELL/p' Makefile | grep '^#' | sed 's/^# \{0,1\}//'
 
 # ---------------------------------------------------------------------------------------------------------------- build
 
-jars: $(CSV_JAR) $(PIC_JAR) $(HPDS_SERVICE_JAR) $(SPLITTER_JAR)
+# the splitter is built only when a selected dataset needs splitting (combined, synth)
+jars: FORCE := $(REBUILD)
+jars: _mvn $(if $(filter combined synth,$(DATASETS_SEL)),$(SPLITTER_JAR))
 
-# both loaders, written into services/pic-sure-hpds/docker/pic-sure-hpds-etl (ignored by git)
-$(PIC_JAR):
-	cd $(REPO) && mvn -B -ntp -q -pl services/pic-sure-hpds/etl -am package -DskipTests
+# both loaders (written into services/pic-sure-hpds/docker/pic-sure-hpds-etl, ignored by git) and the HPDS service: one maven reactor
+_mvn:
+	@if [ "$(FORCE)" = 1 ] || [ ! -f "$(CSV_JAR)" ] || [ ! -f "$(PIC_JAR)" ] || [ ! -f "$(HPDS_SERVICE_JAR)" ]; then \
+	  echo "mvn package: loaders and HPDS service"; \
+	  cd "$(REPO)" && mvn -B -ntp -q -pl services/pic-sure-hpds/etl,services/pic-sure-hpds/service -am package -DskipTests; \
+	fi
 
-$(CSV_JAR): $(PIC_JAR)
-
-$(HPDS_SERVICE_JAR):
-	cd $(REPO) && mvn -B -ntp -q -pl services/pic-sure-hpds/service -am package -DskipTests
+$(CSV_JAR) $(PIC_JAR) $(HPDS_SERVICE_JAR):
+	@$(MAKE) --no-print-directory _mvn
+	@test -f "$@" || { echo "$@ was not built"; exit 1; }
 
 # the splitter is built from a pinned commit of pic-sure-hpds-etl, extracted with git archive: that checkout is never written to
 $(SPLITTER_JAR):
 	@test -n "$(SPLITTER_REPO)" || { echo "pic-sure-hpds-etl not found next to this checkout: set SPLITTER_REPO=<path> (or SPLITTER_JAR=<built hpds-etl.jar>)"; exit 1; }
-	rm -rf $(WORK)/src/hpds-etl && mkdir -p $(WORK)/src/hpds-etl
-	git -C $(SPLITTER_REPO) archive $(SPLITTER_REF) | tar -x -C $(WORK)/src/hpds-etl
-	cd $(WORK)/src/hpds-etl && ./mvnw -q package -DskipTests
+	@test -n "$(SPLITTER_REF)" || { echo "SPLITTER_REF is empty (.env.defaults)"; exit 1; }
+	@$(GUARD_WORK)
+	rm -rf -- "$(WORK)/src/hpds-etl" && mkdir -p "$(WORK)/src/hpds-etl"
+	set -o pipefail; git -C "$(SPLITTER_REPO)" archive "$(SPLITTER_REF)" | tar -x -C "$(WORK)/src/hpds-etl"
+	cd "$(WORK)/src/hpds-etl" && ./mvnw -q package -DskipTests
 
 # the HPDS image is built from the repository's own Dockerfile with a small context (just the service jar)
 $(IMAGE_STAMP): $(HPDS_SERVICE_JAR)
-	@rm -rf $(WORK)/hpds-image-ctx && mkdir -p $(WORK)/hpds-image-ctx/service/target
-	@cp $(HPDS_SERVICE_JAR) $(WORK)/hpds-image-ctx/service/target/
-	docker build -q -f $(REPO)/services/pic-sure-hpds/docker/pic-sure-hpds/Dockerfile -t $(HPDS_IMAGE) $(WORK)/hpds-image-ctx
-	@touch $@
+	@$(GUARD_WORK)
+	@rm -rf -- "$(WORK)/hpds-image-ctx" && mkdir -p "$(WORK)/hpds-image-ctx/service/target"
+	@cp "$(HPDS_SERVICE_JAR)" "$(WORK)/hpds-image-ctx/service/target/"
+	docker build -q -f "$(REPO)/services/pic-sure-hpds/docker/pic-sure-hpds/Dockerfile" -t "$(HPDS_IMAGE)" "$(WORK)/hpds-image-ctx"
+	@touch "$@"
 
 # ---------------------------------------------------------------------------------------------------------------- data
 
@@ -89,6 +106,7 @@ split:
 load:
 	@set -e; for d in $(DATASETS_SEL); do \
 	  flows="$(if $(filter command line,$(origin FLOWS)),$(FLOWS),$$(python3 lane.py flows $$d))"; \
+	  python3 lane.py request $$d $$flows; \
 	  $(MAKE) --no-print-directory -j $$(echo $$flows | wc -w) DATASET=$$d $$(for f in $$flows; do echo _lane-$$f; done); \
 	done
 
@@ -99,7 +117,7 @@ _lane-%:
 
 # up LAYERS=hpds: start the layers; DATASET picks which loaded stores they serve (a single dataset)
 up:
-	@test "$(DATASET)" != all || { echo "up serves one dataset: DATASET=mini|1000g|combined|synth"; exit 2; }
+	@test "$(DATASET)" != all || { echo "up serves one dataset: DATASET=mini|1000g|combined|synth|edge"; exit 2; }
 	@set -e; for l in $(LAYERS); do $(MAKE) --no-print-directory _up-$$l; done
 
 _up-hpds: $(IMAGE_STAMP)
@@ -152,8 +170,10 @@ urls:
 # ---------------------------------------------------------------------------------------------------------------- clean
 
 clean: down
-	rm -rf $(CURDIR)/work
+	@$(GUARD_WORK)
+	rm -rf -- "$(WORK)"
 
 # everything loaded or compared, but not the splitter build or the HPDS image
 clean-data: down
-	@for d in mini 1000g combined synth report; do rm -rf "$(CURDIR)/work/$$d"; done
+	@$(GUARD_WORK)
+	@for d in mini 1000g combined synth report; do rm -rf -- "$(WORK)/$$d"; done
