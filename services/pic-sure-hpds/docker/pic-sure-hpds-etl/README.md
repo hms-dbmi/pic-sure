@@ -122,6 +122,15 @@ The output still goes under the base directory, which also holds `encryption_key
     partitions. The studies that only rejected rows name are listed in `routing.studiesOnlyInRejectedConsentRows`. A node that no
     `_consents` row names at all (a `phsNNNNNN` with no consents rows anywhere) stays a global variable, as in the splitter, and is listed
     in `routing.studyNodesWithoutConsents` (a separately tracked policy question).
+  - **Another spelling of a known study is never a global variable.** Every `_consents` value (valid, invalid name, rejected row)
+    registers its study twice: as written and *folded* (U+FFFD, blanks, control and format characters removed, the part before the first
+    dot, lower case). A data row whose node is a study as written goes by the rules above. A node that is **not** a study as written but
+    folds to a known one (`PHS999999`, `phs999999<U+FFFD>`, `phs 999999` next to a consents value `phs999999.c1`, also when that value is
+    an invalid name such as `phs999999<U+FFFD>.c1`) is unroutable (`INVALID_STUDY_NODE`, counts against `maxRejectedRows`), never copied
+    into other partitions. Only a node that folds to no `_consents` value at all may be global. Two **valid** consents whose studies
+    differ only by such a folding (`PHS999999.c1` and `phs999999.c2`) refuse the run (exit 2, before any work).
+  - **Rows under `\_consents\<anything>\` that are no consents rows** (`\_consents\x\` with an unrelated text value) are ordinary
+    global rows (the partition directory is what authorizes in HPDS); they are counted in `routing.consentsSubtreeRowsNotConsents`.
   - **A consents row on a line that cannot be parsed refuses the run (exit 2, before any work), whatever the limits**: its study cannot
     be known, so rows of it could not be kept out of the global rows. The message gives the physical line numbers. Fix the lines.
   - **Every line is one CSV record.** allConcepts has no line breaks inside a field, so a line that cannot be parsed (an unterminated

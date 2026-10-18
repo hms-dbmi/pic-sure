@@ -24,7 +24,8 @@ public enum FailureReason {
         true
     ), INVALID_STUDY_NODE(
         "The study node (first node) of the concept path has leading or trailing whitespace or U+FFFD, so it changes when the loader "
-            + "normalizes the path (combined input); the row cannot be routed safely and was not written",
+            + "normalizes the path, or it is another spelling (case, blanks, U+FFFD) of a study some consent names (combined input); the "
+            + "row cannot be routed safely and was not written",
         true
     );
 

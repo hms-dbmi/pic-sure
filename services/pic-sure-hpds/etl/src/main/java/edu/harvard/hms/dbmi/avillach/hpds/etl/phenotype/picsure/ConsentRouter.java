@@ -56,7 +56,13 @@ import java.util.regex.Pattern;
  * written ({@link FailureReason#INVALID_CONSENT_NAME}), a row with other consents only loses the copy for the dropped one;</li> <li>a row
  * whose study node (depth 1) is not the same after {@link CsvObservationProducer#normalizeConceptPath} (the partition's loader trims
  * segments and removes U+FFFD: {@code \ phs000000\A\} would become a study row there, but is a global row here) is unroutable
- * ({@link FailureReason#INVALID_STUDY_NODE}), never global;</li> <li>a row that cannot be routed (not exactly 5 fields, the allConcepts
+ * ({@link FailureReason#INVALID_STUDY_NODE}), never global;</li> <li><b>folded studies</b>: every consents value (valid, invalid name or
+ * rejected row) registers its study by its exact spelling and by {@link #foldStudy its folded key} (U+FFFD, blanks and case removed). A
+ * data row whose node is no exact study but folds to a known one ({@code PHS999999}, {@code phs999999<U+FFFD>}, {@code phs999 999} next
+ * to {@code phs999999.c1}) is unroutable ({@link FailureReason#INVALID_STUDY_NODE}), never global. Valid consents whose studies differ
+ * only by such a folding ({@code PHS999999.c1}, {@code phs999999.c2}) refuse the run ({@link #studyFoldClashes()}). Rows under
+ * {@code \_consents\<anything>\} that are no consents rows stay global and are counted ({@code consentsSubtreeRowsNotConsents});</li>
+ * <li>a row that cannot be routed (not exactly 5 fields, the allConcepts
  * contract; a patient id that is missing or not an integer; a header row that is not the first line; a line that cannot be parsed as CSV)
  * is counted and recorded with its own reason. <b>Every such row counts against {@code maxRejectedRows}</b> (default 0), because it is data
  * that does not reach HPDS.</li> </ul>
@@ -103,6 +109,7 @@ final class ConsentRouter {
     private static final char REPLACEMENT_CHARACTER = '\uFFFD';
 
     private static final Pattern STUDY_ID = Pattern.compile("phs[0-9]{6}");
+    private static final Pattern PLAIN_NUMBER = Pattern.compile("[-+0-9.:]*");
     private static final char MU = 'µ';
 
     private final Path input;
@@ -116,6 +123,8 @@ final class ConsentRouter {
     private final Map<Integer, ConsentSet> consentsByPatient = new HashMap<>();
     private final Map<ConsentSet, ConsentSet> internedSets = new HashMap<>();
     private final Set<String> studies = new HashSet<>();
+    /** {@link #foldStudy} of every entry of {@link #studies}: a node that is no exact study but folds to one of these is unroutable. */
+    private final Set<String> foldedStudies = new HashSet<>();
     private final Set<String> studiesOfRejectedRows = new TreeSet<>();
     private final List<Long> unparsableConsentLines = new ArrayList<>();
     private boolean learned;
@@ -140,6 +149,7 @@ final class ConsentRouter {
     private long invalidConsentRows;
     private long unroutableRows;
     private long unroutableCrashClassRows;
+    private long consentsSubtreeRowsNotConsents;
     private long consentRowsRejected;
     private final Map<ConsentRowCheck.Problem, long[]> consentRejectedByProblem = new EnumMap<>(ConsentRowCheck.Problem.class);
     private long spoolWriterEvictions;
@@ -214,7 +224,7 @@ final class ConsentRouter {
         long patientsWithoutConsent, Map<String, Long> rowsPerPartition, List<DroppedConsent> invalidConsentNames,
         List<String> studyNodesWithoutConsents, long blankConsentRows, long consentRowsRejected,
         Map<String, Long> consentRowsRejectedByReason, long spoolWriterEvictions, int maxOpenWriters,
-        List<String> studiesOnlyInRejectedConsentRows
+        List<String> studiesOnlyInRejectedConsentRows, long consentsSubtreeRowsNotConsents
     ) {
         /** Every row read is routed, dropped, rejected for its consents, a rejected consents row, or unroutable. */
         boolean balanced() {
@@ -353,19 +363,79 @@ final class ConsentRouter {
      * its last field, the one a missing field would have shifted.
      */
     private void registerStudyOfRejectedRow(List<String> fields) {
-        String value = fields.size() > 3 ? fields.get(3) : fields.size() == 3 ? fields.get(2) : null;
-        if (value == null) {
-            return;
-        }
-        for (String candidate : List.of(value.trim(), value.trim().replace(String.valueOf(REPLACEMENT_CHARACTER), ""))) {
-            if (!candidate.isEmpty()) {
-                String study = studyOf(candidate);
-                if (!study.isEmpty()) {
-                    studies.add(study);
-                    studiesOfRejectedRows.add(study);
+        List<String> values = new ArrayList<>();
+        if (fields.size() >= ConsentRowCheck.FIELDS) {
+            values.add(fields.get(3));
+        } else {
+            // a row with fewer fields than the contract has its columns shifted: any of its fields from the third on may be the text value
+            for (int i = 2; i < fields.size(); i++) {
+                if (!PLAIN_NUMBER.matcher(fields.get(i).trim()).matches()) {
+                    values.add(fields.get(i));
                 }
             }
         }
+        for (String value : values) {
+            for (String candidate : List.of(value.trim(), value.trim().replace(String.valueOf(REPLACEMENT_CHARACTER), ""))) {
+                if (!candidate.isEmpty()) {
+                    String study = studyOf(candidate);
+                    if (!study.isEmpty()) {
+                        registerStudy(study);
+                        studiesOfRejectedRows.add(study);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Registers a study by its exact spelling and by its {@link #foldStudy folded} key. Every consents value goes through here. */
+    private void registerStudy(String study) {
+        studies.add(study);
+        foldedStudies.add(foldStudy(study));
+    }
+
+    /**
+     * The key by which two spellings of a study are taken for the same one: U+FFFD, whitespace, control and format characters removed
+     * anywhere (the partition's loader trims and drops U+FFFD in paths; a consent value is trimmed), the part before the first dot, lower
+     * case ({@link Locale#ROOT}). {@code phs999999}, {@code PHS999999}, {@code phs999999<U+FFFD>} and {@code phs999 999} fold alike.
+     * Used for the consents' studies and for the data rows' study nodes.
+     */
+    static String foldStudy(String text) {
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == REPLACEMENT_CHARACTER) {
+                continue;
+            }
+            int type = Character.getType(c);
+            if (
+                type == Character.CONTROL || type == Character.SPACE_SEPARATOR || type == Character.LINE_SEPARATOR
+                    || type == Character.PARAGRAPH_SEPARATOR || type == Character.FORMAT
+            ) {
+                continue;
+            }
+            if (c == '.') {
+                break;
+            }
+            sb.append(c);
+        }
+        return sb.toString().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Valid consents whose studies are different spellings of one study ({@code PHS999999.c1} and {@code phs999999.c2}): their rows could
+     * not be told apart from a global row by the study node, so the run is refused. Pairs of exact studies; call after
+     * {@link #learnConsents()}.
+     */
+    List<String> studyFoldClashes() {
+        Map<String, Set<String>> byFold = new TreeMap<>();
+        for (Consent consent : consentsByValue.values()) {
+            if (consent.valid()) {
+                byFold.computeIfAbsent(foldStudy(consent.study()), k -> new TreeSet<>()).add(consent.study());
+            }
+        }
+        List<String> clashes = new ArrayList<>();
+        byFold.values().stream().filter(spellings -> spellings.size() > 1).forEach(spellings -> clashes.add(String.join(" / ", spellings)));
+        return clashes;
     }
 
     /** Consents rows on lines that cannot be parsed, which could not be read at all: their study is unknown, so the run must not go on. */
@@ -387,7 +457,7 @@ final class ConsentRouter {
                 problem = "contains '..'";
             }
             String study = studyOf(v);
-            studies.add(study);
+            registerStudy(study);
             return new Consent(v, study, problem);
         });
     }
@@ -475,6 +545,8 @@ final class ConsentRouter {
                 rejectConsentRow(record, problem);
                 return;
             }
+        } else if (isConsentsSubtreeRow(record.fields())) {
+            consentsSubtreeRowsNotConsents++; // stays a global row: the partition directory is what authorizes, but it is made visible
         }
         if (record.size() != ConsentRowCheck.FIELDS) {
             unroutable(
@@ -501,6 +573,16 @@ final class ConsentRouter {
                 record, FailureReason.INVALID_STUDY_NODE, patient,
                 "The study node '" + node + "' is '" + segment(CsvObservationProducer.normalizeConceptPath(path), 1)
                     + "' once the path is normalized; the row is not routed (it would be read as a global or as a study row)"
+            );
+            return;
+        }
+        if (!studies.contains(node) && foldedStudies.contains(foldStudy(node))) {
+            // another spelling of a study some consents value names (case, blanks, U+FFFD): a study row by any reading except this one's,
+            // so it is never a global row; the consents' exact study spellings are the only ones that route
+            unroutable(
+                record, FailureReason.INVALID_STUDY_NODE, patient,
+                "The study node '" + node + "' is not a study of any consent as written but reads as one when folded ('"
+                    + foldStudy(node) + "'); the row is not routed (it could be a row of that study taken for a global row)"
             );
             return;
         }
@@ -578,6 +660,18 @@ final class ConsentRouter {
             return false;
         }
         return !node.equals(segment(CsvObservationProducer.normalizeConceptPath(path), 1));
+    }
+
+    /** A row under {@code \_consents\} (the node at depth 1 of the normalized path is {@code _consents}) that is not a consents row. */
+    private static boolean isConsentsSubtreeRow(List<String> fields) {
+        if (fields.size() < 2) {
+            return false;
+        }
+        String path = fields.get(1);
+        if (path.indexOf(CONSENTS_NAME) < 0 && path.indexOf(REPLACEMENT_CHARACTER) < 0) {
+            return false;
+        }
+        return CONSENTS_NAME.equals(segment(CsvObservationProducer.normalizeConceptPath(path), 1));
     }
 
     private static boolean isNormalizedSegment(String segment) {
@@ -669,7 +763,7 @@ final class ConsentRouter {
             noConsentStudyRows + noConsentGlobalRows, noConsentStudyRows, noConsentGlobalRows, invalidConsentRows, unroutableRows,
             unroutableCrashClassRows, unroutable, consentsByPatient.size(), patientsWithoutConsent.size(), rowsPerPartition, dropped,
             List.copyOf(studyNodesWithoutConsents), blankConsentRows, consentRowsRejected, rejectedConsentRows, spoolWriterEvictions,
-            maxOpenWriters, studiesOnlyInRejectedConsentRows()
+            maxOpenWriters, studiesOnlyInRejectedConsentRows(), consentsSubtreeRowsNotConsents
         );
     }
 

@@ -1,0 +1,35 @@
+{
+  "rowsRead": 25,
+  "rowsRouted": 19,
+  "studyRows": 5,
+  "globalRows": 14,
+  "noConsentStudyRows": 0,
+  "noConsentGlobalRows": 0,
+  "invalidConsentRowsRejected": 0,
+  "unroutableRows": 6,
+  "invalidStudyNodeRows": 6,
+  "consentRowsRejected": 0,
+  "consentRowsRejectedByReason": {},
+  "linesWritten": 21,
+  "rowsPerPartition": {
+    "PHS999999.c1": 3,
+    "phs000000.c1": 18
+  },
+  "invalidConsentNamesDropped": [
+    {
+      "value": "phs999999 .c1",
+      "rows": 3
+    },
+    {
+      "value": "phs999999\ufffd.c1",
+      "rows": 4
+    }
+  ],
+  "studyNodesWithoutConsents": [
+    "phs123456"
+  ],
+  "studiesOnlyInRejectedConsentRows": [],
+  "patientsWithConsents": 5,
+  "consentsSubtreeRowsNotConsents": 2,
+  "studyFoldClashes": []
+}

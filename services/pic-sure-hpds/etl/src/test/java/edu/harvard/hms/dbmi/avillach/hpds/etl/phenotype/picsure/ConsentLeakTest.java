@@ -491,14 +491,23 @@ class ConsentLeakTest {
         String[] timestamps = {"0", "", "", "2023-06-06", "soon"};
         Random random = new Random(2026);
         int checked = 0;
-        for (int round = 0; round < 250; round++) {
+        int refusedRounds = 0;
+        for (int round = 0; round < 1000; round++) {
+            // one spelling of the case per study in the consents of a round (two valid consents of one study in two cases are refused by the
+            // loader and would share a file on a case-insensitive file system); every tenth round lets the case run free
+            boolean freeCase = round % 10 == 0;
+            Boolean[] upperCase = new Boolean[studies.length];
+            for (int i = 0; i < upperCase.length; i++) {
+                upperCase[i] = freeCase ? null : random.nextBoolean();
+            }
             List<String> lines = new ArrayList<>();
             lines.add("patient_num,concept_path,nval,tval,timestamp");
             for (int i = 0, n = 6 + random.nextInt(40); i < n; i++) {
                 int patient = 1 + random.nextInt(6);
                 if (random.nextInt(3) == 0) {
-                    String study = studies[random.nextInt(studies.length)];
-                    String tval = study.startsWith("phs") ? study + ".c" + random.nextInt(3) : study;
+                    int which = random.nextInt(studies.length);
+                    String study = respell(studies[which], random, upperCase[which]);
+                    String tval = study.toLowerCase().startsWith("phs") ? study + ".c" + random.nextInt(3) : study;
                     String path = consentPaths[random.nextInt(consentPaths.length)];
                     if (random.nextInt(6) == 0) {
                         path = "\\_consents\\" + tval + "\\"; // the consent as a last segment
@@ -516,7 +525,7 @@ class ConsentLeakTest {
                     }
                     lines.add(row);
                 } else {
-                    String node = random.nextInt(8) == 0 ? "Global" : studies[random.nextInt(studies.length)];
+                    String node = random.nextInt(8) == 0 ? "Global" : respell(studies[random.nextInt(studies.length)], random, null);
                     if (random.nextInt(10) == 0) {
                         node = " " + node;
                     }
@@ -526,13 +535,49 @@ class ConsentLeakTest {
             }
             Path input = writeInput("fuzz.csv", String.join("\n", lines) + "\n");
             Path routed = tempDir.resolve("fuzz-routed-" + round);
+            if (freeCase) {
+                ConsentRouter probe = new ConsentRouter(input, "probe");
+                probe.learnConsents();
+                if (!ConsentRouter.caseClashes(probe.partitionNames()).isEmpty() || !probe.studyFoldClashes().isEmpty()) {
+                    refusedRounds++; // PICSURELoader refuses these before any work (see ConsentFoldTest)
+                    continue;
+                }
+            }
 
             ConsentRouter.Counts counts = route(input, routed);
 
             assertTrue(counts.balanced(), "round " + round);
-            checked += RoutedInvariant.assertHolds(input, routed);
+            try {
+                checked += RoutedInvariant.assertHolds(input, routed);
+            } catch (AssertionError e) {
+                throw new AssertionError("round " + round + ": " + e.getMessage() + "\n" + Files.readString(input).replace("\uFFFD", "<FFFD>"), e);
+            }
         }
         assertTrue(checked > 500, "the fuzz must route something: " + checked);
+        assertTrue(refusedRounds > 0 && refusedRounds < 100, "free-case rounds that clash are refused: " + refusedRounds);
+    }
+
+    /**
+     * The study with U+FFFD, an inner or a leading/trailing blank, or upper case inside it, about every second time (round 4: the spellings
+     * of a study that the loader or a reader could take for the same one).
+     */
+    static String respell(String study, Random random, Boolean upperCase) {
+        String s = study;
+        if (upperCase == null ? random.nextInt(4) == 0 : upperCase) {
+            s = s.toUpperCase();
+        }
+        if (random.nextInt(6) == 0) {
+            int at = random.nextInt(s.length() + 1);
+            s = s.substring(0, at) + "\uFFFD" + s.substring(at);
+        }
+        if (random.nextInt(6) == 0) {
+            int at = 1 + random.nextInt(Math.max(1, s.length() - 1));
+            s = s.substring(0, at) + " " + s.substring(at);
+        }
+        if (random.nextInt(10) == 0) {
+            s = " " + s;
+        }
+        return s;
     }
 
     // ---- fix 3: the spool directory -------------------------------------------------------------------------------------------

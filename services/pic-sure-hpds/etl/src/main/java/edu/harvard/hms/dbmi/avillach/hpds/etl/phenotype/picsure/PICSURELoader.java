@@ -531,6 +531,13 @@ public final class PICSURELoader {
         if (!clashes.isEmpty()) {
             throw new RefusedException("consents that differ only by case would share a partition directory: " + clashes);
         }
+        List<String> studyClashes = router.studyFoldClashes();
+        if (!studyClashes.isEmpty()) {
+            throw new RefusedException(
+                "valid consents name the same study in different spellings (case, blanks or U+FFFD), so a row of the study could not be "
+                    + "told from another study's: " + studyClashes
+            );
+        }
         List<PartitionPlan> plans = new ArrayList<>();
         for (String name : names) {
             PartitionPlan plan = new PartitionPlan(name, null, base.resolve(name));
@@ -910,6 +917,7 @@ public final class PICSURELoader {
         routing.put("spoolWriterEvictions", counts.spoolWriterEvictions());
         routing.put("studyNodesWithoutConsents", counts.studyNodesWithoutConsents());
         routing.put("studiesOnlyInRejectedConsentRows", counts.studiesOnlyInRejectedConsentRows());
+        routing.put("consentsSubtreeRowsNotConsents", counts.consentsSubtreeRowsNotConsents());
         routing.put("blankConsentRowsIgnored", counts.blankConsentRows());
         routing.put("balanced", counts.balanced());
         return routing;
