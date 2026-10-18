@@ -1,0 +1,37 @@
+{
+  "rowsRead": 60,
+  "rowsRouted": 28,
+  "studyRows": 13,
+  "globalRows": 15,
+  "noConsentStudyRows": 11,
+  "noConsentGlobalRows": 2,
+  "invalidConsentRowsRejected": 3,
+  "unroutableRows": 8,
+  "invalidStudyNodeRows": 2,
+  "consentRowsRejected": 8,
+  "consentRowsRejectedByReason": {
+    "BAD_FIELD_COUNT": 2,
+    "BAD_NVAL": 1,
+    "BAD_PATIENT_NUM": 1,
+    "BAD_TIMESTAMP": 1,
+    "NUMERIC_NVAL": 2,
+    "UNPARSABLE_LINE": 1
+  },
+  "linesWritten": 39,
+  "rowsPerPartition": {
+    "phs000000.c1": 16,
+    "phs000000.c2": 10,
+    "phs123456.c1": 4,
+    "tutorial-biolincc_test": 9
+  },
+  "invalidConsentNamesDropped": [
+    {
+      "value": "phs123456.bad/name",
+      "rows": 7
+    }
+  ],
+  "studyNodesWithoutConsents": [
+    "phs999999"
+  ],
+  "patientsWithConsents": 7
+}

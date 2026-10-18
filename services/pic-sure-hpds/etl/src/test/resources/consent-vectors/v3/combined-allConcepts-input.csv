@@ -1,0 +1,43 @@
+patient_num,concept_path,nval,tval,timestamp
+1,\_consents\,,phs000000.c1,0
+1,µ_consentsµ,,tutorial-biolincc_test,0
+1,\_consents\,5,phs999999.c1,0
+1,\phs000000\Demographics\Age\,40,,0
+1,\phs999999\X\,3,,0
+1,\Global\G\,1,,
+1,\tutorial-biolincc_test\Demographics\Age\,33,,
+2,\_consents\,,phs000000.c1,0
+2,\phs000000\Demographics\Age\,45,,
+2,\Global\G\,2,,
+3,\_consents\,,phs000000.c1,0
+3,\_consents\,garbage,phs123456.c1,0
+3,\phs000000\Demographics\Age\,50,,
+3,\phs123456\Labs\Glucose\,5.5,,0
+4,\_consents\,,phs000000.c1,0
+4,\_consents\ ,,phs123456.c1,0
+4,\phs123456\Labs\Glucose\,6.5,,
+5,\_consents\,,phs000000.c1,0
+5,\_consents,,phs123456.c1,0
+5,\phs123456\Labs\Glucose\,7.5,,
+6,\_consents\,,phs000000.c1,0
+6,\_consents\\,,phs123456.c1,0
+6,\phs123456\Labs\Glucose\,8.5,,
+7,\_consents\,,phs000000.c1,0
+7,  \_consents\,,phs123456.c1,0
+7,\phs123456\Labs\Glucose\,9.5,,
+8,\_consents\,,phs000000.c1,0
+8,\_consents\phs999999.c1\,,phs999999.c1,0
+8,\phs999999\X\,4,,
+9,\_consents\,,phs000000.c1,0
+9,µ_consents\,,phs999999.c1,0
+9,\phs999999\X\,5,,
+10,\_cons�ents\,,phs999999.c1,0
+10,\_consents\,,phs000000.c1,0
+10,\phs999999\X\,6,,
+11,\_consents\,,phs000000.c1,0
+11,\ _consents \,,phs999999.c1,0
+11,\phs999999\X\,7,,
+11,\phs000000\Demographics\Age\,60,,
+12,\_consents\,7,phs000000.c1,0
+12,\phs000000\Demographics\Age\,9,,
+12,\Global\G\,2,,

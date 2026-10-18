@@ -15,7 +15,23 @@ public enum FailureReason {
         "Row has both a numeric and a text value; the numeric value was kept and the text value discarded", false
     ), TIMESTAMP_PARSE_ERROR("Timestamp present but unparseable; the row was kept without a timestamp", false), MALFORMED_RECORD(
         "Record has too few columns", true
-    ), FILE_READ_ERROR("Unable to read source file", true), UNKNOWN("Unknown failure", true);
+    ), FILE_READ_ERROR("Unable to read source file", true), UNKNOWN("Unknown failure", true), NO_CONSENT(
+        "The patient has no consent that covers the row (combined input); the row was not written to any partition", true
+    ), INVALID_CONSENT_NAME(
+        "Every consent the row was meant for has a name that cannot name a partition (combined input); the row was not written", true
+    ), CONSENT_ROW_REJECTED(
+        "A row of the consents variable breaks the contract of a consent row (combined input); it grants no consent and was not written",
+        true
+    ), INVALID_STUDY_NODE(
+        "The study node (first node) of the concept path is empty, or has leading or trailing whitespace or U+FFFD, so it changes when the loader "
+            + "normalizes the path, or it is another spelling (case, blanks, U+FFFD) of a study some consent names (combined input); the "
+            + "row cannot be routed safely and was not written",
+        true
+    ), MALFORMED_CONCEPT_PATH(
+        "The concept path does not start with a delimiter (the text before the first backslash or mu is not empty) (combined input); the "
+            + "row would be stored with its study in a place no reader looks at, and was not written",
+        true
+    );
 
     private final String description;
     private final boolean rejectsRow;

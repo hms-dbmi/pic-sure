@@ -1,0 +1,14 @@
+patient_num,concept_path,nval,tval,timestamp
+1,\_consents\,,phs000000.c1,0
+1,\phs000000\Demographics\Age\,40,,0
+1,_consents\,,phs999999.c1,0
+1,\phs999999\X\,2,,
+1,\Global\G\,1,,
+2,\_consents\,,phs000000.c1,0
+2,x\_consents\,,phs123456.c1,0
+2,\phs123456\Labs\Glucose\,7.5,,
+2,\phs000000\Demographics\Age\,45,,
+3,\_consents\,,phs000000.c1,0
+3,\\_consents\,,phs999999.c2,0
+3,\phs000000\Demographics\Age\,50,,
+3,\_studies_consents\phs123456\Y\,5,,

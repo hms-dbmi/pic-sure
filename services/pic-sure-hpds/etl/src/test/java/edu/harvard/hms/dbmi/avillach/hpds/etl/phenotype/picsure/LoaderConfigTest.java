@@ -102,4 +102,27 @@ class LoaderConfigTest {
             IllegalArgumentException.class, () -> LoaderConfig.fromProperties(Map.of("picsure.loader.chunkConcurrency", "-2")::get)
         );
     }
+
+    @Test
+    void inputAndPartitionByAreOptional() {
+        LoaderConfig defaults = LoaderConfig.defaults();
+        assertFalse(defaults.combinedInput());
+        assertNull(defaults.input());
+        assertNull(defaults.partitionBy());
+
+        LoaderConfig combined = LoaderConfig.fromProperties(Map.of("picsure.loader.input", " /data/allConcepts_data_analyzer.csv ")::get);
+        assertTrue(combined.combinedInput());
+        assertEquals(java.nio.file.Path.of("/data/allConcepts_data_analyzer.csv"), combined.input());
+        assertEquals("consent", combined.effectivePartitionBy(), "consent is the default for a combined input");
+
+        LoaderConfig none =
+            LoaderConfig.fromProperties(Map.of("picsure.loader.input", "a.csv", "picsure.loader.partitionBy", " NONE ")::get);
+        assertEquals("none", none.partitionBy());
+        assertEquals("none", none.effectivePartitionBy());
+    }
+
+    @Test
+    void partitionByMustBeConsentOrNone() {
+        assertThrows(IllegalArgumentException.class, () -> LoaderConfig.fromProperties(Map.of("picsure.loader.partitionBy", "study")::get));
+    }
 }

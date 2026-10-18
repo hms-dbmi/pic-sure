@@ -1,0 +1,61 @@
+patient_num,concept_path,nval,tval,timestamp
+1,\_consents\,,phs000000.c1,0
+1,\_consents\,,tutorial-biolincc_test,0
+2,\_consents\,,phs000000.c1,0
+2,\_consents\,,phs000000.c2,1700000000000
+3,µ_consentsµ,,tutorial-biolincc_test,0
+4,\_consents\,,phs123456.c1,0
+4,\_consents\,,phs123456.bad/name,0
+5,\_consents\,,phs123456.bad/name,0
+7,\_consents\,,phs000000.c2,2023-06-06T15:20:00Z
+1,\phs000000\Demographics\Age\,40,,1700000000000
+2,\phs000000\Demographics\Age\,55,,2023-06-06T15:20:00Z
+2,\phs000000\Demographics\Sex\,,female,0
+7,\phs000000\Demographics\Age\,61,,
+1,\phs000000\Demographics\Height\,170,,0
+2,\phs000000\Demographics\Height\,2402L,,0
+1,µphs000000µLabsµGlucoseµ,5.5,,1700000000000
+2,\phs000000\Demographics\Note\,,"a, b",
+2,\phs000000\Demographics\Short\,1
+1,\tutorial-biolincc_test\Demographics\Age\,33,,2021-01-15 10:30:00
+3,\tutorial-biolincc_test\Demographics\Age\,29,,1600000000000
+3,\tutorial-biolincc_test\Demographics\Sex\,,male,0
+4,\phs123456\Labs\Glucose\,5.5,,0
+5,\phs123456\Labs\Glucose\,6.5,,
+6,\phs123456\Labs\Glucose\,7.5,,
+7,\phs123456\Labs\Glucose\,8.5,,
+6,\phs000000\Demographics\Age\,70,,
+1,\DCC Harmonized data set\Age\,41,,
+2,\DCC Harmonized data set\Age\,56,,2023-06-06
+3,\DCC Harmonized data set\Age\,30,,
+4,\DCC Harmonized data set\Age\,44,,1700000000000
+5,\DCC Harmonized data set\Age\,50,,
+6,\DCC Harmonized data set\Age\,60,,
+1,\phs999999\Measures\BMI\,22.5,,0
+7,\phs999999\Measures\BMI\,30.1,,
+subject_id,concept_path,nval,tval,timestamp
+abc,\phs000000\Demographics\Age\,50,,
+8,\_consents\,garbage,phs000000.c1,0
+9,\_consents\,1,phs000000.c1,0
+10,\_consents\,,phs000000.c1
+11,\_consents\,,phs000000.c1,0,extra
+" 12",\_consents\,,phs000000.c1,0
+13,\_consents\,,phs000000.c1,notatime
+14,\_consents\,,phs000000.c1,0
+14,\_consents\,5,phs123456.c1,0
+15,"\_consents\,,phs000000.c1,0
+1,"\phs000000\Demographics\Quote\,5,,
+8,\phs000000\Demographics\Age\,81,,
+9,\phs000000\Demographics\Age\,82,,
+10,\phs000000\Demographics\Age\,83,,
+11,\phs000000\Demographics\Age\,84,,
+12,\phs000000\Demographics\Age\,85,,
+13,\phs000000\Demographics\Age\,86,,
+14,\phs000000\Demographics\Age\,87,,
+15,\phs000000\Demographics\Age\,88,,
+14,\phs123456\Labs\Glucose\,9.5,,
+8,\DCC Harmonized data set\Age\,81,,
+1,\phs000000\Demographics\Weight\,70,
+1,\phs000000\Demographics\Waist\,80,,,extra
+1,\ phs000000\Invalid\Leading\,7,,
+1,\phs000000 \Invalid\Trailing\,8,,
