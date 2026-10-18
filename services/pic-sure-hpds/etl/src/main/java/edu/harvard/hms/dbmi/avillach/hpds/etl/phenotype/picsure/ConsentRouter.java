@@ -62,6 +62,11 @@ import java.util.regex.Pattern;
  * to {@code phs999999.c1}) is unroutable ({@link FailureReason#INVALID_STUDY_NODE}), never global. Valid consents whose studies differ
  * only by such a folding ({@code PHS999999.c1}, {@code phs999999.c2}) refuse the run ({@link #studyFoldClashes()}). Rows under
  * {@code \_consents\<anything>\} that are no consents rows stay global and are counted ({@code consentsSubtreeRowsNotConsents});</li>
+ * <li><b>path shape</b> (proposed contract rules R1 and R2): R1, the text before the first delimiter must be empty (the path starts
+ * with {@code \} or {@code µ}); {@code phs999999\X\} is unroutable ({@link FailureReason#MALFORMED_CONCEPT_PATH}) and so is a
+ * consents-like path with a leading text ({@code _consents\} never grants). R2, the study node must not be empty:
+ * {@code \\phs999999\X\} is {@link FailureReason#INVALID_STUDY_NODE}, as is a node that normalization changes or that folds to a
+ * study. A study id at any other depth is no rule ({@code \_studies_consents\phs000000\} is a legitimate global);</li>
  * <li>a row that cannot be routed (not exactly 5 fields, the allConcepts
  * contract; a patient id that is missing or not an integer; a header row that is not the first line; a line that cannot be parsed as CSV)
  * is counted and recorded with its own reason. <b>Every such row counts against {@code maxRejectedRows}</b> (default 0), because it is data
@@ -401,22 +406,23 @@ final class ConsentRouter {
      */
     static String foldStudy(String text) {
         StringBuilder sb = new StringBuilder(text.length());
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == REPLACEMENT_CHARACTER) {
+        for (int i = 0; i < text.length();) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            if (cp == REPLACEMENT_CHARACTER) {
                 continue;
             }
-            int type = Character.getType(c);
+            int type = Character.getType(cp); // by code point: tag characters (U+E0001-E007F, Cf) are supplementary
             if (
                 type == Character.CONTROL || type == Character.SPACE_SEPARATOR || type == Character.LINE_SEPARATOR
                     || type == Character.PARAGRAPH_SEPARATOR || type == Character.FORMAT
             ) {
                 continue;
             }
-            if (c == '.') {
+            if (cp == '.') {
                 break;
             }
-            sb.append(c);
+            sb.appendCodePoint(cp);
         }
         return sb.toString().toLowerCase(Locale.ROOT);
     }
@@ -567,7 +573,24 @@ final class ConsentRouter {
         }
 
         String path = record.get(1);
+        if (!segment(path, 0).isEmpty()) {
+            // R1: the segment before the first delimiter is empty (the path starts with a backslash or a mu)
+            unroutable(
+                record, FailureReason.MALFORMED_CONCEPT_PATH, patient,
+                "The concept path does not start with a delimiter (the text before the first one is '" + segment(path, 0)
+                    + "'); the row is not routed (the loader would store a study in a place no reader looks at)"
+            );
+            return;
+        }
         String node = segment(path, 1);
+        if (node.isEmpty()) {
+            // R2: the study node (first node after the leading delimiter) is not empty
+            unroutable(
+                record, FailureReason.INVALID_STUDY_NODE, patient,
+                "The study node (first node of the concept path) is empty; the row is not routed (it would be read as a global row)"
+            );
+            return;
+        }
         if (studyNodeChangesOnNormalization(path, node)) {
             unroutable(
                 record, FailureReason.INVALID_STUDY_NODE, patient,
@@ -742,7 +765,7 @@ final class ConsentRouter {
         for (
             FailureReason reason : List.of(
                 FailureReason.MALFORMED_RECORD, FailureReason.MISSING_PATIENT_ID, FailureReason.INVALID_PATIENT_ID,
-                FailureReason.INVALID_STUDY_NODE
+                FailureReason.INVALID_STUDY_NODE, FailureReason.MALFORMED_CONCEPT_PATH
             )
         ) {
             long[] n = reasonCounts.get(reason);

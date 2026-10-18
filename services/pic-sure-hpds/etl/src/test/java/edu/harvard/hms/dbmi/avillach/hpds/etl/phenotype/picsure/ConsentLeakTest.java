@@ -177,11 +177,13 @@ class ConsentLeakTest {
     void aRejectedRowWithoutTextValueNamesNoStudy() throws Exception {
         // an empty text value must not make the empty node (a path like \\A\) a study
         ConsentRouter.Counts counts =
-            route("1,\\_consents\\,,phs000000.c1,0", "1,\\_consents\\,5,,0", "1,\\_consents\\,5,   ,0", "1,\\\\A\\,1,,");
+            route("1,\\_consents\\,,phs000000.c1,0", "1,\\_consents\\,5,,0", "1,\\_consents\\,5,   ,0", "1,\\Global\\A\\,1,,",
+                "1,\\\\A\\,1,,");
 
         assertEquals(Map.of("NUMERIC_NVAL", 2L), counts.consentRowsRejectedByReason());
         assertEquals(List.of(), counts.studiesOnlyInRejectedConsentRows());
         assertEquals(0, counts.noConsentStudyRows());
+        assertEquals(Map.of("INVALID_STUDY_NODE", 1L), counts.unroutableByReason(), "R2: the empty node is not a global row");
         assertEquals(Map.of("phs000000.c1", 2L), counts.rowsPerPartition(), "the global row is still routed");
     }
 
@@ -492,6 +494,7 @@ class ConsentLeakTest {
         Random random = new Random(2026);
         int checked = 0;
         int refusedRounds = 0;
+        int malformedShapes = 0;
         for (int round = 0; round < 1000; round++) {
             // one spelling of the case per study in the consents of a round (two valid consents of one study in two cases are refused by the
             // loader and would share a file on a case-insensitive file system); every tenth round lets the case run free
@@ -529,7 +532,11 @@ class ConsentLeakTest {
                     if (random.nextInt(10) == 0) {
                         node = " " + node;
                     }
-                    String row = patient + ",\\" + node + "\\Concept" + random.nextInt(3) + "\\," + random.nextInt(100) + ",,";
+                    // round 5: about one path in ten has no leading delimiter or an empty first node
+                    String[] prefixes = {"\\", "\\", "\\", "\\", "\\", "\\", "\\", "", "\\\\", "  "};
+                    String prefix = prefixes[random.nextInt(prefixes.length)];
+                    malformedShapes += prefix.equals("\\") ? 0 : 1;
+                    String row = patient + "," + prefix + node + "\\Concept" + random.nextInt(3) + "\\," + random.nextInt(100) + ",,";
                     lines.add(random.nextInt(20) == 0 ? row.replace("\\Concept", "\"\\Concept") : row);
                 }
             }
@@ -554,12 +561,13 @@ class ConsentLeakTest {
             }
         }
         assertTrue(checked > 500, "the fuzz must route something: " + checked);
+        assertTrue(malformedShapes > 100, "the fuzz must write paths with no leading delimiter or an empty first node: " + malformedShapes);
         assertTrue(refusedRounds > 0 && refusedRounds < 100, "free-case rounds that clash are refused: " + refusedRounds);
     }
 
     /**
      * The study with U+FFFD, an inner or a leading/trailing blank, or upper case inside it, about every second time (round 4: the spellings
-     * of a study that the loader or a reader could take for the same one).
+     * of a study that the loader or a reader could take for the same one; round 5: also a supplementary format character).
      */
     static String respell(String study, Random random, Boolean upperCase) {
         String s = study;
@@ -573,6 +581,11 @@ class ConsentLeakTest {
         if (random.nextInt(6) == 0) {
             int at = 1 + random.nextInt(Math.max(1, s.length() - 1));
             s = s.substring(0, at) + " " + s.substring(at);
+        }
+        if (random.nextInt(8) == 0) {
+            // a supplementary format character (tag characters U+E0001-E007F are category Cf); after the BMP inserts, so no pair is split
+            int at = random.nextInt(s.length() + 1);
+            s = s.substring(0, at) + new String(Character.toChars(0xE0020 + random.nextInt(8))) + s.substring(at);
         }
         if (random.nextInt(10) == 0) {
             s = " " + s;

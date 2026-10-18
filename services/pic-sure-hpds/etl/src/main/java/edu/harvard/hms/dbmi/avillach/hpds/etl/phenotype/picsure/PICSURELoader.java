@@ -538,6 +538,13 @@ public final class PICSURELoader {
                     + "told from another study's: " + studyClashes
             );
         }
+        List<String> existingClashes = existingCaseClashes(base, names);
+        if (!existingClashes.isEmpty()) {
+            throw new RefusedException(
+                "a partition name differs only by case from an entry already in the base " + base + ": " + existingClashes
+                    + "; on a case-insensitive file system the run would write into that directory. Use a fresh base directory"
+            );
+        }
         List<PartitionPlan> plans = new ArrayList<>();
         for (String name : names) {
             PartitionPlan plan = new PartitionPlan(name, null, base.resolve(name));
@@ -545,6 +552,28 @@ public final class PICSURELoader {
             plans.add(plan);
         }
         return plans;
+    }
+
+    /**
+     * Planned partition names that equal an entry of the base case-insensitively but not exactly ({@code planned -> existing}), sorted.
+     * A case-insensitive file system would resolve the planned directory to the existing one and write into it.
+     */
+    static List<String> existingCaseClashes(Path base, List<String> names) throws IOException {
+        Map<String, String> planned = new TreeMap<>();
+        for (String name : names) {
+            planned.put(name.toLowerCase(Locale.ROOT), name);
+        }
+        List<String> clashes = new ArrayList<>();
+        try (Stream<Path> children = Files.list(base)) {
+            children.map(c -> c.getFileName().toString()).forEach(existing -> {
+                String want = planned.get(existing.toLowerCase(Locale.ROOT));
+                if (want != null && !want.equals(existing)) {
+                    clashes.add(want + " -> " + existing);
+                }
+            });
+        }
+        clashes.sort(Comparator.naturalOrder());
+        return clashes;
     }
 
     /** Combined input, {@code partitionBy=none}: one flat store in the base, for parity checks. */

@@ -23,9 +23,13 @@ public enum FailureReason {
         "A row of the consents variable breaks the contract of a consent row (combined input); it grants no consent and was not written",
         true
     ), INVALID_STUDY_NODE(
-        "The study node (first node) of the concept path has leading or trailing whitespace or U+FFFD, so it changes when the loader "
+        "The study node (first node) of the concept path is empty, or has leading or trailing whitespace or U+FFFD, so it changes when the loader "
             + "normalizes the path, or it is another spelling (case, blanks, U+FFFD) of a study some consent names (combined input); the "
             + "row cannot be routed safely and was not written",
+        true
+    ), MALFORMED_CONCEPT_PATH(
+        "The concept path does not start with a delimiter (the text before the first backslash or mu is not empty) (combined input); the "
+            + "row would be stored with its study in a place no reader looks at, and was not written",
         true
     );
 

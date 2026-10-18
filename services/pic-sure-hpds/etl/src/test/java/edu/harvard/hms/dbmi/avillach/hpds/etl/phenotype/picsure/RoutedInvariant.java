@@ -43,7 +43,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>Asserted for every routed row, with its node taken from the <b>normalized</b> path (depth 1, as the loader stores it): <ul> <li>(a)
  * when the node folds to any consents study, the row lies only in a partition whose exact study equals the exact node, and the patient
  * holds that partition through a grant;</li> <li>(b) no row whose node folds to a consents study is routed as a global row (to a partition
- * of another exact study);</li> <li>every row lies in a partition the patient holds through a grant;</li> <li>a row that reads as the
+ * of another exact study);</li> <li>(R1) the path starts with a delimiter (the text before the first one is empty), (R2) the study node
+ * (depth 1 of the normalized path) is not empty (a row without a study node to read would be stored with its study in a place no reader
+ * looks at);</li> <li>every row lies in a partition the patient holds through a grant;</li> <li>a row that reads as the
  * consents variable in the loader is routed only when written in one of the two canonical spellings.</li> </ul> A line that cannot be
  * parsed and mentions the consents variable has an unknown study: the invariant does not hold for such an input, and the run is refused.
  */
@@ -82,8 +84,14 @@ final class RoutedInvariant {
                     assertTrue(facts.grants().getOrDefault(patient, Set.of()).contains(partition), "no valid canonical consent: " + where);
 
                     String path = f.get(1);
-                    String[] parts = CsvObservationProducer.normalizeConceptPath(path).split("\\\\", -1);
-                    String node = parts.length > 1 ? parts[1] : "";
+                    String normalized = CsvObservationProducer.normalizeConceptPath(path);
+                    assertTrue(
+                        path.startsWith("\\") || path.startsWith("µ"), "(R1) a routed row whose path does not start with a delimiter: " + where
+                    );
+                    assertTrue(normalized.startsWith("\\"), "(R1) a routed row whose normalized path has no leading delimiter: " + where);
+                    String[] parts = normalized.split("\\\\", -1);
+                    String node = parts[1];
+                    assertFalse(node.isEmpty(), "(R2) a routed row whose normalized path has an empty study node (depth 1): " + where);
                     if (facts.foldedStudies().contains(fold(node))) {
                         boolean routedAsGlobal = !node.equals(partitionStudy);
                         assertFalse(routedAsGlobal, "(b) a row whose node folds to a consents study is routed as a global row: " + where);
