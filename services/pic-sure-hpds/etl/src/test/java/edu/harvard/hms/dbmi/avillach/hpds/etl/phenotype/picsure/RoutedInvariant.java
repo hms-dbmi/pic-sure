@@ -33,21 +33,21 @@ import static org.junit.jupiter.api.Assertions.*;
  * itself). The only router-side definition it uses is {@link CsvObservationProducer#normalizeConceptPath}, because that is what the
  * partition's loader stores, which is the point of the check.
  *
- * <p>Facts derived from the input: <ul> <li>a <b>grant</b>: a row written exactly {@code \_consents\} or {@code µ_consentsµ}, with exactly 5
- * fields, an integer patient id as written, an empty nval, a blank/integer/ISO timestamp and a non-blank trimmed text value, gives its
- * patient that consent;</li> <li>a <b>consents study</b>: for every row whose path the loader reads as {@code \_consents\} (also a rejected one, one
- * with a doubtful path, a valid or an invalid name), the study of its text value (the part before the first dot; for a row with fewer than
- * 5 fields every field from the third on), in its exact spelling and in a folded spelling (U+FFFD, whitespace, control and format
- * characters removed, lower case).</li> </ul>
+ * <p>Facts derived from the input: <ul> <li>a <b>grant</b>: a row written exactly {@code \_consents\} or {@code µ_consentsµ}, with exactly
+ * 5 fields, an integer patient id as written, an empty nval, a blank/integer/ISO timestamp and a non-blank trimmed text value, gives its
+ * patient that consent;</li> <li>a <b>consents study</b>: for every row whose path the loader reads as {@code \_consents\} (also a rejected
+ * one, one with a doubtful path, a valid or an invalid name), the study of its text value (the part before the first dot; for a row with
+ * fewer than 5 fields every field from the third on), in its exact spelling and in a folded spelling (U+FFFD, whitespace, control and
+ * format characters removed, lower case).</li> </ul>
  *
  * <p>Asserted for every routed row, with its node taken from the <b>normalized</b> path (depth 1, as the loader stores it): <ul> <li>(a)
  * when the node folds to any consents study, the row lies only in a partition whose exact study equals the exact node, and the patient
  * holds that partition through a grant;</li> <li>(b) no row whose node folds to a consents study is routed as a global row (to a partition
  * of another exact study);</li> <li>(R1) the path starts with a delimiter (the text before the first one is empty), (R2) the study node
  * (depth 1 of the normalized path) is not empty (a row without a study node to read would be stored with its study in a place no reader
- * looks at);</li> <li>every row lies in a partition the patient holds through a grant;</li> <li>a row that reads as the
- * consents variable in the loader is routed only when written in one of the two canonical spellings.</li> </ul> A line that cannot be
- * parsed and mentions the consents variable has an unknown study: the invariant does not hold for such an input, and the run is refused.
+ * looks at);</li> <li>every row lies in a partition the patient holds through a grant;</li> <li>a row that reads as the consents variable
+ * in the loader is routed only when written in one of the two canonical spellings.</li> </ul> A line that cannot be parsed and mentions the
+ * consents variable has an unknown study: the invariant does not hold for such an input, and the run is refused.
  */
 final class RoutedInvariant {
 
@@ -86,7 +86,8 @@ final class RoutedInvariant {
                     String path = f.get(1);
                     String normalized = CsvObservationProducer.normalizeConceptPath(path);
                     assertTrue(
-                        path.startsWith("\\") || path.startsWith("µ"), "(R1) a routed row whose path does not start with a delimiter: " + where
+                        path.startsWith("\\") || path.startsWith("µ"),
+                        "(R1) a routed row whose path does not start with a delimiter: " + where
                     );
                     assertTrue(normalized.startsWith("\\"), "(R1) a routed row whose normalized path has no leading delimiter: " + where);
                     String[] parts = normalized.split("\\\\", -1);
@@ -127,7 +128,10 @@ final class RoutedInvariant {
                 continue;
             }
             if (f == null) {
-                assertFalse(line.replace("\uFFFD", "").contains("_consents"), "an unparsable consents line has an unknown study: " + line);
+                assertFalse(
+                    line.replace("\uFFFD", "").toLowerCase(Locale.ROOT).contains("_consents"),
+                    "an unparsable consents line has an unknown study: " + line
+                );
                 continue;
             }
             if (f.size() < 2 || !(readsAsConsentsVariable(f.get(1), f.size() > 3 ? f.get(3) : "") || mightBeBrokenConsentsRow(f.get(1)))) {
@@ -151,8 +155,10 @@ final class RoutedInvariant {
                 }
             }
             boolean canonical = f.get(1).equals("\\_consents\\") || f.get(1).equals("µ_consentsµ");
-            if (canonical && f.size() == 5 && PATIENT.matcher(f.get(0)).matches() && f.get(2).isEmpty() && timestampOk(f.get(4))
-                && !f.get(3).trim().isEmpty()) {
+            if (
+                canonical && f.size() == 5 && PATIENT.matcher(f.get(0)).matches() && f.get(2).isEmpty() && timestampOk(f.get(4))
+                    && !f.get(3).trim().isEmpty()
+            ) {
                 try {
                     grants.computeIfAbsent(Integer.parseInt(f.get(0)), k -> new HashSet<>()).add(f.get(3).trim());
                 } catch (NumberFormatException e) {

@@ -176,9 +176,9 @@ class ConsentLeakTest {
     @Test
     void aRejectedRowWithoutTextValueNamesNoStudy() throws Exception {
         // an empty text value must not make the empty node (a path like \\A\) a study
-        ConsentRouter.Counts counts =
-            route("1,\\_consents\\,,phs000000.c1,0", "1,\\_consents\\,5,,0", "1,\\_consents\\,5,   ,0", "1,\\Global\\A\\,1,,",
-                "1,\\\\A\\,1,,");
+        ConsentRouter.Counts counts = route(
+            "1,\\_consents\\,,phs000000.c1,0", "1,\\_consents\\,5,,0", "1,\\_consents\\,5,   ,0", "1,\\Global\\A\\,1,,", "1,\\\\A\\,1,,"
+        );
 
         assertEquals(Map.of("NUMERIC_NVAL", 2L), counts.consentRowsRejectedByReason());
         assertEquals(List.of(), counts.studiesOnlyInRejectedConsentRows());
@@ -249,6 +249,23 @@ class ConsentLeakTest {
 
         assertEquals(2, router.unparsableConsentRows(), "also with U+FFFD inside the name");
         assertEquals(List.of(2L, 3L), router.unparsableConsentLines());
+    }
+
+    @Test
+    void anUnparsableConsentsLineIsFoundInAnyCase() throws Exception {
+        Path input =
+            writeInput("upper.csv", "1,\\_consents\\,,phs000000.c1,0\n1,X\\_CONSENTS\\,,\"phs999999.c1,0\n1,\\phs999999\\X\\,2,,\n");
+        ConsentRouter router = new ConsentRouter(input, "test");
+
+        router.learnConsents();
+
+        assertEquals(1, router.unparsableConsentRows(), "an upper-case consents name is still the consents variable");
+        assertEquals(List.of(2L), router.unparsableConsentLines());
+        Path base = newBase("unparsable-upper");
+        assertEquals(
+            2, run(base, props(input, "picsure.loader.maxRejectedRows", "1000", "picsure.loader.maxRejectedConsentRows", "1000")),
+            "refused at any limit, so phs999999 can never be routed as a global row"
+        );
     }
 
     // ---- fix 2: the loader's reading of the path -----------------------------------------------------------------------------
@@ -496,7 +513,8 @@ class ConsentLeakTest {
         int refusedRounds = 0;
         int malformedShapes = 0;
         for (int round = 0; round < 1000; round++) {
-            // one spelling of the case per study in the consents of a round (two valid consents of one study in two cases are refused by the
+            // one spelling of the case per study in the consents of a round (two valid consents of one study in two cases are refused by
+            // the
             // loader and would share a file on a case-insensitive file system); every tenth round lets the case run free
             boolean freeCase = round % 10 == 0;
             Boolean[] upperCase = new Boolean[studies.length];
@@ -557,7 +575,9 @@ class ConsentLeakTest {
             try {
                 checked += RoutedInvariant.assertHolds(input, routed);
             } catch (AssertionError e) {
-                throw new AssertionError("round " + round + ": " + e.getMessage() + "\n" + Files.readString(input).replace("\uFFFD", "<FFFD>"), e);
+                throw new AssertionError(
+                    "round " + round + ": " + e.getMessage() + "\n" + Files.readString(input).replace("\uFFFD", "<FFFD>"), e
+                );
             }
         }
         assertTrue(checked > 500, "the fuzz must route something: " + checked);

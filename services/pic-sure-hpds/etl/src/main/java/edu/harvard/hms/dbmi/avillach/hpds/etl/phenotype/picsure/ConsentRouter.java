@@ -58,23 +58,22 @@ import java.util.regex.Pattern;
  * segments and removes U+FFFD: {@code \ phs000000\A\} would become a study row there, but is a global row here) is unroutable
  * ({@link FailureReason#INVALID_STUDY_NODE}), never global;</li> <li><b>folded studies</b>: every consents value (valid, invalid name or
  * rejected row) registers its study by its exact spelling and by {@link #foldStudy its folded key} (U+FFFD, blanks and case removed). A
- * data row whose node is no exact study but folds to a known one ({@code PHS999999}, {@code phs999999<U+FFFD>}, {@code phs999 999} next
- * to {@code phs999999.c1}) is unroutable ({@link FailureReason#INVALID_STUDY_NODE}), never global. Valid consents whose studies differ
- * only by such a folding ({@code PHS999999.c1}, {@code phs999999.c2}) refuse the run ({@link #studyFoldClashes()}). Rows under
+ * data row whose node is no exact study but folds to a known one ({@code PHS999999}, {@code phs999999<U+FFFD>}, {@code phs999 999} next to
+ * {@code phs999999.c1}) is unroutable ({@link FailureReason#INVALID_STUDY_NODE}), never global. Valid consents whose studies differ only by
+ * such a folding ({@code PHS999999.c1}, {@code phs999999.c2}) refuse the run ({@link #studyFoldClashes()}). Rows under
  * {@code \_consents\<anything>\} that are no consents rows stay global and are counted ({@code consentsSubtreeRowsNotConsents});</li>
- * <li><b>path shape</b> (proposed contract rules R1 and R2): R1, the text before the first delimiter must be empty (the path starts
- * with {@code \} or {@code µ}); {@code phs999999\X\} is unroutable ({@link FailureReason#MALFORMED_CONCEPT_PATH}) and so is a
- * consents-like path with a leading text ({@code _consents\} never grants). <b>A path that mentions {@code _consents} (any case, also
- * with U+FFFD inside) and breaks R1 or R2 might be a consents row, so it is a rejected consents row, not a data row</b>
+ * <li><b>path shape</b> (proposed contract rules R1 and R2): R1, the text before the first delimiter must be empty (the path starts with
+ * {@code \} or {@code µ}); {@code phs999999\X\} is unroutable ({@link FailureReason#MALFORMED_CONCEPT_PATH}) and so is a consents-like path
+ * with a leading text ({@code _consents\} never grants). <b>A path that mentions {@code _consents} (any case, also with U+FFFD inside) and
+ * breaks R1 or R2 might be a consents row, so it is a rejected consents row, not a data row</b>
  * ({@link ConsentRowCheck.Problem#MALFORMED_CONCEPT_PATH}, {@link ConsentRowCheck.Problem#INVALID_STUDY_NODE}, against
- * {@code maxRejectedConsentRows}): it registers the study of its text value like any rejected consents row, so raising a limit never
- * turns the well-formed rows of that study into global rows. R2, the study node must not be empty:
- * {@code \\phs999999\X\} is {@link FailureReason#INVALID_STUDY_NODE}, as is a node that normalization changes or that folds to a
- * study. A study id at any other depth is no rule ({@code \_studies_consents\phs000000\} is a legitimate global);</li>
- * <li>a row that cannot be routed (not exactly 5 fields, the allConcepts
- * contract; a patient id that is missing or not an integer; a header row that is not the first line; a line that cannot be parsed as CSV)
- * is counted and recorded with its own reason. <b>Every such row counts against {@code maxRejectedRows}</b> (default 0), because it is data
- * that does not reach HPDS.</li> </ul>
+ * {@code maxRejectedConsentRows}): it registers the study of its text value like any rejected consents row, so raising a limit never turns
+ * the well-formed rows of that study into global rows. R2, the study node must not be empty: {@code \\phs999999\X\} is
+ * {@link FailureReason#INVALID_STUDY_NODE}, as is a node that normalization changes or that folds to a study. A study id at any other depth
+ * is no rule ({@code \_studies_consents\phs000000\} is a legitimate global);</li> <li>a row that cannot be routed (not exactly 5 fields,
+ * the allConcepts contract; a patient id that is missing or not an integer; a header row that is not the first line; a line that cannot be
+ * parsed as CSV) is counted and recorded with its own reason. <b>Every such row counts against {@code maxRejectedRows}</b> (default 0),
+ * because it is data that does not reach HPDS.</li> </ul>
  *
  * <p>The input is read line by line and every line is parsed as one record of its own (allConcepts has no line breaks inside a field), so
  * an unterminated quote costs that line, not the lines after it. A line that cannot be parsed and mentions {@code _consents} is a consents
@@ -370,8 +369,8 @@ final class ConsentRouter {
      * A row whose path is no consents path as the loader reads it, but mentions {@code _consents} (also in other case, also with U+FFFD
      * inside) and breaks R1 (text before the first delimiter) or R2 (empty or normalization-changed study node): {@code _consents\},
      * {@code x\_consents\}, {@code \\_consents\}. It might be a consents row, so it is a rejected consents row, never a data row: it grants
-     * nothing, registers the study of its text value and counts against {@code maxRejectedConsentRows}. Pass 1 and pass 2 both ask this
-     * of the fields alone (before the field count and the patient are looked at), so they always agree. Null when the row is not one.
+     * nothing, registers the study of its text value and counts against {@code maxRejectedConsentRows}. Pass 1 and pass 2 both ask this of
+     * the fields alone (before the field count and the patient are looked at), so they always agree. Null when the row is not one.
      */
     static ConsentRowCheck.Problem consentsLikeShapeProblem(List<String> fields) {
         if (fields == null || fields.size() < 2) {
@@ -394,7 +393,8 @@ final class ConsentRouter {
     /** Contains {@code _consents} in any case, also when U+FFFD is removed. */
     private static boolean mentionsConsents(String text) {
         String lower = text.toLowerCase(Locale.ROOT);
-        return lower.contains(CONSENTS_NAME) || (lower.indexOf(REPLACEMENT_CHARACTER) >= 0 && lower.replace("\uFFFD", "").contains(CONSENTS_NAME));
+        return lower.contains(CONSENTS_NAME)
+            || (lower.indexOf(REPLACEMENT_CHARACTER) >= 0 && lower.replace("\uFFFD", "").contains(CONSENTS_NAME));
     }
 
     /** Why a row of the consents variable may not grant, or null when it may. */
@@ -441,8 +441,8 @@ final class ConsentRouter {
     /**
      * The key by which two spellings of a study are taken for the same one: U+FFFD, whitespace, control and format characters removed
      * anywhere (the partition's loader trims and drops U+FFFD in paths; a consent value is trimmed), the part before the first dot, lower
-     * case ({@link Locale#ROOT}). {@code phs999999}, {@code PHS999999}, {@code phs999999<U+FFFD>} and {@code phs999 999} fold alike.
-     * Used for the consents' studies and for the data rows' study nodes.
+     * case ({@link Locale#ROOT}). {@code phs999999}, {@code PHS999999}, {@code phs999999<U+FFFD>} and {@code phs999 999} fold alike. Used
+     * for the consents' studies and for the data rows' study nodes.
      */
     static String foldStudy(String text) {
         StringBuilder sb = new StringBuilder(text.length());
@@ -647,8 +647,8 @@ final class ConsentRouter {
             // so it is never a global row; the consents' exact study spellings are the only ones that route
             unroutable(
                 record, FailureReason.INVALID_STUDY_NODE, patient,
-                "The study node '" + node + "' is not a study of any consent as written but reads as one when folded ('"
-                    + foldStudy(node) + "'); the row is not routed (it could be a row of that study taken for a global row)"
+                "The study node '" + node + "' is not a study of any consent as written but reads as one when folded ('" + foldStudy(node)
+                    + "'); the row is not routed (it could be a row of that study taken for a global row)"
             );
             return;
         }
@@ -754,10 +754,9 @@ final class ConsentRouter {
         record(record, FailureReason.CONSENT_ROW_REJECTED, null, "The row grants no consent and is written nowhere: " + problem);
     }
 
-    /** A line that cannot be parsed may be a consents row; fail closed on anything that mentions the consents variable. */
+    /** A line that cannot be parsed may be a consents row; fail closed on anything that mentions the consents variable, in any case. */
     private static boolean mightBeConsentsRow(String raw) {
-        return raw.contains(CONSENTS_NAME)
-            || (raw.indexOf(REPLACEMENT_CHARACTER) >= 0 && raw.replace("\uFFFD", "").contains(CONSENTS_NAME));
+        return raw.replace("\uFFFD", "").toLowerCase(Locale.ROOT).contains(CONSENTS_NAME);
     }
 
     /** A row that is not routed is a lost row: all of them count against {@code maxRejectedRows} (default 0). */

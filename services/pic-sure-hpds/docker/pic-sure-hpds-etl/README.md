@@ -152,7 +152,10 @@ The output still goes under the base directory, which also holds `encryption_key
     (`_consents\`, `x\_consents\`, `\\_consents\`) might be a consents row, so it is a *rejected consents row*, not a data row: it grants
     nothing, **registers the study of its text value** (the rows of that study of patients without a valid consent of it are dropped, never
     global) and counts against `maxRejectedConsentRows` as `MALFORMED_CONCEPT_PATH` (R1) or `INVALID_STUDY_NODE` (R2). Raising a limit
-    therefore never turns the well-formed rows of such a study into global rows.
+    therefore never turns the well-formed rows of such a study into global rows. An unparsable line that mentions `_consents` in any
+    case refuses the run. The any-case rule covers only these two cases: a well-formed path in another case, such as `\_CONSENTS\`, is
+    an ordinary variable, so a study named only there counts as a study without consents rows (global, reported in
+    `studyNodesWithoutConsents`), like any study that no consents row names.
   - **Folding is by code point.** Supplementary format characters (tag characters U+E0001 to U+E007F) are removed from a study node like
     the basic-plane ones, so `\phs999999<U+E0020>\X\` is `INVALID_STUDY_NODE`.
   - **A partition name that differs only by case from an entry already in the base** (`phs000000.c1` planned, `PHS000000.C1` present)

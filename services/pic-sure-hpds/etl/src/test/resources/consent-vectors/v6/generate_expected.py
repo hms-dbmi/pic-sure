@@ -124,7 +124,7 @@ routed = []  # (partition, node, global?)
 for raw, r in data:
     cnt['read'] += 1
     if r is None:
-        if '_consents' in raw: reject('UNPARSABLE_LINE')
+        if '_consents' in raw.replace('\ufffd', '').lower(): reject('UNPARSABLE_LINE')
         else: cnt['unroutable'] += 1
         continue
     if path_form(r) is not None:
