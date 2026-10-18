@@ -92,6 +92,11 @@ class CombinedInputTest {
         return p;
     }
 
+    /** The default spool root of a combined input: next to the base, never inside it. */
+    static Path spoolOf(Path base) {
+        return base.getParent().resolve(base.getFileName() + ".picsure-spool");
+    }
+
     private static int run(Path base, Map<String, String> properties) {
         return PICSURELoader.run(new String[] {base.toString()}, properties::get);
     }
@@ -214,7 +219,7 @@ class CombinedInputTest {
         for (String file : PICSURELoader.STORE_FILES) {
             assertFalse(Files.exists(base.resolve(file)), "no flat store: " + file);
         }
-        assertFalse(Files.exists(base.resolve(".picsure-spool")), "routed files and spool are removed after a successful run");
+        assertFalse(Files.exists(spoolOf(base)), "routed files and spool are removed after a successful run");
         assertTrue(Files.isRegularFile(base.resolve("routing-failures.jsonl")));
 
         PartitionedPhenotypicObservationStore store = new PartitionedPhenotypicObservationStore(base.toString(), true);
@@ -348,6 +353,7 @@ class CombinedInputTest {
             assertFalse(Files.exists(base.resolve(partition).resolve("allObservationsStore.javabin")));
         }
         assertFalse(Files.exists(base.resolve(".picsure-spool")), "HPDS would read it as a partition");
+        assertFalse(Files.exists(spoolOf(base)));
     }
 
     @Test
@@ -413,16 +419,14 @@ class CombinedInputTest {
     }
 
     @Test
-    void routedFilesAreKeptForAFailedPartitionAndRemovedForTheOthers() throws Exception {
+    void routedFilesAreDeletedAfterAFailedPartitionToo() throws Exception {
         Path base = newBase("failed-partition");
 
         // phs000000.c1 holds 4 rows of _consents; the limit refuses the 4th, which fails that partition. phs123456.c1 holds 2 rows
         int rc = run(base, props(vectorInput(), "picsure.loader.maxObservationsPerConcept", "3", "picsure.loader.failFast", "false"));
 
         assertEquals(1, rc);
-        Path routed = base.resolve(".picsure-spool/.routed");
-        assertTrue(Files.isRegularFile(routed.resolve("phs000000.c1-allConcepts.csv")), "kept for diagnosis");
-        assertFalse(Files.exists(routed.resolve("phs123456.c1-allConcepts.csv")), "deleted after its partition succeeded");
+        assertFalse(Files.exists(spoolOf(base)), "the routed directory and the spool are gone, also after a failed partition");
         assertFalse(Files.exists(base.resolve("phs000000.c1/allObservationsStore.javabin")));
         assertHasStore(base.resolve("phs123456.c1"));
     }

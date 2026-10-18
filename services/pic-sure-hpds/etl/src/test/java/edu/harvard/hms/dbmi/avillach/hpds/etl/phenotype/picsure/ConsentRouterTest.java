@@ -89,7 +89,8 @@ class ConsentRouterTest {
 
         assertEquals(1, counts.blankConsentRows());
         assertEquals(0, counts.patientsWithConsents());
-        assertEquals(1, counts.unroutableByReason().get("INVALID_PATIENT_ID"));
+        assertEquals(Map.of("BAD_PATIENT_NUM", 1L), counts.consentRowsRejectedByReason(), "a consents row is judged by the gate first");
+        assertEquals(0, counts.unroutableRows());
         assertEquals(2, counts.noConsentGlobalRows(), "the blank _consents row and the Global row of patient 1");
         assertTrue(counts.balanced());
     }

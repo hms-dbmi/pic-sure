@@ -99,37 +99,65 @@ The output still goes under the base directory, which also holds `encryption_key
 - `consent` (the default): the loader partitions the file itself, with the rules of the `split-allconcepts-by-consent` job of
   pic-sure-hpds-etl (`--globals=by-patient --partition-naming=suffix`, commit 6416d91, written to the summary as `consentRulesMatch`).
   Pass 1 reads the file and learns each patient's consents from the `\_consents\` rows (the text value is the consent). Pass 2 writes one
-  routed CSV per consent under `<spoolDir>/.routed/`, and each is then loaded as a split partition, one at a time, and deleted once its
-  partition succeeded (kept after a failure). Rows of a study (first path node = the study of a consent, `phs000000.c1` has the study
-  `phs000000`) go to the patient's consents of that study; every other row, the `\_consents\` rows included, is copied to all of the
-  patient's consents. A patient with no consent for a study row's study, or no consent at all for a global row, is dropped and counted
-  (`NO_CONSENT`). A consent value that cannot name a partition (see the name rule above) is dropped for everybody and listed in the
-  summary with its row count, the run goes on. Rows that cannot be routed (fewer than 4 columns, a missing or non-integer patient id,
-  a header in the middle) are counted and recorded in `<base>/routing-failures.jsonl`; more than `maxRejectedRows` of the kind
-  `CSVLoader` stops on fails the run before any partition is loaded. Everything else (bad numbers, timestamps) is judged by the
-  partition's loader as before.
+  routed CSV per consent under `<spoolDir>/.routed/`, and each is then loaded as a split partition, one at a time. Rows of a study (first
+  path node = the study of a consent, `phs000000.c1` has the study `phs000000`) go to the patient's consents of that study; every other
+  row, the `\_consents\` rows included, is copied to all of the patient's consents. A patient with no consent for a study row's study, or
+  no consent at all for a global row, is dropped and counted (`NO_CONSENT`). A consent value that cannot name a partition (see the name
+  rule above) is dropped for everybody and listed in the summary with its row count, the run goes on. The consent split is an
+  access-control decision, so every doubtful row **fails closed**:
+  - **A `_consents` row must be valid to grant a consent**: exactly 5 fields, a patient id that is an integer as written (no blanks),
+    an empty nval, a timestamp that is empty, an integer or ISO. These are the splitter's rules (`SplitRowCheck`), with **one deliberate
+    difference**: a `_consents` row with a non-blank nval does not grant, also when the number is valid (`NUMERIC_NVAL`). The splitter
+    reads the consent from the text value and ignores the number; the loader would store that number while routing by the text, so
+    the row would mean two things. A rejected row grants nothing, is written to no partition, is counted by reason
+    (`routing.consentRowsRejectedByReason`) and recorded in `routing-failures.jsonl`.
+  - **Every line is one CSV record.** allConcepts has no line breaks inside a field, so a line that cannot be parsed (an unterminated
+    quote) costs that line only (`MALFORMED_RECORD`, with its input line number; a line that mentions `_consents` is a rejected consents
+    row), and the rows after it are routed. The splitter fails the whole job instead.
+  - **A data row is exactly 5 fields** (the allConcepts contract); others are `MALFORMED_RECORD`. A missing or non-integer patient id, a
+    header in the middle: unroutable too.
+  - **A study node with leading or trailing whitespace is not routed** (`INVALID_STUDY_NODE`): `\ phs000000\A\` is `phs000000` once the
+    partition's loader trims the path, but would be a global row (copied to every consent of the patient) as written. The same for a
+    node with U+FFFD.
+  - **Rows that are not routed and rejected `_consents` rows count against `maxRejectedRows`** (default 0): the run ends with status
+    `failed`, exit 1, before any partition is loaded. Set `maxRejectedRows` to the number you accept, after reading `routing-failures.jsonl`.
+  Everything else (bad numbers, timestamps) is judged by the partition's loader as before.
 - `none`: one flat store in the base directory (`allObservationsStore.javabin`, `columnMeta.javabin`, `columnMeta.csv`, as hpds-ingest
   writes it), for parity checks against hpds-ingest only. HPDS refuses such a directory when `hpds.requireAuthorizationFilter` is true,
   as it is in production.
 
 A base directory that already holds a flat store is refused in `consent` mode, and one with partition stores is refused in `none`
-mode (also with `overwrite`). **Disk:** besides the stores, the routing needs space for the routed files, about the size of the
-input plus one copy of every global row for each consent of its patient; point `picsure.loader.spoolDir` at fast local disk (outside the base
-if the base is served by HPDS, since a left-over `.picsure-spool` directory would be read as a partition). The input is read twice,
-one thread. `ingest-summary.json` gains `inputMode` (`split` or `combined`), `partitionBy`, `inputFile`, `inputSizeBytes`,
+mode (also with `overwrite`).
+
+**Spool and routed files.** HPDS reads every subdirectory of the base as a partition, so with a combined input the spool is **outside
+the base**: by default `<parent of base>/<base name>.picsure-spool` (the routed files are in `.routed` under it), and a
+`picsure.loader.spoolDir` inside the base is refused (exit 2). The routed directory is deleted on every exit path (success, a failed
+partition, a routing failure such as a full disk) unless `-Dpicsure.loader.keepRouted=true`; kept files stay outside the base and the
+summary names them (`routing.routedDirKept`). **Disk:** besides the stores, the routing needs space for the routed files, about the size
+of the input plus one copy of every global row for each consent of its patient; point `spoolDir` at fast local disk. The input is read
+twice, one thread. **Heap of pass 1:** one map entry per patient with consents, about 60 bytes measured (2 million patients), so about 60 MB per million patients; allow 100 MB
+(patients with the same consents share one set; pass 2 adds about 50 bytes per patient that has no consent at all). The routing keeps at
+most `picsure.loader.maxOpenWriters` routed files open (default min(1024, open-file limit - 256), 128 if the limit is unknown; the value
+used is logged and written to `routing.maxOpenWriters`); beyond it the least recently used is closed and reopened for append, which keeps
+the row order and costs time (`routing.spoolWriterEvictions`). **The input is pinned**: its size and modification time are recorded
+before pass 1 and the run is refused (exit 2, summary written, nothing loaded) if either changed by the end of pass 2, or if the two
+passes disagree on the rows. **Stale partitions**: directories in the base that this run did not produce are listed in the summary as
+`stalePartitions` and warned about, never deleted; HPDS would read them as partitions, so remove them or use a fresh base. `ingest-summary.json` gains `inputMode` (`split` or `combined`), `partitionBy`, `inputFile`, `inputSizeBytes`,
 `consentRulesMatch` and a `routing` object (rows read, routed, per partition, copies of global rows, `NO_CONSENT` rows dropped,
-patients without consent, invalid consent names with their rows, unroutable rows by reason). Record numbers in a partition's
+patients without consent, invalid consent names with their rows, unroutable rows by reason, rejected `_consents` rows by reason). Record numbers in a partition's
 `failures.jsonl` count the routed file, not the combined input.
 
 Tuning is by system properties, passed in `JAVA_OPTS` (see `LoaderConfig` for the full list):
 
 | Property | Default | |
 |---|---|---|
-| `picsure.loader.spoolDir` | `<base>/.picsure-spool` | spool root, one subdirectory per partition, removed afterwards; use fast local disk |
+| `picsure.loader.spoolDir` | split input: `<base>/.picsure-spool`; combined input: `<parent of base>/<base name>.picsure-spool` | spool root (a combined input routes into `.routed` under it, and may not use a directory inside the base); one subdirectory per partition, removed afterwards; use fast local disk |
+| `picsure.loader.keepRouted` | `false` | `true` keeps the routed files of a combined input after the run (outside the base) |
+| `picsure.loader.maxOpenWriters` | min(1024, open-file limit - 256), 128 if unknown | routed files open at once while routing |
 | `picsure.loader.input` | unset (split input) | a combined allConcepts file, routed by consent |
 | `picsure.loader.partitionBy` | `consent` for a combined input | `consent` or `none` (flat store, parity checks only) |
 | `picsure.loader.maxObservationsPerConcept` | `0` (no limit) | a concept that reaches a non-zero limit fails the partition (kept null markers count) |
-| `picsure.loader.maxRejectedRows` | `0` | rows dropped for a patient id or number `CSVLoader` cannot parse that a partition tolerates |
+| `picsure.loader.maxRejectedRows` | `0` | rows dropped for a patient id or number `CSVLoader` cannot parse that a partition tolerates; with a combined input also the rows that cannot be routed and the rejected `_consents` rows |
 | `picsure.loader.maxTimestampFailures` | `0` | unparseable timestamps that a partition tolerates (the row is kept without one) |
 | `picsure.loader.dedup` | `false` | `true` drops exact duplicate rows (`CSVLoader` keeps them) |
 | `picsure.loader.failFast` | `true` | `false` loads the other partitions after a failure |

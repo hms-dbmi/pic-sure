@@ -19,6 +19,13 @@ public enum FailureReason {
         "The patient has no consent that covers the row (combined input); the row was not written to any partition", true
     ), INVALID_CONSENT_NAME(
         "Every consent the row was meant for has a name that cannot name a partition (combined input); the row was not written", true
+    ), CONSENT_ROW_REJECTED(
+        "A row of the consents variable breaks the contract of a consent row (combined input); it grants no consent and was not written",
+        true
+    ), INVALID_STUDY_NODE(
+        "The study node (first node) of the concept path has leading or trailing whitespace or U+FFFD, so it changes when the loader "
+            + "normalizes the path (combined input); the row cannot be routed safely and was not written",
+        true
     );
 
     private final String description;
