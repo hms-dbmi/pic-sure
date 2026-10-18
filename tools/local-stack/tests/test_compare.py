@@ -8,6 +8,7 @@ import tempfile
 import threading
 import unittest
 import subprocess
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STACK = os.path.dirname(HERE)
@@ -195,6 +196,63 @@ class CsvDifferenceTest(unittest.TestCase):
         self.assertIsNone(compare.explain(mmatch("query:required", concept="\\other\\"), ev))
 
 
+    RULE_EVIDENCE = (("csvloader-empty-row-first", "empty_first"), ("csvloader-whitespace-nval", "whitespace-nval"),
+                     ("csvloader-nonfinite-numbers", "nonfinite"))
+    OTHER = "picsureloader-split"
+
+    def explained_by(self, key, mm):
+        return compare.explain(mm, {key: {"P": ["\\c\\"]}})
+
+    def test_no_csvloader_rule_explains_a_concept_the_csvloader_lacks(self):
+        # the CSVLoader creates the cube before it looks at the value: it cannot drop a concept, so a concept missing from its
+        # columnMeta is a real defect whatever the evidence says
+        for rule, key in self.RULE_EVIDENCE:
+            self.assertIsNone(self.explained_by(key, mmatch("meta:concept missing from columnMeta")), rule)
+            # a presence difference where the CSVLoader lacks the concept (it is the "absent" side)
+            lacks = mmatch("meta-lane-diff", lanes=["csvloader-split", self.OTHER], fields=["presence"],
+                           answers={"csvloader-split": "absent", self.OTHER: "present"})
+            self.assertIsNone(self.explained_by(key, lacks), rule)
+            # and the same diff with the lanes the other way round in the mismatch
+            lacks = mmatch("meta-lane-diff", lanes=[self.OTHER, "csvloader-split"], fields=["presence"],
+                           answers={self.OTHER: "present", "csvloader-split": "absent"})
+            self.assertIsNone(self.explained_by(key, lacks), rule)
+
+    def test_presence_difference_is_explained_only_when_the_csvloader_has_the_concept(self):
+        has = mmatch("meta-lane-diff", lanes=["csvloader-split", self.OTHER], fields=["presence"],
+                     answers={"csvloader-split": "present", self.OTHER: "absent"})
+        self.assertEqual(self.explained_by("empty_first", has), "csvloader-empty-row-first")
+        self.assertEqual(self.explained_by("nonfinite", has), "csvloader-nonfinite-numbers")
+        # whitespace-nval never makes the CSVLoader hold a concept the PICSURELoader lacks
+        self.assertIsNone(self.explained_by("whitespace-nval", has))
+        # a presence diff without the answers is not explained either
+        self.assertIsNone(self.explained_by("empty_first", dict(has, answers=None)))
+        self.assertIsNone(self.explained_by("empty_first", {k: v for k, v in has.items() if k != "answers"}))
+
+    def test_a_concept_not_in_the_input_is_explained_by_empty_first_and_nonfinite_only(self):
+        mm = mmatch("meta:concept not in the input")
+        self.assertEqual(self.explained_by("empty_first", mm), "csvloader-empty-row-first")
+        self.assertEqual(self.explained_by("nonfinite", mm), "csvloader-nonfinite-numbers")
+        self.assertIsNone(self.explained_by("whitespace-nval", mm))
+
+    def test_each_rule_has_its_own_kinds(self):
+        self.assertNotIn("meta:concept missing from columnMeta", compare.EMPTY_FIRST_KINDS | compare.WHITESPACE_NVAL_KINDS | compare.NONFINITE_KINDS)
+        self.assertNotIn(compare.CONCEPT_NOT_IN_INPUT, compare.WHITESPACE_NVAL_KINDS)
+        self.assertIn(compare.CONCEPT_NOT_IN_INPUT, compare.EMPTY_FIRST_KINDS)
+        self.assertIn(compare.CONCEPT_NOT_IN_INPUT, compare.NONFINITE_KINDS)
+
+    def test_nonfinite_needs_the_csvloaders_own_columnmeta(self):
+        numeric = meta(categorical=False, min="NaN", max="NaN")
+        self.assertTrue(compare.csv_stored_nonfinite(numeric))
+        self.assertTrue(compare.csv_stored_nonfinite(meta(categorical=False, min="1.0", max="Infinity")))
+        self.assertTrue(compare.csv_stored_nonfinite(meta(categorical=False)))  # numeric: the NaN went in as a number
+        self.assertTrue(compare.csv_stored_nonfinite(meta(categorical=True, min="-Infinity", max="5")))
+        # categorical, with the null min and max the CSVLoader writes for text: no NaN was stored
+        self.assertFalse(compare.csv_stored_nonfinite(meta(categorical=True, min="null", max="null")))
+        self.assertFalse(compare.csv_stored_nonfinite(meta(categorical=True, min="1.0", max="2.0")))
+        self.assertFalse(compare.csv_stored_nonfinite(None))
+        self.assertFalse(compare.csv_stored_nonfinite({}))
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     seen = []
 
@@ -277,20 +335,81 @@ class LoaderSupportTest(unittest.TestCase):
         subprocess.run = run
         return calls
 
+    def make_jar(self, with_option):
+        path = os.path.join(self.tmp.name, "PICSURELoader-jar-with-dependencies.jar")
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr("a/Other.class", b"\xca\xfe\xba\xbe nothing here")
+            if with_option:
+                z.writestr("a/LoaderConfig.class", b"\xca\xfe\xba\xbe picsure.loader.partitionBy")
+        return path
+
     def test_probe(self):
         ok, why = lane.picsureloader_supports_combined_input()
         self.assertFalse(ok)
         self.assertIn("not found", why)
-        open(os.path.join(self.tmp.name, "PICSURELoader-jar-with-dependencies.jar"), "w").close()
-        calls = self.fake_java(1, False)  # a jar without the option: no split files in the base, non-zero exit
+        self.assertEqual(lane.lane1_probe()[0], "skip")
+        # static check: a jar without the option is skipped and the probe never runs
+        self.make_jar(False)
+        calls = self.fake_java(1, False)
+        self.assertEqual(lane.lane1_probe(), ("skip", "PICSURELoader without combined input"))
         self.assertEqual(lane.picsureloader_supports_combined_input(), (False, "PICSURELoader without combined input"))
+        self.assertEqual(calls, [])
+        # not a zip at all: no option
+        open(os.path.join(self.tmp.name, "PICSURELoader-jar-with-dependencies.jar"), "w").close()
+        self.assertEqual(lane.lane1_probe()[0], "skip")
+        # the option is there: the probe runs, with a real heap, and failing it is a failure, not a skip
+        self.make_jar(True)
+        calls = self.fake_java(1, False)
+        state, why = lane.lane1_probe()
+        self.assertEqual(state, "fail")
+        self.assertIn("rc=1", why)
         self.assertTrue(any(a.startswith("-Dpicsure.loader.input=") for a in calls[0]))
         self.assertIn("-Dpicsure.loader.partitionBy=consent", calls[0])
+        self.assertIn("-Xmx512m", calls[0])
         self.fake_java(0, False)  # exit 0 but no store per consent
+        self.assertEqual(lane.lane1_probe()[0], "fail")
         self.assertFalse(lane.picsureloader_supports_combined_input()[0])
         self.fake_java(0, True)
+        self.assertEqual(lane.lane1_probe(), ("ok", ""))
         self.assertEqual(lane.picsureloader_supports_combined_input(), (True, ""))
         self.assertEqual([d for d in os.listdir(lane.WORK) if d.startswith(".lane1-probe")], [])  # the temp base is removed
+
+    def test_probe_failure_carries_the_log_tail(self):
+        self.make_jar(True)
+
+        def run(cmd, **kw):
+            return subprocess.CompletedProcess(cmd, 3, b"line1\n" + b"java.lang.OutOfMemoryError: Java heap space\n")
+        subprocess.run = run
+        state, why = lane.lane1_probe()
+        self.assertEqual(state, "fail")
+        self.assertIn("rc=3", why)
+        self.assertIn("OutOfMemoryError", why)
+
+        def boom(cmd, **kw):
+            raise subprocess.TimeoutExpired(cmd, 120)
+        subprocess.run = boom
+        state, why = lane.lane1_probe()
+        self.assertEqual(state, "fail")
+        self.assertIn("probe did not run", why)
+
+    def test_load_lane1_fails_on_a_failed_probe_in_every_mode_but_off(self):
+        self.make_jar(True)
+        self.fake_java(1, False)
+        old_rm = lane.rmtree
+        lane.rmtree = lambda p: __import__("shutil").rmtree(p, ignore_errors=True)  # WORK is a temp dir here
+        try:
+            for mode, status, text in (("auto", "failed", "probe failed"), ("require", "failed", "probe failed"),
+                                       ("off", "skipped", "LANE1=off")):
+                os.environ["LANE1"] = mode
+                os.makedirs(os.path.join(lane.WORK, "combined"), exist_ok=True)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(lane.load("combined", "picsureloader-combined"), 0)
+                with open(os.path.join(lane.WORK, "combined", "picsureloader-combined", "load.json")) as f:
+                    load = json.load(f)
+                self.assertEqual(load["status"], status, mode)
+                self.assertIn(text, load["reason"])
+        finally:
+            lane.rmtree = old_rm
 
     def test_lane1_modes(self):
         os.environ["LANE1"] = "off"
@@ -300,9 +419,14 @@ class LoaderSupportTest(unittest.TestCase):
             lane.lane1_mode()
         os.environ["LANE1"] = "auto"
         self.assertIn("not found", lane.lane1_unavailable())  # no jar
-        open(os.path.join(self.tmp.name, "PICSURELoader-jar-with-dependencies.jar"), "w").close()
+        self.make_jar(True)
         self.fake_java(0, True)
         self.assertIsNone(lane.lane1_unavailable())
+        self.fake_java(1, False)  # the option is there, the probe fails: unavailable with the reason, and state "fail"
+        self.assertIn("probe failed", lane.lane1_unavailable())
+        self.assertEqual(lane.lane1_state()[0], "fail")
+        os.environ["LANE1"] = "off"
+        self.assertEqual(lane.lane1_state(), ("off", "LANE1=off"))
 
 
 class LoadStatusTest(unittest.TestCase):

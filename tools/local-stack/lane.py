@@ -5,10 +5,12 @@
   lane.py split   DATASET          prepare, then run the splitter (combined/synth); writes work/DATASET/split.json
   lane.py load    DATASET FLOW     run one loader flow; writes work/DATASET/FLOW/{store,load.json,load.log}
   lane.py flows   DATASET          print the flows that apply to the dataset, space separated
+  lane.py guard-work PATH          exit 1 (and say why) unless PATH is this stack's work directory (.../tools/local-stack/work, not a symlink)
   lane.py request DATASET FLOW...  record which flows this run asked for (work/DATASET/requested-flows.json), for the report
 
-Environment: LANE1=auto|require|off  lane 1 (needs a PICSURELoader that reads the combined file, checked by running it on a tiny
-file): auto runs it when the jar can and skips it otherwise, require turns a skip into a failure, off never runs it.
+Environment: LANE1=auto|require|off  lane 1 (needs a PICSURELoader that reads the combined file): auto runs it when the jar can and
+skips it when the jar has no `partitionBy` option, require turns that skip into a failure, off never runs it. A jar that has the option
+but fails the probe run on a tiny combined file is a failure (lane1 FAILED, with the probe's exit code and log tail), in every mode but off.
 
 Flows (named like the future runner's flows; lane numbers are used for the HPDS ports):
   lane1  picsureloader-combined   PICSURELoader reads the combined file and routes it by consent itself
@@ -29,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))  # the pic-sure checkout
@@ -37,6 +40,7 @@ LOADER_JARS = os.environ.get("LOADER_JAR_DIR") or os.path.join(ROOT, "services",
 SPLITTER_JAR = os.environ.get("SPLITTER_JAR") or os.path.join(WORK, "src", "hpds-etl", "target", "hpds-etl.jar")
 LOADER_XMX = os.environ.get("LOADER_XMX", "2g")
 SPLITTER_XMX = os.environ.get("SPLITTER_XMX", "2g")
+PROBE_XMX = os.environ.get("PROBE_XMX", "512m")
 SPLIT_MAX_REJECT = os.environ.get("SPLIT_MAX_REJECT", "0.05")
 STORE_FILES = ("allObservationsStore.javabin", "columnMeta.javabin", "columnMeta.csv")
 
@@ -67,6 +71,37 @@ def lane1_mode():
     if mode not in LANE1_MODES:
         raise SystemExit("LANE1=%s: one of %s" % (mode, ", ".join(LANE1_MODES)))
     return mode
+
+
+def work_dir_problem(work=None, stack=None):
+    """Why `work` may not be deleted from, or None. Mirrors the Makefile guard: the resolved path must end in /tools/local-stack/work
+    and be the `work` directory of the resolved stack directory; a symlink is refused (its target is not ours to delete)."""
+    work = WORK if work is None else work
+    stack = HERE if stack is None else stack
+    if os.path.islink(work):
+        return "%s is a symlink (to %s)" % (work, os.path.realpath(work))
+    real, stack_real = os.path.realpath(work), os.path.realpath(stack)
+    if not real.endswith("/tools/local-stack/work"):
+        return "%s (resolved: %s) does not end in /tools/local-stack/work" % (work, real)
+    if real != os.path.join(stack_real, "work"):
+        return "%s (resolved: %s) is not the work directory of %s" % (work, real, stack_real)
+    return None
+
+
+def rmtree(path):
+    """shutil.rmtree for something under WORK, after the same check as `make clean`: refuses (SystemExit) when WORK is not
+    .../tools/local-stack/work or the path is not inside it. A symlink at `path` is unlinked, never followed."""
+    problem = work_dir_problem()
+    if problem:
+        raise SystemExit("refusing to delete %s: WORK_DIR %s" % (path, problem))
+    real_work = os.path.realpath(WORK)
+    real = os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path))  # the entry itself is not resolved
+    if not real.startswith(real_work + os.sep):
+        raise SystemExit("refusing to delete %s: not inside %s" % (path, real_work))
+    if os.path.islink(path):
+        os.unlink(path)
+    else:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def dpath(dataset, *parts):
@@ -121,13 +156,13 @@ def prepare(dataset):
     base = dpath(dataset)
     os.makedirs(base, exist_ok=True)
     for flow in FLOW_NAMES:  # stores of an earlier input must not be served or compared against the new one
-        shutil.rmtree(dpath(dataset, flow), ignore_errors=True)
+        rmtree(dpath(dataset, flow))
     if os.path.exists(dpath(dataset, "requested-flows.json")):
         os.remove(dpath(dataset, "requested-flows.json"))
     shutil.copyfile(spec["key"], dpath(dataset, "encryption_key"))
     if spec["kind"] == "split":
         split = dpath(dataset, "split")
-        shutil.rmtree(split, ignore_errors=True)
+        rmtree(split)
         os.makedirs(split)
         src = spec["source"]
         n = 0
@@ -138,7 +173,7 @@ def prepare(dataset):
         say("prepare %s: %d split files linked from %s" % (dataset, n, os.path.relpath(src, ROOT)))
         return 0
     inp = dpath(dataset, "input")
-    shutil.rmtree(inp, ignore_errors=True)
+    rmtree(inp)
     os.makedirs(inp)
     out = os.path.join(inp, "allConcepts_data_analyzer.csv")
     if dataset == "combined":
@@ -162,7 +197,7 @@ def split(dataset):
         sys.stderr.write("splitter jar not found: %s (run make jars, or set SPLITTER_JAR)\n" % SPLITTER_JAR)
         return 1
     out = dpath(dataset, "split")
-    shutil.rmtree(out, ignore_errors=True)
+    rmtree(out)
     log = dpath(dataset, "split.log")
     if os.path.exists(log):
         os.remove(log)
@@ -209,13 +244,32 @@ PROBE_ROWS = [
 ]
 
 
-def picsureloader_supports_combined_input():
-    """(capable, reason). Runs the PICSURELoader jar on a tiny combined file with -Dpicsure.loader.input and
-    -Dpicsure.loader.partitionBy=consent into a temporary base under work/; capable when it exits 0 and wrote a store per consent.
-    A jar without those options finds no split files in the base and fails."""
+def jar_has_option(path, needle=b"partitionBy"):
+    """Static check: the option name is a string constant of some class in the jar. A jar without T25b does not know the option."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            return any(n.endswith(".class") and needle in z.read(n) for n in z.namelist())
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+
+def tail(data, lines=12, chars=800):
+    text = data.decode("utf-8", errors="replace").strip() if data else ""
+    return "\n".join(text.splitlines()[-lines:])[-chars:]
+
+
+def lane1_probe():
+    """(state, reason): state is "ok", "skip" (the jar has no combined-input option, so lane 1 does not apply) or "fail" (the jar has
+    the option and the probe did not work: broken jar, crash, timeout, wrong output). Never a silent skip for the last.
+
+    Static check first: the `partitionBy` option name must be in the jar. Then the jar runs on a tiny combined file with
+    -Dpicsure.loader.input and -Dpicsure.loader.partitionBy=consent into a temporary base under work/, and must exit 0 and write a
+    store per consent."""
     path = jar("PICSURELoader")
     if not os.path.exists(path):
-        return False, "PICSURELoader jar not found: %s" % path
+        return "skip", "PICSURELoader jar not found: %s" % path
+    if not jar_has_option(path):
+        return "skip", "PICSURELoader without combined input"
     os.makedirs(WORK, exist_ok=True)
     base = tempfile.mkdtemp(prefix=".lane1-probe-", dir=WORK)
     try:
@@ -225,26 +279,40 @@ def picsureloader_supports_combined_input():
         out = os.path.join(base, "out")
         os.makedirs(out)
         shutil.copyfile(DATASETS["combined"]["key"], os.path.join(out, "encryption_key"))
-        cmd = ["java", "-Xmx256m", "-Dpicsure.loader.failFast=false", "-Dpicsure.loader.input=" + inp,
+        cmd = ["java", "-Xmx" + PROBE_XMX, "-Dpicsure.loader.failFast=false", "-Dpicsure.loader.input=" + inp,
                "-Dpicsure.loader.partitionBy=consent", "-jar", path, out]
         try:
             r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
         except (OSError, subprocess.TimeoutExpired) as e:
-            return False, "probe did not run: %s" % e
+            return "fail", "probe did not run: %s" % e
         stores = [d for d in ("phs000000.c1", "phs000000.c2") if has_store(os.path.join(out, d))]
         if r.returncode == 0 and len(stores) == 2:
-            return True, ""
-        return False, "PICSURELoader without combined input"
+            return "ok", ""
+        why = "PICSURELoader has the combined-input option but the probe failed (rc=%s, %d of 2 stores)" % (r.returncode, len(stores))
+        t = tail(r.stdout)
+        return "fail", why + (": " + t if t else "")
     finally:
-        shutil.rmtree(base, ignore_errors=True)
+        shutil.rmtree(base, ignore_errors=True)  # the probe's own mkdtemp
+
+
+def picsureloader_supports_combined_input():
+    """(capable, reason): lane1_probe() as a pair. Not capable covers both a jar without the option and a probe that failed."""
+    state, reason = lane1_probe()
+    return state == "ok", reason
+
+
+def lane1_state():
+    """(state, reason) for lane 1 here: "ok"; "off" (LANE1=off); "skip" (jar without the option); "fail" (probe failed)."""
+    if lane1_mode() == "off":
+        return "off", "LANE1=off"
+    return lane1_probe()
 
 
 def lane1_unavailable():
-    """None when lane 1 would run here, else the reason it cannot or may not (LANE1=off, or a jar without combined input)."""
-    if lane1_mode() == "off":
-        return "LANE1=off"
-    ok, reason = picsureloader_supports_combined_input()
-    return None if ok else reason
+    """None when lane 1 would run here, else the reason it cannot or may not (LANE1=off, a jar without combined input, or a failed
+    probe)."""
+    state, reason = lane1_state()
+    return None if state == "ok" else reason
 
 
 def load_status(rc, loaded, failed):
@@ -292,7 +360,7 @@ def load(dataset, flow):
         sys.stderr.write("unknown flow %s (one of %s)\n" % (flow, ", ".join(FLOW_NAMES)))
         return 2
     lane = os.path.join(WORK, dataset, flow)
-    shutil.rmtree(lane, ignore_errors=True)
+    rmtree(lane)
     os.makedirs(lane)
     result = {"dataset": dataset, "flow": flow, "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "loader_xmx": LOADER_XMX}
 
@@ -313,8 +381,12 @@ def load(dataset, flow):
                 result["reason"] = "dataset is already split"
                 say("%s lane1 skipped: dataset is already split" % dataset)
                 return finish("skipped", None, 0, [], [], msg="dataset is already split")
-            why = lane1_unavailable()
-            if why:
+            state, why = lane1_state()
+            if state == "fail":  # the jar has the option and the probe failed: a failure whatever LANE1 says, never a skip
+                result["reason"] = why
+                say("%s lane1 FAILED: %s" % (dataset, why))
+                return finish("failed", None, 0, [], [], msg=why)
+            if state != "ok":
                 result["reason"] = why
                 if lane1_mode() == "require":
                     say("%s lane1 FAILED: LANE1=require and %s" % (dataset, why))
@@ -370,8 +442,8 @@ def load_csvloader(dataset, lane, result, finish):
             loaded.append(part)
         else:
             failed.append(part)
-        shutil.rmtree(base, ignore_errors=True)
-    shutil.rmtree(os.path.join(lane, "base"), ignore_errors=True)
+        rmtree(base)
+    rmtree(os.path.join(lane, "base"))
     secs = time.time() - t0
     rc = 0 if not failed else 1
     return finish(load_status(rc, loaded, failed), rc, secs, loaded, failed,
@@ -425,7 +497,7 @@ def load_picsureloader_split(dataset, lane, result, finish):
     loaded, failed, summary = collect_picsureloader(base, store)
     if os.path.exists(os.path.join(base, "ingest-summary.json")):
         shutil.copyfile(os.path.join(base, "ingest-summary.json"), os.path.join(lane, "ingest-summary.json"))
-    shutil.rmtree(base, ignore_errors=True)
+    rmtree(base)
     extra = {"loader": "PICSURELoader", "command": " ".join(cmd)}
     extra.update(summary)
     return finish(load_status(rc, loaded, failed), rc, secs, loaded, failed, extra)
@@ -445,7 +517,7 @@ def load_picsureloader_combined(dataset, lane, result, finish):
     loaded, failed, summary = collect_picsureloader(base, store)
     if os.path.exists(os.path.join(base, "ingest-summary.json")):
         shutil.copyfile(os.path.join(base, "ingest-summary.json"), os.path.join(lane, "ingest-summary.json"))
-    shutil.rmtree(base, ignore_errors=True)
+    rmtree(base)
     extra = {"loader": "PICSURELoader", "command": " ".join(cmd)}
     extra.update(summary)
     return finish(load_status(rc, loaded, failed), rc, secs, loaded, failed, extra)
@@ -455,6 +527,12 @@ def load_picsureloader_combined(dataset, lane, result, finish):
 
 
 def main(argv):
+    if len(argv) == 3 and argv[1] == "guard-work":  # the Makefile guard: lane.py guard-work <path>
+        problem = work_dir_problem(argv[2])
+        if problem:
+            sys.stderr.write("refusing to touch %s\n" % problem)
+            return 1
+        return 0
     if len(argv) < 3 or argv[1] not in ("prepare", "split", "load", "flows", "request"):
         sys.stderr.write(__doc__)
         return 2

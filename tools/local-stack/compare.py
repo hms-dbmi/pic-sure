@@ -299,6 +299,23 @@ def meta_vs_truth(lane, part, meta, pt):
     return diffs
 
 
+def csv_stored_nonfinite(m):
+    """True when a CSVLoader columnMeta row (parsed) shows NaN or Infinity stored: the concept is numeric, or its min or max is not finite.
+    A categorical concept with finite or no min/max does not (the CSVLoader typed it as text before it met the number)."""
+    if not m:
+        return False
+    if not m["categorical"]:
+        return True
+    for key in ("min", "max"):
+        try:
+            v = float(m[key])
+        except (KeyError, ValueError):
+            continue
+        if v != v or v in (float("inf"), float("-inf")):
+            return True
+    return False
+
+
 def meta_between_lanes(meta_a, meta_b):
     """Concepts whose columnMeta row differs between two lanes (offset and length columns are not part of the parsed meta)."""
     out = []
@@ -310,6 +327,13 @@ def meta_between_lanes(meta_a, meta_b):
     return out
 
 
+def lane_diff_answers(a, b, fields, ma, mb):
+    """What each lane's columnMeta row says for the differing fields; for a presence difference, "present" / "absent"."""
+    if fields == ["presence"]:
+        return {a: "present" if ma else "absent", b: "present" if mb else "absent"}
+    return {a: ma and {k: ma[k] for k in fields if k in ma}, b: mb and {k: mb[k] for k in fields if k in mb}}
+
+
 # ----------------------------------------------------------------------------------------------------------------------------
 # run
 
@@ -317,9 +341,17 @@ def meta_between_lanes(meta_a, meta_b):
 # Which mismatch kinds a rule may explain (the `kind` of a mismatch: meta:<what> for columnMeta against the truth, meta-lane-diff,
 # query:required / query:values / query:range, query:error for a query that got no count, load:*, health, splitter).
 CSV = "csvloader-split"
-DATA_KINDS = {"meta:categorical flag", "meta:observationCount", "meta:patientCount", "meta:min", "meta:max", "meta:category values",
-              "meta:concept missing from columnMeta", "meta:concept not in the input", "meta-lane-diff",
-              "query:required", "query:values", "query:range"}
+# What a CSVLoader rule may explain. None of them can drop a concept (CSVLoader.processRecord creates the cube before it looks at the
+# value), so `meta:concept missing from columnMeta` is in no set. `meta:concept not in the input` (the CSVLoader has a concept the truth
+# does not) is possible only when the CSVLoader stores a row the PICSURELoader rejects or reads as nothing: NaN/Infinity, and a concept
+# of empty rows only. The same goes for a presence-only lane difference, which is explained only when the CSVLoader lane is the side
+# that HAS the concept.
+CONCEPT_NOT_IN_INPUT = "meta:concept not in the input"
+COMMON_DATA_KINDS = frozenset({"meta:categorical flag", "meta:observationCount", "meta:patientCount", "meta:min", "meta:max",
+                               "meta:category values", "meta-lane-diff", "query:required", "query:values", "query:range"})
+EMPTY_FIRST_KINDS = COMMON_DATA_KINDS | {CONCEPT_NOT_IN_INPUT}
+WHITESPACE_NVAL_KINDS = COMMON_DATA_KINDS
+NONFINITE_KINDS = COMMON_DATA_KINDS | {CONCEPT_NOT_IN_INPUT}
 # partition failures that are known and why: {"flow": ..., "partition": ..., "reason": ...}. None today.
 PARTITION_FAILURE_RULES = []
 
@@ -339,16 +371,25 @@ def _fffd_kind_ok(mm, concept_values):
     return False
 
 
-def _data_kind_ok(mm, _):
-    return mm.get("kind") in DATA_KINDS
+def _kinds_rule(kinds):
+    """A kind test for a CSVLoader rule: the mismatch kind must be in `kinds`; a lane difference in presence alone only when the
+    CSVLoader lane has the concept (the answers say present/absent) and the rule may explain a concept the truth lacks."""
+    def ok(mm, _):
+        kind = mm.get("kind")
+        if kind not in kinds:
+            return False
+        if kind == "meta-lane-diff" and list(mm.get("fields") or []) == ["presence"]:
+            return CONCEPT_NOT_IN_INPUT in kinds and (mm.get("answers") or {}).get(CSV) == "present"
+        return True
+    return ok
 
 
 # rule id -> (evidence key, kind test); every one of them is CSVLoader-only
 RULES = (
     ("fffd-in-text", "fffd", _fffd_kind_ok),
-    ("csvloader-empty-row-first", "empty_first", _data_kind_ok),
-    ("csvloader-whitespace-nval", "whitespace-nval", _data_kind_ok),
-    ("csvloader-nonfinite-numbers", "nonfinite", _data_kind_ok),
+    ("csvloader-empty-row-first", "empty_first", _kinds_rule(EMPTY_FIRST_KINDS)),
+    ("csvloader-whitespace-nval", "whitespace-nval", _kinds_rule(WHITESPACE_NVAL_KINDS)),
+    ("csvloader-nonfinite-numbers", "nonfinite", _kinds_rule(NONFINITE_KINDS)),
 )
 
 
@@ -521,8 +562,7 @@ def run_dataset(dataset, ports, host):
             for part in sorted(set(lane_meta[a]) & set(lane_meta[b])):
                 for path, fields, ma, mb in meta_between_lanes(lane_meta[a][part], lane_meta[b][part]):
                     mm(category="columnMeta-lane-diff", kind="meta-lane-diff", fields=fields, partitions=[part], lanes=[a, b], concept=path,
-                       query="columnMeta %s" % ",".join(fields), truth=None, answers={a: ma and {k: ma[k] for k in fields if k in ma},
-                                                                                  b: mb and {k: mb[k] for k in fields if k in mb}},
+                       query="columnMeta %s" % ",".join(fields), truth=None, answers=lane_diff_answers(a, b, fields, ma, mb),
                        detail="")
 
     # the queries
@@ -580,9 +620,12 @@ def run_dataset(dataset, ports, host):
                      if (csv_meta.get(p, {}).get(c) or {}).get("categorical") and csv_meta[p][c]["observations"] == 0]
         if confirmed:
             evidence["empty_first"][p] = confirmed
-        for kind, key in ((pheno.WS_NVAL, "whitespace-nval"), (pheno.NONFINITE, "nonfinite")):
-            if pt.csv_differs[kind]:
-                evidence[key][p] = sorted(pt.csv_differs[kind])
+        if pt.csv_differs[pheno.WS_NVAL]:
+            evidence["whitespace-nval"][p] = sorted(pt.csv_differs[pheno.WS_NVAL])
+        # NaN/Infinity: only where the CSVLoader's own columnMeta shows them stored (numeric, or a NaN or Infinity min or max)
+        nonfinite = [c for c in sorted(pt.csv_differs[pheno.NONFINITE]) if csv_stored_nonfinite(csv_meta.get(p, {}).get(c))]
+        if nonfinite:
+            evidence["nonfinite"][p] = nonfinite
     for m in mismatches:
         m["explained_by"] = explain(m, evidence)
 
@@ -596,7 +639,8 @@ def run_dataset(dataset, ports, host):
         if pt.csv_differs[pheno.WS_NVAL]:
             ev["csvloader-whitespace-nval"][p] = {"rows": pt.csv_differs[pheno.WS_NVAL]}
         if pt.csv_differs[pheno.NONFINITE]:
-            ev["csvloader-nonfinite-numbers"][p] = {"rows": pt.csv_differs[pheno.NONFINITE]}
+            ev["csvloader-nonfinite-numbers"][p] = {"rows": pt.csv_differs[pheno.NONFINITE],
+                                                    "confirmed_in_csvloader_columnMeta": evidence["nonfinite"].get(p, [])}
         if pt.rolled_up_rows:
             ev["rollup-last-node"][p] = {"rows": pt.rolled_up_rows}
         if pt.short_rows:

@@ -17,7 +17,7 @@ Later layers (`api`, `auth`, `ui`) plug into the same Makefile and `docker-compo
 ## Prerequisites
 
 Docker (with `docker compose`), Java 25, Maven, Python 3.9 or newer (standard library only), GNU make 3.81 or newer, git. The first
-`make` builds the jars (a few minutes) and the HPDS image; later runs reuse them (`make jars REBUILD=1` rebuilds).
+`make` builds the jars (a few minutes) and the HPDS image; later runs reuse them (`make jars REBUILD=1` rebuilds; `make up REBUILD=1` rebuilds the HPDS service jar and the image).
 
 The path of the checkout must not contain spaces (make cannot handle them; the Makefile stops with an error).
 
@@ -45,7 +45,7 @@ All data is synthetic. Accessions are the placeholders `phs000000`, `phs999999` 
 |---|---|---|---|
 | `mini` | split | the five partitions of the hpds-pheno-load smoke test, copied to `fixtures/mini/` (see its README). `phs000000.c2` is deliberately malformed: a 3-column row, a 6-column row, a blank line and an invalid byte | 2, 3 |
 | `1000g` | split | the four partitions of the HPDS test resources (`services/pic-sure-hpds/service/src/test/resources/phenotypic`), linked, not copied | 2, 3 |
-| `edge` | split | `fixtures/edge/split`: one partition with the rows the loaders read differently (whitespace-only nval, NaN and Infinity; see Known differences). Not part of `DATASET=all`: `make compare DATASET=edge` | 2, 3 |
+| `edge` | split | `fixtures/edge/split`: one partition with the rows the loaders read differently (whitespace-only nval, NaN and Infinity; see Known differences). Part of `DATASET=all` | 2, 3 |
 | `combined` | combined | `gen-combined.py`: 80 patients, about 1000 rows in the shape of `allConcepts_data_analyzer.csv` | 1, 2, 3 |
 | `synth` | combined | `gen-synth.py --patients N --concepts M --seed S` (defaults 200, 12, 7; `make compare DATASET=synth PATIENTS=2000 CONCEPTS=40 SEED=3`) | 1, 2, 3 |
 
@@ -75,8 +75,10 @@ next to this checkout, pass `SPLITTER_REPO=<path>` or `SPLITTER_JAR=<hpds-etl.ja
 
 Lane 1 needs a PICSURELoader that knows the combined-file options (`-Dpicsure.loader.input`, `-Dpicsure.loader.partitionBy`; T25b).
 Only a run with such a jar exercises lane 1 at all; with any other jar the lane is skipped and nothing was tested for it. The stack
-finds out by running the jar on a tiny generated combined file into a temporary base under `work/`: the jar is capable when it exits 0
-and writes a store per consent. `LANE1` says what to do about it:
+finds out in two steps. A static check: the option name `partitionBy` must be in the jar; if not, the lane is skipped. Then a probe: the
+jar runs (`-Xmx512m`) on a tiny generated combined file into a temporary base under `work/` and must exit 0 and write a store per consent.
+A jar that has the option and fails the probe (broken jar, crash, timeout, wrong output) is not skipped: lane 1 is FAILED, with the
+probe's exit code and the tail of its log in the reason, in every mode but `LANE1=off`. `LANE1` says what to do about a jar without the option:
 
 | `LANE1` | capable jar | other jar |
 |---|---|---|
@@ -103,9 +105,9 @@ Both loaders write next to their input, so a lane always works on copies or link
 | `make compare DATASET=mini\|1000g\|combined\|synth\|edge\|all` | `jars`, then `split`, `load`, `up` and `compare.py run` per dataset, then the report. Exit status 1 on an unexplained mismatch (see The result line) |
 | `make run` | `make compare DATASET=combined`, then the URLs and the report path |
 | `make down` / `restart` | stop and remove the containers (`restart` = down + up) |
-| `make clean` / `clean-data` | remove `work/` / remove the datasets and the report but keep the splitter build and the image. Both refuse to run unless the target ends in `/tools/local-stack/work` |
+| `make clean` / `clean-data` | remove `work/` / remove the datasets and the report but keep the splitter build and the image. Both check first (before stopping the containers) that the target resolves, symlinks followed, to this checkout's `tools/local-stack/work` and is not itself a symlink; otherwise they say why and delete nothing. The Python helpers check the same before every delete |
 
-`DATASET=all` (mini, 1000g, combined, synth) leaves the stack serving the last dataset (`synth`). `make up DATASET=mini` switches it. Python:
+`DATASET=all` (mini, 1000g, combined, synth, edge) leaves the stack serving the last dataset (`edge`). `make up DATASET=mini` switches it. Python:
 `python3 -m unittest discover tools/local-stack/tests`.
 
 ## Querying a lane
@@ -208,6 +210,11 @@ These are written from evidence found by running the stack (the report repeats t
   empty rows is stored with 0 observations. Tried on a three-row file: CSVLoader 0 observations, PICSURELoader 2. The datasets avoid
   empty rows on numeric concepts so the lanes stay comparable. The comparison explains it only for a concept whose CSVLoader
   columnMeta is categorical with 0 observations.
+- **What the three CSVLoader rules may explain** is narrow. None of them can drop a concept (the CSVLoader creates the concept before it
+  looks at the value), so none explains a concept missing from the CSVLoader's columnMeta. A concept the truth lacks but the CSVLoader
+  has, and a presence-only difference between lanes, are explained only for `csvloader-empty-row-first` and
+  `csvloader-nonfinite-numbers`, and a presence difference only when the CSVLoader is the lane that has the concept. NaN and Infinity
+  are explained only for a concept whose CSVLoader columnMeta is numeric or has a NaN or Infinity min or max.
 - **`csvloader-whitespace-nval`: an nval of only whitespace.** The CSVLoader tests the raw cell, so the row is numeric, trims to
   nothing and is dropped even when it has a text value (its concept is typed numeric by that row, so later text is dropped too). The
   PICSURELoader trims first, so the nval is empty and the text value is kept (a number when it parses). With no text both drop the row.

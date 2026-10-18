@@ -1,13 +1,13 @@
 # Layered local PIC-SURE stack. See README.md.
 #
 #   make run                              build, load the combined dataset through every lane, start HPDS, compare, print the URLs
-#   make compare DATASET=all              the same for mini, 1000g, combined and synth, then one report
+#   make compare DATASET=all              the same for mini, 1000g, combined, synth and edge, then one report
 #   make jars | split | load | up | down | restart | clean
 #
-# Variables: DATASET (mini 1000g combined synth edge all; all does not include edge), FLOWS (loader flows, default: those that apply; a subset is a debug run and
+# Variables: DATASET (mini 1000g combined synth edge all; all is the five), FLOWS (loader flows, default: those that apply; a subset is a debug run and
 # the result reads PASS (partial: ... not run)), LANE1 (auto|require|off, default auto: lane 1 runs when the PICSURELoader jar can read
 # a combined file, else it is skipped; require makes a skip a failure), LAYERS (default hpds), PATIENTS CONCEPTS SEED (dataset synth),
-# REBUILD=1 (rebuild the jars). Ports and hosts: .env.defaults, local.env.
+# REBUILD=1 (rebuild the jars; with make up, the HPDS service jar and the image too). Ports and hosts: .env.defaults, local.env.
 # Needs GNU make 3.81 or newer, Java 25, Maven, Python 3, Docker. The checkout path must not contain spaces.
 
 ifneq ($(words $(CURDIR)),1)
@@ -23,7 +23,7 @@ SHELL := /bin/bash
 DATASET ?= combined
 LAYERS ?= hpds
 LANE1 ?= auto
-DATASETS_ALL := mini 1000g combined synth
+DATASETS_ALL := mini 1000g combined synth edge
 DATASETS_SEL := $(if $(filter all,$(DATASET)),$(DATASETS_ALL),$(DATASET))
 
 REPO := $(abspath $(CURDIR)/../..)
@@ -50,14 +50,15 @@ COMPOSE = docker compose -f docker-compose.yml --env-file .env.defaults $(if $(w
 CSV_JAR := $(LOADER_JARS_DIR)/CSVLoader-jar-with-dependencies.jar
 PIC_JAR := $(LOADER_JARS_DIR)/PICSURELoader-jar-with-dependencies.jar
 
-# every recipe that removes something runs this first: WORK must end in /tools/local-stack/work (WORK can be set on the command line)
-GUARD_WORK = case "$(WORK)" in */tools/local-stack/work) test ! -L "$(WORK)" ;; *) echo "refusing to touch $(WORK): not .../tools/local-stack/work" >&2; exit 1 ;; esac
+# every recipe that removes something runs this first (lane.py guard-work): WORK (it can be set on the command line) must resolve to
+# .../tools/local-stack/work, be that directory of this checkout and not be a symlink; otherwise it says why and the recipe stops
+GUARD_WORK = python3 lane.py guard-work "$(WORK)"
 
 ifeq ($(REBUILD),1)
-.PHONY: $(SPLITTER_JAR)
+.PHONY: $(SPLITTER_JAR) $(IMAGE_STAMP)
 endif
 
-.PHONY: help jars _mvn split load up down restart clean clean-data run compare urls _up-hpds
+.PHONY: help jars _mvn split load up down restart clean clean-data run compare urls _up-hpds _rebuild-service
 
 help:
 	@sed -n '1,/^SHELL/p' Makefile | grep '^#' | sed 's/^# \{0,1\}//'
@@ -120,7 +121,8 @@ up:
 	@test "$(DATASET)" != all || { echo "up serves one dataset: DATASET=mini|1000g|combined|synth|edge"; exit 2; }
 	@set -e; for l in $(LAYERS); do $(MAKE) --no-print-directory _up-$$l; done
 
-_up-hpds: $(IMAGE_STAMP)
+# REBUILD=1 rebuilds the service jar and the image here (compare passes REBUILD= on: its jars step has done that once)
+_up-hpds: $(if $(filter 1,$(REBUILD)),_rebuild-service) $(IMAGE_STAMP)
 	$(COMPOSE) --profile '*' down --remove-orphans
 	@set -e; svc=""; \
 	for pair in lane1:picsureloader-combined lane2:csvloader-split lane3:picsureloader-split; do \
@@ -137,6 +139,9 @@ _up-hpds: $(IMAGE_STAMP)
 	  curl -fs "http://$(HPDS_HOST):$$port/actuator/health" | grep -q UP || { echo "$$s is not healthy: $(COMPOSE) logs $$s"; exit 1; }; \
 	done
 
+_rebuild-service:
+	@$(MAKE) --no-print-directory _mvn FORCE=1
+
 down:
 	$(COMPOSE) --profile '*' down --remove-orphans
 
@@ -148,9 +153,9 @@ restart: down up
 compare: jars
 	@set -e; for d in $(DATASETS_SEL); do \
 	  echo "=== $$d"; \
-	  $(MAKE) --no-print-directory split DATASET=$$d; \
-	  $(MAKE) --no-print-directory load DATASET=$$d; \
-	  $(MAKE) --no-print-directory up DATASET=$$d; \
+	  $(MAKE) --no-print-directory REBUILD= split DATASET=$$d; \
+	  $(MAKE) --no-print-directory REBUILD= load DATASET=$$d; \
+	  $(MAKE) --no-print-directory REBUILD= up DATASET=$$d; \
 	  python3 compare.py run $$d; \
 	done; \
 	python3 compare.py report $(DATASETS_SEL)
@@ -169,11 +174,14 @@ urls:
 
 # ---------------------------------------------------------------------------------------------------------------- clean
 
-clean: down
+# the guard runs before anything, `down` included
+clean:
 	@$(GUARD_WORK)
+	@$(MAKE) --no-print-directory down
 	rm -rf -- "$(WORK)"
 
 # everything loaded or compared, but not the splitter build or the HPDS image
-clean-data: down
+clean-data:
 	@$(GUARD_WORK)
-	@for d in mini 1000g combined synth report; do rm -rf -- "$(WORK)/$$d"; done
+	@$(MAKE) --no-print-directory down
+	@for d in $(DATASETS_ALL) report; do rm -rf -- "$(WORK)/$$d"; done
