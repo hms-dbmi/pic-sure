@@ -1,0 +1,27 @@
+{
+  "rowsRead": 36,
+  "rowsRouted": 26,
+  "studyRows": 12,
+  "globalRows": 14,
+  "noConsentStudyRows": 3,
+  "noConsentGlobalRows": 1,
+  "invalidConsentRowsRejected": 3,
+  "unroutableRows": 3,
+  "linesWritten": 37,
+  "rowsPerPartition": {
+    "phs000000.c1": 14,
+    "phs000000.c2": 10,
+    "phs123456.c1": 4,
+    "tutorial-biolincc_test": 9
+  },
+  "invalidConsentNamesDropped": [
+    {
+      "value": "phs123456.bad/name",
+      "rows": 7
+    }
+  ],
+  "studyNodesWithoutConsents": [
+    "phs999999"
+  ],
+  "patientsWithConsents": 6
+}

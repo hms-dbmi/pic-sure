@@ -47,6 +47,12 @@
 			<artifactId>htsjdk</artifactId>
 			<version>3.0.1</version>
 		</dependency>
+		<!-- Tests read the stores back through the reader the HPDS service uses (processing does not depend on etl, so no cycle). -->
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+			<artifactId>processing</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>
@@ -169,6 +175,26 @@
 							</descriptorRefs>
 							<classifier>CSVLoader</classifier>
 							<finalName>CSVLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>buildPICSURELoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.picsure.PICSURELoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>PICSURELoader</classifier>
+							<finalName>PICSURELoader</finalName>
 						</configuration>
 						<phase>package</phase>
 						<goals>

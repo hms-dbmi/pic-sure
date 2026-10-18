@@ -1,0 +1,5 @@
+patient_num,concept_path,nval,tval,timestamp
+1,\_consents\,,phs000000.c1,0
+1,\phs000000\Demographics\Age\,40,,0
+13,"\_consents\,,phs999999.c1,0
+13,\phs999999\X\,3,,0

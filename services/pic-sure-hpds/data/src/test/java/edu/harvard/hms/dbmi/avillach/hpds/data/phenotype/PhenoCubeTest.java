@@ -170,4 +170,53 @@ class PhenoCubeTest {
         assertEquals(new TreeSet<>(Arrays.asList(4, 5, 6)), mergedCategoryMap.get("McCoy"));
         assertEquals(new TreeSet<>(Arrays.asList(12, 13, 14)), mergedCategoryMap.get("Uhura"));
     }
+
+    private static PhenoCube<Double> numericCube(double... values) {
+        PhenoCube<Double> cube = new PhenoCube<>("weight", Double.class);
+        KeyAndValue<Double>[] sortedByKey = new KeyAndValue[values.length];
+        for (int i = 0; i < values.length; i++) {
+            sortedByKey[i] = new KeyAndValue<>(i + 1, values[i]);
+        }
+        cube.setSortedByKey(sortedByKey);
+        return cube;
+    }
+
+    @Test
+    public void getKeysForRange_minAboveEveryValue_isEmpty() {
+        PhenoCube<Double> cube = numericCube(1.0, 2.0, 3.0, 4.0, 5.0);
+
+        assertTrue(cube.getKeysForRange(100.0, 200.0).isEmpty());
+        assertTrue(cube.getKeysForRange(5.5, null).isEmpty());
+        assertEquals(0, cube.getEntriesForValueRange(6.0, null).length);
+    }
+
+    @Test
+    public void getKeysForRange_minBelowEveryValue_returnsAllUpToMax() {
+        PhenoCube<Double> cube = numericCube(1.0, 2.0, 3.0, 4.0, 5.0);
+
+        assertEquals(Set.of(1, 2, 3), cube.getKeysForRange(-10.0, 3.0));
+    }
+
+    @Test
+    public void getKeysForRange_minBetweenValuesAndExact() {
+        PhenoCube<Double> cube = numericCube(1.0, 2.0, 2.0, 4.0, 5.0);
+
+        assertEquals(Set.of(4, 5), cube.getKeysForRange(3.0, null));
+        assertEquals(Set.of(2, 3, 4, 5), cube.getKeysForRange(2.0, null));
+        assertEquals(Set.of(5), cube.getKeysForRange(5.0, 5.0));
+    }
+
+    @Test
+    public void getKeysForRange_emptyCube_isEmpty() {
+        PhenoCube<Double> cube = numericCube();
+
+        assertTrue(cube.getKeysForRange(1.0, 2.0).isEmpty());
+    }
+
+    @Test
+    public void getKeysForValue_aboveEveryValue_isEmpty() {
+        PhenoCube<Double> cube = numericCube(1.0, 2.0, 3.0);
+
+        assertTrue(cube.getKeysForValue(9.0).isEmpty());
+    }
 }

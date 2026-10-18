@@ -10,6 +10,7 @@ RUN addgroup -g 1000 etl && \
 WORKDIR /app
 COPY /docker/pic-sure-hpds-etl/SQLLoader-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/CSVLoader-jar-with-dependencies.jar \
+     /docker/pic-sure-hpds-etl/PICSURELoader-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/CSVLoaderNewSearch-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/CSVDumper-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/VCFLocalLoader-jar-with-dependencies.jar \
