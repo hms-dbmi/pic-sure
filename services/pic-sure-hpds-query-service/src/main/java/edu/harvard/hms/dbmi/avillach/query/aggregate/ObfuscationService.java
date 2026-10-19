@@ -20,9 +20,9 @@ import java.util.Set;
  * Privacy-critical obfuscation for open (aggregate) requests.
  *
  * <p>Cross counts are keyed {@code \_studies_consents\}, {@code \_studies_consents\<study>\} and
- * {@code \_studies_consents\<study>\<consent>\}. Consent groups are suppressed below the consent threshold, a study is the sum of its
- * consent groups, and the total is rounded. Chart buckets are suppressed below the chart threshold and rounded, and small cohorts get no
- * chart.
+ * {@code \_studies_consents\<study>\<consent>\}. Below the consent threshold a value is suppressed. Otherwise a consent group shows the
+ * midpoint of its threshold-wide bucket, a study shows the bucket midpoint of its consent groups' sum, and the total is rounded up. Chart
+ * buckets are suppressed below the chart threshold and rounded, and small cohorts get no chart.
  */
 @Service
 public class ObfuscationService {
@@ -30,20 +30,17 @@ public class ObfuscationService {
     private static final String STUDIES_CONSENTS_KEY = "\\_studies_consents\\";
     private static final int MAX_CHART_BINS = 50;
     /** The consent threshold can only be raised; lower values would weaken open access below the agreed floor. */
-    static final int MIN_CONSENT_THRESHOLD = 5;
+    static final int MIN_CONSENT_THRESHOLD = 10;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final VisualizationFormatter visualizationFormatter;
 
     private final int consentThreshold;
-    // A suppressed consent group (0..consentThreshold-1) counts toward its study as the middle of that range, with a band covering it.
-    private final int suppressedEstimate;
-    private final int suppressedVariance;
-    private final int totalVariance;
-    private final int roundingStep;
+    // Half a consent bucket: the band around a bucket midpoint, and what a suppressed consent group adds to its study, with that band.
+    private final int consentHalf;
     private final int chartThreshold;
-    private final int chartVariance;
+    private final int chartHalf;
     private final int chartMinimumCohort;
 
     public ObfuscationService(AggregateProperties props, VisualizationFormatter visualizationFormatter) {
@@ -56,12 +53,9 @@ public class ObfuscationService {
             );
         }
         this.consentThreshold = Math.max(configured, MIN_CONSENT_THRESHOLD);
-        this.suppressedEstimate = Math.max(consentThreshold - 1, 0) / 2;
-        this.suppressedVariance = Math.max(consentThreshold - 1, 0) - suppressedEstimate;
-        this.totalVariance = 5 * suppressedVariance;
-        this.roundingStep = consentThreshold;
-        this.chartThreshold = 2 * consentThreshold;
-        this.chartVariance = consentThreshold;
+        this.consentHalf = consentThreshold / 2;
+        this.chartThreshold = props.getObfuscation().getChartThreshold();
+        this.chartHalf = chartThreshold / 2;
         this.chartMinimumCohort = props.getObfuscation().getChartMinimumCohort();
     }
 
@@ -109,7 +103,7 @@ public class ObfuscationService {
 
     private String obfuscateConsentGroup(String raw) {
         Integer count = parse(raw);
-        return isSuppressed(count) ? suppressedDisplay() : Integer.toString(count);
+        return isSuppressed(count) ? suppressedDisplay() : bucketMidpoint(count) + " ±" + consentHalf;
     }
 
     private String obfuscateStudy(String study, String raw, List<String> consentKeys, Map<String, String> crossCounts) {
@@ -126,7 +120,7 @@ public class ObfuscationService {
             }
             if (isSuppressed(count)) {
                 suppressed++;
-                sum += suppressedEstimate;
+                sum += consentHalf;
             } else {
                 sum += count;
             }
@@ -137,10 +131,11 @@ public class ObfuscationService {
             logger.warn("HPDS count for study {} differs from the sum of its consent groups", study);
         }
 
-        if (suppressed == 0) {
-            return Integer.toString(sum);
+        // Always obfuscated: the sum's bucket midpoint, banded for the bucket plus each suppressed group's estimate.
+        if (sum < consentThreshold) {
+            return suppressedDisplay();
         }
-        return sum + " ±" + suppressed * suppressedVariance;
+        return bucketMidpoint(sum) + " ±" + (consentHalf + suppressed * consentHalf);
     }
 
     /** COUNT case: takes the study-consents CROSS_COUNT and returns only its obfuscated total. A missing total is suppressed. */
@@ -154,7 +149,7 @@ public class ObfuscationService {
         if (isSuppressed(count)) {
             return suppressedDisplay();
         }
-        return roundUp(count) + " ±" + totalVariance;
+        return roundUp(count, consentHalf) + " ±" + consentThreshold;
     }
 
     private boolean isSuppressed(Integer count) {
@@ -174,7 +169,7 @@ public class ObfuscationService {
         if (total == null || chartThreshold <= 0) {
             return 1;
         }
-        return Math.max(1, Math.min(roundUp(total) / chartThreshold, MAX_CHART_BINS));
+        return Math.max(1, Math.min(roundUp(total, consentHalf) / chartThreshold, MAX_CHART_BINS));
     }
 
     /** True when the cohort is too small for a chart. Takes the raw backend cross count; a missing or unreadable total suppresses. */
@@ -229,15 +224,20 @@ public class ObfuscationService {
         if (count < chartThreshold) {
             return new ObfuscatedCount(0, "< " + chartThreshold, chartThreshold - 1);
         }
-        int rounded = roundUp(count);
-        return new ObfuscatedCount(rounded, rounded + " ±" + chartVariance, chartVariance);
+        int rounded = roundUp(count, chartHalf);
+        return new ObfuscatedCount(rounded, rounded + " ±" + chartHalf, chartHalf);
     }
 
-    private int roundUp(int count) {
-        if (roundingStep <= 0) {
+    /** Midpoint of the consent-threshold-wide bucket a count falls in: with a threshold of 10, 10..19 is 15 and 40..49 is 45. */
+    private int bucketMidpoint(int count) {
+        return (count / consentThreshold) * consentThreshold + consentHalf;
+    }
+
+    private static int roundUp(int count, int step) {
+        if (step <= 0) {
             return count;
         }
-        return ((count + roundingStep - 1) / roundingStep) * roundingStep;
+        return ((count + step - 1) / step) * step;
     }
 
     private Integer parse(String raw) {

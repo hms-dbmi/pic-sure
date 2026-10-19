@@ -163,11 +163,11 @@ class OpenAggregateContractTest {
         return Stream.of(
             // COUNT runs as the study-consents CROSS_COUNT and answers with its rounded total.
             Arguments.of("COUNT", CROSS_COUNTS, "1235 ±10", List.of(SEARCH_URL, SYNC_URL)),
-            // The total rounds up to 5 with ±10; studies with no consent-group keys are exact at 5 or more.
+            // The total rounds up to 5 with ±10; studies with no consent-group keys are bucketed like consent groups.
             Arguments.of(
                 "CROSS_COUNT", CROSS_COUNTS,
-                "{\"\\\\_studies_consents\\\\\":\"1235 ±10\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"900\","
-                    + "\"\\\\_studies_consents\\\\phs000179\\\\\":\"5\"}",
+                "{\"\\\\_studies_consents\\\\\":\"1235 ±10\",\"\\\\_studies_consents\\\\phs000007\\\\\":\"905 ±5\","
+                    + "\"\\\\_studies_consents\\\\phs000179\\\\\":\"< 10\"}",
                 List.of(SEARCH_URL, SYNC_URL)
             ),
             // Male (5) folds into the grouped bucket, which stays because Male is a possible value that is not named.

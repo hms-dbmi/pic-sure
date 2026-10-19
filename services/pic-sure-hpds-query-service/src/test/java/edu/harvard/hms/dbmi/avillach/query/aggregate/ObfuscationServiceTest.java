@@ -29,27 +29,35 @@ class ObfuscationServiceTest {
     }
 
     @Test
-    void consentGroupBelowFiveIsSuppressedAndFiveOrMoreIsExact() {
-        Map<String, String> out = crossCounts(HMB, "4", GRU, "5", DS, "0");
-        assertThat(out.get(HMB)).isEqualTo("< 5");
-        assertThat(out.get(GRU)).isEqualTo("5");
-        assertThat(out.get(DS)).isEqualTo("< 5");
-    }
-
-    @Test
-    void studyIsExactSumWhenNoConsentGroupIsSuppressed() {
-        Map<String, String> out = crossCounts(STUDY, "30", HMB, "12", GRU, "18");
-        assertThat(out.get(STUDY)).isEqualTo("30");
-    }
-
-    @Test
-    void studyCountsEachSuppressedConsentGroupAsTwoPlusOrMinusTwo() {
-        Map<String, String> out = crossCounts(STUDY, "16", HMB, "12", GRU, "3", DS, "1");
-        assertThat(out.get(STUDY)).isEqualTo("16 ±4");
+    void consentGroupBelowTenIsSuppressed() {
+        Map<String, String> out = crossCounts(HMB, "9", GRU, "5", DS, "0");
+        assertThat(out.get(HMB)).isEqualTo("< 10");
+        assertThat(out.get(GRU)).isEqualTo("< 10");
+        assertThat(out.get(DS)).isEqualTo("< 10");
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.CsvSource({"1, 2 ±2", "5, 10 ±10", "6, 12 ±12", "8, 16 ±16", "50, 100 ±100"})
+    @org.junit.jupiter.params.provider.CsvSource({"10, 15 ±5", "12, 15 ±5", "19, 15 ±5", "20, 25 ±5", "40, 45 ±5", "1234, 1235 ±5"})
+    void consentGroupShowsTheMidpointOfItsTenWideBucket(String count, String expected) {
+        assertThat(crossCounts(HMB, count).get(HMB)).isEqualTo(expected);
+    }
+
+    @Test
+    void studyIsBucketedEvenWhenNoConsentGroupIsSuppressed() {
+        assertThat(crossCounts(STUDY, "40", HMB, "17", GRU, "23").get(STUDY)).isEqualTo("45 ±5");
+        assertThat(crossCounts(STUDY, "30", HMB, "12", GRU, "18").get(STUDY)).isEqualTo("35 ±5");
+    }
+
+    @Test
+    void studyCountsEachSuppressedConsentGroupAsFivePlusOrMinusFive() {
+        // 12 + 5 = 17
+        assertThat(crossCounts(STUDY, "15", HMB, "12", GRU, "3").get(STUDY)).isEqualTo("15 ±10");
+        // 12 + 5 + 5 = 22
+        assertThat(crossCounts(STUDY, "16", HMB, "12", GRU, "3", DS, "1").get(STUDY)).isEqualTo("25 ±15");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"1, < 10", "2, 15 ±15", "5, 25 ±30", "8, 45 ±45", "50, 255 ±255"})
     void studyBandGrowsWithEverySuppressedConsentGroupWithoutACap(int suppressed, String expected) {
         Map<String, String> counts = new LinkedHashMap<>();
         counts.put(STUDY, String.valueOf(suppressed));
@@ -61,7 +69,7 @@ class ObfuscationServiceTest {
 
     @Test
     void studyBandIsNotCappedWhenNamedAndHiddenGroupsAreMixed() {
-        // 40 named + 8 hidden at 2 each = 56, with a band of 2 x 8 = 16
+        // 40 named + 8 hidden at 5 each = 80, with a band of 5 + 5 x 8 = 45
         Map<String, String> counts = new LinkedHashMap<>();
         counts.put(STUDY, "52");
         counts.put(HMB, "40");
@@ -69,51 +77,59 @@ class ObfuscationServiceTest {
             counts.put(STUDY + "c" + i + "\\", "1");
         }
         Map<String, String> out = svc.obfuscateCrossCounts(counts);
-        assertThat(out.get(STUDY)).isEqualTo("56 ±16");
-        assertThat(out.get(HMB)).isEqualTo("40");
+        assertThat(out.get(STUDY)).isEqualTo("85 ±45");
+        assertThat(out.get(HMB)).isEqualTo("45 ±5");
+    }
+
+    @Test
+    void studySumBelowTenIsSuppressed() {
+        // A suppressed group alone adds 5, below the threshold; the true count of 9 is not revealed either.
+        assertThat(crossCounts(STUDY, "9", HMB, "9").get(STUDY)).isEqualTo("< 10");
     }
 
     @Test
     void studyUsesSumEvenWhenHpdsStudyCountDiffers() {
         Map<String, String> out = crossCounts(STUDY, "99", HMB, "12", GRU, "18");
-        assertThat(out.get(STUDY)).isEqualTo("30");
+        assertThat(out.get(STUDY)).isEqualTo("35 ±5");
     }
 
     @Test
     void studyWithoutConsentGroupsIsTreatedAsConsentGroup() {
-        Map<String, String> out = crossCounts("\\_studies_consents\\phs000002\\", "3", "\\_studies_consents\\phs000003\\", "40");
-        assertThat(out.get("\\_studies_consents\\phs000002\\")).isEqualTo("< 5");
-        assertThat(out.get("\\_studies_consents\\phs000003\\")).isEqualTo("40");
+        Map<String, String> out = crossCounts("\\_studies_consents\\phs000002\\", "9", "\\_studies_consents\\phs000003\\", "40");
+        assertThat(out.get("\\_studies_consents\\phs000002\\")).isEqualTo("< 10");
+        assertThat(out.get("\\_studies_consents\\phs000003\\")).isEqualTo("45 ±5");
     }
 
     @Test
     void keysWithoutTrailingSeparatorAreRecognized() {
         Map<String, String> out = crossCounts(
-            "\\_studies_consents\\phs000001", "16", "\\_studies_consents\\phs000001\\HMB", "12", "\\_studies_consents\\phs000001\\GRU", "3"
+            "\\_studies_consents\\phs000001", "15", "\\_studies_consents\\phs000001\\HMB", "12", "\\_studies_consents\\phs000001\\GRU", "3"
         );
-        assertThat(out.get("\\_studies_consents\\phs000001")).isEqualTo("14 ±2");
+        assertThat(out.get("\\_studies_consents\\phs000001")).isEqualTo("15 ±10");
     }
 
     @Test
     void totalIsRoundedUpToFiveWithBandOfTen() {
         assertThat(crossCounts(TOTAL, "101").get(TOTAL)).isEqualTo("105 ±10");
         assertThat(crossCounts(TOTAL, "100").get(TOTAL)).isEqualTo("100 ±10");
-        assertThat(crossCounts(TOTAL, "5").get(TOTAL)).isEqualTo("5 ±10");
-        assertThat(crossCounts(TOTAL, "6").get(TOTAL)).isEqualTo("10 ±10");
+        assertThat(crossCounts(TOTAL, "10").get(TOTAL)).isEqualTo("10 ±10");
+        assertThat(crossCounts(TOTAL, "11").get(TOTAL)).isEqualTo("15 ±10");
     }
 
     @Test
-    void totalBelowFiveIsSuppressed() {
-        assertThat(crossCounts(TOTAL, "4").get(TOTAL)).isEqualTo("< 5");
-        assertThat(crossCounts(TOTAL, "0").get(TOTAL)).isEqualTo("< 5");
+    void totalBelowTenIsSuppressed() {
+        assertThat(crossCounts(TOTAL, "9").get(TOTAL)).isEqualTo("< 10");
+        assertThat(crossCounts(TOTAL, "5").get(TOTAL)).isEqualTo("< 10");
+        assertThat(crossCounts(TOTAL, "0").get(TOTAL)).isEqualTo("< 10");
     }
 
     @Test
     void unparseableCountsAreSuppressed() {
+        // The unparseable group adds 5 to its study: 5 + 18 = 23
         Map<String, String> out = crossCounts(TOTAL, "oops", STUDY, "20", HMB, "x", GRU, "18");
-        assertThat(out.get(TOTAL)).isEqualTo("< 5");
-        assertThat(out.get(HMB)).isEqualTo("< 5");
-        assertThat(out.get(STUDY)).isEqualTo("20 ±2");
+        assertThat(out.get(TOTAL)).isEqualTo("< 10");
+        assertThat(out.get(HMB)).isEqualTo("< 10");
+        assertThat(out.get(STUDY)).isEqualTo("25 ±10");
     }
 
     @Test
@@ -173,30 +189,25 @@ class ObfuscationServiceTest {
     void countReturnsOnlyTheObfuscatedTotal() throws Exception {
         assertThat(svc.processCount("{\"\\\\_studies_consents\\\\\":\"101\",\"\\\\_studies_consents\\\\phs1\\\\\":\"3\"}"))
             .isEqualTo("105 ±10");
-        assertThat(svc.processCount("{\"\\\\_studies_consents\\\\\":\"4\"}")).isEqualTo("< 5");
-        assertThat(svc.processCount("{}")).isEqualTo("< 5");
+        assertThat(svc.processCount("{\"\\\\_studies_consents\\\\\":\"4\"}")).isEqualTo("< 10");
+        assertThat(svc.processCount("{\"\\\\_studies_consents\\\\\":\"9\"}")).isEqualTo("< 10");
+        assertThat(svc.processCount("{}")).isEqualTo("< 10");
     }
 
     @Test
-    void allValuesScaleWithTheBaseThreshold() {
+    void chartThresholdIsConfiguredSeparately() {
         AggregateProperties props = new AggregateProperties();
-        props.getObfuscation().setConsentThreshold(10);
-        ObfuscationService scaled = new ObfuscationService(props, new VisualizationFormatter());
+        props.getObfuscation().setChartThreshold(20);
+        ObfuscationService custom = new ObfuscationService(props, new VisualizationFormatter());
 
-        // Suppressed consent group: 4 ±5; total band 5 x 5 = 25
-        Map<String, String> study = new LinkedHashMap<>();
-        study.put(STUDY, "20");
-        study.put(HMB, "20");
-        study.put(GRU, "9");
-        assertThat(scaled.obfuscateCrossCounts(study).get(STUDY)).isEqualTo("24 ±5");
-        assertThat(scaled.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(TOTAL, "101"))).get(TOTAL)).isEqualTo("110 ±25");
-        assertThat(scaled.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(TOTAL, "9"))).get(TOTAL)).isEqualTo("< 10");
-
-        // Charts: threshold 20, rounding and band 10; the minimum cohort does not scale
-        assertThat(scaled.obfuscateChartBucket(19)).isEqualTo(new ObfuscatedCount(0, "< 20", 19));
-        assertThat(scaled.obfuscateChartBucket(21)).isEqualTo(new ObfuscatedCount(30, "30 ±10", 10));
-        assertThat(scaled.shouldSuppressChart(Map.of(TOTAL, "49"))).isTrue();
-        assertThat(scaled.shouldSuppressChart(Map.of(TOTAL, "50"))).isFalse();
+        // Charts: hidden below 20, rounded up to 10 with ±10; the minimum cohort does not change
+        assertThat(custom.obfuscateChartBucket(19)).isEqualTo(new ObfuscatedCount(0, "< 20", 19));
+        assertThat(custom.obfuscateChartBucket(21)).isEqualTo(new ObfuscatedCount(30, "30 ±10", 10));
+        assertThat(custom.shouldSuppressChart(Map.of(TOTAL, "49"))).isTrue();
+        assertThat(custom.shouldSuppressChart(Map.of(TOTAL, "50"))).isFalse();
+        // Consent groups and the total keep the consent threshold
+        assertThat(custom.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(HMB, "12"))).get(HMB)).isEqualTo("15 ±5");
+        assertThat(custom.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(TOTAL, "101"))).get(TOTAL)).isEqualTo("105 ±10");
     }
 
     @Test
@@ -221,8 +232,8 @@ class ObfuscationServiceTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(ints = {-1, 0, 1, 4})
-    void consentThresholdsBelowFiveBehaveAsFive(int configured) {
+    @org.junit.jupiter.params.provider.ValueSource(ints = {-1, 0, 1, 4, 5, 9})
+    void consentThresholdsBelowTenBehaveAsTen(int configured) {
         AggregateProperties props = new AggregateProperties();
         props.getObfuscation().setConsentThreshold(configured);
         ObfuscationService clamped = new ObfuscationService(props, new VisualizationFormatter());
@@ -238,10 +249,21 @@ class ObfuscationServiceTest {
     }
 
     @Test
-    void consentThresholdsAboveFiveAreKept() {
+    void consentThresholdsAboveTenAreKept() {
         AggregateProperties props = new AggregateProperties();
-        props.getObfuscation().setConsentThreshold(6);
+        props.getObfuscation().setConsentThreshold(20);
         ObfuscationService raised = new ObfuscationService(props, new VisualizationFormatter());
-        assertThat(raised.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(HMB, "5"))).get(HMB)).isEqualTo("< 6");
+
+        // 20-wide buckets shown at the midpoint ±10; a suppressed group adds 10 ±10; the total rounds up to 10 with ±20
+        assertThat(raised.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(HMB, "19"))).get(HMB)).isEqualTo("< 20");
+        assertThat(raised.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(HMB, "25"))).get(HMB)).isEqualTo("30 ±10");
+        Map<String, String> study = new LinkedHashMap<>();
+        study.put(STUDY, "33");
+        study.put(HMB, "30");
+        study.put(GRU, "3");
+        assertThat(raised.obfuscateCrossCounts(study).get(STUDY)).isEqualTo("50 ±20");
+        assertThat(raised.obfuscateCrossCounts(new LinkedHashMap<>(Map.of(TOTAL, "101"))).get(TOTAL)).isEqualTo("110 ±20");
+        // Charts keep their own threshold
+        assertThat(raised.obfuscateChartBucket(10)).isEqualTo(new ObfuscatedCount(10, "10 ±5", 5));
     }
 }

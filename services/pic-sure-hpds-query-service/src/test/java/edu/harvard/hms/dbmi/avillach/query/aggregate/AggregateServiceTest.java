@@ -95,13 +95,13 @@ class AggregateServiceTest {
     }
 
     @Test
-    void countBelowFiveIsSuppressed() {
+    void countBelowTenIsSuppressed() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"4\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        assertThat(svc.querySync(sync("COUNT")).getBody()).isEqualTo("< 5");
+        assertThat(svc.querySync(sync("COUNT")).getBody()).isEqualTo("< 10");
     }
 
     @Test
@@ -116,7 +116,7 @@ class AggregateServiceTest {
         ResponseEntity<String> out = svc.querySync(sync("CROSS_COUNT"));
         Map<String, String> body = mapper.readValue(out.getBody(), Map.class);
         assertThat(body.get("\\_studies_consents\\")).isEqualTo("105 ±10");
-        assertThat(body.get("\\_studies_consents\\phs1\\HMB\\")).isEqualTo("< 5");
+        assertThat(body.get("\\_studies_consents\\phs1\\HMB\\")).isEqualTo("< 10");
     }
 
     @Test

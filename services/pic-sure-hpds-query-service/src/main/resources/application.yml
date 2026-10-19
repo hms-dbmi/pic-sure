@@ -56,9 +56,10 @@ aggregate:
   connect-timeout-sec: 10
   read-timeout-sec: 60
   obfuscation:
-    # Base consent threshold (minimum 5; lower values are raised to 5). The other obfuscation values except
-    # chart-minimum-cohort are multiples of it.
-    consent-threshold: ${AGGREGATE_OBFUSCATION_CONSENT_THRESHOLD:5}
+    # Consent groups, studies and the total: hidden below this (minimum 10); consent buckets are this wide.
+    consent-threshold: ${AGGREGATE_OBFUSCATION_CONSENT_THRESHOLD:10}
+    # Chart buckets: hidden below this; otherwise rounded up to half of it.
+    chart-threshold: ${AGGREGATE_OBFUSCATION_CHART_THRESHOLD:10}
     # No chart is returned for a cohort smaller than this.
     chart-minimum-cohort: ${AGGREGATE_OBFUSCATION_CHART_MINIMUM_COHORT:50}
 

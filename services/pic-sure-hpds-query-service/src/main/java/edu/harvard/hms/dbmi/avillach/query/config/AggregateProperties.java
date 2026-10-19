@@ -24,10 +24,12 @@ public class AggregateProperties {
 
     public static class Obfuscation {
         /**
-         * Base consent threshold; values below 5 are raised to 5. Every other obfuscation value except {@link #chartMinimumCohort} is
-         * derived from it in {@code ObfuscationService}.
+         * Consent threshold for consent groups, studies and the total; values below 10 are raised to 10. Consent buckets are this wide
+         * and the total rounds up to half of it.
          */
-        private int consentThreshold = 5;
+        private int consentThreshold = 10;
+        /** Chart buckets below this show "< chartThreshold"; others round up to half of it, with that as their band. */
+        private int chartThreshold = 10;
         /** No chart is returned for a cohort smaller than this. */
         private int chartMinimumCohort = 50;
 
@@ -37,6 +39,14 @@ public class AggregateProperties {
 
         public void setConsentThreshold(int consentThreshold) {
             this.consentThreshold = consentThreshold;
+        }
+
+        public int getChartThreshold() {
+            return chartThreshold;
+        }
+
+        public void setChartThreshold(int chartThreshold) {
+            this.chartThreshold = chartThreshold;
         }
 
         public int getChartMinimumCohort() {
