@@ -45,7 +45,8 @@ public class HpdsQueryController {
 
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request.";
 
-    private static final String METHOD_NOT_ALLOWED = "The request used a method other than GET. The Allow header names GET.";
+    private static final String METHOD_NOT_ALLOWED =
+        "The request used a method this endpoint does not support, such as POST. The Allow header names GET.";
 
     private static final String COUNT_EXAMPLE = "1234";
 
