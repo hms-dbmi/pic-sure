@@ -11,7 +11,7 @@ the Maven reactor and is not listed in any pom.
 | `hpds-etl` | bin + lib | Loads CSV and migrates Java javabins into the store (`hpds-etl`) |
 | `hpds-query` | lib | Query engine over the consent partitions: query model, validators, cohort evaluation, result computations |
 | `hpds-rs` | bin + lib | HTTP server (`hpds-rs`) over `hpds-query`, serving the harmonization branch's HPDS v3 contract |
-| `hpds-gen` | bin | Deterministic synthetic dataset generator |
+| `hpds-gen` | bin | Deterministic synthetic dataset generator: phenotype CSVs and, with `genomic`, VCFs |
 | `hpds-bench` | bin | Query corpus, compare and load harness |
 
 ## Build and test
@@ -29,6 +29,26 @@ volumes `hpds-rs-cargo-home` and `hpds-rs-target` caching the registry and build
 ```bash
 bin/cargo test --workspace
 ```
+
+## Generating genomic test data
+
+`hpds-gen genomic --preset <edge|gdev|gbench> --out-dir <dir> [--seed N] [--threads N]` writes
+`vcf/<group>.<chromosome>.vcf.gz` (BGZF; the edge preset adds plain `.vcf` files), one
+`index/<group>.vcfIndex.tsv` in the format the Java `SplitChromosomeVcfLoader` reads (paths are
+`vcf/<file>`; rewrite the directory for the container), one headerless
+`pheno/<group>-allConcepts.csv` per group (the harmonization loader's consent partition format),
+and `groups.tsv`. The same seed gives the same bytes. Patients are disjoint across groups and each
+group's VCFs list only the sites present in that group.
+
+| Preset | Samples | Groups | Sites | VCFs |
+|---|---|---|---|---|
+| `edge` | about 40 | 2 | about 2,200, hand-placed rules plus 2,100 numeric values | 7 files, 100 KB |
+| `gdev` | 10,000 | 4 | 2 million | about 0.93 GB gzipped |
+| `gbench` | 50,000 | 10 | 8 million | about 23 GB gzipped (estimate) |
+
+`--estimate` writes nothing and prints a size estimate from a sample of rows. Frequency,
+annotation, gap and gene-size distributions are fitted to the 1000 Genomes files by
+`crates/hpds-gen/tools/fit_profile.py`, which writes `src/genomic/profile_data.rs`.
 
 ## Images
 

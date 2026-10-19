@@ -7,6 +7,10 @@ use std::time::Instant;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use hpds_gen::edge::write_edge_dirs;
 use hpds_gen::generate::{IdLayout, Order, Shape, generate};
+use hpds_gen::genomic::edge::write_edge;
+use hpds_gen::genomic::estimate::estimate;
+use hpds_gen::genomic::writer::write_dataset;
+use hpds_gen::genomic::{Preset as GenomicPreset, Shape as GenomicShape};
 
 const WRITE_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 
@@ -25,6 +29,9 @@ struct Cli {
 enum Command {
     /// Generate a synthetic dataset from a size preset
     Generate(GenerateArgs),
+    /// Generate a genomic dataset: per group and chromosome VCFs, the index files the Java
+    /// ETL reads, and a matching phenotype CSV per group
+    Genomic(GenomicArgs),
     /// Write the edge-case datasets that exercise every ETL and parity rule
     EdgeCases {
         /// Output directory; core/, lowram/, negative-ids/, embedded-newline/ and config/ are
@@ -39,6 +46,36 @@ enum Preset {
     Tiny,
     Dev,
     Bench,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum GenomicPresetArg {
+    Edge,
+    Gdev,
+    Gbench,
+}
+
+#[derive(Args)]
+struct GenomicArgs {
+    /// Dataset preset: edge (hand-placed rule coverage), gdev (10,000 samples in 4 groups,
+    /// 2 million sites) or gbench (50,000 samples in 10 groups, 8 million sites)
+    #[arg(long, value_enum)]
+    preset: GenomicPresetArg,
+    /// Seed for the random stream
+    #[arg(long, default_value_t = 1)]
+    seed: u64,
+    /// Output directory; vcf/, index/, pheno/ and groups.tsv are written below it
+    #[arg(long)]
+    out_dir: Option<PathBuf>,
+    /// Worker threads; defaults to the available parallelism
+    #[arg(long)]
+    threads: Option<usize>,
+    /// Write nothing: estimate the VCF size by compressing a sample of rows
+    #[arg(long)]
+    estimate: bool,
+    /// With --estimate, compress one in this many present rows
+    #[arg(long, default_value_t = 50)]
+    estimate_stride: u64,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -132,9 +169,74 @@ fn run_generate(args: GenerateArgs) -> Result<(), String> {
     Ok(())
 }
 
+fn run_genomic(args: GenomicArgs) -> Result<(), String> {
+    let preset = match args.preset {
+        GenomicPresetArg::Edge => GenomicPreset::Edge,
+        GenomicPresetArg::Gdev => GenomicPreset::Gdev,
+        GenomicPresetArg::Gbench => GenomicPreset::Gbench,
+    };
+    let shape = GenomicShape::of(preset);
+    if args.estimate {
+        let shape =
+            shape.ok_or("the edge preset is a few kilobytes; there is nothing to estimate")?;
+        shape.validate()?;
+        let started = Instant::now();
+        let groups =
+            estimate(&shape, args.seed, args.estimate_stride.max(1)).map_err(|e| e.to_string())?;
+        let mut vcf = 0;
+        let mut text = 0;
+        let mut records = 0;
+        for g in &groups {
+            eprintln!(
+                "{}: {} samples, about {} records, {:.2} GB gzipped, {:.1} GB text",
+                g.name,
+                g.samples,
+                g.records,
+                g.vcf_bytes as f64 / 1e9,
+                g.text_bytes as f64 / 1e9
+            );
+            vcf += g.vcf_bytes;
+            text += g.text_bytes;
+            records += g.records;
+        }
+        eprintln!(
+            "{}: about {records} records, {:.1} GB gzipped VCFs, {:.0} GB of text, estimated in {:.1}s",
+            shape.name,
+            vcf as f64 / 1e9,
+            text as f64 / 1e9,
+            started.elapsed().as_secs_f64()
+        );
+        return Ok(());
+    }
+    let dir = args
+        .out_dir
+        .ok_or("--out-dir is required unless --estimate is given")?;
+    let threads = args
+        .threads
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+    let output = match shape {
+        None => write_edge(&dir, args.seed),
+        Some(shape) => {
+            shape.validate()?;
+            write_dataset(&shape, args.seed, &dir, threads, true)
+        }
+    }
+    .map_err(|e| format!("{}: {e}", dir.display()))?;
+    eprintln!(
+        "wrote {} files, {} records, {:.2} GB of VCFs to {} in {:.1}s",
+        output.files,
+        output.records,
+        output.vcf_bytes as f64 / 1e9,
+        dir.display(),
+        output.seconds
+    );
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
         Command::Generate(args) => run_generate(args),
+        Command::Genomic(args) => run_genomic(args),
         Command::EdgeCases { out_dir } => run_edge_cases(&out_dir),
     };
     match result {
