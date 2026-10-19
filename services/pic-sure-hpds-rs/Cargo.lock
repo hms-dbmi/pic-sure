@@ -782,6 +782,7 @@ dependencies = [
  "bytemuck",
  "getrandom 0.4.3",
  "proptest",
+ "rand_chacha 0.10.0",
  "roaring",
  "tempfile",
  "thiserror",

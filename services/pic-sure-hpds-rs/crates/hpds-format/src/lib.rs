@@ -185,7 +185,9 @@ mod error;
 pub mod index;
 pub mod membership;
 pub mod parity;
+pub mod pos_set;
 pub mod protection;
+pub mod variant_spec;
 
 pub use aligned::AlignedBuf;
 pub use block::{
@@ -211,7 +213,12 @@ pub use parity::{
     java_string_cmp, java_string_hash, java_to_lower_case, java_to_upper_case, java_trim,
     parse_java_double, parse_java_float, push_decimal_u32, push_java_double,
 };
+pub use pos_set::{PosBitset, PosSet, PosSetIter, encode_pos_set};
 pub use protection::{Protection, STORE_ID_LEN, StoreId};
+pub use variant_spec::{
+    BUCKET_WIDTH, VARIANT_SPEC_FIELDS, VariantSpecKey, compare_specs, is_short_spec,
+    java_split_spec,
+};
 
 /// Name of the index file that marks a populated phenotype data directory.
 pub const INDEX_FILE_NAME: &str = "pheno.index";
