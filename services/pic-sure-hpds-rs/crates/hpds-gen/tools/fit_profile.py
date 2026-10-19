@@ -22,7 +22,7 @@ from multiprocessing import Pool
 QUANTILE_POINTS = 41
 RARE_EDGES = [round(-7.0 + 0.25 * i, 2) for i in range(21)]
 COMMON_EDGES = [round(-2.0 + 0.1 * i, 2) for i in range(21)]
-CARRIER_EDGES = [-4.0 + 0.5 * i for i in range(9)]
+CARRIER_EDGES = [round(-4.0 + 0.25 * i, 2) for i in range(17)]
 GAP_BINS = 28
 GENE_BINS = 15
 INDEL_MAX = 20

@@ -397,7 +397,7 @@ fn the_site_stream_follows_the_fitted_profile() {
         "common carrier fraction {mean}"
     );
     assert!(sites.windows(2).all(|w| w[0].position <= w[1].position));
-    assert!(sites.last().unwrap().position < super::CHROMOSOME_LENGTHS[0] + 1_000_000);
+    assert!(sites.last().unwrap().position <= super::CHROMOSOME_LENGTHS[0]);
 }
 
 #[test]
@@ -671,6 +671,22 @@ fn edge_groups_hold_disjoint_patients_and_the_listed_sites_have_carriers() {
         .collect();
     assert_eq!(by_group["edgeA"], 24);
     assert_eq!(by_group["edgeB"], 17);
+    for vcf in data.vcfs.iter().filter(|v| v.group == "edgeA") {
+        let last = vcf.samples.len() - 1;
+        assert_eq!(vcf.samples[last], "EDGEA24");
+        assert!(
+            vcf.records.iter().any(|r| r.cells[last] != "0|0"),
+            "the last header sample of {} carries no call",
+            vcf.chromosome
+        );
+    }
+    assert!(
+        !data
+            .file("edgeA", "chr1")
+            .records
+            .iter()
+            .any(|r| r.cells.iter().any(|c| c == "0/2" || c == "1/2"))
+    );
     let chr4_b = data.file("edgeB", "chr4");
     assert!(
         chr4_b
@@ -679,4 +695,136 @@ fn edge_groups_hold_disjoint_patients_and_the_listed_sites_have_carriers() {
             .all(|r| r.cells.iter().any(|c| c != "0|0"))
     );
     assert!(chr4_b.records.len() < data.file("edgeA", "chr4").records.len() + 100);
+}
+
+struct Spectrum {
+    samples: usize,
+    listed: usize,
+    single: f64,
+    double: f64,
+    over_five: f64,
+}
+
+fn spectrum(shape: &Shape, chromosome: usize) -> Vec<Spectrum> {
+    use super::vcf::Gt;
+    use super::writer::{group_slots, view_site};
+    let slots = group_slots(shape);
+    let target = chromosome_target(chromosome, shape.variants);
+    let sites: Vec<_> = SiteStream::new(1, chromosome, target).collect();
+    shape
+        .group_samples
+        .iter()
+        .enumerate()
+        .map(|(g, samples)| {
+            let samples = *samples as usize;
+            let mut calls: Vec<(u32, Gt)> = Vec::new();
+            let (mut listed, mut one, mut two, mut many) = (0usize, 0usize, 0usize, 0usize);
+            for site in &sites {
+                if view_site(1, chromosome, site, g, slots[g], &mut calls) {
+                    listed += 1;
+                    match calls.len() {
+                        1 => one += 1,
+                        2 => two += 1,
+                        n if n > 5 => many += 1,
+                        _ => {}
+                    }
+                }
+            }
+            let share = |n: usize| n as f64 / listed as f64;
+            Spectrum {
+                samples,
+                listed,
+                single: share(one),
+                double: share(two),
+                over_five: share(many),
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn every_group_size_keeps_the_fitted_carrier_spectrum() {
+    let whole = Shape {
+        name: "spec".to_string(),
+        group_samples: vec![10_000],
+        variants: 1_000_000,
+    };
+    let gdev = Shape {
+        variants: 1_000_000,
+        ..Shape::of(Preset::Gdev).unwrap()
+    };
+    let gbench = Shape {
+        variants: 500_000,
+        ..Shape::of(Preset::Gbench).unwrap()
+    };
+    let cases = [
+        ("whole", whole, 0, 0.04),
+        ("gdev", gdev, 0, 0.15),
+        ("gbench", gbench, 7_000, 0.16),
+    ];
+    for (label, shape, smallest, tolerance) in cases {
+        for s in spectrum(&shape, 20) {
+            eprintln!(
+                "{label} group of {}: listed {} single {:.3} double {:.3} over five {:.3}",
+                s.samples, s.listed, s.single, s.double, s.over_five
+            );
+            if s.samples < smallest {
+                continue;
+            }
+            let fitted = (0.526, 0.114, 0.236);
+            let what = format!("{label} {} samples", s.samples);
+            assert!(
+                (s.single - fitted.0).abs() < tolerance,
+                "{what}: singletons {}",
+                s.single
+            );
+            assert!(
+                (s.double - fitted.1).abs() < 0.04,
+                "{what}: doubles {}",
+                s.double
+            );
+            assert!(
+                (s.over_five - fitted.2).abs() < tolerance,
+                "{what}: over five {}",
+                s.over_five
+            );
+        }
+    }
+}
+
+#[test]
+fn no_node_repeats_a_spec_string() {
+    let files = generate(&small_shape(), 21, 2);
+    for vcf in vcfs(&files) {
+        let mut seen = HashSet::new();
+        for r in &vcf.records {
+            let spec = (
+                r.position,
+                r.reference.clone(),
+                r.alternate.clone(),
+                r.field("Gene_with_variant").map(String::from),
+                r.field("Variant_consequence_calculated").map(String::from),
+            );
+            assert!(
+                seen.insert(spec),
+                "{} {} repeats a spec",
+                vcf.group,
+                vcf.chromosome
+            );
+        }
+    }
+    let mut seen = HashSet::new();
+    for site in SiteStream::new(2, 0, 250_000) {
+        assert!(
+            seen.insert((
+                site.position,
+                site.reference.clone(),
+                site.alternate.clone(),
+                site.gene.clone(),
+                site.consequence.consequence
+            )),
+            "spec repeated at {}",
+            site.position
+        );
+    }
 }

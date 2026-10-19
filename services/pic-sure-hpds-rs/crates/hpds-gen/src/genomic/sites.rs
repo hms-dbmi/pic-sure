@@ -4,7 +4,7 @@ use super::profile::{
     ConsequenceChoice, FrequencyText, Profile, VariantClass, fitted, format_frequency,
 };
 use super::profile_data::{
-    FITTED_CHROM_VARIANTS, FITTED_VARIANTS, GENE_MISSING_COUNT, SAME_SITE_COUNTS,
+    FITTED_CHROM_VARIANTS, FITTED_SAMPLES, FITTED_VARIANTS, GENE_MISSING_COUNT, SAME_SITE_COUNTS,
 };
 use super::{CHROMOSOME_LENGTHS, CHROMOSOMES};
 use crate::rng::{Source, mix};
@@ -45,6 +45,16 @@ impl Site {
     /// The position, reference and alternate allele that identify the site.
     pub fn site_key(&self) -> (u32, &str, &str) {
         (self.position, &self.reference, &self.alternate)
+    }
+
+    /// For a rare or novel site, how many samples of the whole dataset carry it: the carrier
+    /// count the fitted files show, whatever the dataset's size. `None` for a common site,
+    /// whose carriers are a fixed share of every group.
+    pub fn dataset_carriers(&self) -> Option<u32> {
+        match self.text {
+            FrequencyText::Common => None,
+            _ => Some(((self.carrier_fraction * f64::from(FITTED_SAMPLES)).round() as u32).max(1)),
+        }
     }
 
     /// Appends the INFO column in the 1000 Genomes order, skipping the gene when it is absent.
@@ -103,7 +113,9 @@ pub struct SiteStream {
     missing_gene_chance: f64,
     last_reference: u8,
     last_was_snv: bool,
-    alternates_here: Vec<u8>,
+    alleles_here: Vec<(String, String)>,
+    annotations_here: Vec<(Option<String>, &'static str)>,
+    gene_scale: f64,
     repeat_chance: f64,
     previous: Option<Site>,
 }
@@ -137,35 +149,48 @@ impl SiteStream {
             missing_gene_chance: GENE_MISSING_COUNT as f64 / FITTED_VARIANTS as f64,
             last_reference: b'A',
             last_was_snv: false,
-            alternates_here: Vec::new(),
+            alleles_here: Vec::new(),
+            annotations_here: Vec::new(),
+            gene_scale: target.max(1) as f64 / FITTED_CHROM_VARIANTS[chromosome] as f64,
             repeat_chance: SAME_SITE_COUNTS[0] as f64 / FITTED_VARIANTS as f64,
             previous: None,
         }
     }
 
     fn annotate_again(&mut self, previous: &Site) -> Site {
-        let mut consequence = previous.consequence;
-        for _ in 0..8 {
-            let drawn = self.profile.consequence(&mut self.rng);
-            if drawn.class == previous.consequence.class
-                && drawn.consequence != previous.consequence.consequence
-            {
-                consequence = drawn;
-                break;
-            }
-        }
         let overlapping = gene_symbol(
             self.chromosome as u64 * GENES_PER_CHROMOSOME
                 + GENES_PER_CHROMOSOME / 2
                 + self.gene_ordinal,
         );
-        let gene = if consequence.consequence == previous.consequence.consequence
-            || self.rng.chance(0.3)
-        {
-            Some(overlapping)
-        } else {
-            previous.gene.clone()
-        };
+        let mut chosen = None;
+        for attempt in 0..16 {
+            let mut consequence = previous.consequence;
+            let drawn = self.profile.consequence(&mut self.rng);
+            if drawn.class == previous.consequence.class {
+                consequence = drawn;
+            }
+            let gene = if attempt >= 8 || self.rng.chance(0.3) {
+                Some(overlapping.clone())
+            } else {
+                previous.gene.clone()
+            };
+            let key = (gene.clone(), consequence.consequence);
+            if !self.annotations_here.contains(&key) {
+                chosen = Some((gene, consequence));
+                break;
+            }
+        }
+        let (gene, consequence) = chosen.unwrap_or_else(|| {
+            let unique = gene_symbol(
+                self.chromosome as u64 * GENES_PER_CHROMOSOME
+                    + GENES_PER_CHROMOSOME / 4 * 3
+                    + self.emitted,
+            );
+            (Some(unique), previous.consequence)
+        });
+        self.annotations_here
+            .push((gene.clone(), consequence.consequence));
         Site {
             index: self.emitted,
             gene,
@@ -180,7 +205,9 @@ impl SiteStream {
     }
 
     fn next_gene(&mut self) {
-        self.gene_left = self.profile.gene_size(&mut self.rng);
+        self.gene_left = ((self.profile.gene_size(&mut self.rng) as f64 * self.gene_scale).round()
+            as u64)
+            .max(1);
         let id = self.chromosome as u64 * GENES_PER_CHROMOSOME + self.gene_ordinal;
         self.gene_symbol = gene_symbol(id);
         self.gene_ordinal += 1;
@@ -192,45 +219,51 @@ impl SiteStream {
             .collect()
     }
 
-    fn alleles(&mut self, class: VariantClass, same_position: bool) -> (String, String) {
-        match class {
-            VariantClass::Snv => {
-                let mut tries = 0;
-                loop {
+    fn alleles(&mut self, class: VariantClass, same_position: bool) -> Option<(String, String)> {
+        for _ in 0..16 {
+            let pair = match class {
+                VariantClass::Snv => {
                     let reference = if same_position && self.last_was_snv {
                         self.last_reference
                     } else {
                         BASES[self.profile.snv_reference(&mut self.rng)]
                     };
                     let from = BASES.iter().position(|b| *b == reference).unwrap_or(0);
-                    let to = self.profile.snv_alternate(from, &mut self.rng);
-                    let alternate = BASES[to];
-                    tries += 1;
-                    if !same_position || !self.alternates_here.contains(&alternate) || tries > 8 {
-                        self.last_reference = reference;
-                        self.last_was_snv = true;
-                        return (
-                            (reference as char).to_string(),
-                            (alternate as char).to_string(),
-                        );
-                    }
+                    let alternate = BASES[self.profile.snv_alternate(from, &mut self.rng)];
+                    (
+                        (reference as char).to_string(),
+                        (alternate as char).to_string(),
+                    )
                 }
-            }
-            VariantClass::Insertion => {
-                let anchor = BASES[(self.rng.bits() & 3) as usize] as char;
-                let added = self.profile.insertion_length(&mut self.rng);
-                let tail = self.random_bases(added);
-                self.last_was_snv = false;
-                (anchor.to_string(), format!("{anchor}{tail}"))
-            }
-            VariantClass::Deletion => {
-                let anchor = BASES[(self.rng.bits() & 3) as usize] as char;
-                let removed = self.profile.deletion_length(&mut self.rng);
-                let tail = self.random_bases(removed);
-                self.last_was_snv = false;
-                (format!("{anchor}{tail}"), anchor.to_string())
+                VariantClass::Insertion => {
+                    let anchor = BASES[(self.rng.bits() & 3) as usize] as char;
+                    let added = self.profile.insertion_length(&mut self.rng);
+                    let tail = self.random_bases(added);
+                    (anchor.to_string(), format!("{anchor}{tail}"))
+                }
+                VariantClass::Deletion => {
+                    let anchor = BASES[(self.rng.bits() & 3) as usize] as char;
+                    let removed = self.profile.deletion_length(&mut self.rng);
+                    let tail = self.random_bases(removed);
+                    (format!("{anchor}{tail}"), anchor.to_string())
+                }
+            };
+            if !self.alleles_here.contains(&pair) {
+                self.last_was_snv = class == VariantClass::Snv;
+                if self.last_was_snv {
+                    self.last_reference = pair.0.as_bytes()[0];
+                }
+                return Some(pair);
             }
         }
+        None
+    }
+
+    fn move_on(&mut self, by: u64) {
+        self.position += by;
+        self.alleles_here.clear();
+        self.annotations_here.clear();
+        self.last_was_snv = false;
     }
 }
 
@@ -260,23 +293,34 @@ impl Iterator for SiteStream {
         if self.emitted > 0 {
             let gap = (self.profile.gap(&mut self.rng) as f64 * self.gap_scale) as u64;
             same_position = gap == 0;
-            self.position += gap;
+            if !same_position {
+                self.move_on(gap);
+            }
         }
-        if !same_position {
-            self.alternates_here.clear();
-            self.last_was_snv = false;
+        let (reference, alternate) = match self.alleles(consequence.class, same_position) {
+            Some(pair) => pair,
+            None => {
+                self.move_on(1);
+                self.alleles(consequence.class, false)?
+            }
+        };
+        if self.position > u64::from(CHROMOSOME_LENGTHS[self.chromosome]) {
+            self.emitted = self.target;
+            return None;
         }
-        let (reference, alternate) = self.alleles(consequence.class, same_position);
-        if consequence.class == VariantClass::Snv {
-            self.alternates_here.push(alternate.as_bytes()[0]);
-        }
+        self.alleles_here
+            .push((reference.clone(), alternate.clone()));
+        self.annotations_here.clear();
+        let gene = has_gene.then(|| self.gene_symbol.clone());
+        self.annotations_here
+            .push((gene.clone(), consequence.consequence));
         let site = Site {
             index: self.emitted,
             genotype_key: self.emitted,
             position: self.position.min(u64::from(i32::MAX as u32)) as u32,
             reference,
             alternate,
-            gene: has_gene.then(|| self.gene_symbol.clone()),
+            gene,
             consequence,
             text: frequency.text,
             gnomad: format_frequency(frequency.gnomad),

@@ -6,8 +6,8 @@ use std::io::{self, Write};
 use super::bgzf::BgzfWriter;
 use super::cohort::Cohort;
 use super::sites::{SiteStream, chromosome_target};
-use super::vcf::{Gt, RowBuilder, group_view, write_header};
-use super::writer::group_site_rng;
+use super::vcf::{Gt, RowBuilder, write_header};
+use super::writer::{group_slots, view_site};
 use super::{CHROMOSOMES, Shape};
 
 const SAMPLED_CHROMOSOMES: [usize; 2] = [20, 21];
@@ -47,6 +47,7 @@ impl Write for Counter {
 /// Returns an I/O error from the in-memory compression, which does not happen in practice.
 pub fn estimate(shape: &Shape, seed: u64, stride: u64) -> io::Result<Vec<GroupEstimate>> {
     let cohort = Cohort::random(shape, seed);
+    let slots = group_slots(shape);
     let total_sites: u64 = (0..CHROMOSOMES.len())
         .map(|c| chromosome_target(c, shape.variants))
         .sum();
@@ -80,8 +81,7 @@ pub fn estimate(shape: &Shape, seed: u64, stride: u64) -> io::Result<Vec<GroupEs
             let mut is_present = false;
             for site in SiteStream::new(seed, chromosome, target) {
                 if site.genotype_key != last_key {
-                    let mut rng = group_site_rng(seed, chromosome, site.genotype_key, g);
-                    is_present = group_view(&mut rng, samples, site.carrier_fraction, &mut calls);
+                    is_present = view_site(seed, chromosome, &site, g, slots[g], &mut calls);
                     last_key = site.genotype_key;
                 }
                 if !is_present {

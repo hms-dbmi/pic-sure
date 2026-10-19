@@ -93,7 +93,18 @@ impl RowBuilder {
         self.row.clear();
         self.row.extend_from_slice(chromosome.as_bytes());
         self.row.push(b'\t');
-        self.row.extend_from_slice(position.to_string().as_bytes());
+        let mut digits = [0u8; 10];
+        let mut at = digits.len();
+        let mut rest = position;
+        loop {
+            at -= 1;
+            digits[at] = b'0' + (rest % 10) as u8;
+            rest /= 10;
+            if rest == 0 {
+                break;
+            }
+        }
+        self.row.extend_from_slice(&digits[at..]);
         self.row.extend_from_slice(b"\t.\t");
         self.row.extend_from_slice(reference.as_bytes());
         self.row.push(b'\t');
@@ -118,40 +129,25 @@ pub fn listing_chance(samples: usize) -> f64 {
     (0.5 * libm::pow(samples as f64 / 2548.0, 0.35)).min(0.95)
 }
 
-/// Draws whether a group of `samples` samples lists a site, and if so fills `calls` with its
-/// carriers through [`draw_calls`]. Sites nobody carries (a zero `fraction`) are listed with
-/// no carriers.
-pub fn group_view(
+/// Draws which of a group's `samples` samples carry the alternate allele of a site, each
+/// independently with probability `probability`, and how.
+///
+/// A carrier is homozygous with the fitted share for the site's `fraction` and otherwise a
+/// phased heterozygote of either phase. `calls` is cleared and filled with `(sample index,
+/// cell)` in ascending sample order.
+pub fn draw_calls(
     rng: &mut Source,
     samples: usize,
     fraction: f64,
+    probability: f64,
     calls: &mut Vec<(u32, Gt)>,
-) -> bool {
-    if !rng.chance(listing_chance(samples)) {
-        calls.clear();
-        return false;
-    }
-    draw_calls(rng, samples, fraction, calls);
-    true
-}
-
-/// Draws which of `samples` samples carry the alternate allele of a site a group lists, and how.
-///
-/// A listed site has at least one carrier: one sample chosen uniformly, and every other sample
-/// independently with the probability that makes the expected carrier count `fraction * samples`
-/// (or one carrier, when that is smaller). A carrier is homozygous with the fitted share for
-/// that fraction and otherwise a phased heterozygote of either phase. `calls` is cleared and
-/// filled with `(sample index, cell)` in ascending sample order. A site with a zero `fraction`
-/// has no carriers.
-pub fn draw_calls(rng: &mut Source, samples: usize, fraction: f64, calls: &mut Vec<(u32, Gt)>) {
+) {
     calls.clear();
-    if fraction <= 0.0 || samples == 0 {
+    let probability = probability.min(1.0);
+    if probability <= 0.0 || samples == 0 {
         return;
     }
     let hom = hom_share(fraction.min(1.0));
-    let probability =
-        ((fraction * samples as f64 - 1.0).max(0.0) / (samples as f64 - 1.0).max(1.0)).min(1.0);
-    let forced = (rng.bits() % samples as u64) as u32;
     let cell = |rng: &mut Source| {
         if rng.chance(hom) {
             HOM_ALT
@@ -161,8 +157,7 @@ pub fn draw_calls(rng: &mut Source, samples: usize, fraction: f64, calls: &mut V
             HET_ALT_FIRST
         }
     };
-    if probability <= 0.0 {
-    } else if probability < 0.2 {
+    if probability < 0.2 {
         let log_miss = libm::log1p(-probability);
         let mut at = 0.0f64;
         while let Some(skip) = rng.geometric_skip(log_miss) {
@@ -170,20 +165,85 @@ pub fn draw_calls(rng: &mut Source, samples: usize, fraction: f64, calls: &mut V
             if at >= samples as f64 {
                 break;
             }
-            let index = at as u32;
-            if index != forced {
-                calls.push((index, cell(rng)));
-            }
+            calls.push((at as u32, cell(rng)));
             at += 1.0;
         }
     } else {
         let threshold = (probability * 4_294_967_296.0) as u64;
         for index in 0..samples as u32 {
-            if index != forced && u64::from(rng.bits32()) < threshold {
+            if u64::from(rng.bits32()) < threshold {
                 calls.push((index, cell(rng)));
             }
         }
     }
-    let at = calls.partition_point(|(i, _)| *i < forced);
-    calls.insert(at, (forced, cell(rng)));
+}
+
+/// Where a group sits in the dataset's sample numbering.
+#[derive(Clone, Copy, Debug)]
+pub struct GroupSlot {
+    /// Index of the group's first sample among all the dataset's samples.
+    pub first: u64,
+    /// Samples in the group.
+    pub samples: usize,
+    /// Samples in the whole dataset.
+    pub total: u64,
+}
+
+const EXACT_CARRIER_LIMIT: u32 = 64;
+
+/// Draws a group's view of a site and fills `calls` with its carriers in the group.
+///
+/// A rare or novel site has [`Site::dataset_carriers`](super::sites::Site::dataset_carriers)
+/// carriers among all the dataset's samples, chosen from `dataset_rng`, which depends on the
+/// site alone, so groups agree on who carries it; the group sees the ones that fall in its range.
+/// A common site, or one with too many carriers to pick exactly, has carriers drawn from
+/// `group_rng` independently in each sample with the site's `fraction`. A group lists a site when
+/// it has a carrier; a site nobody carries (a zero `fraction`) is listed with none. Returns
+/// whether the group lists the site.
+pub fn group_view(
+    dataset_rng: &mut Source,
+    group_rng: &mut Source,
+    slot: GroupSlot,
+    fraction: f64,
+    dataset_carriers: Option<u32>,
+    calls: &mut Vec<(u32, Gt)>,
+) -> bool {
+    calls.clear();
+    if fraction <= 0.0 {
+        return true;
+    }
+    let exact =
+        dataset_carriers.filter(|k| *k <= EXACT_CARRIER_LIMIT && u64::from(*k) * 2 <= slot.total);
+    match exact {
+        Some(k) => {
+            let hom = hom_share(fraction.min(1.0));
+            let mut picked: Vec<u64> = Vec::with_capacity(k as usize);
+            while picked.len() < k as usize {
+                let sample = dataset_rng.bits() % slot.total;
+                if picked.contains(&sample) {
+                    continue;
+                }
+                picked.push(sample);
+                let cell = if dataset_rng.chance(hom) {
+                    HOM_ALT
+                } else if dataset_rng.bits() & 1 == 0 {
+                    HET_REF_FIRST
+                } else {
+                    HET_ALT_FIRST
+                };
+                if sample >= slot.first && sample < slot.first + slot.samples as u64 {
+                    calls.push(((sample - slot.first) as u32, cell));
+                }
+            }
+            calls.sort_unstable_by_key(|(i, _)| *i);
+        }
+        None => {
+            let probability = match dataset_carriers {
+                Some(k) => f64::from(k) / slot.total as f64,
+                None => fraction,
+            };
+            draw_calls(group_rng, slot.samples, fraction, probability, calls);
+        }
+    }
+    !calls.is_empty()
 }

@@ -10,8 +10,9 @@ use std::time::Instant;
 
 use super::bgzf::BgzfWriter;
 use super::cohort::{Cohort, Group, write_phenotypes};
+use super::sites::Site;
 use super::sites::{SiteStream, chromosome_target};
-use super::vcf::{Gt, RowBuilder, group_view, write_header};
+use super::vcf::{GroupSlot, Gt, RowBuilder, group_view, write_header};
 use super::{CHROMOSOMES, Shape};
 use crate::rng::{Source, mix};
 
@@ -60,14 +61,62 @@ impl<W: Write> Write for CountingWriter<W> {
     }
 }
 
-/// The per-site random source for one group: the same site draws the same carriers however
-/// the files are scheduled.
-pub fn group_site_rng(seed: u64, chromosome: usize, genotype_key: u64, group: usize) -> Source {
+/// The random source of a site for the carriers every group agrees on.
+fn dataset_site_rng(seed: u64, chromosome: usize, genotype_key: u64) -> Source {
+    Source::new(mix(seed
+        ^ mix(0x6E07_0000_0000_0000
+            ^ ((chromosome as u64) << 40)
+            ^ genotype_key)))
+}
+
+/// The random source of a site for one group's own draws.
+fn group_site_rng(seed: u64, chromosome: usize, genotype_key: u64, group: usize) -> Source {
     Source::new(mix(seed
         ^ mix(0x6E07_0000_0000_0000
             ^ ((chromosome as u64) << 40)
             ^ genotype_key)
         ^ mix(0xC0DE_0000_0000_0000 ^ group as u64)))
+}
+
+/// Where each group of `shape` sits among the dataset's samples.
+pub fn group_slots(shape: &Shape) -> Vec<GroupSlot> {
+    let total = shape.samples();
+    let mut first = 0;
+    shape
+        .group_samples
+        .iter()
+        .map(|n| {
+            let slot = GroupSlot {
+                first,
+                samples: *n as usize,
+                total,
+            };
+            first += u64::from(*n);
+            slot
+        })
+        .collect()
+}
+
+/// Draws group number `group`'s view of `site` into `calls`, returning whether the group lists
+/// it. The result depends on `seed`, the chromosome and the site alone, not on scheduling.
+pub fn view_site(
+    seed: u64,
+    chromosome: usize,
+    site: &Site,
+    group: usize,
+    slot: GroupSlot,
+    calls: &mut Vec<(u32, Gt)>,
+) -> bool {
+    let mut dataset = dataset_site_rng(seed, chromosome, site.genotype_key);
+    let mut own = group_site_rng(seed, chromosome, site.genotype_key, group);
+    group_view(
+        &mut dataset,
+        &mut own,
+        slot,
+        site.carrier_fraction,
+        site.dataset_carriers(),
+        calls,
+    )
 }
 
 /// Writes the VCF of `group` (number `group_number`) for `chromosome` to `out`.
@@ -80,6 +129,7 @@ pub fn group_site_rng(seed: u64, chromosome: usize, genotype_key: u64, group: us
 pub fn write_vcf_stream(
     seed: u64,
     variants: u64,
+    slot: GroupSlot,
     group: &Group,
     group_number: usize,
     chromosome: usize,
@@ -97,8 +147,7 @@ pub fn write_vcf_stream(
     let target = chromosome_target(chromosome, variants);
     for site in SiteStream::new(seed, chromosome, target) {
         if site.genotype_key != cached_key {
-            let mut rng = group_site_rng(seed, chromosome, site.genotype_key, group_number);
-            present = group_view(&mut rng, samples, site.carrier_fraction, &mut calls);
+            present = view_site(seed, chromosome, &site, group_number, slot, &mut calls);
             cached_key = site.genotype_key;
         }
         if !present {
@@ -142,6 +191,7 @@ fn write_vcf_file(
     let records = write_vcf_stream(
         seed,
         shape.variants,
+        group_slots(shape)[group_number],
         group,
         group_number,
         chromosome,

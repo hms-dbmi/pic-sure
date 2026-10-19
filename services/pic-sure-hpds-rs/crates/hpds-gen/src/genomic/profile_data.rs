@@ -1373,11 +1373,15 @@ pub const NOVEL_CARRIER_QUANTILES: [f64; 41] = [
 ];
 
 /// Lower log10 edges of the carrier fraction bins of [`HOM_SHARE`].
-pub const CARRIER_EDGES: [f64; 9] = [-4.0, -3.5, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5, 0.0];
+pub const CARRIER_EDGES: [f64; 17] = [
+    -4.0, -3.75, -3.5, -3.25, -3.0, -2.75, -2.5, -2.25, -2.0, -1.75, -1.5, -1.25, -1.0, -0.75,
+    -0.5, -0.25, 0.0,
+];
 
 /// Share of carrier calls that are `1|1`, per carrier fraction bin.
-pub const HOM_SHARE: [f64; 8] = [
-    0.0, 0.00291554, 0.0055871, 0.00963955, 0.0214643, 0.0504615, 0.109081, 0.47275,
+pub const HOM_SHARE: [f64; 16] = [
+    0.0, 0.0, 0.00253946, 0.00378359, 0.0048117, 0.006166, 0.00786145, 0.0108434, 0.0161654,
+    0.0252665, 0.0394513, 0.0586587, 0.0851099, 0.12214, 0.203998, 0.560577,
 ];
 
 /// Gaps between consecutive positions: bin 0 is a gap of zero, bin i is [2^(i-1), 2^i).

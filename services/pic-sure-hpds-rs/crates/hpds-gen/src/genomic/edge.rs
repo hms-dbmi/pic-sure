@@ -1,9 +1,11 @@
 //! The edge dataset: two groups and about 40 samples with hand-placed sites that exercise
 //! every ETL and query rule of the genomic design, in files small enough to read.
 //!
-//! Group `edgeA` has 24 header samples, an indexed sample missing from its VCFs, and three
-//! patients with phenotypes only. Group `edgeB` has 16 indexed samples, one unindexed header
-//! sample, and one genotyped patient without phenotype rows. The layout:
+//! Group `edgeA` has 24 header samples, an indexed sample missing from its VCFs (patient
+//! 100025, sample `EDGEA25`: Java's loader gives it the genotypes of the last header sample,
+//! `EDGEA24`, which carries at least one call in every `edgeA` file), and three patients with
+//! phenotypes only. Group `edgeB` has 16 indexed samples, one unindexed header sample, and one
+//! genotyped patient without phenotype rows. The layout:
 //!
 //! | file | group A | group B |
 //! |---|---|---|
@@ -12,6 +14,10 @@
 //! | `chr3` | BGZF | none |
 //! | `chr4` | BGZF, 2,100 sites | BGZF, the sites B carries |
 //! | `chrX` | plain text | none |
+//!
+//! Inputs a strict loader refuses: every `edgeA` file, for the missing indexed sample; and
+//! `edgeA.chr3`, which holds `0/2` and `1/2` calls outside the biallelic forms. The `edgeB`
+//! files and `edgeA.chr1` carry no refused input.
 
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
@@ -359,8 +365,7 @@ fn chr1() -> Vec<Spec> {
         );
     }
     let forms = [
-        "0/1", "1/1", "./1", "./.", "0/0", "./0", "0/2", "1/2", "0|1", "1|0", "1|1", ".|1", ".|.",
-        "1|.",
+        "0/1", "1/1", "./1", "./.", "0/0", "./0", "0|1", "1|0", "1|1", ".|1", ".|.", "1|.",
     ];
     let form_calls = |count: usize| -> Calls {
         forms
@@ -433,7 +438,7 @@ fn chr1() -> Vec<Spec> {
     );
     sites.push(
         Spec::new(12_000, "G", "C", "EDG17", missense, "0.02", "Common")
-            .a(het(0..9))
+            .a(calls(&[(0..9, "0|1"), (23..24, "0|1")]))
             .b(het(4..9)),
     );
     sites.push(Spec::new(12_100, "G", "C", "EDG17", missense, "0.0008", "Rare").a(het(2..3)));
@@ -529,6 +534,7 @@ fn chr3() -> Vec<Spec> {
             (0..1, "1|0"),
             (1..2, "0|1"),
             (2..3, "1|1"),
+            (23..24, "1|1"),
         ])),
         Spec::new(3500, "C", "T", "EDG23", "stop_gained", "0.004", "Rare").a(Vec::new()),
     ]
@@ -557,7 +563,7 @@ fn chrx() -> Vec<Spec> {
             "0.003",
             "Rare",
         )
-        .a(het(5..8)),
+        .a(calls(&[(5..8, "0|1"), (23..24, "0|1")])),
     ]
 }
 
