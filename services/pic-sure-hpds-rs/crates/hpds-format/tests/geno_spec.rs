@@ -92,6 +92,8 @@ fn specs_order_as_variant_spec_compare_to_then_raw_bytes() {
     let a = VariantSpecKey::parse("chr1,0100,A,T,g,c").unwrap();
     let b = VariantSpecKey::parse("chr1,100,A,T,g,c,extra").unwrap();
     assert_eq!(a.cmp(&b), Ordering::Equal);
+    assert_eq!(a, b);
+    assert_ne!(a, VariantSpecKey::parse("chr1,100,A,T,g").unwrap());
     assert_eq!(
         compare_specs("chr1,0100,A,T,g,c", "chr1,100,A,T,g,c"),
         Some(Ordering::Less)

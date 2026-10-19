@@ -53,7 +53,7 @@ pub fn is_short_spec(s: &str) -> bool {
 
 /// The sort key of a spec string: Java's `VariantSpec` fields, or for a short spec the
 /// fields it has.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub struct VariantSpecKey<'a> {
     contig: &'a str,
     position: i32,
@@ -104,6 +104,16 @@ impl<'a> VariantSpecKey<'a> {
         self.fields < VARIANT_SPEC_FIELDS
     }
 }
+
+/// Equal when the keys compare equal: a seven-field spec equals its six-field prefix, as
+/// Java's `VariantSpec.compareTo` finds them.
+impl PartialEq for VariantSpecKey<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for VariantSpecKey<'_> {}
 
 impl Ord for VariantSpecKey<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
