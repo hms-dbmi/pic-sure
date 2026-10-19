@@ -1,4 +1,8 @@
-//! On-disk format for the Rust HPDS phenotype store.
+//! On-disk format for the Rust HPDS phenotype and genomic stores.
+//!
+//! The genomic store (`geno.index` and `geno.blocks`) is described in [`geno_index`],
+//! [`geno_blocks`], [`geno_chunks`], [`geno_info`] and [`pos_set`]; the rest of this page
+//! describes the phenotype store.
 //!
 //! A store is a directory holding [`INDEX_FILE_NAME`] and [`BLOCKS_FILE_NAME`]. All
 //! integers are little-endian unless marked otherwise. Strings are UTF-8, written as a
@@ -182,6 +186,11 @@ pub mod block;
 pub mod blocks_file;
 pub mod crypto;
 mod error;
+pub mod geno_blocks;
+pub mod geno_chunks;
+pub mod geno_index;
+pub mod geno_info;
+mod geno_layout;
 pub mod index;
 pub mod membership;
 pub mod parity;
@@ -200,6 +209,23 @@ pub use block::{
 pub use blocks_file::{BLOCKS_HEADER_LEN, BlocksReader, BlocksWriter, ExpectedBlock};
 pub use crypto::{CryptoKey, decrypt_java_block, encrypt_java_block, open_framed, seal_framed};
 pub use error::{FormatError, Result};
+pub use geno_blocks::{
+    GENO_BLOCK_AAD_LEN, GENO_BLOCKS_HEADER_LEN, GenoBlockCodec, GenoBlockKind, GenoBlocksReader,
+    GenoBlocksWriter, geno_block_aad, max_stored_len,
+};
+pub use geno_chunks::{
+    CarrierChunk, ChunkMask, EncodedMaskChunk, ExpectedMaskChunk, JavaMaskInput, MaskChunk,
+    MaskKind, MaskVariantInput, MetadataChunk, encode_carrier_chunk, encode_mask_chunk,
+    encode_metadata_chunk,
+};
+pub use geno_index::{
+    GenoChunkEntry, GenoGroup, GenoIndex, GenoIndexHeader, GenoInfoEntry, GenoLocation, GenoMode,
+    GenoNode, KEY_SOURCE_PHENOTYPE, MAX_GENO_GROUPS, MAX_GENO_NODES_PER_GROUP,
+};
+pub use geno_info::{
+    CompressedIndexView, CompressedRange, ExpectedInfoBlock, InfoBlock, InfoKeyInput, RangeBound,
+    build_java_compressed_index, encode_info_block,
+};
 pub use index::{
     BlockLocation, CategoryValues, ConceptHolders, ConceptMeta, ConceptType, ConceptView,
     ConceptViews, IndexBody, IndexHeader, IndexPartition, LegacyIndex, MAX_INDEX_BODY_LEN,
@@ -248,3 +274,31 @@ pub const BLOCKS_MAGIC: &[u8; 8] = b"HPDSBLK1";
 
 /// Timestamp stored for an observation that has none.
 pub const NO_TIMESTAMP: i64 = i64::MIN;
+
+/// Name of the index file that marks a populated genomic data directory
+/// (`HPDS_GENOMIC_DATA_DIRECTORY`).
+pub const GENO_INDEX_FILE_NAME: &str = "geno.index";
+
+/// Name of the file holding the genomic store's blocks.
+pub const GENO_BLOCKS_FILE_NAME: &str = "geno.blocks";
+
+/// Magic bytes at the start of `geno.index`, and at the start of every genomic block's
+/// associated data.
+pub const GENO_INDEX_MAGIC: &[u8; 8] = b"HPDSGEN1";
+
+/// Magic bytes at the start of `geno.blocks`.
+pub const GENO_BLOCKS_MAGIC: &[u8; 8] = b"HPDSGBK1";
+
+/// Format version of the genomic store, written into `geno.index` and bound into every
+/// genomic block's associated data.
+pub const GENO_FORMAT_VERSION: u16 = 1;
+
+/// Largest decompressed `geno.index` body accepted, checked before anything is allocated.
+pub const MAX_GENO_INDEX_BODY_LEN: u64 = 256 << 20;
+
+/// Largest decoded genomic block payload.
+pub const MAX_GENO_BLOCK_LEN: u32 = 256 << 20;
+
+/// The decoded mask payload a genomic writer aims for per chunk, a writer constant: chunks
+/// are runs of whole buckets of one contig, closed once they reach this size.
+pub const MASK_CHUNK_TARGET: usize = 64 << 10;
