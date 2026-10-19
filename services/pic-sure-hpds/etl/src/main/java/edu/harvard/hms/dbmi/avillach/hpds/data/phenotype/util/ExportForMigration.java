@@ -255,8 +255,12 @@ public class ExportForMigration {
     /**
      * Resolves {@code path} to its real path when it exists, else the real path of its nearest existing ancestor with the missing names
      * appended, so a symbolic link anywhere along an existing prefix is followed.
+     *
+     * @param path the path to resolve
+     * @return the resolved path
+     * @throws IOException when an existing prefix cannot be resolved
      */
-    private static Path realPathAllowingMissing(Path path) throws IOException {
+    public static Path realPathAllowingMissing(Path path) throws IOException {
         Path absolute = path.toAbsolutePath().normalize();
         Deque<Path> missing = new ArrayDeque<>();
         Path existing = absolute;
@@ -275,7 +279,13 @@ public class ExportForMigration {
         return FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
     }
 
-    private static void createPrivateDirectory(Path directory) throws IOException {
+    /**
+     * Creates {@code directory} and its missing parents, and gives it mode {@code 0700} on a POSIX file system.
+     *
+     * @param directory the directory to create or restrict
+     * @throws IOException when it cannot be created or its mode cannot be set
+     */
+    public static void createPrivateDirectory(Path directory) throws IOException {
         if (!posix()) {
             Files.createDirectories(directory);
             return;
@@ -290,7 +300,14 @@ public class ExportForMigration {
         Files.setPosixFilePermissions(directory, owner);
     }
 
-    private static FileOutputStream createPrivateFile(Path file) throws IOException {
+    /**
+     * Creates {@code file}, which must not exist, mode {@code 0600} on a POSIX file system, and opens it for writing.
+     *
+     * @param file the file to create
+     * @return a stream writing the new file
+     * @throws IOException when the file exists or cannot be created
+     */
+    public static FileOutputStream createPrivateFile(Path file) throws IOException {
         FileAttribute<?>[] attributes =
             posix() ? new FileAttribute<?>[] {PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))}
                 : new FileAttribute<?>[0];
@@ -446,7 +463,7 @@ public class ExportForMigration {
      * {@link #FRAME_DATA_BYTES} bytes, each sealed with {@link Crypto#encryptData(byte[])} under the {@code DEFAULT} key. Closing it writes
      * the final frame, which may carry no content, then syncs and closes the file.
      */
-    static final class EncryptingOutputStream extends OutputStream {
+    public static final class EncryptingOutputStream extends OutputStream {
 
         private final FileOutputStream file;
 
@@ -465,10 +482,10 @@ public class ExportForMigration {
         /**
          * @param file the destination, owned and closed by this stream
          * @param exportId the export's random id
-         * @param kind {@link #CONCEPTS_KIND} or {@link #PATIENTS_KIND}
+         * @param kind the kind byte of the file's frames, {@link #CONCEPTS_KIND} or {@link #PATIENTS_KIND} for a phenotype export
          * @throws IOException when the header cannot be written
          */
-        EncryptingOutputStream(FileOutputStream file, byte[] exportId, byte kind) throws IOException {
+        public EncryptingOutputStream(FileOutputStream file, byte[] exportId, byte kind) throws IOException {
             this.file = file;
             this.exportId = exportId.clone();
             this.kind = kind;

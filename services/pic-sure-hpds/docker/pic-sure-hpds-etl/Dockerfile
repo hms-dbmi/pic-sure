@@ -13,6 +13,7 @@ COPY /docker/pic-sure-hpds-etl/SQLLoader-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/CSVLoaderNewSearch-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/CSVDumper-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/ExportForMigration-jar-with-dependencies.jar \
+     /docker/pic-sure-hpds-etl/ExportGenomicForMigration-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/VCFLocalLoader-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/SplitChromosomeVcfLoader-jar-with-dependencies.jar \
      /docker/pic-sure-hpds-etl/VariantMetadataLoader-jar-with-dependencies.jar \
