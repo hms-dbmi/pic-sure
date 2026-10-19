@@ -221,7 +221,7 @@ class QueryServiceTest {
         );
 
         org.junit.jupiter.api.Assertions
-            .assertThrows(edu.harvard.hms.dbmi.avillach.commons.error.PicsureException.class, () -> service.queryStatus("auth", id, req()));
+            .assertThrows(edu.harvard.hms.dbmi.avillach.commons.error.PicsureException.class, () -> service.queryStatus("auth", id));
     }
 
     @Test
@@ -229,11 +229,11 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-1"), any())).thenReturn(new SignedUrlResponse("https://s3/x"));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-1"))).thenReturn(new SignedUrlResponse("https://s3/x"));
 
-        service.queryResultSignedUrl("auth", id, req());
+        service.queryResultSignedUrl("auth", id);
 
-        verify(hpds).queryResultSignedUrl(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-1"), any());
+        verify(hpds).queryResultSignedUrl(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-1"));
         verify(hpds, never()).query(any(), any());
         verify(operationsClient, never()).update(any(), any());
     }
@@ -243,15 +243,14 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "AVAILABLE", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"), any()))
-            .thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
+        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"))).thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
 
-        service.queryResult("auth", id, req(), "Bearer caller-token");
+        service.queryResult("auth", id, "Bearer caller-token");
 
         InOrder order = inOrder(operationsClient, consent, hpds);
         order.verify(operationsClient).get(id);
         order.verify(consent).verifyReadAccess("auth", stored, "Bearer caller-token");
-        order.verify(hpds).queryResult(any(HpdsTarget.class), eq("rr-2"), any());
+        order.verify(hpds).queryResult(any(HpdsTarget.class), eq("rr-2"));
     }
 
     @Test
@@ -259,14 +258,14 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "AVAILABLE", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"), any())).thenReturn(new SignedUrlResponse("https://s3/x"));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"))).thenReturn(new SignedUrlResponse("https://s3/x"));
 
-        service.queryResultSignedUrl("auth", id, req(), "Bearer caller-token");
+        service.queryResultSignedUrl("auth", id, "Bearer caller-token");
 
         InOrder order = inOrder(operationsClient, consent, hpds);
         order.verify(operationsClient).get(id);
         order.verify(consent).verifyReadAccess("auth", stored, "Bearer caller-token");
-        order.verify(hpds).queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"), any());
+        order.verify(hpds).queryResultSignedUrl(any(HpdsTarget.class), eq("rr-2"));
     }
 
     @Test
@@ -276,12 +275,12 @@ class QueryServiceTest {
         when(operationsClient.get(id)).thenReturn(stored);
         QueryStatus s = hpdsStatus("rr-7");
         s.setStatus(PicSureStatus.AVAILABLE);
-        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-7"), any())).thenReturn(s);
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-7"))).thenReturn(s);
 
-        QueryStatus out = service.queryStatus("auth", id, req());
+        QueryStatus out = service.queryStatus("auth", id);
 
         assertThat(out.getPicsureResultId()).isEqualTo(id);
-        verify(hpds).queryStatus(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-7"), any());
+        verify(hpds).queryStatus(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-7"));
         verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> "AVAILABLE".equals(u.status()) && u.version() == null));
         verify(hpds, never()).query(any(), any());
     }
@@ -292,9 +291,9 @@ class QueryServiceTest {
         UUID resourceUuid = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(id, "{\"resourceUUID\":\"" + resourceUuid + "\"}", "rr-7", "PENDING", "3", null);
         when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-7"), any())).thenReturn(hpdsStatus("rr-7"));
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-7"))).thenReturn(hpdsStatus("rr-7"));
 
-        QueryStatus out = service.queryStatus("auth", id, req());
+        QueryStatus out = service.queryStatus("auth", id);
 
         assertThat(out.getResourceID()).isEqualTo(resourceUuid);
         verify(consent, never()).verifyReadAccess(any(), any(), any());
@@ -328,9 +327,9 @@ class QueryServiceTest {
         QueryStatus submitted = hpdsStatus("rr-new");
         submitted.setResultMetadata(Map.of("queryResultMetadata", "m"));
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(submitted);
-        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"), any())).thenReturn(hpdsStatus("rr-new"));
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"))).thenReturn(hpdsStatus("rr-new"));
 
-        QueryStatus out = service.queryStatus("auth", id, req(), "Bearer caller-token");
+        QueryStatus out = service.queryStatus("auth", id, "Bearer caller-token");
 
         assertThat(out.getPicsureResultId()).isEqualTo(id);
         assertThat(out.getResourceID()).isEqualTo(resourceUuid);
@@ -340,8 +339,8 @@ class QueryServiceTest {
         order.verify(hpds).query(argThat(QueryServiceTest::isV3Target), any());
         order.verify(operationsClient)
             .update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new") && u.metadata() != null));
-        order.verify(hpds).queryStatus(argThat(QueryServiceTest::isV3Target), eq("rr-new"), any());
-        verify(hpds, never()).queryStatus(any(), eq("rr-old"), any());
+        order.verify(hpds).queryStatus(argThat(QueryServiceTest::isV3Target), eq("rr-new"));
+        verify(hpds, never()).queryStatus(any(), eq("rr-old"));
     }
 
     @Test
@@ -349,10 +348,9 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), "2"));
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
-        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-new"), any()))
-            .thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
+        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-new"))).thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
 
-        service.queryResult("auth", id, req(), "Bearer caller-token");
+        service.queryResult("auth", id, "Bearer caller-token");
 
         InOrder order = inOrder(consent, hpds, operationsClient);
         order.verify(consent).scopeQuery(eq("auth"), any(), eq("Bearer caller-token"));
@@ -364,7 +362,7 @@ class QueryServiceTest {
                     && row.query().contains("phenotypicClause")
             ), eq("Bearer caller-token")
         );
-        order.verify(hpds).queryResult(argThat(QueryServiceTest::isV3Target), eq("rr-new"), any());
+        order.verify(hpds).queryResult(argThat(QueryServiceTest::isV3Target), eq("rr-new"));
     }
 
     @Test
@@ -372,15 +370,15 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), null));
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
-        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-new"), any())).thenReturn(new SignedUrlResponse("https://s3/x"));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-new"))).thenReturn(new SignedUrlResponse("https://s3/x"));
 
-        service.queryResultSignedUrl("auth", id, req(), "Bearer caller-token");
+        service.queryResultSignedUrl("auth", id, "Bearer caller-token");
 
         InOrder order = inOrder(consent, hpds, operationsClient);
         order.verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
         order.verify(consent)
             .verifyReadAccess(eq("auth"), argThat((StoredQuery row) -> "3".equals(row.version())), eq("Bearer caller-token"));
-        order.verify(hpds).queryResultSignedUrl(argThat(QueryServiceTest::isV3Target), eq("rr-new"), any());
+        order.verify(hpds).queryResultSignedUrl(argThat(QueryServiceTest::isV3Target), eq("rr-new"));
     }
 
     @Test
@@ -388,9 +386,9 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenReturn(legacyRow(id, UUID.randomUUID(), null));
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus(null));
-        when(hpds.queryStatus(any(HpdsTarget.class), eq(id.toString()), any())).thenReturn(hpdsStatus(id.toString()));
+        when(hpds.queryStatus(any(HpdsTarget.class), eq(id.toString()))).thenReturn(hpdsStatus(id.toString()));
 
-        service.queryStatus("auth", id, req(), "Bearer caller-token");
+        service.queryStatus("auth", id, "Bearer caller-token");
 
         verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, id.toString())));
     }
@@ -400,7 +398,7 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, UNTRANSLATABLE_V1_BODY, "rr-old", "AVAILABLE", null, null));
 
-        assertThatThrownBy(() -> service.queryResult("auth", id, req(), "Bearer caller-token"))
+        assertThatThrownBy(() -> service.queryResult("auth", id, "Bearer caller-token"))
             .isInstanceOfSatisfying(PicsureException.class, e -> {
                 assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
                 assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
@@ -416,7 +414,7 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{\"query\":\"q\"}", "rr-old", "AVAILABLE", null, null));
 
-        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token"))
+        assertThatThrownBy(() -> service.queryStatus("auth", id, "Bearer caller-token"))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
 
         verifyNoInteractions(hpds);
@@ -428,7 +426,7 @@ class QueryServiceTest {
         String v3Body = "{\"query\":{\"expectedResultType\":\"COUNT\",\"select\":[],\"phenotypicClause\":null}}";
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v3Body, "rr-old", "AVAILABLE", null, null));
 
-        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token"))
+        assertThatThrownBy(() -> service.queryStatus("auth", id, "Bearer caller-token"))
             .isInstanceOfSatisfying(PicsureException.class, e -> {
                 assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
                 assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
@@ -444,7 +442,7 @@ class QueryServiceTest {
         String v3Body = "{\"query\":{\"expectedResultType\":\"COUNT\",\"picsureId\":\"" + UUID.randomUUID() + "\"}}";
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v3Body, "rr-old", "AVAILABLE", null, null));
 
-        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token"))
+        assertThatThrownBy(() -> service.queryStatus("auth", id, "Bearer caller-token"))
             .isInstanceOfSatisfying(PicsureException.class, e -> {
                 assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
                 assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
@@ -459,7 +457,7 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{\"query\":{\"foo\":1}}", "rr-old", "AVAILABLE", null, null));
 
-        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token"))
+        assertThatThrownBy(() -> service.queryStatus("auth", id, "Bearer caller-token"))
             .isInstanceOfSatisfying(PicsureException.class, e -> {
                 assertThat(e.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
                 assertThat(e.getErrorType()).isEqualTo("untranslatable_query");
@@ -475,9 +473,9 @@ class QueryServiceTest {
         when(operationsClient.get(id))
             .thenReturn(new StoredQuery(id, "{\"query\":{\"expectedResultType\":\"COUNT\"}}", "rr-old", "AVAILABLE", null, null));
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
-        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"), any())).thenReturn(hpdsStatus("rr-new"));
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"))).thenReturn(hpdsStatus("rr-new"));
 
-        service.queryStatus("auth", id, req(), "Bearer caller-token");
+        service.queryStatus("auth", id, "Bearer caller-token");
 
         verify(hpds).query(argThat(QueryServiceTest::isV3Target), any());
         verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> isUpgradePatch(u, "rr-new")));
@@ -490,7 +488,7 @@ class QueryServiceTest {
         PicsureException forbidden = new PicsureException(HttpStatus.FORBIDDEN, "forbidden", "No consents");
         doThrow(forbidden).when(consent).scopeQuery(any(), any(), any());
 
-        assertThatThrownBy(() -> service.queryStatus("auth", id, req(), "Bearer caller-token")).isSameAs(forbidden);
+        assertThatThrownBy(() -> service.queryStatus("auth", id, "Bearer caller-token")).isSameAs(forbidden);
 
         verifyNoInteractions(hpds);
         verify(operationsClient, never()).update(any(), any());
@@ -507,9 +505,9 @@ class QueryServiceTest {
             return null;
         }).when(consent).scopeQuery(any(), any(), any());
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-new"));
-        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"), any())).thenReturn(hpdsStatus("rr-new"));
+        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-new"))).thenReturn(hpdsStatus("rr-new"));
 
-        service.queryStatus("auth", id, req(), "Bearer caller-token");
+        service.queryStatus("auth", id, "Bearer caller-token");
 
         ArgumentCaptor<UpdateQueryRequest> patch = ArgumentCaptor.forClass(UpdateQueryRequest.class);
         verify(operationsClient, times(2)).update(eq(id), patch.capture());

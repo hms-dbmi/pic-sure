@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,8 +34,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * A status, result, or signed-url read of a row stored before v3 first upgrades that row in place (translated, re-scoped by the caller's
  * consents, and re-run), and answers 422 when the stored query cannot be translated.
  *
- * <p>Every body binds {@link HpdsQueryRequest}, a v3 {@code Query} under the query key. Each handler passes {@link QueryService} the
+ * <p>Submit and sync bind their body to {@link HpdsQueryRequest}, a v3 {@code Query} under the query key, and pass {@link QueryService} the
  * outbound envelope built by {@link HpdsQueryRequest#toOutbound()}, which is what HPDS receives and what the operations service stores.
+ * Status, result and signed-url are GET requests with no body: they read the stored query by id, and a POST to them answers 405.
  */
 @RestController
 @RequestMapping("/hpds/{backend}")
@@ -42,6 +44,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public class HpdsQueryController {
 
     private static final String UNREADABLE_BODY = " or a body that cannot be read as a query request.";
+
+    private static final String METHOD_NOT_ALLOWED =
+        "The request used a method this endpoint does not support, such as POST. The Allow header names GET.";
 
     private static final String COUNT_EXAMPLE = "1234";
 
@@ -135,27 +140,28 @@ public class HpdsQueryController {
     }
 
     @AuditEvent(type = "QUERY", action = "query.status")
-    @PostMapping("/query/{id}/status")
+    @GetMapping("/query/{id}/status")
     @Operation(summary = "Status of a submitted query")
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The status of the query."),
-            @ApiResponse(responseCode = "400", description = "Unknown backend," + UNREADABLE_BODY),
+            @ApiResponse(responseCode = "400", description = "Unknown backend."),
             @ApiResponse(responseCode = "403", description = "Consent does not permit re-running a query stored before v3."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
+            @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
             @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, HPDS call, or status update failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured."),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public QueryStatus status(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody HpdsQueryRequest req,
+        @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
-        return service.queryStatus(backend, id, req.toOutbound(), authorizationHeader);
+        return service.queryStatus(backend, id, authorizationHeader);
     }
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
-    @PostMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @GetMapping(value = "/query/{id}/result", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     @Operation(summary = "Result bytes of a completed query")
     @ApiResponses(
         {@ApiResponse(
@@ -174,40 +180,41 @@ public class HpdsQueryController {
                         description = "The CSV of a DATAFRAME or DATAFRAME_TIMESERIES query: a header row, then one row per patient."
                     )
                 )}
-        ), @ApiResponse(responseCode = "400", description = "Unknown backend, a result that is not ready yet," + UNREADABLE_BODY),
+        ), @ApiResponse(responseCode = "400", description = "Unknown backend or a result that is not ready yet."),
             @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
+            @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
             @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured."),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public ResponseEntity<byte[]> result(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody HpdsQueryRequest req,
+        @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
-        return service.queryResult(backend, id, req.toOutbound(), authorizationHeader);
+        return service.queryResult(backend, id, authorizationHeader);
     }
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.signed_url")
-    @PostMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/query/{id}/signed-url", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "A signed URL for a completed query's result")
     @ApiResponses(
         {@ApiResponse(responseCode = "200", description = "The signed URL for the completed query's result."),
-            @ApiResponse(
-                responseCode = "400", description = "Unknown backend, a body that cannot be read, or a result that is not ready yet."
-            ), @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
+            @ApiResponse(responseCode = "400", description = "Unknown backend or a result that is not ready yet."),
+            @ApiResponse(responseCode = "403", description = "Consent no longer covers this result."),
             @ApiResponse(responseCode = "404", description = "Unknown query id."),
+            @ApiResponse(responseCode = "405", description = METHOD_NOT_ALLOWED),
             @ApiResponse(responseCode = "422", description = "Query stored before v3 cannot be converted to v3."),
             @ApiResponse(responseCode = "502", description = "Consent lookup, query lookup, or HPDS call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured."),
             @ApiResponse(responseCode = "504", description = "The operations service could not be reached or did not answer in time.")}
     )
     public SignedUrlResponse signedUrl(
-        @PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody HpdsQueryRequest req,
+        @PathVariable("backend") String backend, @PathVariable("id") UUID id,
         @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
     ) {
-        return service.queryResultSignedUrl(backend, id, req.toOutbound(), authorizationHeader);
+        return service.queryResultSignedUrl(backend, id, authorizationHeader);
     }
 
     @AuditEvent(type = "QUERY", action = "query.metadata")

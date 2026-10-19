@@ -20,6 +20,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
@@ -31,8 +32,10 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 /**
  * HTTP client for HPDS. Query-lifecycle calls ({@link #query}, {@link #queryStatus}, {@link #queryResult}, {@link #queryResultSignedUrl},
  * and {@link #querySync}) inject {@code Authorization: Bearer <backend service token>}. {@link #search} and {@link #searchConceptValues}
- * send no service token. An HPDS 4xx surfaces as a {@link PicsureException} carrying HPDS's status and body, so the caller learns why HPDS
- * refused the request. HPDS 5xx and I/O errors surface as {@link HpdsCommunicationException}, which maps to 502 upstream.
+ * send no service token. {@link #queryStatus}, {@link #queryResult} and {@link #queryResultSignedUrl} POST an empty envelope, because HPDS
+ * requires a body on those calls and does not read it. An HPDS 4xx surfaces as a {@link PicsureException} carrying HPDS's status and body,
+ * so the caller learns why HPDS refused the request. HPDS 5xx and I/O errors surface as {@link HpdsCommunicationException}, which maps to
+ * 502 upstream.
  */
 @Component
 public class ResourceWebClient {
@@ -68,15 +71,30 @@ public class ResourceWebClient {
         return postJson(target, target.baseUrl() + "/query", req, QueryStatus.class);
     }
 
-    public QueryStatus queryStatus(HpdsTarget target, String resourceResultId, QueryRequest req) {
-        return postJson(target, target.baseUrl() + "/query/" + resourceResultId + "/status", req, QueryStatus.class);
+    /**
+     * Asks HPDS for the status of a submitted query.
+     *
+     * @param target the backend's API base URL and service token
+     * @param resourceResultId the id HPDS assigned to the result
+     * @return the status HPDS answered with, or null when HPDS answered with no body
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
+    public QueryStatus queryStatus(HpdsTarget target, String resourceResultId) {
+        return postJson(target, target.baseUrl() + "/query/" + resourceResultId + "/status", new GeneralQueryRequest(), QueryStatus.class);
     }
 
-    /** Returns a fully buffered octet-stream response. */
-    public ResponseEntity<byte[]> queryResult(HpdsTarget target, String resourceResultId, QueryRequest req) {
+    /**
+     * Fetches the result bytes of a completed query.
+     *
+     * @param target the backend's API base URL and service token
+     * @param resourceResultId the id HPDS assigned to the result
+     * @return the fully buffered response, with the content type HPDS gave it
+     * @throws HpdsCommunicationException when HPDS answers 5xx or cannot be reached
+     */
+    public ResponseEntity<byte[]> queryResult(HpdsTarget target, String resourceResultId) {
         try {
             return http.post().uri(target.baseUrl() + "/query/" + resourceResultId + "/result").headers(h -> authorize(h, target))
-                .contentType(MediaType.APPLICATION_JSON).body(req).retrieve().toEntity(byte[].class);
+                .contentType(MediaType.APPLICATION_JSON).body(new GeneralQueryRequest()).retrieve().toEntity(byte[].class);
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS result call failed: " + target.baseUrl(), e);
         }
@@ -87,14 +105,13 @@ public class ResourceWebClient {
      *
      * @param target the backend's API base URL and service token
      * @param resourceResultId the id HPDS assigned to the result
-     * @param req the envelope HPDS requires as a body and does not read
      * @return the signed URL HPDS answered with, or null when HPDS answered with no body
      * @throws HpdsCommunicationException when HPDS answers 5xx, answers a body that is not a signed URL object, or cannot be reached
      */
-    public SignedUrlResponse queryResultSignedUrl(HpdsTarget target, String resourceResultId, QueryRequest req) {
+    public SignedUrlResponse queryResultSignedUrl(HpdsTarget target, String resourceResultId) {
         try {
             return http.post().uri(target.baseUrl() + "/query/" + resourceResultId + "/signed-url").headers(h -> authorize(h, target))
-                .contentType(MediaType.APPLICATION_JSON).body(req).retrieve().body(SignedUrlResponse.class);
+                .contentType(MediaType.APPLICATION_JSON).body(new GeneralQueryRequest()).retrieve().body(SignedUrlResponse.class);
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("HPDS signed-url call failed: " + target.baseUrl(), e);
         }
