@@ -205,9 +205,11 @@ pub use index::{
 };
 pub use membership::Membership;
 pub use parity::{
-    MAX_NUMBER_DIGITS, NumberTooLong, StringDoubleError, canonical_nan, jackson_string_double,
-    jackson_uuid, java_double_cmp, java_double_to_string, java_string_cmp, java_trim,
-    parse_java_double, push_decimal_u32, push_java_double,
+    JavaHashCapacity, JavaHashLayout, MAX_NUMBER_DIGITS, NumberTooLong, StringDoubleError,
+    canonical_nan, jackson_string_double, jackson_uuid, java_compare_ignore_case, java_double_cmp,
+    java_double_to_string, java_float_cmp, java_hash_layout, java_hash_order, java_parse_int,
+    java_string_cmp, java_string_hash, java_to_lower_case, java_to_upper_case, java_trim,
+    parse_java_double, parse_java_float, push_decimal_u32, push_java_double,
 };
 pub use protection::{Protection, STORE_ID_LEN, StoreId};
 

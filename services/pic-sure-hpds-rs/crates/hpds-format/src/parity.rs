@@ -2,6 +2,17 @@
 
 use std::cmp::Ordering;
 
+mod case;
+mod float;
+mod hash_order;
+mod java_tables;
+
+pub use case::{java_compare_ignore_case, java_parse_int, java_to_lower_case, java_to_upper_case};
+pub use float::{java_float_cmp, parse_java_float};
+pub use hash_order::{
+    JavaHashCapacity, JavaHashLayout, java_hash_layout, java_hash_order, java_string_hash,
+};
+
 /// Compares two strings the way Java `String.compareTo` does: lexicographically by UTF-16
 /// code unit.
 ///
@@ -376,19 +387,42 @@ fn base64_value(byte: u8) -> Option<u8> {
 ///
 /// Returns `None` for anything else, where Java would throw `NumberFormatException`.
 pub fn parse_java_double(input: &str) -> Option<f64> {
+    let (negative, literal) = java_literal(input)?;
+    let magnitude = match literal {
+        JavaLiteral::NaN => return Some(f64::NAN),
+        JavaLiteral::Infinity => f64::INFINITY,
+        JavaLiteral::Hex(rest) => parse_hex_magnitude(rest)?,
+        JavaLiteral::Decimal(rest) => parse_decimal_magnitude(rest)?,
+    };
+    Some(if negative { -magnitude } else { magnitude })
+}
+
+/// The kind of a Java floating-point literal, after its sign.
+enum JavaLiteral<'a> {
+    NaN,
+    Infinity,
+    /// The text after `0x` or `0X`.
+    Hex(&'a str),
+    /// The text of a candidate decimal literal.
+    Decimal(&'a str),
+}
+
+/// Trims `input` as `String.trim` does, takes an optional sign, and classifies the rest.
+/// Returns whether the sign was `-`, or `None` for an empty input.
+fn java_literal(input: &str) -> Option<(bool, JavaLiteral<'_>)> {
     let trimmed = java_trim(input);
     let (negative, rest) = match trimmed.as_bytes().first()? {
         b'+' => (false, &trimmed[1..]),
         b'-' => (true, &trimmed[1..]),
         _ => (false, trimmed),
     };
-    let magnitude = match rest {
-        "NaN" => return Some(f64::NAN),
-        "Infinity" => f64::INFINITY,
-        _ if rest.starts_with("0x") || rest.starts_with("0X") => parse_hex_magnitude(&rest[2..])?,
-        _ => parse_decimal_magnitude(rest)?,
+    let literal = match rest {
+        "NaN" => JavaLiteral::NaN,
+        "Infinity" => JavaLiteral::Infinity,
+        _ if rest.starts_with("0x") || rest.starts_with("0X") => JavaLiteral::Hex(&rest[2..]),
+        _ => JavaLiteral::Decimal(rest),
     };
-    Some(if negative { -magnitude } else { magnitude })
+    Some((negative, literal))
 }
 
 fn strip_type_suffix(s: &str) -> &str {
@@ -402,7 +436,8 @@ fn count_while(bytes: &[u8], pred: impl Fn(u8) -> bool) -> usize {
     bytes.iter().take_while(|&&b| pred(b)).count()
 }
 
-fn parse_decimal_magnitude(s: &str) -> Option<f64> {
+/// The decimal literal of `s` without its type suffix, when `s` is one.
+fn decimal_literal(s: &str) -> Option<&str> {
     let core = strip_type_suffix(s);
     let bytes = core.as_bytes();
     let mut pos = count_while(bytes, |b| b.is_ascii_digit());
@@ -430,10 +465,18 @@ fn parse_decimal_magnitude(s: &str) -> Option<f64> {
     if pos != bytes.len() {
         return None;
     }
-    core.parse::<f64>().ok()
+    Some(core)
 }
 
-fn parse_hex_magnitude(s: &str) -> Option<f64> {
+fn parse_decimal_magnitude(s: &str) -> Option<f64> {
+    decimal_literal(s)?.parse::<f64>().ok()
+}
+
+/// The value of the hexadecimal literal `s` (after its `0x`), when `s` is one: `None` for
+/// zero, else a significand, a binary exponent, and whether nonzero digits were dropped
+/// below the significand.
+#[allow(clippy::option_option)]
+fn hex_literal(s: &str) -> Option<Option<(u64, i64, bool)>> {
     let core = strip_type_suffix(s);
     let p = core.find(['p', 'P'])?;
     let (mantissa, exponent) = (&core[..p], &core[p + 1..]);
@@ -484,9 +527,16 @@ fn parse_hex_magnitude(s: &str) -> Option<f64> {
     let binary_exponent = scale + if exp_negative { -exp_value } else { exp_value };
 
     if significand == 0 {
-        return Some(0.0);
+        return Some(None);
     }
-    Some(round_binary(significand, binary_exponent, sticky))
+    Some(Some((significand, binary_exponent, sticky)))
+}
+
+fn parse_hex_magnitude(s: &str) -> Option<f64> {
+    Some(match hex_literal(s)? {
+        None => 0.0,
+        Some((significand, exponent, sticky)) => round_binary(significand, exponent, sticky),
+    })
 }
 
 /// Rounds `significand * 2^exponent`, plus a nonzero tail below the significand's last bit
