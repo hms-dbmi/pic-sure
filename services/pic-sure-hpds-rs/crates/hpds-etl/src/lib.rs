@@ -13,13 +13,14 @@
 //! `dump` produces outside a store. [`publish`] replaces a store's files in place through a
 //! journal that `recover` finishes after a crash, and [`maintenance_log`] keeps the record
 //! of every change made to a store in place. [`cleanup`] removes the temporary directories of an
-//! interrupted run.
+//! interrupted run. [`genomic`] builds and dumps the genomic store.
 
 pub mod cleanup;
 pub mod column_meta_csv;
 pub mod convert;
 pub mod dump;
 mod error;
+pub mod genomic;
 pub mod java;
 pub mod load;
 pub mod maintenance_log;

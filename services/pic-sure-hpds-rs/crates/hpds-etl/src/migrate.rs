@@ -132,6 +132,11 @@ pub enum ExportKind {
     Concepts = 1,
     /// A frame of [`EXPORT_PATIENTS_FILE`].
     Patients = 2,
+    /// A frame of a genomic export's manifest
+    /// ([`crate::genomic::export::MANIFEST_FILE`]).
+    GenomicManifest = 3,
+    /// A frame of a genomic export's node file.
+    GenomicNode = 4,
 }
 
 /// Seals `content` into one export file as `ExportForMigration` writes it, in frames of at
@@ -595,7 +600,7 @@ fn read_patients(path: &Path, key: &CryptoKey) -> Result<(RoaringBitmap, [u8; EX
 /// Turns an error from reading a decrypted export into an [`EtlError`]: a container problem
 /// becomes [`EtlError::Export`] with its message, a premature end says the export is
 /// incomplete, and anything else stays an I/O error.
-fn export_io_error(path: &Path, error: std::io::Error) -> EtlError {
+pub(crate) fn export_io_error(path: &Path, error: std::io::Error) -> EtlError {
     match error.kind() {
         std::io::ErrorKind::InvalidData => EtlError::Export {
             path: path.to_path_buf(),
@@ -612,11 +617,11 @@ fn export_io_error(path: &Path, error: std::io::Error) -> EtlError {
 /// Reads the content of one encrypted export file, frame by frame, checking that every
 /// frame belongs to this file and export, comes in order, and that the file ends with its
 /// final frame. Container problems are [`std::io::ErrorKind::InvalidData`] errors.
-struct ExportDecryptor<R: Read> {
+pub(crate) struct ExportDecryptor<R: Read> {
     input: BufReader<R>,
     key: CryptoKey,
     kind: ExportKind,
-    export_id: [u8; EXPORT_ID_LEN],
+    pub(crate) export_id: [u8; EXPORT_ID_LEN],
     next_index: i64,
     finished: bool,
     chunk: Vec<u8>,
@@ -624,7 +629,7 @@ struct ExportDecryptor<R: Read> {
 }
 
 impl<R: Read> ExportDecryptor<R> {
-    fn open(input: R, key: CryptoKey, kind: ExportKind) -> std::io::Result<Self> {
+    pub(crate) fn open(input: R, key: CryptoKey, kind: ExportKind) -> std::io::Result<Self> {
         let mut input = BufReader::with_capacity(1 << 20, input);
         let mut header = [0u8; 8 + 4 + EXPORT_ID_LEN];
         input.read_exact(&mut header)?;

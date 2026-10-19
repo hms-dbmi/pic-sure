@@ -41,6 +41,49 @@ enum Command {
     ColumnMetaCsv(ColumnMetaCsvArgs),
     /// Write a store as canonical CSV in DumpSourceCSV layout and order, or its patient IDs.
     Dump(DumpArgs),
+    /// Build a new genomic store from a Java genomic store exported by the Java
+    /// ExportGenomicForMigration loader.
+    GenomicMigrate(GenomicMigrateArgs),
+    /// Write a genomic store in the canonical text form the Java DumpGenomicEq writes.
+    GenomicDump(GenomicDumpArgs),
+}
+
+#[derive(Args)]
+struct GenomicMigrateArgs {
+    /// Directory holding the export's genomic.bin manifest and node files.
+    #[arg(long)]
+    export: PathBuf,
+    /// Genomic store directory to create. It must not exist.
+    #[arg(long)]
+    out: PathBuf,
+    /// The phenotype store's key file: it opens the export and seals the genomic store.
+    #[arg(long)]
+    key_file: PathBuf,
+    /// Worker threads, each migrating one node at a time.
+    #[arg(long)]
+    threads: Option<usize>,
+}
+
+#[derive(Args)]
+struct GenomicDumpArgs {
+    /// Genomic store directory to read.
+    #[arg(long)]
+    store: PathBuf,
+    /// File to write, mode 0600. Defaults to standard output. Never inside the store.
+    #[arg(long)]
+    out: Option<PathBuf>,
+    /// Replace an output file that already exists.
+    #[arg(long)]
+    force: bool,
+    /// Replace each bucket's lines and each column's key lines with a count and SHA-256.
+    #[arg(long)]
+    digest: bool,
+    /// The key file that seals the store, the phenotype store's.
+    #[arg(long, conflicts_with = "plain", required_unless_present = "plain")]
+    key_file: Option<PathBuf>,
+    /// The store is unencrypted.
+    #[arg(long)]
+    plain: bool,
 }
 
 #[derive(Args)]
@@ -346,6 +389,8 @@ fn main() -> ExitCode {
         Command::Recover(args) => run_recover(args),
         Command::ColumnMetaCsv(args) => run_column_meta_csv(args),
         Command::Dump(args) => run_dump(args),
+        Command::GenomicMigrate(args) => run_genomic_migrate(args),
+        Command::GenomicDump(args) => run_genomic_dump(args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -420,6 +465,39 @@ fn run_migrate(args: MigrateArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn run_genomic_migrate(args: GenomicMigrateArgs) -> Result<()> {
+    let options = hpds_etl::genomic::migrate::GenomicMigrateOptions {
+        export: args.export,
+        out: args.out,
+        key_file: args.key_file,
+        threads: args.threads,
+    };
+    print_json(&hpds_etl::genomic::migrate::genomic_migrate(&options)?);
+    Ok(())
+}
+
+fn run_genomic_dump(args: GenomicDumpArgs) -> Result<()> {
+    let key = match (&args.key_file, args.plain) {
+        (Some(path), _) => KeySource::File(path.clone()),
+        (None, _) => KeySource::Plain,
+    };
+    let protection = resolve_protection(&key, &args.store)?;
+    if let Some(out) = &args.out {
+        output::check_outside_stores(out, &[&args.store])?;
+    }
+    write_to(args.out.as_deref(), args.force, |out| {
+        let counts =
+            hpds_etl::genomic::dump::dump_genomic(&args.store, &protection, args.digest, out)?;
+        tracing::info!(
+            nodes = counts.nodes,
+            variants = counts.variants,
+            lines = counts.lines,
+            "genomic dump written"
+        );
+        Ok(())
+    })
 }
 
 fn run_convert(args: ConvertArgs) -> Result<()> {
