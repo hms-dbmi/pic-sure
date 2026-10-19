@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 const DEFAULT_INITIAL_CAPACITY: usize = 16;
 const TREEIFY_THRESHOLD: usize = 8;
+const UNTREEIFY_THRESHOLD: usize = 6;
 const MIN_TREEIFY_CAPACITY: usize = 64;
 const MAXIMUM_CAPACITY: usize = 1 << 30;
 
@@ -48,6 +49,10 @@ pub struct JavaHashLayout<'a> {
     /// tree bucket was split into on a later resize. Within these the entries are listed in
     /// insertion order, which may differ from Java's.
     pub tree_buckets: Vec<u32>,
+    /// Buckets, ascending, that Java holds as trees after the last insert: a subset of
+    /// [`JavaHashLayout::tree_buckets`]. A tree bucket split by a resize stays a tree in each
+    /// half holding more than 6 entries and becomes a list in the others.
+    pub trees: Vec<u32>,
 }
 
 /// Iteration order of a `HashSet<String>` after inserting `items` in order: each distinct
@@ -84,6 +89,7 @@ pub fn java_hash_layout<'a>(
         },
         buckets: Vec::new(),
         trees: Vec::new(),
+        perturbed: Vec::new(),
     };
     let mut seen: HashSet<&'a str> = HashSet::new();
     let mut size = 0usize;
@@ -98,11 +104,12 @@ pub fn java_hash_layout<'a>(
         let cap = table.buckets.len();
         let index = (hash as usize) & (cap - 1);
         table.buckets[index].push((hash, item));
-        if table.buckets[index].len() > TREEIFY_THRESHOLD {
+        if table.buckets[index].len() > TREEIFY_THRESHOLD && !table.trees[index] {
             if cap < MIN_TREEIFY_CAPACITY {
                 table.resize();
             } else {
                 table.trees[index] = true;
+                table.perturbed[index] = true;
             }
         }
         size += 1;
@@ -117,26 +124,30 @@ pub fn java_hash_layout<'a>(
         .enumerate()
         .flat_map(|(index, bucket)| bucket.iter().map(move |&(_, s)| (index as u32, s)))
         .collect();
-    let tree_buckets = table
-        .trees
-        .iter()
-        .enumerate()
-        .filter(|&(_, &tree)| tree)
-        .map(|(index, _)| index as u32)
-        .collect();
+    let flagged = |flags: &[bool]| -> Vec<u32> {
+        flags
+            .iter()
+            .enumerate()
+            .filter(|&(_, &flag)| flag)
+            .map(|(index, _)| index as u32)
+            .collect()
+    };
     JavaHashLayout {
         capacity: table.buckets.len(),
         entries,
-        tree_buckets,
+        tree_buckets: flagged(&table.perturbed),
+        trees: flagged(&table.trees),
     }
 }
 
-/// The simulated table: each bucket's entries with their spread hashes in Java's order, and
-/// whether the bucket's order is no longer insertion order.
+/// The simulated table: each bucket's entries with their spread hashes in Java's order,
+/// whether Java holds the bucket as a tree, and whether its order is no longer insertion
+/// order.
 struct Table<'a> {
     threshold: usize,
     buckets: Vec<Vec<(u32, &'a str)>>,
     trees: Vec<bool>,
+    perturbed: Vec<bool>,
 }
 
 impl Table<'_> {
@@ -162,17 +173,24 @@ impl Table<'_> {
         };
         let mut buckets: Vec<Vec<(u32, &str)>> = vec![Vec::new(); new_cap];
         let mut trees = vec![false; new_cap];
+        let mut perturbed = vec![false; new_cap];
         for (index, bucket) in self.buckets.drain(..).enumerate() {
             for entry in bucket {
                 buckets[(entry.0 as usize) & (new_cap - 1)].push(entry);
             }
+            if self.perturbed[index] {
+                perturbed[index] = true;
+                perturbed[index + old_cap] = true;
+            }
             if self.trees[index] {
-                trees[index] = true;
-                trees[index + old_cap] = true;
+                for half in [index, index + old_cap] {
+                    trees[half] = buckets[half].len() > UNTREEIFY_THRESHOLD;
+                }
             }
         }
         self.buckets = buckets;
         self.trees = trees;
+        self.perturbed = perturbed;
         self.threshold = new_threshold;
     }
 }

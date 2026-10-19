@@ -147,6 +147,8 @@ fn hash_order_matches_java() {
         assert_eq!(layout.capacity, capacity, "capacity of case {cases}");
         let trees: BTreeSet<u32> = layout.tree_buckets.iter().copied().collect();
         assert!(java_trees.is_subset(&trees), "tree buckets of case {cases}");
+        let exact: BTreeSet<u32> = layout.trees.iter().copied().collect();
+        assert_eq!(exact, java_trees, "Java's tree buckets in case {cases}");
         tree_cases += usize::from(!java_trees.is_empty());
 
         let ours: Vec<(u32, &str)> = layout.entries.clone();
