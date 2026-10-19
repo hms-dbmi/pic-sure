@@ -320,6 +320,23 @@ public class AuthorizationServiceTest {
         assertEquals(Optional.of(AuthorizationService.NO_ACCESS_RULES_MESSAGE), result.denialReason());
     }
 
+    /**
+     * The non-strict counterpart of {@link #testIsAuthorized_strictConnectionWithoutPrivilegesIsDeniedWithNoRulesReason()}: the same
+     * privilege-less user on the {@code FENCE} connection, which is not in the strict set, is denied with no failed rules and no reason.
+     */
+    @Test
+    public void testIsAuthorized_nonStrictConnectionWithoutPrivilegesIsDeniedWithoutReason() {
+        Application application = createTestApplication();
+        User user = createTestUser();
+        user.setConnection(createFenceTestConnection());
+
+        EvaluateAccessRuleResult result = authorizationService.isAuthorized(application, Map.of("test", "value"), user, false);
+
+        assertFalse(result.result());
+        assertTrue(result.failedRules().isEmpty());
+        assertTrue(result.denialReason().isEmpty());
+    }
+
     private Connection createFenceTestConnection() {
         Connection connection = new Connection();
         connection.setUuid(UUID.randomUUID());
