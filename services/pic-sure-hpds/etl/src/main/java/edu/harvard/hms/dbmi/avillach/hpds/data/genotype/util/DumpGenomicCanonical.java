@@ -11,10 +11,12 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMaskBitmaskImpl;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMaskSparseImpl;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util.ExportForMigration;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -28,11 +30,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util.ExportForMigration;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,13 +65,20 @@ import java.util.zip.GZIPInputStream;
  * the bucket's masks, as the service builds the index when it is missing. A record stored under another bucket than its spec's, which the
  * service never finds, is written as an {@code X} line instead.
  *
- * <p>The output holds every patient id and the carrier set of every variant, which is patient-level genotype data. It is created owner-only
- * (mode {@code 0600}) and never overwrites an existing path or lands inside the genomic root, and it must be handled, stored and deleted
- * like the store itself. The dumper writes no patient id or genotype value to its logs.
+ * <p>Both forms hold patient-level genotype data: the {@code P} line lists every patient id, and the digest form still hashes each bucket's
+ * carrier set, which a reader holding those ids can brute-force when a bucket has a single carrier. The default is therefore the digest
+ * form and {@code rows} must be asked for by name, but the output of either form is handled, stored and deleted like the store itself. It
+ * is created owner-only (mode {@code 0600}) with the parent directory resolved by the operating system, and the dumper refuses an existing
+ * path, a file name of {@code .} or {@code ..}, and any output inside the genomic root. The mode and root are checked before the output is
+ * created, and the output is deleted when the dump fails. The dumper writes no patient id or genotype value to its logs.
  */
 public class DumpGenomicCanonical {
 
     private static final HexFormat HEX = HexFormat.of();
+
+    private static final Set<String> MODES = Set.of("local", "localDistributed", "localPatientDistributed", "localPatientOnlyDistributed");
+
+    private final List<Storage<?, ?>> opened = new ArrayList<>();
 
     private Writer out;
 
@@ -78,20 +87,67 @@ public class DumpGenomicCanonical {
     /**
      * Runs the dump.
      *
-     * @param args mode, genomic root, output file, and optionally {@code rows} or {@code digest}
-     * @throws Exception when the store cannot be read or the output cannot be written
+     * @param args mode, genomic root, output file, and optionally {@code digest} (the default) or {@code rows}
+     * @throws Exception when the arguments are invalid, the store cannot be read or the output cannot be written
      */
     public static void main(String[] args) throws Exception {
+        if (args.length < 3 || args.length > 4) {
+            throw new IllegalArgumentException("usage: DumpGenomicCanonical <mode> <genomic root> <out file> [digest|rows]");
+        }
+        String form = args.length > 3 ? args[3] : "digest";
+        if (!form.equals("digest") && !form.equals("rows")) {
+            throw new IllegalArgumentException("the form must be digest or rows, not " + form);
+        }
+        if (!MODES.contains(args[0])) {
+            throw new IllegalArgumentException("unknown mode " + args[0]);
+        }
+        Path root = Path.of(args[1]);
+        if (!Files.isDirectory(root)) {
+            throw new IllegalArgumentException("the genomic root " + root + " is not a directory");
+        }
+        Path output = resolveOutput(Path.of(args[2]), root);
         DumpGenomicCanonical dumper = new DumpGenomicCanonical();
-        dumper.digest = args.length > 3 && args[3].equals("digest");
+        dumper.digest = form.equals("digest");
+        boolean complete = false;
         try (
             Writer writer = new BufferedWriter(
-                new OutputStreamWriter(openPrivateOutput(Path.of(args[2]), Path.of(args[1])), StandardCharsets.UTF_8), 1 << 20
+                new OutputStreamWriter(Channels.newOutputStream(ExportForMigration.createPrivateFile(output)), StandardCharsets.UTF_8),
+                1 << 20
             )
         ) {
             dumper.out = writer;
-            dumper.dump(args[0], new File(args[1]));
+            dumper.dump(args[0], root.toFile());
+            complete = true;
+        } finally {
+            if (!complete) {
+                Files.deleteIfExists(output);
+            }
         }
+    }
+
+    /**
+     * Resolves the output path with the operating system and checks it: the parent directory must exist and is resolved through symbolic
+     * links, the file name may not be {@code .} or {@code ..}, nothing may exist at the path (a dangling symbolic link counts), and the
+     * path may not lie inside the genomic root.
+     *
+     * @param output the requested output file
+     * @param root the genomic root being dumped
+     * @return the resolved path to create, exactly
+     * @throws IOException when the path fails any check
+     */
+    static Path resolveOutput(Path output, Path root) throws IOException {
+        Path name = output.getFileName();
+        if (name == null || name.toString().equals(".") || name.toString().equals("..")) {
+            throw new IOException("refusing the output path " + output + ": it must name a file");
+        }
+        Path target = output.toAbsolutePath().getParent().toRealPath().resolve(name);
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("refusing to overwrite the existing output path " + target);
+        }
+        if (target.startsWith(root.toRealPath())) {
+            throw new IOException("refusing to write the output inside the genomic root " + root);
+        }
+        return target;
     }
 
     /**
@@ -100,18 +156,10 @@ public class DumpGenomicCanonical {
      * @param output the file to create
      * @param root the genomic root being dumped, inside which no output may be written
      * @return a stream writing the new file
-     * @throws IOException when the file exists, lies inside the genomic root, or cannot be created
+     * @throws IOException when the path fails {@link #resolveOutput(Path, Path)} or the file cannot be created
      */
     static OutputStream openPrivateOutput(Path output, Path root) throws IOException {
-        if (Files.exists(output, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("refusing to overwrite the existing output path " + output);
-        }
-        Path realOutput = ExportForMigration.realPathAllowingMissing(output);
-        Path realRoot = ExportForMigration.realPathAllowingMissing(root);
-        if (realOutput.startsWith(realRoot)) {
-            throw new IOException("refusing to write the output inside the genomic root " + root);
-        }
-        return ExportForMigration.createPrivateFile(output);
+        return Channels.newOutputStream(ExportForMigration.createPrivateFile(resolveOutput(output, root)));
     }
 
     private void dump(String mode, File root) throws Exception {
@@ -139,7 +187,32 @@ public class DumpGenomicCanonical {
             default -> throw new IllegalArgumentException("unknown mode " + mode);
         }
         for (String[] node : nodes) {
-            dumpNode(node[0], node[1], new File(node[2]));
+            try {
+                dumpNode(node[0], node[1], new File(node[2]));
+            } finally {
+                closeOpened();
+            }
+        }
+    }
+
+    private <K, V extends Serializable> Storage<K, V> open(FileBackedByteIndexedStorage<K, V> storage, File dir) throws Exception {
+        Storage<K, V> opening = new Storage<>(storage, dir);
+        opened.add(opening);
+        return opening;
+    }
+
+    private void closeOpened() throws IOException {
+        IOException failure = null;
+        for (Storage<?, ?> storage : opened) {
+            try {
+                storage.close();
+            } catch (IOException e) {
+                failure = failure == null ? e : failure;
+            }
+        }
+        opened.clear();
+        if (failure != null) {
+            throw failure;
         }
     }
 
@@ -156,7 +229,11 @@ public class DumpGenomicCanonical {
         String[] patients = store.getPatientIds();
         int[] ids = new int[patients.length];
         for (int p = 0; p < patients.length; p++) {
-            ids[p] = Integer.parseInt(patients[p]);
+            try {
+                ids[p] = Integer.parseInt(patients[p]);
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException(dir + ": patient " + p + " is not an integer");
+            }
         }
         String[] specIndex = VariantStore.loadVariantIndexFromFile(dir.getPath());
 
@@ -172,7 +249,7 @@ public class DumpGenomicCanonical {
                 .getVariantMaskStorage().entrySet()
         ) {
             if (e.getValue() != null) {
-                masks.put(e.getKey(), new Storage<>(e.getValue(), dir));
+                masks.put(e.getKey(), open(e.getValue(), dir));
             }
         }
         Map<String, Storage<Integer, ConcurrentHashMap<String, String[]>>> metadata = new HashMap<>();
@@ -185,7 +262,7 @@ public class DumpGenomicCanonical {
                 );
             for (Map.Entry<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>>> e : indexMap.entrySet()) {
                 if (e.getValue() != null) {
-                    metadata.put(e.getKey(), new Storage<>(e.getValue(), dir));
+                    metadata.put(e.getKey(), open(e.getValue(), dir));
                 }
             }
         }
@@ -195,7 +272,7 @@ public class DumpGenomicCanonical {
         if (bucketIndexFile.isFile()) {
             BucketIndexBySample bucketIndex = (BucketIndexBySample) readObject(bucketIndexFile);
             bucketList = (List<String>) field(BucketIndexBySample.class, "bucketList", bucketIndex);
-            Storage<Integer, BigInteger> storage = new Storage<>(
+            Storage<Integer, BigInteger> storage = open(
                 (FileBackedByteIndexedStorage<Integer, BigInteger>) field(BucketIndexBySample.class, "patientBucketMasks", bucketIndex), dir
             );
             bucketMasks = new BigInteger[ids.length];
@@ -316,7 +393,7 @@ public class DumpGenomicCanonical {
         }
         for (Map.Entry<String, String> column : columns.entrySet()) {
             FileBackedByteIndexedInfoStore info = (FileBackedByteIndexedInfoStore) readObject(new File(dir, column.getValue()));
-            Storage<String, Integer[]> values = new Storage<>(info.getAllValues(), dir);
+            Storage<String, Integer[]> values = open(info.getAllValues(), dir);
             List<String> keys = new ArrayList<>(values.keys());
             Collections.sort(keys);
             line(
@@ -497,7 +574,7 @@ public class DumpGenomicCanonical {
     }
 
     /** Reads a storage's values at their recorded offsets, read only, decoded by the storage's own {@code readObject(byte[])}. */
-    static final class Storage<K, V extends Serializable> {
+    static final class Storage<K, V extends Serializable> implements Closeable {
 
         private final FileBackedByteIndexedStorage<K, V> storage;
 
@@ -523,6 +600,11 @@ public class DumpGenomicCanonical {
             }
             found.setAccessible(true);
             this.decode = found;
+        }
+
+        @Override
+        public void close() throws IOException {
+            file.close();
         }
 
         Set<K> keys() {
