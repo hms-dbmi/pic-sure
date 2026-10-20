@@ -3,12 +3,32 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use hpds_format::GenoMode;
 use hpds_query::{
-    DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_MAX_CLAUSE_DEPTH,
-    DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_QUERY_CONCEPTS,
+    DEFAULT_CACHE_BYTES, DEFAULT_DATA_DIRECTORY, DEFAULT_GENOMIC_CACHE_BYTES,
+    DEFAULT_GENOMIC_READ_BUDGET_BYTES, DEFAULT_MAX_CLAUSE_DEPTH, DEFAULT_MAX_CLAUSE_NODES,
+    DEFAULT_MAX_CROSS_COUNT_ENTRIES, DEFAULT_MAX_EXCERPT_BYTES, DEFAULT_MAX_QUERY_CONCEPTS,
     DEFAULT_MAX_SELECT_PATHS, DEFAULT_PREFIX_READ_BUDGET_BYTES, DEFAULT_PREFIX_READ_BYTES,
-    PartitionOptions, QueryLimits, StoreOptions,
+    GenomicOptions, PartitionOptions, QueryLimits, StoreOptions, VariantResultSettings,
 };
+
+/// Genomic data directory used when `HPDS_GENOMIC_DATA_DIRECTORY` is not set, Java's default.
+pub const DEFAULT_GENOMIC_DATA_DIRECTORY: &str = "/opt/local/hpds/all/";
+
+/// The genomic settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenomicConfig {
+    /// `HPDS_GENOMIC_DATA_DIRECTORY`: the directory holding `geno.index` and `geno.blocks`.
+    pub data_dir: PathBuf,
+    /// `hpds.genomicProcessor.impl`: the layout the store must have, or `None` when unset,
+    /// which serves no genomic data, as Java's no-op processor does.
+    pub processor: Option<GenoMode>,
+    /// The genomic cache and read budget; the pool is sized like the main one.
+    pub options: GenomicOptions,
+    /// The variant result settings: the excerpt gates, `ID_CUBE_NAME`,
+    /// `variant.info_column_order` and `HPDS_MAX_EXCERPT_BYTES`.
+    pub variant: VariantResultSettings,
+}
 
 /// Port used when `SERVER_PORT` is not set.
 pub const DEFAULT_PORT: u16 = 8080;
@@ -75,6 +95,15 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_ENGINE_CONCURRENCY` | CPU count | Engine computations (sync queries and exports) run at once |
 /// | `HPDS_MAX_CONNECTIONS` | 512 | Most connections served at once; a connection past the cap is answered 503 and closed |
 /// | `HPDS_BLOCKING_THREADS` | 64, or the engine concurrency plus 16 when larger | Cap on tokio's blocking threads, which run every engine call; must exceed `HPDS_ENGINE_CONCURRENCY` |
+/// | `hpds.genomicProcessor.impl` or `HPDS_GENOMICPROCESSOR_IMPL` | unset | Genomic layout: `local`, `localDistributed`, `localPatientDistributed` or `localPatientOnlyDistributed`, checked against the store's; unset serves no genomic data; `remote` is refused |
+/// | `HPDS_GENOMIC_DATA_DIRECTORY` | `/opt/local/hpds/all/` | Directory of the Rust genomic store |
+/// | `HPDS_GENOMIC_CACHE_BYTES` | 2 GiB | Byte bound of the decoded genomic block cache |
+/// | `HPDS_GENOMIC_READ_BUDGET_BYTES` | 1 GiB | Bound on the genomic blocks every scan of the process holds at once outside the cache |
+/// | `VCF_EXCERPT_ENABLED` | false | Allows VCF_EXCERPT, AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY |
+/// | `AGGREGATE_VCF_EXCERPT_ENABLED` | false | Allows AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY |
+/// | `ID_CUBE_NAME` | `NONE` | Concept whose value heads each VCF_EXCERPT patient column; `NONE` heads them with the patient id |
+/// | `variant.info_column_order` or `VARIANT_INFO_COLUMN_ORDER` | empty | Comma-separated INFO columns of the excerpts, in order |
+/// | `HPDS_MAX_EXCERPT_BYTES` | 1 GiB | Largest excerpt or variant list answered; a larger one is a 400 |
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     /// The data directory.
@@ -126,6 +155,8 @@ pub struct Config {
     pub metrics: bool,
     /// Compress `/search` answers for requests that accept gzip.
     pub search_gzip: bool,
+    /// The genomic settings.
+    pub genomic: GenomicConfig,
     /// Settings that were read but have no effect, as messages for the log.
     pub warnings: Vec<String>,
 }
@@ -223,6 +254,7 @@ impl Config {
             Some(value) => parse_bool("HPDS_ALLOW_PLAIN", &value)?,
             None => false,
         };
+        let genomic = genomic_config(&lookup)?;
         Ok(Config {
             data_dir: PathBuf::from(
                 lookup("HPDS_DATA_DIRECTORY").unwrap_or_else(|| DEFAULT_DATA_DIRECTORY.to_owned()),
@@ -318,9 +350,100 @@ impl Config {
             result_cache_bytes,
             metrics,
             search_gzip,
+            genomic,
             warnings,
         })
     }
+}
+
+/// The value of the first of `names` that is set.
+fn first_set(lookup: &impl Fn(&str) -> Option<String>, names: &[&str]) -> Option<(String, String)> {
+    names
+        .iter()
+        .find_map(|name| lookup(name).map(|value| ((*name).to_owned(), value)))
+}
+
+/// Reads the genomic settings.
+///
+/// # Errors
+/// A message naming the setting whose value cannot be parsed, an unknown layout, or the
+/// `remote` layout, which this HPDS does not serve.
+fn genomic_config(lookup: &impl Fn(&str) -> Option<String>) -> Result<GenomicConfig, String> {
+    let processor = match first_set(
+        lookup,
+        &["hpds.genomicProcessor.impl", "HPDS_GENOMICPROCESSOR_IMPL"],
+    ) {
+        None => None,
+        Some((_, value)) if value.trim().is_empty() => None,
+        Some((name, value)) => Some(parse_processor(&name, value.trim())?),
+    };
+    let switch = |name: &str| match lookup(name) {
+        Some(value) => parse_switch(name, &value),
+        None => Ok(false),
+    };
+    let id_cube_name = lookup("ID_CUBE_NAME").filter(|value| value != "NONE");
+    let info_column_order = first_set(
+        lookup,
+        &["variant.info_column_order", "VARIANT_INFO_COLUMN_ORDER"],
+    )
+    .map(|(_, value)| value)
+    .unwrap_or_default();
+    Ok(GenomicConfig {
+        data_dir: PathBuf::from(
+            lookup("HPDS_GENOMIC_DATA_DIRECTORY")
+                .unwrap_or_else(|| DEFAULT_GENOMIC_DATA_DIRECTORY.to_owned()),
+        ),
+        processor,
+        options: GenomicOptions {
+            cache_bytes: positive_u64(
+                lookup,
+                "HPDS_GENOMIC_CACHE_BYTES",
+                DEFAULT_GENOMIC_CACHE_BYTES,
+            )?,
+            read_budget_bytes: positive_u64(
+                lookup,
+                "HPDS_GENOMIC_READ_BUDGET_BYTES",
+                DEFAULT_GENOMIC_READ_BUDGET_BYTES,
+            )?,
+            threads: None,
+        },
+        variant: VariantResultSettings {
+            vcf_excerpt_enabled: switch("VCF_EXCERPT_ENABLED")?,
+            aggregate_vcf_excerpt_enabled: switch("AGGREGATE_VCF_EXCERPT_ENABLED")?,
+            id_cube_name,
+            info_column_order,
+            max_excerpt_bytes: positive_u64(
+                lookup,
+                "HPDS_MAX_EXCERPT_BYTES",
+                DEFAULT_MAX_EXCERPT_BYTES,
+            )?,
+        },
+    })
+}
+
+/// The layout `value` of setting `name` names.
+///
+/// # Errors
+/// A message for `remote`, which this HPDS does not serve, and for any other unknown value.
+fn parse_processor(name: &str, value: &str) -> Result<GenoMode, String> {
+    let modes = [
+        GenoMode::Local,
+        GenoMode::LocalDistributed,
+        GenoMode::LocalPatientDistributed,
+        GenoMode::LocalPatientOnlyDistributed,
+    ];
+    if let Some(mode) = modes.into_iter().find(|m| m.java_name() == value) {
+        return Ok(mode);
+    }
+    let known = modes.map(GenoMode::java_name).join(", ");
+    if value == "remote" {
+        return Err(format!(
+            "{name}=remote is not supported: this HPDS reads its genomic store in process; set one of {known}"
+        ));
+    }
+    Err(format!(
+        "{name} is not valid: {value}; set one of {known}, or leave it unset"
+    ))
 }
 
 /// Reads the listen port from `SERVER_PORT`, falling back to [`DEFAULT_PORT`].
@@ -442,6 +565,59 @@ mod tests {
         assert_eq!(c.query_limits.max_clause_nodes, 10_000);
         assert_eq!(c.query_limits.max_query_concepts, 20_000);
         assert!(config(&[("HPDS_MAX_CONNECTIONS", "0")]).is_err());
+    }
+
+    #[test]
+    fn genomic_settings_default_to_javas_and_are_read() {
+        let c = config(&[]).unwrap().genomic;
+        assert_eq!(c.data_dir, PathBuf::from("/opt/local/hpds/all/"));
+        assert_eq!(c.processor, None);
+        assert_eq!(c.options, GenomicOptions::default());
+        assert_eq!(c.variant, VariantResultSettings::default());
+        let c = config(&[
+            ("HPDS_GENOMIC_DATA_DIRECTORY", "/data/genomic/"),
+            ("hpds.genomicProcessor.impl", "localPatientDistributed"),
+            ("HPDS_GENOMIC_CACHE_BYTES", "1048576"),
+            ("HPDS_GENOMIC_READ_BUDGET_BYTES", "2097152"),
+            ("VCF_EXCERPT_ENABLED", "true"),
+            ("AGGREGATE_VCF_EXCERPT_ENABLED", "on"),
+            ("ID_CUBE_NAME", "\\demo\\id\\"),
+            ("variant.info_column_order", "AF,Gene_with_variant"),
+            ("HPDS_MAX_EXCERPT_BYTES", "4096"),
+        ])
+        .unwrap()
+        .genomic;
+        assert_eq!(c.data_dir, PathBuf::from("/data/genomic/"));
+        assert_eq!(c.processor, Some(GenoMode::LocalPatientDistributed));
+        assert_eq!(c.options.cache_bytes, 1 << 20);
+        assert_eq!(c.options.read_budget_bytes, 2 << 20);
+        assert!(c.variant.vcf_excerpt_enabled && c.variant.aggregate_vcf_excerpt_enabled);
+        assert_eq!(c.variant.id_cube_name.as_deref(), Some("\\demo\\id\\"));
+        assert_eq!(c.variant.info_column_order, "AF,Gene_with_variant");
+        assert_eq!(c.variant.max_excerpt_bytes, 4096);
+        let c = config(&[
+            ("HPDS_GENOMICPROCESSOR_IMPL", "local"),
+            ("ID_CUBE_NAME", "NONE"),
+            ("VARIANT_INFO_COLUMN_ORDER", "AF"),
+        ])
+        .unwrap()
+        .genomic;
+        assert_eq!(c.processor, Some(GenoMode::Local));
+        assert_eq!(c.variant.id_cube_name, None);
+        assert_eq!(c.variant.info_column_order, "AF");
+        assert_eq!(
+            config(&[("hpds.genomicProcessor.impl", " ")])
+                .unwrap()
+                .genomic
+                .processor,
+            None
+        );
+        let remote = config(&[("hpds.genomicProcessor.impl", "remote")]).unwrap_err();
+        assert!(remote.contains("remote is not supported"), "{remote}");
+        assert!(config(&[("hpds.genomicProcessor.impl", "Local")]).is_err());
+        assert!(config(&[("VCF_EXCERPT_ENABLED", "maybe")]).is_err());
+        assert!(config(&[("HPDS_GENOMIC_CACHE_BYTES", "0")]).is_err());
+        assert!(config(&[("HPDS_MAX_EXCERPT_BYTES", "0")]).is_err());
     }
 
     #[test]
