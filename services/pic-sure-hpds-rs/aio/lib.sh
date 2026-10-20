@@ -18,6 +18,8 @@
 #   HEALTH_TIMEOUT      seconds to wait for a container to become healthy (180)
 #   STABILITY_SECONDS   seconds a container without a healthcheck must stay running (5)
 #   HPDS_RS_SWAP_GRACE_SECONDS  seconds up.sh keeps a replaced hpds-rs serving its old address (60)
+#   HPDS_RS_STORE_DIR   phenotype store directory, holding hpds-rs.env ($DOCKER_CONFIG_DIR/hpds-rs)
+#   HPDS_RS_GENOMIC_DIR genomic store directory up.sh mounts read-only; unset mounts none
 
 AIO_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 RS_ROOT="$(cd -P "$AIO_DIR/.." && pwd -P)"
@@ -153,7 +155,8 @@ require_config_dir() {
   [[ -d "$DOCKER_CONFIG_DIR" ]] || fail "DOCKER_CONFIG_DIR=$DOCKER_CONFIG_DIR is not a directory"
   DOCKER_CONFIG_DIR="$(cd -P "$DOCKER_CONFIG_DIR" && pwd -P)"
   JAVA_STORE_DIR="$DOCKER_CONFIG_DIR/hpds"
-  RS_STORE_DIR="$DOCKER_CONFIG_DIR/hpds-rs"
+  RS_STORE_DIR="${HPDS_RS_STORE_DIR:-$DOCKER_CONFIG_DIR/hpds-rs}"
+  RS_GENOMIC_DIR="${HPDS_RS_GENOMIC_DIR:-}"
   RS_RESULTS_DIR="$DOCKER_CONFIG_DIR/hpds-rs-results"
   RS_LOG_DIR="$DOCKER_CONFIG_DIR/log/hpds-rs-logs"
   CSV_INPUT_DIR="$DOCKER_CONFIG_DIR/hpds_input"
