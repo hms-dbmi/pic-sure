@@ -2,7 +2,12 @@
 //! `\_consents\`, derived from each patient's study and consent group.
 //!
 //! - `\_topmed_consents\` for the patients of TOPMed groups, valued with the patient's own
-//!   study consent;
+//!   study consent, except for a share of them (the twins below) valued with the TOPMed
+//!   accession;
+//! - for that share, a second `\_consents\` value from a TOPMed twin study of their own study
+//!   (`phs000501.c1` for `phs000001.c1`), as BDC's ETL gives a TOPMed participant both the
+//!   parent study and the TOPMed accession, and a `\_parent_consents\` value holding their own
+//!   consent;
 //! - `\_harmonized_consent\` for a fixed share of all patients, valued with the patient's own
 //!   consent or, for a tenth of them, the other group of the same study;
 //! - the `\DCC Harmonized data set\` concepts, held by that same subset only;
@@ -34,6 +39,11 @@ const HARMONIZED_SHARE: f64 = 0.35;
 const SIBLING_SHARE: f64 = 0.10;
 const CHILD_STRIDE: u32 = 4;
 const CHILD_OFFSET: u32 = 3;
+const TWIN_SHARE: f64 = 0.40;
+const TWIN_SALT: u64 = 0xBDC0_0005_0000_0000;
+/// Distance between a study's zero-based index and its TOPMed twin's: study `phs000001` has the
+/// twin `phs000501`.
+pub const TWIN_STUDY_OFFSET: u32 = 500;
 const SUBSET_SALT: u64 = 0xBDC0_0001_0000_0000;
 const SIBLING_SALT: u64 = 0xBDC0_0002_0000_0000;
 const PRESENT_SALT: u64 = 0xBDC0_0003_0000_0000;
@@ -42,6 +52,8 @@ const VALUE_SALT: u64 = 0xBDC0_0004_0000_0000;
 /// Which BDC concept a table entry is and so how its rows are drawn.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BdcRule {
+    /// `\_consents\` itself, with the second value of the twins.
+    Consents,
     /// `\_topmed_consents\`.
     TopmedConsent,
     /// `\_harmonized_consent\`.
@@ -148,14 +160,15 @@ pub fn harmonized_concepts() -> &'static [HarmonizedConcept] {
     &HARMONIZED
 }
 
-/// Whether a consent group is a TOPMed group: the groups whose study index and group index sum
-/// to an even number, so every study has exactly one.
+/// Whether a consent group is a TOPMed group: the groups whose zero-based study index and
+/// zero-based group index sum to an even number, so every study has exactly one.
 pub fn is_topmed_group(study: u32, group: u32) -> bool {
     (study + group).is_multiple_of(2)
 }
 
-/// The parent of a child study, `None` for a study that has no parent. Studies 3, 7, 11 and so
-/// on are children of the study three places before them.
+/// The parent of a child study, `None` for a study that has no parent. The studies with
+/// zero-based indices 3, 7, 11 and so on (accessions `phs000004`, `phs000008`, ...) are children
+/// of the study three places before them.
 pub fn parent_study(study: u32) -> Option<u32> {
     (study % CHILD_STRIDE == CHILD_OFFSET).then(|| study - CHILD_OFFSET)
 }
@@ -163,6 +176,19 @@ pub fn parent_study(study: u32) -> Option<u32> {
 /// Whether the patient with this ordinal is in the harmonized subset.
 pub fn in_harmonized_subset(seed: u64, ordinal: u64) -> bool {
     unit_from(mix(seed ^ mix(ordinal ^ SUBSET_SALT))) < HARMONIZED_SHARE
+}
+
+/// The TOPMed twin consent of a patient, `Some` for a share of the patients of TOPMed groups:
+/// the same consent group of the twin study, whose index is the study's plus
+/// [`TWIN_STUDY_OFFSET`]. Such a patient holds it as a second `\_consents\` value and as their
+/// `\_topmed_consents\` value.
+pub fn twin_consent(seed: u64, ordinal: u64, member: Membership) -> Option<Membership> {
+    (is_topmed_group(member.study, member.group)
+        && unit_from(mix(seed ^ mix(ordinal ^ TWIN_SALT))) < TWIN_SHARE)
+        .then_some(Membership {
+            study: member.study + TWIN_STUDY_OFFSET,
+            group: member.group,
+        })
 }
 
 /// The consent a patient of the harmonized subset holds in `\_harmonized_consent\`: their own,
@@ -179,7 +205,8 @@ pub fn harmonized_consent(seed: u64, ordinal: u64, member: Membership) -> Member
 }
 
 /// The consent a patient holds in the consent concept `rule`, or `None` when they have no row.
-/// `rule` must be one of the three consent rules.
+/// `rule` must be `TopmedConsent`, `HarmonizedConsent` or `ParentConsent`; the second
+/// `\_consents\` value of a twin comes from [`twin_consent`].
 pub fn consent_of(
     rule: BdcRule,
     seed: u64,
@@ -187,15 +214,19 @@ pub fn consent_of(
     member: Membership,
 ) -> Option<Membership> {
     match rule {
-        BdcRule::TopmedConsent => is_topmed_group(member.study, member.group).then_some(member),
+        BdcRule::TopmedConsent => is_topmed_group(member.study, member.group)
+            .then(|| twin_consent(seed, ordinal, member).unwrap_or(member)),
         BdcRule::HarmonizedConsent => {
             in_harmonized_subset(seed, ordinal).then(|| harmonized_consent(seed, ordinal, member))
         }
-        BdcRule::ParentConsent => parent_study(member.study).map(|study| Membership {
-            study,
-            group: member.group,
-        }),
-        BdcRule::Harmonized(_) | BdcRule::HandPlaced => None,
+        BdcRule::ParentConsent => match parent_study(member.study) {
+            Some(study) => Some(Membership {
+                study,
+                group: member.group,
+            }),
+            None => twin_consent(seed, ordinal, member).map(|_| member),
+        },
+        BdcRule::Consents | BdcRule::Harmonized(_) | BdcRule::HandPlaced => None,
     }
 }
 
@@ -214,27 +245,35 @@ pub fn harmonized_stream(seed: u64, ordinal: u64, index: usize) -> Option<Source
 
 /// Expected share of all patients that have the concept `rule` describes.
 pub fn expected_coverage(rule: BdcRule, population: &Population) -> f64 {
+    let group_share = |group: u32| {
+        if group == 0 {
+            FIRST_GROUP_SHARE
+        } else {
+            (1.0 - FIRST_GROUP_SHARE) / f64::from(CONSENT_GROUPS_PER_STUDY - 1)
+        }
+    };
     let by_group = |keep: &dyn Fn(u32, u32) -> bool| -> f64 {
         (0..population.studies())
             .map(|study| {
-                let first = if keep(study, 0) {
-                    FIRST_GROUP_SHARE
-                } else {
-                    0.0
-                };
-                let second = if keep(study, 1) {
-                    1.0 - FIRST_GROUP_SHARE
-                } else {
-                    0.0
-                };
-                population.share(study) * (first + second)
+                let held: f64 = (0..CONSENT_GROUPS_PER_STUDY)
+                    .filter(|group| keep(study, *group))
+                    .map(group_share)
+                    .sum();
+                population.share(study) * held
             })
             .sum()
     };
     match rule {
+        BdcRule::Consents => 1.0,
         BdcRule::TopmedConsent => by_group(&is_topmed_group),
         BdcRule::HarmonizedConsent => HARMONIZED_SHARE,
-        BdcRule::ParentConsent => by_group(&|study, _| parent_study(study).is_some()),
+        BdcRule::ParentConsent => {
+            by_group(&|study, _| parent_study(study).is_some())
+                + TWIN_SHARE
+                    * by_group(&|study, group| {
+                        parent_study(study).is_none() && is_topmed_group(study, group)
+                    })
+        }
         BdcRule::Harmonized(index) => HARMONIZED_SHARE * HARMONIZED[index].coverage,
         BdcRule::HandPlaced => 0.0,
     }
@@ -289,10 +328,10 @@ pub struct ExtraRow {
     pub value: ExtraValue,
 }
 
-/// How many hand-placed patients [`edge_rows`] writes, with IDs `first` to `first + 9`.
-pub const EDGE_PATIENTS: u32 = 10;
+/// How many hand-placed patients [`edge_rows`] writes, with IDs `first` to `first + 10`.
+pub const EDGE_PATIENTS: u32 = 11;
 
-/// The hand-placed rows, for patients `first` to `first + 9`, in patient order:
+/// The hand-placed rows, for patients `first` to `first + 10`, in patient order:
 ///
 /// - `first`: two `\_consents\` values and a `\_topmed_consents\` value;
 /// - `+1`: a `\_consents\` value no other patient holds;
@@ -303,7 +342,9 @@ pub const EDGE_PATIENTS: u32 = 10;
 /// - `+6`: a `\_parent_consents\` value that is not the parent of their `\_consents\` study;
 /// - `+7`: a `\_consents\` value that differs from `phs000001.c1` only in case;
 /// - `+8`: every consent concept and two harmonized phenotype rows;
-/// - `+9`: a row of the hand-placed concept and no consent at all.
+/// - `+9`: a row of the hand-placed concept and no consent at all;
+/// - `+10`: the bare accession `phs000001` as `\_consents\`, the value PSAMA holds for a study
+///   with no consent group, which is a prefix of real values.
 ///
 /// The consent values name studies 1 to 5, so the dataset needs at least five studies.
 pub fn edge_rows(first: u32) -> Vec<ExtraRow> {
@@ -341,5 +382,6 @@ pub fn edge_rows(first: u32) -> Vec<ExtraRow> {
         text(8, sex, "Male"),
         number(8, age, "41"),
         number(9, UNCONSENTED_PATH, "7"),
+        text(10, CONSENTS_PATH, "phs000001"),
     ]
 }

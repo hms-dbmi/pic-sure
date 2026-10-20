@@ -38,6 +38,21 @@ fn texts<'a>(rows: &'a [(String, String, String)], path: &str) -> Vec<&'a str> {
         .collect()
 }
 
+fn own<'a>(consents: &[&'a str]) -> &'a str {
+    consents
+        .iter()
+        .copied()
+        .find(|v| group_of(v).0 < bdc::TWIN_STUDY_OFFSET)
+        .unwrap()
+}
+
+fn twin<'a>(consents: &[&'a str]) -> Option<&'a str> {
+    consents
+        .iter()
+        .copied()
+        .find(|v| group_of(v).0 >= bdc::TWIN_STUDY_OFFSET)
+}
+
 fn group_of(consent: &str) -> (u32, u32) {
     let study = consent[3..9].parse::<u32>().unwrap() - 1;
     let group = consent[11..].parse::<u32>().unwrap() - 1;
@@ -96,31 +111,54 @@ fn both_row_orders_hold_the_same_rows_and_concepts_stay_contiguous() {
 fn plain_rows_are_the_plain_profile_rows() {
     let plain = String::from_utf8(render(Shape::BDCX, Profile::Plain, 6, Order::Concept)).unwrap();
     let bdc = String::from_utf8(render(Shape::BDCX, EDGE, 6, Order::Concept)).unwrap();
-    let bdc_paths: Vec<String> = concept_table_profile(&Shape::BDCX, EDGE, 6)
+    let mut skipped: Vec<String> = concept_table_profile(&Shape::BDCX, EDGE, 6)
         .into_iter()
         .filter(|c| matches!(c.kind, Kind::Bdc(_)))
         .map(|c| c.path)
         .collect();
-    let mut plain_rows: Vec<&str> = plain.lines().collect();
+    skipped.push(CONSENTS_PATH.to_string());
     let first_extra = Shape::BDCX.first_extra_patient();
-    let mut rest: Vec<&str> = bdc
-        .lines()
-        .filter(|line| {
-            let mut fields = line.split(',');
-            let patient = fields.next().unwrap();
-            let path = fields.next().unwrap();
-            !bdc_paths.iter().any(|p| p == path)
-                && patient.parse::<u32>().is_ok_and(|id| id < first_extra)
-                || patient == "PATIENT_NUM"
-        })
-        .collect();
-    plain_rows.sort_unstable();
-    rest.sort_unstable();
+    let kept = |text: &str, below: u32| -> Vec<String> {
+        let mut rows: Vec<String> = text
+            .lines()
+            .filter(|line| {
+                let mut fields = line.split(',');
+                let patient = fields.next().unwrap();
+                let path = fields.next().unwrap();
+                !skipped.iter().any(|p| p == path)
+                    && patient.parse::<u32>().map_or(true, |id| id < below)
+            })
+            .map(String::from)
+            .collect();
+        rows.sort_unstable();
+        rows
+    };
+    let plain_rows = kept(&plain, u32::MAX);
     assert!(plain_rows.len() > 100_000);
-    assert_eq!(plain_rows.len(), rest.len());
     assert!(
-        plain_rows == rest,
+        plain_rows == kept(&bdc, first_extra),
         "plain rows changed under the BDC profile"
+    );
+    let own = |text: &str| -> Vec<String> {
+        let mut rows: Vec<String> = text
+            .lines()
+            .filter(|line| line.split(',').nth(1) == Some(CONSENTS_PATH))
+            .filter(|line| {
+                line.split(',')
+                    .next()
+                    .unwrap()
+                    .parse::<u32>()
+                    .is_ok_and(|id| id < first_extra)
+            })
+            .filter(|line| !line.contains("phs0005"))
+            .map(String::from)
+            .collect();
+        rows.sort_unstable();
+        rows
+    };
+    assert!(
+        own(&plain) == own(&bdc),
+        "own consents changed under the BDC profile"
     );
     let mut again = Vec::new();
     generate(Shape::BDCX, 6, Order::Concept, &mut again).unwrap();
@@ -128,28 +166,63 @@ fn plain_rows_are_the_plain_profile_rows() {
 }
 
 #[test]
-fn topmed_consents_cover_exactly_the_patients_of_topmed_groups_with_their_own_consent() {
+fn topmed_consents_cover_the_patients_of_topmed_groups_and_name_the_twin_for_a_share() {
     let first_extra = Shape::BDCX.first_extra_patient();
     let rows = by_patient(&render(Shape::BDCX, EDGE, 7, Order::Patient));
-    let mut with = 0;
-    let mut without = 0;
+    let mut plain_topmed = 0;
+    let mut twins = 0;
+    let mut outside = 0;
     for (_, patient) in generated(&rows, first_extra) {
         let consent = texts(patient, CONSENTS_PATH);
-        assert_eq!(consent.len(), 1);
-        let (study, group) = group_of(consent[0]);
+        let (study, group) = group_of(own(&consent));
         let topmed = texts(patient, TOPMED_CONSENTS_PATH);
-        if bdc::is_topmed_group(study, group) {
-            assert_eq!(topmed, consent);
-            with += 1;
-        } else {
+        if !bdc::is_topmed_group(study, group) {
+            assert_eq!(consent.len(), 1);
             assert!(topmed.is_empty());
-            without += 1;
+            outside += 1;
+        } else if consent.len() == 1 {
+            assert_eq!(topmed, consent);
+            plain_topmed += 1;
+        } else {
+            assert_eq!(consent.len(), 2);
+            let second = twin(&consent).unwrap();
+            assert_eq!(group_of(second), (study + bdc::TWIN_STUDY_OFFSET, group));
+            assert_eq!(topmed, [second]);
+            assert_ne!(topmed[0], own(&consent));
+            twins += 1;
         }
     }
-    assert!(
-        with > 500 && without > 500,
-        "{with} with, {without} without"
-    );
+    assert!(plain_topmed > 250 && twins > 250 && outside > 500);
+    let share = f64::from(twins) / f64::from(twins + plain_topmed);
+    assert!((0.34..0.46).contains(&share), "twin share {share}");
+}
+
+#[test]
+fn twins_hold_their_own_consent_as_parent_consent_and_child_studies_keep_the_parent_rule() {
+    let first_extra = Shape::BDCX.first_extra_patient();
+    let rows = by_patient(&render(Shape::BDCX, EDGE, 7, Order::Patient));
+    let mut twin_in_child = 0;
+    let mut twin_elsewhere = 0;
+    for (_, patient) in generated(&rows, first_extra) {
+        let consent = texts(patient, CONSENTS_PATH);
+        if consent.len() != 2 {
+            continue;
+        }
+        let (study, group) = group_of(own(&consent));
+        let parent = texts(patient, PARENT_CONSENTS_PATH);
+        match bdc::parent_study(study) {
+            Some(expected) => {
+                assert_eq!(group_of(parent[0]), (expected, group));
+                twin_in_child += 1;
+            }
+            None => {
+                assert_eq!(parent, [own(&consent)]);
+                twin_elsewhere += 1;
+            }
+        }
+    }
+    assert!(twin_elsewhere > 200);
+    assert!(twin_in_child > 0);
 }
 
 #[test]
@@ -167,7 +240,7 @@ fn harmonized_consent_marks_a_subset_whose_values_stay_in_their_study() {
         }
         assert_eq!(harmonized.len(), 1);
         subset += 1;
-        let own = group_of(texts(patient, CONSENTS_PATH)[0]);
+        let own = group_of(own(&texts(patient, CONSENTS_PATH)));
         let held = group_of(harmonized[0]);
         assert_eq!(held.0, own.0);
         if held.1 != own.1 {
@@ -219,18 +292,21 @@ fn harmonized_phenotype_concepts_belong_to_the_subset_only() {
 }
 
 #[test]
-fn parent_consents_exist_only_in_child_studies_and_name_the_parent() {
+fn parent_consents_exist_in_child_studies_and_for_twins_and_name_the_parent() {
     let first_extra = Shape::BDCX.first_extra_patient();
     let rows = by_patient(&render(Shape::BDCX, EDGE, 10, Order::Patient));
     let mut children = 0;
     for (_, patient) in generated(&rows, first_extra) {
-        let (study, group) = group_of(texts(patient, CONSENTS_PATH)[0]);
+        let (study, group) = group_of(own(&texts(patient, CONSENTS_PATH)));
         let parent = texts(patient, PARENT_CONSENTS_PATH);
         match bdc::parent_study(study) {
             Some(expected) => {
                 assert_eq!(parent.len(), 1);
                 assert_eq!(group_of(parent[0]), (expected, group));
                 children += 1;
+            }
+            None if texts(patient, CONSENTS_PATH).len() == 2 => {
+                assert_eq!(parent, [own(&texts(patient, CONSENTS_PATH))]);
             }
             None => assert!(parent.is_empty()),
         }
@@ -289,6 +365,16 @@ fn hand_placed_patients_cover_each_consent_edge() {
     );
     assert_eq!(texts(edge(6), PARENT_CONSENTS_PATH), ["phs000001.c1"]);
     assert_eq!(texts(edge(7), CONSENTS_PATH), ["PHS000001.C1"]);
+    assert_eq!(
+        edge(10),
+        &[(
+            CONSENTS_PATH.to_string(),
+            String::new(),
+            "phs000001".to_string()
+        )]
+    );
+    assert!(!everyone_else.contains("phs000001"));
+    assert!(everyone_else.iter().any(|v| v.starts_with("phs000001.")));
     for path in [
         CONSENTS_PATH,
         TOPMED_CONSENTS_PATH,
@@ -330,15 +416,13 @@ fn bdc_shapes_are_valid_and_the_profile_needs_five_studies() {
 fn a_scaled_dev_shape_carries_every_bdc_concept() {
     let shape = Shape {
         patients: 6_000,
-        observations: 6_000 * 400,
+        observations: 6_000 * 40,
         ..Shape::BDCDEV
     };
-    let rows = by_patient(&render(shape, REGULAR, 14, Order::Concept));
-    let mut paths: HashMap<&str, usize> = HashMap::new();
-    for patient in rows.values() {
-        for (path, _, _) in patient {
-            *paths.entry(path.as_str()).or_default() += 1;
-        }
+    let bytes = render(shape, REGULAR, 14, Order::Concept);
+    let mut paths: HashMap<String, usize> = HashMap::new();
+    for record in csv::Reader::from_reader(bytes.as_slice()).records() {
+        *paths.entry(record.unwrap()[1].to_string()).or_default() += 1;
     }
     for rule in [
         TOPMED_CONSENTS_PATH,

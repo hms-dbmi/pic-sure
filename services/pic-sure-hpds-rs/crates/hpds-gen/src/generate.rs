@@ -394,6 +394,19 @@ fn sample_bdc(seed: u64, block: &Block, index: u32, rule: BdcRule, rows: &mut Ve
     for (offset, member) in block.members.iter().enumerate() {
         let ordinal = block.first + offset as u64;
         let cell = match rule {
+            BdcRule::Consents => {
+                if let Some(twin) = bdc::twin_consent(seed, ordinal, *member) {
+                    rows.push(Row {
+                        offset: offset as u32,
+                        tiebreak: tiebreak(seed, ordinal, index, 1),
+                        concept: index,
+                        seq: 1,
+                        timestamp: -1,
+                        cell: Cell::Consent(twin),
+                    });
+                }
+                Cell::Consent(*member)
+            }
             BdcRule::Harmonized(which) => {
                 let Some(mut rng) = bdc::harmonized_stream(seed, ordinal, which) else {
                     continue;
@@ -407,7 +420,9 @@ fn sample_bdc(seed: u64, block: &Block, index: u32, rule: BdcRule, rows: &mut Ve
                 }
             }
             BdcRule::HandPlaced => return,
-            consent => match bdc::consent_of(consent, seed, ordinal, *member) {
+            consent @ (BdcRule::TopmedConsent
+            | BdcRule::HarmonizedConsent
+            | BdcRule::ParentConsent) => match bdc::consent_of(consent, seed, ordinal, *member) {
                 Some(held) => Cell::Consent(held),
                 None => continue,
             },
@@ -566,6 +581,7 @@ fn build_profile_concepts(
 ) -> Vec<Concept> {
     let mut concepts = build_concepts(seed, &shape.table(), population);
     if let Profile::Bdc { edge } = profile {
+        concepts[0].kind = Kind::Bdc(BdcRule::Consents);
         concepts.extend(bdc::concepts(edge));
     }
     concepts

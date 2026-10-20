@@ -59,25 +59,29 @@ consent concepts a BioData Catalyst store carries on top of `\_consents\`:
 
 | Concept | Holders | Value |
 |---|---|---|
-| `\_topmed_consents\` | patients of TOPMed groups (one group per study) | their own study consent |
+| `\_topmed_consents\` | patients of TOPMed groups (one group per study, zero-based study plus group even) | their own study consent; for 40% of them (the twins) the TOPMed accession `phs0005NN.cN`, which they also hold as a second `\_consents\` value |
 | `\_harmonized_consent\` | 35% of all patients | their own consent, or for a tenth the other group of their study |
 | `\DCC Harmonized data set\...` | the same 35%, eight concepts at 55 to 95% coverage | labels or numbers |
-| `\_parent_consents\` | patients of child studies (studies 4, 8, 12) | the parent study's consent of the same group |
+| `\_parent_consents\` | patients of child studies (accessions `phs000004`, `phs000008`, `phs000012`), and twins outside child studies | the parent study's consent of the same group; for a twin its own consent |
 
 The profile only adds rows: the plain rows are byte for byte those of the plain profile for the
-same shape and seed. `bdc-edge` also writes ten hand-placed patients after the generated ones
+same shape and seed, except that the twins gain a second `\_consents\` value. The 10% sibling
+group values of `\_harmonized_consent\` are a deliberate adversarial case: that concept then
+differs from `\_consents\` for patients who hold both. `bdc-edge` also writes eleven hand-placed patients after the generated ones
 (a patient with two consents, a consent nobody else holds, a topmed consent with no consent, a
 topmed value from another study, a harmonized consent with no harmonized rows and the reverse,
-a mismatched parent consent, a case variant, a patient with every consent, and a patient with
-none), so each edge of the authorization filter atoms has data to hit.
+a mismatched parent consent, a case variant, a patient with every consent, a patient with
+none, and a patient whose `\_consents\` is the bare accession `phs000001`, which PSAMA holds for
+a study with no consent group and which prefixes real values), so each edge of the authorization filter atoms has data to hit.
 
 | Preset | Patients | Studies | Profile |
 |---|---|---|---|
 | `bdcx` | 3,000 | 8 | `bdc-edge` |
 | `bdcdev` | 100,000 | 12 | `bdc` |
 
-Use `--order concept` for the Java `CSVLoaderNewSearch`, which keeps only the last contiguous
-block of a concept.
+The row order defaults to `concept` under a bdc profile, which the Java `CSVLoaderNewSearch`
+needs because it keeps only the last contiguous block of a concept; pass `--order patient` to
+override.
 
 ## Images
 
