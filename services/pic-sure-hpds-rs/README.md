@@ -38,7 +38,8 @@ bin/cargo test --workspace
 `vcf/<file>`; rewrite the directory for the container), one headerless
 `pheno/<group>-allConcepts.csv` per group (the harmonization loader's consent partition format),
 and `groups.tsv`. The same seed gives the same bytes. Patients are disjoint across groups and each
-group's VCFs list only the sites present in that group.
+group's VCFs list only the sites present in that group. Each phenotype CSV also holds a
+`\_topmed_consents\` row, valued with the group name, for every patient that has genotypes.
 
 | Preset | Samples | Groups | Sites | VCFs |
 |---|---|---|---|---|
@@ -49,6 +50,34 @@ group's VCFs list only the sites present in that group.
 `--estimate` writes nothing and prints a size estimate from a sample of rows. Frequency,
 annotation, gap and gene-size distributions are fitted to the 1000 Genomes files by
 `crates/hpds-gen/tools/fit_profile.py`, which writes `src/genomic/profile_data.rs`.
+
+## Generating BDC consent data
+
+`hpds-gen generate --preset <tiny|dev|bench|bdcx|bdcdev> --out <file> [--profile <plain|bdc|bdc-edge>]
+[--order <patient|concept>] [--seed N]` writes `allConcepts.csv`. The `bdc` profile adds the
+consent concepts a BioData Catalyst store carries on top of `\_consents\`:
+
+| Concept | Holders | Value |
+|---|---|---|
+| `\_topmed_consents\` | patients of TOPMed groups (one group per study) | their own study consent |
+| `\_harmonized_consent\` | 35% of all patients | their own consent, or for a tenth the other group of their study |
+| `\DCC Harmonized data set\...` | the same 35%, eight concepts at 55 to 95% coverage | labels or numbers |
+| `\_parent_consents\` | patients of child studies (studies 4, 8, 12) | the parent study's consent of the same group |
+
+The profile only adds rows: the plain rows are byte for byte those of the plain profile for the
+same shape and seed. `bdc-edge` also writes ten hand-placed patients after the generated ones
+(a patient with two consents, a consent nobody else holds, a topmed consent with no consent, a
+topmed value from another study, a harmonized consent with no harmonized rows and the reverse,
+a mismatched parent consent, a case variant, a patient with every consent, and a patient with
+none), so each edge of the authorization filter atoms has data to hit.
+
+| Preset | Patients | Studies | Profile |
+|---|---|---|---|
+| `bdcx` | 3,000 | 8 | `bdc-edge` |
+| `bdcdev` | 100,000 | 12 | `bdc` |
+
+Use `--order concept` for the Java `CSVLoaderNewSearch`, which keeps only the last contiguous
+block of a concept.
 
 ## Images
 
