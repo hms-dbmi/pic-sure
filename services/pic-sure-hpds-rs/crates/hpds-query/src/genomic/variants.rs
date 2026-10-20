@@ -204,14 +204,26 @@ fn meets(chunk: &MaskChunk, i: usize, mask: &PosBitset) -> bool {
         })
 }
 
-/// One node's walk over the variants it lists on one contig, holding the mask chunk of its
-/// next variant only while that variant and the one after it share the chunk.
+/// One node's walk over the variants it lists on one contig, holding the mask chunk of the
+/// variant it stands at.
 struct Cursor {
     node: u16,
     variants: Vec<u32>,
     next: usize,
     chunk: Option<(u32, Arc<MaskChunk>)>,
     head: Option<String>,
+}
+
+/// Where a node lists the spec [`for_each_listed_spec`] visits: the node, the chunk, and the
+/// mask chunk itself, already read, so a visitor that needs the spec's masks there reads the
+/// chunk no second time.
+pub(crate) struct ListedAt<'a> {
+    /// The node.
+    pub(crate) node: u16,
+    /// The chunk of the node holding the spec.
+    pub(crate) chunk: u32,
+    /// That chunk's masks.
+    pub(crate) masks: &'a Arc<MaskChunk>,
 }
 
 impl Cursor {
@@ -234,13 +246,6 @@ impl Cursor {
         if let Some((_, chunk)) = &self.chunk {
             self.head = Some(chunk.spec((id - chunk.first_variant()) as usize).to_owned());
         }
-        let next_shares_chunk = self
-            .variants
-            .get(self.next)
-            .is_some_and(|&next| chunk_of(node, next) == c);
-        if !next_shares_chunk {
-            self.chunk = None;
-        }
         Ok(())
     }
 }
@@ -258,7 +263,8 @@ fn spec_order(a: &str, b: &str) -> Ordering {
 
 /// Calls `visit` once for each distinct spec string the nodes list, in the store's spec
 /// order: contigs in Java `String.compareTo` order, and within a contig a merge of the
-/// nodes' lists, which are in that order already.
+/// nodes' lists, which are in that order already. `visit` also gets where each node listing
+/// the spec holds it, with the mask chunk the merge read.
 ///
 /// # Errors
 /// [`crate::QueryError::GenomicBlock`] when a mask chunk cannot be loaded, and the errors of
@@ -266,7 +272,7 @@ fn spec_order(a: &str, b: &str) -> Ordering {
 pub(crate) fn for_each_listed_spec(
     store: &GenomicStore,
     lists: &VariantLists,
-    mut visit: impl FnMut(&str) -> Result<()>,
+    mut visit: impl FnMut(&str, &[ListedAt<'_>]) -> Result<()>,
 ) -> Result<()> {
     let nodes = store.index().nodes();
     let mut contigs: Vec<&str> = nodes
@@ -310,7 +316,18 @@ pub(crate) fn for_each_listed_spec(
             .min_by(|a, b| spec_order(a, b))
             .map(str::to_owned)
         {
-            visit(&least)?;
+            let at: Vec<ListedAt<'_>> = cursors
+                .iter()
+                .filter(|c| c.head.as_deref() == Some(least.as_str()))
+                .filter_map(|c| {
+                    c.chunk.as_ref().map(|(chunk, masks)| ListedAt {
+                        node: c.node,
+                        chunk: *chunk,
+                        masks,
+                    })
+                })
+                .collect();
+            visit(&least, &at)?;
             for cursor in &mut cursors {
                 if cursor.head.as_deref() == Some(least.as_str()) {
                     cursor.advance(store, lists.path)?;

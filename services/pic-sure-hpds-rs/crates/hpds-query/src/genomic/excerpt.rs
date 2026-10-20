@@ -320,7 +320,8 @@ impl<'e> VcfExcerpt<'e> {
             holders: (0..self.store.index().nodes().len())
                 .map(|_| None)
                 .collect(),
-            contig: String::new(),
+            contig: None,
+            contig_nodes: Vec::new(),
             scratch: self
                 .store
                 .groups()
@@ -329,8 +330,8 @@ impl<'e> VcfExcerpt<'e> {
                 .collect(),
             genotypes,
         };
-        let mut group: Vec<String> = Vec::new();
-        let mut flush = |group: &mut Vec<String>, total: &mut u64| -> Result<()> {
+        let mut group: Vec<ListedSpec> = Vec::new();
+        let mut flush = |group: &mut Vec<ListedSpec>, total: &mut u64| -> Result<()> {
             if group.is_empty() {
                 return Ok(());
             }
@@ -345,7 +346,7 @@ impl<'e> VcfExcerpt<'e> {
             group.clear();
             Ok(())
         };
-        for_each_listed_spec(self.store, &self.lists, |spec| {
+        for_each_listed_spec(self.store, &self.lists, |spec, at| {
             let key = VariantSpecKey::parse(spec);
             if key.is_none_or(|k| k.is_short()) {
                 tracing::warn!(
@@ -360,16 +361,29 @@ impl<'e> VcfExcerpt<'e> {
             }
             let same_row = group
                 .first()
-                .is_some_and(|first| VariantSpecKey::parse(first) == key);
+                .is_some_and(|first| VariantSpecKey::parse(&first.spec) == key);
             if !same_row {
                 flush(&mut group, &mut total)?;
             }
-            group.push(spec.to_owned());
+            group.push(ListedSpec {
+                spec: spec.to_owned(),
+                at: at
+                    .iter()
+                    .map(|a| (a.node, a.chunk, Arc::clone(a.masks)))
+                    .collect(),
+            });
             Ok(())
         })?;
         flush(&mut group, &mut total)?;
         Ok(total)
     }
+}
+
+/// A listed spec of a row, with the mask chunk of every node that listed it, as the merge
+/// read it.
+struct ListedSpec {
+    spec: String,
+    at: Vec<(u16, u32, Arc<MaskChunk>)>,
 }
 
 /// The chunk of one node an excerpt is reading: its mask chunk and, once needed, its metadata.
@@ -398,11 +412,13 @@ struct GroupMasks {
     hen_or_ho_in_subset: u64,
 }
 
-/// The row generator's state: the chunk each node is being read at, and scratch bitsets.
+/// The row generator's state: the chunk each node is being read at, the nodes holding the
+/// row's contig with its index there, and scratch bitsets.
 struct Rows<'x, 'e> {
     excerpt: &'x VcfExcerpt<'e>,
     holders: Vec<Option<Holder>>,
-    contig: String,
+    contig: Option<String>,
+    contig_nodes: Vec<(usize, u16)>,
     scratch: Vec<PosBitset>,
     genotypes: bool,
 }
@@ -418,16 +434,35 @@ impl Rows<'_, '_> {
 
     /// Appends the row of `group`, the listed specs of one `VariantSpec` key in raw-byte
     /// order, to `out`.
-    fn row(&mut self, group: &[String], out: &mut Vec<u8>) -> Result<()> {
-        let spec = group[0].as_str();
+    fn row(&mut self, group: &[ListedSpec], out: &mut Vec<u8>) -> Result<()> {
+        let spec = group[0].spec.as_str();
         let (_, fields) = java_split_spec(spec);
-        if fields[0] != self.contig {
+        if self.contig.as_deref() != Some(fields[0]) {
             self.holders.iter_mut().for_each(|h| *h = None);
-            self.contig = fields[0].to_owned();
+            let store = self.excerpt.store;
+            self.contig_nodes = (0..self.holders.len())
+                .filter_map(|n| {
+                    let ci = store.node(n as u16).contig_index(fields[0])?;
+                    Some((n, ci))
+                })
+                .collect();
+            self.contig = Some(fields[0].to_owned());
+        }
+        for listed in group {
+            for (node, chunk, masks) in &listed.at {
+                let n = usize::from(*node);
+                if self.holders[n].as_ref().is_none_or(|h| h.chunk != *chunk) {
+                    self.holders[n] = Some(Holder {
+                        chunk: *chunk,
+                        masks: Arc::clone(masks),
+                        metadata: None,
+                    });
+                }
+            }
         }
         let mut metadata = Vec::new();
         for (i, listed) in group.iter().enumerate() {
-            let strings = self.metadata_of(listed)?;
+            let strings = self.metadata_of(&listed.spec)?;
             if i == 0 {
                 metadata = strings;
             }
@@ -471,18 +506,19 @@ impl Rows<'_, '_> {
         Ok(self.holders[n].as_mut().expect("held above"))
     }
 
-    /// The nodes whose bucket of `spec` holds it, in index order, with the chunk and the
-    /// chunk variant.
+    /// The nodes whose bucket of `spec` holds it, in index order, with the chunk variant:
+    /// only the nodes holding the row's contig are looked at.
     fn holders_of(&mut self, spec: &str) -> Result<Vec<(usize, usize)>> {
         let Some(key) = VariantSpecKey::parse(spec) else {
             return Ok(Vec::new());
         };
         let mut found = Vec::new();
-        for n in 0..self.holders.len() {
-            let node = self.store().node(n as u16);
-            let Some(chunk) = node
-                .contig_index(key.contig())
-                .and_then(|ci| node.chunk_for_bucket(ci, key.bucket()))
+        for k in 0..self.contig_nodes.len() {
+            let (n, ci) = self.contig_nodes[k];
+            let Some(chunk) = self
+                .store()
+                .node(n as u16)
+                .chunk_for_bucket(ci, key.bucket())
             else {
                 continue;
             };

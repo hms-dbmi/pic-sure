@@ -671,7 +671,7 @@ impl Engine {
         }
         let mut count = 0u64;
         if let Some((store, lists)) = self.variant_lists_in(&checked)? {
-            for_each_listed_spec(store, &lists, |_| {
+            for_each_listed_spec(store, &lists, |_, _| {
                 count += 1;
                 Ok(())
             })?;
@@ -703,7 +703,7 @@ impl Engine {
         let max = self.variant_settings.max_excerpt_bytes;
         let mut body = String::from("[");
         if let Some((store, lists)) = self.variant_lists_in(&checked)? {
-            for_each_listed_spec(store, &lists, |spec| {
+            for_each_listed_spec(store, &lists, |spec, _| {
                 if body.len() > 1 {
                     body.push_str(", ");
                 }

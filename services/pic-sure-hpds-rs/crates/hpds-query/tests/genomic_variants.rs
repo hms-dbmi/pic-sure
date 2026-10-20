@@ -543,6 +543,39 @@ fn an_excerpt_is_measured_before_it_is_written_and_refused_over_the_bound() {
     ));
 }
 
+/// On the scan path an excerpt reads each listed chunk's masks once, from the walk over the
+/// lists, and its metadata once: writing the one-chunk fixture reads two blocks.
+#[test]
+fn a_scanned_excerpt_reads_each_mask_chunk_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (pheno, _) = single_group(dir.path());
+    let store = GenomicStore::open_with_key_file(
+        dir.path(),
+        &pheno.out.join("encryption_key"),
+        &GenomicOptions {
+            cache_bytes: 1,
+            ..GenomicOptions::default()
+        },
+    )
+    .unwrap();
+    let e = pheno
+        .open(&lenient())
+        .unwrap()
+        .with_genomic(store)
+        .with_variant_settings(VariantResultSettings {
+            vcf_excerpt_enabled: true,
+            ..VariantResultSettings::default()
+        });
+    let q = gene_query(ResultType::VcfExcerpt, &["B", "H", "N", "E"]);
+    let Ok(ExcerptAnswer::Rows(excerpt)) = e.vcf_excerpt(&q) else {
+        panic!("an excerpt");
+    };
+    let before = e.genomic().unwrap().cache_stats().scan_reads;
+    excerpt.write_to(&mut std::io::sink()).unwrap();
+    let reads = e.genomic().unwrap().cache_stats().scan_reads - before;
+    assert_eq!(reads, 2, "one mask chunk and one metadata chunk");
+}
+
 #[test]
 fn info_cells_join_a_keys_values_and_write_null_for_an_absent_key() {
     let dir = tempfile::tempdir().unwrap();
