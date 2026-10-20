@@ -17,18 +17,22 @@ import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.OutputStreamWriter;
 import java.io.RandomAccessFile;
 import java.io.Serializable;
+import java.io.OutputStream;
 import java.io.Writer;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util.ExportForMigration;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -52,12 +56,16 @@ import java.util.zip.GZIPInputStream;
  * for writing, and the {@code variantIndex_fbbis*} caches are ignored.
  *
  * <p>The form is documented on {@code hpds_etl::genomic::dump}. This dumper derives it from Java's data as the query service reads it: a
- * node's variants are the union of the specs of its mask records, its metadata and its spec index ({@code variantSpecIndex.javabin}),
- * each placed in the bucket {@code Integer.parseInt(spec.split(",")[1]) / 1000} of contig {@code spec.split(",")[0]}; a key's specs are
- * its spec index ids looked up in the spec index; a bucket's carriers are the patients whose {@code BucketIndexBySample} mask has the
- * bucket's bit, none when the index has no such bucket, and, when the node has no bucket index, the union of {@code he}, {@code hen} and
- * {@code ho} over the bucket's masks, as the service builds the index when it is missing. A record stored under another bucket than its
- * spec's, which the service never finds, is written as an {@code X} line instead.
+ * node's variants are the union of the specs of its mask records, its metadata and its spec index ({@code variantSpecIndex.javabin}), each
+ * placed in the bucket {@code Integer.parseInt(spec.split(",")[1]) / 1000} of contig {@code spec.split(",")[0]}; a key's specs are its spec
+ * index ids looked up in the spec index; a bucket's carriers are the patients whose {@code BucketIndexBySample} mask has the bucket's bit,
+ * none when the index has no such bucket, and, when the node has no bucket index, the union of {@code he}, {@code hen} and {@code ho} over
+ * the bucket's masks, as the service builds the index when it is missing. A record stored under another bucket than its spec's, which the
+ * service never finds, is written as an {@code X} line instead.
+ *
+ * <p>The output holds every patient id and the carrier set of every variant, which is patient-level genotype data. It is created owner-only
+ * (mode {@code 0600}) and never overwrites an existing path or lands inside the genomic root, and it must be handled, stored and deleted
+ * like the store itself. The dumper writes no patient id or genotype value to its logs.
  */
 public class DumpGenomicCanonical {
 
@@ -77,12 +85,33 @@ public class DumpGenomicCanonical {
         DumpGenomicCanonical dumper = new DumpGenomicCanonical();
         dumper.digest = args.length > 3 && args[3].equals("digest");
         try (
-            Writer writer =
-                new BufferedWriter(new OutputStreamWriter(new FileOutputStream(args[2]), StandardCharsets.UTF_8), 1 << 20)
+            Writer writer = new BufferedWriter(
+                new OutputStreamWriter(openPrivateOutput(Path.of(args[2]), Path.of(args[1])), StandardCharsets.UTF_8), 1 << 20
+            )
         ) {
             dumper.out = writer;
             dumper.dump(args[0], new File(args[1]));
         }
+    }
+
+    /**
+     * Creates the output file, which must not exist, owner-only (mode {@code 0600}) on a POSIX file system, and opens it for writing.
+     *
+     * @param output the file to create
+     * @param root the genomic root being dumped, inside which no output may be written
+     * @return a stream writing the new file
+     * @throws IOException when the file exists, lies inside the genomic root, or cannot be created
+     */
+    static OutputStream openPrivateOutput(Path output, Path root) throws IOException {
+        if (Files.exists(output, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("refusing to overwrite the existing output path " + output);
+        }
+        Path realOutput = ExportForMigration.realPathAllowingMissing(output);
+        Path realRoot = ExportForMigration.realPathAllowingMissing(root);
+        if (realOutput.startsWith(realRoot)) {
+            throw new IOException("refusing to write the output inside the genomic root " + root);
+        }
+        return ExportForMigration.createPrivateFile(output);
     }
 
     private void dump(String mode, File root) throws Exception {
@@ -138,8 +167,10 @@ public class DumpGenomicCanonical {
             indexed.computeIfAbsent(segments[0], c -> new TreeMap<>()).computeIfAbsent(bucket, b -> new ArrayList<>()).add(spec);
         }
         Map<String, Storage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> masks = new HashMap<>();
-        for (Map.Entry<String, ? extends FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> e : store
-            .getVariantMaskStorage().entrySet()) {
+        for (
+            Map.Entry<String, ? extends FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> e : store
+                .getVariantMaskStorage().entrySet()
+        ) {
             if (e.getValue() != null) {
                 masks.put(e.getKey(), new Storage<>(e.getValue(), dir));
             }
@@ -317,9 +348,13 @@ public class DumpGenomicCanonical {
                 for (Map.Entry<Range<Float>, byte[]> range : ranges.entrySet()) {
                     Range<Float> r = range.getKey();
                     StringBuilder line = new StringBuilder("R\t");
-                    line.append(bound(r.hasLowerBound(), r.hasLowerBound() ? r.lowerBoundType() : null, r.hasLowerBound() ? r.lowerEndpoint() : 0f));
+                    line.append(
+                        bound(r.hasLowerBound(), r.hasLowerBound() ? r.lowerBoundType() : null, r.hasLowerBound() ? r.lowerEndpoint() : 0f)
+                    );
                     line.append('\t');
-                    line.append(bound(r.hasUpperBound(), r.hasUpperBound() ? r.upperBoundType() : null, r.hasUpperBound() ? r.upperEndpoint() : 0f));
+                    line.append(
+                        bound(r.hasUpperBound(), r.hasUpperBound() ? r.upperBoundType() : null, r.hasUpperBound() ? r.upperEndpoint() : 0f)
+                    );
                     line.append('\t');
                     TreeMap<?, ?> map;
                     try (ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new ByteArrayInputStream(range.getValue())))) {
