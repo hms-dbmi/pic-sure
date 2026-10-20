@@ -63,6 +63,18 @@ pub enum EtlError {
         detail: String,
     },
 
+    /// An input file of a genomic load (an index file or a VCF) holds something Java would
+    /// store corrupt data from or fail on.
+    #[error("{path} line {line}: {detail}")]
+    Input {
+        /// The input file.
+        path: PathBuf,
+        /// The 1-based line, 0 when the problem is not on one line.
+        line: u64,
+        /// What is wrong with it.
+        detail: String,
+    },
+
     /// The command line asked for something the loader cannot do.
     #[error("{0}")]
     Usage(String),

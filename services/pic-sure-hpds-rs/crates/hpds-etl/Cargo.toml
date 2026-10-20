@@ -17,6 +17,7 @@ path = "src/main.rs"
 hpds-format.workspace = true
 clap.workspace = true
 csv.workspace = true
+flate2 = { version = "=1.1.10", default-features = false, features = ["zlib-rs"] }
 libc.workspace = true
 rayon.workspace = true
 roaring.workspace = true
