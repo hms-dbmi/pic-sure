@@ -19,8 +19,8 @@ pub fn connections_write_stalled() -> u64 {
 }
 
 /// A connection whose writes and flushes fail with [`io::ErrorKind::TimedOut`] once one has
-/// stayed pending for `stall`: the client has read nothing for that long, so its socket
-/// buffer stayed full. The failure ends the connection, which frees what its response holds
+/// stayed pending for `stall`: the client made no room in its socket buffer for that long,
+/// so the buffer stayed full. The failure ends the connection, which frees what its response holds
 /// and closes the socket, instead of leaving it established for as long as the client
 /// stays silent. Reads pass through unchanged, so an idle keep-alive connection, which
 /// writes nothing, is left to the header read timeout.
@@ -62,11 +62,11 @@ impl<T> WriteStall<T> {
         CONNECTIONS_WRITE_STALLED.fetch_add(1, Ordering::Relaxed);
         tracing::warn!(
             stall_seconds = stall.as_secs(),
-            "closing a connection whose client read nothing within the write stall bound"
+            "closing a connection whose client made no room in its socket buffer within the write stall bound"
         );
         Poll::Ready(Err(io::Error::new(
             io::ErrorKind::TimedOut,
-            "the client read nothing within the write stall bound",
+            "the client made no room in its socket buffer within the write stall bound",
         )))
     }
 }

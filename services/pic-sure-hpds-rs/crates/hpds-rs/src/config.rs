@@ -112,7 +112,7 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_EXCERPT_STALL_SECONDS` | 30 | How long a streamed excerpt waits for its client to take the next chunk before it ends the stream |
 /// | `HPDS_EXCERPT_STREAM_SECONDS` | 600 | How long a streamed excerpt's body may take in full before the stream is ended |
 /// | `HPDS_EXCERPT_QUEUE_SECONDS` | 5 | How long an excerpt or variant list waits for an excerpt slot before it is a 503 with `Retry-After`; 0 refuses at once |
-/// | `HPDS_WRITE_STALL_SECONDS` | 60 | How long any write to a connection may stay pending, the client reading nothing, before the connection is closed |
+/// | `HPDS_WRITE_STALL_SECONDS` | 60 | How long any write to a connection may stay pending, the client making no room in its socket buffer, before the connection is closed |
 /// | `HPDS_GENOMIC_DATA_DIRECTORY` | `/opt/local/hpds/all/` | Directory of the Rust genomic store |
 /// | `HPDS_GENOMIC_CACHE_BYTES` | 2 GiB | Byte bound of the decoded genomic block cache |
 /// | `HPDS_GENOMIC_READ_BUDGET_BYTES` | 1 GiB | Bound on the genomic blocks every scan of the process holds at once outside the cache |

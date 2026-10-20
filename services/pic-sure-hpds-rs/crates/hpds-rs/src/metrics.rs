@@ -452,7 +452,7 @@ fn render_http(family: &mut Family<'_>, metrics: &Metrics) {
     family.single(
         "hpds_connections_write_stalled_total",
         "counter",
-        "Connections closed because a write to them stayed pending for HPDS_WRITE_STALL_SECONDS, the client reading nothing.",
+        "Connections closed because a write to them stayed pending for HPDS_WRITE_STALL_SECONDS, the client making no room in its socket buffer.",
         crate::connections_write_stalled(),
     );
 }
