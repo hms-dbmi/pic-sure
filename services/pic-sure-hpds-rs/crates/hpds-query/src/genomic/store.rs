@@ -385,6 +385,25 @@ impl GenomicStore {
         self.value_lists.stats()
     }
 
+    /// The largest stored plus decoded bytes of one chunk's blocks (its mask, metadata and
+    /// carrier blocks) over every node: what a cached read holds per genomic thread while it
+    /// reads and decodes a miss before admitting it.
+    pub fn largest_chunk_set_bytes(&self) -> u64 {
+        let both = |l: &GenoLocation| u64::from(l.stored_len) + u64::from(l.decoded_len);
+        self.index
+            .nodes()
+            .iter()
+            .flat_map(|n| n.chunks.iter())
+            .map(|c| both(&c.mask) + both(&c.metadata) + both(&c.carriers))
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The number of genomic pool threads.
+    pub fn threads(&self) -> usize {
+        self.pool.current_num_threads()
+    }
+
     /// The number of distinct INFO columns the store holds, what Java's readiness check
     /// counts as genomic data.
     pub fn info_column_count(&self) -> usize {

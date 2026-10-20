@@ -18,7 +18,9 @@
 //! | `GET /search/values/` (and without the slash) | [`search::search_values`] |
 //!
 //! `GET /actuator/health` is at the root: 200 `{"status":"UP"}` when the merged dictionary of
-//! the partitions holds a concept, otherwise 503 `{"status":"DOWN","reason":...}`. With
+//! the partitions holds a concept (or, with a genomic store, the store holds an INFO column),
+//! otherwise 503 `{"status":"DOWN","reason":...}` ([`AppState::down_reason`]), a genomic
+//! store configured but not served or changed on disk included. With
 //! `HPDS_METRICS=on`, `GET /metrics` is at the root too ([`metrics::metrics`]); otherwise
 //! it is a 404 like any unknown path. Every
 //! request is logged at info under the `hpds_rs::access` target with its method, path, status
@@ -59,6 +61,7 @@ pub mod config;
 pub mod encoding;
 pub mod envelope;
 pub mod error;
+pub mod genomic;
 pub mod jobs;
 pub mod metrics;
 pub mod search;
@@ -117,6 +120,14 @@ pub struct Health {
     /// store. Left out when false.
     #[serde(rename = "storeSuperseded", skip_serializing_if = "std::ops::Not::not")]
     pub store_superseded: bool,
+    /// True while another genomic store has been moved into the genomic directory and the
+    /// service goes on serving the one it opened ([`AppState::genomic_store_superseded`]).
+    /// Left out when false.
+    #[serde(
+        rename = "genomicStoreSuperseded",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub genomic_store_superseded: bool,
 }
 
 async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
@@ -127,6 +138,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
                 status: "UP",
                 reason: None,
                 store_superseded: state.store_superseded(),
+                genomic_store_superseded: state.genomic_store_superseded(),
             }),
         ),
         Some(reason) => (
@@ -135,6 +147,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Health>) {
                 status: "DOWN",
                 reason: Some(reason),
                 store_superseded: state.store_superseded(),
+                genomic_store_superseded: state.genomic_store_superseded(),
             }),
         ),
     }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use hpds_query::Engine;
+use hpds_rs::genomic::{GenomicStatus, attach_genomic};
 use hpds_rs::{
     AppState, Config, ServerTimeouts, log_block_cache_stats, log_result_cache_stats, port_from_env,
     probe_health, router, serve, spawn_result_cache_reporter, spawn_result_reaper,
@@ -135,6 +136,7 @@ fn main() -> ExitCode {
 }
 
 async fn run(config: Config) -> ExitCode {
+    let mut genomic = GenomicStatus::Off;
     let engine = match Engine::open(&config.data_dir, &config.partitions) {
         Ok(engine) => {
             let engine = engine
@@ -151,6 +153,8 @@ async fn run(config: Config) -> ExitCode {
                 result_cache_bytes = config.result_cache_bytes,
                 "store opened"
             );
+            let (engine, status) = attach_genomic(engine, &config);
+            genomic = status;
             Some(Arc::new(engine))
         }
         Err(error) => {
@@ -161,7 +165,7 @@ async fn run(config: Config) -> ExitCode {
     if let Some(engine) = &engine {
         spawn_result_cache_reporter(Arc::clone(engine), RESULT_CACHE_REPORT_PERIOD);
     }
-    let state = match AppState::new(engine.clone(), &config) {
+    let state = match AppState::with_genomic(engine.clone(), &config, genomic) {
         Ok(state) => state,
         Err(error) => {
             tracing::error!(%error, dir = %config.results_dir.display(), "cannot prepare the results directory");

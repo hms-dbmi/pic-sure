@@ -8,6 +8,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::config::Config;
 use crate::error::ApiError;
+use crate::genomic::{GENOMIC_CHANGED_REASON, GenomicStatus};
 use crate::jobs::ResultRegistry;
 use crate::metrics::Metrics;
 use crate::search::SearchIndex;
@@ -19,8 +20,14 @@ pub const NOT_OPENED_REASON: &str = "the phenotype store could not be opened; se
 pub const STORE_CHANGED_REASON: &str =
     "the phenotype store changed on disk after it was opened; restart the service";
 
-/// Health reason when the partitions were opened but hold no concept.
+/// Health reason when the partitions were opened but hold no concept and no genomic store is
+/// served.
 pub const NO_CONCEPTS_REASON: &str = "no partition holds a concept";
+
+/// Health reason when the partitions hold no concept and the genomic store holds no INFO
+/// column, Java's "no phenotype or genomic data loaded".
+pub const NO_DATA_REASON: &str =
+    "no partition holds a concept and the genomic store holds no INFO column";
 
 /// The engine, the async result registry, the search index and, when they are on, the
 /// metrics. Cheap to clone.
@@ -37,6 +44,7 @@ struct Shared {
     sync_timeout: Duration,
     metrics: Option<Metrics>,
     search_gzip: bool,
+    genomic: GenomicStatus,
 }
 
 impl AppState {
@@ -48,6 +56,23 @@ impl AppState {
     /// # Errors
     /// The I/O error of [`ResultRegistry::new`] when the results directory cannot be prepared.
     pub fn new(engine: Option<Arc<Engine>>, config: &Config) -> std::io::Result<Self> {
+        let genomic = match &engine {
+            Some(e) if e.genomic().is_some() => GenomicStatus::Served,
+            _ => GenomicStatus::Off,
+        };
+        Self::with_genomic(engine, config, genomic)
+    }
+
+    /// [`AppState::new`] with the genomic status `genomic` that opening the genomic store
+    /// gave ([`crate::genomic::attach_genomic`]).
+    ///
+    /// # Errors
+    /// As for [`AppState::new`].
+    pub fn with_genomic(
+        engine: Option<Arc<Engine>>,
+        config: &Config,
+        genomic: GenomicStatus,
+    ) -> std::io::Result<Self> {
         let engine_slots = Arc::new(Semaphore::new(config.engine_concurrency));
         let search_index = Arc::new(engine.as_ref().map_or_else(SearchIndex::default, |e| {
             SearchIndex::build(e.partitions().dictionary())
@@ -61,6 +86,7 @@ impl AppState {
                 metrics: config.metrics.then(Metrics::default),
                 search_gzip: config.search_gzip,
                 engine_slots,
+                genomic,
             }),
         })
     }
@@ -92,19 +118,66 @@ impl AppState {
         }
     }
 
-    /// `None` when the partitions are open and their merged dictionary holds at least one
-    /// concept, the rule of Java's `HpdsReadinessHealthIndicator` without genomic data.
-    /// Otherwise why the service is not ready: [`NOT_OPENED_REASON`],
-    /// [`STORE_CHANGED_REASON`] or [`NO_CONCEPTS_REASON`].
+    /// `None` when the service is ready, the rule of Java's `HpdsReadinessHealthIndicator`:
+    /// the partitions are open and their merged dictionary holds at least one concept, or,
+    /// with a genomic store served, either that or the genomic store holds an INFO column.
+    /// Otherwise why the service is not ready, in this order: [`NOT_OPENED_REASON`],
+    /// [`STORE_CHANGED_REASON`], the reason of a genomic store that could not be served
+    /// ([`GenomicStatus::Down`]), [`GENOMIC_CHANGED_REASON`], then [`NO_CONCEPTS_REASON`]
+    /// or, with a genomic store, [`NO_DATA_REASON`]. Unlike Java, which fails to start when
+    /// its genomic processor cannot be built, the service starts and reports DOWN.
     pub fn down_reason(&self) -> Option<&'static str> {
-        match &self.inner.engine {
-            None => Some(NOT_OPENED_REASON),
-            Some(engine) if engine.partitions().check_unchanged().is_err() => {
-                Some(STORE_CHANGED_REASON)
-            }
-            Some(engine) if !engine.partitions().is_healthy() => Some(NO_CONCEPTS_REASON),
+        let engine = match &self.inner.engine {
+            None => return Some(NOT_OPENED_REASON),
+            Some(engine) => engine,
+        };
+        if engine.partitions().check_unchanged().is_err() {
+            return Some(STORE_CHANGED_REASON);
+        }
+        if let GenomicStatus::Down(reason) = self.inner.genomic {
+            return Some(reason);
+        }
+        let genomic = engine.genomic();
+        if genomic.is_some_and(|store| store.check_unchanged().is_err()) {
+            return Some(GENOMIC_CHANGED_REASON);
+        }
+        if engine.partitions().is_healthy() {
+            return None;
+        }
+        match genomic {
+            None => Some(NO_CONCEPTS_REASON),
+            Some(store) if store.info_column_count() == 0 => Some(NO_DATA_REASON),
             Some(_) => None,
         }
+    }
+
+    /// What the service does with genomic data.
+    pub fn genomic_status(&self) -> GenomicStatus {
+        self.inner.genomic
+    }
+
+    /// Fails with a 503 naming the reason when `needs_genomic` holds and the genomic store
+    /// is configured but could not be served, so a request that needs genomic data is not
+    /// answered as if no genomic data were configured.
+    ///
+    /// # Errors
+    /// A 503 [`ApiError`] carrying the [`GenomicStatus::Down`] reason.
+    pub fn check_genomic(&self, needs_genomic: bool) -> Result<(), ApiError> {
+        match self.inner.genomic {
+            GenomicStatus::Down(reason) if needs_genomic => Err(ApiError::unavailable(reason)),
+            _ => Ok(()),
+        }
+    }
+
+    /// True while another genomic store of another id has been moved into the genomic
+    /// directory and the engine goes on serving the one it opened. Read after
+    /// [`AppState::down_reason`], which runs the check that notices it.
+    pub fn genomic_store_superseded(&self) -> bool {
+        self.inner
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.genomic())
+            .is_some_and(hpds_query::GenomicStore::store_superseded)
     }
 
     /// True while another store of another id has been moved into the data directory and

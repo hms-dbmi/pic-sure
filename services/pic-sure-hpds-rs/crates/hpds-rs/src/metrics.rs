@@ -15,8 +15,9 @@ use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use hpds_query::{BlockCacheStats, PrefixReadStats, ResultType};
+use hpds_query::{BlockCacheStats, GenomicStore, PrefixReadStats, ResultType};
 
+use crate::genomic::GenomicStatus;
 use crate::state::AppState;
 
 /// Content type of the exposition format.
@@ -277,6 +278,17 @@ pub fn render(state: &AppState) -> String {
             "Queries refused because a cohort held patients outside the selected partitions.",
             partitions.cohort_guard_refusals(),
         );
+        if state.genomic_status() != GenomicStatus::Off {
+            family.single(
+                "hpds_genomic_store_up",
+                "gauge",
+                "1 while the genomic store is served, 0 while one is configured and not served; absent without genomic data.",
+                u64::from(state.genomic_status() == GenomicStatus::Served),
+            );
+        }
+        if let Some(store) = engine.genomic() {
+            render_genomic(&mut family, store);
+        }
         if let Some(stats) = engine.result_cache_stats() {
             family.single(
                 "hpds_result_cache_hits_total",
@@ -476,6 +488,131 @@ fn render_prefix_reads(family: &mut Family<'_>, stats: &PrefixReadStats) {
         "counter",
         "Seconds chunks spent waiting for the budget, summed over threads.",
         stats.wait_seconds,
+    );
+}
+
+fn render_genomic(family: &mut Family<'_>, store: &GenomicStore) {
+    let cache = store.cache_stats();
+    let counters: [(&str, &str, &str, u64); 8] = [
+        (
+            "hpds_genomic_cache_hits_total",
+            "counter",
+            "Genomic block lookups that found their block cached.",
+            cache.hits,
+        ),
+        (
+            "hpds_genomic_cache_misses_total",
+            "counter",
+            "Genomic block lookups that did not.",
+            cache.misses,
+        ),
+        (
+            "hpds_genomic_cache_loads_total",
+            "counter",
+            "Genomic blocks read and admitted to the cache.",
+            cache.loads,
+        ),
+        (
+            "hpds_genomic_cache_evictions_total",
+            "counter",
+            "Genomic blocks dropped to stay within the cache's byte bound.",
+            cache.evictions,
+        ),
+        (
+            "hpds_genomic_cache_scan_reads_total",
+            "counter",
+            "Genomic blocks read by scans under the read budget and dropped without being cached.",
+            cache.scan_reads,
+        ),
+        (
+            "hpds_genomic_cache_entries",
+            "gauge",
+            "Genomic blocks the cache holds.",
+            cache.entries,
+        ),
+        (
+            "hpds_genomic_cache_bytes",
+            "gauge",
+            "Bytes the genomic cache holds, each decoded block plus a fixed overhead.",
+            cache.bytes,
+        ),
+        (
+            "hpds_genomic_cache_capacity_bytes",
+            "gauge",
+            "Byte bound of the genomic cache (HPDS_GENOMIC_CACHE_BYTES).",
+            cache.capacity,
+        ),
+    ];
+    for (name, kind, help, value) in counters {
+        family.single(name, kind, help, value);
+    }
+    let budget = store.read_stats();
+    family.single(
+        "hpds_genomic_read_budget_bytes",
+        "gauge",
+        "Bound on the bytes genomic scans hold at once outside the cache (HPDS_GENOMIC_READ_BUDGET_BYTES).",
+        budget.budget,
+    );
+    family.single(
+        "hpds_genomic_read_held_bytes",
+        "gauge",
+        "Stored plus decoded bytes genomic scans hold now under the budget.",
+        budget.held,
+    );
+    family.single(
+        "hpds_genomic_read_held_peak_bytes",
+        "gauge",
+        "The most bytes genomic scans have held at once under the budget.",
+        budget.peak_held,
+    );
+    family.single(
+        "hpds_genomic_read_permits_total",
+        "counter",
+        "Genomic blocks granted bytes of the read budget.",
+        budget.permits,
+    );
+    family.single(
+        "hpds_genomic_read_waits_total",
+        "counter",
+        "Genomic blocks that waited for bytes of the read budget to be released.",
+        budget.waits,
+    );
+    family.single(
+        "hpds_genomic_read_wait_seconds_total",
+        "counter",
+        "Seconds genomic reads spent waiting for the read budget, summed over threads.",
+        budget.wait_seconds,
+    );
+    family.single(
+        "hpds_genomic_largest_chunk_set_bytes",
+        "gauge",
+        "Stored plus decoded bytes of the store's largest chunk set, what each genomic thread may hold reading a block before it is cached.",
+        store.largest_chunk_set_bytes(),
+    );
+    family.single(
+        "hpds_genomic_threads",
+        "gauge",
+        "Threads of the genomic pool.",
+        store.threads(),
+    );
+    let (values, value_bytes) = store.value_list_stats();
+    family.single(
+        "hpds_genomic_search_values",
+        "gauge",
+        "INFO values kept in the categorical columns' search lists.",
+        values,
+    );
+    family.single(
+        "hpds_genomic_search_value_bytes",
+        "gauge",
+        "Bytes of the INFO values kept in the search lists.",
+        value_bytes,
+    );
+    family.single(
+        "hpds_genomic_store_superseded",
+        "gauge",
+        "1 while another genomic store has been moved into the genomic directory and the service serves the one it opened; a restart serves the new one.",
+        u64::from(store.store_superseded()),
     );
 }
 
