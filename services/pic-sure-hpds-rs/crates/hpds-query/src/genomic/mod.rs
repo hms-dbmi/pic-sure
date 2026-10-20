@@ -8,11 +8,17 @@
 //!   (`filters`), then narrows the phenotypic cohort to the patients the filters keep
 //!   (`cohort`). COUNT, the cross counts, PATIENTS and DATAFRAME then run on the narrowed
 //!   cohort.
+//! - The variant result types read the same node evaluation: each node's variant list
+//!   (`variants`), merged contig by contig in spec order for VARIANT_COUNT_FOR_QUERY and
+//!   VARIANT_LIST_FOR_QUERY; the excerpts (`excerpt`), measured and then streamed row by row;
+//!   and INFO_COLUMN_LISTING (`listing`) from the index alone.
 //!
 //! Genomic work runs on the genomic pool, entered from the request's blocking thread. Its
 //! scans take permits from the genomic read budget on the pool's workers, one block at a time,
 //! never in a frame that calls into rayon, so a genomic wait never parks a phenotype worker
-//! and no cycle of waits can form.
+//! and no cycle of waits can form. An excerpt's merge runs on the request's thread and keeps
+//! the chunks it is reading past their permit, as per-query state: at most a cursor chunk and a
+//! lookup chunk set per node of the contig it walks.
 
 mod cohort;
 mod excerpt;
