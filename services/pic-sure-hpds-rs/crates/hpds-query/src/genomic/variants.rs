@@ -27,8 +27,7 @@ use hpds_format::{GenoBlockKind, MaskChunk, MaskKind, PosBitset, compare_specs, 
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 
-use super::cohort::{NodeEvaluation, chunks_holding, evaluate_nodes};
-use super::filters::GenomicFilters;
+use super::cohort::{CheckedFilters, NodeEvaluation, chunks_holding, evaluate_nodes};
 use super::store::{GenomicStore, PLAN_CACHE_SHARE_DIVISOR, ReadPath};
 use crate::error::Result;
 
@@ -61,7 +60,7 @@ impl VariantLists {
 /// [`crate::QueryError::GenomicBlock`] when a block cannot be loaded.
 pub(crate) fn variant_lists(
     store: &GenomicStore,
-    filters: &GenomicFilters,
+    filters: &CheckedFilters,
     cohort: &RoaringBitmap,
 ) -> Result<VariantLists> {
     let node_count = store.index().nodes().len();
@@ -70,7 +69,7 @@ pub(crate) fn variant_lists(
         evaluation,
         path: ReadPath::Cached,
     };
-    if !filters.has_info_filter() {
+    if !filters.filters.has_info_filter() {
         return Ok(empty(None));
     }
     let Some(evaluation) = evaluate_nodes(store, filters, cohort)? else {

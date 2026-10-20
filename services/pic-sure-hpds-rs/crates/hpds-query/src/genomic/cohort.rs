@@ -57,7 +57,7 @@ const COLUMN_AND_KEY_DELIMITER: &str = "_____";
 /// cannot be loaded.
 pub(crate) fn genomic_cohort(
     store: &GenomicStore,
-    filters: &GenomicFilters,
+    filters: &CheckedFilters,
     cohort: &RoaringBitmap,
 ) -> Result<RoaringBitmap> {
     Ok(evaluate_nodes(store, filters, cohort)?
@@ -108,14 +108,14 @@ impl NodeEvaluation {
 /// As for [`genomic_cohort`].
 pub(super) fn evaluate_nodes(
     store: &GenomicStore,
-    filters: &GenomicFilters,
+    checked: &CheckedFilters,
     cohort: &RoaringBitmap,
 ) -> Result<Option<NodeEvaluation>> {
     debug_assert!(
         rayon::current_thread_index().is_none(),
         "genomic work was entered from a rayon worker"
     );
-    let columns = Columns::of(store, filters)?;
+    let (filters, columns) = (&checked.filters, &checked.columns);
     let scopes = group_scopes(store, cohort);
     let node_count = store.index().nodes().len();
     let infos: Vec<NodeInfo> = if filters.has_info_filter() {
@@ -124,7 +124,7 @@ pub(super) fn evaluate_nodes(
             .install(|| {
                 (0..node_count)
                     .into_par_iter()
-                    .map(|n| node_info(store, filters, &columns, &scopes, n as u16))
+                    .map(|n| node_info(store, filters, columns, &scopes, n as u16))
                     .collect::<Vec<Result<NodeInfo>>>()
             })
             .into_iter()
@@ -147,7 +147,7 @@ pub(super) fn evaluate_nodes(
                     match scope {
                         None => Ok(None),
                         Some(scope) => {
-                            node_mask(store, filters, &columns, node, scope, &infos[n], path)
+                            node_mask(store, filters, columns, node, scope, &infos[n], path)
                         }
                     }
                 })
@@ -158,7 +158,32 @@ pub(super) fn evaluate_nodes(
     Ok(Some(NodeEvaluation { infos, masks }))
 }
 
+/// A query's genomic filters, translated as `QueryExecutor` translates them and checked
+/// against the store's index: every refusal that depends on the request and the index alone,
+/// decided at admission, before any phenotypic or genomic block is read.
+#[derive(Debug)]
+pub(crate) struct CheckedFilters {
+    /// The translated filters.
+    pub(crate) filters: GenomicFilters,
+    columns: Columns,
+}
+
+impl CheckedFilters {
+    /// Translates `query`'s genomic filters and checks them against `store`'s index.
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicFilter`] for a filter Java fails on as sent (see
+    /// [`GenomicFilters::translate`]) and for a numeric filter on a column some node holds as
+    /// categorical.
+    pub(crate) fn new(store: &GenomicStore, query: &crate::model::Query) -> Result<Self> {
+        let filters = GenomicFilters::translate(query)?;
+        let columns = Columns::of(store, &filters)?;
+        Ok(CheckedFilters { filters, columns })
+    }
+}
+
 /// The column table index of every INFO filter's column, after the checks over the index.
+#[derive(Debug)]
 struct Columns {
     categorical: Vec<Option<u16>>,
     numeric: Vec<Option<u16>>,

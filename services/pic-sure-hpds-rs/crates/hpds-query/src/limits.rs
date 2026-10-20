@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 
 use crate::error::{QueryError, Result};
+use crate::genomic::CheckedFilters;
 use crate::model::{PhenotypicClause, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{PartitionSet, Selection};
 
@@ -100,7 +101,11 @@ impl QueryLimits {
         self.check_shape_for(query, select_use)?;
         let selection = set.select(query)?;
         self.check_concepts(query, &selection)?;
-        Ok(CheckedQuery { query, selection })
+        Ok(CheckedQuery {
+            query,
+            selection,
+            genomic: None,
+        })
     }
 
     fn check_shape_for(&self, query: &Query, select_use: SelectUse) -> Result<()> {
@@ -227,6 +232,7 @@ impl SelectUse {
 pub(crate) struct CheckedQuery<'q, 's> {
     query: &'q Query,
     selection: Selection<'s>,
+    genomic: Option<CheckedFilters>,
 }
 
 impl<'q, 's> CheckedQuery<'q, 's> {
@@ -238,6 +244,17 @@ impl<'q, 's> CheckedQuery<'q, 's> {
     /// The partitions the query's consents select.
     pub(crate) fn selection(&self) -> &Selection<'s> {
         &self.selection
+    }
+
+    /// The query's genomic filters as admission checked them, `None` when it sends none.
+    pub(crate) fn genomic(&self) -> Option<&CheckedFilters> {
+        self.genomic.as_ref()
+    }
+
+    /// The receipt with the query's checked genomic filters.
+    pub(crate) fn with_genomic(mut self, genomic: Option<CheckedFilters>) -> Self {
+        self.genomic = genomic;
+        self
     }
 }
 

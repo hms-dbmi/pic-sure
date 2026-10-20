@@ -532,6 +532,39 @@ fn what_java_fails_on_is_refused_even_for_an_empty_cohort() {
     );
 }
 
+/// A filter Java fails on as sent is refused at admission, before the phenotypic clause is
+/// evaluated: beside a clause the evaluator refuses, the genomic refusal is the answer, and a
+/// clause that would read every block is never read.
+#[test]
+fn static_genomic_refusals_come_before_any_phenotypic_work() {
+    let f = fixture(GenoMode::LocalDistributed);
+    let e = &f.engine;
+    let without_criteria: hpds_query::PhenotypicClause = serde_json::from_value(
+        serde_json::json!({"phenotypicFilterType": "FILTER", "conceptPath": SEX}),
+    )
+    .unwrap();
+    for filters in [
+        vec![spec("rs123")],
+        vec![numeric(AF, 0.2, 0.1)],
+        vec![numeric(GENE, 0.0, 1.0)],
+    ] {
+        let mut q = genomic_query(ResultType::Count, filters.clone());
+        q.phenotypic_clause = Some(without_criteria.clone());
+        assert!(
+            matches!(e.count(&q), Err(QueryError::GenomicFilter(_))),
+            "{filters:?}"
+        );
+        q.phenotypic_clause = None;
+        assert!(matches!(e.read_plan(&q), Err(QueryError::GenomicFilter(_))));
+    }
+    let mut q = genomic_query(ResultType::Count, vec![categorical(GENE, &["G1"])]);
+    q.phenotypic_clause = Some(without_criteria);
+    assert!(matches!(
+        e.count(&q),
+        Err(QueryError::FilterWithoutCriteria { .. })
+    ));
+}
+
 #[test]
 fn without_a_genomic_store_genomic_filters_are_unsupported_and_spec_paths_are_concepts() {
     let pheno = partitioned_rows(&[("pA", phenotype_rows(1..=10))]);

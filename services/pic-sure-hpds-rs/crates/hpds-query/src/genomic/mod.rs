@@ -23,12 +23,11 @@ mod store;
 mod tests;
 mod variants;
 
-pub(crate) use cohort::genomic_cohort;
+pub(crate) use cohort::{CheckedFilters, genomic_cohort};
 pub use excerpt::{
     DEFAULT_MAX_EXCERPT_BYTES, ExcerptAnswer, NO_VARIANTS_FOUND, VariantResultSettings, VcfExcerpt,
 };
 pub(crate) use excerpt::{excerpt_columns, java_binary_search, not_allowed, subset_column_ids};
-pub(crate) use filters::GenomicFilters;
 pub use listing::InfoColumnMeta;
 pub(crate) use listing::{info_column_listing, info_column_listing_json};
 pub(crate) use store::on_genomic_worker;

@@ -15,7 +15,7 @@ use crate::cohort::{evaluate_cohort_cow, for_each_row_of};
 use crate::error::{QueryError, Result};
 use crate::fan_out;
 use crate::genomic::{
-    ExcerptAnswer, GenomicFilters, GenomicStore, InfoColumnMeta, NO_VARIANTS_FOUND, VariantLists,
+    CheckedFilters, ExcerptAnswer, GenomicStore, InfoColumnMeta, NO_VARIANTS_FOUND, VariantLists,
     VariantResultSettings, VcfExcerpt, excerpt_columns, for_each_listed_spec, genomic_cohort,
     info_column_listing, java_binary_search, not_allowed, subset_column_ids, variant_lists,
 };
@@ -278,26 +278,34 @@ impl Engine {
         if query.genomic_filters.is_empty() {
             return Ok(cohort);
         }
-        let Some(store) = &self.genomic else {
+        let (Some(store), Some(filters)) = (&self.genomic, checked.genomic()) else {
             return Err(QueryError::Unsupported("genomicFilters".into()));
         };
-        let filters = GenomicFilters::translate(query)?;
-        if !filters.has_filters() {
+        if !filters.filters.has_filters() {
             return Ok(cohort);
         }
-        let found = genomic_cohort(store, &filters, &cohort)?;
+        let found = genomic_cohort(store, filters, &cohort)?;
         crate::cohort::guard(checked.selection(), &found)?;
         Ok(Cow::Owned(found))
     }
 
     /// The single admission step every computation goes through (see
-    /// [`QueryLimits::admit`]). The receipt it returns is the only way to reach the cohort
-    /// evaluator and the result computations.
+    /// [`QueryLimits::admit`]), then the refusal of genomic filters without a genomic store,
+    /// then the translation of the genomic filters and their checks against the genomic
+    /// index ([`CheckedFilters`]), so a filter Java fails on as sent is refused before any
+    /// block is read. The receipt it returns is the only way to reach the cohort evaluator
+    /// and the result computations.
     fn admit<'q>(&self, query: &'q Query, select_use: SelectUse) -> Result<CheckedQuery<'q, '_>> {
         self.partitions.check_unchanged()?;
         let checked = self.limits.admit(query, &self.partitions, select_use)?;
         self.check_genomic_store(query)?;
-        Ok(checked)
+        let genomic = match &self.genomic {
+            Some(store) if !query.genomic_filters.is_empty() => {
+                Some(CheckedFilters::new(store, query)?)
+            }
+            _ => None,
+        };
+        Ok(checked.with_genomic(genomic))
     }
 
     fn prepare<'q>(
@@ -696,12 +704,11 @@ impl Engine {
         if query.genomic_filters.is_empty() {
             return Ok(None);
         }
-        let Some(store) = &self.genomic else {
+        let (Some(store), Some(filters)) = (&self.genomic, checked.genomic()) else {
             return Err(QueryError::Unsupported("genomicFilters".into()));
         };
         let cohort = evaluate_cohort_cow(checked)?;
-        let filters = GenomicFilters::translate(query)?;
-        Ok(Some((store, variant_lists(store, &filters, &cohort)?)))
+        Ok(Some((store, variant_lists(store, filters, &cohort)?)))
     }
 
     /// The headers of VCF_EXCERPT's patient columns for the patients `ids`: each id, or with
