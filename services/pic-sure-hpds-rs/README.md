@@ -114,19 +114,22 @@ docker build --build-arg VENDORED=1 -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi
 The runtime stage of the ETL image still installs `ca-certificates` from the Debian package mirror,
 so that build needs the mirror even when it needs no crates.io.
 
-A local `vendor/` directory adds about 342 MB to the default build context, so move it aside when building without `VENDORED=1`.
+A local `vendor/` directory adds about 342 MB to the default build context, so move it aside
+when building without `VENDORED=1`.
 
 `vendor/` is not committed. Regenerate it whenever `Cargo.lock` changes. The build still uses
 `--locked`, so a stale `vendor/` fails on the missing package instead of building old code.
 
 ### Continuous integration
 
-`.github/workflows/rust-hpds.yml` runs when `services/pic-sure-hpds-rs/**` changes, and weekly so
-a new advisory shows up without a code change. It checks formatting, runs clippy with warnings
+`.github/workflows/rust-hpds.yml` runs when `services/pic-sure-hpds-rs/**` changes. It checks
+formatting, runs clippy with warnings
 denied, runs the workspace tests and the library tests in release mode (one test only compiles
 in a release build), audits `Cargo.lock` with `cargo audit`, checks licenses, bans and sources
 with `cargo deny` against `deny.toml`, uploads a CycloneDX SBOM for each binary as the
-`hpds-rs-sbom` artifact, and builds both images for `linux/amd64`.
+`hpds-rs-sbom` artifact, builds both images for `linux/amd64`, and builds both build stages
+offline from a freshly vendored `vendor/` so the offline build cannot regress. A weekly run only
+audits and checks the supply chain, so a new advisory shows up without a code change.
 
 The workspace test step skips two `hpds-query` engine tests that fail intermittently under
 parallel load: `peak_live_entries_stay_under_the_chunk_bound` (a bookkeeping count in the test,
