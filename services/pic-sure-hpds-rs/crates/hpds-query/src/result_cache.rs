@@ -24,8 +24,8 @@
 //! themselves (the selection replaces them, so unknown values and their order do not
 //! matter), and `select` for COUNT, CATEGORICAL_CROSS_COUNT and CONTINUOUS_CROSS_COUNT.
 //! CATEGORICAL_CROSS_COUNT reads the concepts and values of the clause's filters, which
-//! the clause encoding covers. `genomicFilters` is always empty here, since admission
-//! refuses any.
+//! the clause encoding covers. A query with `genomicFilters` is never cached (`key_of`
+//! skips it), so the key needs no encoding of them.
 //!
 //! The key is the full encoding, not a hash of it, so two queries share an entry only when
 //! they encode identically.
@@ -219,7 +219,8 @@ pub(crate) fn is_storable(result: &SyncResult) -> bool {
 }
 
 /// The cache key of an admitted query under store generation `generation`, or `None` when
-/// its result type is not cached or it carries genomic filters (which admission refuses).
+/// its result type is not cached or it carries genomic filters, whose answers are never
+/// cached.
 pub(crate) fn key_of(checked: &CheckedQuery<'_, '_>, generation: u128) -> Option<Box<[u8]>> {
     let query = checked.query();
     let result_type = query.expected_result_type;

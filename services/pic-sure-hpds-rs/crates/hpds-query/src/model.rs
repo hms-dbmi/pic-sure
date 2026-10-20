@@ -1740,7 +1740,7 @@ mod tests {
         ]
     }
 
-    /// Mirrors the probes of the harmonization service (`v5-e6` probes): a decimal near the
+    /// Mirrors probes sent to the harmonization service: a decimal near the
     /// midpoint above the stored key `0x39ae6e3d` (`0.0003327`) reads as the key in an object
     /// query, through the double's `Double.toString`, and as the float above it in a string
     /// query or as a string; just below the midpoint it reads as the key everywhere.

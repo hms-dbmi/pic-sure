@@ -30,6 +30,10 @@ pub const DEFAULT_GENOMIC_READ_BUDGET_BYTES: u64 = 1 << 30;
 /// plans to read are at most the cache's capacity divided by this; above that it scans.
 pub(crate) const PLAN_CACHE_SHARE_DIVISOR: u64 = 4;
 
+/// Bytes the cache weighs each entry at beyond its decoded block: the key, the `Arc` and the
+/// cache's own bookkeeping.
+const CACHE_ENTRY_OVERHEAD: usize = 64;
+
 /// Name of the file `hpds-etl` writes last into a store directory, holding its store id.
 const GENERATION_FILE_NAME: &str = ".generation";
 
@@ -73,7 +77,7 @@ pub struct GenomicCacheStats {
     pub capacity: u64,
     /// Blocks the cache holds.
     pub entries: u64,
-    /// Their summed weight, the heap size of each decoded block.
+    /// Their summed weight: the heap size of each decoded block plus a fixed overhead.
     pub bytes: u64,
     /// Lookups that found their block cached.
     pub hits: u64,
@@ -167,7 +171,7 @@ pub(crate) enum CachedBlock {
 }
 
 impl CachedBlock {
-    /// The weight the cache bounds: the decoded block's heap size.
+    /// The decoded block's heap size, its weight in the cache before the entry overhead.
     fn heap_size(&self) -> usize {
         match self {
             CachedBlock::Mask(b) => b.heap_size(),
@@ -297,7 +301,8 @@ impl GenomicStore {
         let cache = Cache::builder()
             .max_capacity(options.cache_bytes)
             .weigher(|_: &u64, block: &CachedBlock| {
-                u32::try_from(block.heap_size()).unwrap_or(u32::MAX)
+                u32::try_from(block.heap_size().saturating_add(CACHE_ENTRY_OVERHEAD))
+                    .unwrap_or(u32::MAX)
             })
             .eviction_listener(move |_, _, cause| {
                 if cause == RemovalCause::Size {

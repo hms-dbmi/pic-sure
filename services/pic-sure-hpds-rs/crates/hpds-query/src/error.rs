@@ -19,7 +19,7 @@ pub enum QueryError {
 
     /// The query asks for something this engine does not do: genomic filters when it serves
     /// no genomic store. The message names the feature.
-    #[error("{0} is not supported by this phenotype-only HPDS")]
+    #[error("{0} is not supported: this HPDS serves no genomic store")]
     Unsupported(String),
 
     /// A genomic filter Java fails on when it evaluates it (a `null` key or value, a variant
