@@ -103,4 +103,12 @@ class DumpGenomicCanonicalTest {
         assertThrows(Exception.class, () -> DumpGenomicCanonical.main(new String[] {"local", root.toString(), output.toString()}));
         assertEquals(false, Files.exists(output));
     }
+
+    @Test
+    void anExistingOutputIsLeftIntactWhenTheRunIsRefused(@TempDir Path dir) throws IOException {
+        Path root = Files.createDirectory(dir.resolve("root"));
+        Path output = Files.writeString(dir.resolve("dump.txt"), "another process");
+        assertThrows(IOException.class, () -> DumpGenomicCanonical.main(new String[] {"local", root.toString(), output.toString()}));
+        assertEquals("another process", Files.readString(output));
+    }
 }

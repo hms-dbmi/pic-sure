@@ -31,6 +31,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -108,12 +109,10 @@ public class DumpGenomicCanonical {
         Path output = resolveOutput(Path.of(args[2]), root);
         DumpGenomicCanonical dumper = new DumpGenomicCanonical();
         dumper.digest = form.equals("digest");
+        FileChannel channel = ExportForMigration.createPrivateFile(output);
         boolean complete = false;
         try (
-            Writer writer = new BufferedWriter(
-                new OutputStreamWriter(Channels.newOutputStream(ExportForMigration.createPrivateFile(output)), StandardCharsets.UTF_8),
-                1 << 20
-            )
+            Writer writer = new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(channel), StandardCharsets.UTF_8), 1 << 20)
         ) {
             dumper.out = writer;
             dumper.dump(args[0], root.toFile());
