@@ -246,23 +246,19 @@ fn query_validator_still_validates_authorization_filters() {
     );
 }
 
+/// Variant-spec paths in `select` and in phenotypic filters are concept paths like any other,
+/// as Java's validator reads them; only the genomic result types are refused.
 #[test]
-fn query_validator_refuses_genomic_input() {
+fn query_validator_refuses_genomic_result_types_only() {
     let m = meta();
     let mut q = query(ResultType::Count, None);
     q.select = vec!["rs12345".into()];
-    assert!(matches!(
-        LENIENT.validate(&q, &m),
-        Err(QueryError::Unsupported(_))
-    ));
+    assert!(LENIENT.validate(&q, &m).is_ok());
     let q = query(
         ResultType::Count,
         Some(clause(filter(Required, "chr1,12345,A,G", None, None, None))),
     );
-    assert!(matches!(
-        LENIENT.validate(&q, &m),
-        Err(QueryError::Unsupported(_))
-    ));
+    assert!(LENIENT.validate(&q, &m).is_ok());
     for result_type in ResultType::ALL.iter().filter(|r| r.is_genomic()) {
         let q = query(*result_type, None);
         assert!(matches!(

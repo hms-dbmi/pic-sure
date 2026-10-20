@@ -1,5 +1,5 @@
 //! `QueryValidator` and `PhenotypicFilterValidator`, plus the check that refuses the
-//! genomic features this engine does not implement.
+//! genomic result types this engine does not compute.
 //!
 //! Java runs `QueryValidator` only when an asynchronous query is submitted (`POST /query`).
 //! `/query/sync` validates nothing, but the store still refuses a query without consent
@@ -81,34 +81,20 @@ fn comma_spec(key: &str, with_annotations: bool) -> bool {
         && (!with_annotations || (word(suffix[3]) && word(suffix[4])))
 }
 
-/// Refuses what a phenotype-only engine cannot answer: a genomic result type, a non-empty
-/// `genomicFilters`, or a variant-spec path ([`path_is_variant_spec`]) in `select` or in a
-/// filter. Authorization filters are never applied, so their paths are not checked here.
+/// Refuses a genomic result type (`INFO_COLUMN_LISTING`, `VARIANT_COUNT_FOR_QUERY`,
+/// `VARIANT_LIST_FOR_QUERY`, `VCF_EXCERPT`, `AGGREGATE_VCF_EXCERPT`), which this engine does not
+/// compute. Genomic filters are answered by the engine's genomic store, and a variant-spec path
+/// ([`path_is_variant_spec`]) in `select` or in a phenotypic filter is a concept path like any
+/// other, as in Java: an empty DATAFRAME column, a concept no partition holds.
 ///
 /// # Errors
-/// [`QueryError::Unsupported`] naming the first unsupported feature found.
+/// [`QueryError::Unsupported`] naming the result type.
 pub fn check_supported(query: &Query) -> Result<()> {
     if query.expected_result_type.is_genomic() {
         return Err(QueryError::Unsupported(format!(
             "result type {}",
             query.expected_result_type
         )));
-    }
-    if !query.genomic_filters.is_empty() {
-        return Err(QueryError::Unsupported("genomicFilters".into()));
-    }
-    let paths = query.select.iter().map(String::as_str).chain(
-        query
-            .all_filters()
-            .into_iter()
-            .map(|f| f.concept_path.as_str()),
-    );
-    for path in paths {
-        if path_is_variant_spec(path) {
-            return Err(QueryError::Unsupported(format!(
-                "variant-spec concept path {path:?}"
-            )));
-        }
     }
     Ok(())
 }

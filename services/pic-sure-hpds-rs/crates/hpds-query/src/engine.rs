@@ -14,6 +14,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use crate::cohort::{evaluate_cohort_cow, for_each_row_of};
 use crate::error::{QueryError, Result};
 use crate::fan_out;
+use crate::genomic::{GenomicFilters, GenomicStore, genomic_cohort};
 use crate::limits::{CheckedQuery, QueryLimits, SelectUse};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{ConceptRead, PartitionOptions, PartitionSet, ReadMode, Selection};
@@ -38,7 +39,8 @@ pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 ///
 /// Every computation goes through one admission step whose receipt every evaluation
 /// requires: it checks the query's shape against the engine's [`QueryLimits`], refuses
-/// unsupported genomic input with [`crate::check_supported`], selects the partitions the
+/// genomic result types with [`crate::check_supported`] and genomic filters when no
+/// [`GenomicStore`] is attached, selects the partitions the
 /// query's consents grant ([`PartitionSet::select`]), which fails with
 /// [`QueryError::UserConsentsRequired`] when consents are required and absent, and checks
 /// the concepts it touches in those partitions against the limits, all before any block is
@@ -62,6 +64,7 @@ pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 #[derive(Debug)]
 pub struct Engine {
     partitions: PartitionSet,
+    genomic: Option<GenomicStore>,
     export_pin_bytes: u64,
     limits: QueryLimits,
     result_cache: Option<ResultCache>,
@@ -80,10 +83,25 @@ impl Engine {
     pub fn new(partitions: PartitionSet) -> Self {
         Engine {
             partitions,
+            genomic: None,
             export_pin_bytes: DEFAULT_EXPORT_PIN_BYTES,
             limits: QueryLimits::default(),
             result_cache: None,
         }
+    }
+
+    /// Attaches the genomic store, which answers `genomicFilters`: every cohort is narrowed to
+    /// the patients the filters keep (see [`Engine::cohort`]). Without one, a query with
+    /// genomic filters is refused with [`QueryError::Unsupported`].
+    #[must_use]
+    pub fn with_genomic(mut self, store: GenomicStore) -> Self {
+        self.genomic = Some(store);
+        self
+    }
+
+    /// The attached genomic store.
+    pub fn genomic(&self) -> Option<&GenomicStore> {
+        self.genomic.as_ref()
     }
 
     /// Turns on the result cache, bounded at `bytes`, or leaves it off when `bytes` is 0
@@ -167,13 +185,27 @@ impl Engine {
     /// [`PartitionSet::requires_consents`] (the Java property
     /// `hpds.requireAuthorizationFilter`) says so.
     ///
+    /// Genomic filters are not validated here, as Java's validator does not look at them;
+    /// they are refused when no genomic store is attached.
+    ///
     /// # Errors
-    /// The errors of [`QueryValidator::validate`].
+    /// The errors of [`QueryValidator::validate`], and [`QueryError::Unsupported`] for
+    /// genomic filters without a genomic store.
     pub fn validate(&self, query: &Query) -> Result<()> {
         QueryValidator {
             require_consents: self.partitions.requires_consents(),
         }
-        .validate(query, &self.partitions)
+        .validate(query, &self.partitions)?;
+        self.check_genomic_store(query)
+    }
+
+    /// Refuses genomic filters when no genomic store is attached. Java fails on them there
+    /// with a `NullPointerException`.
+    fn check_genomic_store(&self, query: &Query) -> Result<()> {
+        if !query.genomic_filters.is_empty() && self.genomic.is_none() {
+            return Err(QueryError::Unsupported("genomicFilters".into()));
+        }
+        Ok(())
     }
 
     /// Fails when consents are required and `query` carries no consent value, the check
@@ -186,18 +218,26 @@ impl Engine {
         self.partitions.check_consents(query)
     }
 
-    /// The cohort: patients matching the phenotypic clause in the partitions the query's
-    /// consents select (`QueryExecutor.getPatientSubsetForQuery` without genomic filters).
+    /// The cohort (`QueryExecutor.getPatientSubsetForQuery`): patients matching the phenotypic
+    /// clause in the partitions the query's consents select, narrowed by the genomic filters.
+    ///
+    /// The genomic filters are translated as `QueryExecutor` translates them; when none
+    /// remains, the phenotypic cohort is the answer. Otherwise they are checked (a refusal does
+    /// not depend on the cohort, though Java skips the genomic step for an empty one), and a
+    /// non-empty cohort is narrowed to the patients every node's filters keep, unioned over
+    /// nodes and groups (see `crate::genomic`). The narrowed cohort passes the same member
+    /// check as the phenotypic one.
     ///
     /// # Errors
     /// [`QueryError::LimitExceeded`] when the query breaks a bound,
-    /// [`QueryError::Unsupported`] for genomic input, [`QueryError::UserConsentsRequired`]
-    /// when consents are required and absent, [`QueryError::FilterWithoutCriteria`],
-    /// [`QueryError::EmptySubquery`], [`QueryError::MissingOperator`] and
-    /// [`QueryError::TypeMismatch`] where Java's executor throws,
+    /// [`QueryError::Unsupported`] for a genomic result type or for genomic filters without a
+    /// genomic store, [`QueryError::UserConsentsRequired`] when consents are required and
+    /// absent, [`QueryError::FilterWithoutCriteria`], [`QueryError::EmptySubquery`],
+    /// [`QueryError::MissingOperator`] and [`QueryError::TypeMismatch`] where Java's executor
+    /// throws, [`QueryError::GenomicFilter`] for a genomic filter Java fails on,
     /// [`QueryError::StoreInconsistent`] when a block's kind disagrees with the index,
-    /// [`QueryError::Block`] when a block cannot be loaded, and
-    /// [`QueryError::CohortOutsideSelection`] when the cohort holds a patient outside the
+    /// [`QueryError::Block`] and [`QueryError::GenomicBlock`] when a block cannot be loaded,
+    /// and [`QueryError::CohortOutsideSelection`] when the cohort holds a patient outside the
     /// selected partitions, which only a fault in the engine can cause.
     pub fn cohort(&self, query: &Query) -> Result<RoaringBitmap> {
         self.cohort_cow(query).map(Cow::into_owned)
@@ -209,7 +249,27 @@ impl Engine {
     /// # Errors
     /// As for [`Engine::cohort`].
     pub fn cohort_cow(&self, query: &Query) -> Result<Cow<'_, RoaringBitmap>> {
-        evaluate_cohort_cow(&self.admit(query, SelectUse::Distinct)?)
+        self.evaluate(&self.admit(query, SelectUse::Distinct)?)
+    }
+
+    /// The cohort of an admitted query: the phenotypic cohort, narrowed by the genomic
+    /// filters.
+    fn evaluate<'s>(&'s self, checked: &CheckedQuery<'_, 's>) -> Result<Cow<'s, RoaringBitmap>> {
+        let cohort = evaluate_cohort_cow(checked)?;
+        let query = checked.query();
+        if query.genomic_filters.is_empty() {
+            return Ok(cohort);
+        }
+        let Some(store) = &self.genomic else {
+            return Err(QueryError::Unsupported("genomicFilters".into()));
+        };
+        let filters = GenomicFilters::translate(query)?;
+        if !filters.has_filters() {
+            return Ok(cohort);
+        }
+        let found = genomic_cohort(store, &filters, &cohort)?;
+        crate::cohort::guard(checked.selection(), &found)?;
+        Ok(Cow::Owned(found))
     }
 
     /// The single admission step every computation goes through (see
@@ -217,7 +277,9 @@ impl Engine {
     /// evaluator and the result computations.
     fn admit<'q>(&self, query: &'q Query, select_use: SelectUse) -> Result<CheckedQuery<'q, '_>> {
         self.partitions.check_unchanged()?;
-        self.limits.admit(query, &self.partitions, select_use)
+        let checked = self.limits.admit(query, &self.partitions, select_use)?;
+        self.check_genomic_store(query)?;
+        Ok(checked)
     }
 
     fn prepare<'q>(
@@ -226,7 +288,7 @@ impl Engine {
         select_use: SelectUse,
     ) -> Result<(CheckedQuery<'q, '_>, Cow<'_, RoaringBitmap>)> {
         let checked = self.admit(query, select_use)?;
-        let cohort = evaluate_cohort_cow(&checked)?;
+        let cohort = self.evaluate(&checked)?;
         Ok((checked, cohort))
     }
 

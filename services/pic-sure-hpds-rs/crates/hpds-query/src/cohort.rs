@@ -41,7 +41,7 @@ use crate::view::View;
 /// clause and one partition or all of them are selected. With no clause, the cohort is
 /// every patient of those partitions. Authorization filters are never applied.
 ///
-/// Genomic filters are ignored here; admission into a [`CheckedQuery`] has refused them.
+/// Genomic filters are not applied here; the engine narrows this cohort with them.
 ///
 /// # Errors
 /// [`QueryError::FilterWithoutCriteria`], [`QueryError::EmptySubquery`],
@@ -81,7 +81,7 @@ fn within_selection(selection: &Selection<'_>, found: Found) -> RoaringBitmap {
 ///
 /// # Errors
 /// [`QueryError::CohortOutsideSelection`] for such a cohort.
-fn guard(selection: &Selection<'_>, cohort: &RoaringBitmap) -> Result<()> {
+pub(crate) fn guard(selection: &Selection<'_>, cohort: &RoaringBitmap) -> Result<()> {
     let outside = selection.check_members(cohort);
     if outside == 0 {
         return Ok(());

@@ -17,10 +17,19 @@ pub enum QueryError {
     #[error("{0}")]
     Invalid(String),
 
-    /// The query asks for something this phenotype-only engine does not do: genomic filters,
-    /// variant-spec concept paths, or a genomic result type. The message names the feature.
+    /// The query asks for something this engine does not do: a genomic result type it does
+    /// not compute, or genomic filters when it serves no genomic store. The message names the
+    /// feature.
     #[error("{0} is not supported by this phenotype-only HPDS")]
     Unsupported(String),
+
+    /// A genomic filter Java fails on when it evaluates it (a `null` key or value, a variant
+    /// spec whose position is not a Java `int`, a numeric filter without both bounds or with
+    /// `min` above `max`, and the data-dependent failures the genomic engine names), refused
+    /// whether or not the phenotypic cohort is empty. Java answers these with an error or an
+    /// empty 200; the message says what is wrong.
+    #[error("{0}")]
+    GenomicFilter(String),
 
     /// The store requires consents (`hpds.requireAuthorizationFilter` is on) and the query
     /// carries no consent value. Java throws `MissingConsentsException` from the store, which
@@ -109,6 +118,18 @@ pub enum QueryError {
         source: Arc<FormatError>,
     },
 
+    /// A block of the genomic store could not be read, authenticated, or decoded.
+    #[error("cannot load the genomic {what} of node {node}: {source}")]
+    GenomicBlock {
+        /// The node's group and directory, as `group/dir`.
+        node: String,
+        /// The block: its kind and ordinal.
+        what: String,
+        /// The format error.
+        #[source]
+        source: Arc<FormatError>,
+    },
+
     /// A blocking task did not finish, for example because it panicked.
     #[error("query task failed: {0}")]
     Task(String),
@@ -128,14 +149,15 @@ pub enum QueryError {
 impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
     /// variant except [`QueryError::Open`], [`QueryError::CohortOutsideSelection`],
-    /// [`QueryError::Block`], [`QueryError::StoreInconsistent`], [`QueryError::Task`] and
-    /// [`QueryError::StoreChanged`].
+    /// [`QueryError::Block`], [`QueryError::GenomicBlock`], [`QueryError::StoreInconsistent`],
+    /// [`QueryError::Task`] and [`QueryError::StoreChanged`].
     pub fn is_client_error(&self) -> bool {
         !matches!(
             self,
             QueryError::Open { .. }
                 | QueryError::CohortOutsideSelection { .. }
                 | QueryError::Block { .. }
+                | QueryError::GenomicBlock { .. }
                 | QueryError::StoreInconsistent { .. }
                 | QueryError::Task(_)
                 | QueryError::StoreChanged { .. }

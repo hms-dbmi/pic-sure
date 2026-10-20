@@ -16,7 +16,11 @@
 //!   partitions. Every cohort is checked against the selected partitions' patients before
 //!   any count or export uses it.
 //! - [`QueryValidator`] and [`check_supported`] are `QueryValidator`,
-//!   `PhenotypicFilterValidator`, and the refusal of genomic input.
+//!   `PhenotypicFilterValidator`, and the refusal of the genomic result types this engine does
+//!   not compute.
+//! - A [`GenomicStore`] attached with [`Engine::with_genomic`] answers `genomicFilters`: the
+//!   engine narrows each cohort to the patients the filters keep, node by node as Java's
+//!   genomic processors do, before any count or export uses it.
 //! - The [`Engine`] runs the result computations, each returning a typed value that carries
 //!   Java's response form ([`SyncResult::body`], [`DataframeRows`]).
 //!
@@ -30,6 +34,7 @@ mod counters;
 mod engine;
 mod error;
 mod fan_out;
+mod genomic;
 mod json_number;
 mod limits;
 pub mod model;
@@ -40,10 +45,14 @@ mod store;
 pub mod validate;
 mod view;
 
-pub use budget::PrefixReadStats;
+pub use budget::{GenomicReadStats, PrefixReadStats, ReadBudgetStats};
 pub use counters::BlockCacheStats;
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine, ReadPlan};
 pub use error::{QueryError, Result};
+pub use genomic::{
+    DEFAULT_GENOMIC_CACHE_BYTES, DEFAULT_GENOMIC_READ_BUDGET_BYTES, GenomicCacheStats,
+    GenomicOptions, GenomicStore,
+};
 pub use limits::{
     DEFAULT_MAX_CLAUSE_DEPTH, DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES,
     DEFAULT_MAX_QUERY_CONCEPTS, DEFAULT_MAX_SELECT_PATHS, QueryLimits,
