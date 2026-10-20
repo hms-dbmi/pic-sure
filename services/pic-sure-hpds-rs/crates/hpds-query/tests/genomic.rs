@@ -993,3 +993,62 @@ fn a_directory_of_java_genomic_files_is_refused_naming_the_migration() {
         .to_string();
     assert!(error.contains("no geno.index"), "{error}");
 }
+
+#[test]
+fn search_lists_info_values_in_javas_hash_set_order() {
+    for mode in [
+        GenoMode::LocalDistributed,
+        GenoMode::LocalPatientDistributed,
+    ] {
+        let f = fixture(mode);
+        let mut sorted = vec!["D_____E", "G1", "G2", "G3", "G4"];
+        sorted.sort_by(|a, b| hpds_format::java_compare_ignore_case(a, b));
+        let expected: Vec<String> =
+            hpds_format::java_hash_order(sorted, hpds_format::JavaHashCapacity::Default)
+                .into_iter()
+                .map(|(_, v)| v.to_owned())
+                .collect();
+        assert_eq!(f.engine.search_info_values(GENE, "").unwrap(), expected);
+        assert_eq!(f.engine.search_info_values(GENE, "g1").unwrap(), ["G1"]);
+        assert_eq!(
+            f.engine.search_info_values(GENE, "_____").unwrap(),
+            ["D_____E"]
+        );
+        let (kept, bytes) = f.engine.genomic().unwrap().value_list_stats();
+        assert_eq!(kept, 5, "the categorical list is kept");
+        assert!(bytes > 0);
+        let af = f.engine.search_info_values(AF, "0.").unwrap();
+        assert_eq!(af.len(), 4, "{af:?}");
+        assert_eq!(
+            f.engine.genomic().unwrap().value_list_stats().0,
+            5,
+            "a numeric column's list is not kept"
+        );
+        let unknown = f
+            .engine
+            .search_info_values("No_such_column", "")
+            .unwrap_err();
+        assert!(
+            matches!(unknown, QueryError::GenomicFilter(_)),
+            "{unknown:?}"
+        );
+        assert!(unknown.is_client_error());
+
+        let info = f.engine.search_info("gene").unwrap();
+        assert_eq!(info.len(), 1);
+        assert_eq!(info[0].key, GENE);
+        assert_eq!(info[0].description, "Description=\"The gene.\"");
+        assert!(!info[0].continuous);
+        assert_eq!(info[0].values.to_vec(), expected);
+        let every = f.engine.search_info("").unwrap();
+        let keys: Vec<&str> = every.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(keys, [AF, GENE, CONSEQUENCE], "Java String order");
+        let af = every.iter().find(|e| e.key == AF).unwrap();
+        assert!(af.continuous && af.values.is_empty());
+        assert!(f.engine.search_info("no match at all").unwrap().is_empty());
+    }
+    let pheno = partitioned_rows(&[("pA", phenotype_rows(1..=10))]);
+    let e = pheno.open(&lenient()).unwrap();
+    assert!(e.search_info("").unwrap().is_empty());
+    assert!(e.search_info_values(GENE, "").unwrap().is_empty());
+}

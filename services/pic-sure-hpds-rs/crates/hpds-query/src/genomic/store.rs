@@ -232,6 +232,7 @@ pub struct GenomicStore {
     budget: ByteBudget,
     pool: rayon::ThreadPool,
     serving: ServingLock,
+    value_lists: super::search::ValueLists,
 }
 
 impl std::fmt::Debug for GenomicStore {
@@ -352,6 +353,7 @@ impl GenomicStore {
             ),
             pool,
             serving,
+            value_lists: super::search::ValueLists::default(),
         })
     }
 
@@ -371,6 +373,16 @@ impl GenomicStore {
     /// this one goes on serving the store it opened from its open files.
     pub fn store_superseded(&self) -> bool {
         self.serving.is_superseded()
+    }
+
+    /// The value lists of categorical columns kept for search.
+    pub(crate) fn value_lists(&self) -> &super::search::ValueLists {
+        &self.value_lists
+    }
+
+    /// The values the search value lists keep, over every column, and the bytes they take.
+    pub fn value_list_stats(&self) -> (u64, u64) {
+        self.value_lists.stats()
     }
 
     /// The number of distinct INFO columns the store holds, what Java's readiness check

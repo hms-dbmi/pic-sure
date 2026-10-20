@@ -15,9 +15,10 @@ use crate::cohort::{evaluate_cohort_cow, for_each_row_of};
 use crate::error::{QueryError, Result};
 use crate::fan_out;
 use crate::genomic::{
-    CheckedFilters, ExcerptAnswer, GenomicStore, InfoColumnMeta, NO_VARIANTS_FOUND, VariantLists,
-    VariantResultSettings, VcfExcerpt, excerpt_columns, for_each_listed_spec, genomic_cohort,
-    info_column_listing, java_binary_search, not_allowed, subset_column_ids, variant_lists,
+    CheckedFilters, ExcerptAnswer, GenomicStore, InfoColumnMeta, InfoSearchEntry,
+    NO_VARIANTS_FOUND, VariantLists, VariantResultSettings, VcfExcerpt, excerpt_columns,
+    for_each_listed_spec, genomic_cohort, info_column_listing, java_binary_search, not_allowed,
+    search_info, search_values, subset_column_ids, variant_lists,
 };
 use crate::limits::{CheckedQuery, QueryLimits, SelectUse};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
@@ -598,6 +599,40 @@ impl Engine {
         };
         store.check_unchanged()?;
         Ok(info_column_listing(store))
+    }
+
+    /// The genomic `info` block of `POST /search` for `term` (Java's `PicSureV3Service.search`):
+    /// the INFO columns whose description or key contains the term, ignoring case, one per
+    /// key in Java `String` order, each with its values when categorical. Empty without a
+    /// genomic store. Not scoped by consent, as in Java.
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicFilter`] when a matching categorical column is missing on some
+    /// node, where Java fails; [`QueryError::GenomicStoreChanged`]; and
+    /// [`QueryError::GenomicBlock`] when an info block cannot be read.
+    pub fn search_info(&self, term: &str) -> Result<Vec<InfoSearchEntry>> {
+        let Some(store) = &self.genomic else {
+            return Ok(Vec::new());
+        };
+        store.check_unchanged()?;
+        search_info(store, term)
+    }
+
+    /// The values of INFO column `column` containing `query`, ignoring case, in Java's
+    /// `HashSet` order (`QueryExecutor.searchInfoConceptValues`), the list `GET
+    /// /search/values/` pages. Empty without a genomic store, as Java's no-op processor
+    /// answers.
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicFilter`] when the column is missing on some node (an unknown
+    /// column included), where Java fails; [`QueryError::GenomicStoreChanged`]; and
+    /// [`QueryError::GenomicBlock`] when an info block cannot be read.
+    pub fn search_info_values(&self, column: &str, query: &str) -> Result<Vec<String>> {
+        let Some(store) = &self.genomic else {
+            return Ok(Vec::new());
+        };
+        store.check_unchanged()?;
+        search_values(store, column, query)
     }
 
     /// VARIANT_COUNT_FOR_QUERY (`CountV3Processor.runVariantCount`): the number of distinct
