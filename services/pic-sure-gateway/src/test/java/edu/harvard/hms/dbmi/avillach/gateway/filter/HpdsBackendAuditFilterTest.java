@@ -43,6 +43,19 @@ class HpdsBackendAuditFilterTest {
     }
 
     @Test
+    void anUnknownValueIsStrippedAndNotRecorded() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(
+            new MockHttpServletRequest("POST", "/hpds/auth/search"), response,
+            (req, res) -> ((HttpServletResponse) res).addHeader(HpdsBackendAuditFilter.HEADER, "<script>")
+        );
+
+        assertThat(audit.getMetadata()).doesNotContainKey(HpdsBackendAuditFilter.METADATA_KEY);
+        assertThat(response.getHeaderNames()).doesNotContain(HpdsBackendAuditFilter.HEADER);
+    }
+
+    @Test
     void noHeaderLeavesTheAuditUntouched() throws Exception {
         filter.doFilter(new MockHttpServletRequest("GET", "/hpds/auth/query/x/status"), new MockHttpServletResponse(), (req, res) -> {
         });
