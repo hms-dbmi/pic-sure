@@ -59,6 +59,41 @@ docker build -f docker/hpds-rs.Dockerfile -t hms-dbmi/pic-sure-hpds-rs:LATEST .
 docker build -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:LATEST .
 ```
 
+### Building without crates.io access
+
+A build host that cannot reach crates.io builds from a vendored copy of the dependencies. On a
+machine that can, vendor them next to the workspace and copy the tree, `vendor/` included, to the
+build host:
+
+```bash
+cargo vendor --locked vendor
+```
+
+Pass `--build-arg VENDORED=1` to either Dockerfile. The build then replaces the crates.io source
+with `vendor/` and runs offline, so a missing crate fails the build instead of reaching the
+network:
+
+```bash
+docker build --build-arg VENDORED=1 -f docker/hpds-rs.Dockerfile -t hms-dbmi/pic-sure-hpds-rs:LATEST .
+docker build --build-arg VENDORED=1 -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi/pic-sure-hpds-rs-etl:LATEST .
+```
+
+`vendor/` is not committed. Regenerate it whenever `Cargo.lock` changes. The build still uses
+`--locked`, so a stale `vendor/` fails on the missing package instead of building old code.
+
+### Continuous integration
+
+`.github/workflows/rust-hpds.yml` runs when `services/pic-sure-hpds-rs/**` changes, and weekly so
+a new advisory shows up without a code change. It checks formatting, runs clippy with warnings
+denied, runs the workspace tests and the library tests in release mode (one test only compiles
+in a release build), audits `Cargo.lock` with `cargo audit`, checks licenses, bans and sources
+with `cargo deny` against `deny.toml`, uploads a CycloneDX SBOM for each binary as the
+`hpds-rs-sbom` artifact, and builds both images for `linux/amd64`.
+
+The workspace test step skips `peak_live_entries_stay_under_the_chunk_bound`, which fails
+intermittently at low thread counts because of how the test counts, not because an answer is
+wrong. A separate non-blocking step still runs it, so its result stays visible in the job.
+
 `hpds-rs` allocates with jemalloc, which fixes its page size when it is compiled. A binary
 built for 4 KiB pages fails to start on a kernel with larger ones, which some arm64
 distributions use (16 KiB on Asahi Linux; 64 KiB on RHEL 8 for arm64 and on RHEL 9's

@@ -1,2 +1,4 @@
 target/
 bench/data/
+vendor/
+*.cdx.json

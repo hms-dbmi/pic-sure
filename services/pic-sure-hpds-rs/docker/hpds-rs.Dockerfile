@@ -1,12 +1,14 @@
 # syntax=docker/dockerfile:1
 FROM rust:1.98.0-bookworm AS build
 ARG TARGETARCH
+ARG VENDORED=0
 RUN rustup component add clippy rustfmt
 WORKDIR /workspace
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/workspace/target \
-    if [ "$TARGETARCH" = arm64 ]; then export JEMALLOC_SYS_WITH_LG_PAGE=16; fi \
+    if [ "$VENDORED" = 1 ]; then mkdir -p .cargo && printf '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n\n[net]\noffline = true\n' > .cargo/config.toml; fi \
+    && if [ "$TARGETARCH" = arm64 ]; then export JEMALLOC_SYS_WITH_LG_PAGE=16; fi \
     && cargo build --release --locked -p hpds-rs --bin hpds-rs \
     && cp target/release/hpds-rs /usr/local/bin/hpds-rs
 
