@@ -47,17 +47,35 @@ struct Shared {
     search_gzip: bool,
     genomic: GenomicStatus,
     excerpt_slots: Arc<Semaphore>,
+    excerpt_concurrency: usize,
     excerpt_stall: Duration,
     excerpt_stream: Duration,
     excerpts: ExcerptCounters,
 }
 
-/// How streamed excerpts ended, other than in full.
+/// How streamed excerpts ended, other than in full, and how many were refused at the cap.
 #[derive(Debug, Default)]
 pub struct ExcerptCounters {
     stalled: AtomicU64,
     expired: AtomicU64,
     aborted: AtomicU64,
+    store_changed: AtomicU64,
+    refused: AtomicU64,
+}
+
+/// A snapshot of [`ExcerptCounters`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExcerptCounts {
+    /// Streams ended because the client took no chunk within `HPDS_EXCERPT_STALL_SECONDS`.
+    pub stalled: u64,
+    /// Streams ended because the body was not sent within `HPDS_EXCERPT_STREAM_SECONDS`.
+    pub expired: u64,
+    /// Streams ended because the client left or the write failed.
+    pub aborted: u64,
+    /// Streams ended because the genomic store changed on disk while they were written.
+    pub store_changed: u64,
+    /// Excerpts refused with a 503 because every `HPDS_EXCERPT_CONCURRENCY` slot was in use.
+    pub refused: u64,
 }
 
 /// Why a streamed excerpt ended before its last byte.
@@ -69,6 +87,9 @@ pub enum ExcerptEnd {
     Expired,
     /// The client went away, or the excerpt failed while it was written.
     Aborted,
+    /// The genomic store changed on disk between the measure pass and the last chunk, so the
+    /// rows sent may not be the rows measured.
+    StoreChanged,
 }
 
 impl ExcerptCounters {
@@ -78,18 +99,25 @@ impl ExcerptCounters {
             ExcerptEnd::Stalled => &self.stalled,
             ExcerptEnd::Expired => &self.expired,
             ExcerptEnd::Aborted => &self.aborted,
+            ExcerptEnd::StoreChanged => &self.store_changed,
         };
         counter.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Excerpts ended because their client stopped reading, ended because they ran past the
-    /// stream bound, and ended because the client left or the write failed.
-    pub fn counts(&self) -> (u64, u64, u64) {
-        (
-            self.stalled.load(Ordering::Relaxed),
-            self.expired.load(Ordering::Relaxed),
-            self.aborted.load(Ordering::Relaxed),
-        )
+    /// Counts one excerpt refused because no excerpt slot was free.
+    pub fn record_refused(&self) {
+        self.refused.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The counts so far.
+    pub fn counts(&self) -> ExcerptCounts {
+        ExcerptCounts {
+            stalled: self.stalled.load(Ordering::Relaxed),
+            expired: self.expired.load(Ordering::Relaxed),
+            aborted: self.aborted.load(Ordering::Relaxed),
+            store_changed: self.store_changed.load(Ordering::Relaxed),
+            refused: self.refused.load(Ordering::Relaxed),
+        }
     }
 }
 
@@ -134,6 +162,7 @@ impl AppState {
                 engine_slots,
                 genomic,
                 excerpt_slots: Arc::new(Semaphore::new(config.excerpt_concurrency)),
+                excerpt_concurrency: config.excerpt_concurrency,
                 excerpt_stall: config.excerpt_stall,
                 excerpt_stream: config.excerpt_stream,
                 excerpts: ExcerptCounters::default(),
@@ -255,14 +284,22 @@ impl AppState {
             .unwrap_or_else(|_| unreachable!("the engine semaphore is never closed"))
     }
 
-    /// Waits for one of the `HPDS_EXCERPT_CONCURRENCY` excerpt slots, which an excerpt holds
-    /// beside its engine slot until its last row is sent; the slot is released when the
-    /// returned permit drops.
-    pub async fn excerpt_slot(&self) -> OwnedSemaphorePermit {
+    /// One of the `HPDS_EXCERPT_CONCURRENCY` excerpt slots, which an excerpt holds beside its
+    /// engine slot until its last row is sent, or `None` at once when every slot is in use.
+    /// The slot is released when the returned permit drops.
+    pub fn try_excerpt_slot(&self) -> Option<OwnedSemaphorePermit> {
         Arc::clone(&self.inner.excerpt_slots)
-            .acquire_owned()
-            .await
-            .unwrap_or_else(|_| unreachable!("the excerpt semaphore is never closed"))
+            .try_acquire_owned()
+            .ok()
+    }
+
+    /// The excerpt slots in use, and `HPDS_EXCERPT_CONCURRENCY`.
+    pub fn excerpt_slots_in_use(&self) -> (usize, usize) {
+        let total = self.inner.excerpt_concurrency;
+        (
+            total.saturating_sub(self.inner.excerpt_slots.available_permits()),
+            total,
+        )
     }
 
     /// How long a streamed excerpt waits for its client to take a chunk, and how long its

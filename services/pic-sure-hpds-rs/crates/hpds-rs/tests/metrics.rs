@@ -341,7 +341,9 @@ async fn labels_hold_only_fixed_values() {
                 "result_type" => result_types.contains(label.as_str()),
                 "kind" => kinds.contains(label.as_str()),
                 "outcome" => outcomes.contains(label.as_str()),
-                "end" => ["stalled", "expired", "aborted"].contains(&label.as_str()),
+                "end" => {
+                    ["stalled", "expired", "aborted", "store_changed"].contains(&label.as_str())
+                }
                 "le" => label == "+Inf" || label.parse::<f64>().is_ok(),
                 _ => false,
             };

@@ -108,9 +108,9 @@ JEMALLOC_SYS_WITH_LG_PAGE=16 cargo build --release -p hpds-rs
 | `HPDS_LOG_DIRECTORY` | unset | When set, the log is also written to a daily-rotated `hpds-rs.<date>.log` in that directory, so a mounted log directory is useful. Logging goes through a non-blocking writer; under extreme load it drops lines rather than slowing requests. |
 | `HPDS_SEARCH_GZIP` | `off` | `on` compresses `POST /search` answers for requests whose `Accept-Encoding` accepts gzip (see [Search compression](#search-compression)). Off, every answer has the bytes and headers it had before compression existed, whatever the request accepts. Read like `HPDS_METRICS`. |
 | `HPDS_METRICS` | `off` | `on` serves `GET /metrics` in the Prometheus text format and counts requests (see [Metrics](#metrics)). Off, `/metrics` is a 404 like any unknown path. `true`, `false`, `1`, `0`, `yes` and `no` are also read; anything else fails startup. |
-| `HPDS_EXCERPT_CONCURRENCY` | half `HPDS_ENGINE_CONCURRENCY`, at least 1 | VCF_EXCERPT and AGGREGATE_VCF_EXCERPT requests computed or streamed at once. An excerpt holds its excerpt slot and an engine slot until its last row is sent, so the cap must be below `HPDS_ENGINE_CONCURRENCY` (startup fails otherwise, except with an engine concurrency of 1, which logs a warning): excerpts can never hold every engine slot, and other queries keep running while they stream. An excerpt over the cap waits, within `HPDS_SYNC_TIMEOUT_SECONDS`, and is otherwise a 503. |
-| `HPDS_EXCERPT_STALL_SECONDS` | `30` | How long a streamed excerpt waits for its client to take the next chunk. A client that stops reading for longer has its stream ended (the response stops short of its `Content-Length`) and its slots released. |
-| `HPDS_EXCERPT_STREAM_SECONDS` | `600` | How long a streamed excerpt's whole body may take once its headers are sent; past it the stream is ended the same way. `HPDS_SYNC_TIMEOUT_SECONDS` bounds the wait for slots and the measuring pass before the headers. |
+| `HPDS_EXCERPT_CONCURRENCY` | half `HPDS_ENGINE_CONCURRENCY`, at least 1 | VCF_EXCERPT, AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY requests computed or sent at once. An excerpt holds its excerpt slot and an engine slot until its last row is sent; a variant list holds an engine slot while it is built and its excerpt slot until it is sent. The cap must be below `HPDS_ENGINE_CONCURRENCY` (startup fails otherwise, except with an engine concurrency of 1, which logs a warning), so excerpts can never hold every engine slot and other queries keep running while they stream. A request over the cap is a 503 at once, counted in `hpds_excerpts_refused_total`. A type whose setting is off answers its text without a slot. |
+| `HPDS_EXCERPT_STALL_SECONDS` | `30` | How long a streamed excerpt or variant list waits for its client to take the next 64 KiB chunk. A client that stops reading for longer has its stream ended (the response stops short of its `Content-Length`) and its slots released. |
+| `HPDS_EXCERPT_STREAM_SECONDS` | `600` | How long a streamed excerpt's or variant list's whole body may take once its headers are sent; past it the stream is ended the same way. `HPDS_SYNC_TIMEOUT_SECONDS` bounds the wait for the engine slot and the measuring pass before the headers. |
 | `hpds.genomicProcessor.impl` | unset | Java's genomic layout setting, also read as `HPDS_GENOMICPROCESSOR_IMPL` (Spring's relaxed name; the dotted name wins when both are set). `local`, `localDistributed`, `localPatientDistributed` or `localPatientOnlyDistributed` opens the genomic store in `HPDS_GENOMIC_DATA_DIRECTORY` and requires it to have been built in that layout; unset or blank serves no genomic data, as Java's no-op processor does. `remote` and any other value fail startup: there is no separate genomic service (see [Genomic store](#genomic-store)). |
 | `HPDS_GENOMIC_DATA_DIRECTORY` | `/opt/local/hpds/all/` | Directory of the Rust genomic store (`geno.index`, `geno.blocks`, `.generation`). Java's default. Read only when `hpds.genomicProcessor.impl` is set. |
 | `HPDS_GENOMIC_CACHE_BYTES` | 2 GiB | Byte bound of the decoded genomic block cache, separate from `HPDS_CACHE_BYTES` so a genomic scan cannot evict phenotype blocks. Every genomic block kind shares it. A query planning to read more than a quarter of it scans instead (next row). |
@@ -414,7 +414,9 @@ runs on the blocking pool.
 | `hpds_async_results` | gauge | Async results held, pending, running and finished |
 | `hpds_exports_finished_total{outcome}` | counter | Async queries finished: `memory`, `file` or `error` (refusals at submission included) |
 | `hpds_result_memory_bytes`, `hpds_result_memory_budget_bytes` | gauge | Export results held in memory, downloads in progress included, and `HPDS_RESULT_MEMORY_BYTES` |
-| `hpds_excerpts_ended_early_total{end}` | counter | Streamed excerpts ended before their last row: `stalled` (the client took no chunk within `HPDS_EXCERPT_STALL_SECONDS`), `expired` (not sent within `HPDS_EXCERPT_STREAM_SECONDS`), `aborted` (the client left, a read failed, or the body would have differed from its measured length) |
+| `hpds_excerpts_ended_early_total{end}` | counter | Streamed excerpts and variant lists ended before their last byte: `stalled` (the client took no chunk within `HPDS_EXCERPT_STALL_SECONDS`), `expired` (not sent within `HPDS_EXCERPT_STREAM_SECONDS`), `aborted` (the client left, a read failed, or the body would have differed from its measured length), `store_changed` (the genomic store changed on disk between the measuring pass and the last chunk) |
+| `hpds_excerpts_refused_total` | counter | Excerpts and variant lists answered 503 because every `HPDS_EXCERPT_CONCURRENCY` slot was in use |
+| `hpds_excerpts_in_progress`, `hpds_excerpt_concurrency` | gauge | Excerpt slots in use, and `HPDS_EXCERPT_CONCURRENCY` |
 | `hpds_genomic_store_up` | gauge | 1 while the genomic store is served, 0 while one is configured and could not be served; absent without `hpds.genomicProcessor.impl` |
 | `hpds_genomic_cache_hits_total`, `_misses_total`, `_loads_total`, `_evictions_total`, `_scan_reads_total` | counter | Genomic block lookups, blocks admitted, blocks dropped to stay within `HPDS_GENOMIC_CACHE_BYTES`, and blocks scans read under the budget without admitting them |
 | `hpds_genomic_cache_entries`, `_bytes`, `_capacity_bytes` | gauge | Genomic blocks held, their bytes, and `HPDS_GENOMIC_CACHE_BYTES` |
@@ -540,13 +542,14 @@ Differences from Java a caller can see:
   VCF_EXCERPT stay limited to the subset. Reproduced for equivalence; the consent question is
   open with the PIC-SURE team.
 - VCF_EXCERPT, AGGREGATE_VCF_EXCERPT and VARIANT_LIST_FOR_QUERY bodies over
-  `HPDS_MAX_EXCERPT_BYTES` are a 400. Excerpts stream with their exact `Content-Length`; a
+  `HPDS_MAX_EXCERPT_BYTES` are a 400. They stream with their exact `Content-Length`; a
   read failure after the headers are sent, a client that stops reading for
-  `HPDS_EXCERPT_STALL_SECONDS`, or a body still unsent after `HPDS_EXCERPT_STREAM_SECONDS`
-  ends the response before that length, which a client sees as a failed transfer. At most
-  `HPDS_EXCERPT_CONCURRENCY` excerpts run at once; one past the cap that finds no slot within
-  `HPDS_SYNC_TIMEOUT_SECONDS` is a 503. A measuring pass that outlives that timeout finishes,
-  writes nothing and releases its slots.
+  `HPDS_EXCERPT_STALL_SECONDS`, a body still unsent after `HPDS_EXCERPT_STREAM_SECONDS`, or a
+  genomic store changed on disk between the measuring pass and the last chunk ends the
+  response before that length, which a client sees as a failed transfer, never as a complete
+  body of other rows. At most `HPDS_EXCERPT_CONCURRENCY` of them run at once; one past the cap
+  is a 503 at once. A measuring pass that outlives `HPDS_SYNC_TIMEOUT_SECONDS` answers 503; it
+  is not interrupted, finishes, writes nothing and releases its slots.
 - Order: VARIANT_LIST_FOR_QUERY lists specs in the store's spec order, where Java's is a hash
   or skip-list order; INFO_COLUMN_LISTING lists nodes or groups in index order and columns in
   column order; VCF_EXCERPT patient columns follow index group order, where Java's follows
@@ -559,8 +562,9 @@ Differences from Java a caller can see:
   plain. The service never writes the genomic directory.
 - A genomic store that is configured but cannot be served, or that changes on disk, makes
   health DOWN and genomic requests 503 while phenotype requests are answered (see
-  [Genomic store](#genomic-store)). Java fails to start, or keeps answering from what it
-  loaded.
+  [Genomic store](#genomic-store)), except VARIANT_LIST_FOR_QUERY and the excerpts with their
+  setting off, which answer their `not allowed` text first. Java fails to start, or keeps
+  answering from what it loaded.
 - `authorizationFilters` never narrow a query, as on the Java consent branch, which only
   validates them; `userConsents` choose the partitions instead. The original Java HPDS (main)
   applies each authorization filter as one more AND clause, so its answers shrink to the

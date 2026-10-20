@@ -254,6 +254,43 @@ impl Family<'_> {
     }
 }
 
+/// The excerpt slots in use and how streamed excerpts ended early or were refused.
+fn render_excerpts(family: &mut Family<'_>, state: &AppState) {
+    let counts = state.excerpt_counters().counts();
+    family.header(
+        "hpds_excerpts_ended_early_total",
+        "counter",
+        "Streamed excerpts ended before their last row: stalled (the client took no chunk within HPDS_EXCERPT_STALL_SECONDS), expired (not sent within HPDS_EXCERPT_STREAM_SECONDS), aborted (the client left or the write failed), store_changed (the genomic store changed on disk while it was written).",
+    );
+    for (end, count) in [
+        ("stalled", counts.stalled),
+        ("expired", counts.expired),
+        ("aborted", counts.aborted),
+        ("store_changed", counts.store_changed),
+    ] {
+        family.sample("hpds_excerpts_ended_early_total", &[("end", end)], count);
+    }
+    family.single(
+        "hpds_excerpts_refused_total",
+        "counter",
+        "Excerpts answered 503 because every HPDS_EXCERPT_CONCURRENCY slot was in use.",
+        counts.refused,
+    );
+    let (in_use, total) = state.excerpt_slots_in_use();
+    family.single(
+        "hpds_excerpts_in_progress",
+        "gauge",
+        "Excerpts computing or streaming, each holding an excerpt slot and an engine slot.",
+        in_use,
+    );
+    family.single(
+        "hpds_excerpt_concurrency",
+        "gauge",
+        "HPDS_EXCERPT_CONCURRENCY, the excerpt slots.",
+        total,
+    );
+}
+
 /// Every metric as Prometheus text.
 pub fn render(state: &AppState) -> String {
     let mut out = String::with_capacity(16 << 10);
@@ -262,19 +299,7 @@ pub fn render(state: &AppState) -> String {
         render_http(&mut family, metrics);
     }
     render_results(&mut family, state);
-    let (stalled, expired, aborted) = state.excerpt_counters().counts();
-    family.header(
-        "hpds_excerpts_ended_early_total",
-        "counter",
-        "Streamed excerpts ended before their last row: stalled (the client took no chunk within HPDS_EXCERPT_STALL_SECONDS), expired (not sent within HPDS_EXCERPT_STREAM_SECONDS), aborted (the client left or the write failed).",
-    );
-    for (end, count) in [
-        ("stalled", stalled),
-        ("expired", expired),
-        ("aborted", aborted),
-    ] {
-        family.sample("hpds_excerpts_ended_early_total", &[("end", end)], count);
-    }
+    render_excerpts(&mut family, state);
     if let Ok(engine) = state.engine() {
         let partitions = engine.partitions();
         render_block_cache(&mut family, &partitions.block_cache_stats());

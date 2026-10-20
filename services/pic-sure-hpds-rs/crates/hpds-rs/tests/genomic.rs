@@ -643,13 +643,56 @@ async fn send_unread(app: &Router, query: Value) -> axum::response::Response {
     app.clone().oneshot(request).await.unwrap()
 }
 
-fn ended_early(text: &str, end: &str) -> u64 {
-    let prefix = format!("hpds_excerpts_ended_early_total{{end=\"{end}\"}} ");
+/// Reads the sample `name`, labels included as `/metrics` writes them.
+async fn metric(app: &Router, name: &str) -> u64 {
+    let text = get(app, "/metrics").await.body;
+    let prefix = format!("{name} ");
     text.lines()
         .find_map(|l| l.strip_prefix(&prefix))
+        .unwrap_or_else(|| panic!("{name} is not in /metrics"))
+        .parse()
+        .unwrap()
+}
+
+/// Polls `/metrics` for up to five seconds until `name` reads `want`, and returns what it
+/// read last.
+async fn await_metric(app: &Router, name: &str, want: u64) -> u64 {
+    let mut seen = 0;
+    for _ in 0..50 {
+        seen = metric(app, name).await;
+        if seen == want {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    seen
+}
+
+const STALLED: &str = "hpds_excerpts_ended_early_total{end=\"stalled\"}";
+const EXPIRED: &str = "hpds_excerpts_ended_early_total{end=\"expired\"}";
+const ABORTED: &str = "hpds_excerpts_ended_early_total{end=\"aborted\"}";
+const STORE_CHANGED: &str = "hpds_excerpts_ended_early_total{end=\"store_changed\"}";
+const REFUSED: &str = "hpds_excerpts_refused_total";
+const IN_PROGRESS: &str = "hpds_excerpts_in_progress";
+
+/// The `Content-Length` of `response`.
+fn content_length(response: &axum::response::Response) -> u64 {
+    response.headers()["content-length"]
+        .to_str()
         .unwrap()
         .parse()
         .unwrap()
+}
+
+/// Asserts that the body of `response` fails or ends short of its `Content-Length`, which
+/// HTTP reports as a failed transfer.
+async fn assert_cut_short(response: axum::response::Response) {
+    let length = content_length(&response);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await;
+    assert!(
+        body.as_ref().is_err() || body.as_ref().is_ok_and(|b| (b.len() as u64) < length),
+        "the stream ends with an error or short of its Content-Length"
+    );
 }
 
 #[tokio::test]
@@ -658,33 +701,38 @@ async fn a_client_that_stops_reading_releases_its_excerpt_slot_within_the_stall_
         c.engine_concurrency = 2;
         c.excerpt_concurrency = 1;
         c.excerpt_stall = std::time::Duration::from_secs(1);
-        c.sync_timeout = std::time::Duration::from_secs(5);
         c.metrics = true;
     });
     let held = send_unread(&f.app, genomic_query("VCF_EXCERPT", "G1")).await;
     assert_eq!(held.status(), StatusCode::OK);
-    let length: u64 = held.headers()["content-length"]
-        .to_str()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let length = content_length(&held);
     assert!(length > 400_000, "{length}");
+    assert_eq!(metric(&f.app, IN_PROGRESS).await, 1);
+    let over = post(&f.app, SYNC, envelope(genomic_query("VCF_EXCERPT", "G1"))).await;
+    assert_eq!(
+        over.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        over.body
+    );
+    assert!(
+        over.body.contains("HPDS_EXCERPT_CONCURRENCY"),
+        "{}",
+        over.body
+    );
+    assert_eq!(metric(&f.app, REFUSED).await, 1);
     let started = std::time::Instant::now();
+    assert_eq!(await_metric(&f.app, STALLED, 1).await, 1);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "the slot is freed within the stall bound"
+    );
+    assert_eq!(metric(&f.app, IN_PROGRESS).await, 0);
     let next = post(&f.app, SYNC, envelope(genomic_query("VCF_EXCERPT", "G1"))).await;
     assert_eq!(next.status, StatusCode::OK, "{}", next.body);
     assert_eq!(next.body.len() as u64, length);
-    assert!(
-        started.elapsed() >= std::time::Duration::from_millis(900),
-        "the second excerpt waited for the slot the stalled one held"
-    );
-    let text = get(&f.app, "/metrics").await.body;
-    assert_eq!(ended_early(&text, "stalled"), 1);
-    assert_eq!(ended_early(&text, "aborted"), 0);
-    let body = axum::body::to_bytes(held.into_body(), usize::MAX).await;
-    assert!(
-        body.is_err() || body.is_ok_and(|b| (b.len() as u64) < length),
-        "the stalled stream ends with an error or short of its Content-Length, which HTTP reports as a failed transfer"
-    );
+    assert_eq!(metric(&f.app, ABORTED).await, 0);
+    assert_cut_short(held).await;
 }
 
 #[tokio::test]
@@ -692,7 +740,6 @@ async fn excerpts_at_their_cap_leave_engine_slots_for_other_queries() {
     let f = genomic_fixture_of(&many_variants(), |c, _| {
         c.engine_concurrency = 2;
         c.excerpt_concurrency = 1;
-        c.sync_timeout = std::time::Duration::from_secs(1);
         c.metrics = true;
     });
     let held = send_unread(&f.app, genomic_query("VCF_EXCERPT", "G1")).await;
@@ -707,28 +754,26 @@ async fn excerpts_at_their_cap_leave_engine_slots_for_other_queries() {
         (count.status, count.body.as_str()),
         (StatusCode::OK, "4978")
     );
-    let waiting = post(
-        &f.app,
-        SYNC,
-        envelope(genomic_query("AGGREGATE_VCF_EXCERPT", "G1")),
-    )
-    .await;
+    let genomic_count = post(&f.app, SYNC, envelope(genomic_query("COUNT", "G1"))).await;
     assert_eq!(
-        waiting.status,
-        StatusCode::SERVICE_UNAVAILABLE,
-        "{}",
-        waiting.body
+        (genomic_count.status, genomic_count.body.as_str()),
+        (StatusCode::OK, "1")
     );
-    drop(held);
-    let mut aborted = 0;
-    for _ in 0..50 {
-        aborted = ended_early(&get(&f.app, "/metrics").await.body, "aborted");
-        if aborted == 1 {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    for result_type in ["AGGREGATE_VCF_EXCERPT", "VARIANT_LIST_FOR_QUERY"] {
+        let refused = post(&f.app, SYNC, envelope(genomic_query(result_type, "G1"))).await;
+        assert_eq!(
+            refused.status,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{result_type}: {}",
+            refused.body
+        );
     }
-    assert_eq!(aborted, 1, "a client that left ends its stream");
+    drop(held);
+    assert_eq!(
+        await_metric(&f.app, ABORTED, 1).await,
+        1,
+        "a client that left ends its stream"
+    );
     let after = post(
         &f.app,
         SYNC,
@@ -749,8 +794,107 @@ async fn an_excerpt_that_outlives_the_stream_bound_ends_early() {
     });
     let held = send_unread(&f.app, genomic_query("VCF_EXCERPT", "G1")).await;
     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-    let text = get(&f.app, "/metrics").await.body;
-    assert_eq!(ended_early(&text, "expired"), 1);
-    assert_eq!(ended_early(&text, "stalled"), 0);
-    drop(held);
+    assert_eq!(await_metric(&f.app, EXPIRED, 1).await, 1);
+    assert_eq!(metric(&f.app, STALLED).await, 0);
+    assert_cut_short(held).await;
+}
+
+#[tokio::test]
+async fn a_variant_list_client_that_stops_reading_releases_its_slot_within_the_stall_bound() {
+    let f = genomic_fixture_of(&many_variants(), |c, _| {
+        c.engine_concurrency = 2;
+        c.excerpt_concurrency = 1;
+        c.excerpt_stall = std::time::Duration::from_secs(1);
+        c.metrics = true;
+    });
+    let held = send_unread(&f.app, genomic_query("VARIANT_LIST_FOR_QUERY", "G1")).await;
+    assert_eq!(held.status(), StatusCode::OK);
+    assert!(content_length(&held) > 400_000);
+    let over = post(&f.app, SYNC, envelope(genomic_query("VCF_EXCERPT", "G1"))).await;
+    assert_eq!(
+        over.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        over.body
+    );
+    assert_eq!(await_metric(&f.app, STALLED, 1).await, 1);
+    let next = post(
+        &f.app,
+        SYNC,
+        envelope(genomic_query("VARIANT_LIST_FOR_QUERY", "G1")),
+    )
+    .await;
+    assert_eq!(next.status, StatusCode::OK);
+    assert!(
+        next.body.starts_with("[chr1,100,A,G,G1,"),
+        "{}",
+        &next.body[..40]
+    );
+    assert_cut_short(held).await;
+}
+
+#[tokio::test]
+async fn an_excerpt_whose_genomic_store_changes_while_it_streams_ends_with_an_error() {
+    let f = genomic_fixture_of(&many_variants(), |c, _| {
+        c.engine_concurrency = 2;
+        c.excerpt_concurrency = 1;
+        c.metrics = true;
+    });
+    let held = send_unread(&f.app, genomic_query("VCF_EXCERPT", "G1")).await;
+    assert_eq!(held.status(), StatusCode::OK);
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(f.genomic_dir().join("geno.blocks"))
+        .unwrap();
+    std::io::Write::write_all(&mut file, b"x").unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    assert_cut_short(held).await;
+    assert_eq!(await_metric(&f.app, STORE_CHANGED, 1).await, 1);
+    assert_eq!(metric(&f.app, IN_PROGRESS).await, 0);
+}
+
+#[tokio::test]
+async fn closed_gates_answer_before_a_genomic_store_that_is_not_served() {
+    let f = genomic_fixture_with(|c, dir| {
+        c.genomic.data_dir = dir.join("absent");
+        c.genomic.variant.vcf_excerpt_enabled = false;
+        c.genomic.variant.aggregate_vcf_excerpt_enabled = false;
+    });
+    assert_eq!(
+        f.state.genomic_status(),
+        GenomicStatus::Down(GENOMIC_NOT_OPENED_REASON)
+    );
+    for (result_type, text) in [
+        (
+            "VARIANT_LIST_FOR_QUERY",
+            "VARIANT_LIST query type not allowed",
+        ),
+        ("VCF_EXCERPT", "VCF_EXCERPT query type not allowed"),
+        (
+            "AGGREGATE_VCF_EXCERPT",
+            "AGGREGATE_VCF_EXCERPT query type not allowed",
+        ),
+    ] {
+        let reply = post(&f.app, SYNC, envelope(genomic_query(result_type, "G1"))).await;
+        assert_eq!((reply.status, reply.body.as_str()), (StatusCode::OK, text));
+    }
+    let f = genomic_fixture_with(|c, dir| {
+        c.genomic.data_dir = dir.join("absent");
+        c.genomic.variant.vcf_excerpt_enabled = false;
+        c.genomic.variant.aggregate_vcf_excerpt_enabled = true;
+    });
+    let closed = post(&f.app, SYNC, envelope(genomic_query("VCF_EXCERPT", "G1"))).await;
+    assert_eq!(closed.body, "VCF_EXCERPT query type not allowed");
+    let open = post(
+        &f.app,
+        SYNC,
+        envelope(genomic_query("AGGREGATE_VCF_EXCERPT", "G1")),
+    )
+    .await;
+    assert_eq!(
+        open.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        open.body
+    );
 }

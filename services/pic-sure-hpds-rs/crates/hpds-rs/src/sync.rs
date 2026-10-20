@@ -8,8 +8,8 @@ use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
-use hpds_query::{Engine, ExcerptAnswer, Query, QueryError, ResultType, SyncAnswer};
-use tokio::sync::{mpsc, oneshot};
+use hpds_query::{Engine, ExcerptAnswer, GenomicStore, Query, QueryError, ResultType, SyncAnswer};
+use tokio::sync::{OwnedSemaphorePermit, mpsc, oneshot};
 
 use crate::envelope::{random_uuid, read_query};
 use crate::error::ApiError;
@@ -45,14 +45,17 @@ const EXCERPT_CHUNKS_IN_FLIGHT: usize = 4;
 ///   checks. Java runs no consent check for this case; this service keeps its own.
 /// - VARIANT_LIST_FOR_QUERY is Java's `[spec, spec]` text, VCF_EXCERPT and
 ///   AGGREGATE_VCF_EXCERPT Java's tab-separated excerpt, both `text/plain`; a type whose
-///   setting is off answers Java's `... query type not allowed` text with 200. An excerpt is
-///   measured first and refused with 400 above `HPDS_MAX_EXCERPT_BYTES`; otherwise its
-///   headers go out with its exact `Content-Length` and the rows stream as they are written,
-///   so the body is never held whole. A failure after the headers left closes the connection
-///   before the announced length, which a client sees as a truncated body.
+///   setting is off answers Java's `... query type not allowed` text with 200, after the
+///   limits and consents and before anything genomic is looked at, as Java checks the gate
+///   first. An excerpt is measured first and refused with 400 above
+///   `HPDS_MAX_EXCERPT_BYTES`; otherwise its headers go out with its exact `Content-Length`
+///   and the rows stream as they are written, so the body is never held whole. A failure
+///   after the headers left closes the connection before the announced length, which a
+///   client sees as a truncated body. Excerpts and variant lists run under the
+///   `HPDS_EXCERPT_CONCURRENCY` cap and the stall and stream bounds (see `stream_excerpt`).
 /// - With genomic data configured but not served (health DOWN with a genomic reason), every
-///   request with `genomicFilters` or a genomic result type is a 503; without genomic data
-///   configured, `genomicFilters` are a 400.
+///   request with `genomicFilters` or a genomic result type is a 503, except a gated type
+///   whose setting is off; without genomic data configured, `genomicFilters` are a 400.
 /// - An export type (PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES, DATAFRAME_PFB) is a 400 with
 ///   Java's message pointing at `POST /query`.
 /// - A `null` element of `select` is ignored by COUNT, CATEGORICAL_CROSS_COUNT and
@@ -90,7 +93,12 @@ pub async fn query_sync(State(state): State<AppState>, body: Bytes) -> Result<Re
 
 async fn answer_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
     let result_type = query.expected_result_type;
-    state.check_genomic(!query.genomic_filters.is_empty() || result_type.is_genomic())?;
+    let gate_closed = state
+        .engine()
+        .is_ok_and(|engine| gate_closed(engine, result_type));
+    if !gate_closed {
+        state.check_genomic(!query.genomic_filters.is_empty() || result_type.is_genomic())?;
+    }
     if result_type == ResultType::InfoColumnListing {
         if state.genomic_status() == GenomicStatus::Off {
             return Ok(([(CONTENT_TYPE, "application/json")], "[]").into_response());
@@ -109,6 +117,9 @@ async fn answer_query(state: &AppState, query: Query) -> Result<Response, ApiErr
     }
     let engine = state.engine()?;
     engine.check_limits(&query)?;
+    if gate_closed {
+        return gate_text(engine, &query);
+    }
     if matches!(
         result_type,
         ResultType::VcfExcerpt | ResultType::AggregateVcfExcerpt
@@ -138,13 +149,61 @@ async fn answer_query(state: &AppState, query: Query) -> Result<Response, ApiErr
     Ok(respond(&answer))
 }
 
-/// VARIANT_LIST_FOR_QUERY, computed under an engine slot within the sync timeout and sent as
-/// the engine built it, without a copy, since it may be as long as `HPDS_MAX_EXCERPT_BYTES`.
+/// True when `result_type` is VARIANT_LIST_FOR_QUERY, VCF_EXCERPT or AGGREGATE_VCF_EXCERPT
+/// and its setting is off. Java checks that gate before it reads the genomic filters, so
+/// neither a genomic store that is not served nor a genomic filter may answer first.
+fn gate_closed(engine: &Engine, result_type: ResultType) -> bool {
+    let settings = engine.variant_settings();
+    match result_type {
+        ResultType::VariantListForQuery => !settings.variant_list_enabled(),
+        ResultType::VcfExcerpt => !settings.excerpt_enabled(true),
+        ResultType::AggregateVcfExcerpt => !settings.excerpt_enabled(false),
+        _ => false,
+    }
+}
+
+/// The text of a gated type whose setting is off, from the engine, which checks the stores,
+/// the limits and the consents and then answers the gate without reading genomic data, so
+/// it runs on the request's own task.
+fn gate_text(engine: &Engine, query: &Query) -> Result<Response, ApiError> {
+    let text = if query.expected_result_type == ResultType::VariantListForQuery {
+        engine.variant_list(query)?
+    } else {
+        match engine.vcf_excerpt(query)? {
+            ExcerptAnswer::Text(text) => text,
+            ExcerptAnswer::Rows(_) => {
+                tracing::error!("an excerpt whose setting is off was computed");
+                return Err(ApiError::internal());
+            }
+        }
+    };
+    Ok(text_response(text))
+}
+
+/// A 200 `text/plain` answer of `body` with a fresh `queryMetadata` UUID.
+fn text_response(body: String) -> Response {
+    (
+        [
+            (CONTENT_TYPE.as_str(), "text/plain".to_owned()),
+            (QUERY_METADATA_HEADER, random_uuid()),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+/// VARIANT_LIST_FOR_QUERY, computed under an excerpt slot and an engine slot within the sync
+/// timeout, as the engine built it without a copy, since it may be as long as
+/// `HPDS_MAX_EXCERPT_BYTES`. The engine slot is released once the list is built; the excerpt
+/// slot is kept while the body is sent, under the same stall and stream bounds as an
+/// excerpt ([`send_body`]), so a client that stops reading cannot hold the list in memory
+/// without bound.
 async fn answer_variant_list(
     state: &AppState,
     engine: Arc<Engine>,
     query: Query,
 ) -> Result<Response, ApiError> {
+    let excerpt_slot = take_excerpt_slot(state)?;
     let timeout = state.sync_timeout();
     let computation = async {
         let slot = state.engine_slot().await;
@@ -156,17 +215,80 @@ async fn answer_variant_list(
             .await
     };
     let body = match tokio::time::timeout(timeout, computation).await {
-        Ok(body) => body?,
+        Ok(body) => Bytes::from(body?),
         Err(_) => return Err(timed_out(timeout)),
     };
-    Ok((
+    let length = body.len();
+    let (tx, rx) = mpsc::channel::<io::Result<Bytes>>(EXCERPT_CHUNKS_IN_FLIGHT);
+    let task_state = state.clone();
+    tokio::spawn(async move {
+        let _slot = excerpt_slot;
+        if let Some(end) = send_body(body, &tx, task_state.excerpt_bounds()).await {
+            tracing::warn!(?end, "a variant list stream ended before its last byte");
+            task_state.excerpt_counters().record(end);
+            let _ = tx.try_send(Err(io::Error::other(
+                "the variant list was not sent in full",
+            )));
+        }
+    });
+    Ok(streamed(length as u64, rx))
+}
+
+/// Sends `body` on `tx` in chunks of [`EXCERPT_CHUNK_BYTES`], each waiting at most the stall
+/// bound of `bounds` for room, the whole by its stream bound. Returns how it ended early, if
+/// it did.
+async fn send_body(
+    body: Bytes,
+    tx: &mpsc::Sender<io::Result<Bytes>>,
+    (stall, stream): (Duration, Duration),
+) -> Option<ExcerptEnd> {
+    let deadline = tokio::time::Instant::now() + stream;
+    let mut rest = body;
+    while !rest.is_empty() {
+        let chunk = rest.split_to(rest.len().min(EXCERPT_CHUNK_BYTES));
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Some(ExcerptEnd::Expired);
+        }
+        let wait = stall.min(deadline - now);
+        match tx.send_timeout(Ok(chunk), wait).await {
+            Ok(()) => {}
+            Err(mpsc::error::SendTimeoutError::Timeout(_)) if wait < stall => {
+                return Some(ExcerptEnd::Expired);
+            }
+            Err(mpsc::error::SendTimeoutError::Timeout(_)) => return Some(ExcerptEnd::Stalled),
+            Err(mpsc::error::SendTimeoutError::Closed(_)) => return Some(ExcerptEnd::Aborted),
+        }
+    }
+    None
+}
+
+/// One of the `HPDS_EXCERPT_CONCURRENCY` excerpt slots, or a 503 at once when every one is
+/// in use, counted for `/metrics`.
+fn take_excerpt_slot(state: &AppState) -> Result<OwnedSemaphorePermit, ApiError> {
+    state.try_excerpt_slot().ok_or_else(|| {
+        state.excerpt_counters().record_refused();
+        let (_, total) = state.excerpt_slots_in_use();
+        ApiError::unavailable(format!(
+            "all {total} excerpt slots (HPDS_EXCERPT_CONCURRENCY) are in use; retry later"
+        ))
+    })
+}
+
+/// A 200 `text/plain` response of `length` bytes whose body is the chunks `rx` receives.
+fn streamed(length: u64, rx: mpsc::Receiver<io::Result<Bytes>>) -> Response {
+    let chunks = futures_util::stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|chunk| (chunk, rx))
+    });
+    (
         [
             (CONTENT_TYPE.as_str(), "text/plain".to_owned()),
+            (CONTENT_LENGTH.as_str(), length.to_string()),
             (QUERY_METADATA_HEADER, random_uuid()),
         ],
-        body,
+        Body::from_stream(chunks),
     )
-        .into_response())
+        .into_response()
 }
 
 fn timed_out(timeout: Duration) -> ApiError {
@@ -186,23 +308,36 @@ enum ExcerptHead {
 
 /// A writer that hands each write to the response as one chunk, at most
 /// [`EXCERPT_CHUNKS_IN_FLIGHT`] chunks ahead of the client. It never waits unbounded: each
-/// chunk waits at most `stall` for room, and no chunk is sent after `deadline`. It also
-/// refuses to send more than the measured length, so a body never runs past its
-/// `Content-Length`. The first failure is kept in `end`.
-struct ChannelWriter {
+/// chunk waits at most `stall` for room, and no chunk is sent after `deadline`. It refuses
+/// to send more than the measured length, so a body never runs past its `Content-Length`,
+/// and checks before every chunk, the last included, that the genomic store is still the
+/// one the excerpt was measured on ([`hpds_query::GenomicStore::check_unchanged`]), so a
+/// store changed between the measure pass and the write pass ends the stream with an error
+/// instead of completing a body of other rows. The first failure is kept in `end`.
+struct ChannelWriter<'s> {
     tx: mpsc::Sender<io::Result<Bytes>>,
     runtime: tokio::runtime::Handle,
     stall: Duration,
     deadline: Instant,
     remaining: u64,
+    store: Option<&'s GenomicStore>,
     end: Option<ExcerptEnd>,
 }
 
-impl Write for ChannelWriter {
+impl Write for ChannelWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.len() as u64 > self.remaining {
             self.end = Some(ExcerptEnd::Aborted);
             return Err(io::Error::other("the excerpt is longer than it measured"));
+        }
+        if self
+            .store
+            .is_some_and(|store| store.check_unchanged().is_err())
+        {
+            self.end = Some(ExcerptEnd::StoreChanged);
+            return Err(io::Error::other(
+                "the genomic store changed while the excerpt was written",
+            ));
         }
         let now = Instant::now();
         if now >= self.deadline {
@@ -252,7 +387,7 @@ impl Write for ChannelWriter {
 /// which a client sees as a failed transfer either way.
 fn write_excerpt(
     excerpt: &hpds_query::VcfExcerpt<'_>,
-    writer: ChannelWriter,
+    writer: ChannelWriter<'_>,
 ) -> Option<ExcerptEnd> {
     let tx = writer.tx.clone();
     let mut out = BufWriter::with_capacity(EXCERPT_CHUNK_BYTES, writer);
@@ -281,21 +416,29 @@ fn write_excerpt(
 
 /// VCF_EXCERPT and AGGREGATE_VCF_EXCERPT, computed on a blocking thread under one of the
 /// `HPDS_EXCERPT_CONCURRENCY` excerpt slots and an engine slot, both kept until the last row
-/// is sent or the stream ends. Excerpts therefore never take every engine slot, and a COUNT
-/// still finds one while excerpts stream.
+/// is sent or the stream ends. An excerpt that finds every excerpt slot in use is a 503 at
+/// once. Excerpts therefore never take every engine slot, and a COUNT still finds one while
+/// excerpts stream.
 ///
-/// The slots, the measure pass and the head are bounded by `HPDS_SYNC_TIMEOUT_SECONDS`, past
-/// which the request is a 503. A measure pass still running then finishes, finds the request
-/// gone, writes nothing and releases its slots. The rows then stream through a bounded
-/// channel: each chunk waits at most `HPDS_EXCERPT_STALL_SECONDS` for the client to make
-/// room, and the whole body ends by `HPDS_EXCERPT_STREAM_SECONDS`; either bound, a client
-/// that left, a read failure or a body that would differ from its measured length ends the
-/// stream early and releases the slots. Those ends are counted for `/metrics`.
+/// The wait for the engine slot, the measure pass and the head are bounded by
+/// `HPDS_SYNC_TIMEOUT_SECONDS`, past which the request is a 503. A measure pass still
+/// running then is not interrupted: it finishes, finds the request gone, writes nothing
+/// and releases its slots. The rows then stream through a bounded channel: each chunk waits
+/// at most `HPDS_EXCERPT_STALL_SECONDS` for the client to make room, and the whole body ends
+/// by `HPDS_EXCERPT_STREAM_SECONDS`; either bound, a client that left, a read failure, a
+/// genomic store changed on disk since the measure pass, or a body that would differ from
+/// its measured length ends the stream early and releases the slots. Those ends are
+/// counted for `/metrics`.
+///
+/// The measure pass and the write pass read the same open genomic store: the engine, and
+/// with it the store's shared lock on `geno.index` and its open `geno.blocks`, lives until
+/// the write pass ends.
 async fn stream_excerpt(
     state: &AppState,
     engine: Arc<Engine>,
     query: Query,
 ) -> Result<Response, ApiError> {
+    let excerpt_slot = take_excerpt_slot(state)?;
     let (head_tx, head_rx) = oneshot::channel::<Result<ExcerptHead, QueryError>>();
     let (body_tx, body_rx) = mpsc::channel::<io::Result<Bytes>>(EXCERPT_CHUNKS_IN_FLIGHT);
     let timeout = state.sync_timeout();
@@ -303,7 +446,6 @@ async fn stream_excerpt(
     let runtime = tokio::runtime::Handle::current();
     let task_state = state.clone();
     let computation = async {
-        let excerpt_slot = state.excerpt_slot().await;
         let engine_slot = state.engine_slot().await;
         tokio::task::spawn_blocking(move || {
             let _slots = (excerpt_slot, engine_slot);
@@ -325,6 +467,7 @@ async fn stream_excerpt(
                         stall,
                         deadline: Instant::now() + stream,
                         remaining: length,
+                        store: engine.genomic(),
                         end: None,
                     };
                     if let Some(end) = write_excerpt(&excerpt, writer) {
@@ -341,31 +484,10 @@ async fn stream_excerpt(
         Ok(Err(_)) => return Err(ApiError::internal()),
         Err(_) => return Err(timed_out(timeout)),
     };
-    let length = match head {
-        ExcerptHead::Text(text) => {
-            return Ok((
-                [
-                    (CONTENT_TYPE.as_str(), "text/plain".to_owned()),
-                    (QUERY_METADATA_HEADER, random_uuid()),
-                ],
-                text,
-            )
-                .into_response());
-        }
-        ExcerptHead::Rows(length) => length,
-    };
-    let rows = futures_util::stream::unfold(body_rx, |mut rx| async move {
-        rx.recv().await.map(|chunk| (chunk, rx))
-    });
-    Ok((
-        [
-            (CONTENT_TYPE.as_str(), "text/plain".to_owned()),
-            (CONTENT_LENGTH.as_str(), length.to_string()),
-            (QUERY_METADATA_HEADER, random_uuid()),
-        ],
-        Body::from_stream(rows),
-    )
-        .into_response())
+    match head {
+        ExcerptHead::Text(text) => Ok(text_response(text)),
+        ExcerptHead::Rows(length) => Ok(streamed(length, body_rx)),
+    }
 }
 
 /// A 200 carrying `answer` with its content type and a fresh `queryMetadata` UUID, built
