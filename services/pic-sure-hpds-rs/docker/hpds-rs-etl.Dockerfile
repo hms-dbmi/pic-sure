@@ -6,7 +6,7 @@ WORKDIR /workspace
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/workspace/target \
-    if [ "$VENDORED" = 1 ]; then export RUSTUP_TOOLCHAIN=1.98.0 && mkdir -p .cargo && printf '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n\n[net]\noffline = true\n' > .cargo/config.toml; fi \
+    if [ "$VENDORED" = 1 ]; then export RUSTUP_TOOLCHAIN="$RUST_VERSION" && mkdir -p .cargo && printf '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n\n[net]\noffline = true\n' > .cargo/config.toml; fi \
     && cargo build --release --locked -p hpds-etl --bin hpds-etl -p hpds-bench --bin hpds-bench \
     && cp target/release/hpds-etl target/release/hpds-bench /usr/local/bin/
 

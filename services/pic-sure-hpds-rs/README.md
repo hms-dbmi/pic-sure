@@ -114,6 +114,8 @@ docker build --build-arg VENDORED=1 -f docker/hpds-rs-etl.Dockerfile -t hms-dbmi
 The runtime stage of the ETL image still installs `ca-certificates` from the Debian package mirror,
 so that build needs the mirror even when it needs no crates.io.
 
+A local `vendor/` directory adds about 342 MB to the default build context, so move it aside when building without `VENDORED=1`.
+
 `vendor/` is not committed. Regenerate it whenever `Cargo.lock` changes. The build still uses
 `--locked`, so a stale `vendor/` fails on the missing package instead of building old code.
 
@@ -129,8 +131,9 @@ with `cargo deny` against `deny.toml`, uploads a CycloneDX SBOM for each binary 
 The workspace test step skips two `hpds-query` engine tests that fail intermittently under
 parallel load: `peak_live_entries_stay_under_the_chunk_bound` (a bookkeeping count in the test,
 not a wrong answer) and `concurrent_study_level_reads_on_a_small_cache_serve_only_cached_entries`.
-A separate non-blocking step still runs both, so their results stay visible in the job. Remove
-the skips once the tests are fixed.
+A separate non-blocking step in each job still runs both, so their results stay visible. Run
+alone, the two tests are a weak signal, because the failure appears under parallel load. Remove
+the skips from the test and release jobs once the tests are fixed.
 
 `hpds-rs` allocates with jemalloc, which fixes its page size when it is compiled. A binary
 built for 4 KiB pages fails to start on a kernel with larger ones, which some arm64
