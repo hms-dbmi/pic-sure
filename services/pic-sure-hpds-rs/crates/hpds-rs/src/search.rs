@@ -273,7 +273,10 @@ pub fn render_info(entries: &[InfoSearchEntry]) -> String {
 /// ([`hpds_query::Engine::search_info`]): its description, its values in Java's `HashSet`
 /// order (none for a continuous column) and whether it is continuous, keyed in Java string
 /// order. A matching categorical column some genomic node lacks is a 400, where Java fails.
-/// With genomic data configured but not served, a request with a term is a 503.
+/// With genomic data configured but not opened, a request with a term is a 503, since which
+/// INFO columns match it cannot be known. Once the genomic store changed on disk, a term
+/// that matches no INFO column in the index held in memory answers with an empty `info`,
+/// and one that matches some column is a 503, since its values may no longer be read.
 ///
 /// With a null or missing `query`, Java serializes its whole dictionary's entry set, so
 /// `phenotypes` is an array of one-entry objects `{<path>:<SummaryColumnMeta>}` for every
@@ -309,7 +312,14 @@ pub async fn search(
     let gzip_accepted = negotiated && accepts_gzip(&headers);
     let answer = tokio::task::spawn_blocking(move || {
         let info = match &term {
-            Some(term) if with_info => Some(render_info(&engine.search_info(term)?)),
+            Some(term) if with_info => Some(render_info(&match engine.search_info(term) {
+                Err(hpds_query::QueryError::GenomicStoreChanged { .. })
+                    if !engine.search_info_matches(term) =>
+                {
+                    Vec::new()
+                }
+                found => found?,
+            })),
             _ => None,
         };
         Ok::<_, hpds_query::QueryError>(index.answer_with_info(

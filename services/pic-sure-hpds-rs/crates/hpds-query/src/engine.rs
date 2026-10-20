@@ -314,27 +314,29 @@ impl Engine {
         self.admit_genomic(self.admit_phenotypic(query, select_use)?)
     }
 
-    /// The first part of [`Engine::admit`]: the stores unchanged on disk, then the limits and
-    /// the consent selection ([`QueryLimits::admit`]). The excerpt and variant list gates
-    /// sit between it and [`Engine::admit_genomic`], since Java checks them before it reads
-    /// the query's genomic filters.
+    /// The first part of [`Engine::admit`]: the phenotype store unchanged on disk, then the
+    /// limits and the consent selection ([`QueryLimits::admit`]). The excerpt and variant
+    /// list gates sit between it and [`Engine::admit_genomic`], since Java checks them before
+    /// it reads the query's genomic filters, so a closed gate answers its text even while
+    /// the genomic store is refused.
     fn admit_phenotypic<'q>(
         &self,
         query: &'q Query,
         select_use: SelectUse,
     ) -> Result<CheckedQuery<'q, '_>> {
         self.partitions.check_unchanged()?;
-        self.check_genomic_unchanged(query)?;
         self.limits.admit(query, &self.partitions, select_use)
     }
 
-    /// The second part of [`Engine::admit`]: the refusal of genomic filters without a genomic
-    /// store, then their translation and checks against the genomic index.
+    /// The second part of [`Engine::admit`]: the genomic store unchanged on disk when the
+    /// query reads it, the refusal of genomic filters without a genomic store, then their
+    /// translation and checks against the genomic index.
     fn admit_genomic<'q, 's>(
         &'s self,
         checked: CheckedQuery<'q, 's>,
     ) -> Result<CheckedQuery<'q, 's>> {
         let query = checked.query();
+        self.check_genomic_unchanged(query)?;
         self.check_genomic_store(query)?;
         let genomic = match &self.genomic {
             Some(store) if !query.genomic_filters.is_empty() => {
@@ -637,6 +639,20 @@ impl Engine {
         };
         store.check_unchanged()?;
         search_info(store, term)
+    }
+
+    /// True when some INFO column's description or key contains `term`, ignoring case, the
+    /// match [`Engine::search_info`] makes. Reads only the genomic index held in memory, so it
+    /// answers even after the genomic store changed on disk. False without a genomic store.
+    pub fn search_info_matches(&self, term: &str) -> bool {
+        let Some(store) = &self.genomic else {
+            return false;
+        };
+        let needle = term.to_lowercase();
+        info_column_listing(store).iter().any(|meta| {
+            meta.description.to_lowercase().contains(&needle)
+                || meta.key.to_lowercase().contains(&needle)
+        })
     }
 
     /// The values of INFO column `column` containing `query`, ignoring case, in Java's
