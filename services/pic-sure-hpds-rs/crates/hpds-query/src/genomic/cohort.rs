@@ -355,15 +355,13 @@ fn info_of(
 
 /// The indexes of `block`'s keys equal to one of `filter`'s values, ascending and distinct:
 /// `filterInfoCategoryKeys`, whose binary search over the sorted values is an exact match.
+/// The values are distinct and in the keys' order already, so the indexes come out ascending.
 fn categorical_keys(block: &InfoBlock, filter: &CategoricalFilter) -> Vec<usize> {
-    let mut keys: Vec<usize> = filter
+    filter
         .values
         .iter()
         .filter_map(|value| block.find_key(value))
-        .collect();
-    keys.sort_unstable();
-    keys.dedup();
-    keys
+        .collect()
 }
 
 /// The indexes of the keys `getValuesInRange(Range.closed(min, max))` returns from a

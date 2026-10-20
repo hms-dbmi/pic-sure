@@ -4,7 +4,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use hpds_format::{VariantSpecKey, java_float_cmp};
+use hpds_format::{VariantSpecKey, java_float_cmp, java_string_cmp};
 
 use crate::error::{QueryError, Result};
 use crate::model::{GenomicFilter, Query};
@@ -39,7 +39,8 @@ pub(crate) struct SpecFilter {
 pub(crate) struct CategoricalFilter {
     /// The INFO column.
     pub(crate) column: String,
-    /// The values, each matched exactly.
+    /// The values, each matched exactly, distinct and ascending in Java `String.compareTo`
+    /// order, as Java sorts them before its binary search.
     pub(crate) values: Vec<String>,
 }
 
@@ -113,11 +114,14 @@ impl GenomicFilters {
             categorical: categorical
                 .into_iter()
                 .map(|(column, values)| {
+                    let mut values = without_nulls(values, || {
+                        format!("the values of the genomic filter on {column} hold null")
+                    })?;
+                    values.sort_by(|a, b| java_string_cmp(a, b));
+                    values.dedup();
                     Ok(CategoricalFilter {
                         column: column.to_owned(),
-                        values: without_nulls(values, || {
-                            format!("the values of the genomic filter on {column} hold null")
-                        })?,
+                        values,
                     })
                 })
                 .collect::<Result<_>>()?,
@@ -250,7 +254,7 @@ mod tests {
             ),
             gf(
                 Some("Gene_with_variant"),
-                Some(vec![Some("B"), Some("A")]),
+                Some(vec![Some("B"), Some("A"), Some("B")]),
                 Some(1.0),
                 None,
             ),
@@ -281,7 +285,7 @@ mod tests {
             [
                 ("4,98,C,C,a-b,x", vec!["v".to_owned()]),
                 ("AF", vec![]),
-                ("Gene_with_variant", vec!["B".to_owned(), "A".to_owned()]),
+                ("Gene_with_variant", vec!["A".to_owned(), "B".to_owned()]),
             ]
         );
         assert_eq!(t.numeric.len(), 1);
