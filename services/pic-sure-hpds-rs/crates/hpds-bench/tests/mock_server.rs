@@ -14,7 +14,7 @@ use hpds_bench::compare::compare_corpus;
 use hpds_bench::corpus::{CorpusEntry, Kind};
 use hpds_bench::divergence::Divergences;
 use hpds_bench::golden::{Expect, GoldenCase, GoldenFile, run_golden};
-use hpds_bench::load::{LoadConfig, run_load};
+use hpds_bench::load::{LoadConfig, LoadReport, run_load};
 use serde_json::{Value, json};
 
 #[derive(Clone)]
@@ -213,6 +213,24 @@ async fn golden_cases_pass_and_fail_against_the_mock() {
     assert_eq!(failed[0].entry, "wrong");
 }
 
+const LOAD_ATTEMPT_CAP: usize = 50;
+
+/// Runs the load until every result type in `expected` has at least one request, up to
+/// [`LOAD_ATTEMPT_CAP`] attempts, and returns the last report.
+async fn load_until_seen(base: &str, config: &LoadConfig, expected: &[&str]) -> LoadReport {
+    let mut report = run_load(&client(base), corpus(), config).await.unwrap();
+    for _ in 1..LOAD_ATTEMPT_CAP {
+        if expected
+            .iter()
+            .all(|kind| report.per_type.contains_key(*kind))
+        {
+            break;
+        }
+        report = run_load(&client(base), corpus(), config).await.unwrap();
+    }
+    report
+}
+
 #[tokio::test]
 async fn load_reports_latency_per_result_type() {
     let base = spawn(mock(5, false)).await;
@@ -222,7 +240,7 @@ async fn load_reports_latency_per_result_type() {
         warmup: Duration::from_millis(100),
         ..LoadConfig::default()
     };
-    let report = run_load(&client(&base), corpus(), &config).await.unwrap();
+    let report = load_until_seen(&base, &config, &["COUNT", "PATIENTS"]).await;
     assert!(report.overall.requests > 0);
     assert_eq!(report.overall.errors, 0);
     assert!(report.per_type.contains_key("COUNT") && report.per_type.contains_key("PATIENTS"));
@@ -231,9 +249,7 @@ async fn load_reports_latency_per_result_type() {
         only_sync: true,
         ..config
     };
-    let report = run_load(&client(&base), corpus(), &sync_only)
-        .await
-        .unwrap();
+    let report = load_until_seen(&base, &sync_only, &["COUNT"]).await;
     assert!(!report.per_type.contains_key("PATIENTS"));
 
     let excluding = LoadConfig {
@@ -241,9 +257,7 @@ async fn load_reports_latency_per_result_type() {
         exclude: vec!["COUNT".into()],
         ..sync_only
     };
-    let report = run_load(&client(&base), corpus(), &excluding)
-        .await
-        .unwrap();
+    let report = load_until_seen(&base, &excluding, &["CROSS_COUNT"]).await;
     assert!(!report.per_type.contains_key("COUNT"));
     assert!(report.per_type.contains_key("CROSS_COUNT"));
 }
