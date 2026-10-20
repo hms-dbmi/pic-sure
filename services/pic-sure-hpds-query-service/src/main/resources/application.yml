@@ -18,6 +18,16 @@ hpds:
   open-url: ${HPDS_OPEN_URL:}
   open-token: ${HPDS_OPEN_TOKEN:}
   api-path: ${HPDS_API_PATH:/v3}
+  # Rust HPDS beside the Java auth backend. Unset HPDS_RS_URL, or HPDS_RS_MODE=off, sends every call to Java; both are read
+  # once at startup, so the kill switch takes a restart. Only auth-backend sync queries and search calls are eligible.
+  rs:
+    url: ${HPDS_RS_URL:}
+    token: ${HPDS_RS_TOKEN:}
+    mode: ${HPDS_RS_MODE:off}
+    types: ${HPDS_RS_TYPES:COUNT,CROSS_COUNT,CATEGORICAL_CROSS_COUNT,CONTINUOUS_CROSS_COUNT}
+    shadow-sample: ${HPDS_RS_SHADOW_SAMPLE:0.1}
+    shadow-max-in-flight: ${HPDS_RS_SHADOW_MAX_IN_FLIGHT:4}
+    timeout-ms: ${HPDS_RS_TIMEOUT_MS:30000}
 
 psama:
   base-url: ${PSAMA_URL:}

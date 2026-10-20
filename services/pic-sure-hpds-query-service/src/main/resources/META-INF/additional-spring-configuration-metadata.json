@@ -5,6 +5,46 @@
       "type": "java.lang.Boolean",
       "description": "Whether ConsentAuthorizationService scopes auth-backend queries to the caller's current dbGaP consents and re-checks saved results against them before returning them. Maps from the CONSENT_BASED_AUTHORIZATION_ENABLED environment variable. When false, both checks are skipped for every backend.",
       "defaultValue": true
+    },
+    {
+      "name": "hpds.rs.url",
+      "type": "java.lang.String",
+      "description": "Base URL of the Rust HPDS backend, for example http://hpds-rs:8080/PIC-SURE; the HPDS API path is appended to it as for the Java backends. Maps from HPDS_RS_URL. Unset or blank turns Rust routing off whatever hpds.rs.mode says."
+    },
+    {
+      "name": "hpds.rs.token",
+      "type": "java.lang.String",
+      "description": "Service Bearer token sent to Rust HPDS on sync query calls; search calls carry none, as on Java. Maps from HPDS_RS_TOKEN. Secret."
+    },
+    {
+      "name": "hpds.rs.mode",
+      "type": "edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties$RsMode",
+      "description": "How the Rust HPDS backend is used. off: Java answers everything. shadow: Java answers and a sample of eligible calls is mirrored to Rust and compared, logging only statuses, latencies, match or mismatch and the normalization name. serve: Rust answers eligible calls and any Rust connect error, timeout or non-2xx answer falls back to Java for that call. Maps from HPDS_RS_MODE; read once at startup, so setting it to off takes a restart.",
+      "defaultValue": "off"
+    },
+    {
+      "name": "hpds.rs.types",
+      "type": "java.util.Set<java.lang.String>",
+      "description": "Result types routed or mirrored to Rust HPDS, comma separated. SEARCH and SEARCH_VALUES name the concept search and genomic values calls; genomic result types are added by name. Only auth-backend sync queries and search calls are eligible, so async types never reach Rust. An unknown name stops startup. Maps from HPDS_RS_TYPES.",
+      "defaultValue": "COUNT,CROSS_COUNT,CATEGORICAL_CROSS_COUNT,CONTINUOUS_CROSS_COUNT"
+    },
+    {
+      "name": "hpds.rs.shadow-sample",
+      "type": "java.lang.Double",
+      "description": "Share of eligible calls mirrored to Rust HPDS in shadow mode, from 0 to 1. Maps from HPDS_RS_SHADOW_SAMPLE.",
+      "defaultValue": 0.1
+    },
+    {
+      "name": "hpds.rs.shadow-max-in-flight",
+      "type": "java.lang.Integer",
+      "description": "Most mirrored Rust HPDS calls in flight at once in shadow mode. A sampled call over the limit is dropped and counted in hpds.rs.shadow.dropped, never queued. Maps from HPDS_RS_SHADOW_MAX_IN_FLIGHT.",
+      "defaultValue": 4
+    },
+    {
+      "name": "hpds.rs.timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "Read timeout of Rust HPDS calls in milliseconds. A serve-mode call that times out falls back to Java. Maps from HPDS_RS_TIMEOUT_MS.",
+      "defaultValue": 30000
     }
   ]
 }
