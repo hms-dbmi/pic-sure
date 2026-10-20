@@ -201,7 +201,9 @@ class ExportForMigrationTest {
         byte[] id = new byte[ExportForMigration.EXPORT_ID_BYTES];
         try (
             var out = new ExportForMigration.EncryptingOutputStream(
-                new java.io.FileOutputStream(file.toFile()), id, ExportForMigration.CONCEPTS_KIND
+                java.nio.channels.FileChannel
+                    .open(file, java.nio.file.StandardOpenOption.CREATE_NEW, java.nio.file.StandardOpenOption.WRITE),
+                id, ExportForMigration.CONCEPTS_KIND
             )
         ) {
             out.write(content, 0, content.length);
@@ -489,5 +491,15 @@ class ExportForMigrationTest {
         file.write(Crypto.encryptData(bytes.toByteArray()));
         meta.setAllObservationsLength(file.getFilePointer());
         return meta;
+    }
+
+    @Test
+    void aDotDotAfterAMissingNameIsRefusedAndOneAfterAnExistingNameIsResolvedByTheSystem(@org.junit.jupiter.api.io.TempDir Path dir)
+        throws Exception {
+        Path inner = Files.createDirectory(dir.resolve("inner"));
+        org.junit.jupiter.api.Assertions.assertThrows(
+            java.io.IOException.class, () -> ExportForMigration.realPathAllowingMissing(dir.resolve("missing").resolve("..").resolve("x"))
+        );
+        assertEquals(dir.toRealPath().resolve("x"), ExportForMigration.realPathAllowingMissing(inner.resolve("..").resolve("x")));
     }
 }
