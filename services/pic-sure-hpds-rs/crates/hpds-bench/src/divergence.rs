@@ -9,6 +9,8 @@ use crate::consents::has_consent_values;
 use crate::corpus::{CorpusEntry, Kind};
 use crate::{BenchError, Result};
 
+mod genomic;
+
 /// A condition on the two outcomes that must hold for a rule to apply, beyond name and status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -69,19 +71,13 @@ pub enum Condition {
     /// An async entry whose submit one side refused with 400 `Result type <type> is computed
     /// synchronously. Submit it with POST /query/sync.`, while the other accepted it (200).
     SyncTypeOnAsyncRoute,
-    /// A sync entry for a genomic result type that one side refused with 400 `result type
-    /// <type> is not supported by this phenotype-only HPDS`, while the other answered 200.
-    GenomicTypeOnSyncRoute,
-    /// An async entry for a result type Rust does not serve at all (a genomic type or
-    /// INFO_COLUMN_LISTING), whose submit the Rust side refused with exactly `result type
-    /// <type> is not supported by this phenotype-only HPDS`, while the Java side answered the
-    /// submit 200 with no status: `initializeResult` has no processor for the type and throws
-    /// outside its catch. With the Java side unknown, either side may be Java.
+    /// An async entry for a genomic result type or INFO_COLUMN_LISTING, which POST /query
+    /// serves in neither service: the Rust side refused the submit with exactly `result type
+    /// <type> is not supported by POST /query; send it to POST /query/sync`, while the Java
+    /// side answered the submit 200 with no status or ended the job in ERROR
+    /// (`initializeResult` has no processor for the type). With the Java side unknown, either
+    /// side may be Java.
     GenomicTypeOnAsyncRoute,
-    /// One side refused with 400 `variant-spec concept path "<path>" is not supported by this
-    /// phenotype-only HPDS`, while the other answered (a sync 200 or an accepted async
-    /// submit).
-    VariantSpecPathRefused,
     /// One side refused with 400 naming one of its request shape limits
     /// (`HPDS_MAX_SELECT_PATHS`, `HPDS_MAX_CLAUSE_DEPTH`, `HPDS_MAX_CLAUSE_NODES`,
     /// `HPDS_MAX_QUERY_CONCEPTS`) or the JSON nesting limit (`recursion limit exceeded`), while
@@ -195,6 +191,76 @@ pub enum Condition {
     /// ERROR with `resultMetadata.error` exactly `<type> exports are not supported by this
     /// phenotype-only HPDS`, as Rust does for these two export types it does not produce.
     ExportTypeOutOfScope,
+    /// The entry's query holds a subquery, at any depth, whose `phenotypicClauses` is empty;
+    /// the Rust side refused with exactly `a phenotypic subquery must contain at least one
+    /// clause`, and the Java side answered the sync request 200 with an empty body (its
+    /// executor fails on the empty clause list).
+    EmptySubqueryRefused,
+    /// The entry's genomic filters hold a `null` (a filter, a key, or an element of `values`);
+    /// the Rust side refused with its `null` refusal and the Java side failed: a sync 200 with
+    /// an empty body or a 500, an async job in ERROR, or an async submit answered 200 with no
+    /// status.
+    GenomicNullRefused,
+    /// The Rust side refused a numeric genomic filter with one bound, a `min` above its `max`,
+    /// or one on a column some node holds as categorical, and the Java side failed as for
+    /// [`Condition::GenomicNullRefused`] (Guava's `Range.closed` throws, or a `null`
+    /// continuous index).
+    GenomicRangeRefused,
+    /// The Rust side refused a spec key whose position is not a Java `int` (`the variant spec
+    /// <key> has no position Java can read`), and the Java side failed.
+    GenomicSpecKeyRefused,
+    /// The Rust side refused because a selected variant's spec has fewer than six fields,
+    /// which Java cannot parse into a `VariantSpec`, and the Java side failed.
+    GenomicShortSpecRefused,
+    /// The Rust side refused because a listed variant's metadata holds one string twice,
+    /// where Java's `Set.of` throws, and the Java side failed.
+    GenomicDuplicateMetadataRefused,
+    /// The Rust side refused an excerpt listing a variant no node holds masks for, where
+    /// Java's `Optional.get` throws, and the Java side failed.
+    ExcerptMasksMissingRefused,
+    /// The Rust side refused a selected column or value that Java looks up through its
+    /// `_____` delimiter and cannot split back into itself. Java either fails or silently
+    /// reads another key's variants, so its answer is not checked.
+    InfoKeyDelimiterRefused,
+    /// The Rust side refused a VCF_EXCERPT because `ID_CUBE_NAME` names a numeric concept,
+    /// whose values Java casts to `String` for the patient column headers and fails on, and
+    /// the Java side failed.
+    IdCubeNumericRefused,
+    /// The Rust side refused genomic filters with exactly `genomicFilters is not supported:
+    /// this HPDS serves no genomic store`, and the Java side, whose no-op genomic processor
+    /// fails on them, failed.
+    GenomicNoStoreRefused,
+    /// The Rust side refused with one of its refusals of a genomic filter invalid as sent,
+    /// and the Java side answered as over an empty cohort or an empty variant list (a count
+    /// of 0, cross counts of 0, `[]`, `No Variants Found`, an export with no rows), because it
+    /// never evaluated the filter: the phenotype cohort was empty, or a variant result type
+    /// had no INFO filter. Rust decides a filter's validity from the request alone.
+    InvalidGenomicFilterNotEvaluated,
+    /// A `/search/values` entry the Rust side refused with 400 and the Java side answered
+    /// 500 or 200 with an empty body.
+    SearchValuesRefused,
+    /// A `/search` entry the Rust side refused with 400 because a categorical INFO column
+    /// matching the term is missing on some node, and the Java side answered 200 with an
+    /// empty body.
+    SearchInfoColumnMissingRefused,
+    /// The Rust side refused an excerpt or a variant list for its size, naming
+    /// `HPDS_MAX_EXCERPT_BYTES`, and the Java side answered 200 with a body.
+    GenomicResultSizeLimit,
+    /// Both VARIANT_LIST_FOR_QUERY answers are lists that hold the same specs.
+    VariantListSet,
+    /// Both excerpt answers are equal once INFO header columns compare as a set, INFO cells
+    /// as multisets of their comma-separated values, and patient columns as a multiset of
+    /// (header, column).
+    ExcerptNormalized,
+    /// Both INFO_COLUMN_LISTING answers hold the same entries in any order, `min` and `max`
+    /// compared as `f32`.
+    InfoListingMultiset,
+    /// Body normalization: the `values` of every column under `results.info` of a `/search`
+    /// answer are sorted.
+    SearchInfoValuesSet,
+    /// Two `/search/values` pages that differ only in the order of values sharing one Java
+    /// hash bucket.
+    SearchValuesBucketSet,
 }
 
 /// Which Java service a comparison runs against, for rules that hold for one branch only.
@@ -446,6 +512,7 @@ fn is_normalization(condition: Condition) -> bool {
             | Condition::CategoryValuesOrder
             | Condition::SearchConceptOrder
             | Condition::ColumnMetaShape
+            | Condition::SearchInfoValuesSet
     )
 }
 
@@ -515,6 +582,10 @@ fn equal_after(a: &Outcome, b: &Outcome, conditions: &[Condition]) -> bool {
     }
     if conditions.contains(&Condition::NumericMaxDoubleMinValue) {
         align_min_value_max(&mut left, &mut right);
+    }
+    if conditions.contains(&Condition::SearchInfoValuesSet) {
+        genomic::sort_info_values(&mut left);
+        genomic::sort_info_values(&mut right);
     }
     json_diff_with(&left, &right, false).is_empty()
 }
@@ -605,46 +676,6 @@ fn sync_type_on_async_route(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bo
             |body| body == expected,
             |o| matches!(o, Outcome::Async(x) if x.submit_status == 200),
         )
-}
-
-fn genomic_type_on_sync_route(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
-    let expected = format!(
-        "result type {} is not supported by this phenotype-only HPDS",
-        entry.result_type
-    );
-    entry.kind == Kind::Sync
-        && refused_against(
-            a,
-            b,
-            |body| body == expected,
-            |o| matches!(o, Outcome::Sync(s) if s.status == 200),
-        )
-}
-
-fn genomic_type_on_async_route(
-    entry: &CorpusEntry,
-    a: &Outcome,
-    b: &Outcome,
-    java: Option<JavaService>,
-) -> bool {
-    let expected = format!(
-        "result type {} is not supported by this phenotype-only HPDS",
-        entry.result_type
-    );
-    entry.kind == Kind::Async
-        && rust_refused_java_failed(a, b, java, |body| body == expected, submit_failed)
-}
-
-fn variant_spec_path_refused(a: &Outcome, b: &Outcome) -> bool {
-    refused_against(
-        a,
-        b,
-        |body| {
-            body.starts_with("variant-spec concept path \"")
-                && body.ends_with("\" is not supported by this phenotype-only HPDS")
-        },
-        answered,
-    )
 }
 
 /// The request shape limits whose refusal [`Condition::RequestLimitRefused`] accepts.
@@ -1012,6 +1043,23 @@ fn holds_null_clause(clause: &Value) -> bool {
                 .iter()
                 .any(|child| child.is_null() || holds_null_clause(child))
         })
+}
+
+fn holds_empty_subquery(clause: &Value) -> bool {
+    clause
+        .get("phenotypicClauses")
+        .and_then(Value::as_array)
+        .is_some_and(|children| children.is_empty() || children.iter().any(holds_empty_subquery))
+}
+
+/// The message Rust refuses an empty subquery with.
+const EMPTY_SUBQUERY: &str = "a phenotypic subquery must contain at least one clause";
+
+fn empty_subquery_refused(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
+    entry_query(entry)
+        .and_then(|query| query.get("phenotypicClause").cloned())
+        .is_some_and(|clause| holds_empty_subquery(&clause))
+        && refused_against(a, b, |body| body == EMPTY_SUBQUERY, empty_sync_200)
 }
 
 /// The entry's query as JSON, read from its raw body when it has one, a string `query`
@@ -1632,9 +1680,9 @@ impl Condition {
                 failed_quietly,
             ),
             Condition::SyncTypeOnAsyncRoute => sync_type_on_async_route(entry, a, b),
-            Condition::GenomicTypeOnSyncRoute => genomic_type_on_sync_route(entry, a, b),
-            Condition::GenomicTypeOnAsyncRoute => genomic_type_on_async_route(entry, a, b, java),
-            Condition::VariantSpecPathRefused => variant_spec_path_refused(a, b),
+            Condition::GenomicTypeOnAsyncRoute => {
+                genomic::genomic_type_on_async_route(entry, a, b, java)
+            }
             Condition::RequestLimitRefused => request_limit_refused(a, b),
             Condition::NumberTooLongRefused => number_too_long_refused(a, b),
             Condition::StringBoundRefused => string_bound_refused(entry, a, b),
@@ -1662,6 +1710,46 @@ impl Condition {
             Condition::MissingOperatorRefused => missing_operator_refused(entry, a, b, java),
             Condition::ConsentExtraFieldRefused => consent_extra_field_refused(entry, a, b, java),
             Condition::ExportTypeOutOfScope => export_type_out_of_scope(entry, a, b, java),
+            Condition::EmptySubqueryRefused => empty_subquery_refused(entry, a, b),
+            Condition::GenomicNullRefused => genomic::null_refused(entry, a, b, java),
+            Condition::GenomicRangeRefused => {
+                genomic::refused_where_java_fails(genomic::Refusal::Range, a, b, java)
+            }
+            Condition::GenomicSpecKeyRefused => {
+                genomic::refused_where_java_fails(genomic::Refusal::SpecKey, a, b, java)
+            }
+            Condition::GenomicShortSpecRefused => {
+                genomic::refused_where_java_fails(genomic::Refusal::ShortSpec, a, b, java)
+            }
+            Condition::GenomicDuplicateMetadataRefused => {
+                genomic::refused_where_java_fails(genomic::Refusal::DuplicateMetadata, a, b, java)
+            }
+            Condition::ExcerptMasksMissingRefused => {
+                genomic::refused_where_java_fails(genomic::Refusal::MasksMissing, a, b, java)
+            }
+            Condition::InfoKeyDelimiterRefused => {
+                genomic::refused_where_java_fails(genomic::Refusal::Delimiter, a, b, java)
+            }
+            Condition::IdCubeNumericRefused => {
+                entry.result_type == "VCF_EXCERPT"
+                    && genomic::refused_where_java_fails(genomic::Refusal::IdCube, a, b, java)
+            }
+            Condition::GenomicNoStoreRefused => {
+                genomic::refused_where_java_fails(genomic::Refusal::NoStore, a, b, java)
+            }
+            Condition::InvalidGenomicFilterNotEvaluated => {
+                genomic::invalid_filter_not_evaluated(a, b, java)
+            }
+            Condition::SearchValuesRefused => genomic::search_values_refused(entry, a, b),
+            Condition::SearchInfoColumnMissingRefused => {
+                genomic::search_info_column_missing_refused(entry, a, b)
+            }
+            Condition::GenomicResultSizeLimit => genomic::result_size_limit(a, b),
+            Condition::VariantListSet => genomic::variant_list_set(a, b),
+            Condition::ExcerptNormalized => genomic::excerpt_normalized(a, b),
+            Condition::InfoListingMultiset => genomic::info_listing_multiset(a, b),
+            Condition::SearchInfoValuesSet => equal_after(a, b, &[self]),
+            Condition::SearchValuesBucketSet => genomic::search_values_bucket_set(entry, a, b),
         }
     }
 }
@@ -2193,8 +2281,6 @@ mod tests {
             {"name": "values", "when": "values-on-numeric-refused", "reason": "why"},
             {"name": "range", "when": "range-on-categorical-refused", "reason": "why"},
             {"name": "route", "when": "sync-type-on-async-route", "reason": "why"},
-            {"name": "genomic", "when": "genomic-type-on-sync-route", "reason": "why"},
-            {"name": "variant", "when": "variant-spec-path-refused", "reason": "why"},
             {"name": "limit", "when": "request-limit-refused", "reason": "why"}
         ]));
         let name = |e: &CorpusEntry, a: &Outcome, b: &Outcome| {
@@ -2244,28 +2330,6 @@ mod tests {
             Some("route")
         );
         assert_eq!(name(&patients, &errored, &route), None);
-
-        let variant_list = entry("0004-x-variant-list", "VARIANT_LIST_FOR_QUERY");
-        let genomic = sync(
-            400,
-            "result type VARIANT_LIST_FOR_QUERY is not supported by this phenotype-only HPDS",
-        );
-        let not_allowed = sync(200, "VARIANT_LIST query type not allowed");
-        assert_eq!(
-            name(&variant_list, &not_allowed, &genomic).as_deref(),
-            Some("genomic")
-        );
-        assert_eq!(name(&count, &not_allowed, &genomic), None);
-
-        let variant = sync(
-            400,
-            "variant-spec concept path \"rs123\" is not supported by this phenotype-only HPDS",
-        );
-        assert_eq!(
-            name(&count, &sync(200, "0"), &variant).as_deref(),
-            Some("variant")
-        );
-        assert_eq!(name(&count, &sync(500, ""), &variant), None);
 
         let limit = sync(
             400,
@@ -2597,8 +2661,9 @@ mod tests {
             "values-on-numeric-status",
             "range-on-categorical-status",
             "sync-type-on-async-route",
-            "genomic-type-on-sync-route",
-            "variant-spec-path-status",
+            "genomic-type-on-async-route",
+            "genomic-no-store-refused",
+            "invalid-genomic-filter-not-evaluated",
             "request-limit-status",
             "search-shape-main",
             "authorization-filters-main",
@@ -3043,7 +3108,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unserved_type_on_post_query_is_accepted_only_against_javas_bodiless_200() {
+    fn an_unserved_type_on_post_query_is_accepted_only_against_javas_failure() {
         let set = checked_in().for_java(Side::A, JavaBranch::Main);
         let entry = query_entry(
             "icl-control-async-object",
@@ -3051,7 +3116,7 @@ mod tests {
             json!({"expectedResultType": "INFO_COLUMN_LISTING"}),
         );
         let refusal = refused_submit(
-            "result type INFO_COLUMN_LISTING is not supported by this phenotype-only HPDS",
+            "result type INFO_COLUMN_LISTING is not supported by POST /query; send it to POST /query/sync",
         );
         assert_eq!(
             rule_name(&set, &entry, &bodiless_submit(), &refusal).as_deref(),
@@ -3064,11 +3129,22 @@ mod tests {
                 &entry,
                 &async_outcome(200, Some("ERROR"), None),
                 &refusal
+            )
+            .as_deref(),
+            Some("genomic-type-on-async-route")
+        );
+        assert_eq!(
+            rule_name(
+                &set,
+                &entry,
+                &async_outcome(200, Some("SUCCESS"), Some("[]")),
+                &refusal
             ),
             None
         );
-        let other_type =
-            refused_submit("result type COUNT is not supported by this phenotype-only HPDS");
+        let other_type = refused_submit(
+            "result type COUNT is not supported by POST /query; send it to POST /query/sync",
+        );
         assert_eq!(
             rule_name(&set, &entry, &bodiless_submit(), &other_type),
             None
