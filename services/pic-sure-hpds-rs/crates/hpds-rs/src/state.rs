@@ -48,6 +48,7 @@ struct Shared {
     genomic: GenomicStatus,
     excerpt_slots: Arc<Semaphore>,
     excerpt_concurrency: usize,
+    excerpt_queue: Duration,
     excerpt_stall: Duration,
     excerpt_stream: Duration,
     excerpts: ExcerptCounters,
@@ -163,6 +164,7 @@ impl AppState {
                 genomic,
                 excerpt_slots: Arc::new(Semaphore::new(config.excerpt_concurrency)),
                 excerpt_concurrency: config.excerpt_concurrency,
+                excerpt_queue: config.excerpt_queue,
                 excerpt_stall: config.excerpt_stall,
                 excerpt_stream: config.excerpt_stream,
                 excerpts: ExcerptCounters::default(),
@@ -285,12 +287,23 @@ impl AppState {
     }
 
     /// One of the `HPDS_EXCERPT_CONCURRENCY` excerpt slots, which an excerpt holds beside its
-    /// engine slot until its last row is sent, or `None` at once when every slot is in use.
-    /// The slot is released when the returned permit drops.
-    pub fn try_excerpt_slot(&self) -> Option<OwnedSemaphorePermit> {
-        Arc::clone(&self.inner.excerpt_slots)
-            .try_acquire_owned()
+    /// engine slot until its last row is sent, waiting at most `HPDS_EXCERPT_QUEUE_SECONDS`
+    /// for one to come free, or `None` when none did. The slot is released when the returned
+    /// permit drops.
+    pub async fn excerpt_slot(&self) -> Option<OwnedSemaphorePermit> {
+        let slots = Arc::clone(&self.inner.excerpt_slots);
+        if let Ok(permit) = Arc::clone(&slots).try_acquire_owned() {
+            return Some(permit);
+        }
+        tokio::time::timeout(self.inner.excerpt_queue, slots.acquire_owned())
+            .await
             .ok()
+            .and_then(Result::ok)
+    }
+
+    /// `HPDS_EXCERPT_QUEUE_SECONDS`.
+    pub fn excerpt_queue(&self) -> Duration {
+        self.inner.excerpt_queue
     }
 
     /// The excerpt slots in use, and `HPDS_EXCERPT_CONCURRENCY`.

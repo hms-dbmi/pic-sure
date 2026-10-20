@@ -67,6 +67,9 @@ pub mod metrics;
 pub mod search;
 pub mod state;
 pub mod sync;
+pub mod write_stall;
+
+pub use write_stall::connections_write_stalled;
 
 pub use config::{Config, DEFAULT_PORT, port_from_env};
 pub use error::ApiError;
@@ -89,6 +92,9 @@ pub struct ServerTimeouts {
     /// that sits idle between requests is closed by `header_read`, since hyper starts the header
     /// timer when it waits for the next request on a kept-alive connection.
     pub max_connections: usize,
+    /// How long a write to a connection may stay pending, the client reading nothing,
+    /// before the connection is closed ([`write_stall::WriteStall`]).
+    pub write_stall: Duration,
 }
 
 /// Default for [`ServerTimeouts::max_connections`].
@@ -100,6 +106,7 @@ impl Default for ServerTimeouts {
             header_read: Duration::from_secs(10),
             shutdown_grace: Duration::from_secs(5),
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            write_stall: Duration::from_secs(config::DEFAULT_WRITE_STALL_SECONDS),
         }
     }
 }
@@ -346,7 +353,9 @@ pub fn spawn_result_cache_reporter(
 /// connections finish for at most `timeouts.shutdown_grace`, and returns.
 ///
 /// A connection that has not delivered a request's headers within `timeouts.header_read` is
-/// closed. Every accepted connection has Nagle's algorithm turned off ([`disable_nagle`]).
+/// closed, and so is one whose client reads nothing while a write to it stays pending for
+/// `timeouts.write_stall` ([`write_stall::WriteStall`]). Every accepted connection has
+/// Nagle's algorithm turned off ([`disable_nagle`]).
 /// At most `timeouts.max_connections` connections are served at once; a connection
 /// accepted past that cap is answered 503 and closed (see [`OVER_CAPACITY_RESPONSE`]). HTTP/1 and
 /// HTTP/2 are both served.
@@ -391,7 +400,7 @@ pub async fn serve(
             Err(TryAcquireError::Closed) => break,
         };
         let connection = builder.serve_connection_with_upgrades(
-            TokioIo::new(stream),
+            write_stall::WriteStall::new(TokioIo::new(stream), timeouts.write_stall),
             TowerToHyperService::new(app.clone()),
         );
         let watched = graceful.watch(connection.into_owned());

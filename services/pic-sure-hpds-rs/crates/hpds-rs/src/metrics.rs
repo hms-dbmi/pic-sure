@@ -273,14 +273,14 @@ fn render_excerpts(family: &mut Family<'_>, state: &AppState) {
     family.single(
         "hpds_excerpts_refused_total",
         "counter",
-        "Excerpts answered 503 because every HPDS_EXCERPT_CONCURRENCY slot was in use.",
+        "Excerpts and variant lists answered 503 because no HPDS_EXCERPT_CONCURRENCY slot came free within HPDS_EXCERPT_QUEUE_SECONDS.",
         counts.refused,
     );
     let (in_use, total) = state.excerpt_slots_in_use();
     family.single(
         "hpds_excerpts_in_progress",
         "gauge",
-        "Excerpts computing or streaming, each holding an excerpt slot and an engine slot.",
+        "Excerpt slots in use: each excerpt holds one and an engine slot while it is computed and streamed; each variant list holds one while it is built, under an engine slot, and sent.",
         in_use,
     );
     family.single(
@@ -448,6 +448,12 @@ fn render_http(family: &mut Family<'_>, metrics: &Metrics) {
         "counter",
         "Connections refused because every connection slot was taken; each is answered 503 when a refusal slot is free, otherwise closed at once.",
         crate::connections_refused(),
+    );
+    family.single(
+        "hpds_connections_write_stalled_total",
+        "counter",
+        "Connections closed because a write to them stayed pending for HPDS_WRITE_STALL_SECONDS, the client reading nothing.",
+        crate::connections_write_stalled(),
     );
 }
 

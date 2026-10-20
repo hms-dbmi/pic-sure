@@ -2,6 +2,7 @@
 
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::body::{Body, Bytes};
@@ -203,7 +204,7 @@ async fn answer_variant_list(
     engine: Arc<Engine>,
     query: Query,
 ) -> Result<Response, ApiError> {
-    let excerpt_slot = take_excerpt_slot(state)?;
+    let excerpt_slot = take_excerpt_slot(state).await?;
     let timeout = state.sync_timeout();
     let computation = async {
         let slot = state.engine_slot().await;
@@ -220,10 +221,13 @@ async fn answer_variant_list(
     };
     let length = body.len();
     let (tx, rx) = mpsc::channel::<io::Result<Bytes>>(EXCERPT_CHUNKS_IN_FLIGHT);
+    let ended = EndedEarly::default();
+    let task_ended = ended.clone();
     let task_state = state.clone();
     tokio::spawn(async move {
         let _slot = excerpt_slot;
         if let Some(end) = send_body(body, &tx, task_state.excerpt_bounds()).await {
+            task_ended.set();
             tracing::warn!(?end, "a variant list stream ended before its last byte");
             task_state.excerpt_counters().record(end);
             let _ = tx.try_send(Err(io::Error::other(
@@ -231,7 +235,7 @@ async fn answer_variant_list(
             )));
         }
     });
-    Ok(streamed(length as u64, rx))
+    Ok(streamed(length as u64, rx, ended))
 }
 
 /// Sends `body` on `tx` in chunks of [`EXCERPT_CHUNK_BYTES`], each waiting at most the stall
@@ -263,22 +267,48 @@ async fn send_body(
     None
 }
 
-/// One of the `HPDS_EXCERPT_CONCURRENCY` excerpt slots, or a 503 at once when every one is
-/// in use, counted for `/metrics`.
-fn take_excerpt_slot(state: &AppState) -> Result<OwnedSemaphorePermit, ApiError> {
-    state.try_excerpt_slot().ok_or_else(|| {
-        state.excerpt_counters().record_refused();
-        let (_, total) = state.excerpt_slots_in_use();
-        ApiError::unavailable(format!(
-            "all {total} excerpt slots (HPDS_EXCERPT_CONCURRENCY) are in use; retry later"
-        ))
-    })
+/// One of the `HPDS_EXCERPT_CONCURRENCY` excerpt slots, waiting at most
+/// `HPDS_EXCERPT_QUEUE_SECONDS` for one, or a 503 with `Retry-After` when none came free,
+/// counted for `/metrics`. The query service answers its caller 502 for any 5xx, so a
+/// caller behind it sees a 502 without the header.
+async fn take_excerpt_slot(state: &AppState) -> Result<OwnedSemaphorePermit, ApiError> {
+    if let Some(slot) = state.excerpt_slot().await {
+        return Ok(slot);
+    }
+    state.excerpt_counters().record_refused();
+    let (_, total) = state.excerpt_slots_in_use();
+    Err(ApiError::unavailable(format!(
+        "all {total} excerpt slots (HPDS_EXCERPT_CONCURRENCY) are in use; retry later"
+    ))
+    .with_retry_after(state.excerpt_queue().as_secs().max(1)))
 }
 
-/// A 200 `text/plain` response of `length` bytes whose body is the chunks `rx` receives.
-fn streamed(length: u64, rx: mpsc::Receiver<io::Result<Bytes>>) -> Response {
-    let chunks = futures_util::stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|chunk| (chunk, rx))
+/// Set by the task writing a streamed body when the stream ends before its last byte, so
+/// the response body fails at its next poll instead of first sending the chunks still in
+/// flight.
+#[derive(Clone, Default)]
+struct EndedEarly(Arc<AtomicBool>);
+
+impl EndedEarly {
+    fn set(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    fn is_set(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
+
+/// A 200 `text/plain` response of `length` bytes whose body is the chunks `rx` receives. Once
+/// `ended` is set the body yields an error before receiving another chunk, which makes hyper
+/// close the connection.
+fn streamed(length: u64, rx: mpsc::Receiver<io::Result<Bytes>>, ended: EndedEarly) -> Response {
+    let chunks = futures_util::stream::unfold(Some((rx, ended)), |state| async move {
+        let (mut rx, ended) = state?;
+        if ended.is_set() {
+            return Some((Err(io::Error::other("the body was not sent in full")), None));
+        }
+        rx.recv().await.map(|chunk| (chunk, Some((rx, ended))))
     });
     (
         [
@@ -388,6 +418,7 @@ impl Write for ChannelWriter<'_> {
 fn write_excerpt(
     excerpt: &hpds_query::VcfExcerpt<'_>,
     writer: ChannelWriter<'_>,
+    ended: &EndedEarly,
 ) -> Option<ExcerptEnd> {
     let tx = writer.tx.clone();
     let mut out = BufWriter::with_capacity(EXCERPT_CHUNK_BYTES, writer);
@@ -410,15 +441,16 @@ fn write_excerpt(
             ExcerptEnd::Aborted
         }
     };
+    ended.set();
     let _ = tx.try_send(Err(io::Error::other("the excerpt was not sent in full")));
     Some(end)
 }
 
 /// VCF_EXCERPT and AGGREGATE_VCF_EXCERPT, computed on a blocking thread under one of the
 /// `HPDS_EXCERPT_CONCURRENCY` excerpt slots and an engine slot, both kept until the last row
-/// is sent or the stream ends. An excerpt that finds every excerpt slot in use is a 503 at
-/// once. Excerpts therefore never take every engine slot, and a COUNT still finds one while
-/// excerpts stream.
+/// is sent or the stream ends. An excerpt that finds no excerpt slot free within
+/// `HPDS_EXCERPT_QUEUE_SECONDS` is a 503 with `Retry-After`. Excerpts therefore never take
+/// every engine slot, and a COUNT still finds one while excerpts stream.
 ///
 /// The wait for the engine slot, the measure pass and the head are bounded by
 /// `HPDS_SYNC_TIMEOUT_SECONDS`, past which the request is a 503. A measure pass still
@@ -428,7 +460,10 @@ fn write_excerpt(
 /// by `HPDS_EXCERPT_STREAM_SECONDS`; either bound, a client that left, a read failure, a
 /// genomic store changed on disk since the measure pass, or a body that would differ from
 /// its measured length ends the stream early and releases the slots. Those ends are
-/// counted for `/metrics`.
+/// counted for `/metrics`, and the response body then fails at its next poll, so hyper
+/// closes the connection rather than send the chunks still in flight. A client that reads
+/// nothing at all leaves hyper's write pending instead; the server closes that connection
+/// after `HPDS_WRITE_STALL_SECONDS` ([`crate::write_stall::WriteStall`]).
 ///
 /// The measure pass and the write pass read the same open genomic store: the engine, and
 /// with it the store's shared lock on `geno.index` and its open `geno.blocks`, lives until
@@ -438,7 +473,9 @@ async fn stream_excerpt(
     engine: Arc<Engine>,
     query: Query,
 ) -> Result<Response, ApiError> {
-    let excerpt_slot = take_excerpt_slot(state)?;
+    let excerpt_slot = take_excerpt_slot(state).await?;
+    let ended = EndedEarly::default();
+    let task_ended = ended.clone();
     let (head_tx, head_rx) = oneshot::channel::<Result<ExcerptHead, QueryError>>();
     let (body_tx, body_rx) = mpsc::channel::<io::Result<Bytes>>(EXCERPT_CHUNKS_IN_FLIGHT);
     let timeout = state.sync_timeout();
@@ -470,7 +507,7 @@ async fn stream_excerpt(
                         store: engine.genomic(),
                         end: None,
                     };
-                    if let Some(end) = write_excerpt(&excerpt, writer) {
+                    if let Some(end) = write_excerpt(&excerpt, writer, &task_ended) {
                         tracing::warn!(?end, "an excerpt stream ended before its last row");
                         task_state.excerpt_counters().record(end);
                     }
@@ -486,7 +523,7 @@ async fn stream_excerpt(
     };
     match head {
         ExcerptHead::Text(text) => Ok(text_response(text)),
-        ExcerptHead::Rows(length) => Ok(streamed(length, body_rx)),
+        ExcerptHead::Rows(length) => Ok(streamed(length, body_rx, ended)),
     }
 }
 

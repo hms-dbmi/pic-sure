@@ -60,6 +60,12 @@ pub const DEFAULT_EXCERPT_STALL_SECONDS: u64 = 30;
 /// Default seconds a streamed excerpt's body may take to be sent in full.
 pub const DEFAULT_EXCERPT_STREAM_SECONDS: u64 = 600;
 
+/// Default seconds an excerpt or variant list waits for an excerpt slot before it is a 503.
+pub const DEFAULT_EXCERPT_QUEUE_SECONDS: u64 = 5;
+
+/// Default seconds a write to a connection may stay pending before the connection is closed.
+pub const DEFAULT_WRITE_STALL_SECONDS: u64 = 60;
+
 const DEFAULT_BLOCKING_THREADS: usize = 64;
 const BLOCKING_THREAD_HEADROOM: usize = 16;
 
@@ -102,9 +108,11 @@ const BLOCKING_THREAD_HEADROOM: usize = 16;
 /// | `HPDS_MAX_CONNECTIONS` | 512 | Most connections served at once; a connection past the cap is answered 503 and closed |
 /// | `HPDS_BLOCKING_THREADS` | 64, or the engine concurrency plus 16 when larger | Cap on tokio's blocking threads, which run every engine call; must exceed `HPDS_ENGINE_CONCURRENCY` |
 /// | `hpds.genomicProcessor.impl` or `HPDS_GENOMICPROCESSOR_IMPL` | unset | Genomic layout: `local`, `localDistributed`, `localPatientDistributed` or `localPatientOnlyDistributed`, checked against the store's; unset serves no genomic data; `remote` is refused |
-/// | `HPDS_EXCERPT_CONCURRENCY` | half the engine concurrency, at least 1 | Excerpts computed or streamed at once; must be below `HPDS_ENGINE_CONCURRENCY` when that is above 1 |
+/// | `HPDS_EXCERPT_CONCURRENCY` | half the engine concurrency, at least 1 | Excerpts and variant lists computed or sent at once; must be below `HPDS_ENGINE_CONCURRENCY` when that is above 1, and 1 when it is 1 |
 /// | `HPDS_EXCERPT_STALL_SECONDS` | 30 | How long a streamed excerpt waits for its client to take the next chunk before it ends the stream |
 /// | `HPDS_EXCERPT_STREAM_SECONDS` | 600 | How long a streamed excerpt's body may take in full before the stream is ended |
+/// | `HPDS_EXCERPT_QUEUE_SECONDS` | 5 | How long an excerpt or variant list waits for an excerpt slot before it is a 503 with `Retry-After`; 0 refuses at once |
+/// | `HPDS_WRITE_STALL_SECONDS` | 60 | How long any write to a connection may stay pending, the client reading nothing, before the connection is closed |
 /// | `HPDS_GENOMIC_DATA_DIRECTORY` | `/opt/local/hpds/all/` | Directory of the Rust genomic store |
 /// | `HPDS_GENOMIC_CACHE_BYTES` | 2 GiB | Byte bound of the decoded genomic block cache |
 /// | `HPDS_GENOMIC_READ_BUDGET_BYTES` | 1 GiB | Bound on the genomic blocks every scan of the process holds at once outside the cache |
@@ -170,6 +178,10 @@ pub struct Config {
     pub excerpt_stall: Duration,
     /// How long a streamed excerpt's body may take in full.
     pub excerpt_stream: Duration,
+    /// How long an excerpt or variant list waits for an excerpt slot before it is a 503.
+    pub excerpt_queue: Duration,
+    /// How long a write to a connection may stay pending before the connection is closed.
+    pub write_stall: Duration,
     /// The genomic settings.
     pub genomic: GenomicConfig,
     /// Settings that were read but have no effect, as messages for the log.
@@ -256,6 +268,12 @@ impl Config {
                 "HPDS_EXCERPT_CONCURRENCY ({excerpt_concurrency}) must be less than \
                  HPDS_ENGINE_CONCURRENCY ({engine_concurrency}), so excerpts can never hold \
                  every engine slot"
+            ));
+        }
+        if engine_concurrency == 1 && excerpt_concurrency > 1 {
+            return Err(format!(
+                "HPDS_EXCERPT_CONCURRENCY ({excerpt_concurrency}) must be 1 when \
+                 HPDS_ENGINE_CONCURRENCY is 1"
             ));
         }
         if engine_concurrency == 1 {
@@ -395,6 +413,16 @@ impl Config {
                 "HPDS_EXCERPT_STREAM_SECONDS",
                 DEFAULT_EXCERPT_STREAM_SECONDS,
             )?),
+            excerpt_queue: Duration::from_secs(parse_or(
+                &lookup,
+                "HPDS_EXCERPT_QUEUE_SECONDS",
+                DEFAULT_EXCERPT_QUEUE_SECONDS,
+            )?),
+            write_stall: Duration::from_secs(positive_u64(
+                &lookup,
+                "HPDS_WRITE_STALL_SECONDS",
+                DEFAULT_WRITE_STALL_SECONDS,
+            )?),
             genomic,
             warnings,
         })
@@ -470,6 +498,7 @@ fn genomic_config(lookup: &impl Fn(&str) -> Option<String>) -> Result<GenomicCon
 ///
 /// # Errors
 /// A message for `remote`, which this HPDS does not serve, and for any other unknown value.
+/// Values are compared ignoring case, as Spring's `havingValue` compares them.
 fn parse_processor(name: &str, value: &str) -> Result<GenoMode, String> {
     let modes = [
         GenoMode::Local,
@@ -477,11 +506,14 @@ fn parse_processor(name: &str, value: &str) -> Result<GenoMode, String> {
         GenoMode::LocalPatientDistributed,
         GenoMode::LocalPatientOnlyDistributed,
     ];
-    if let Some(mode) = modes.into_iter().find(|m| m.java_name() == value) {
+    if let Some(mode) = modes
+        .into_iter()
+        .find(|m| m.java_name().eq_ignore_ascii_case(value))
+    {
         return Ok(mode);
     }
     let known = modes.map(GenoMode::java_name).join(", ");
-    if value == "remote" {
+    if value.eq_ignore_ascii_case("remote") {
         return Err(format!(
             "{name}=remote is not supported: this HPDS reads its genomic store in process; set one of {known}"
         ));
@@ -649,6 +681,24 @@ mod tests {
         let single = config(&[("HPDS_ENGINE_CONCURRENCY", "1")]).unwrap();
         assert_eq!(single.excerpt_concurrency, 1);
         assert_eq!(single.warnings.len(), 1);
+        let over = config(&[
+            ("HPDS_ENGINE_CONCURRENCY", "1"),
+            ("HPDS_EXCERPT_CONCURRENCY", "2"),
+        ])
+        .unwrap_err();
+        assert!(over.contains("must be 1"), "{over}");
+        assert_eq!(c.excerpt_queue, Duration::from_secs(5));
+        assert_eq!(c.write_stall, Duration::from_secs(60));
+        let c = config(&[
+            ("HPDS_EXCERPT_QUEUE_SECONDS", "0"),
+            ("HPDS_WRITE_STALL_SECONDS", "7"),
+        ])
+        .unwrap();
+        assert_eq!(
+            (c.excerpt_queue, c.write_stall),
+            (Duration::ZERO, Duration::from_secs(7))
+        );
+        assert!(config(&[("HPDS_WRITE_STALL_SECONDS", "0")]).is_err());
     }
 
     #[test]
@@ -698,7 +748,19 @@ mod tests {
         );
         let remote = config(&[("hpds.genomicProcessor.impl", "remote")]).unwrap_err();
         assert!(remote.contains("remote is not supported"), "{remote}");
-        assert!(config(&[("hpds.genomicProcessor.impl", "Local")]).is_err());
+        assert_eq!(
+            config(&[("hpds.genomicProcessor.impl", "LOCALPATIENTDISTRIBUTED")])
+                .unwrap()
+                .genomic
+                .processor,
+            Some(GenoMode::LocalPatientDistributed)
+        );
+        assert!(
+            config(&[("hpds.genomicProcessor.impl", "Remote")])
+                .unwrap_err()
+                .contains("not supported")
+        );
+        assert!(config(&[("hpds.genomicProcessor.impl", "localized")]).is_err());
         assert!(config(&[("VCF_EXCERPT_ENABLED", "maybe")]).is_err());
     }
 

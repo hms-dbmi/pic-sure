@@ -718,6 +718,7 @@ async fn a_client_that_stops_reading_releases_its_excerpt_slot_within_the_stall_
     let f = genomic_fixture_of(&many_variants(), |c, _| {
         c.engine_concurrency = 2;
         c.excerpt_concurrency = 1;
+        c.excerpt_queue = std::time::Duration::ZERO;
         c.excerpt_stall = std::time::Duration::from_secs(1);
         c.metrics = true;
     });
@@ -738,6 +739,7 @@ async fn a_client_that_stops_reading_releases_its_excerpt_slot_within_the_stall_
         "{}",
         over.body
     );
+    assert_eq!(over.headers["retry-after"], "1");
     assert_eq!(metric(&f.app, REFUSED).await, 1);
     let started = std::time::Instant::now();
     assert_eq!(await_metric(&f.app, STALLED, 1).await, 1);
@@ -758,6 +760,7 @@ async fn excerpts_at_their_cap_leave_engine_slots_for_other_queries() {
     let f = genomic_fixture_of(&many_variants(), |c, _| {
         c.engine_concurrency = 2;
         c.excerpt_concurrency = 1;
+        c.excerpt_queue = std::time::Duration::from_millis(200);
         c.metrics = true;
     });
     let held = send_unread(&f.app, genomic_query("VCF_EXCERPT", "G1")).await;
@@ -822,6 +825,7 @@ async fn a_variant_list_client_that_stops_reading_releases_its_slot_within_the_s
     let f = genomic_fixture_of(&many_variants(), |c, _| {
         c.engine_concurrency = 2;
         c.excerpt_concurrency = 1;
+        c.excerpt_queue = std::time::Duration::ZERO;
         c.excerpt_stall = std::time::Duration::from_secs(1);
         c.metrics = true;
     });
@@ -915,4 +919,156 @@ async fn closed_gates_answer_before_a_genomic_store_that_is_not_served() {
         "{}",
         open.body
     );
+}
+
+#[tokio::test]
+async fn an_excerpt_over_the_cap_waits_for_a_slot_within_the_queue_bound() {
+    let f = genomic_fixture_of(&many_variants(), |c, _| {
+        c.engine_concurrency = 2;
+        c.excerpt_concurrency = 1;
+        c.excerpt_stall = std::time::Duration::from_secs(1);
+        c.excerpt_queue = std::time::Duration::from_secs(10);
+        c.metrics = true;
+    });
+    let held = send_unread(&f.app, genomic_query("VCF_EXCERPT", "G1")).await;
+    let length = content_length(&held);
+    let started = std::time::Instant::now();
+    let queued = post(&f.app, SYNC, envelope(genomic_query("VCF_EXCERPT", "G1"))).await;
+    assert_eq!(queued.status, StatusCode::OK, "{}", queued.body);
+    assert_eq!(queued.body.len() as u64, length);
+    assert!(
+        started.elapsed() >= std::time::Duration::from_millis(900),
+        "it waited for the stalled excerpt to free its slot"
+    );
+    assert_eq!(metric(&f.app, STALLED).await, 1);
+    assert_eq!(metric(&f.app, REFUSED).await, 0);
+    assert_cut_short(held).await;
+}
+
+#[tokio::test]
+async fn a_closed_gate_answers_its_text_after_the_genomic_store_changed() {
+    let f = genomic_fixture_with(|c, _| {
+        c.genomic.variant.vcf_excerpt_enabled = false;
+        c.genomic.variant.aggregate_vcf_excerpt_enabled = false;
+    });
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(f.genomic_dir().join("geno.blocks"))
+        .unwrap();
+    std::io::Write::write_all(&mut file, b"x").unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    assert_eq!(health(&f.app).await.1["reason"], GENOMIC_CHANGED_REASON);
+    for (result_type, text) in [
+        (
+            "VARIANT_LIST_FOR_QUERY",
+            "VARIANT_LIST query type not allowed",
+        ),
+        ("VCF_EXCERPT", "VCF_EXCERPT query type not allowed"),
+        (
+            "AGGREGATE_VCF_EXCERPT",
+            "AGGREGATE_VCF_EXCERPT query type not allowed",
+        ),
+    ] {
+        let reply = post(&f.app, SYNC, envelope(genomic_query(result_type, "G1"))).await;
+        assert_eq!((reply.status, reply.body.as_str()), (StatusCode::OK, text));
+    }
+    let count = post(&f.app, SYNC, envelope(genomic_query("COUNT", "G1"))).await;
+    assert_eq!(count.status, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn search_after_the_genomic_store_changed_answers_terms_no_info_column_matches() {
+    let f = genomic_fixture();
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(f.genomic_dir().join("geno.blocks"))
+        .unwrap();
+    std::io::Write::write_all(&mut file, b"x").unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let phenotype = post(
+        &f.app,
+        "/PIC-SURE/v3/search",
+        json!({"query": "zzz_matches_nothing"}).to_string(),
+    )
+    .await;
+    assert_eq!(phenotype.status, StatusCode::OK, "{}", phenotype.body);
+    assert_eq!(phenotype.json()["results"]["info"], json!({}));
+    let genomic = post(
+        &f.app,
+        "/PIC-SURE/v3/search",
+        json!({"query": "gene_with"}).to_string(),
+    )
+    .await;
+    assert_eq!(
+        (genomic.status, genomic.body.as_str()),
+        (StatusCode::SERVICE_UNAVAILABLE, GENOMIC_CHANGED_REASON)
+    );
+}
+
+#[tokio::test]
+async fn a_connection_whose_client_reads_nothing_is_closed_after_the_write_stall_bound() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let f = genomic_fixture_of(&many_variants(), |c, _| {
+        c.engine_concurrency = 2;
+        c.excerpt_concurrency = 1;
+        c.excerpt_stall = std::time::Duration::from_secs(1);
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(hpds_rs::serve(
+        listener,
+        f.app.clone(),
+        async {
+            let _ = stopped.await;
+        },
+        hpds_rs::ServerTimeouts {
+            write_stall: std::time::Duration::from_secs(1),
+            ..hpds_rs::ServerTimeouts::default()
+        },
+    ));
+    let before = hpds_rs::connections_write_stalled();
+    let socket = tokio::net::TcpSocket::new_v4().unwrap();
+    socket.set_recv_buffer_size(4096).unwrap();
+    let mut stream = socket.connect(addr).await.unwrap();
+    let body = envelope(genomic_query("VCF_EXCERPT", "G1"));
+    let request = format!(
+        "POST {SYNC} HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut closed = false;
+    for _ in 0..80 {
+        if hpds_rs::connections_write_stalled() > before {
+            closed = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(
+        closed,
+        "the server closed the connection its client did not read"
+    );
+    let mut received = Vec::new();
+    let read = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        stream.read_to_end(&mut received),
+    )
+    .await
+    .expect("the connection is closed, so reading it ends");
+    let text = String::from_utf8_lossy(&received);
+    let length: usize = text
+        .lines()
+        .find_map(|l| l.strip_prefix("content-length: "))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    let head_end = text.find("\r\n\r\n").unwrap() + 4;
+    assert!(
+        read.is_err() || received.len() - head_end < length,
+        "the body ended short of its Content-Length"
+    );
+    let _ = stop.send(());
+    server.await.unwrap().unwrap();
 }

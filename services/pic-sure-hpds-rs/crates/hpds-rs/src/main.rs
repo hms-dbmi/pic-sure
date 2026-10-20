@@ -187,6 +187,7 @@ async fn run(config: Config) -> ExitCode {
         shutdown_signal(),
         ServerTimeouts {
             max_connections: config.max_connections,
+            write_stall: config.write_stall,
             ..ServerTimeouts::default()
         },
     )
