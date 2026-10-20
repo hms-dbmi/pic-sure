@@ -32,20 +32,18 @@ use std::time::Instant;
 
 use hpds_format::{
     CompressedRange, CryptoKey, GENO_BLOCKS_FILE_NAME, GenoBlockCodec, GenoBlocksReader, GenoGroup,
-    GenoIndex, GenoMode, InfoKeyInput, MAX_GENO_GROUPS, MAX_GENO_NODES_PER_GROUP, PosBitset,
-    Protection, StoreId, VariantSpecKey, build_java_compressed_index, compare_specs,
-    encode_info_block, java_parse_int, java_string_cmp,
+    GenoIndex, GenoMode, MAX_GENO_GROUPS, MAX_GENO_NODES_PER_GROUP, PosBitset, Protection, StoreId,
+    VariantSpecKey, compare_specs, java_parse_int, java_string_cmp,
 };
 use rayon::prelude::*;
-use roaring::RoaringBitmap;
 use serde::Serialize;
 
 use super::export::{
     ExportedBucket, ExportedCarriers, ExportedInfo, Manifest, NodeReader, read_manifest,
 };
 use super::writer::{
-    BucketVariant, BuiltNode, NodeBuilder, VariantMask, assemble, sort_compressed_ranges,
-    store_header,
+    BucketVariant, BuiltNode, InfoColumnInput, InfoColumnsBuilder, NodeBuilder, VariantMask,
+    assemble, store_header,
 };
 use crate::error::{EtlError, Result};
 use crate::load::{REPORT_FILE_NAME, Staging, thread_pool};
@@ -501,52 +499,6 @@ struct Merged {
     metadata_seen: bool,
 }
 
-/// For each spec index id, the categorical (info, key) pairs whose variant lists hold it,
-/// in compressed rows.
-struct KeyRefs {
-    offsets: Vec<u32>,
-    refs: Vec<(u16, u32)>,
-}
-
-impl KeyRefs {
-    fn build(infos: &[ExportedInfo], spec_count: u32) -> Self {
-        let mut counts = vec![0u32; spec_count as usize + 1];
-        for info in infos.iter().filter(|i| !i.continuous) {
-            for (_, ids) in &info.keys {
-                for &id in ids {
-                    counts[id as usize + 1] += 1;
-                }
-            }
-        }
-        for i in 1..counts.len() {
-            counts[i] += counts[i - 1];
-        }
-        let mut fill = counts.clone();
-        let mut refs = vec![(0u16, 0u32); counts[spec_count as usize] as usize];
-        for (c, info) in infos.iter().enumerate() {
-            if info.continuous {
-                continue;
-            }
-            for (k, (_, ids)) in info.keys.iter().enumerate() {
-                for &id in ids {
-                    let slot = &mut fill[id as usize];
-                    refs[*slot as usize] = (c as u16, k as u32);
-                    *slot += 1;
-                }
-            }
-        }
-        KeyRefs {
-            offsets: counts,
-            refs,
-        }
-    }
-
-    fn of(&self, id: u32) -> &[(u16, u32)] {
-        let id = id as usize;
-        &self.refs[self.offsets[id] as usize..self.offsets[id + 1] as usize]
-    }
-}
-
 /// Migrates node `i` of the manifest into a temporary blocks file.
 fn migrate_node(context: &NodeContext<'_>, i: usize) -> Result<(BuiltNode, NodeReport)> {
     let entry = &context.manifest.nodes[i];
@@ -577,28 +529,21 @@ fn migrate_node(context: &NodeContext<'_>, i: usize) -> Result<(BuiltNode, NodeR
         context.codec.clone(),
         context.scratch.join(format!("{i:05}.blocks")),
     )?;
-    let key_refs = KeyRefs::build(&infos, header.spec_count);
-    let mut key_carriers: Vec<Vec<Option<PosBitset>>> = infos
-        .iter()
-        .map(|info| {
-            if info.continuous {
-                Vec::new()
-            } else {
-                vec![None; info.keys.len()]
-            }
-        })
-        .collect();
-    let mut spec_to_variant = vec![u32::MAX; header.spec_count as usize];
+    let infos = info_inputs(infos, &context.layout.columns).map_err(&refuse)?;
+    let info_columns = infos.len() as u64;
+    let mut info_builder =
+        InfoColumnsBuilder::new(infos, header.spec_count).map_err(|e| refuse(e.to_string()))?;
     let mut report = NodeReport {
         group: entry.group.clone(),
         dir: entry.dir.clone(),
         spec_index_entries: u64::from(header.spec_count),
         bucket_index: header.bucket_index,
-        info_columns: infos.len() as u64,
+        info_columns,
         export_bytes,
         ..NodeReport::default()
     };
     let mut derived = PosBitset::new(patient_count);
+    let mut metadata_entries = 0u64;
     let mut contigs = 0u64;
     let mut last_contig: Option<String> = None;
     while let Some(bucket) = reader.next_bucket(patient_count)? {
@@ -644,6 +589,7 @@ fn migrate_node(context: &NodeContext<'_>, i: usize) -> Result<(BuiltNode, NodeR
             }));
         }
         for (spec, strings) in metadata {
+            metadata_entries += 1;
             let s = slot(spec, &mut merged);
             if merged[s].metadata_seen {
                 return Err(refuse(format!(
@@ -681,15 +627,9 @@ fn migrate_node(context: &NodeContext<'_>, i: usize) -> Result<(BuiltNode, NodeR
         for (offset, m) in merged.iter().enumerate() {
             let id = first_id + offset as u32;
             for &spec_id in &m.spec_ids {
-                let target = spec_to_variant.get_mut(spec_id as usize).ok_or_else(|| {
-                    refuse(format!("{location}: spec index id {spec_id} out of range"))
-                })?;
-                if *target != u32::MAX {
-                    return Err(refuse(format!(
-                        "{location}: spec index id {spec_id} is placed twice"
-                    )));
-                }
-                *target = id;
+                info_builder
+                    .assign(spec_id, id)
+                    .map_err(|detail| refuse(format!("{location}: spec index {detail}")))?;
             }
             report.spec_index_duplicates += m.spec_ids.len().saturating_sub(1) as u64;
             match &m.variant.record {
@@ -702,16 +642,10 @@ fn migrate_node(context: &NodeContext<'_>, i: usize) -> Result<(BuiltNode, NodeR
                             }
                         }
                     }
+                    let he = record[0].as_ref().map_or(&[][..], |m| &m.positions);
+                    let ho = record[1].as_ref().map_or(&[][..], |m| &m.positions);
                     for &spec_id in &m.spec_ids {
-                        for &(c, k) in key_refs.of(spec_id) {
-                            let set = key_carriers[usize::from(c)][k as usize]
-                                .get_or_insert_with(|| PosBitset::new(patient_count));
-                            for mask in [&record[0], &record[1]].into_iter().flatten() {
-                                for &p in &mask.positions {
-                                    set.insert(p);
-                                }
-                            }
-                        }
+                        info_builder.add_carriers(spec_id, he, ho);
                     }
                 }
                 None => {
@@ -747,53 +681,34 @@ fn migrate_node(context: &NodeContext<'_>, i: usize) -> Result<(BuiltNode, NodeR
         )?;
     }
     let trailer = reader.trailer().unwrap_or_default();
-    if trailer.buckets != report.buckets || trailer.mask_records != report.mask_records {
+    if trailer.buckets != report.buckets
+        || trailer.mask_records != report.mask_records
+        || trailer.metadata_entries != metadata_entries
+    {
         return Err(refuse(format!(
-            "the end record counts {} buckets and {} mask records, {} and {} were read",
-            trailer.buckets, trailer.mask_records, report.buckets, report.mask_records
+            "the end record counts {} buckets, {} mask records and {} metadata entries, {}, {} and {} were read",
+            trailer.buckets,
+            trailer.mask_records,
+            trailer.metadata_entries,
+            report.buckets,
+            report.mask_records,
+            metadata_entries
         )));
     }
     report.patients_missing_from_bucket_index = trailer.missing_from_bucket_index;
     builder.finish_chunks()?;
-    if let Some(id) = spec_to_variant.iter().position(|&v| v == u32::MAX) {
+    if let Some(id) = info_builder.unassigned() {
         return Err(refuse(format!(
             "spec index entry {id} was placed in no bucket"
         )));
     }
     let variant_count = builder.variant_count();
-    for (c, info) in infos.into_iter().enumerate() {
-        let column = context
-            .layout
-            .columns
-            .binary_search_by(|name| java_string_cmp(name, &info.column))
-            .map_err(|_| {
-                refuse(format!(
-                    "column {:?} is not in the column table",
-                    info.column
-                ))
-            })? as u16;
-        let carriers = std::mem::take(&mut key_carriers[c]);
-        let (payload, port_differs) = info_payload(
-            &info,
-            carriers,
-            &spec_to_variant,
-            variant_count,
-            patient_count,
-        )
-        .map_err(|detail| refuse(format!("column {:?}: {detail}", info.column)))?;
-        if port_differs {
-            report
-                .compressed_index_port_differences
-                .push(info.column.clone());
-        }
-        builder.add_info(
-            column,
-            info.continuous,
-            info.description,
-            info.keys.len() as u32,
-            &payload,
-        )?;
-    }
+    report.compressed_index_port_differences = info_builder
+        .finish(&mut builder, patient_count)
+        .map_err(|e| match e {
+            EtlError::Usage(detail) => refuse(detail),
+            other => other,
+        })?;
     report.variants = u64::from(variant_count);
     report.short_specs = builder.short_spec_count() as u64;
     report.chunks = builder.chunk_count() as u64;
@@ -801,109 +716,63 @@ fn migrate_node(context: &NodeContext<'_>, i: usize) -> Result<(BuiltNode, NodeR
     Ok((builder.finish()?, report))
 }
 
-/// Encodes one info block from the export: keys strictly ascending, each key's spec index
-/// ids mapped to node variant ids, and for a categorical column the carriers, for a
-/// continuous one Java's `CompressedIndex` with key strings mapped to key indexes. Also
-/// says whether the Rust port builds another `CompressedIndex` from the same keys.
-fn info_payload(
-    info: &ExportedInfo,
-    carriers: Vec<Option<PosBitset>>,
-    spec_to_variant: &[u32],
-    variant_count: u32,
-    patient_count: u32,
-) -> std::result::Result<(Vec<u8>, bool), String> {
-    if info
-        .keys
-        .windows(2)
-        .any(|w| java_string_cmp(&w[0].0, &w[1].0).is_ge())
-    {
-        return Err("keys are not strictly ascending in Java order".into());
-    }
-    let variants: Vec<RoaringBitmap> = info
-        .keys
-        .iter()
-        .map(|(_, ids)| ids.iter().map(|&id| spec_to_variant[id as usize]).collect())
-        .collect();
-    let positions: Vec<Vec<u32>> = carriers
-        .into_iter()
-        .map(|set| set.map(|s| s.iter().collect()).unwrap_or_default())
-        .collect();
-    let mut port_differs = false;
-    let ranges = match &info.ranges {
-        None => None,
-        Some(exported) => {
-            if info.keys.is_empty() || exported.is_empty() {
-                return Err(format!(
-                    "a continuous column with {} keys and {} CompressedIndex ranges; Java's query on it throws",
-                    info.keys.len(),
-                    exported.len()
-                ));
-            }
-            let mut ranges = Vec::with_capacity(exported.len());
-            for range in exported {
-                let mut entries = Vec::with_capacity(range.entries.len());
-                for (value, keys) in &range.entries {
-                    let mut indexes = Vec::with_capacity(keys.len());
-                    for key in keys {
-                        let index = info
-                            .keys
-                            .binary_search_by(|(k, _)| java_string_cmp(k, key))
-                            .map_err(|_| format!("the CompressedIndex names key {key:?}, which the column does not hold"))?;
-                        indexes.push(index as u32);
+/// The builder's form of a node's info stores: each column's index in the column table,
+/// and for a continuous column its `CompressedIndex` with key strings mapped to key indexes.
+///
+/// # Errors
+/// A message naming the column when it is not in the column table or its `CompressedIndex`
+/// names a key the column does not hold.
+fn info_inputs(
+    infos: Vec<ExportedInfo>,
+    columns: &[String],
+) -> std::result::Result<Vec<InfoColumnInput>, String> {
+    let mut inputs = Vec::with_capacity(infos.len());
+    for info in infos {
+        let column = columns
+            .binary_search_by(|name| java_string_cmp(name, &info.column))
+            .map_err(|_| format!("column {:?} is not in the column table", info.column))?
+            as u16;
+        let ranges = match &info.ranges {
+            None => None,
+            Some(exported) => {
+                let mut ranges = Vec::with_capacity(exported.len());
+                for range in exported {
+                    let mut entries = Vec::with_capacity(range.entries.len());
+                    for (value, keys) in &range.entries {
+                        let mut indexes = Vec::with_capacity(keys.len());
+                        for key in keys {
+                            let index = info
+                                .keys
+                                .binary_search_by(|(k, _)| java_string_cmp(k, key))
+                                .map_err(|_| {
+                                    format!(
+                                        "column {:?}: the CompressedIndex names key {key:?}, which the column does not hold",
+                                        info.column
+                                    )
+                                })?;
+                            indexes.push(index as u32);
+                        }
+                        indexes.sort_unstable();
+                        entries.push((*value, indexes));
                     }
-                    indexes.sort_unstable();
-                    entries.push((*value, indexes));
+                    ranges.push(CompressedRange {
+                        lower: range.lower,
+                        upper: range.upper,
+                        entries,
+                    });
                 }
-                ranges.push(CompressedRange {
-                    lower: range.lower,
-                    upper: range.upper,
-                    entries,
-                });
+                Some(ranges)
             }
-            sort_compressed_ranges(&mut ranges);
-            let keys: Vec<&str> = info.keys.iter().map(|(k, _)| k.as_str()).collect();
-            let ported = build_java_compressed_index(&keys);
-            port_differs = ported.as_ref().is_none_or(|p| !same_ranges(p, &ranges));
-            Some(ranges)
-        }
-    };
-    let inputs: Vec<InfoKeyInput<'_>> = info
-        .keys
-        .iter()
-        .enumerate()
-        .map(|(k, (key, _))| InfoKeyInput {
-            key,
-            variants: &variants[k],
-            carriers: if info.continuous {
-                None
-            } else {
-                Some(positions[k].as_slice())
-            },
-        })
-        .collect();
-    let payload = encode_info_block(&inputs, ranges.as_deref(), variant_count, patient_count)
-        .map_err(|e| e.to_string())?;
-    Ok((payload, port_differs))
-}
-
-/// True when two range lists are equal bit for bit: bounds and entry floats compared by
-/// their bits, so `-0.0` and `0.0`, and NaN payloads, count as different.
-fn same_ranges(a: &[CompressedRange], b: &[CompressedRange]) -> bool {
-    let bits = |bound: hpds_format::RangeBound| match bound {
-        hpds_format::RangeBound::Unbounded => (0u8, 0u32),
-        hpds_format::RangeBound::Open(v) => (1, v.to_bits()),
-        hpds_format::RangeBound::Closed(v) => (2, v.to_bits()),
-    };
-    a.len() == b.len()
-        && a.iter().zip(b).all(|(x, y)| {
-            bits(x.lower) == bits(y.lower)
-                && bits(x.upper) == bits(y.upper)
-                && x.entries.len() == y.entries.len()
-                && x.entries
-                    .iter()
-                    .zip(&y.entries)
-                    .all(|(e, f)| e.0.to_bits() == f.0.to_bits() && e.1 == f.1)
-        })
+        };
+        inputs.push(InfoColumnInput {
+            column,
+            name: info.column,
+            description: info.description,
+            keys: info.keys,
+            ranges,
+        });
+    }
+    Ok(inputs)
 }
 
 /// Counts the specs held by two or more chromosome nodes of one group, reading the mask
