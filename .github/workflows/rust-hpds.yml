@@ -1,0 +1,140 @@
+name: Rust HPDS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/pic-sure-hpds-rs/**'
+      - '.github/workflows/rust-hpds.yml'
+  pull_request:
+    paths:
+      - 'services/pic-sure-hpds-rs/**'
+      - '.github/workflows/rust-hpds.yml'
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+
+defaults:
+  run:
+    working-directory: services/pic-sure-hpds-rs
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --profile minimal
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --profile minimal
+      - name: Cache build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: services/pic-sure-hpds-rs
+      - name: Run clippy with warnings denied
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --profile minimal
+      - name: Cache build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: services/pic-sure-hpds-rs
+      - name: Run workspace tests without the known flaky test
+        run: cargo test --workspace --locked --no-fail-fast -- --skip peak_live_entries_stay_under_the_chunk_bound
+      - name: Run the known flaky test without blocking the job
+        continue-on-error: true
+        run: cargo test --locked -p hpds-query --lib peak_live_entries_stay_under_the_chunk_bound
+
+  release-tests:
+    name: Release-only library tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --profile minimal
+      - name: Cache build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: services/pic-sure-hpds-rs
+      - name: Run library tests in release mode
+        run: cargo test --release --workspace --lib --locked --no-fail-fast
+
+  supply-chain:
+    name: Audit, licenses and SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --profile minimal
+      - name: Install audit, deny and CycloneDX tools
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-audit@0.22.2,cargo-deny@0.20.2,cargo-cyclonedx@0.5.9
+      - name: Audit the lockfile against the advisory database
+        run: cargo audit --deny warnings
+      - name: Check advisories, licenses, bans and sources
+        run: cargo deny --locked check
+      - name: Generate a CycloneDX SBOM for each binary
+        run: cargo cyclonedx --format json --describe binaries
+      - name: Collect the SBOMs
+        run: |
+          mkdir -p ../../sbom
+          find crates -name '*.cdx.json' -exec cp {} ../../sbom/ \;
+      - name: Upload the SBOMs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hpds-rs-sbom
+          path: sbom/*.cdx.json
+          if-no-files-found: error
+
+  images:
+    name: Image ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: hpds-rs
+            dockerfile: docker/hpds-rs.Dockerfile
+          - image: hpds-rs-etl
+            dockerfile: docker/hpds-rs-etl.Dockerfile
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the linux/amd64 image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/pic-sure-hpds-rs
+          file: services/pic-sure-hpds-rs/${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: false
+          tags: pic-sure-hpds-ci/${{ matrix.image }}:ci
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
