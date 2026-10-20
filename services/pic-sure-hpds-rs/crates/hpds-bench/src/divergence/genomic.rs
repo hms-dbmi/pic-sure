@@ -432,10 +432,30 @@ fn java_spread_hash(text: &str) -> u32 {
     h ^ (h >> 16)
 }
 
+/// The values of a `/search/values` page as runs of one Java hash bucket in any table of 16
+/// or more (the same low four bits of the spread hash): (bucket bits, sorted values) per run.
+fn bucket_runs(values: &[Value]) -> Option<Vec<(u32, Vec<&str>)>> {
+    let mut runs: Vec<(u32, Vec<&str>)> = Vec::new();
+    for value in values {
+        let text = value.as_str()?;
+        let bits = java_spread_hash(text) & 15;
+        match runs.last_mut() {
+            Some((last, members)) if *last == bits => members.push(text),
+            _ => runs.push((bits, vec![text])),
+        }
+    }
+    for (_, members) in &mut runs {
+        members.sort_unstable();
+    }
+    Some(runs)
+}
+
 /// [`super::Condition::SearchValuesBucketSet`]: two `/search/values` pages with the same
-/// `page` and `total`, holding the same values, where every position at which they differ
-/// holds two values of one Java hash bucket in any table of 16 or more (the same low four
-/// bits of the spread hash): the order inside one bucket is unspecified in Java.
+/// `page` and `total` that differ only inside Java hash buckets: split into runs of one bucket
+/// ([`bucket_runs`]), both pages have the same runs in the same order and of the same sizes,
+/// every run but the first and the last holds the same values, and the first and last runs,
+/// which a page boundary may cut out of a larger bucket, may hold other values of that bucket.
+/// The order inside one bucket is unspecified in Java.
 pub(super) fn search_values_bucket_set(entry: &CorpusEntry, a: &Outcome, b: &Outcome) -> bool {
     if entry.kind != Kind::SearchValues {
         return false;
@@ -458,15 +478,18 @@ pub(super) fn search_values_bucket_set(entry: &CorpusEntry, a: &Outcome, b: &Out
     ) else {
         return false;
     };
-    let mut sorted_p: Vec<String> = p.iter().map(Value::to_string).collect();
-    let mut sorted_q: Vec<String> = q.iter().map(Value::to_string).collect();
-    sorted_p.sort_unstable();
-    sorted_q.sort_unstable();
-    sorted_p == sorted_q
-        && p.iter().zip(q).all(|(u, v)| {
-            u == v
-                || matches!((u.as_str(), v.as_str()), (Some(s), Some(t))
-                    if java_spread_hash(s) & 15 == java_spread_hash(t) & 15)
+    let (Some(p), Some(q)) = (bucket_runs(p), bucket_runs(q)) else {
+        return false;
+    };
+    if p.len() != q.len() {
+        return false;
+    }
+    let last = p.len().saturating_sub(1);
+    p.iter()
+        .zip(&q)
+        .enumerate()
+        .all(|(i, ((bp, mp), (bq, mq)))| {
+            bp == bq && mp.len() == mq.len() && (i == 0 || i == last || mp == mq)
         })
 }
 
@@ -664,6 +687,38 @@ mod tests {
             &e,
             &page(&[first, other]),
             &page(&[other, first])
+        ));
+        let bits = java_spread_hash(first) & 15;
+        let third = same_bucket
+            .iter()
+            .filter(|s| *s != first && *s != other)
+            .find(|s| java_spread_hash(s) & 15 == bits)
+            .unwrap();
+        let before = same_bucket
+            .iter()
+            .find(|s| java_spread_hash(s) & 15 != bits)
+            .unwrap();
+        let after = same_bucket
+            .iter()
+            .find(|s| {
+                let b = java_spread_hash(s) & 15;
+                b != bits && b != java_spread_hash(before) & 15
+            })
+            .unwrap();
+        assert!(search_values_bucket_set(
+            &e,
+            &page(&[before, first, other]),
+            &page(&[before, first, third])
+        ));
+        assert!(!search_values_bucket_set(
+            &e,
+            &page(&[before, first, other, after]),
+            &page(&[before, first, third, after])
+        ));
+        assert!(!search_values_bucket_set(
+            &e,
+            &page(&[first, other]),
+            &page(&[first])
         ));
     }
 }

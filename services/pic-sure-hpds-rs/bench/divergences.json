@@ -331,6 +331,12 @@
       "reason": "Spec section 6 together with the v4 rule search-category-values-order: a /search answer whose info values and categoryValues both follow Java hash orders. Equal once both are sorted."
     },
     {
+      "name": "search-concept-info-and-category-values-order",
+      "entry": "*search*",
+      "when": ["search-concept-order", "category-values-order", "search-info-values-set"],
+      "reason": "Spec section 6 with the v4 rule search-concept-and-category-values-order: the null-term /search answer lists concepts in an unspecified order with categoryValues in hash order, and its info block's values come from a HashSet. Equal once the concept array is sorted by path, every categoryValues array and every info values array sorted."
+    },
+    {
       "name": "search-values-bucket-order",
       "when": "search-values-bucket-set",
       "reason": "Spec section 6: /search/values pages follow Java's HashSet order, which Rust reproduces; within one hash bucket the parents' parallel collection leaves the order unspecified. Equal when page and total match, the pages hold the same values, and every position where they differ holds two values of one bucket."
