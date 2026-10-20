@@ -12,6 +12,7 @@ import java.util.Locale;
 
 import org.slf4j.LoggerFactory;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.IThrowableProxy;
@@ -19,16 +20,23 @@ import ch.qos.logback.core.read.ListAppender;
 
 /**
  * Captures every event logged through the root logger while open, and renders each as the text a log sink could hold: the formatted
- * message, the logger and thread names, the MDC values, and the class names and messages of any attached throwable chain.
+ * message, the logger and thread names, the MDC values, and the class names and messages of any attached throwable chain. While open, the
+ * root logger and {@link HpdsRouter}'s logger log at DEBUG, so a body written at a level the default configuration hides is caught too;
+ * closing restores both levels.
  */
 final class LogCapture implements AutoCloseable {
 
     private final Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    private final Logger router = (Logger) LoggerFactory.getLogger(HpdsRouter.class);
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    private final Level rootLevel = root.getLevel();
+    private final Level routerLevel = router.getLevel();
 
     LogCapture() {
         appender.start();
         root.addAppender(appender);
+        root.setLevel(Level.DEBUG);
+        router.setLevel(Level.DEBUG);
     }
 
     /** @return the text of every captured event, in order */
@@ -54,6 +62,8 @@ final class LogCapture implements AutoCloseable {
     public void close() {
         root.detachAppender(appender);
         appender.stop();
+        root.setLevel(rootLevel);
+        router.setLevel(routerLevel);
     }
 
     /**

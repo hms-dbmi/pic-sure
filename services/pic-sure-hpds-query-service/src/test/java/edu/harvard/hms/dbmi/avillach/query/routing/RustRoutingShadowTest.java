@@ -53,6 +53,18 @@ class RustRoutingShadowTest extends RustRoutingTestSupport {
     }
 
     @Test
+    void aMirroredJavaErrorCarriesTheShadowLabel() throws Exception {
+        javaHpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query/sync")).willReturn(aResponse().withStatus(400).withBody("refused")));
+        rustHpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query/sync")).willReturn(aResponse().withStatus(400).withBody("refused")));
+
+        mockMvc.perform(caller("/hpds/auth/query/sync", COUNT_QUERY)).andExpect(status().isBadRequest())
+            .andExpect(header().string(HpdsRouter.BACKEND_HEADER, HpdsRouter.BACKEND_JAVA_SHADOW));
+        assertThat(router.awaitShadowIdle(Duration.ofSeconds(5))).isTrue();
+
+        assertThat(received(rustHpds)).hasSize(1);
+    }
+
+    @Test
     void searchIsMirroredWithTheSameBody() throws Exception {
         String answer = "{\"searchQuery\":\"age\",\"results\":{\"phenotypes\":{}}}";
         javaHpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/search")).willReturn(okJson(answer)));

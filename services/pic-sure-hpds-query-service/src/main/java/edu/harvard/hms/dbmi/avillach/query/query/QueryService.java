@@ -38,7 +38,6 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 import edu.harvard.hms.dbmi.avillach.query.routing.HpdsRouter;
-import edu.harvard.hms.dbmi.avillach.query.routing.Routed;
 import edu.harvard.hms.dbmi.avillach.query.routing.RustOutcome;
 
 /**
@@ -96,19 +95,7 @@ public class QueryService {
         this.router = router;
     }
 
-    /**
-     * A sync answer.
-     *
-     * @param body the result body
-     * @param queryMetadata the answering HPDS's query id header, or null
-     * @param hpdsBackend the audit label of a call routed to or mirrored on Rust HPDS, or null when Java answered alone
-     */
-    public record QuerySyncResponse(byte[] body, String queryMetadata, String hpdsBackend) {
-
-        /** A sync answer Java HPDS gave alone. */
-        public QuerySyncResponse(byte[] body, String queryMetadata) {
-            this(body, queryMetadata, null);
-        }
+    public record QuerySyncResponse(byte[] body, String queryMetadata) {
     }
 
     // --- create / sync ---
@@ -169,12 +156,11 @@ public class QueryService {
 
         HpdsRouter.Call<ResourceWebClient.QuerySyncResult> call = new HpdsRouter.Call<>(
             backend, resultTypeName(req), () -> hpds.querySync(target, req, requestSource),
-            (client, apiBase, token) -> client.querySync(apiBase, token, req, requestSource), QueryService::fromRust,
+            (client, apiBase, token, maxBody) -> client.querySync(apiBase, token, req, requestSource, maxBody), QueryService::fromRust,
             ResourceWebClient.QuerySyncResult::body
         );
-        Routed<ResourceWebClient.QuerySyncResult> routed = router.route(call, down -> saveSync(req, down));
-        ResourceWebClient.QuerySyncResult down = routed.value();
-        return new QuerySyncResponse(down.body(), down.queryMetadata(), routed.hpdsBackend());
+        ResourceWebClient.QuerySyncResult down = router.route(call, answer -> saveSync(req, answer)).value();
+        return new QuerySyncResponse(down.body(), down.queryMetadata());
     }
 
     /** Records a sync answer that carries a query id and returns the stored row's id, or returns null when there is no id to record. */

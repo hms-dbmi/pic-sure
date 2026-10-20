@@ -135,6 +135,27 @@ class RustRoutingServeTest extends RustRoutingTestSupport {
     }
 
     @Test
+    void aRustSearchAnswerWithAnUndeclaredMemberIsStillServed() throws Exception {
+        rustHpds.stubFor(
+            post(urlEqualTo("/PIC-SURE/v3/search"))
+                .willReturn(okJson("{\"searchQuery\":\"age\",\"results\":{\"from\":\"rust\"},\"extra\":true}"))
+        );
+
+        mockMvc.perform(caller("/hpds/auth/search", "{\"query\":\"age\"}")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.results.from").value("rust"))
+            .andExpect(header().string(HpdsRouter.BACKEND_HEADER, HpdsRouter.BACKEND_RUST));
+    }
+
+    @Test
+    void aJavaErrorAfterAFallbackCarriesTheFallbackLabel() throws Exception {
+        rustHpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query/sync")).willReturn(aResponse().withStatus(503)));
+        javaHpds.stubFor(post(urlEqualTo("/PIC-SURE/v3/query/sync")).willReturn(aResponse().withStatus(400).withBody("refused by java")));
+
+        mockMvc.perform(caller("/hpds/auth/query/sync", COUNT_QUERY)).andExpect(status().isBadRequest())
+            .andExpect(header().string(HpdsRouter.BACKEND_HEADER, HpdsRouter.BACKEND_JAVA_FALLBACK));
+    }
+
+    @Test
     void anUnreadableSearchAnswerFallsBackToJava() throws Exception {
         javaHpds.stubFor(
             post(urlEqualTo("/PIC-SURE/v3/search")).willReturn(okJson("{\"searchQuery\":\"age\",\"results\":{\"from\":\"java\"}}"))

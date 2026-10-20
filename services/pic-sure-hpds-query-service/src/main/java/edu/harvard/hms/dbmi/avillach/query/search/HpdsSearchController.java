@@ -10,13 +10,10 @@ import org.springframework.web.bind.annotation.RestController;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
-import edu.harvard.hms.dbmi.avillach.query.routing.HpdsRouter;
-import edu.harvard.hms.dbmi.avillach.query.routing.Routed;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Exposes search for each {@code {backend}} at {@code /hpds/{backend}/search} and {@code /hpds/{backend}/search/values}, routing through
@@ -41,8 +38,8 @@ public class HpdsSearchController {
             @ApiResponse(responseCode = "502", description = "HPDS backend call failed."),
             @ApiResponse(responseCode = "503", description = "Backend not configured.")}
     )
-    public SearchResults search(@PathVariable("backend") String backend, @RequestBody SearchRequest req, HttpServletResponse response) {
-        return labelled(service.searchRouted(backend, req), response);
+    public SearchResults search(@PathVariable("backend") String backend, @RequestBody SearchRequest req) {
+        return service.search(backend, req);
     }
 
     @AuditEvent(type = "SEARCH", action = "search.values")
@@ -57,16 +54,8 @@ public class HpdsSearchController {
     public PaginatedSearchResult<String> values(
         @PathVariable("backend") String backend, @RequestParam(name = "genomicConceptPath", required = false) String conceptPath,
         @RequestParam(name = "query", required = false) String query, @RequestParam(name = "page", required = false) Integer page,
-        @RequestParam(name = "size", required = false) Integer size, HttpServletResponse response
+        @RequestParam(name = "size", required = false) Integer size
     ) {
-        return labelled(service.searchConceptValuesRouted(backend, conceptPath, query, page, size), response);
-    }
-
-    /** Sets {@link HpdsRouter#BACKEND_HEADER} for a call routed to or mirrored on Rust HPDS and returns the answer. */
-    private static <T> T labelled(Routed<T> routed, HttpServletResponse response) {
-        if (routed.hpdsBackend() != null) {
-            response.setHeader(HpdsRouter.BACKEND_HEADER, routed.hpdsBackend());
-        }
-        return routed.value();
+        return service.searchConceptValues(backend, conceptPath, query, page, size);
     }
 }

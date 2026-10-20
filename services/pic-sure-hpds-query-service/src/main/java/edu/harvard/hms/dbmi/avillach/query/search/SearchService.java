@@ -5,7 +5,9 @@ import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
@@ -13,7 +15,6 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.routing.HpdsRouter;
-import edu.harvard.hms.dbmi.avillach.query.routing.Routed;
 
 /**
  * Executes search and concept-value requests against the backend selected by the ingress {@code {backend}} path segment through
@@ -33,6 +34,11 @@ import edu.harvard.hms.dbmi.avillach.query.routing.Routed;
 public class SearchService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    /**
+     * Reads Rust's answers as leniently as {@link ResourceWebClient} reads Java's, ignoring members the model does not declare, so a field
+     * the caller would never see cannot turn a Rust answer into a fallback.
+     */
+    private static final ObjectMapper RUST_MAPPER = JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final TypeReference<PaginatedSearchResult<String>> VALUES_PAGE = new TypeReference<>() {};
 
     private final ResourceWebClient hpds;
@@ -54,28 +60,17 @@ public class SearchService {
      * @throws PicsureException 400 when {@code req} is null or the backend is unknown, 503 when the backend is not configured
      */
     public SearchResults search(String backend, SearchRequest req) {
-        return searchRouted(backend, req).value();
-    }
-
-    /**
-     * As {@link #search}, with the audit label of a call routed to or mirrored on Rust HPDS.
-     *
-     * @param backend the ingress {@code {backend}} segment
-     * @param req the search request
-     * @return the concepts and variant annotations HPDS matched, and the backend label or null
-     * @throws PicsureException 400 when {@code req} is null or the backend is unknown, 503 when the backend is not configured
-     */
-    public Routed<SearchResults> searchRouted(String backend, SearchRequest req) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing search data");
         }
         String base = selector.select(backend).baseUrl();
         var outbound = req.toOutbound();
         HpdsRouter.Call<SearchResults> call = new HpdsRouter.Call<>(
-            backend, HpdsRouter.SEARCH, () -> hpds.search(base, outbound), (client, apiBase, token) -> client.search(apiBase, outbound),
-            answered -> MAPPER.readValue(answered.body(), SearchResults.class), SearchService::json
+            backend, HpdsRouter.SEARCH, () -> hpds.search(base, outbound),
+            (client, apiBase, token, maxBody) -> client.search(apiBase, outbound, maxBody),
+            answered -> RUST_MAPPER.readValue(answered.body(), SearchResults.class), SearchService::json
         );
-        return router.route(call, results -> null);
+        return router.route(call, results -> null).value();
     }
 
     /**
@@ -90,25 +85,13 @@ public class SearchService {
      * @throws PicsureException 400 when the backend is unknown, 503 when it is not configured
      */
     public PaginatedSearchResult<String> searchConceptValues(String backend, String conceptPath, String query, Integer page, Integer size) {
-        return searchConceptValuesRouted(backend, conceptPath, query, page, size).value();
-    }
-
-    /**
-     * As {@link #searchConceptValues}, with the audit label of a call routed to or mirrored on Rust HPDS.
-     *
-     * @return one page of matching values, and the backend label or null
-     * @throws PicsureException 400 when the backend is unknown, 503 when it is not configured
-     */
-    public Routed<PaginatedSearchResult<String>> searchConceptValuesRouted(
-        String backend, String conceptPath, String query, Integer page, Integer size
-    ) {
         String base = selector.select(backend).baseUrl();
         HpdsRouter.Call<PaginatedSearchResult<String>> call = new HpdsRouter.Call<>(
             backend, HpdsRouter.SEARCH_VALUES, () -> hpds.searchConceptValues(base, conceptPath, query, page, size),
-            (client, apiBase, token) -> client.searchConceptValues(apiBase, conceptPath, query, page, size),
-            answered -> MAPPER.readValue(answered.body(), VALUES_PAGE), SearchService::json
+            (client, apiBase, token, maxBody) -> client.searchConceptValues(apiBase, conceptPath, query, page, size, maxBody),
+            answered -> RUST_MAPPER.readValue(answered.body(), VALUES_PAGE), SearchService::json
         );
-        return router.route(call, values -> null);
+        return router.route(call, values -> null).value();
     }
 
     /** Serializes an answer for comparison with Rust's body. */

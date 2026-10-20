@@ -82,6 +82,22 @@ class RustRoutingSettingsBindingTest {
     }
 
     @Test
+    void aMalformedUrlStopsStartup() {
+        runner().withPropertyValues("HPDS_RS_URL=hpds-rs:8080/PIC-SURE", "HPDS_RS_MODE=serve").run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().hasMessageContaining("HPDS_RS_URL");
+        });
+    }
+
+    @Test
+    void anAsyncOnlyTypeStopsStartup() {
+        runner().withPropertyValues("HPDS_RS_TYPES=COUNT,DATAFRAME").run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause().hasMessageContaining("DATAFRAME");
+        });
+    }
+
+    @Test
     void anUnknownTypeStopsStartup() {
         runner().withPropertyValues("HPDS_RS_TYPES=COUNT,COUNTS").run(context -> {
             assertThat(context).hasFailed();

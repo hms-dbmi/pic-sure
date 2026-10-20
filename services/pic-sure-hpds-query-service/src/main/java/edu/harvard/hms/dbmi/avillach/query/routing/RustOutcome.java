@@ -9,8 +9,14 @@ public sealed interface RustOutcome {
      * @param status the HTTP status
      * @param body the response body, empty when there was none
      * @param queryMetadata the {@code queryMetadata} response header, or null
+     * @param truncated whether the body was cut off at the caller's read limit, so {@code body} holds only its first bytes
      */
-    record Answered(int status, byte[] body, String queryMetadata) implements RustOutcome {
+    record Answered(int status, byte[] body, String queryMetadata, boolean truncated) implements RustOutcome {
+
+        /** A complete answer. */
+        public Answered(int status, byte[] body, String queryMetadata) {
+            this(status, body, queryMetadata, false);
+        }
 
         /** @return whether the status is 2xx */
         public boolean successful() {

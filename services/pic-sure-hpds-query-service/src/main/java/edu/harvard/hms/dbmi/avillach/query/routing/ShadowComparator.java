@@ -5,9 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.IntStream;
 
@@ -18,21 +18,21 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * Compares a Java HPDS answer with a Rust HPDS answer to the same request, applying the normalization named for the result type. Each
- * normalization carries the name of the equivalence harness rule it mirrors, so a logged name points at the rule that explains the
- * difference. Nothing here keeps, logs or digests either body.
+ * Compares a Java HPDS answer with a Rust HPDS answer to the same request, applying the normalization named for the result type. Where the
+ * equivalence harness has a rule for the difference, the normalization carries that rule's name, so a logged name points at the rule that
+ * explains it. Nothing here keeps, logs or digests either body.
  *
- * <ul> <li>{@code COUNT}, {@code VARIANT_COUNT_FOR_QUERY} and any type without a rule: {@value #EXACT}, byte for byte.</li> <li>The four
- * cross counts and {@code SEARCH_VALUES}: {@value #JSON_KEY_ORDER}, compared as parsed JSON, so object key order is ignored.</li>
- * <li>{@code VARIANT_LIST_FOR_QUERY}: {@value #VARIANT_LIST_ORDER}, the comma-and-space separated variants as a multiset.</li>
- * <li>{@code INFO_COLUMN_LISTING}: {@value #INFO_COLUMN_LISTING_ORDER}, the JSON array as a multiset.</li> <li>{@code VCF_EXCERPT} and
- * {@code AGGREGATE_VCF_EXCERPT}: {@value #VCF_EXCERPT_ORDER}, the rows as a multiset, each comma-joined cell as the set of its parts, and
- * the columns as a map from header to column.</li> <li>{@code SEARCH}: {@value #SEARCH}, the storage fields {@code widthInBytes},
- * {@code columnOffset}, {@code allObservationsOffset} and {@code allObservationsLength} removed and every array, category values and the
- * concept list included, compared as a multiset.</li> </ul>
+ * <p>{@code COUNT}, {@code VARIANT_COUNT_FOR_QUERY} and any type without a rule compare byte for byte ({@value #EXACT}). The four cross
+ * counts compare as parsed JSON with object key order ignored ({@value #JSON_KEY_ORDER}); this name is the query service's own, because the
+ * harness compares cross counts as parsed JSON without naming a rule. {@code VARIANT_LIST_FOR_QUERY} compares its variants as a multiset
+ * ({@value #VARIANT_LIST_ORDER}), {@code INFO_COLUMN_LISTING} its entries as a multiset ({@value #INFO_COLUMN_LISTING_ORDER}), and
+ * {@code VCF_EXCERPT} and {@code AGGREGATE_VCF_EXCERPT} their rows as a multiset, comma-joined cells as sets and columns as a map from
+ * header to column ({@value #EXCERPT_ORDER}). {@code SEARCH} compares field for field, with every array, the concept list, category values
+ * and info values included, as a multiset ({@value #SEARCH}). {@code SEARCH_VALUES} compares {@code page} and {@code total} exactly and the
+ * {@code results} array as a multiset ({@value #SEARCH_VALUES_BUCKET_ORDER}).
  *
  * <p>Two non-2xx answers match when their statuses are equal ({@value #STATUS_ONLY}); a 2xx answer never matches a non-2xx one. A body over
- * {@link #MAX_COMPARED_BYTES} on either side is not compared.
+ * {@link #MAX_COMPARED_BYTES} on either side, or a Rust body cut off at that limit, is not compared.
  */
 public final class ShadowComparator {
 
@@ -40,30 +40,30 @@ public final class ShadowComparator {
     public static final String EXACT = "exact";
     /** The name logged when the two bodies were identical before any normalization. */
     public static final String NONE = "none";
-    /** Parsed JSON comparison, ignoring object key order. */
+    /** Parsed JSON comparison, ignoring object key order; the query service's own name for the cross count comparison. */
     public static final String JSON_KEY_ORDER = "json-key-order";
     /** {@code VARIANT_LIST_FOR_QUERY} variants compared as a multiset. */
     public static final String VARIANT_LIST_ORDER = "variant-list-order";
     /** {@code INFO_COLUMN_LISTING} entries compared as a multiset. */
     public static final String INFO_COLUMN_LISTING_ORDER = "info-column-listing-order";
     /** Excerpt rows as a multiset, comma-joined cells as sets, and columns as a map from header to column. */
-    public static final String VCF_EXCERPT_ORDER = "vcf-excerpt-order";
-    /** Search with the main branch's storage fields removed, category values and the concept list compared as multisets. */
-    public static final String SEARCH = "search-storage-fields-main,category-values-order,search-concept-order";
+    public static final String EXCERPT_ORDER = "excerpt-order";
+    /** Search with the concept list, category values and info values compared as multisets. */
+    public static final String SEARCH = "search-concept-order,search-category-values-order,search-info-values-order";
+    /** {@code /search/values} pages with page and total exact and the results as a set. */
+    public static final String SEARCH_VALUES_BUCKET_ORDER = "search-values-bucket-order";
     /** Two non-2xx answers, compared by status only. */
     public static final String STATUS_ONLY = "status-only";
     /** The largest body compared, 16 MiB. */
     public static final int MAX_COMPARED_BYTES = 16 * 1024 * 1024;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Set<String> STORAGE_FIELDS =
-        Set.of("widthInBytes", "columnOffset", "allObservationsOffset", "allObservationsLength");
     private static final Map<String, String> RULES = Map.ofEntries(
         Map.entry("CROSS_COUNT", JSON_KEY_ORDER), Map.entry("CATEGORICAL_CROSS_COUNT", JSON_KEY_ORDER),
         Map.entry("CONTINUOUS_CROSS_COUNT", JSON_KEY_ORDER), Map.entry("OBSERVATION_CROSS_COUNT", JSON_KEY_ORDER),
-        Map.entry("SEARCH_VALUES", JSON_KEY_ORDER), Map.entry("VARIANT_LIST_FOR_QUERY", VARIANT_LIST_ORDER),
-        Map.entry("INFO_COLUMN_LISTING", INFO_COLUMN_LISTING_ORDER), Map.entry("VCF_EXCERPT", VCF_EXCERPT_ORDER),
-        Map.entry("AGGREGATE_VCF_EXCERPT", VCF_EXCERPT_ORDER), Map.entry("SEARCH", SEARCH)
+        Map.entry("SEARCH_VALUES", SEARCH_VALUES_BUCKET_ORDER), Map.entry("VARIANT_LIST_FOR_QUERY", VARIANT_LIST_ORDER),
+        Map.entry("INFO_COLUMN_LISTING", INFO_COLUMN_LISTING_ORDER), Map.entry("VCF_EXCERPT", EXCERPT_ORDER),
+        Map.entry("AGGREGATE_VCF_EXCERPT", EXCERPT_ORDER), Map.entry("SEARCH", SEARCH)
     );
 
     /** The result of one comparison. */
@@ -132,7 +132,7 @@ public final class ShadowComparator {
         }
         byte[] java = javaBody == null ? new byte[0] : javaBody;
         byte[] rs = answered.body() == null ? new byte[0] : answered.body();
-        if (java.length > MAX_COMPARED_BYTES || rs.length > MAX_COMPARED_BYTES) {
+        if (answered.truncated() || java.length > MAX_COMPARED_BYTES || rs.length > MAX_COMPARED_BYTES) {
             return new Verdict(Result.NOT_COMPARED, null, BODY_TOO_LARGE);
         }
         if (Arrays.equals(java, rs)) {
@@ -155,14 +155,30 @@ public final class ShadowComparator {
             return switch (rule) {
                 case JSON_KEY_ORDER -> MAPPER.readTree(java).equals(MAPPER.readTree(rust));
                 case VARIANT_LIST_ORDER -> variantList(text(java)).equals(variantList(text(rust)));
-                case INFO_COLUMN_LISTING_ORDER, SEARCH -> canonical(MAPPER.readTree(java), rule.equals(SEARCH))
-                    .equals(canonical(MAPPER.readTree(rust), rule.equals(SEARCH)));
-                case VCF_EXCERPT_ORDER -> excerpt(text(java)).equals(excerpt(text(rust)));
+                case INFO_COLUMN_LISTING_ORDER, SEARCH -> canonical(MAPPER.readTree(java)).equals(canonical(MAPPER.readTree(rust)));
+                case EXCERPT_ORDER -> excerpt(text(java)).equals(excerpt(text(rust)));
+                case SEARCH_VALUES_BUCKET_ORDER -> valuesPage(MAPPER.readTree(java)).equals(valuesPage(MAPPER.readTree(rust)));
                 default -> false;
             };
         } catch (IOException | RuntimeException e) {
             return false;
         }
+    }
+
+    /**
+     * The comparable form of a {@code /search/values} page: every member but {@code results} as written, and {@code results} as a count of
+     * each value, so order is ignored and a repeated value still counts.
+     */
+    static Map<String, Object> valuesPage(JsonNode page) {
+        Map<String, Object> form = new TreeMap<>();
+        page.properties().forEach(e -> form.put(e.getKey(), e.getValue()));
+        JsonNode results = page.path("results");
+        if (results.isArray()) {
+            Map<JsonNode, Integer> counts = new HashMap<>();
+            results.forEach(value -> counts.merge(value, 1, Integer::sum));
+            form.put("results", counts);
+        }
+        return form;
     }
 
     private static String text(byte[] body) {
@@ -181,25 +197,18 @@ public final class ShadowComparator {
         return Arrays.stream(trimmed.split(", ")).map(String::strip).sorted().toList();
     }
 
-    /**
-     * A JSON tree with object keys sorted, every array sorted by the canonical text of its elements, and, when {@code dropStorage}, the
-     * storage fields removed from every object.
-     */
-    static JsonNode canonical(JsonNode node, boolean dropStorage) {
+    /** A JSON tree with object keys sorted and every array sorted by the canonical text of its elements. */
+    static JsonNode canonical(JsonNode node) {
         if (node.isObject()) {
             Map<String, JsonNode> sorted = new TreeMap<>();
-            node.properties().forEach(e -> {
-                if (!dropStorage || !STORAGE_FIELDS.contains(e.getKey())) {
-                    sorted.put(e.getKey(), canonical(e.getValue(), dropStorage));
-                }
-            });
+            node.properties().forEach(e -> sorted.put(e.getKey(), canonical(e.getValue())));
             ObjectNode out = JsonNodeFactory.instance.objectNode();
             sorted.forEach(out::set);
             return out;
         }
         if (node.isArray()) {
             List<JsonNode> items = new ArrayList<>();
-            node.forEach(item -> items.add(canonical(item, dropStorage)));
+            node.forEach(item -> items.add(canonical(item)));
             items.sort(Comparator.comparing(JsonNode::toString));
             ArrayNode out = JsonNodeFactory.instance.arrayNode();
             items.forEach(out::add);

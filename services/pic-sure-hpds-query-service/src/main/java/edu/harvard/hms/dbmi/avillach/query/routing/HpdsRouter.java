@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.query.routing;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -78,6 +80,8 @@ public class HpdsRouter implements DisposableBean {
 
     private static final Logger logger = LoggerFactory.getLogger(HpdsRouter.class);
     private static final String NO_VALUE = "-";
+    /** Result types served only by {@code POST /query}, which are never routed, so naming one in {@code HPDS_RS_TYPES} is a mistake. */
+    private static final Set<String> ASYNC_TYPES = Set.of("PATIENTS", "DATAFRAME", "DATAFRAME_TIMESERIES", "DATAFRAME_PFB");
 
     private final RsMode mode;
     private final String rustApiBase;
@@ -98,8 +102,9 @@ public class HpdsRouter implements DisposableBean {
      * @param props the HPDS settings
      * @param rust the Rust HPDS client
      * @param meters where the routing metrics are registered
-     * @throws IllegalArgumentException when {@code HPDS_RS_TYPES} names an unknown type, the sample is outside 0 to 1, or the in-flight
-     *         limit or timeout is not positive
+     * @throws IllegalArgumentException when {@code HPDS_RS_URL} is set but is not an http or https URL with a host, {@code HPDS_RS_TYPES}
+     *         names an unknown type or one served only asynchronously, the sample is outside 0 to 1, or the in-flight limit or timeout is
+     *         not positive
      */
     @Autowired
     public HpdsRouter(HpdsProperties props, RustHpdsClient rust, MeterRegistry meters) {
@@ -127,8 +132,11 @@ public class HpdsRouter implements DisposableBean {
         this.maxInFlight = rs.getShadowMaxInFlight();
         RsMode configured = rs.getMode() == null ? RsMode.OFF : rs.getMode();
         boolean hasUrl = rs.getUrl() != null && !rs.getUrl().isBlank();
+        if (hasUrl) {
+            requireHttpUrl(rs.getUrl());
+        }
         this.mode = hasUrl ? configured : RsMode.OFF;
-        this.rustApiBase = hasUrl ? rs.getUrl() + props.getApiPath() : null;
+        this.rustApiBase = hasUrl ? rs.getUrl().strip() + props.getApiPath() : null;
         this.rustToken = rs.getToken();
         this.rust = rust;
         this.meters = meters;
@@ -193,7 +201,7 @@ public class HpdsRouter implements DisposableBean {
 
     private <T> Routed<T> serve(Call<T> call, Function<T, String> persist) {
         long start = System.nanoTime();
-        RustOutcome outcome = call.rust().call(rust, rustApiBase, rustToken);
+        RustOutcome outcome = callRust(call, RustHpdsClient.UNLIMITED);
         long rustMs = elapsedMs(start);
         latency("rust", call.type()).record(rustMs, TimeUnit.MILLISECONDS);
         RustFailure failure = null;
@@ -211,12 +219,14 @@ public class HpdsRouter implements DisposableBean {
         }
         if (failure == null) {
             serveCounter(call.type(), "rust", "none").increment();
+            HpdsBackendLabel.record(BACKEND_RUST);
             persist.apply(value);
             return new Routed<>(value, BACKEND_RUST);
         }
         serveCounter(call.type(), "fallback", failure.label()).increment();
         logger
             .warn("hpds_rs_fallback type={} reason={} rust_status={} rust_ms={}", call.type(), failure.label(), statusOf(outcome), rustMs);
+        HpdsBackendLabel.record(BACKEND_JAVA_FALLBACK);
         T javaValue = timedJava(call);
         persist.apply(javaValue);
         return new Routed<>(javaValue, BACKEND_JAVA_FALLBACK);
@@ -230,13 +240,18 @@ public class HpdsRouter implements DisposableBean {
         } catch (RuntimeException e) {
             long javaMs = elapsedMs(start);
             latency("java", call.type()).record(javaMs, TimeUnit.MILLISECONDS);
-            mirror(call, javaStatusOf(e), null, javaMs, null);
+            if (mirror(call, javaStatusOf(e), null, javaMs, null)) {
+                HpdsBackendLabel.record(BACKEND_JAVA_SHADOW);
+            }
             throw e;
         }
         long javaMs = elapsedMs(start);
         latency("java", call.type()).record(javaMs, TimeUnit.MILLISECONDS);
         String storedId = persist.apply(value);
         boolean mirrored = mirror(call, 200, value, javaMs, storedId);
+        if (mirrored) {
+            HpdsBackendLabel.record(BACKEND_JAVA_SHADOW);
+        }
         return new Routed<>(value, mirrored ? BACKEND_JAVA_SHADOW : null);
     }
 
@@ -286,7 +301,7 @@ public class HpdsRouter implements DisposableBean {
         try {
             byte[] javaBody = javaValue == null ? null : call.javaBody().apply(javaValue);
             long start = System.nanoTime();
-            RustOutcome outcome = call.rust().call(rust, rustApiBase, rustToken);
+            RustOutcome outcome = callRust(call, ShadowComparator.MAX_COMPARED_BYTES);
             long rustMs = elapsedMs(start);
             latency("rust", call.type()).record(rustMs, TimeUnit.MILLISECONDS);
             ShadowComparator.Verdict verdict = ShadowComparator.compare(call.type(), javaStatus, javaBody, asCallerSees(call, outcome));
@@ -319,7 +334,7 @@ public class HpdsRouter implements DisposableBean {
      * becomes a {@link RustOutcome.Failed} with {@link RustFailure#UNREADABLE_ANSWER}.
      */
     private static <T> RustOutcome asCallerSees(Call<T> call, RustOutcome outcome) {
-        if (!(outcome instanceof RustOutcome.Answered answered) || !answered.successful()) {
+        if (!(outcome instanceof RustOutcome.Answered answered) || !answered.successful() || answered.truncated()) {
             return outcome;
         }
         try {
@@ -387,8 +402,42 @@ public class HpdsRouter implements DisposableBean {
         return 0;
     }
 
+    /**
+     * Runs the call's Rust side, turning any exception it throws into {@link RustFailure#CLIENT_ERROR}, so no Rust failure reaches the
+     * caller.
+     *
+     * @param maxBodyBytes the most body bytes kept, or {@link RustHpdsClient#UNLIMITED}
+     */
+    private <T> RustOutcome callRust(Call<T> call, long maxBodyBytes) {
+        try {
+            return call.rust().call(rust, rustApiBase, rustToken, maxBodyBytes);
+        } catch (RuntimeException e) {
+            return new RustOutcome.Failed(RustFailure.CLIENT_ERROR);
+        }
+    }
+
     private static long elapsedMs(long startNanos) {
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+    }
+
+    /**
+     * Checks that {@code HPDS_RS_URL} is an absolute http or https URL with a host.
+     *
+     * @throws IllegalArgumentException naming the setting when it is not
+     */
+    private static void requireHttpUrl(String url) {
+        URI uri;
+        try {
+            uri = new URI(url.strip());
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("HPDS_RS_URL is not a valid URL: " + e.getReason());
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ENGLISH);
+        if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null) {
+            throw new IllegalArgumentException(
+                "HPDS_RS_URL must be an http or https URL with a host, such as http://hpds-rs:8080/PIC-SURE"
+            );
+        }
     }
 
     private static Set<String> parseTypes(Set<String> configured) {
@@ -403,6 +452,11 @@ public class HpdsRouter implements DisposableBean {
             }
             if (!known.contains(name)) {
                 throw new IllegalArgumentException("HPDS_RS_TYPES names an unknown type '" + raw.strip() + "'; known types are " + known);
+            }
+            if (ASYNC_TYPES.contains(name)) {
+                throw new IllegalArgumentException(
+                    "HPDS_RS_TYPES names " + name + ", which is only served asynchronously and stays on Java HPDS; remove it"
+                );
             }
             parsed.add(name);
         }
@@ -443,9 +497,10 @@ public class HpdsRouter implements DisposableBean {
          * @param client the Rust HPDS client
          * @param apiBase the Rust API base URL, the API path included
          * @param token the Rust service token, possibly null
-         * @return the answer or the transport failure
+         * @param maxBodyBytes the most body bytes to keep, or {@link RustHpdsClient#UNLIMITED}
+         * @return the answer or the failure
          */
-        RustOutcome call(RustHpdsClient client, String apiBase, String token);
+        RustOutcome call(RustHpdsClient client, String apiBase, String token, long maxBodyBytes);
     }
 
     /** Turns a 2xx Rust answer into the caller's answer. */

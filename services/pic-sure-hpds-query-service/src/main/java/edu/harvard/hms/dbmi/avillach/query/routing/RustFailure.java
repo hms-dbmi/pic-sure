@@ -9,8 +9,15 @@ public enum RustFailure {
     CONNECT_ERROR("connect-error"),
     /** Rust HPDS did not answer within {@code HPDS_RS_TIMEOUT_MS}. */
     TIMEOUT("timeout"),
+    /** No pooled connection to Rust HPDS came free within the lease timeout. */
+    POOL_EXHAUSTED("pool-exhausted"),
     /** The exchange failed for another I/O reason after it started. */
     IO_ERROR("io-error"),
+    /**
+     * The call failed inside the query service before or after the exchange, for example a request that could not be built or written, or a
+     * client that was shut down.
+     */
+    CLIENT_ERROR("client-error"),
     /** Rust HPDS answered with a 4xx status, such as a by-design refusal. */
     STATUS_4XX("status-4xx"),
     /** Rust HPDS answered with a 5xx status. */

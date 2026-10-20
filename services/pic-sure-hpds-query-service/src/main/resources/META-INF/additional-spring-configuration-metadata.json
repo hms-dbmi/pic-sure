@@ -9,7 +9,7 @@
     {
       "name": "hpds.rs.url",
       "type": "java.lang.String",
-      "description": "Base URL of the Rust HPDS backend, for example http://hpds-rs:8080/PIC-SURE; the HPDS API path is appended to it as for the Java backends. Maps from HPDS_RS_URL. Unset or blank turns Rust routing off whatever hpds.rs.mode says."
+      "description": "Base URL of the Rust HPDS backend, for example http://hpds-rs:8080/PIC-SURE; the HPDS API path is appended to it as for the Java backends. Maps from HPDS_RS_URL. Unset or blank turns Rust routing off whatever hpds.rs.mode says; a set value that is not an http or https URL with a host stops startup."
     },
     {
       "name": "hpds.rs.token",
@@ -25,7 +25,7 @@
     {
       "name": "hpds.rs.types",
       "type": "java.util.Set<java.lang.String>",
-      "description": "Result types routed or mirrored to Rust HPDS, comma separated. SEARCH and SEARCH_VALUES name the concept search and genomic values calls; genomic result types are added by name. Only auth-backend sync queries and search calls are eligible, so async types never reach Rust. An unknown name stops startup. Maps from HPDS_RS_TYPES.",
+      "description": "Result types routed or mirrored to Rust HPDS, comma separated. SEARCH and SEARCH_VALUES name the concept search and genomic values calls; genomic result types are added by name. Only auth-backend sync queries and search calls are eligible; an unknown name, or PATIENTS, DATAFRAME, DATAFRAME_TIMESERIES or DATAFRAME_PFB, which are only served asynchronously, stops startup. Maps from HPDS_RS_TYPES.",
       "defaultValue": "COUNT,CROSS_COUNT,CATEGORICAL_CROSS_COUNT,CONTINUOUS_CROSS_COUNT"
     },
     {
@@ -43,7 +43,7 @@
     {
       "name": "hpds.rs.timeout-ms",
       "type": "java.lang.Integer",
-      "description": "Read timeout of Rust HPDS calls in milliseconds. A serve-mode call that times out falls back to Java. Maps from HPDS_RS_TIMEOUT_MS.",
+      "description": "Timeout in milliseconds of each wait in a Rust HPDS call: the connect, the start of the response, and each wait for more bytes of it. It does not bound the whole call. A wait for a free pooled connection is bounded at 1 second or this value if shorter. A serve-mode call that times out falls back to Java. Maps from HPDS_RS_TIMEOUT_MS.",
       "defaultValue": 30000
     }
   ]

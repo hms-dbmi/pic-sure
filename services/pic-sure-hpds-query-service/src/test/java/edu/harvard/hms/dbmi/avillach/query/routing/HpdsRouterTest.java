@@ -21,8 +21,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
@@ -72,7 +76,7 @@ class HpdsRouterTest {
         return new HpdsRouter.Call<>(backend, type, () -> {
             javaCalls.incrementAndGet();
             return JAVA_BODY;
-        }, (client, apiBase, token) -> {
+        }, (client, apiBase, token, maxBody) -> {
             rustCalls.incrementAndGet();
             return rust;
         }, RustOutcome.Answered::body, body -> body);
@@ -159,12 +163,31 @@ class HpdsRouterTest {
             assertThatThrownBy(() -> router(props)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining(setting);
         }
 
+        @ParameterizedTest
+        @ValueSource(strings = {"hpds-rs:8080/PIC-SURE", "ftp://hpds-rs/PIC-SURE", "http://", "http://hpds rs/PIC-SURE", "file:/tmp/x"})
+        void aUrlThatIsNotHttpWithAHostStopsStartup(String url) {
+            HpdsProperties props = props(RsMode.SERVE);
+            props.getRs().setUrl(url);
+
+            assertThatThrownBy(() -> router(props)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("HPDS_RS_URL");
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"PATIENTS", "DATAFRAME", "dataframe_timeseries", "DATAFRAME_PFB"})
+        void anAsyncOnlyTypeStopsStartup(String type) {
+            HpdsProperties props = props(RsMode.SERVE);
+            props.getRs().setTypes(Set.of("COUNT", type));
+
+            assertThatThrownBy(() -> router(props)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("HPDS_RS_TYPES")
+                .hasMessageContaining("asynchronously");
+        }
+
         @Test
         void theRustApiBaseCarriesTheApiPath() {
             HpdsProperties props = props(RsMode.SERVE);
             props.setApiPath("/v3");
             List<String> bases = new ArrayList<>();
-            HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> JAVA_BODY, (client, apiBase, token) -> {
+            HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> JAVA_BODY, (client, apiBase, token, maxBody) -> {
                 bases.add(apiBase + " " + token);
                 return answered(200, "1");
             }, RustOutcome.Answered::body, body -> body);
@@ -275,9 +298,52 @@ class HpdsRouterTest {
         }
 
         @Test
+        void anExceptionFromTheRustCallFallsBackToJavaAsAClientError() {
+            HpdsRouter router = router(props(RsMode.SERVE));
+            HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> JAVA_BODY, (client, apiBase, token, maxBody) -> {
+                throw new IllegalStateException("Connection pool shut down");
+            }, RustOutcome.Answered::body, body -> body);
+
+            Routed<byte[]> routed = route(router, call);
+
+            assertThat(routed.value()).isEqualTo(JAVA_BODY);
+            assertThat(routed.hpdsBackend()).isEqualTo(HpdsRouter.BACKEND_JAVA_FALLBACK);
+            assertThat(count("hpds.rs.serve", "type", "COUNT", "outcome", "fallback", "reason", "client-error")).isEqualTo(1);
+        }
+
+        @Test
+        void serveReadsTheWholeRustBody() {
+            List<Long> limits = new ArrayList<>();
+            HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> JAVA_BODY, (client, apiBase, token, maxBody) -> {
+                limits.add(maxBody);
+                return answered(200, "9");
+            }, RustOutcome.Answered::body, body -> body);
+
+            route(router(props(RsMode.SERVE)), call);
+
+            assertThat(limits).containsExactly(RustHpdsClient.UNLIMITED);
+        }
+
+        @Test
+        void theLabelIsRecordedBeforeAFallbackJavaCallFails() {
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+            try {
+                HpdsRouter router = router(props(RsMode.SERVE));
+                HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> {
+                    throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "refused");
+                }, (client, apiBase, token, maxBody) -> answered(503, ""), RustOutcome.Answered::body, body -> body);
+
+                assertThatThrownBy(() -> route(router, call)).isInstanceOf(PicsureException.class);
+                assertThat(HpdsBackendLabel.current()).isEqualTo(HpdsRouter.BACKEND_JAVA_FALLBACK);
+            } finally {
+                RequestContextHolder.resetRequestAttributes();
+            }
+        }
+
+        @Test
         void anUnreadable2xxAnswerFallsBackToJava() {
             HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>(
-                "auth", "SEARCH", () -> JAVA_BODY, (client, apiBase, token) -> answered(200, "not json"), answered -> {
+                "auth", "SEARCH", () -> JAVA_BODY, (client, apiBase, token, maxBody) -> answered(200, "not json"), answered -> {
                     throw new IOException("unreadable");
                 }, body -> body
             );
@@ -296,7 +362,7 @@ class HpdsRouterTest {
             HpdsRouter router = router(props(RsMode.SERVE));
             HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> {
                 throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "refused");
-            }, (client, apiBase, token) -> answered(400, "refused"), RustOutcome.Answered::body, body -> body);
+            }, (client, apiBase, token, maxBody) -> answered(400, "refused"), RustOutcome.Answered::body, body -> body);
 
             assertThatThrownBy(() -> route(router, call)).isInstanceOf(PicsureException.class);
             assertThat(persisted).isEmpty();
@@ -359,13 +425,60 @@ class HpdsRouterTest {
                 throw new HpdsCommunicationException(
                     "HPDS sync call failed", HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR, "boom", null, null, null)
                 );
-            }, (client, apiBase, token) -> answered(500, "boom"), RustOutcome.Answered::body, body -> body);
+            }, (client, apiBase, token, maxBody) -> answered(500, "boom"), RustOutcome.Answered::body, body -> body);
 
             assertThatThrownBy(() -> route(router, call)).isInstanceOf(HpdsCommunicationException.class);
             assertThat(router.awaitShadowIdle(Duration.ofSeconds(5))).isTrue();
 
             assertThat(persisted).isEmpty();
             assertThat(count("hpds.rs.shadow", "type", "COUNT", "result", "match", "normalization", "status-only")).isEqualTo(1);
+        }
+
+        @Test
+        void anExceptionFromTheMirroredRustCallIsNotComparedAsAClientError() throws InterruptedException {
+            HpdsRouter router = router(props(RsMode.SHADOW));
+            HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> JAVA_BODY, (client, apiBase, token, maxBody) -> {
+                throw new IllegalArgumentException("bad uri");
+            }, RustOutcome.Answered::body, body -> body);
+
+            Routed<byte[]> routed = route(router, call);
+            assertThat(router.awaitShadowIdle(Duration.ofSeconds(5))).isTrue();
+
+            assertThat(routed.value()).isEqualTo(JAVA_BODY);
+            assertThat(count("hpds.rs.shadow", "type", "COUNT", "result", "not-compared", "reason", "client-error")).isEqualTo(1);
+        }
+
+        @Test
+        void theMirrorReadsAtMost16MibOfTheRustBody() throws InterruptedException {
+            List<Long> limits = Collections.synchronizedList(new ArrayList<>());
+            HpdsRouter router = router(props(RsMode.SHADOW));
+            HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> JAVA_BODY, (client, apiBase, token, maxBody) -> {
+                limits.add(maxBody);
+                return new RustOutcome.Answered(200, new byte[(int) maxBody], null, true);
+            }, RustOutcome.Answered::body, body -> body);
+
+            route(router, call);
+            assertThat(router.awaitShadowIdle(Duration.ofSeconds(5))).isTrue();
+
+            assertThat(limits).containsExactly((long) ShadowComparator.MAX_COMPARED_BYTES);
+            assertThat(count("hpds.rs.shadow", "type", "COUNT", "result", "not-compared", "reason", ShadowComparator.BODY_TOO_LARGE))
+                .isEqualTo(1);
+        }
+
+        @Test
+        void aMirroredJavaFailureIsLabelled() {
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+            try {
+                HpdsRouter router = router(props(RsMode.SHADOW));
+                HpdsRouter.Call<byte[]> call = new HpdsRouter.Call<>("auth", "COUNT", () -> {
+                    throw new PicsureException(HttpStatus.FORBIDDEN, "consent_denied", "no");
+                }, (client, apiBase, token, maxBody) -> answered(403, ""), RustOutcome.Answered::body, body -> body);
+
+                assertThatThrownBy(() -> route(router, call)).isInstanceOf(PicsureException.class);
+                assertThat(HpdsBackendLabel.current()).isEqualTo(HpdsRouter.BACKEND_JAVA_SHADOW);
+            } finally {
+                RequestContextHolder.resetRequestAttributes();
+            }
         }
 
         @Test
@@ -398,7 +511,7 @@ class HpdsRouterTest {
             HpdsRouter router = router(props);
             CountDownLatch release = new CountDownLatch(1);
             CountDownLatch started = new CountDownLatch(1);
-            HpdsRouter.Call<byte[]> slow = new HpdsRouter.Call<>("auth", "COUNT", () -> JAVA_BODY, (client, apiBase, token) -> {
+            HpdsRouter.Call<byte[]> slow = new HpdsRouter.Call<>("auth", "COUNT", () -> JAVA_BODY, (client, apiBase, token, maxBody) -> {
                 started.countDown();
                 try {
                     release.await(5, TimeUnit.SECONDS);

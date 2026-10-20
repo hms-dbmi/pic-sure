@@ -34,7 +34,7 @@ class ShadowComparatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "OBSERVATION_CROSS_COUNT", "SEARCH_VALUES"})
+    @ValueSource(strings = {"CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT", "OBSERVATION_CROSS_COUNT"})
     void jsonKeyOrderIgnoresObjectKeyOrderOnly(String type) {
         assertThat(compare(type, "{\"\\\\a\\\\\":{\"x\":1,\"y\":2},\"\\\\b\\\\\":3}", "{\"\\\\b\\\\\":3,\"\\\\a\\\\\":{\"y\":2,\"x\":1}}"))
             .isEqualTo(new Verdict(Result.MATCH, ShadowComparator.JSON_KEY_ORDER, null));
@@ -68,7 +68,7 @@ class ShadowComparatorTest {
     void excerptRowsColumnsAndInfoCellsAreUnordered(String type) {
         String java = "CHROM\tPOSITION\tGene_with_variant\tp1\tp2\n19\t100\tAPOE,APOC1\t0/1\t1/1\n19\t200\tTOMM40\t0/0\t0/1\n";
         String rust = "CHROM\tPOSITION\tGene_with_variant\tp2\tp1\n19\t200\tTOMM40\t0/1\t0/0\n19\t100\tAPOC1,APOE\t1/1\t0/1\n";
-        assertThat(compare(type, java, rust)).isEqualTo(new Verdict(Result.MATCH, ShadowComparator.VCF_EXCERPT_ORDER, null));
+        assertThat(compare(type, java, rust)).isEqualTo(new Verdict(Result.MATCH, ShadowComparator.EXCERPT_ORDER, null));
     }
 
     @Test
@@ -79,17 +79,43 @@ class ShadowComparatorTest {
     }
 
     @Test
-    void searchDropsStorageFieldsAndComparesArraysAsMultisets() {
+    void searchComparesConceptsCategoryValuesAndInfoValuesAsMultisets() {
         String java =
-            "{\"searchQuery\":\"age\",\"results\":{\"phenotypes\":[{\"\\\\b\\\\\":{\"name\":\"b\",\"categoryValues\":[\"y\",\"x\"],"
-                + "\"widthInBytes\":4,\"columnOffset\":0,\"allObservationsOffset\":10,\"allObservationsLength\":20}},{\"\\\\a\\\\\":{\"name\":\"a\"}}],"
-                + "\"info\":{}}}";
-        String rust =
-            "{\"results\":{\"info\":{},\"phenotypes\":[{\"\\\\a\\\\\":{\"name\":\"a\"}},{\"\\\\b\\\\\":{\"categoryValues\":[\"x\",\"y\"],"
-                + "\"name\":\"b\"}}]},\"searchQuery\":\"age\"}";
+            "{\"searchQuery\":\"age\",\"results\":{\"phenotypes\":[{\"\\\\b\\\\\":{\"name\":\"b\",\"categoryValues\":[\"y\",\"x\"]}},"
+                + "{\"\\\\a\\\\\":{\"name\":\"a\"}}],\"info\":{\"Gene_with_variant\":{\"values\":[\"APOE\",\"APOC1\"]}}}}";
+        String rust = "{\"results\":{\"info\":{\"Gene_with_variant\":{\"values\":[\"APOC1\",\"APOE\"]}},\"phenotypes\":[{\"\\\\a\\\\\":"
+            + "{\"name\":\"a\"}},{\"\\\\b\\\\\":{\"categoryValues\":[\"x\",\"y\"],\"name\":\"b\"}}]},\"searchQuery\":\"age\"}";
         assertThat(compare("SEARCH", java, rust)).isEqualTo(new Verdict(Result.MATCH, ShadowComparator.SEARCH, null));
         String changed = rust.replace("\"x\",\"y\"", "\"x\",\"z\"");
         assertThat(compare("SEARCH", java, changed)).isEqualTo(new Verdict(Result.MISMATCH, ShadowComparator.SEARCH, null));
+    }
+
+    @Test
+    void searchComparesEveryFieldSoAnExtraFieldIsAMismatch() {
+        String java = "{\"results\":{\"phenotypes\":[{\"\\\\a\\\\\":{\"name\":\"a\"}}]}}";
+        String rust = "{\"results\":{\"phenotypes\":[{\"\\\\a\\\\\":{\"name\":\"a\",\"widthInBytes\":4}}]}}";
+        assertThat(compare("SEARCH", java, rust)).isEqualTo(new Verdict(Result.MISMATCH, ShadowComparator.SEARCH, null));
+    }
+
+    @Test
+    void searchValuesComparePageAndTotalExactlyAndResultsAsAMultiset() {
+        String java = "{\"results\":[\"APOE\",\"APOC1\",\"TOMM40\"],\"page\":2,\"total\":30}";
+        assertThat(ShadowComparator.ruleFor("SEARCH_VALUES")).isEqualTo(ShadowComparator.SEARCH_VALUES_BUCKET_ORDER);
+        assertThat(compare("SEARCH_VALUES", java, "{\"page\":2,\"total\":30,\"results\":[\"TOMM40\",\"APOE\",\"APOC1\"]}"))
+            .isEqualTo(new Verdict(Result.MATCH, ShadowComparator.SEARCH_VALUES_BUCKET_ORDER, null));
+        assertThat(compare("SEARCH_VALUES", java, "{\"results\":[\"APOE\",\"APOC1\",\"TOMM40\"],\"page\":2,\"total\":31}"))
+            .extracting(Verdict::result).isEqualTo(Result.MISMATCH);
+        assertThat(compare("SEARCH_VALUES", java, "{\"results\":[\"APOE\",\"APOC1\",\"TOMM40\"],\"page\":3,\"total\":30}"))
+            .extracting(Verdict::result).isEqualTo(Result.MISMATCH);
+        assertThat(compare("SEARCH_VALUES", java, "{\"results\":[\"APOE\",\"APOE\",\"TOMM40\"],\"page\":2,\"total\":30}"))
+            .extracting(Verdict::result).isEqualTo(Result.MISMATCH);
+    }
+
+    @Test
+    void aTruncatedRustBodyIsNotCompared() {
+        byte[] body = "1".getBytes(StandardCharsets.UTF_8);
+        assertThat(ShadowComparator.compare("COUNT", 200, body, new RustOutcome.Answered(200, body, null, true)))
+            .isEqualTo(new Verdict(Result.NOT_COMPARED, null, ShadowComparator.BODY_TOO_LARGE));
     }
 
     @Test
