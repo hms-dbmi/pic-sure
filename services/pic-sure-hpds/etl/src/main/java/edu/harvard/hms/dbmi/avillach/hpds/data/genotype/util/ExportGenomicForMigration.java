@@ -68,7 +68,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
  * <p> Every file is encrypted with the phenotype store's {@code DEFAULT} key in the container {@link ExportForMigration} writes, under one
  * random export id, with kind byte {@link #MANIFEST_KIND} for {@link #MANIFEST_FILE} and {@link #NODE_KIND} for each node file. The export
  * directory is created mode {@code 0700} and the files mode {@code 0600}; it may be neither the genomic root, inside it, nor around it.
- * Files a previous export left behind are deleted first. Node files are renamed into place as each completes and the manifest last, so a
+ * An existing export directory may hold only a previous export's files, which are deleted first; any other entry is refused before
+ * anything changes. Node files are renamed into place as each completes and the manifest last, so a
  * reader that finds the manifest finds a complete export.
  *
  * <p> Content, big-endian, strings as in {@link ExportForMigration}: an {@code int} UTF-8 byte length, then the bytes. A string holding an
@@ -118,6 +119,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
  * <p> A spec belongs to the bucket {@code Integer.parseInt(spec.split(",")[1]) / 1000} of contig {@code spec.split(",")[0]}, as the query
  * service looks it up. A spec index entry that has no such bucket, and a mask or metadata record stored under another bucket than its
  * spec's, are refused.
+ *
+ * <p> Memory: the exporter holds one node's spec index, the node's bucket index turned into one patient bitmap per bucket somebody
+ * carries (at most buckets times patients over 8 bytes: 12 MB for chromosome 1 of the 1000 Genomes store, about 160 MB for a node of
+ * 250,000 buckets and 5,000 patients), and one bucket at a time. {@code -Xmx4g} exported every store measured, the 10,000-patient
+ * {@code gdev} store among them. For larger stores, add the largest node's buckets times patients over 8 bytes to the heap.
  *
  * <p> Usage: {@code ExportGenomicForMigration <mode> <genomic root> <key file> <export directory>}.
  */
@@ -247,13 +253,21 @@ public class ExportGenomicForMigration {
         }
         List<Node> nodes = layout(mode, store);
 
+        if (Files.isDirectory(export)) {
+            try (Stream<Path> entries = Files.list(export)) {
+                List<Path> others = entries.filter(path -> !isExportFile(path.getFileName().toString())).toList();
+                if (!others.isEmpty()) {
+                    throw new IllegalStateException(
+                        "the export directory " + export + " holds " + others.size() + " entries that are not part of a genomic export, "
+                            + others.get(0).getFileName() + " among them; name a new directory, an empty one, or a previous export's"
+                    );
+                }
+            }
+        }
         ExportForMigration.createPrivateDirectory(export);
         try (Stream<Path> stale = Files.list(export)) {
             for (Path path : (Iterable<Path>) stale::iterator) {
-                String name = path.getFileName().toString();
-                if (name.startsWith(MANIFEST_FILE) || (name.startsWith("node-") && (name.endsWith(".bin") || name.endsWith(TEMPORARY_SUFFIX)))) {
-                    Files.delete(path);
-                }
+                Files.delete(path);
             }
         }
         byte[] exportId = new byte[ExportForMigration.EXPORT_ID_BYTES];
@@ -302,6 +316,12 @@ public class ExportGenomicForMigration {
             Files.deleteIfExists(manifestTemporary);
         }
         return new Summary(nodes.size(), buckets, maskRecords);
+    }
+
+    /** True for the names an export writes: the manifest, node files and their temporaries. */
+    static boolean isExportFile(String name) {
+        return name.equals(MANIFEST_FILE) || name.equals(MANIFEST_FILE + TEMPORARY_SUFFIX)
+            || (name.startsWith("node-") && (name.endsWith(".bin") || name.endsWith(".bin" + TEMPORARY_SUFFIX)));
     }
 
     private static DataOutputStream open(Path file, byte[] exportId, byte kind) throws IOException {
@@ -416,6 +436,7 @@ public class ExportGenomicForMigration {
 
             File bucketIndexFile = new File(dir, BUCKET_INDEX_FILE);
             BucketCarriers carriers = bucketIndexFile.isFile() ? new BucketCarriers(readObject(bucketIndexFile), dir, patients) : null;
+            missingFromBucketIndex = carriers == null ? 0 : carriers.missing();
             out.writeByte(carriers == null ? 0 : 1);
 
             writeInfoStores(dir, specIndex.length);
@@ -850,10 +871,14 @@ public class ExportGenomicForMigration {
 
         private final List<String> bucketList;
 
-        private final BigInteger[] masks;
+        private final long[][] carriers;
 
         private final int missing;
 
+        /**
+         * Reads every patient's bucket mask once and sets the patient's position in the bitmap of each bucket whose bit the mask holds,
+         * so a bucket's carriers come from its own bitmap. A bucket nobody carries holds no bitmap.
+         */
         @SuppressWarnings("unchecked")
         BucketCarriers(Object read, File dir, String[] patients) throws IOException {
             if (!(read instanceof BucketIndexBySample index)) {
@@ -862,7 +887,9 @@ public class ExportGenomicForMigration {
             bucketList = (List<String>) field(BucketIndexBySample.class, "bucketList", index);
             FileBackedByteIndexedStorage<Integer, BigInteger> storage =
                 (FileBackedByteIndexedStorage<Integer, BigInteger>) field(BucketIndexBySample.class, "patientBucketMasks", index);
-            masks = new BigInteger[patients.length];
+            int size = bucketList.size();
+            int words = (patients.length + 63) / 64;
+            carriers = new long[size][];
             int absent = 0;
             try (ReadOnlyStorage<Integer, BigInteger> values = new ReadOnlyStorage<>(storage, dir)) {
                 for (int p = 0; p < patients.length; p++) {
@@ -872,13 +899,34 @@ public class ExportGenomicForMigration {
                     } catch (NumberFormatException e) {
                         throw new IllegalStateException(dir + ": patient " + p + " is not an integer, which the bucket index needs", e);
                     }
-                    masks[p] = values.get(id);
-                    if (masks[p] == null) {
+                    BigInteger mask = values.get(id);
+                    if (mask == null) {
                         absent++;
+                        continue;
+                    }
+                    byte[] bytes = mask.toByteArray();
+                    for (int i = 0; i < bytes.length; i++) {
+                        int b = bytes[bytes.length - 1 - i] & 0xff;
+                        while (b != 0) {
+                            int bit = i * 8 + Integer.numberOfTrailingZeros(b);
+                            b &= b - 1;
+                            int bucket = size + 1 - bit;
+                            if (bit >= 2 && bucket >= 0) {
+                                if (carriers[bucket] == null) {
+                                    carriers[bucket] = new long[words];
+                                }
+                                carriers[bucket][p >>> 6] |= 1L << (p & 63);
+                            }
+                        }
                     }
                 }
             }
             missing = absent;
+        }
+
+        /** Patients of the node's list whose bucket mask the index does not hold. */
+        int missing() {
+            return missing;
         }
 
         /** The patient positions whose bitmask has the bucket's bit, or {@code null} when the bucket index has no such bucket. */
@@ -887,15 +935,24 @@ public class ExportGenomicForMigration {
             if (index < 0) {
                 return null;
             }
-            int bit = bucketList.size() - 1 - index + 2;
-            int[] found = new int[masks.length];
+            long[] bits = carriers[index];
+            if (bits == null) {
+                return new int[0];
+            }
             int n = 0;
-            for (int p = 0; p < masks.length; p++) {
-                if (masks[p] != null && masks[p].testBit(bit)) {
-                    found[n++] = p;
+            for (long word : bits) {
+                n += Long.bitCount(word);
+            }
+            int[] found = new int[n];
+            int k = 0;
+            for (int w = 0; w < bits.length; w++) {
+                long word = bits[w];
+                while (word != 0) {
+                    found[k++] = w * 64 + Long.numberOfTrailingZeros(word);
+                    word &= word - 1;
                 }
             }
-            return Arrays.copyOf(found, n);
+            return found;
         }
     }
 
