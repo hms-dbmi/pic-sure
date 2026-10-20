@@ -13,7 +13,14 @@
 //! | `chr2` | none | plain text |
 //! | `chr3` | BGZF | none |
 //! | `chr4` | BGZF, 2,100 sites | BGZF, the sites B carries |
+//! | `chr5` | BGZF, `GT:DP` records beside one `GT` record | plain text, the same |
 //! | `chrX` | plain text | none |
+//!
+//! `chr5` exercises the loader's other genotype path: on a record whose FORMAT is not `GT`
+//! alone, Java reads each sample field's first three characters through a column lookup,
+//! where the missing `EDGEA25` and the last header sample `EDGEA24` share a column and the
+//! later of the two in index order keeps it. `edgeB.chr5` leaves the unindexed `EDGEBXX` out
+//! of its header, so it has as many header samples as indexed ones and nothing missing.
 //!
 //! Inputs a strict loader refuses: every `edgeA` file, for the missing indexed sample; and
 //! `edgeA.chr3`, which holds `0/2` and `1/2` calls outside the biallelic forms. The `edgeB`
@@ -42,9 +49,11 @@ const A_SAMPLES: u32 = 24;
 const B_SAMPLES: u32 = 16;
 const B_EXTRA_AT: u32 = 8;
 const FILLER_SITES: u32 = 2_100;
+const UNINDEXED_B: &str = "EDGEBXX";
+const DP_HEADER: &str = "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read depth\">";
 
 /// The rules the dataset covers, each asserted by a test.
-pub const EDGE_ITEMS: [&str; 20] = [
+pub const EDGE_ITEMS: [&str; 21] = [
     "flag field in INFO",
     "ampersand list in gene and consequence",
     "comma separated numeric value",
@@ -65,6 +74,7 @@ pub const EDGE_ITEMS: [&str; 20] = [
     "site in one group only",
     "BGZF and plain files",
     "patients without genotypes or without phenotypes",
+    "GT:DP records with and without a missing sample",
 ];
 
 type Calls = Vec<(u32, Gt)>;
@@ -96,6 +106,7 @@ enum Info {
 }
 
 struct Spec {
+    gt_dp: bool,
     position: u32,
     reference: &'static str,
     alternate: &'static str,
@@ -133,6 +144,7 @@ impl Spec {
         text: &'static str,
     ) -> Self {
         Self {
+            gt_dp: false,
             position,
             reference,
             alternate,
@@ -149,6 +161,7 @@ impl Spec {
 
     fn raw(position: u32, reference: &'static str, alternate: &'static str, info: &str) -> Self {
         Self {
+            gt_dp: false,
             position,
             reference,
             alternate,
@@ -162,6 +175,11 @@ impl Spec {
         if let Info::Standard { gene, .. } = &mut self.info {
             *gene = None;
         }
+        self
+    }
+
+    fn gt_dp(mut self) -> Self {
+        self.gt_dp = true;
         self
     }
 
@@ -540,6 +558,75 @@ fn chr3() -> Vec<Spec> {
     ]
 }
 
+fn chr5() -> Vec<Spec> {
+    let last = A_SAMPLES - 1;
+    let b_last = B_SAMPLES - 1;
+    vec![
+        Spec::new(100, "A", "G", "EDG26", "missense_variant", "0.001", "Rare")
+            .gt_dp()
+            .a(calls(&[(0..2, "0/1"), (last..last + 1, "0/1")]))
+            .b(calls(&[(0..2, "0/1"), (b_last..b_last + 1, "1/1")])),
+        Spec::new(200, "C", "T", "EDG26", "stop_gained", "0.002", "Rare")
+            .gt_dp()
+            .a(calls(&[(0..7, "0/1"), (last..last + 1, "1/1")]))
+            .b(calls(&[(0..6, "0|1"), (b_last..b_last + 1, "0/1")])),
+        Spec::new(
+            1500,
+            "G",
+            "A",
+            "EDG26",
+            "synonymous_variant",
+            "0.003",
+            "Rare",
+        )
+        .a(calls(&[(3..4, "0|1"), (last..last + 1, "1|1")]))
+        .b(calls(&[(3..4, "0|1"), (b_last..b_last + 1, "0|1")])),
+        Spec::new(2500, "T", "C", "EDG27", "missense_variant", "0.004", "Rare")
+            .gt_dp()
+            .a(calls(&[
+                (0..2, "./1"),
+                (2..4, "./."),
+                (4..5, "./0"),
+                (5..6, "1|."),
+                (last..last + 1, "0/1"),
+            ]))
+            .b(calls(&[
+                (0..2, "./1"),
+                (2..3, "./."),
+                (b_last..b_last + 1, "./1"),
+            ])),
+        Spec::new(3500, "T", "C", "EDG27", "missense_variant", "0.005", "Rare")
+            .gt_dp()
+            .a(Vec::new())
+            .b(Vec::new()),
+    ]
+}
+
+/// A record line whose FORMAT is `GT:DP`: each of `samples` cells is its call, `0/0` by
+/// default, and a depth, `.` for a no-call.
+fn gt_dp_row(site: &Spec, chromosome: &str, info: &str, samples: usize, calls: &Calls) -> Vec<u8> {
+    let mut cells: Vec<String> = (0..samples)
+        .map(|i| format!("0/0:{}", 10 + i % 7))
+        .collect();
+    for (sample, cell) in calls {
+        let gt = String::from_utf8_lossy(cell).to_string();
+        let depth = if gt.contains('.') {
+            ".".to_string()
+        } else {
+            format!("{}", 20 + sample)
+        };
+        cells[*sample as usize] = format!("{gt}:{depth}");
+    }
+    format!(
+        "{chromosome}\t{}\t.\t{}\t{}\t.\tPASS\t{info}\tGT:DP\t{}\n",
+        site.position,
+        site.reference,
+        site.alternate,
+        cells.join("\t")
+    )
+    .into_bytes()
+}
+
 fn chrx() -> Vec<Spec> {
     vec![
         Spec::new(999, "T", "C", "EDG24", "missense_variant", "0.001", "Rare")
@@ -627,6 +714,7 @@ struct EdgeFile {
     chromosome: &'static str,
     gzipped: bool,
     sites: Vec<Spec>,
+    without_unindexed: bool,
 }
 
 fn files(seed: u64) -> Vec<EdgeFile> {
@@ -636,42 +724,63 @@ fn files(seed: u64) -> Vec<EdgeFile> {
             chromosome: "chr1",
             gzipped: true,
             sites: chr1(),
+            without_unindexed: false,
         },
         EdgeFile {
             group: GROUP_B,
             chromosome: "chr1",
             gzipped: true,
             sites: chr1(),
+            without_unindexed: false,
         },
         EdgeFile {
             group: GROUP_B,
             chromosome: "chr2",
             gzipped: false,
             sites: chr2(),
+            without_unindexed: false,
         },
         EdgeFile {
             group: GROUP_A,
             chromosome: "chr3",
             gzipped: true,
             sites: chr3(),
+            without_unindexed: false,
         },
         EdgeFile {
             group: GROUP_A,
             chromosome: "chr4",
             gzipped: true,
             sites: chr4(seed),
+            without_unindexed: false,
         },
         EdgeFile {
             group: GROUP_B,
             chromosome: "chr4",
             gzipped: true,
             sites: chr4(seed),
+            without_unindexed: false,
+        },
+        EdgeFile {
+            group: GROUP_A,
+            chromosome: "chr5",
+            gzipped: true,
+            sites: chr5(),
+            without_unindexed: false,
+        },
+        EdgeFile {
+            group: GROUP_B,
+            chromosome: "chr5",
+            gzipped: false,
+            sites: chr5(),
+            without_unindexed: true,
         },
         EdgeFile {
             group: GROUP_A,
             chromosome: "chrX",
             gzipped: false,
             sites: chrx(),
+            without_unindexed: false,
         },
     ]
 }
@@ -697,7 +806,7 @@ pub fn cohort(seed: u64) -> Cohort {
     let mut a_pheno: Vec<u32> = a_indexed.iter().map(|s| s.patient).collect();
     a_pheno.extend([A_BASE + 101, A_BASE + 102, A_BASE + 103]);
     let mut b_header: Vec<String> = (1..=B_SAMPLES).map(|n| format!("EDGEB{n:02}")).collect();
-    b_header.insert(B_EXTRA_AT as usize, "EDGEBXX".to_string());
+    b_header.insert(B_EXTRA_AT as usize, UNINDEXED_B.to_string());
     let b_indexed: Vec<IndexedSample> = (1..=B_SAMPLES)
         .map(|n| IndexedSample {
             sample: format!("EDGEB{n:02}"),
@@ -727,8 +836,8 @@ pub fn cohort(seed: u64) -> Cohort {
     }
 }
 
-fn column(group: usize, sample: u32) -> u32 {
-    if group == GROUP_B && sample >= B_EXTRA_AT {
+fn column(file: &EdgeFile, sample: u32) -> u32 {
+    if file.group == GROUP_B && !file.without_unindexed && sample >= B_EXTRA_AT {
         sample + 1
     } else {
         sample
@@ -737,15 +846,21 @@ fn column(group: usize, sample: u32) -> u32 {
 
 fn write_file(group: &Group, file: &EdgeFile, path: &Path) -> io::Result<u64> {
     let handle = BufWriter::new(File::create(path)?);
+    let header: Vec<String> = group
+        .header_samples
+        .iter()
+        .filter(|s| !(file.without_unindexed && s.as_str() == UNINDEXED_B))
+        .cloned()
+        .collect();
     let write_body = |out: &mut dyn Write| -> io::Result<u64> {
         let mut records = 0;
-        write_header(
-            &mut *out,
-            file.chromosome,
-            &group.header_samples,
-            &[FLAG_HEADER],
-        )?;
-        let mut builder = RowBuilder::new(group.header_samples.len());
+        let extra: &[&str] = if file.sites.iter().any(|s| s.gt_dp) {
+            &[FLAG_HEADER, DP_HEADER]
+        } else {
+            &[FLAG_HEADER]
+        };
+        write_header(&mut *out, file.chromosome, &header, extra)?;
+        let mut builder = RowBuilder::new(header.len());
         for site in &file.sites {
             let chosen = if file.group == GROUP_A {
                 &site.a
@@ -755,9 +870,20 @@ fn write_file(group: &Group, file: &EdgeFile, path: &Path) -> io::Result<u64> {
             let Some(site_calls) = chosen else { continue };
             let mapped: Calls = site_calls
                 .iter()
-                .map(|(i, cell)| (column(file.group, *i), *cell))
+                .map(|(i, cell)| (column(file, *i), *cell))
                 .collect();
             let info = site.info_text();
+            if site.gt_dp {
+                out.write_all(&gt_dp_row(
+                    site,
+                    file.chromosome,
+                    &info,
+                    header.len(),
+                    &mapped,
+                ))?;
+                records += 1;
+                continue;
+            }
             let row = builder.build(
                 file.chromosome,
                 site.position,
