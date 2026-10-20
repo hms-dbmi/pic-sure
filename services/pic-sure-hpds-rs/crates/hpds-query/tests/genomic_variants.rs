@@ -576,6 +576,44 @@ fn a_scanned_excerpt_reads_each_mask_chunk_once() {
     assert_eq!(reads, 2, "one mask chunk and one metadata chunk");
 }
 
+/// A block that cannot be read, here one overwritten in place with its size and time kept, so
+/// the store still counts as unchanged, fails every variant result type with
+/// [`QueryError::GenomicBlock`], a server error: the HTTP layer logs it, node name included,
+/// and answers a 500 without it.
+#[test]
+fn an_unreadable_block_is_a_server_error_for_every_variant_result_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_pheno, e) = single_group(dir.path());
+    let blocks = dir.path().join("geno.blocks");
+    let modified = std::fs::metadata(&blocks).unwrap().modified().unwrap();
+    let flipped: Vec<u8> = std::fs::read(&blocks)
+        .unwrap()
+        .iter()
+        .map(|b| b ^ 0x5a)
+        .collect();
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&blocks)
+        .unwrap();
+    std::io::Write::write_all(&mut file, &flipped).unwrap();
+    file.set_modified(modified).unwrap();
+    drop(file);
+    for result_type in [
+        ResultType::Count,
+        ResultType::VariantCountForQuery,
+        ResultType::VariantListForQuery,
+        ResultType::VcfExcerpt,
+        ResultType::AggregateVcfExcerpt,
+    ] {
+        let error = e.answer_sync(&gene_query(result_type, &["B"])).unwrap_err();
+        assert!(
+            matches!(error, QueryError::GenomicBlock { .. }),
+            "{result_type:?}: {error:?}"
+        );
+        assert!(!error.is_client_error(), "{result_type:?}");
+    }
+}
+
 #[test]
 fn info_cells_join_a_keys_values_and_write_null_for_an_absent_key() {
     let dir = tempfile::tempdir().unwrap();
