@@ -5,8 +5,9 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use hpds_gen::bdc::Profile;
 use hpds_gen::edge::write_edge_dirs;
-use hpds_gen::generate::{IdLayout, Order, Shape, generate};
+use hpds_gen::generate::{IdLayout, Order, Shape, generate_profile};
 use hpds_gen::genomic::edge::write_edge;
 use hpds_gen::genomic::estimate::estimate;
 use hpds_gen::genomic::writer::write_dataset;
@@ -46,6 +47,15 @@ enum Preset {
     Tiny,
     Dev,
     Bench,
+    Bdcx,
+    Bdcdev,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, ValueEnum)]
+enum ProfileArg {
+    Plain,
+    Bdc,
+    BdcEdge,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -86,9 +96,16 @@ enum RowOrder {
 
 #[derive(Args)]
 struct GenerateArgs {
-    /// Dataset size preset
+    /// Dataset size preset: tiny, dev, bench, or the BDC presets bdcx (3,000 patients, 8 studies,
+    /// with the hand-placed edge patients) and bdcdev (dev scale, 12 studies)
     #[arg(long, value_enum)]
     preset: Preset,
+    /// Consent profile: plain (the default for tiny, dev and bench), bdc (adds
+    /// `\_topmed_consents\`, `\_harmonized_consent\`, the `\DCC Harmonized data set\` concepts and
+    /// `\_parent_consents\`), or bdc-edge (bdc plus the hand-placed edge patients). The bdcx and
+    /// bdcdev presets default to bdc-edge and bdc
+    #[arg(long, value_enum)]
+    profile: Option<ProfileArg>,
     /// Seed for the random stream
     #[arg(long, default_value_t = 1)]
     seed: u64,
@@ -136,10 +153,20 @@ fn run_edge_cases(out_dir: &Path) -> Result<(), String> {
 }
 
 fn run_generate(args: GenerateArgs) -> Result<(), String> {
-    let base = match args.preset {
-        Preset::Tiny => Shape::TINY,
-        Preset::Dev => Shape::DEV,
-        Preset::Bench => Shape::BENCH,
+    let (base, preset_profile) = match args.preset {
+        Preset::Tiny => (Shape::TINY, ProfileArg::Plain),
+        Preset::Dev => (Shape::DEV, ProfileArg::Plain),
+        Preset::Bench => (Shape::BENCH, ProfileArg::Plain),
+        Preset::Bdcx => (Shape::BDCX, ProfileArg::BdcEdge),
+        Preset::Bdcdev => (Shape::BDCDEV, ProfileArg::Bdc),
+    };
+    let profile = match args.profile.unwrap_or(preset_profile) {
+        ProfileArg::Plain if preset_profile != ProfileArg::Plain => {
+            return Err("the bdcx and bdcdev presets need a bdc profile".to_string());
+        }
+        ProfileArg::Plain => Profile::Plain,
+        ProfileArg::Bdc => Profile::Bdc { edge: false },
+        ProfileArg::BdcEdge => Profile::Bdc { edge: true },
     };
     let shape = Shape {
         patients: args.patients.unwrap_or(base.patients),
@@ -152,13 +179,14 @@ fn run_generate(args: GenerateArgs) -> Result<(), String> {
             gaps: args.id_gaps.unwrap_or(base.ids.gaps),
         },
     };
-    shape.validate()?;
+    shape.validate_profile(profile)?;
     let order = match args.order {
         RowOrder::Patient => Order::Patient,
         RowOrder::Concept => Order::Concept,
     };
     let started = Instant::now();
-    let rows = generate(shape, args.seed, order, create(&args.out)?).map_err(|e| e.to_string())?;
+    let rows = generate_profile(shape, profile, args.seed, order, create(&args.out)?)
+        .map_err(|e| e.to_string())?;
     eprintln!(
         "wrote {rows} observations for {} patients and {} concepts to {} in {:.1}s",
         shape.patients,

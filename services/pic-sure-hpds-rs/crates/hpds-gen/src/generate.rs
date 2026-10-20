@@ -3,6 +3,7 @@
 use std::fmt::Write as _;
 use std::io::Write;
 
+use crate::bdc::{self, BdcRule, EDGE_PATIENTS, ExtraRow, ExtraValue, HarmonizedValues, Profile};
 use crate::model::{
     Concept, ConsentValue, Kind, Membership, NumericShape, Population, TableShape, build_concepts,
     consent_concept_count, study_accession, study_consent,
@@ -64,6 +65,29 @@ impl Shape {
         high_cardinality: 3,
         ids: IdLayout::DENSE,
     };
+    /// 3,000 patients, 400 concepts, about 150,000 observations, 8 studies, IDs with random gaps
+    /// averaging 2. The fixture scale of the BDC profile.
+    pub const BDCX: Shape = Shape {
+        patients: 3_000,
+        concepts: 400,
+        observations: 150_000,
+        studies: 8,
+        high_cardinality: 0,
+        ids: IdLayout {
+            stride: 2,
+            gaps: true,
+        },
+    };
+    /// 100,000 patients, 10,000 concepts, about 50 million observations, 12 studies,
+    /// consecutive IDs. The dev scale of the BDC profile.
+    pub const BDCDEV: Shape = Shape {
+        patients: 100_000,
+        concepts: 10_000,
+        observations: 50_000_000,
+        studies: 12,
+        high_cardinality: 3,
+        ids: IdLayout::DENSE,
+    };
     /// 1,000,000 patients, 20,000 concepts, about 250 million observations, 20 studies, IDs
     /// with random gaps averaging 3.
     pub const BENCH: Shape = Shape {
@@ -104,6 +128,31 @@ impl Shape {
         Ok(())
     }
 
+    /// The ID of the first hand-placed edge patient: the first ID past the generated range.
+    pub fn first_extra_patient(&self) -> u32 {
+        (1 + self.patients * u64::from(self.ids.stride)) as u32
+    }
+
+    /// Checks that the shape can be generated under `profile`, which the BDC profile limits to
+    /// at least five studies and room for the hand-placed patients' IDs.
+    ///
+    /// # Errors
+    /// Returns [`Shape::validate`]'s message, or one for too few studies or IDs that would
+    /// reach `i32::MAX`.
+    pub fn validate_profile(&self, profile: Profile) -> Result<(), String> {
+        self.validate()?;
+        if let Profile::Bdc { edge } = profile {
+            if self.studies < 5 {
+                return Err("the BDC profile needs at least 5 studies".to_string());
+            }
+            let last = u64::from(self.first_extra_patient()) + u64::from(EDGE_PATIENTS);
+            if edge && last >= i32::MAX as u64 {
+                return Err("the edge patients' IDs would reach i32::MAX".to_string());
+            }
+        }
+        Ok(())
+    }
+
     fn table(&self) -> TableShape {
         TableShape {
             patients: self.patients,
@@ -135,6 +184,8 @@ enum Cell {
     Number(f64),
     Category(u32),
     ConsentGroup(Membership),
+    Consent(Membership),
+    Label(&'static str),
 }
 
 struct Row {
@@ -253,7 +304,9 @@ impl Emitter<'_> {
                     let skewed = draw * draw * f64::from(*cardinality);
                     Cell::Category((skewed as u32).min(cardinality - 1))
                 }
-                Kind::ConsentGroup { .. } => unreachable!("consent rows are not drawn"),
+                Kind::ConsentGroup { .. } | Kind::Bdc(_) => {
+                    unreachable!("consent rows are not drawn")
+                }
             };
             let timestamp = if self.concept.timestamped { when } else { -1 };
             rows.push(Row {
@@ -283,6 +336,10 @@ fn sample_concept(
     rng: &mut Source,
     rows: &mut Vec<Row>,
 ) {
+    if let Kind::Bdc(rule) = concept.kind {
+        sample_bdc(seed, block, index, rule, rows);
+        return;
+    }
     if let Kind::ConsentGroup { scope, .. } = concept.kind {
         let ordinal = |offset: usize| block.first + offset as u64;
         for (offset, member) in block.members.iter().enumerate() {
@@ -331,6 +388,41 @@ fn sample_concept(
     }
 }
 
+/// Appends the rows of one BDC concept for one block of patients, each decided by the patient's
+/// ordinal alone.
+fn sample_bdc(seed: u64, block: &Block, index: u32, rule: BdcRule, rows: &mut Vec<Row>) {
+    for (offset, member) in block.members.iter().enumerate() {
+        let ordinal = block.first + offset as u64;
+        let cell = match rule {
+            BdcRule::Harmonized(which) => {
+                let Some(mut rng) = bdc::harmonized_stream(seed, ordinal, which) else {
+                    continue;
+                };
+                match bdc::harmonized_concepts()[which].values {
+                    HarmonizedValues::Labels(labels) => {
+                        let pick = (rng.unit() * labels.len() as f64) as usize;
+                        Cell::Label(labels[pick.min(labels.len() - 1)])
+                    }
+                    HarmonizedValues::Number(shape) => Cell::Number(draw_number(shape, &mut rng)),
+                }
+            }
+            BdcRule::HandPlaced => return,
+            consent => match bdc::consent_of(consent, seed, ordinal, *member) {
+                Some(held) => Cell::Consent(held),
+                None => continue,
+            },
+        };
+        rows.push(Row {
+            offset: offset as u32,
+            tiebreak: tiebreak(seed, ordinal, index, 0),
+            concept: index,
+            seq: 0,
+            timestamp: -1,
+            cell,
+        });
+    }
+}
+
 #[derive(Default)]
 struct Scratch {
     patient: String,
@@ -352,12 +444,19 @@ fn write_row<W: Write>(
     scratch.time.clear();
     write!(scratch.patient, "{patient}").unwrap();
     match (&concept.kind, row.cell) {
-        (Kind::Numeric(shape), Cell::Number(value)) => match shape {
-            NumericShape::Integer { .. } => write!(scratch.number, "{}", value as i64).unwrap(),
-            NumericShape::Normal { decimals, .. } | NumericShape::Uniform { decimals, .. } => {
-                write!(scratch.number, "{:.*}", *decimals as usize, value).unwrap()
-            }
-        },
+        (Kind::Numeric(shape), Cell::Number(value)) => {
+            write_number(&mut scratch.number, shape, value)
+        }
+        (Kind::Bdc(BdcRule::Harmonized(which)), Cell::Number(value)) => {
+            let HarmonizedValues::Number(shape) = bdc::harmonized_concepts()[*which].values else {
+                unreachable!("a label concept drew a number")
+            };
+            write_number(&mut scratch.number, shape, value)
+        }
+        (Kind::Bdc(_), Cell::Label(label)) => scratch.text.push_str(label),
+        (Kind::Bdc(_), Cell::Consent(held)) => scratch
+            .text
+            .push_str(&study_consent(held.study, held.group)),
         (Kind::Categorical { .. }, Cell::Category(value)) => {
             write!(scratch.text, "cat_{value}").unwrap()
         }
@@ -379,6 +478,23 @@ fn write_row<W: Write>(
         scratch.text.as_str(),
         scratch.time.as_str(),
     ])
+}
+
+fn write_number(out: &mut String, shape: &NumericShape, value: f64) {
+    match shape {
+        NumericShape::Integer { .. } => write!(out, "{}", value as i64).unwrap(),
+        NumericShape::Normal { decimals, .. } | NumericShape::Uniform { decimals, .. } => {
+            write!(out, "{:.*}", *decimals as usize, value).unwrap()
+        }
+    }
+}
+
+fn write_extra<W: Write>(out: &mut csv::Writer<W>, row: &ExtraRow) -> csv::Result<()> {
+    let (number, text) = match &row.value {
+        ExtraValue::Number(number) => (*number, ""),
+        ExtraValue::Text(text) => ("", text.as_str()),
+    };
+    out.write_record([row.patient.to_string().as_str(), row.path, number, text, ""])
 }
 
 /// Row order of the generated file. Both orders hold exactly the same rows for the same seed
@@ -408,23 +524,70 @@ pub enum Order {
 /// # Errors
 /// Returns any I/O or CSV error from the sink. `shape` must pass [`Shape::validate`].
 pub fn generate<W: Write>(shape: Shape, seed: u64, order: Order, sink: W) -> csv::Result<u64> {
+    generate_profile(shape, Profile::Plain, seed, order, sink)
+}
+
+/// Writes the dataset under `profile` like [`generate`]. With [`Profile::Bdc`] the plain rows
+/// are exactly those of the plain profile for the same shape and seed, and the BDC concepts'
+/// rows come on top; with `edge` the hand-placed patients follow the generated ones, in patient
+/// order after the last block or, in concept order, at the end of each concept's rows.
+///
+/// # Errors
+/// Returns any I/O or CSV error from the sink. `shape` must pass [`Shape::validate_profile`].
+pub fn generate_profile<W: Write>(
+    shape: Shape,
+    profile: Profile,
+    seed: u64,
+    order: Order,
+    sink: W,
+) -> csv::Result<u64> {
     let population = Population::new(shape.studies.max(1));
-    let concepts = build_concepts(seed, &shape.table(), &population);
+    let concepts = build_profile_concepts(seed, &shape, profile, &population);
+    let extras = extra_rows(&shape, profile);
     let mut out = csv::WriterBuilder::new().from_writer(sink);
     out.write_record(HEADER)?;
     let total = match order {
-        Order::Patient => write_by_patient(&shape, seed, &population, &concepts, &mut out)?,
-        Order::Concept => write_by_concept(&shape, seed, &population, &concepts, &mut out)?,
+        Order::Patient => {
+            write_by_patient(&shape, seed, &population, &concepts, &extras, &mut out)?
+        }
+        Order::Concept => {
+            write_by_concept(&shape, seed, &population, &concepts, &extras, &mut out)?
+        }
     };
     out.flush()?;
     Ok(total)
 }
 
+fn build_profile_concepts(
+    seed: u64,
+    shape: &Shape,
+    profile: Profile,
+    population: &Population,
+) -> Vec<Concept> {
+    let mut concepts = build_concepts(seed, &shape.table(), population);
+    if let Profile::Bdc { edge } = profile {
+        concepts.extend(bdc::concepts(edge));
+    }
+    concepts
+}
+
+fn extra_rows(shape: &Shape, profile: Profile) -> Vec<ExtraRow> {
+    match profile {
+        Profile::Bdc { edge: true } => bdc::edge_rows(shape.first_extra_patient()),
+        _ => Vec::new(),
+    }
+}
+
 /// Builds the concept table for `shape` and `seed` exactly as [`generate`] does, so callers
 /// can inspect coverage without writing rows.
 pub fn concept_table(shape: &Shape, seed: u64) -> Vec<Concept> {
+    concept_table_profile(shape, Profile::Plain, seed)
+}
+
+/// Builds the concept table as [`generate_profile`] does, the BDC concepts last.
+pub fn concept_table_profile(shape: &Shape, profile: Profile, seed: u64) -> Vec<Concept> {
     let population = Population::new(shape.studies.max(1));
-    build_concepts(seed, &shape.table(), &population)
+    build_profile_concepts(seed, shape, profile, &population)
 }
 
 fn concept_stream(seed: u64, index: usize) -> Source {
@@ -436,6 +599,7 @@ fn write_by_concept<W: Write>(
     seed: u64,
     population: &Population,
     concepts: &[Concept],
+    extras: &[ExtraRow],
     out: &mut csv::Writer<W>,
 ) -> csv::Result<u64> {
     let blocks: Vec<Block> = (0..block_count(shape.patients))
@@ -461,6 +625,10 @@ fn write_by_concept<W: Write>(
             }
             total += rows.len() as u64;
         }
+        for extra in extras.iter().filter(|extra| extra.path == concept.path) {
+            write_extra(out, extra)?;
+            total += 1;
+        }
     }
     Ok(total)
 }
@@ -470,6 +638,7 @@ fn write_by_patient<W: Write>(
     seed: u64,
     population: &Population,
     concepts: &[Concept],
+    extras: &[ExtraRow],
     out: &mut csv::Writer<W>,
 ) -> csv::Result<u64> {
     let mut streams: Vec<Source> = (0..concepts.len())
@@ -495,6 +664,10 @@ fn write_by_patient<W: Write>(
             )?;
         }
         total += rows.len() as u64;
+    }
+    for extra in extras {
+        write_extra(out, extra)?;
+        total += 1;
     }
     Ok(total)
 }

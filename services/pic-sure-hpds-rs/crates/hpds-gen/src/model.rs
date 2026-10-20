@@ -1,6 +1,7 @@
 //! The concept table and the patient population: every concept's path, value type, coverage
 //! and value distribution, and every patient's study and consent group.
 
+use crate::bdc::{self, BdcRule};
 use crate::rng::{Source, mix};
 
 /// Path of the flat consent concept the authorization filters read, valued `phsNNNNNN.cN`.
@@ -18,7 +19,7 @@ pub const CONSENT_GROUPS_PER_STUDY: u32 = 2;
 pub const CONSENT_ROWS_PER_PATIENT: f64 = 5.0;
 
 /// Share of a study's patients in its first consent group; the rest are in the second.
-const FIRST_GROUP_SHARE: f64 = 0.7;
+pub(crate) const FIRST_GROUP_SHARE: f64 = 0.7;
 
 /// Share of a patient's generic observations that come from concepts of their own study.
 const OWN_STUDY_SHARE: f64 = 0.8;
@@ -111,7 +112,7 @@ impl Population {
     }
 }
 
-fn unit_from(bits: u64) -> f64 {
+pub(crate) fn unit_from(bits: u64) -> f64 {
     (bits >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
 }
 
@@ -164,6 +165,8 @@ impl ConsentScope {
 /// The value type of a concept and how its values are drawn.
 #[derive(Clone, Debug)]
 pub enum Kind {
+    /// Concept of the BDC consent profile, see [`crate::bdc`].
+    Bdc(BdcRule),
     /// Numeric concept.
     Numeric(NumericShape),
     /// Categorical concept with `cardinality` distinct values named `cat_<n>`.
@@ -215,6 +218,7 @@ impl Concept {
                     population.share(study) * first
                 }
             },
+            Kind::Bdc(rule) => bdc::expected_coverage(rule, population),
             _ => {
                 let share = population.share(self.home);
                 share * self.home_coverage + (1.0 - share) * self.away_coverage
