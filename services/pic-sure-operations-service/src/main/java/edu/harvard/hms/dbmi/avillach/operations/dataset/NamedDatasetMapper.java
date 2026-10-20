@@ -46,7 +46,7 @@ public class NamedDatasetMapper {
             return null;
         }
         return new NamedDatasetQueryDto(
-            q.getUuid(), convertQuery(q), q.getStartTime() == null ? null : q.getStartTime().getTime(), q.getStatus()
+            q.getUuid(), convertQuery(q), q.getStartTime() == null ? null : q.getStartTime().toEpochMilli(), q.getStatus()
         );
     }
 

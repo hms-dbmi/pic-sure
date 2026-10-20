@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.sql.Date;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.zip.GZIPInputStream;
@@ -35,9 +35,9 @@ public class Query {
     @Column(columnDefinition = "BINARY(16)")
     private UUID uuid;
 
-    private Date startTime;
+    private Instant startTime;
 
-    private Date readyTime;
+    private Instant readyTime;
 
     @Convert(converter = PicSureStatusConverter.class)
     private PicSureStatus status;
@@ -70,15 +70,15 @@ public class Query {
         this.resourceResultId = resourceResultId;
     }
 
-    public void setStartTime(Date startTime) {
+    public void setStartTime(Instant startTime) {
         this.startTime = startTime;
     }
 
-    public Date getStartTime() {
+    public Instant getStartTime() {
         return startTime;
     }
 
-    public Date getReadyTime() {
+    public Instant getReadyTime() {
         return readyTime;
     }
 
@@ -86,7 +86,7 @@ public class Query {
         return status;
     }
 
-    public void setReadyTime(Date readyTime) {
+    public void setReadyTime(Instant readyTime) {
         this.readyTime = readyTime;
     }
 

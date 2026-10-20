@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
-import java.sql.Date;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -50,7 +50,7 @@ public class QueryPersistenceService {
         entity.setStatus(parseStatus(req.status()));
         entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
-        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned creation time
+        entity.setStartTime(Instant.now()); // server-owned creation time
         return repo.save(entity).getUuid();
     }
 
@@ -65,7 +65,7 @@ public class QueryPersistenceService {
         if (req.status() != null) {
             PicSureStatus newStatus = parseStatus(req.status());
             if (newStatus == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
-                entity.setReadyTime(new Date(System.currentTimeMillis())); // first AVAILABLE transition only
+                entity.setReadyTime(Instant.now()); // first AVAILABLE transition only
             }
             entity.setStatus(newStatus);
         }
@@ -120,8 +120,8 @@ public class QueryPersistenceService {
         );
     }
 
-    private static Long toEpochMillis(Date date) {
-        return date == null ? null : date.getTime();
+    private static Long toEpochMillis(Instant instant) {
+        return instant == null ? null : instant.toEpochMilli();
     }
 
     /**
