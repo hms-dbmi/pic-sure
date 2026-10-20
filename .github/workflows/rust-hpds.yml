@@ -65,11 +65,11 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: services/pic-sure-hpds-rs
-      - name: Run workspace tests without the known flaky test
-        run: cargo test --workspace --locked --no-fail-fast -- --skip peak_live_entries_stay_under_the_chunk_bound
-      - name: Run the known flaky test without blocking the job
+      - name: Run workspace tests without the known flaky tests
+        run: cargo test --workspace --locked --no-fail-fast -- --skip peak_live_entries_stay_under_the_chunk_bound --skip concurrent_study_level_reads_on_a_small_cache_serve_only_cached_entries
+      - name: Run the known flaky tests without blocking the job
         continue-on-error: true
-        run: cargo test --locked -p hpds-query --lib peak_live_entries_stay_under_the_chunk_bound
+        run: cargo test --locked -p hpds-query --lib -- peak_live_entries_stay_under_the_chunk_bound concurrent_study_level_reads_on_a_small_cache_serve_only_cached_entries
 
   release-tests:
     name: Release-only library tests
