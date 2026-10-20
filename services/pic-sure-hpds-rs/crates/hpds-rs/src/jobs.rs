@@ -1109,8 +1109,9 @@ pub fn genomic_type_on_async_route(result_type: ResultType) -> String {
 /// concepts it touches in the selected partitions, then `QueryValidator` against the merged
 /// dictionary ([`Engine::validate`], whose consent rule follows the same flag), then the
 /// genomic filters against the genomic index ([`Engine::read_plan`] runs the admission every
-/// export repeats), so a genomic filter Java fails on is a 400 at submission rather than an
-/// ERROR status. The query,
+/// export repeats). Refusals decided from the request and the index are therefore a 400 at
+/// submission; a refusal found only while the export is evaluated (an empty subquery, a
+/// block that cannot be read) still ends the export in ERROR. The query,
 /// `userConsents` included, travels with the job, so the export reads exactly the partitions
 /// those consents select.
 pub async fn submit(State(state): State<AppState>, body: Bytes) -> Result<Response, ApiError> {
