@@ -20,6 +20,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PublicEndpointPolicy;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.BufferingFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.HpdsBackendAuditFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.PsamaIntrospectionFilter;
@@ -28,11 +29,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 /**
  * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code OpenAccessFilter}(20) -&gt;
- * {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt; {@code IdentityPropagationFilter}(50). The audit
- * filter (60) is wired in {@code AuditFilterConfig}. No datasource or JPA is used. {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring
- * Security itself stays permit-all because the introspection filter above enforces the authentication boundary.
+ * {@code PsamaIntrospectionFilter}(30) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt; {@code HpdsBackendAuditFilter}(45) -&gt;
+ * {@code IdentityPropagationFilter}(50). The audit filter (60) is wired in {@code AuditFilterConfig}. No datasource or JPA is used.
+ * {@link PsamaClient} talks to PSAMA over HTTP. <p> Spring Security itself stays permit-all because the introspection filter above enforces
+ * the authentication boundary.
  *
- * <p><b>Always registered:</b> all five filters are installed unconditionally. The shared {@link PublicEndpointPolicy} defines the
+ * <p><b>Always registered:</b> all six filters are installed unconditionally. The shared {@link PublicEndpointPolicy} defines the
  * intentional public-route bypasses used by both authentication filters; all other routes traverse the normal auth chain.
  */
 @Configuration
@@ -117,6 +119,14 @@ public class SecurityConfig {
     FilterRegistrationBean<TokenRefreshResponseFilter> tokenRefreshFilter() {
         var r = new FilterRegistrationBean<>(new TokenRefreshResponseFilter());
         r.setOrder(40);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<HpdsBackendAuditFilter> hpdsBackendAuditFilter(AuditContext audit) {
+        var r = new FilterRegistrationBean<>(new HpdsBackendAuditFilter(audit));
+        r.setOrder(45);
         r.addUrlPatterns("/*");
         return r;
     }
