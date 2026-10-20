@@ -41,6 +41,7 @@ use hpds_format::{
 };
 
 use super::cohort::group_scopes;
+use super::filters::echo;
 use super::store::{GenomicStore, ReadPath};
 use super::variants::{VariantLists, for_each_listed_spec};
 use crate::error::{QueryError, Result};
@@ -348,8 +349,9 @@ impl<'e> VcfExcerpt<'e> {
             let key = VariantSpecKey::parse(spec);
             if key.is_none_or(|k| k.is_short()) {
                 return Err(QueryError::GenomicFilter(format!(
-                    "the variant {spec} has fewer than six fields, so Java cannot sort the \
-                     excerpt's rows"
+                    "the variant {} has fewer than six fields, so Java cannot sort the \
+                     excerpt's rows",
+                    echo(spec)
                 )));
             }
             let same_row = group
@@ -507,10 +509,14 @@ impl Rows<'_, '_> {
             let own: Vec<&str> = metadata.strings(i).collect();
             for (k, s) in own.iter().enumerate() {
                 if own[..k].contains(s) {
+                    tracing::warn!(
+                        variant = %echo(spec),
+                        node = %store.node_name(n as u16),
+                        "a listed variant holds a metadata string twice on one node"
+                    );
                     return Err(QueryError::GenomicFilter(format!(
-                        "the variant {spec} holds the metadata string {s} twice on node {}, \
-                         which Java cannot read",
-                        store.node_name(n as u16)
+                        "the variant {} holds a metadata string twice, which Java cannot read",
+                        echo(spec)
                     )));
                 }
                 if !strings.iter().any(|x| x == s) {
@@ -549,8 +555,9 @@ impl Rows<'_, '_> {
                 Some(masks) => Ok(masks),
                 None if matches!(store.mode(), GenoMode::Local | GenoMode::LocalDistributed) => {
                     Err(QueryError::GenomicFilter(format!(
-                        "no node holds the masks of the listed variant {spec}, which Java \
-                         cannot read"
+                        "no node holds the masks of the listed variant {}, which Java cannot \
+                         read",
+                        echo(spec)
                     )))
                 }
                 None => Ok(GroupMasks::default()),

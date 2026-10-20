@@ -37,7 +37,7 @@ use hpds_format::{GenoNode, InfoBlock, MaskKind, PosBitset};
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 
-use super::filters::{CategoricalFilter, GenomicFilters, NumericFilter, SpecFilter};
+use super::filters::{CategoricalFilter, GenomicFilters, NumericFilter, SpecFilter, echo};
 use super::store::{GenomicStore, PLAN_CACHE_SHARE_DIVISOR, ReadPath};
 use crate::error::{QueryError, Result};
 
@@ -178,12 +178,12 @@ impl Columns {
             let Some(column) = *column else { continue };
             for (n, node) in index.nodes().iter().enumerate() {
                 if node.info(column).is_some_and(|entry| !entry.continuous) {
-                    return Err(QueryError::GenomicFilter(format!(
-                        "the numeric genomic filter on {} names a column that is categorical on \
-                         node {}",
-                        filter.column,
-                        store.node_name(n as u16)
-                    )));
+                    tracing::warn!(
+                        column = %echo(&filter.column),
+                        node = %store.node_name(n as u16),
+                        "a numeric genomic filter names a column that is categorical on a node"
+                    );
+                    return Err(categorical_column_refusal(&filter.column));
                 }
             }
         }
@@ -295,11 +295,16 @@ fn node_info(
     if !variants.is_empty()
         && let Some(short) = node.short_specs.iter().find(|&&v| variants.contains(v))
     {
-        return Err(QueryError::GenomicFilter(format!(
-            "variant {short} of node {} matches the INFO filter and its spec has fewer than six \
-             fields, so Java cannot read it",
-            store.node_name(n)
-        )));
+        tracing::warn!(
+            variant = short,
+            node = %store.node_name(n),
+            "a variant spec with fewer than six fields matches a genomic INFO filter"
+        );
+        return Err(QueryError::GenomicFilter(
+            "a variant matching the INFO filter has a spec with fewer than six fields, so Java \
+             cannot read it"
+                .into(),
+        ));
     }
     Ok(NodeInfo {
         variants: Some(variants),
@@ -373,16 +378,26 @@ fn numeric_keys(
     filter: &NumericFilter,
 ) -> Result<Vec<usize>> {
     let index = block.compressed_index().ok_or_else(|| {
-        QueryError::GenomicFilter(format!(
-            "the numeric genomic filter on {} names a column that is categorical on node {}",
-            filter.column,
-            store.node_name(n)
-        ))
+        tracing::warn!(
+            column = %echo(&filter.column),
+            node = %store.node_name(n),
+            "a numeric genomic filter names a column that is categorical on a node"
+        );
+        categorical_column_refusal(&filter.column)
     })?;
     let keys = index
         .keys_in_range(filter.min, filter.max)
         .map_err(|e| QueryError::GenomicFilter(e.to_string()))?;
     Ok(keys.into_iter().map(|k| k as usize).collect())
+}
+
+/// The refusal of a numeric filter on `column`, which some node holds as categorical.
+fn categorical_column_refusal(column: &str) -> QueryError {
+    QueryError::GenomicFilter(format!(
+        "the numeric genomic filter on {} names a column that is categorical on some genomic \
+         node",
+        echo(column)
+    ))
 }
 
 /// The variants of key `k` of `block`.
@@ -409,8 +424,9 @@ fn check_delimiter<'a>(column: &str, keys: impl Iterator<Item = &'a str>) -> Res
         }
         if parts != [column, key] {
             return Err(QueryError::GenomicFilter(format!(
-                "the genomic filter on {column} selects a value that Java cannot look up, since \
-                 the column or the value holds {COLUMN_AND_KEY_DELIMITER} or the value is empty"
+                "the genomic filter on {} selects a value that Java cannot look up, since the \
+                 column or the value holds {COLUMN_AND_KEY_DELIMITER} or the value is empty",
+                echo(column)
             )));
         }
     }

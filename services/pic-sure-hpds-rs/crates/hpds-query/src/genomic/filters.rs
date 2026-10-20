@@ -10,6 +10,18 @@ use crate::error::{QueryError, Result};
 use crate::model::{GenomicFilter, Query};
 use crate::validate::path_is_variant_spec;
 
+/// The most characters of a request's key, column or value a refusal message repeats.
+const ECHO_CHARS: usize = 200;
+
+/// `text` as a refusal message repeats it: whole up to [`ECHO_CHARS`] characters, otherwise
+/// its first [`ECHO_CHARS`] characters followed by `…`.
+pub(crate) fn echo(text: &str) -> std::borrow::Cow<'_, str> {
+    match text.char_indices().nth(ECHO_CHARS) {
+        None => text.into(),
+        Some((end, _)) => format!("{}…", &text[..end]).into(),
+    }
+}
+
 /// The zygosities a spec filter takes from each matching variant: `0/1` takes `he`, `1/1`
 /// takes `ho`, `""` takes both, and anything else (`0/0` included) takes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -115,7 +127,10 @@ impl GenomicFilters {
                 .into_iter()
                 .map(|(column, values)| {
                     let mut values = without_nulls(values, || {
-                        format!("the values of the genomic filter on {column} hold null")
+                        format!(
+                            "the values of the genomic filter on {} hold null",
+                            echo(column)
+                        )
                     })?;
                     values.sort_by(|a, b| java_string_cmp(a, b));
                     values.dedup();
@@ -148,14 +163,18 @@ impl GenomicFilters {
 fn spec_filter(key: &str, values: Option<&[Option<String>]>) -> Result<SpecFilter> {
     let Some(parsed) = VariantSpecKey::parse(key) else {
         return Err(QueryError::GenomicFilter(format!(
-            "the variant spec {key} has no position Java can read: it needs a contig and an \
-             integer position, comma separated"
+            "the variant spec {} has no position Java can read: it needs a contig and an \
+             integer position, comma separated",
+            echo(key)
         )));
     };
     let zygosities = match values {
         None | Some([]) => Zygosities { he: true, ho: true },
         Some(values) => without_nulls(values, || {
-            format!("the zygosities of the variant spec filter {key} hold null")
+            format!(
+                "the zygosities of the variant spec filter {} hold null",
+                echo(key)
+            )
         })?
         .iter()
         .fold(Zygosities::default(), |z, value| match value.as_str() {
@@ -176,12 +195,14 @@ fn spec_filter(key: &str, values: Option<&[Option<String>]>) -> Result<SpecFilte
 fn numeric_filter(column: &str, bounds: (Option<f32>, Option<f32>)) -> Result<NumericFilter> {
     let (Some(min), Some(max)) = bounds else {
         return Err(QueryError::GenomicFilter(format!(
-            "the numeric genomic filter on {column} needs both min and max"
+            "the numeric genomic filter on {} needs both min and max",
+            echo(column)
         )));
     };
     if java_float_cmp(min, max) == Ordering::Greater {
         return Err(QueryError::GenomicFilter(format!(
-            "the numeric genomic filter on {column} has min {min} above max {max}"
+            "the numeric genomic filter on {} has min {min} above max {max}",
+            echo(column)
         )));
     }
     Ok(NumericFilter {
@@ -317,6 +338,18 @@ mod tests {
         );
         assert_eq!(t.categorical[0].values, ["x"]);
         assert_eq!((t.numeric[0].min, t.numeric[0].max), (1.0, 2.0));
+    }
+
+    #[test]
+    fn refusals_repeat_at_most_two_hundred_characters_of_the_request() {
+        let long = "é".repeat(250);
+        let message = refused(vec![gf(Some(&long), None, Some(2.0), Some(1.0))]);
+        assert!(
+            message.contains(&format!("{}…", "é".repeat(200))),
+            "{message}"
+        );
+        assert!(!message.contains(&"é".repeat(201)), "{message}");
+        assert_eq!(echo("short"), "short");
     }
 
     #[test]
