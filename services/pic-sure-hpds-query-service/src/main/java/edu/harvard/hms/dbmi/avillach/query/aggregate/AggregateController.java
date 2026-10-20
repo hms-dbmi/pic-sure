@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.RestController;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryRequest;
-import edu.harvard.hms.dbmi.avillach.query.query.SyncExamples;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -77,20 +76,14 @@ public class AggregateController {
                     description = "COUNT: an obfuscated count as text, either a count with its variance or a below-threshold marker. "
                         + "CROSS_COUNT: a JSON object of study consent path to obfuscated count string. CATEGORICAL_CROSS_COUNT and "
                         + "CONTINUOUS_CROSS_COUNT: a JSON object of concept path to an object of value or bin to an object with count, "
-                        + "display and variance. INFO_COLUMN_LISTING, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, VCF_EXCERPT and "
-                        + "AGGREGATE_VCF_EXCERPT: the HPDS body unchanged, as on the auth backend."
+                        + "display and variance. INFO_COLUMN_LISTING, VCF_EXCERPT and AGGREGATE_VCF_EXCERPT: the HPDS body unchanged, as on "
+                        + "the auth backend. OBSERVATION_CROSS_COUNT and VARIANT_COUNT_FOR_QUERY are not served."
                 ),
                 examples = {@ExampleObject(name = "COUNT at or above the threshold", value = COUNT_ABOVE_THRESHOLD_EXAMPLE),
                     @ExampleObject(name = "COUNT below the threshold", value = COUNT_BELOW_THRESHOLD_EXAMPLE),
                     @ExampleObject(name = "CROSS_COUNT", value = CROSS_COUNT_EXAMPLE),
                     @ExampleObject(name = "CATEGORICAL_CROSS_COUNT", value = CATEGORICAL_CROSS_COUNT_EXAMPLE),
-                    @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = CONTINUOUS_CROSS_COUNT_EXAMPLE),
-                    @ExampleObject(
-                        name = "VARIANT_COUNT_FOR_QUERY with genomic filters", value = SyncExamples.VARIANT_COUNT_WITH_GENOMIC_FILTERS
-                    ),
-                    @ExampleObject(
-                        name = "VARIANT_COUNT_FOR_QUERY without genomic filters", value = SyncExamples.VARIANT_COUNT_WITHOUT_GENOMIC_FILTERS
-                    )}
+                    @ExampleObject(name = "CONTINUOUS_CROSS_COUNT", value = CONTINUOUS_CROSS_COUNT_EXAMPLE)}
             )
         ), @ApiResponse(responseCode = "400", description = "Missing query data, a result type the open path does not serve, or a body that cannot be read as a query request."), @ApiResponse(responseCode = "502", description = "Aggregate backend call failed.")}
     )

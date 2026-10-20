@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -188,9 +189,7 @@ class OpenAggregateContractTest {
                 "INFO_COLUMN_LISTING",
                 "[{\"key\":\"Gene_with_variant\",\"description\":\"The official symbol for a gene affected by a variant.\","
                     + "\"continuous\":false,\"min\":null,\"max\":null}]"
-            ), passThrough("OBSERVATION_CROSS_COUNT", "{\"\\\\demographics\\\\SEX\\\\\":4321}"),
-            passThrough("VARIANT_COUNT_FOR_QUERY", "{\"count\":17,\"message\":\"Query ran successfully\"}"),
-            passThrough("AGGREGATE_VCF_EXCERPT", VCF), passThrough("VCF_EXCERPT", VCF)
+            ), passThrough("AGGREGATE_VCF_EXCERPT", VCF), passThrough("VCF_EXCERPT", VCF)
         );
     }
 
@@ -281,9 +280,9 @@ class OpenAggregateContractTest {
     void bodyAlreadyInRecordOrderGoesToHpdsByteForByte() throws Exception {
         String fromVisualization = STRICT.writeValueAsString(
             new GeneralQueryRequest()
-                .setQuery(STRICT.treeToValue(STRICT.readTree(frontendBody("OBSERVATION_CROSS_COUNT")).get("query"), Query.class))
+                .setQuery(STRICT.treeToValue(STRICT.readTree(frontendBody("INFO_COLUMN_LISTING")).get("query"), Query.class))
         );
-        stubPrimary("OBSERVATION_CROSS_COUNT", "{\"\\\\demographics\\\\SEX\\\\\":4321}");
+        stubPrimary("INFO_COLUMN_LISTING", "[]");
 
         mockMvc.perform(open("/hpds/open/query/sync").content(fromVisualization)).andExpect(status().isOk());
 
@@ -291,11 +290,13 @@ class OpenAggregateContractTest {
         assertThat(sent().get(0).getBodyAsString()).isEqualTo(fromVisualization);
     }
 
-    @Test
-    void resultTypeOffTheAllowListIs400AndReachesNothing() throws Exception {
-        mockMvc.perform(open("/hpds/open/query/sync").content(frontendBody("DATAFRAME"))).andExpect(status().isBadRequest())
+    // OBSERVATION_CROSS_COUNT and VARIANT_COUNT_FOR_QUERY return exact counts for the cohort, so they are not served.
+    @ParameterizedTest
+    @ValueSource(strings = {"DATAFRAME", "OBSERVATION_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY"})
+    void resultTypeOffTheAllowListIs400AndReachesNothing(String resultType) throws Exception {
+        mockMvc.perform(open("/hpds/open/query/sync").content(frontendBody(resultType))).andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errorType").value("bad_request"))
-            .andExpect(jsonPath("$.message").value("Incorrect result type: DATAFRAME"));
+            .andExpect(jsonPath("$.message").value("Incorrect result type: " + resultType));
 
         downstream.verify(0, anyRequestedFor(anyUrl()));
     }
