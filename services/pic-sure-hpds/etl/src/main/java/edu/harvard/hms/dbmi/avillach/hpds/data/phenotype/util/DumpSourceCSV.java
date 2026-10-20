@@ -41,6 +41,7 @@ public class DumpSourceCSV {
 	private static final int TIMESTAMP = 4;
 
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
+		Crypto.loadDefaultKey();
 		Object[] metadata = loadMetadata();
 		metaStoreSource = (TreeMap<String, ColumnMeta>) metadata[0];
 		allIds = (TreeSet<Integer>) metadata[1];
