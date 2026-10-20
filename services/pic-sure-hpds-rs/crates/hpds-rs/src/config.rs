@@ -543,11 +543,20 @@ fn positive_u64(
     }
 }
 
+/// Reads `value` of setting `name` with the words Spring's `StringToBooleanConverter` reads:
+/// `true`, `on`, `yes`, `1` and `false`, `off`, `no`, `0`, ignoring case and surrounding
+/// spaces.
+///
+/// # Errors
+/// A message naming the setting and the words it accepts for any other value, the empty
+/// value included, which Spring cannot bind to a boolean either.
 fn parse_switch(name: &str, value: &str) -> Result<bool, String> {
     match value.trim().to_ascii_lowercase().as_str() {
-        "on" => Ok(true),
-        "off" => Ok(false),
-        _ => parse_bool(name, value).map_err(|_| format!("{name} must be on or off: {value}")),
+        "true" | "on" | "yes" | "1" => Ok(true),
+        "false" | "off" | "no" | "0" => Ok(false),
+        _ => Err(format!(
+            "{name} is not a boolean: {value:?}; set true, on, yes or 1, or false, off, no or 0"
+        )),
     }
 }
 
@@ -691,6 +700,37 @@ mod tests {
         assert!(remote.contains("remote is not supported"), "{remote}");
         assert!(config(&[("hpds.genomicProcessor.impl", "Local")]).is_err());
         assert!(config(&[("VCF_EXCERPT_ENABLED", "maybe")]).is_err());
+    }
+
+    #[test]
+    fn excerpt_gates_read_springs_boolean_words() {
+        let gates = |value: &str| {
+            config(&[
+                ("VCF_EXCERPT_ENABLED", value),
+                ("AGGREGATE_VCF_EXCERPT_ENABLED", value),
+            ])
+            .map(|c| {
+                (
+                    c.genomic.variant.vcf_excerpt_enabled,
+                    c.genomic.variant.aggregate_vcf_excerpt_enabled,
+                )
+            })
+        };
+        for word in ["true", "TRUE", "On", "yes", "YES", "1", " true "] {
+            assert_eq!(gates(word), Ok((true, true)), "{word}");
+        }
+        for word in ["false", "False", "OFF", "no", "No", "0"] {
+            assert_eq!(gates(word), Ok((false, false)), "{word}");
+        }
+        for word in ["", "maybe", "y", "n", "enabled", "2", "t"] {
+            for name in ["VCF_EXCERPT_ENABLED", "AGGREGATE_VCF_EXCERPT_ENABLED"] {
+                let error = config(&[(name, word)]).unwrap_err();
+                assert!(
+                    error.contains(name) && error.contains("true, on, yes or 1"),
+                    "{error}"
+                );
+            }
+        }
         assert!(config(&[("HPDS_GENOMIC_CACHE_BYTES", "0")]).is_err());
         assert!(config(&[("HPDS_MAX_EXCERPT_BYTES", "0")]).is_err());
     }
