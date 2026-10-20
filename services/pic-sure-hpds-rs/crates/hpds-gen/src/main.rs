@@ -5,9 +5,9 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use hpds_gen::bdc::Profile;
+use hpds_gen::bdc::{EDGE_PATIENTS, Profile};
 use hpds_gen::edge::write_edge_dirs;
-use hpds_gen::generate::{IdLayout, Order, Shape, generate_profile};
+use hpds_gen::generate::{IdLayout, Order, Shape, concept_table_profile, generate_profile};
 use hpds_gen::genomic::edge::write_edge;
 use hpds_gen::genomic::estimate::estimate;
 use hpds_gen::genomic::writer::write_dataset;
@@ -112,9 +112,10 @@ struct GenerateArgs {
     /// Output CSV path
     #[arg(long)]
     out: PathBuf,
-    /// Row order: interleaved by patient block, or grouped by concept; both hold the same rows
-    #[arg(long, value_enum, default_value_t = RowOrder::Patient)]
-    order: RowOrder,
+    /// Row order: interleaved by patient block, or grouped by concept; both hold the same rows.
+    /// Defaults to concept under a bdc profile, which the Java loader needs, otherwise patient
+    #[arg(long, value_enum)]
+    order: Option<RowOrder>,
     /// Override the preset patient count
     #[arg(long)]
     patients: Option<u64>,
@@ -180,17 +181,25 @@ fn run_generate(args: GenerateArgs) -> Result<(), String> {
         },
     };
     shape.validate_profile(profile)?;
-    let order = match args.order {
+    let default_order = match profile {
+        Profile::Plain => RowOrder::Patient,
+        Profile::Bdc { .. } => RowOrder::Concept,
+    };
+    let order = match args.order.unwrap_or(default_order) {
         RowOrder::Patient => Order::Patient,
         RowOrder::Concept => Order::Concept,
     };
     let started = Instant::now();
     let rows = generate_profile(shape, profile, args.seed, order, create(&args.out)?)
         .map_err(|e| e.to_string())?;
+    let patients = shape.patients
+        + match profile {
+            Profile::Bdc { edge: true } => u64::from(EDGE_PATIENTS),
+            _ => 0,
+        };
     eprintln!(
-        "wrote {rows} observations for {} patients and {} concepts to {} in {:.1}s",
-        shape.patients,
-        shape.concepts,
+        "wrote {rows} observations for {patients} patients and {} concepts to {} in {:.1}s",
+        concept_table_profile(&shape, profile, args.seed).len(),
         args.out.display(),
         started.elapsed().as_secs_f64()
     );
