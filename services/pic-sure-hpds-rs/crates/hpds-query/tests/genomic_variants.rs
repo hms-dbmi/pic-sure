@@ -697,3 +697,64 @@ fn the_info_column_listing_repeats_per_node_or_per_group() {
         "once per group, and once more where a group's nodes disagree on the kind"
     );
 }
+
+/// Java checks the excerpt and variant list gates before it reads the genomic filters: with
+/// the gates off, a filter Java fails on, or genomic filters without a genomic store, answer
+/// the gate's text. VARIANT_COUNT has no gate, so it still refuses them.
+#[test]
+fn a_closed_gate_answers_before_the_genomic_filters_are_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let (pheno, e) = single_group(dir.path());
+    let invalid = |result_type| {
+        let mut q = Query::new(result_type);
+        q.genomic_filters = vec![
+            GenomicFilter {
+                key: Some("rs123".into()),
+                values: None,
+                min: None,
+                max: None,
+            },
+            GenomicFilter {
+                key: Some("AF".into()),
+                values: None,
+                min: Some(2.0),
+                max: Some(1.0),
+            },
+        ];
+        q
+    };
+    let closed = [
+        (
+            ResultType::VariantListForQuery,
+            "VARIANT_LIST query type not allowed",
+        ),
+        (ResultType::VcfExcerpt, "VCF_EXCERPT query type not allowed"),
+        (
+            ResultType::AggregateVcfExcerpt,
+            "AGGREGATE_VCF_EXCERPT query type not allowed",
+        ),
+    ];
+    let e = e.with_variant_settings(VariantResultSettings::default());
+    let no_store = pheno.open(&lenient()).unwrap();
+    for engine in [&e, &no_store] {
+        for (result_type, text) in closed {
+            assert_eq!(body(engine, &invalid(result_type)), text, "{result_type}");
+        }
+        assert!(matches!(
+            engine.variant_count(&invalid(ResultType::VariantCountForQuery)),
+            Err(QueryError::GenomicFilter(_) | QueryError::Unsupported(_))
+        ));
+    }
+    let e = e.with_variant_settings(VariantResultSettings {
+        aggregate_vcf_excerpt_enabled: true,
+        ..VariantResultSettings::default()
+    });
+    assert_eq!(
+        body(&e, &invalid(ResultType::VcfExcerpt)),
+        "VCF_EXCERPT query type not allowed"
+    );
+    assert!(matches!(
+        e.vcf_excerpt(&invalid(ResultType::AggregateVcfExcerpt)),
+        Err(QueryError::GenomicFilter(_))
+    ));
+}

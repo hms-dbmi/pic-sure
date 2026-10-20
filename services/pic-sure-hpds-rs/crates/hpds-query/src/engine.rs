@@ -311,9 +311,30 @@ impl Engine {
     /// block is read. The receipt it returns is the only way to reach the cohort evaluator
     /// and the result computations.
     fn admit<'q>(&self, query: &'q Query, select_use: SelectUse) -> Result<CheckedQuery<'q, '_>> {
+        self.admit_genomic(self.admit_phenotypic(query, select_use)?)
+    }
+
+    /// The first part of [`Engine::admit`]: the stores unchanged on disk, then the limits and
+    /// the consent selection ([`QueryLimits::admit`]). The excerpt and variant list gates
+    /// sit between it and [`Engine::admit_genomic`], since Java checks them before it reads
+    /// the query's genomic filters.
+    fn admit_phenotypic<'q>(
+        &self,
+        query: &'q Query,
+        select_use: SelectUse,
+    ) -> Result<CheckedQuery<'q, '_>> {
         self.partitions.check_unchanged()?;
         self.check_genomic_unchanged(query)?;
-        let checked = self.limits.admit(query, &self.partitions, select_use)?;
+        self.limits.admit(query, &self.partitions, select_use)
+    }
+
+    /// The second part of [`Engine::admit`]: the refusal of genomic filters without a genomic
+    /// store, then their translation and checks against the genomic index.
+    fn admit_genomic<'q, 's>(
+        &'s self,
+        checked: CheckedQuery<'q, 's>,
+    ) -> Result<CheckedQuery<'q, 's>> {
+        let query = checked.query();
         self.check_genomic_store(query)?;
         let genomic = match &self.genomic {
             Some(store) if !query.genomic_filters.is_empty() => {
@@ -660,7 +681,10 @@ impl Engine {
 
     /// VARIANT_LIST_FOR_QUERY (`VariantListV3Processor.runVariantListQuery`): the body Java
     /// writes, `[` and the listed variant specs joined with `, ` and `]`, or
-    /// `VARIANT_LIST query type not allowed` when neither excerpt setting is on.
+    /// `VARIANT_LIST query type not allowed` when neither excerpt setting is on. The gate is
+    /// checked after the limits and consents and before the genomic filters, as Java checks
+    /// it first: with the gate off, a genomic filter Java fails on, or genomic filters without
+    /// a genomic store, still answer the gate's text.
     ///
     /// Each node lists variants as `runGetVariantList` does (the INFO seed, the bucket
     /// prefilter count, the per-node 100,000 threshold above which the seed comes back
@@ -671,10 +695,11 @@ impl Engine {
     /// As for [`Engine::variant_count`], and [`QueryError::LimitExceeded`] when the body
     /// would exceed [`VariantResultSettings::max_excerpt_bytes`].
     pub fn variant_list(&self, query: &Query) -> Result<String> {
-        let checked = self.admit(query, SelectUse::Distinct)?;
+        let checked = self.admit_phenotypic(query, SelectUse::Distinct)?;
         if !self.variant_settings.variant_list_enabled() {
             return Ok(not_allowed("VARIANT_LIST"));
         }
+        let checked = self.admit_genomic(checked)?;
         let max = self.variant_settings.max_excerpt_bytes;
         let mut body = String::from("[");
         if let Some((store, lists)) = self.variant_lists_in(&checked)? {
@@ -700,7 +725,8 @@ impl Engine {
     /// by `query.expected_result_type`: VCF_EXCERPT when it is that type, the aggregate form
     /// otherwise. Answers Java's text when the type's setting is off
     /// (`VCF_EXCERPT query type not allowed`, `AGGREGATE_VCF_EXCERPT query type not allowed`)
-    /// or the variant list is empty ([`NO_VARIANTS_FOUND`]); otherwise the excerpt over the
+    /// or the variant list is empty ([`NO_VARIANTS_FOUND`]); the gate is checked before the
+    /// genomic filters, as for [`Engine::variant_list`]. Otherwise the excerpt over the
     /// listed variants and the patients the query's genomic filters keep (see
     /// [`VcfExcerpt`]), measured and checked before any of it is written.
     ///
@@ -715,7 +741,7 @@ impl Engine {
     /// the id concept's block cannot be loaded.
     pub fn vcf_excerpt(&self, query: &Query) -> Result<ExcerptAnswer<'_>> {
         let include_patients = query.expected_result_type == ResultType::VcfExcerpt;
-        let checked = self.admit(query, SelectUse::Distinct)?;
+        let checked = self.admit_phenotypic(query, SelectUse::Distinct)?;
         if !self.variant_settings.excerpt_enabled(include_patients) {
             let name = if include_patients {
                 ResultType::VcfExcerpt
@@ -724,6 +750,7 @@ impl Engine {
             };
             return Ok(ExcerptAnswer::Text(not_allowed(&name.to_string())));
         }
+        let checked = self.admit_genomic(checked)?;
         let Some((store, lists)) = self.variant_lists_in(&checked)? else {
             return Ok(ExcerptAnswer::Text(NO_VARIANTS_FOUND.to_owned()));
         };
