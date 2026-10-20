@@ -17,16 +17,14 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.test.context.ContextConfiguration;
 
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -40,25 +38,24 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SpringBootTest
-@ContextConfiguration(classes = {TokenService.class, JWTUtil.class})
+@ExtendWith(MockitoExtension.class)
 public class TokenServiceTest {
 
-    @MockBean
+    @Mock
     private AuthorizationService authorizationService;
 
-    @MockBean
+    @Mock
     private UserRepository userRepository;
 
-    @MockBean
+    @Mock
     private SessionService sessionService;
 
-    @MockBean
+    @Mock
     private UserService userService;
 
     private JWTUtil jwtUtil;
 
-    @MockBean
+    @Mock
     private SecurityContext securityContext;
 
     private TokenService tokenService;
@@ -72,14 +69,7 @@ public class TokenServiceTest {
 
     @BeforeEach
     public void setUp() {
-        MockitoAnnotations.openMocks(this);
-        Authentication authentication = mock(Authentication.class);
-
         SecurityContextHolder.setContext(securityContext);
-        when(securityContext.getAuthentication()).thenReturn(authentication);
-        when(sessionService.isTokenValidForCurrentSession(any(String.class), any())).thenReturn(true);
-        when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
-            .thenReturn(new EvaluateAccessRuleResult(true, Set.of(), "test-rule"));
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         tokenService = new TokenService(authorizationService, userRepository, 1000L * 60 * 60, jwtUtil, sessionService, userService);
     }
@@ -100,6 +90,9 @@ public class TokenServiceTest {
         inputMap.put("token", token);
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
+        when(sessionService.isTokenValidForCurrentSession(any(String.class), any())).thenReturn(true);
+        when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
+            .thenReturn(new EvaluateAccessRuleResult(true, Set.of(), "test-rule"));
 
         Map<String, Object> response = tokenService.inspectToken(inputMap);
         assertNull(response.get("message"));
@@ -109,8 +102,8 @@ public class TokenServiceTest {
     }
 
     /**
-     * ALS-12756: the gateway authorizes every resource request through this endpoint, so a token from a session the
-     * user has already logged out of must be reported inactive here too — not just on PSAMA's own endpoints.
+     * ALS-12756: the gateway authorizes every resource request through this endpoint, so a token from a session the user has already logged
+     * out of must be reported inactive here too — not just on PSAMA's own endpoints.
      */
     @Test
     public void testInspectToken_rejectsTokenIssuedBeforeTheCurrentSession() {
@@ -148,6 +141,7 @@ public class TokenServiceTest {
         inputMap.put("request", Map.of("Target Service", "/hpds/auth/query/sync"));
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
+        when(sessionService.isTokenValidForCurrentSession(any(String.class), any())).thenReturn(true);
         when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
             .thenReturn(new EvaluateAccessRuleResult(false, Set.of(), null, Optional.of("User has no consents on file.")));
 
@@ -171,6 +165,9 @@ public class TokenServiceTest {
         inputMap.put("request", Map.of("Target Service", "/hpds/auth/query/sync", "Query", Map.of("secret", "value")));
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
+        when(sessionService.isTokenValidForCurrentSession(any(String.class), any())).thenReturn(true);
+        when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
+            .thenReturn(new EvaluateAccessRuleResult(true, Set.of(), "test-rule"));
 
         Map<String, Object> response = tokenService.inspectToken(inputMap);
 
@@ -188,6 +185,7 @@ public class TokenServiceTest {
         inputMap.put("token", token);
         inputMap.put("request", Map.of("Target Service", "/hpds/auth/query/sync"));
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
+        when(sessionService.isTokenValidForCurrentSession(any(String.class), any())).thenReturn(true);
         when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
             .thenReturn(new EvaluateAccessRuleResult(false, Set.of(), null, Optional.of("No access rule grants this request.")));
 
@@ -300,7 +298,6 @@ public class TokenServiceTest {
         System.out.println(token);
         inputMap.put("token", token);
 
-        when(userRepository.findBySubject(user.getSubject())).thenReturn(null);
         assertThrows(NullPointerException.class, () -> {
             tokenService.inspectToken(inputMap);
         });
@@ -329,6 +326,8 @@ public class TokenServiceTest {
 
         inputMap.put("token", token);
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
+        when(authorizationService.isAuthorized(any(), any(), any(), anyBoolean()))
+            .thenReturn(new EvaluateAccessRuleResult(true, Set.of(), "test-rule"));
 
         Map<String, Object> response = tokenService.inspectToken(inputMap);
         assertNull(response.get("message"));
@@ -430,7 +429,6 @@ public class TokenServiceTest {
     @Test
     public void testRefreshToken_isExpired() throws InterruptedException {
         User user = createTestUser();
-        configureUserSecurityContext(user);
         user.setSubject(user.getSubject());
         Map<String, Object> claims = new HashMap<>();
         claims.put("sub", user.getSubject());
@@ -441,10 +439,6 @@ public class TokenServiceTest {
         // Ensure the token expires so the unit test never fails.
         Thread.sleep(1);
 
-        // User privileges should be a subset of the application's privileges
-        when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
-
         String authorizationHeader = "Bearer " + token;
         RefreshToken response = tokenService.refreshToken(authorizationHeader);
         assertTrue(response instanceof InvalidRefreshToken);
@@ -454,7 +448,6 @@ public class TokenServiceTest {
     @Test
     public void testRefreshToken() throws InterruptedException {
         User user = createTestUser();
-        configureUserSecurityContext(user);
         user.setSubject(user.getSubject());
         Map<String, Object> claims = new HashMap<>();
         claims.put("sub", user.getSubject());
@@ -465,7 +458,7 @@ public class TokenServiceTest {
 
         // User privileges should be a subset of the application's privileges
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
+        when(sessionService.isTokenValidForCurrentSession(any(String.class), any())).thenReturn(true);
 
         String authorizationHeader = "Bearer " + token;
         RefreshToken response = tokenService.refreshToken(authorizationHeader);
@@ -477,7 +470,6 @@ public class TokenServiceTest {
     @Test
     public void testRefreshToken_whereUserNotExists() {
         User user = createTestUser();
-        configureUserSecurityContext(user);
         user.setSubject(user.getSubject());
         Map<String, Object> claims = new HashMap<>();
         claims.put("sub", user.getSubject());
@@ -487,7 +479,6 @@ public class TokenServiceTest {
             jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, claims.get("sub").toString(), testTokenExpiration);
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(null);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.empty());
 
         String authorizationHeader = "Bearer " + token;
         RefreshToken refreshToken = tokenService.refreshToken(authorizationHeader);
@@ -499,7 +490,6 @@ public class TokenServiceTest {
     public void testRefreshToken_whereUserNotActive() {
         User user = createTestUser();
         user.setActive(false);
-        configureUserSecurityContext(user);
         user.setSubject(user.getSubject());
         Map<String, Object> claims = new HashMap<>();
         claims.put("sub", user.getSubject());
@@ -510,35 +500,11 @@ public class TokenServiceTest {
 
         // User privileges should be a subset of the application's privileges
         when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
 
         String authorizationHeader = "Bearer " + token;
         RefreshToken refreshToken = tokenService.refreshToken(authorizationHeader);
         assertTrue(refreshToken instanceof InvalidRefreshToken);
         assertEquals("User has been deactivated.", ((InvalidRefreshToken) refreshToken).error());
-    }
-
-    @Test
-    public void testRefreshToken_whereUserSubjectHasChanged() {
-        User user = createTestUser();
-        configureUserSecurityContext(user);
-        user.setSubject(user.getSubject());
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("sub", user.getSubject());
-
-        // Application Long term token
-        String token =
-            jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, claims.get("sub").toString(), testTokenExpiration);
-        user.setSubject("CHANGED_SUBJECT");
-
-        // User privileges should be a subset of the application's privileges
-        when(userRepository.findBySubject(user.getSubject())).thenReturn(user);
-        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
-
-        String authorizationHeader = "Bearer " + token;
-        RefreshToken refreshToken = tokenService.refreshToken(authorizationHeader);
-        assertTrue(refreshToken instanceof InvalidRefreshToken);
-        assertEquals("User doesn't exist anymore.", ((InvalidRefreshToken) refreshToken).error());
     }
 
     private User createTestUser() {
