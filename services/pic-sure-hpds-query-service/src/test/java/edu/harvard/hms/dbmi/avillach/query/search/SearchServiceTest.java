@@ -17,6 +17,7 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
+import edu.harvard.hms.dbmi.avillach.query.routing.HpdsRouter;
 
 /**
  * Covers {@code search} and {@code searchGenomicConceptValues}. Backend resolution comes from the ingress {@code {backend}} path segment
@@ -28,7 +29,7 @@ class SearchServiceTest {
     ResourceWebClient hpds = mock(ResourceWebClient.class);
     HpdsProperties props = props();
     HpdsBackendSelector selector = new HpdsBackendSelector(props);
-    SearchService service = new SearchService(hpds, selector);
+    SearchService service = new SearchService(hpds, selector, HpdsRouter.off());
 
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();

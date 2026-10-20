@@ -44,6 +44,7 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
+import edu.harvard.hms.dbmi.avillach.query.routing.HpdsRouter;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**
@@ -59,7 +60,7 @@ class QueryServiceTest {
     HpdsProperties props = props();
     HpdsBackendSelector selector = new HpdsBackendSelector(props);
     ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-    QueryService service = new QueryService(operationsClient, hpds, selector, consent);
+    QueryService service = new QueryService(operationsClient, hpds, selector, consent, HpdsRouter.off());
 
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();
@@ -114,7 +115,7 @@ class QueryServiceTest {
     @Test
     void createScopesBeforeCallingHpdsOrPersistence() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, HpdsRouter.off());
         QueryRequest request = req();
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
@@ -184,7 +185,7 @@ class QueryServiceTest {
     @Test
     void syncScopesThenCallsHpdsBeforePersisting() {
         ConsentAuthorizationService consent = mock(ConsentAuthorizationService.class);
-        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent);
+        QueryService scopedService = new QueryService(operationsClient, hpds, selector, consent, HpdsRouter.off());
         QueryRequest request = req();
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))

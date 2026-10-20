@@ -20,6 +20,7 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.query.routing.HpdsRouter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -249,12 +250,16 @@ public class HpdsQueryController {
 
     /**
      * Re-emits the {@code queryMetadata} response header with an {@code application/json} content type. Only {@code /query/{id}/result}
-     * uses octet-stream; labeling sync responses as octet-stream makes the frontend treat count results as binary downloads.
+     * uses octet-stream; labeling sync responses as octet-stream makes the frontend treat count results as binary downloads. A call routed
+     * to or mirrored on Rust HPDS also carries its audit label in {@link HpdsRouter#BACKEND_HEADER}.
      */
     static ResponseEntity<byte[]> syncResponse(QueryService.QuerySyncResponse r) {
         ResponseEntity.BodyBuilder b = ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON);
         if (r.queryMetadata() != null) {
             b.header("queryMetadata", r.queryMetadata());
+        }
+        if (r.hpdsBackend() != null) {
+            b.header(HpdsRouter.BACKEND_HEADER, r.hpdsBackend());
         }
         return b.body(r.body());
     }

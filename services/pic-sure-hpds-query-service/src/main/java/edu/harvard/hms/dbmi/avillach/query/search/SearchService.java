@@ -3,11 +3,17 @@ package edu.harvard.hms.dbmi.avillach.query.search;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
+import edu.harvard.hms.dbmi.avillach.query.routing.HpdsRouter;
+import edu.harvard.hms.dbmi.avillach.query.routing.Routed;
 
 /**
  * Executes search and concept-value requests against the backend selected by the ingress {@code {backend}} path segment through
@@ -19,16 +25,24 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * <p>Search and values calls carry no service token: {@link ResourceWebClient#search} and {@link ResourceWebClient#searchConceptValues}
  * take a plain base URL string (not an {@code HpdsTarget}), so the per-backend service token resolved by {@link HpdsBackendSelector} is
  * never attached.
+ *
+ * <p>Both calls go through {@link HpdsRouter} as the types {@value HpdsRouter#SEARCH} and {@value HpdsRouter#SEARCH_VALUES}, so on the
+ * {@code auth} backend Rust HPDS may answer them or receive a mirror of them.
  */
 @Service
 public class SearchService {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final TypeReference<PaginatedSearchResult<String>> VALUES_PAGE = new TypeReference<>() {};
+
     private final ResourceWebClient hpds;
     private final HpdsBackendSelector selector;
+    private final HpdsRouter router;
 
-    public SearchService(ResourceWebClient hpds, HpdsBackendSelector selector) {
+    public SearchService(ResourceWebClient hpds, HpdsBackendSelector selector, HpdsRouter router) {
         this.hpds = hpds;
         this.selector = selector;
+        this.router = router;
     }
 
     /**
@@ -40,10 +54,28 @@ public class SearchService {
      * @throws PicsureException 400 when {@code req} is null or the backend is unknown, 503 when the backend is not configured
      */
     public SearchResults search(String backend, SearchRequest req) {
+        return searchRouted(backend, req).value();
+    }
+
+    /**
+     * As {@link #search}, with the audit label of a call routed to or mirrored on Rust HPDS.
+     *
+     * @param backend the ingress {@code {backend}} segment
+     * @param req the search request
+     * @return the concepts and variant annotations HPDS matched, and the backend label or null
+     * @throws PicsureException 400 when {@code req} is null or the backend is unknown, 503 when the backend is not configured
+     */
+    public Routed<SearchResults> searchRouted(String backend, SearchRequest req) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing search data");
         }
-        return hpds.search(selector.select(backend).baseUrl(), req.toOutbound());
+        String base = selector.select(backend).baseUrl();
+        var outbound = req.toOutbound();
+        HpdsRouter.Call<SearchResults> call = new HpdsRouter.Call<>(
+            backend, HpdsRouter.SEARCH, () -> hpds.search(base, outbound), (client, apiBase, token) -> client.search(apiBase, outbound),
+            answered -> MAPPER.readValue(answered.body(), SearchResults.class), SearchService::json
+        );
+        return router.route(call, results -> null);
     }
 
     /**
@@ -58,6 +90,33 @@ public class SearchService {
      * @throws PicsureException 400 when the backend is unknown, 503 when it is not configured
      */
     public PaginatedSearchResult<String> searchConceptValues(String backend, String conceptPath, String query, Integer page, Integer size) {
-        return hpds.searchConceptValues(selector.select(backend).baseUrl(), conceptPath, query, page, size);
+        return searchConceptValuesRouted(backend, conceptPath, query, page, size).value();
+    }
+
+    /**
+     * As {@link #searchConceptValues}, with the audit label of a call routed to or mirrored on Rust HPDS.
+     *
+     * @return one page of matching values, and the backend label or null
+     * @throws PicsureException 400 when the backend is unknown, 503 when it is not configured
+     */
+    public Routed<PaginatedSearchResult<String>> searchConceptValuesRouted(
+        String backend, String conceptPath, String query, Integer page, Integer size
+    ) {
+        String base = selector.select(backend).baseUrl();
+        HpdsRouter.Call<PaginatedSearchResult<String>> call = new HpdsRouter.Call<>(
+            backend, HpdsRouter.SEARCH_VALUES, () -> hpds.searchConceptValues(base, conceptPath, query, page, size),
+            (client, apiBase, token) -> client.searchConceptValues(apiBase, conceptPath, query, page, size),
+            answered -> MAPPER.readValue(answered.body(), VALUES_PAGE), SearchService::json
+        );
+        return router.route(call, values -> null);
+    }
+
+    /** Serializes an answer for comparison with Rust's body. */
+    private static byte[] json(Object answer) {
+        try {
+            return MAPPER.writeValueAsBytes(answer);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("search answer could not be serialized for comparison", e);
+        }
     }
 }

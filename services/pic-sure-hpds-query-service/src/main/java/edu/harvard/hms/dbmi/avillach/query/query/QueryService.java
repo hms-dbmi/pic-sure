@@ -37,6 +37,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
+import edu.harvard.hms.dbmi.avillach.query.routing.HpdsRouter;
+import edu.harvard.hms.dbmi.avillach.query.routing.Routed;
+import edu.harvard.hms.dbmi.avillach.query.routing.RustOutcome;
 
 /**
  * Implements the create, sync, status, result, signed-url, and metadata query lifecycle without a local database. Persistence goes through
@@ -80,18 +83,32 @@ public class QueryService {
     private final ResourceWebClient hpds;
     private final HpdsBackendSelector selector;
     private final ConsentAuthorizationService consentAuthorization;
+    private final HpdsRouter router;
 
     public QueryService(
         OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector,
-        ConsentAuthorizationService consentAuthorization
+        ConsentAuthorizationService consentAuthorization, HpdsRouter router
     ) {
         this.operationsClient = operationsClient;
         this.hpds = hpds;
         this.selector = selector;
         this.consentAuthorization = consentAuthorization;
+        this.router = router;
     }
 
-    public record QuerySyncResponse(byte[] body, String queryMetadata) {
+    /**
+     * A sync answer.
+     *
+     * @param body the result body
+     * @param queryMetadata the answering HPDS's query id header, or null
+     * @param hpdsBackend the audit label of a call routed to or mirrored on Rust HPDS, or null when Java answered alone
+     */
+    public record QuerySyncResponse(byte[] body, String queryMetadata, String hpdsBackend) {
+
+        /** A sync answer Java HPDS gave alone. */
+        public QuerySyncResponse(byte[] body, String queryMetadata) {
+            this(body, queryMetadata, null);
+        }
     }
 
     // --- create / sync ---
@@ -138,6 +155,10 @@ public class QueryService {
      * Runs a query on HPDS's synchronous route and records it. HPDS returns its query id in the {@code queryMetadata} header for every
      * result type it computes as a query; INFO_COLUMN_LISTING is a listing rather than a query and carries no id, so nothing is recorded
      * for it. An HPDS rejection propagates from {@link ResourceWebClient} before anything is persisted.
+     *
+     * <p>The scoped query goes through {@link HpdsRouter}, which may answer it from Rust HPDS or mirror it there. The stored row holds the
+     * answering backend's query id. That is safe for a Rust answer because nothing reads a sync row's result id back from HPDS: the sync
+     * answer never returns the row's {@code picsureId}, and status, result and signed-url look rows up by that id only.
      */
     public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource, String authorizationHeader) {
         if (req == null) {
@@ -146,12 +167,45 @@ public class QueryService {
         consentAuthorization.scopeQuery(backend, req, authorizationHeader);
         HpdsTarget target = selector.select(backend);
 
-        ResourceWebClient.QuerySyncResult down = hpds.querySync(target, req, requestSource);
-        if (down.queryMetadata() != null) {
-            operationsClient.save(new SaveQueryRequest(serializeQuery(req), down.queryMetadata(), null, CURRENT_VERSION, null));
-        }
+        HpdsRouter.Call<ResourceWebClient.QuerySyncResult> call = new HpdsRouter.Call<>(
+            backend, resultTypeName(req), () -> hpds.querySync(target, req, requestSource),
+            (client, apiBase, token) -> client.querySync(apiBase, token, req, requestSource), QueryService::fromRust,
+            ResourceWebClient.QuerySyncResult::body
+        );
+        Routed<ResourceWebClient.QuerySyncResult> routed = router.route(call, down -> saveSync(req, down));
+        ResourceWebClient.QuerySyncResult down = routed.value();
+        return new QuerySyncResponse(down.body(), down.queryMetadata(), routed.hpdsBackend());
+    }
 
-        return new QuerySyncResponse(down.body(), down.queryMetadata());
+    /** Records a sync answer that carries a query id and returns the stored row's id, or returns null when there is no id to record. */
+    private String saveSync(QueryRequest req, ResourceWebClient.QuerySyncResult down) {
+        if (down.queryMetadata() == null) {
+            return null;
+        }
+        UUID picsureId =
+            operationsClient.save(new SaveQueryRequest(serializeQuery(req), down.queryMetadata(), null, CURRENT_VERSION, null));
+        return picsureId == null ? null : picsureId.toString();
+    }
+
+    private static ResourceWebClient.QuerySyncResult fromRust(RustOutcome.Answered answered) {
+        return new ResourceWebClient.QuerySyncResult(answered.body(), answered.queryMetadata());
+    }
+
+    /** The query's {@code expectedResultType} name, or null when the query is not a v3 query or names none. */
+    static String resultTypeName(QueryRequest req) {
+        Object query = req.getQuery();
+        if (query instanceof edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query v3) {
+            return v3.expectedResultType() == null ? null : v3.expectedResultType().name();
+        }
+        if (query == null) {
+            return null;
+        }
+        try {
+            JsonNode type = MAPPER.valueToTree(query).path("expectedResultType");
+            return type.isTextual() ? type.asText() : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /** Serializes non-empty result metadata as base64-encoded UTF-8 JSON. */
