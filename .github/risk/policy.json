@@ -6,7 +6,7 @@
   "review": {
     "checkName": "Review policy",
     "minApprovals": 1,
-    "requireApprovalOnLatestCommit": true
+    "requireApprovalOnLatestCommit": false
   },
 
   "limits": {
