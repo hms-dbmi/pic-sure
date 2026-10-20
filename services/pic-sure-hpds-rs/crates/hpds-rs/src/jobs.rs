@@ -1081,11 +1081,21 @@ fn not_ready_response(name: &str) -> Response {
         .into_response()
 }
 
+/// The refusal of a genomic result type submitted to `POST /query`. Java has no processor for
+/// them there (`QueryV3Service.initializeResult` throws in its switch default, so its submit
+/// answers 200 without a body and the query never runs); this service refuses the submit.
+pub fn genomic_type_on_async_route(result_type: ResultType) -> String {
+    format!(
+        "result type {result_type} is not supported by POST /query; send it to POST /query/sync"
+    )
+}
+
 /// `POST /query`: validates an export query and starts it, answering its [`QueryStatus`].
 ///
 /// PATIENTS and DATAFRAME are exported; DATAFRAME_TIMESERIES and DATAFRAME_PFB are accepted
-/// and end in ERROR, as does DATAFRAME while `ID_BATCH_SIZE` is 0. Any other result type, a
-/// validation failure, or a malformed request is a 400 text error, where Java answers 200 with
+/// and end in ERROR, as does DATAFRAME while `ID_BATCH_SIZE` is 0. A genomic result type is
+/// refused with [`genomic_type_on_async_route`], as Java never runs it there. Any other
+/// result type, a validation failure, or a malformed request is a 400 text error, where Java answers 200 with
 /// an ERROR status or 500. Java accepts COUNT, CATEGORICAL_CROSS_COUNT and
 /// CONTINUOUS_CROSS_COUNT here and COUNT then ends in ERROR; this service refuses all sync
 /// types up front.
@@ -1116,12 +1126,16 @@ fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
         | ResultType::Dataframe
         | ResultType::DataframeTimeseries
         | ResultType::DataframePfb => {}
+        other if other.is_genomic() => {
+            return Err(ApiError::bad_request(genomic_type_on_async_route(other)));
+        }
         other => {
             return Err(ApiError::bad_request(format!(
                 "Result type {other} is computed synchronously. Submit it with POST /query/sync."
             )));
         }
     }
+    state.check_genomic(!query.genomic_filters.is_empty())?;
     let engine = Arc::clone(state.engine()?);
     engine.check_limits(&query)?;
     engine.validate(&query)?;
