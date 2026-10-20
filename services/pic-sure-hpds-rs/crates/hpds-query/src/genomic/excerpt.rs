@@ -348,11 +348,15 @@ impl<'e> VcfExcerpt<'e> {
         for_each_listed_spec(self.store, &self.lists, |spec| {
             let key = VariantSpecKey::parse(spec);
             if key.is_none_or(|k| k.is_short()) {
-                return Err(QueryError::GenomicFilter(format!(
-                    "the variant {} has fewer than six fields, so Java cannot sort the \
-                     excerpt's rows",
-                    echo(spec)
-                )));
+                tracing::warn!(
+                    variant = %echo(spec),
+                    "a listed variant spec has fewer than six fields"
+                );
+                return Err(QueryError::GenomicFilter(
+                    "a listed variant has a spec with fewer than six fields, so Java cannot \
+                     sort the excerpt's rows"
+                        .into(),
+                ));
             }
             let same_row = group
                 .first()
@@ -514,10 +518,11 @@ impl Rows<'_, '_> {
                         node = %store.node_name(n as u16),
                         "a listed variant holds a metadata string twice on one node"
                     );
-                    return Err(QueryError::GenomicFilter(format!(
-                        "the variant {} holds a metadata string twice, which Java cannot read",
-                        echo(spec)
-                    )));
+                    return Err(QueryError::GenomicFilter(
+                        "a listed variant holds a metadata string twice on one node, which \
+                         Java cannot read"
+                            .into(),
+                    ));
                 }
                 if !strings.iter().any(|x| x == s) {
                     strings.push((*s).to_owned());
@@ -554,11 +559,14 @@ impl Rows<'_, '_> {
             return match per_group.pop().flatten() {
                 Some(masks) => Ok(masks),
                 None if matches!(store.mode(), GenoMode::Local | GenoMode::LocalDistributed) => {
-                    Err(QueryError::GenomicFilter(format!(
-                        "no node holds the masks of the listed variant {}, which Java cannot \
-                         read",
-                        echo(spec)
-                    )))
+                    tracing::warn!(
+                        variant = %echo(spec),
+                        "no node holds the masks of a listed variant"
+                    );
+                    Err(QueryError::GenomicFilter(
+                        "no node holds the masks of a listed variant, which Java cannot read"
+                            .into(),
+                    ))
                 }
                 None => Ok(GroupMasks::default()),
             };
