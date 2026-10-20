@@ -15,15 +15,25 @@
 //! and no cycle of waits can form.
 
 mod cohort;
+mod excerpt;
 mod filters;
+mod listing;
 mod store;
 #[cfg(test)]
 mod tests;
+mod variants;
 
 pub(crate) use cohort::genomic_cohort;
+pub use excerpt::{
+    DEFAULT_MAX_EXCERPT_BYTES, ExcerptAnswer, NO_VARIANTS_FOUND, VariantResultSettings, VcfExcerpt,
+};
+pub(crate) use excerpt::{excerpt_columns, java_binary_search, not_allowed, subset_column_ids};
 pub(crate) use filters::GenomicFilters;
+pub use listing::InfoColumnMeta;
+pub(crate) use listing::{info_column_listing, info_column_listing_json};
 pub(crate) use store::on_genomic_worker;
 pub use store::{
     DEFAULT_GENOMIC_CACHE_BYTES, DEFAULT_GENOMIC_READ_BUDGET_BYTES, GenomicCacheStats,
     GenomicOptions, GenomicStore,
 };
+pub(crate) use variants::{VariantLists, for_each_listed_spec, variant_lists};

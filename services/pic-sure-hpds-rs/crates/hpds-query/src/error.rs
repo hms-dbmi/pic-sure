@@ -17,9 +17,8 @@ pub enum QueryError {
     #[error("{0}")]
     Invalid(String),
 
-    /// The query asks for something this engine does not do: a genomic result type it does
-    /// not compute, or genomic filters when it serves no genomic store. The message names the
-    /// feature.
+    /// The query asks for something this engine does not do: genomic filters when it serves
+    /// no genomic store. The message names the feature.
     #[error("{0} is not supported by this phenotype-only HPDS")]
     Unsupported(String),
 
@@ -130,6 +129,10 @@ pub enum QueryError {
         source: Arc<FormatError>,
     },
 
+    /// Writing a streamed answer, such as an excerpt, to its destination failed.
+    #[error("cannot write the answer: {0}")]
+    Output(Arc<std::io::Error>),
+
     /// A blocking task did not finish, for example because it panicked.
     #[error("query task failed: {0}")]
     Task(String),
@@ -150,7 +153,7 @@ impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
     /// variant except [`QueryError::Open`], [`QueryError::CohortOutsideSelection`],
     /// [`QueryError::Block`], [`QueryError::GenomicBlock`], [`QueryError::StoreInconsistent`],
-    /// [`QueryError::Task`] and [`QueryError::StoreChanged`].
+    /// [`QueryError::Output`], [`QueryError::Task`] and [`QueryError::StoreChanged`].
     pub fn is_client_error(&self) -> bool {
         !matches!(
             self,
@@ -159,6 +162,7 @@ impl QueryError {
                 | QueryError::Block { .. }
                 | QueryError::GenomicBlock { .. }
                 | QueryError::StoreInconsistent { .. }
+                | QueryError::Output(_)
                 | QueryError::Task(_)
                 | QueryError::StoreChanged { .. }
         )

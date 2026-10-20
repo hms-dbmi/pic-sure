@@ -28,7 +28,7 @@ use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
 use bytes::BytesMut;
 use hpds_format::push_decimal_u32;
-use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType, check_supported};
+use hpds_query::{Engine, PATIENTS_HEADER, Query, QueryError, ResultType};
 use serde::Serialize;
 use tokio::sync::Semaphore;
 
@@ -1116,9 +1116,6 @@ fn submit_query(state: &AppState, query: Query) -> Result<Response, ApiError> {
         | ResultType::Dataframe
         | ResultType::DataframeTimeseries
         | ResultType::DataframePfb => {}
-        other if other.is_genomic() => {
-            check_supported(&query)?;
-        }
         other => {
             return Err(ApiError::bad_request(format!(
                 "Result type {other} is computed synchronously. Submit it with POST /query/sync."

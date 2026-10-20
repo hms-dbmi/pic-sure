@@ -14,7 +14,11 @@ use roaring::{MultiOps, RoaringBitmap};
 use crate::cohort::{evaluate_cohort_cow, for_each_row_of};
 use crate::error::{QueryError, Result};
 use crate::fan_out;
-use crate::genomic::{GenomicFilters, GenomicStore, genomic_cohort};
+use crate::genomic::{
+    ExcerptAnswer, GenomicFilters, GenomicStore, InfoColumnMeta, NO_VARIANTS_FOUND, VariantLists,
+    VariantResultSettings, VcfExcerpt, excerpt_columns, for_each_listed_spec, genomic_cohort,
+    info_column_listing, java_binary_search, not_allowed, subset_column_ids, variant_lists,
+};
 use crate::limits::{CheckedQuery, QueryLimits, SelectUse};
 use crate::model::{PhenotypicFilter, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{ConceptRead, PartitionOptions, PartitionSet, ReadMode, Selection};
@@ -39,8 +43,7 @@ pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 ///
 /// Every computation goes through one admission step whose receipt every evaluation
 /// requires: it checks the query's shape against the engine's [`QueryLimits`], refuses
-/// genomic result types with [`crate::check_supported`] and genomic filters when no
-/// [`GenomicStore`] is attached, selects the partitions the
+/// genomic filters when no [`GenomicStore`] is attached, selects the partitions the
 /// query's consents grant ([`PartitionSet::select`]), which fails with
 /// [`QueryError::UserConsentsRequired`] when consents are required and absent, and checks
 /// the concepts it touches in those partitions against the limits, all before any block is
@@ -65,6 +68,7 @@ pub const DEFAULT_EXPORT_PIN_BYTES: u64 = 2 << 30;
 pub struct Engine {
     partitions: PartitionSet,
     genomic: Option<GenomicStore>,
+    variant_settings: VariantResultSettings,
     export_pin_bytes: u64,
     limits: QueryLimits,
     result_cache: Option<ResultCache>,
@@ -84,6 +88,7 @@ impl Engine {
         Engine {
             partitions,
             genomic: None,
+            variant_settings: VariantResultSettings::default(),
             export_pin_bytes: DEFAULT_EXPORT_PIN_BYTES,
             limits: QueryLimits::default(),
             result_cache: None,
@@ -102,6 +107,20 @@ impl Engine {
     /// The attached genomic store.
     pub fn genomic(&self) -> Option<&GenomicStore> {
         self.genomic.as_ref()
+    }
+
+    /// Sets the settings of the variant result types: the excerpt gates, the id concept, the
+    /// INFO column order and the excerpt size bound ([`VariantResultSettings::default`], Java's
+    /// defaults, until set).
+    #[must_use]
+    pub fn with_variant_settings(mut self, settings: VariantResultSettings) -> Self {
+        self.variant_settings = settings;
+        self
+    }
+
+    /// The settings of the variant result types.
+    pub fn variant_settings(&self) -> &VariantResultSettings {
+        &self.variant_settings
     }
 
     /// Turns on the result cache, bounded at `bytes`, or leaves it off when `bytes` is 0
@@ -230,8 +249,7 @@ impl Engine {
     ///
     /// # Errors
     /// [`QueryError::LimitExceeded`] when the query breaks a bound,
-    /// [`QueryError::Unsupported`] for a genomic result type or for genomic filters without a
-    /// genomic store, [`QueryError::UserConsentsRequired`] when consents are required and
+    /// [`QueryError::Unsupported`] for genomic filters without a genomic store, [`QueryError::UserConsentsRequired`] when consents are required and
     /// absent, [`QueryError::FilterWithoutCriteria`], [`QueryError::EmptySubquery`],
     /// [`QueryError::MissingOperator`] and [`QueryError::TypeMismatch`] where Java's executor
     /// throws, [`QueryError::GenomicFilter`] for a genomic filter Java fails on,
@@ -443,18 +461,22 @@ impl Engine {
         Ok(observation_cross_count_in(&checked, &cohort))
     }
 
-    /// The answer to a sync result type, dispatched on `query.expected_result_type`.
+    /// The answer to a sync result type, dispatched on `query.expected_result_type`: COUNT,
+    /// the cross counts, and the genomic result types ([`Engine::info_column_listing`],
+    /// [`Engine::variant_count`], [`Engine::variant_list`], and [`Engine::vcf_excerpt`] written
+    /// whole).
     ///
     /// # Errors
-    /// [`QueryError::Unsupported`] for genomic result types, [`QueryError::NotSync`] for
-    /// the export types (DATAFRAME, PATIENTS, DATAFRAME_TIMESERIES, DATAFRAME_PFB), and the
+    /// [`QueryError::NotSync`] for the export types (DATAFRAME, PATIENTS, DATAFRAME_TIMESERIES, DATAFRAME_PFB), and the
     /// errors of the computation, [`QueryError::UserConsentsRequired`] included.
     pub fn run_sync(&self, query: &Query) -> Result<SyncResult> {
         let result_type = query.expected_result_type;
         if !result_type.is_sync() {
             self.limits.check_shape(query)?;
-            crate::validate::check_supported(query)?;
             return Err(QueryError::NotSync(result_type));
+        }
+        if result_type.is_genomic() {
+            return self.genomic_sync(query);
         }
         let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
         self.sync_result_in(&checked, &cohort)
@@ -498,7 +520,7 @@ impl Engine {
     /// As for [`Engine::run_sync`].
     pub fn answer_sync(&self, query: &Query) -> Result<SyncAnswer> {
         let result_type = query.expected_result_type;
-        if !result_type.is_sync() {
+        if !result_type.is_sync() || result_type.is_genomic() {
             return self.run_sync(query).map(|result| SyncAnswer::of(&result));
         }
         let (checked, cohort) = self.prepare(query, SelectUse::Distinct)?;
@@ -511,6 +533,234 @@ impl Engine {
             cache.insert(key, answer.clone());
         }
         Ok(answer)
+    }
+
+    /// The answer to a genomic result type, dispatched on `query.expected_result_type`.
+    /// An excerpt is written whole into the answer; [`Engine::vcf_excerpt`] streams it.
+    fn genomic_sync(&self, query: &Query) -> Result<SyncResult> {
+        match query.expected_result_type {
+            ResultType::InfoColumnListing => {
+                Ok(SyncResult::InfoColumnListing(self.info_column_listing()))
+            }
+            ResultType::VariantCountForQuery => {
+                Ok(SyncResult::VariantCount(self.variant_count(query)?))
+            }
+            ResultType::VariantListForQuery => {
+                Ok(SyncResult::VariantList(self.variant_list(query)?))
+            }
+            _ => match self.vcf_excerpt(query)? {
+                ExcerptAnswer::Text(text) => Ok(SyncResult::Excerpt(text)),
+                ExcerptAnswer::Rows(excerpt) => {
+                    let mut body = Vec::with_capacity(usize::try_from(excerpt.len()).unwrap_or(0));
+                    excerpt.write_to(&mut body)?;
+                    Ok(SyncResult::Excerpt(String::from_utf8(body).unwrap_or_else(
+                        |e| String::from_utf8_lossy(e.as_bytes()).into_owned(),
+                    )))
+                }
+            },
+        }
+    }
+
+    /// INFO_COLUMN_LISTING (`QueryExecutor.getInfoStoreMeta`): the genomic store's INFO
+    /// columns, repeated per node or per group as the store's layout repeats them, or nothing
+    /// without a genomic store. Java answers it without evaluating the query, so nothing in
+    /// the query is checked.
+    pub fn info_column_listing(&self) -> Vec<InfoColumnMeta> {
+        self.genomic
+            .as_ref()
+            .map(info_column_listing)
+            .unwrap_or_default()
+    }
+
+    /// VARIANT_COUNT_FOR_QUERY (`CountV3Processor.runVariantCount`): the number of distinct
+    /// variant specs the query lists (see [`Engine::variant_list`]), or `None` when the query
+    /// has no `genomicFilters`, where Java answers that no query was run. Java has no gate on
+    /// it.
+    ///
+    /// # Errors
+    /// The errors of admission (as for [`Engine::cohort`]), of the phenotypic cohort and of
+    /// the genomic filters.
+    pub fn variant_count(&self, query: &Query) -> Result<Option<u64>> {
+        let checked = self.admit(query, SelectUse::Distinct)?;
+        if query.genomic_filters.is_empty() {
+            return Ok(None);
+        }
+        let mut count = 0u64;
+        if let Some((store, lists)) = self.variant_lists_in(&checked)? {
+            for_each_listed_spec(store, &lists, |_| {
+                count += 1;
+                Ok(())
+            })?;
+        }
+        Ok(Some(count))
+    }
+
+    /// VARIANT_LIST_FOR_QUERY (`VariantListV3Processor.runVariantListQuery`): the body Java
+    /// writes, `[` and the listed variant specs joined with `, ` and `]`, or
+    /// `VARIANT_LIST query type not allowed` when neither excerpt setting is on.
+    ///
+    /// Each node lists variants as `runGetVariantList` does (the INFO seed, the bucket
+    /// prefilter count, the per-node 100,000 threshold above which the seed comes back
+    /// unfiltered, `he`, `ho` or `hen` meeting the node's patients); a spec two nodes list
+    /// appears once. Specs are in the store's spec order; Java's is a hash order.
+    ///
+    /// # Errors
+    /// As for [`Engine::variant_count`], and [`QueryError::LimitExceeded`] when the body
+    /// would exceed [`VariantResultSettings::max_excerpt_bytes`].
+    pub fn variant_list(&self, query: &Query) -> Result<String> {
+        let checked = self.admit(query, SelectUse::Distinct)?;
+        if !self.variant_settings.variant_list_enabled() {
+            return Ok(not_allowed("VARIANT_LIST"));
+        }
+        let max = self.variant_settings.max_excerpt_bytes;
+        let mut body = String::from("[");
+        if let Some((store, lists)) = self.variant_lists_in(&checked)? {
+            for_each_listed_spec(store, &lists, |spec| {
+                if body.len() > 1 {
+                    body.push_str(", ");
+                }
+                body.push_str(spec);
+                if body.len() as u64 >= max {
+                    return Err(QueryError::LimitExceeded(format!(
+                        "the variant list is longer than the {max} bytes \
+                         HPDS_MAX_EXCERPT_BYTES allows"
+                    )));
+                }
+                Ok(())
+            })?;
+        }
+        body.push(']');
+        Ok(body)
+    }
+
+    /// VCF_EXCERPT and AGGREGATE_VCF_EXCERPT (`VariantListV3Processor.runVcfExcerptQuery`),
+    /// by `query.expected_result_type`: VCF_EXCERPT when it is that type, the aggregate form
+    /// otherwise. Answers Java's text when the type's setting is off
+    /// (`VCF_EXCERPT query type not allowed`, `AGGREGATE_VCF_EXCERPT query type not allowed`)
+    /// or the variant list is empty ([`NO_VARIANTS_FOUND`]); otherwise the excerpt over the
+    /// listed variants and the patients the query's genomic filters keep (see
+    /// [`VcfExcerpt`]), measured and checked before any of it is written.
+    ///
+    /// Column 2 counts carriers outside the subset, patients outside the query's consents
+    /// included, as Java does; the subset itself passes the cohort guard.
+    ///
+    /// # Errors
+    /// As for [`Engine::variant_count`]; [`QueryError::LimitExceeded`] for an excerpt over
+    /// [`VariantResultSettings::max_excerpt_bytes`]; [`QueryError::GenomicFilter`] where
+    /// Java throws while building the excerpt (see [`VcfExcerpt`]) and when `ID_CUBE_NAME`
+    /// names a numeric concept some subset patient holds; and [`QueryError::Block`] when
+    /// the id concept's block cannot be loaded.
+    pub fn vcf_excerpt(&self, query: &Query) -> Result<ExcerptAnswer<'_>> {
+        let include_patients = query.expected_result_type == ResultType::VcfExcerpt;
+        let checked = self.admit(query, SelectUse::Distinct)?;
+        if !self.variant_settings.excerpt_enabled(include_patients) {
+            let name = if include_patients {
+                ResultType::VcfExcerpt
+            } else {
+                ResultType::AggregateVcfExcerpt
+            };
+            return Ok(ExcerptAnswer::Text(not_allowed(&name.to_string())));
+        }
+        let Some((store, lists)) = self.variant_lists_in(&checked)? else {
+            return Ok(ExcerptAnswer::Text(NO_VARIANTS_FOUND.to_owned()));
+        };
+        let Some(evaluation) = lists.evaluation.as_ref().filter(|_| !lists.is_empty()) else {
+            return Ok(ExcerptAnswer::Text(NO_VARIANTS_FOUND.to_owned()));
+        };
+        let subset = evaluation.patients(store);
+        crate::cohort::guard(checked.selection(), &subset)?;
+        let columns = excerpt_columns(store, &self.variant_settings.info_column_order);
+        let labels = if include_patients {
+            self.patient_labels(&checked, &subset_column_ids(store, &subset))?
+        } else {
+            Vec::new()
+        };
+        Ok(ExcerptAnswer::Rows(VcfExcerpt::new(
+            store,
+            lists,
+            &subset,
+            include_patients,
+            columns,
+            labels,
+            self.variant_settings.max_excerpt_bytes,
+        )?))
+    }
+
+    /// Every node's variant list for an admitted query, or `None` when it has no
+    /// `genomicFilters`, so nothing is listed.
+    fn variant_lists_in<'s>(
+        &'s self,
+        checked: &CheckedQuery<'_, 's>,
+    ) -> Result<Option<(&'s GenomicStore, VariantLists)>> {
+        let query = checked.query();
+        if query.genomic_filters.is_empty() {
+            return Ok(None);
+        }
+        let Some(store) = &self.genomic else {
+            return Err(QueryError::Unsupported("genomicFilters".into()));
+        };
+        let cohort = evaluate_cohort_cow(checked)?;
+        let filters = GenomicFilters::translate(query)?;
+        Ok(Some((store, variant_lists(store, &filters, &cohort)?)))
+    }
+
+    /// The headers of VCF_EXCERPT's patient columns for the patients `ids`: each id, or with
+    /// `ID_CUBE_NAME` set the value of that concept for the patient in the selected
+    /// partitions, as `PhenoCube.getValueForKey` finds it (a binary search over the rows in
+    /// patient order, so a patient with several values gets the one the search lands on), or
+    /// the id when the patient has none.
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicFilter`] when the concept is numeric and some patient of `ids`
+    /// holds a value (Java's cast to `String` throws), and [`QueryError::Block`] when its
+    /// block cannot be loaded.
+    fn patient_labels(&self, checked: &CheckedQuery<'_, '_>, ids: &[u32]) -> Result<Vec<String>> {
+        let as_ids = || ids.iter().map(u32::to_string).collect();
+        let Some(name) = &self.variant_settings.id_cube_name else {
+            return Ok(as_ids());
+        };
+        let selection = checked.selection();
+        let Some(read) = selection.concept(name) else {
+            return Ok(as_ids());
+        };
+        let entry = selection.entry(&read)?;
+        let block = entry.block();
+        let mask = selection.mask();
+        let filtered = read.mode != ReadMode::Exact && block.partitions().is_tagged();
+        let selected = |tag: Option<u16>| {
+            !filtered || tag.is_some_and(|t| mask.get(usize::from(t)).copied().unwrap_or(false))
+        };
+        match block.as_ref() {
+            Block::Categorical(b) => {
+                let rows: Vec<usize> = (0..b.patients().len())
+                    .filter(|&k| selected(b.tag_at_key_pos(k)))
+                    .collect();
+                let keys: Vec<u32> = rows.iter().map(|&k| b.patients()[k]).collect();
+                Ok(ids
+                    .iter()
+                    .map(|&id| {
+                        java_binary_search(&keys, id)
+                            .and_then(|i| b.dictionary_value(b.value_indices()[rows[i]] as usize))
+                            .map_or_else(|| id.to_string(), str::to_owned)
+                    })
+                    .collect())
+            }
+            Block::Numeric(b) => {
+                let (by_key, patients) = (b.by_key(), b.patients());
+                let wanted: std::collections::HashSet<u32> = ids.iter().copied().collect();
+                let held = by_key.iter().any(|&i| {
+                    wanted.contains(&patients[i as usize])
+                        && selected(b.tag_at_value_pos(i as usize))
+                });
+                if held {
+                    return Err(QueryError::GenomicFilter(format!(
+                        "ID_CUBE_NAME names the numeric concept {name}, whose values Java cannot \
+                         use as column headers"
+                    )));
+                }
+                Ok(as_ids())
+            }
+        }
     }
 
     fn sync_result_in(

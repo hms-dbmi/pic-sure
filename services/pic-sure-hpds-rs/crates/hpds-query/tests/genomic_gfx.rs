@@ -2,8 +2,12 @@
 //! cross count and PATIENTS request `check_integration.py` sent to the harmonization service,
 //! answered by the engine over the fixture phenotype partitions and the genomic store migrated
 //! from Java's, and compared with Java's recorded response (cross counts as JSON values,
-//! PATIENTS rows as sets). The variant list and excerpt requests belong to the variant result
-//! types and are counted, not compared.
+//! PATIENTS rows as sets), and every variant list and excerpt request with the excerpt
+//! settings Java ran with (`VCF_EXCERPT_ENABLED=true`): variant lists as sets of specs,
+//! excerpts with the rows in order, the INFO columns in Java's `HashSet` bucket order (within
+//! a bucket Java's order follows the node directory listing, so it is compared as a set), and
+//! the patient columns as a map from header to column, since Java's group order follows
+//! `File.listFiles`.
 //!
 //! Runs when `HPDS_GENOMIC_BENCH` names the bench data directory
 //! (`.worktrees/bench-data/genomic`), which holds `gfx/{ld,lpd}/rust`,
@@ -14,7 +18,11 @@ mod common;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use hpds_query::{GenomicOptions, GenomicStore, Query, ResultType, parse_request_body};
+use std::collections::BTreeMap;
+
+use hpds_query::{
+    GenomicOptions, GenomicStore, Query, ResultType, VariantResultSettings, parse_request_body,
+};
 use serde_json::Value;
 
 fn bench_dir() -> Option<PathBuf> {
@@ -44,7 +52,14 @@ fn java_integration_cohort_answers_on_gfx_in_both_layouts() {
             &GenomicOptions::default(),
         )
         .unwrap();
-        let engine = pheno.open(&common::lenient()).unwrap().with_genomic(store);
+        let engine = pheno
+            .open(&common::lenient())
+            .unwrap()
+            .with_genomic(store)
+            .with_variant_settings(VariantResultSettings {
+                vcf_excerpt_enabled: true,
+                ..VariantResultSettings::default()
+            });
         let log =
             std::fs::read_to_string(bench.join(format!("evidence/gfx-{layout}-integration.jsonl")))
                 .unwrap();
@@ -60,11 +75,24 @@ fn java_integration_cohort_answers_on_gfx_in_both_layouts() {
             }
             let query = query_of(&entry["request"]);
             let result_type = query.expected_result_type;
+            let what = format!("{layout} entry {i}: {}", entry["request"]);
             if result_type.is_genomic() {
+                assert_eq!(entry["status"], 200, "{what}");
+                let java = entry["body"].as_str().unwrap();
+                let rust = engine.answer_sync(&query).unwrap();
+                let rust = std::str::from_utf8(rust.body()).unwrap();
+                match result_type {
+                    ResultType::VariantListForQuery => {
+                        assert_eq!(spec_set(rust), spec_set(java), "{what}")
+                    }
+                    ResultType::VcfExcerpt | ResultType::AggregateVcfExcerpt => {
+                        assert_eq!(excerpt_form(rust), excerpt_form(java), "{what}")
+                    }
+                    _ => assert_eq!(rust, java, "{what}"),
+                }
                 variant_types += 1;
                 continue;
             }
-            let what = format!("{layout} entry {i}: {}", entry["request"]);
             if path == "query/sync" {
                 assert_eq!(entry["status"], 200, "{what}");
                 let java = entry["body"].as_str().unwrap();
@@ -101,9 +129,59 @@ fn java_integration_cohort_answers_on_gfx_in_both_layouts() {
         }
         eprintln!(
             "gfx {layout}: {compared} sync answers and {patients} PATIENTS exports equal Java's; \
-             {variant_types} variant result requests left to the variant engine"
+             {variant_types} variant result answers equal Java's"
         );
         assert!(compared >= 60 && patients >= 25, "{compared} {patients}");
+        assert_eq!(variant_types, 12, "the variant list and excerpt requests");
         assert_eq!(engine.partitions().cohort_guard_refusals(), 0);
     }
+}
+
+/// The specs of a variant list body, `[a, b]`, as a set.
+fn spec_set(body: &str) -> BTreeSet<String> {
+    let inner = body
+        .strip_prefix('[')
+        .and_then(|b| b.strip_suffix(']'))
+        .unwrap_or_else(|| panic!("not a variant list: {body}"));
+    inner
+        .split(", ")
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// An excerpt as the comparison reads it: the lines with the patient columns cut off, and the
+/// patient columns as a map from header to column. A text answer is itself.
+type ExcerptForm = (Vec<String>, BTreeMap<String, Vec<String>>);
+
+fn excerpt_form(body: &str) -> ExcerptForm {
+    let mut lines = body.lines();
+    let Some(header) = lines.next().filter(|h| h.starts_with("CHROM\t")) else {
+        return (vec![body.to_owned()], BTreeMap::new());
+    };
+    let header: Vec<&str> = header.split('\t').collect();
+    let fixed = header
+        .iter()
+        .position(|h| *h == "Patients with this variant NOT in subset")
+        .unwrap()
+        + 1;
+    let rows: Vec<Vec<&str>> = lines.map(|l| l.split('\t').collect()).collect();
+    let info = &header[4..fixed - 2];
+    let layout =
+        hpds_format::java_hash_layout(info.iter().copied(), hpds_format::JavaHashCapacity::Default);
+    let bucket = |name: &str| layout.entries.iter().find(|e| e.1 == name).unwrap().0;
+    let mut order: Vec<usize> = (0..fixed).collect();
+    order[4..fixed - 2].sort_by_key(|&c| (bucket(header[c]), header[c]));
+    let pick = |r: &[&str]| order.iter().map(|&c| r[c]).collect::<Vec<_>>().join("\t");
+    let mut kept = vec![pick(&header)];
+    kept.extend(rows.iter().map(|r| pick(r)));
+    let columns = header[fixed..]
+        .iter()
+        .enumerate()
+        .map(|(c, h)| {
+            let cells = rows.iter().map(|r| r[fixed + c].to_owned()).collect();
+            ((*h).to_owned(), cells)
+        })
+        .collect();
+    (kept, columns)
 }

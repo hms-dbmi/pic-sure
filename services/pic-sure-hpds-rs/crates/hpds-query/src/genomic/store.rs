@@ -8,9 +8,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use hpds_format::{
-    CryptoKey, FormatError, GENO_BLOCKS_FILE_NAME, GENO_INDEX_FILE_NAME, GenoBlockCodec,
-    GenoBlockKind, GenoBlocksReader, GenoIndex, GenoMode, GenoNode, InfoBlock, MaskChunk,
-    PUBLISH_JOURNAL_FILE_NAME, Protection,
+    CarrierChunk, CryptoKey, FormatError, GENO_BLOCKS_FILE_NAME, GENO_INDEX_FILE_NAME,
+    GenoBlockCodec, GenoBlockKind, GenoBlocksReader, GenoIndex, GenoLocation, GenoMode, GenoNode,
+    InfoBlock, MaskChunk, MetadataChunk, PUBLISH_JOURNAL_FILE_NAME, Protection,
 };
 use moka::notification::RemovalCause;
 use moka::sync::Cache;
@@ -160,6 +160,10 @@ pub(crate) enum CachedBlock {
     Mask(Arc<MaskChunk>),
     /// An info block.
     Info(Arc<InfoBlock>),
+    /// A metadata chunk.
+    Metadata(Arc<MetadataChunk>),
+    /// A bucket carrier chunk.
+    Carriers(Arc<CarrierChunk>),
 }
 
 impl CachedBlock {
@@ -168,6 +172,8 @@ impl CachedBlock {
         match self {
             CachedBlock::Mask(b) => b.heap_size(),
             CachedBlock::Info(b) => b.heap_size(),
+            CachedBlock::Metadata(b) => b.heap_size(),
+            CachedBlock::Carriers(b) => b.heap_size(),
         }
     }
 }
@@ -455,6 +461,148 @@ impl GenomicStore {
             .map_or(0, |c| u64::from(c.mask.decoded_len))
     }
 
+    /// Runs `fold` on node `node`'s bucket carrier chunk `chunk`, read as `path` says, with
+    /// the permit rule of [`GenomicStore::with_mask_chunk`]; `fold` must not call into rayon.
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicBlock`] when the chunk cannot be read, authenticated or decoded.
+    pub(crate) fn with_carrier_chunk<R>(
+        &self,
+        node: u16,
+        chunk: u32,
+        path: ReadPath,
+        fold: impl FnOnce(&CarrierChunk) -> R,
+    ) -> Result<R> {
+        self.chunk_block(
+            node,
+            chunk,
+            GenoBlockKind::Carriers,
+            path,
+            |block| match block {
+                CachedBlock::Carriers(c) => fold(&c),
+                _ => unreachable!("a carrier key holds a carrier chunk"),
+            },
+        )
+    }
+
+    /// Node `node`'s mask chunk `chunk`, held by the caller. On the cached path it comes from
+    /// the cache, admitted on a miss; on the scan path a block the cache does not hold is read
+    /// and decoded under one permit of the read budget, released before this returns, and
+    /// never admitted. The caller keeps the block as per-query state, outside the budget, so
+    /// it must hold only a bounded number at once.
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicBlock`] when the chunk cannot be read, authenticated or decoded.
+    pub(crate) fn hold_mask_chunk(
+        &self,
+        node: u16,
+        chunk: u32,
+        path: ReadPath,
+    ) -> Result<Arc<MaskChunk>> {
+        self.chunk_block(
+            node,
+            chunk,
+            GenoBlockKind::Mask,
+            path,
+            |block| match block {
+                CachedBlock::Mask(c) => c,
+                _ => unreachable!("a mask key holds a mask chunk"),
+            },
+        )
+    }
+
+    /// Node `node`'s metadata chunk `chunk`, held by the caller, as
+    /// [`GenomicStore::hold_mask_chunk`] reads it.
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicBlock`] when the chunk cannot be read, authenticated or decoded.
+    pub(crate) fn hold_metadata_chunk(
+        &self,
+        node: u16,
+        chunk: u32,
+        path: ReadPath,
+    ) -> Result<Arc<MetadataChunk>> {
+        self.chunk_block(
+            node,
+            chunk,
+            GenoBlockKind::Metadata,
+            path,
+            |block| match block {
+                CachedBlock::Metadata(c) => c,
+                _ => unreachable!("a metadata key holds a metadata chunk"),
+            },
+        )
+    }
+
+    /// The decoded length of block `kind` of node `node`'s chunk `chunk`, from the index; 0
+    /// for an info kind or a chunk the index lacks.
+    pub(crate) fn chunk_decoded_len(&self, node: u16, chunk: u32, kind: GenoBlockKind) -> u64 {
+        self.index
+            .chunk(node, chunk)
+            .ok()
+            .and_then(|c| chunk_location(c, kind))
+            .map_or(0, |l| u64::from(l.decoded_len))
+    }
+
+    /// Reads block `kind` of node `node`'s chunk `chunk` as `path` says and hands it to
+    /// `use_block`. On the scan path a block the cache does not hold is read, decoded and
+    /// handed over under one permit of the read budget, sized from the index and released
+    /// once `use_block` returns; `use_block` must not call into rayon.
+    fn chunk_block<R>(
+        &self,
+        node: u16,
+        chunk: u32,
+        kind: GenoBlockKind,
+        path: ReadPath,
+        use_block: impl FnOnce(CachedBlock) -> R,
+    ) -> Result<R> {
+        let key = cache_key(node, kind, chunk);
+        let what = match kind {
+            GenoBlockKind::Mask => "mask chunk",
+            GenoBlockKind::Metadata => "metadata chunk",
+            GenoBlockKind::Carriers => "carrier chunk",
+            GenoBlockKind::Info => "info block",
+        };
+        let read = || -> std::result::Result<CachedBlock, FormatError> {
+            let (codec, index) = (&self.codec, &self.index);
+            Ok(match kind {
+                GenoBlockKind::Mask => CachedBlock::Mask(Arc::new(
+                    self.reader.read_mask_chunk(codec, index, node, chunk)?,
+                )),
+                GenoBlockKind::Metadata => CachedBlock::Metadata(Arc::new(
+                    self.reader.read_metadata_chunk(codec, index, node, chunk)?,
+                )),
+                GenoBlockKind::Carriers => CachedBlock::Carriers(Arc::new(
+                    self.reader.read_carrier_chunk(codec, index, node, chunk)?,
+                )),
+                GenoBlockKind::Info => {
+                    return Err(FormatError::InvalidInput(
+                        "an info block is not a chunk block".into(),
+                    ));
+                }
+            })
+        };
+        if path == ReadPath::Scan {
+            if let Some(cached) = self.cache.get(&key) {
+                self.counters.hits.fetch_add(1, Ordering::Relaxed);
+                return Ok(use_block(cached));
+            }
+            self.counters.misses.fetch_add(1, Ordering::Relaxed);
+            let wrap = |e| self.block_error(node, what, chunk, Arc::new(e));
+            let entry = self.index.chunk(node, chunk).map_err(wrap)?;
+            let location = chunk_location(entry, kind).unwrap_or_default();
+            let _permit = self.budget.acquire(
+                u64::from(location.stored_len).saturating_add(u64::from(location.decoded_len)),
+            );
+            let decoded = read().map_err(wrap)?;
+            self.counters.scan_reads.fetch_add(1, Ordering::Relaxed);
+            return Ok(use_block(decoded));
+        }
+        self.cached(key, read)
+            .map(use_block)
+            .map_err(|e| self.block_error(node, what, chunk, e))
+    }
+
     /// The cached block under `key`, or the one `load` reads, admitted.
     fn cached(
         &self,
@@ -489,6 +637,19 @@ impl GenomicStore {
             what: format!("{kind} {ordinal}"),
             source: error,
         }
+    }
+}
+
+/// Where block `kind` of the chunk `entry` sits; `None` for an info kind.
+fn chunk_location(
+    entry: &hpds_format::GenoChunkEntry,
+    kind: GenoBlockKind,
+) -> Option<GenoLocation> {
+    match kind {
+        GenoBlockKind::Mask => Some(entry.mask),
+        GenoBlockKind::Metadata => Some(entry.metadata),
+        GenoBlockKind::Carriers => Some(entry.carriers),
+        GenoBlockKind::Info => None,
     }
 }
 

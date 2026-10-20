@@ -546,8 +546,14 @@ fn without_a_genomic_store_genomic_filters_are_unsupported_and_spec_paths_are_co
     let spec_filter = query(ResultType::Count, Some(required("chr1,100,A,G")));
     assert!(e.validate(&spec_filter).is_ok());
     assert_eq!(e.count(&spec_filter).unwrap(), 0);
+    let mut excerpt = query(ResultType::AggregateVcfExcerpt, None);
     assert!(matches!(
-        e.count(&query(ResultType::VcfExcerpt, None)),
+        e.vcf_excerpt(&excerpt),
+        Ok(hpds_query::ExcerptAnswer::Text(text)) if text == "AGGREGATE_VCF_EXCERPT query type not allowed"
+    ));
+    excerpt.genomic_filters = q.genomic_filters.clone();
+    assert!(matches!(
+        e.variant_count(&excerpt),
         Err(QueryError::Unsupported(_))
     ));
 }

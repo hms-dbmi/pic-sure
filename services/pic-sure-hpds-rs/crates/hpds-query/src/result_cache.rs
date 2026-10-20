@@ -200,8 +200,9 @@ pub(crate) fn is_cacheable(result_type: ResultType) -> bool {
     )
 }
 
-/// True when `result` may be cached: anything but a cross count holding -1, which marks a
-/// block that could not be loaded and is an error reported as a value.
+/// True when `result` may be cached: a phenotypic answer other than a cross count holding -1,
+/// which marks a block that could not be loaded and is an error reported as a value. The
+/// genomic answers are never cached.
 pub(crate) fn is_storable(result: &SyncResult) -> bool {
     match result {
         SyncResult::CrossCount(counts) | SyncResult::ObservationCrossCount(counts) => {
@@ -210,6 +211,10 @@ pub(crate) fn is_storable(result: &SyncResult) -> bool {
         SyncResult::Count(_)
         | SyncResult::CategoricalCrossCount(_)
         | SyncResult::ContinuousCrossCount(_) => true,
+        SyncResult::InfoColumnListing(_)
+        | SyncResult::VariantCount(_)
+        | SyncResult::VariantList(_)
+        | SyncResult::Excerpt(_) => false,
     }
 }
 

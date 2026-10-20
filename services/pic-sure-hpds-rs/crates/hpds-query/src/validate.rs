@@ -81,25 +81,10 @@ fn comma_spec(key: &str, with_annotations: bool) -> bool {
         && (!with_annotations || (word(suffix[3]) && word(suffix[4])))
 }
 
-/// Refuses a genomic result type (`INFO_COLUMN_LISTING`, `VARIANT_COUNT_FOR_QUERY`,
-/// `VARIANT_LIST_FOR_QUERY`, `VCF_EXCERPT`, `AGGREGATE_VCF_EXCERPT`), which this engine does not
-/// compute. Genomic filters are answered by the engine's genomic store, and a variant-spec path
-/// ([`path_is_variant_spec`]) in `select` or in a phenotypic filter is a concept path like any
-/// other, as in Java: an empty DATAFRAME column, a concept no partition holds.
-///
-/// # Errors
-/// [`QueryError::Unsupported`] naming the result type.
-pub fn check_supported(query: &Query) -> Result<()> {
-    if query.expected_result_type.is_genomic() {
-        return Err(QueryError::Unsupported(format!(
-            "result type {}",
-            query.expected_result_type
-        )));
-    }
-    Ok(())
-}
-
-/// `QueryValidator` with `PhenotypicFilterValidator`, plus [`check_supported`].
+/// `QueryValidator` with `PhenotypicFilterValidator`. Genomic filters and result types are
+/// not its concern, as in Java; a variant-spec path ([`path_is_variant_spec`]) in `select` or
+/// in a phenotypic filter is a concept path like any other: an empty DATAFRAME column, a
+/// concept no partition holds.
 /// [`crate::Engine::validate`] builds one from its partition set's flag; build one directly
 /// only to validate against another [`ConceptLookup`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,8 +104,7 @@ impl Default for QueryValidator {
 }
 
 impl QueryValidator {
-    /// Validates `query` against `concepts` in Java's order: unsupported features first,
-    /// then the consent requirement, then every filter of the phenotypic clause, then every
+    /// Validates `query` against `concepts` in Java's order: the consent requirement, then every filter of the phenotypic clause, then every
     /// (deprecated, never applied) authorization filter. Unknown `select` paths are allowed
     /// (Java only logs them).
     ///
@@ -129,10 +113,8 @@ impl QueryValidator {
     /// ([`QueryError::UserConsentsRequired`]).
     ///
     /// # Errors
-    /// [`QueryError::Unsupported`] from [`check_supported`], and [`QueryError::Invalid`]
-    /// with Java's message for the first rule broken.
+    /// [`QueryError::Invalid`] with Java's message for the first rule broken.
     pub fn validate(&self, query: &Query, concepts: &impl ConceptLookup) -> Result<()> {
-        check_supported(query)?;
         if self.require_consents && query.user_consents.is_empty() {
             return Err(QueryError::Invalid(
                 "User consents are required for this query".into(),

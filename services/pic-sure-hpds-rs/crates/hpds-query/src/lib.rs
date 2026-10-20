@@ -15,9 +15,7 @@
 //!   [`Engine`], after the query passes its [`QueryLimits`] and its consents select the
 //!   partitions. Every cohort is checked against the selected partitions' patients before
 //!   any count or export uses it.
-//! - [`QueryValidator`] and [`check_supported`] are `QueryValidator`,
-//!   `PhenotypicFilterValidator`, and the refusal of the genomic result types this engine does
-//!   not compute.
+//! - [`QueryValidator`] is `QueryValidator` with `PhenotypicFilterValidator`.
 //! - A [`GenomicStore`] attached with [`Engine::with_genomic`] answers `genomicFilters`: the
 //!   engine narrows each cohort to the patients the filters keep, node by node as Java's
 //!   genomic processors do, before any count or export uses it.
@@ -50,8 +48,9 @@ pub use counters::BlockCacheStats;
 pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine, ReadPlan};
 pub use error::{QueryError, Result};
 pub use genomic::{
-    DEFAULT_GENOMIC_CACHE_BYTES, DEFAULT_GENOMIC_READ_BUDGET_BYTES, GenomicCacheStats,
-    GenomicOptions, GenomicStore,
+    DEFAULT_GENOMIC_CACHE_BYTES, DEFAULT_GENOMIC_READ_BUDGET_BYTES, DEFAULT_MAX_EXCERPT_BYTES,
+    ExcerptAnswer, GenomicCacheStats, GenomicOptions, GenomicStore, InfoColumnMeta,
+    NO_VARIANTS_FOUND, VariantResultSettings, VcfExcerpt,
 };
 pub use limits::{
     DEFAULT_MAX_CLAUSE_DEPTH, DEFAULT_MAX_CLAUSE_NODES, DEFAULT_MAX_CROSS_COUNT_ENTRIES,
@@ -76,7 +75,7 @@ pub use results::{
 pub use store::{DEFAULT_CACHE_BYTES, KEY_FILE_NAME, StoreOptions};
 pub use validate::{
     ConceptLookup, NULL_AUTHORIZATION_CONCEPT_PATH_MESSAGE, NULL_AUTHORIZATION_FILTER_MESSAGE,
-    QueryValidator, check_supported, path_is_variant_spec,
+    QueryValidator, path_is_variant_spec,
 };
 
 /// Directory used when `HPDS_DATA_DIRECTORY` is not set. Matches the Java service, so the

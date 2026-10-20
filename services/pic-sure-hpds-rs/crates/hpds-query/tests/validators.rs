@@ -261,9 +261,6 @@ fn query_validator_refuses_genomic_result_types_only() {
     assert!(LENIENT.validate(&q, &m).is_ok());
     for result_type in ResultType::ALL.iter().filter(|r| r.is_genomic()) {
         let q = query(*result_type, None);
-        assert!(matches!(
-            LENIENT.validate(&q, &m),
-            Err(QueryError::Unsupported(_))
-        ));
+        assert!(LENIENT.validate(&q, &m).is_ok(), "{result_type}");
     }
 }

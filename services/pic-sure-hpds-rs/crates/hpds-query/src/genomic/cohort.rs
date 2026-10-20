@@ -60,6 +60,57 @@ pub(crate) fn genomic_cohort(
     filters: &GenomicFilters,
     cohort: &RoaringBitmap,
 ) -> Result<RoaringBitmap> {
+    Ok(evaluate_nodes(store, filters, cohort)?
+        .map(|evaluation| evaluation.patients(store))
+        .unwrap_or_default())
+}
+
+/// Every node's evaluation of a query's genomic filters within a cohort: what the pass over
+/// the info blocks learned and the node's answer `M`.
+pub(crate) struct NodeEvaluation {
+    /// Per node, the info pass's result.
+    pub(super) infos: Vec<NodeInfo>,
+    /// Per node, `M`, or `None` when it is empty or the node's group holds no cohort patient.
+    pub(super) masks: Vec<Option<PosBitset>>,
+}
+
+impl NodeEvaluation {
+    /// The patients the filters keep: the union over groups of their nodes' answers, mapped
+    /// to patient ids.
+    pub(crate) fn patients(&self, store: &GenomicStore) -> RoaringBitmap {
+        let mut found = RoaringBitmap::new();
+        for (g, group) in store.groups().iter().enumerate() {
+            let mut union: Option<PosBitset> = None;
+            for (n, mask) in self.masks.iter().enumerate() {
+                if usize::from(store.node(n as u16).group) != g {
+                    continue;
+                }
+                if let Some(mask) = mask {
+                    match &mut union {
+                        None => union = Some(mask.clone()),
+                        Some(u) => u.union_with(mask),
+                    }
+                }
+            }
+            if let Some(union) = union {
+                found.extend(union.iter().map(|p| group.ids_by_pos[p as usize]));
+            }
+        }
+        found
+    }
+}
+
+/// Evaluates the filters on every node within `cohort` (see the module docs), after every
+/// refusal has been decided; `None` when no group holds a patient of `cohort`, so every node
+/// answers empty without reading a mask chunk.
+///
+/// # Errors
+/// As for [`genomic_cohort`].
+pub(super) fn evaluate_nodes(
+    store: &GenomicStore,
+    filters: &GenomicFilters,
+    cohort: &RoaringBitmap,
+) -> Result<Option<NodeEvaluation>> {
     debug_assert!(
         rayon::current_thread_index().is_none(),
         "genomic work was entered from a rayon worker"
@@ -82,7 +133,7 @@ pub(crate) fn genomic_cohort(
         (0..node_count).map(|_| NodeInfo::default()).collect()
     };
     if scopes.iter().all(Option::is_none) {
-        return Ok(RoaringBitmap::new());
+        return Ok(None);
     }
     let path = read_path(store, filters, &scopes, &infos);
     let masks: Vec<Option<PosBitset>> = store
@@ -104,25 +155,7 @@ pub(crate) fn genomic_cohort(
         })
         .into_iter()
         .collect::<Result<_>>()?;
-    let mut found = RoaringBitmap::new();
-    for (g, group) in store.groups().iter().enumerate() {
-        let mut union: Option<PosBitset> = None;
-        for (n, mask) in masks.iter().enumerate() {
-            if usize::from(store.node(n as u16).group) != g {
-                continue;
-            }
-            if let Some(mask) = mask {
-                match &mut union {
-                    None => union = Some(mask.clone()),
-                    Some(u) => u.union_with(mask),
-                }
-            }
-        }
-        if let Some(union) = union {
-            found.extend(union.iter().map(|p| group.ids_by_pos[p as usize]));
-        }
-    }
-    Ok(found)
+    Ok(Some(NodeEvaluation { infos, masks }))
 }
 
 /// The column table index of every INFO filter's column, after the checks over the index.
@@ -166,7 +199,7 @@ impl Columns {
 }
 
 /// Per group, the positions of the cohort's patients, or `None` when there are none.
-fn group_scopes(store: &GenomicStore, cohort: &RoaringBitmap) -> Vec<Option<PosBitset>> {
+pub(super) fn group_scopes(store: &GenomicStore, cohort: &RoaringBitmap) -> Vec<Option<PosBitset>> {
     store
         .groups()
         .iter()
@@ -188,10 +221,10 @@ fn group_scopes(store: &GenomicStore, cohort: &RoaringBitmap) -> Vec<Option<PosB
 
 /// What the pass over a node's info blocks learned.
 #[derive(Debug, Default)]
-struct NodeInfo {
+pub(super) struct NodeInfo {
     /// The variant set `I`, on a node whose scope is not empty and when the query has an INFO
     /// filter.
-    variants: Option<RoaringBitmap>,
+    pub(super) variants: Option<RoaringBitmap>,
     /// For the carrier fast path, the indexes of the requested keys in the one categorical
     /// column's info block, when that block is categorical on this node.
     carrier_keys: Option<Vec<usize>>,
@@ -387,7 +420,7 @@ fn check_delimiter<'a>(column: &str, keys: impl Iterator<Item = &'a str>) -> Res
 }
 
 /// The chunks of node `node` holding a variant of `variants`, ascending.
-fn chunks_holding<'a>(
+pub(super) fn chunks_holding<'a>(
     node: &'a GenoNode,
     variants: &'a RoaringBitmap,
 ) -> impl Iterator<Item = u32> + 'a {

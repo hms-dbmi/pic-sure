@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use crate::error::{QueryError, Result};
 use crate::model::{PhenotypicClause, PhenotypicFilterType, Query, ResultType};
 use crate::partition::{PartitionSet, Selection};
-use crate::validate::check_supported;
 
 /// Default most `select` paths one query may name, counted without repeats: 5,000.
 pub const DEFAULT_MAX_SELECT_PATHS: usize = 5_000;
@@ -85,15 +84,13 @@ impl QueryLimits {
     }
 
     /// The single admission step every engine evaluation goes through: the shape bounds for
-    /// an evaluation that reads `select` as `select_use` says, the refusal of unsupported
-    /// genomic input ([`check_supported`]), the consent selection
+    /// an evaluation that reads `select` as `select_use` says, the consent selection
     /// ([`PartitionSet::select`]), and the concept bound over that selection, in that order.
     /// Returns the receipt every evaluation requires, carrying the selection.
     ///
     /// # Errors
-    /// [`QueryError::LimitExceeded`] naming the first bound the query breaks, the errors of
-    /// [`check_supported`], and [`QueryError::UserConsentsRequired`] when consents are
-    /// required and absent.
+    /// [`QueryError::LimitExceeded`] naming the first bound the query breaks, and
+    /// [`QueryError::UserConsentsRequired`] when consents are required and absent.
     pub(crate) fn admit<'q, 's>(
         &self,
         query: &'q Query,
@@ -101,7 +98,6 @@ impl QueryLimits {
         select_use: SelectUse,
     ) -> Result<CheckedQuery<'q, 's>> {
         self.check_shape_for(query, select_use)?;
-        check_supported(query)?;
         let selection = set.select(query)?;
         self.check_concepts(query, &selection)?;
         Ok(CheckedQuery { query, selection })
@@ -222,7 +218,7 @@ impl SelectUse {
     }
 }
 
-/// A query that passed [`QueryLimits`] and [`check_supported`], with the partitions its
+/// A query that passed [`QueryLimits`], with the partitions its
 /// consents select. Its fields are private to this module, so [`QueryLimits::admit`] is the
 /// only way to build one, and every evaluation in [`crate::Engine`] and the cohort module
 /// takes one. An evaluation that skips the checks or the consent selection therefore does
