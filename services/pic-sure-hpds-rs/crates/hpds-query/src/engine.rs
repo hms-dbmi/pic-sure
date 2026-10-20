@@ -218,6 +218,20 @@ impl Engine {
         self.check_genomic_store(query)
     }
 
+    /// Fails when `query` reads the attached genomic store (it has genomic filters or a
+    /// genomic result type) and that store changed on disk since it was opened
+    /// ([`GenomicStore::check_unchanged`]).
+    fn check_genomic_unchanged(&self, query: &Query) -> Result<()> {
+        match &self.genomic {
+            Some(store)
+                if !query.genomic_filters.is_empty() || query.expected_result_type.is_genomic() =>
+            {
+                store.check_unchanged()
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Refuses genomic filters when no genomic store is attached. Java fails on them there
     /// with a `NullPointerException`.
     fn check_genomic_store(&self, query: &Query) -> Result<()> {
@@ -297,6 +311,7 @@ impl Engine {
     /// and the result computations.
     fn admit<'q>(&self, query: &'q Query, select_use: SelectUse) -> Result<CheckedQuery<'q, '_>> {
         self.partitions.check_unchanged()?;
+        self.check_genomic_unchanged(query)?;
         let checked = self.limits.admit(query, &self.partitions, select_use)?;
         self.check_genomic_store(query)?;
         let genomic = match &self.genomic {
@@ -548,7 +563,7 @@ impl Engine {
     fn genomic_sync(&self, query: &Query) -> Result<SyncResult> {
         match query.expected_result_type {
             ResultType::InfoColumnListing => {
-                Ok(SyncResult::InfoColumnListing(self.info_column_listing()))
+                Ok(SyncResult::InfoColumnListing(self.info_column_listing()?))
             }
             ResultType::VariantCountForQuery => {
                 Ok(SyncResult::VariantCount(self.variant_count(query)?))
@@ -573,11 +588,16 @@ impl Engine {
     /// columns, repeated per node or per group as the store's layout repeats them, or nothing
     /// without a genomic store. Java answers it without evaluating the query, so nothing in
     /// the query is checked.
-    pub fn info_column_listing(&self) -> Vec<InfoColumnMeta> {
-        self.genomic
-            .as_ref()
-            .map(info_column_listing)
-            .unwrap_or_default()
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicStoreChanged`] when the genomic store changed on disk since it
+    /// was opened.
+    pub fn info_column_listing(&self) -> Result<Vec<InfoColumnMeta>> {
+        let Some(store) = &self.genomic else {
+            return Ok(Vec::new());
+        };
+        store.check_unchanged()?;
+        Ok(info_column_listing(store))
     }
 
     /// VARIANT_COUNT_FOR_QUERY (`CountV3Processor.runVariantCount`): the number of distinct

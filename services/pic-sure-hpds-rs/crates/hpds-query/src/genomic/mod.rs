@@ -39,6 +39,6 @@ pub(crate) use listing::{info_column_listing, info_column_listing_json};
 pub(crate) use store::on_genomic_worker;
 pub use store::{
     DEFAULT_GENOMIC_CACHE_BYTES, DEFAULT_GENOMIC_READ_BUDGET_BYTES, GenomicCacheStats,
-    GenomicOptions, GenomicStore,
+    GenomicOptions, GenomicShape, GenomicStore,
 };
 pub(crate) use variants::{VariantLists, for_each_listed_spec, variant_lists};

@@ -49,7 +49,7 @@ pub use engine::{DEFAULT_EXPORT_PIN_BYTES, Engine, ReadPlan};
 pub use error::{QueryError, Result};
 pub use genomic::{
     DEFAULT_GENOMIC_CACHE_BYTES, DEFAULT_GENOMIC_READ_BUDGET_BYTES, DEFAULT_MAX_EXCERPT_BYTES,
-    ExcerptAnswer, GenomicCacheStats, GenomicOptions, GenomicStore, InfoColumnMeta,
+    ExcerptAnswer, GenomicCacheStats, GenomicOptions, GenomicShape, GenomicStore, InfoColumnMeta,
     NO_VARIANTS_FOUND, VariantResultSettings, VcfExcerpt,
 };
 pub use limits::{

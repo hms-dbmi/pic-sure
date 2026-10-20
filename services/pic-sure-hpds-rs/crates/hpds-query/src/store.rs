@@ -484,8 +484,8 @@ impl Store {
 /// How often, at most, [`ServingLock::check`] looks at the data directory: once a second.
 const STORE_CHECK_INTERVAL_MS: u64 = 1000;
 
-/// How much of a replacement `pheno.index` [`ServingLock::check`] reads to learn its store
-/// id from the plain header.
+/// How much of a replacement index [`ServingLock::check`] reads to learn its store id from
+/// the plain header.
 const HEADER_READ_LEN: u64 = 64 << 10;
 
 /// What identifies the content of a file: its device and inode, length, and modification
@@ -515,34 +515,83 @@ impl FileStamp {
     }
 }
 
-/// The shared `flock` the service holds on the `pheno.index` it serves, for as long as it
-/// serves it, and the check that what it serves is still what it opened.
+/// The files of one kind of store that a [`ServingLock`] watches: the index it locks and
+/// reads, the blocks file the service keeps open, how to read a replacement index's store
+/// id, and the error that refuses queries once the store changed.
+#[derive(Debug)]
+pub(crate) struct ServedFiles {
+    /// The index file name, `pheno.index` or `geno.index`.
+    pub(crate) index: &'static str,
+    /// The blocks file name, `pheno.blocks` or `geno.blocks`.
+    pub(crate) blocks: &'static str,
+    /// Which store it is, for the log: `store` or `genomic store`.
+    pub(crate) what: &'static str,
+    /// The store id in the plain header of an index, or `None` when this format does not
+    /// read the header.
+    pub(crate) header_store_id: fn(&[u8]) -> Option<StoreId>,
+    /// The error every query gets once the store in `dir` changed.
+    pub(crate) changed: fn(PathBuf) -> QueryError,
+}
+
+/// The phenotype store's files.
+pub(crate) const PHENOTYPE_FILES: ServedFiles = ServedFiles {
+    index: INDEX_FILE_NAME,
+    blocks: BLOCKS_FILE_NAME,
+    what: "store",
+    header_store_id: |bytes| {
+        hpds_format::PhenoIndex::decode_header(bytes)
+            .ok()
+            .map(|header| header.store_id)
+    },
+    changed: |dir| QueryError::StoreChanged { dir },
+};
+
+/// The genomic store's files.
+pub(crate) const GENOMIC_FILES: ServedFiles = ServedFiles {
+    index: hpds_format::GENO_INDEX_FILE_NAME,
+    blocks: hpds_format::GENO_BLOCKS_FILE_NAME,
+    what: "genomic store",
+    header_store_id: |bytes| {
+        hpds_format::GenoIndex::decode_header(bytes)
+            .ok()
+            .map(|header| header.store_id)
+    },
+    changed: |dir| QueryError::GenomicStoreChanged { dir },
+};
+
+/// The shared `flock` the service holds on the index it serves (`pheno.index`, or
+/// `geno.index` for the genomic store), for as long as it serves it, and the check that what
+/// it serves is still what it opened.
 ///
 /// Every `hpds-etl` command that replaces store files takes an exclusive `flock` on the
 /// current `pheno.index` without waiting, and on the new one before it renames it into
 /// place, holding both until its publish is done. So a command refuses to change a store a
 /// service on the same kernel holds, and a service that starts during a publish waits for
-/// it to finish rather than reading half of it.
+/// it to finish rather than reading half of it. The genomic commands write a new directory
+/// only, which they rename into place whole; the lock on `geno.index` keeps any later
+/// command that replaces files in place from reaching a store a service holds.
 ///
 /// After startup the service reads the store only through what it opened: the index it
-/// holds in memory and its open `pheno.blocks` descriptor, read by offset. It never opens a
-/// store path for its data again; the check opens `pheno.index` only to stamp it and read a
+/// holds in memory and its open blocks file descriptor, read by offset. It never opens a
+/// store path for its data again; the check opens the index only to stamp it and read a
 /// replacement's header, never following a link or waiting on a FIFO ([`open_index`]), and
-/// the startup open refuses a `pheno.index` that is not a regular file the same way.
+/// the startup open refuses an index that is not a regular file the same way.
 /// [`ServingLock::check`] therefore asks two questions. Has a file the
 /// service holds open changed in place? Then its reads may no longer be the store it
-/// opened, and every query is refused. Has the directory moved on? A publish journal, or a
-/// `pheno.index` with the same store id but another file (an in-place `remove-concepts` or
-/// `recover` the lock did not reach, which withdraws data), also refuses every query. A
-/// `pheno.index` of another store id (a whole store renamed in by `aio/load.sh` or
-/// `bin/migrate-javabins`) does not: the service goes on serving the old store from its
-/// open files, as it did before this check existed, until it is stopped, and reports itself
-/// superseded ([`ServingLock::is_superseded`]). A `pheno.index` whose header this format
-/// does not read (another format version) refuses at once.
+/// opened, and every query is refused. Has the directory moved on? A publish journal, or an
+/// index with the same store id but another file (an in-place `remove-concepts` or
+/// `recover` the lock did not reach, which withdraws data), also refuses every query. An
+/// index of another store id (a whole store renamed in by `aio/load.sh` or
+/// `bin/migrate-javabins`, or a genomic directory swapped for a new one) does not: the
+/// service goes on serving the old store from its open files, as it did before this check
+/// existed, until it is stopped, and reports itself superseded
+/// ([`ServingLock::is_superseded`]). An index whose header this format does not read
+/// (another format version) refuses at once.
 #[derive(Debug)]
 pub(crate) struct ServingLock {
     file: File,
     dir: PathBuf,
+    files: &'static ServedFiles,
     index: FileStamp,
     blocks: Option<FileStamp>,
     store_id: Option<StoreId>,
@@ -553,15 +602,15 @@ pub(crate) struct ServingLock {
 }
 
 impl ServingLock {
-    /// Opens `<dir>/pheno.index`, takes the shared lock on it (waiting while an `hpds-etl`
-    /// command holds it, and opening again if the file was replaced meanwhile), and returns
-    /// the lock with the file's bytes. A filesystem without `flock` is logged and served
-    /// unlocked; the check still applies.
+    /// Opens the index of `files` in `dir`, takes the shared lock on it (waiting while an
+    /// `hpds-etl` command holds it, and opening again if the file was replaced meanwhile), and
+    /// returns the lock with the file's bytes. A filesystem without `flock` is logged and
+    /// served unlocked; the check still applies.
     ///
     /// # Errors
     /// [`QueryError::Open`] when the index cannot be opened or read.
-    pub(crate) fn open(dir: &Path) -> Result<(Self, Vec<u8>)> {
-        let path = dir.join(INDEX_FILE_NAME);
+    pub(crate) fn open(dir: &Path, files: &'static ServedFiles) -> Result<(Self, Vec<u8>)> {
+        let path = dir.join(files.index);
         loop {
             let mut file = open_index(&path).map_err(|e| open_error(dir, e))?;
             match file.try_lock_shared() {
@@ -569,7 +618,8 @@ impl ServingLock {
                 Err(TryLockError::WouldBlock) => {
                     tracing::warn!(
                         dir = %dir.display(),
-                        "an hpds-etl command is changing the store; waiting for it to finish"
+                        "an hpds-etl command is changing the {}; waiting for it to finish",
+                        files.what
                     );
                     file.lock_shared().map_err(|e| open_error(dir, e))?;
                 }
@@ -577,7 +627,9 @@ impl ServingLock {
                     tracing::warn!(
                         %error,
                         dir = %dir.display(),
-                        "cannot lock pheno.index; hpds-etl will not see that this service holds the store"
+                        "cannot lock {}; hpds-etl will not see that this service holds the {}",
+                        files.index,
+                        files.what
                     );
                 }
             }
@@ -593,6 +645,7 @@ impl ServingLock {
             let lock = ServingLock {
                 file,
                 dir: dir.to_path_buf(),
+                files,
                 index: held,
                 blocks: None,
                 store_id: None,
@@ -606,7 +659,7 @@ impl ServingLock {
     }
 
     /// Records the store id of the index read under the lock and the state of the open
-    /// `pheno.blocks` descriptor, `blocks`, which [`ServingLock::check`] compares against.
+    /// blocks file descriptor, `blocks`, which [`ServingLock::check`] compares against.
     pub(crate) fn bind(&mut self, store_id: StoreId, blocks: &std::fs::Metadata) {
         self.store_id = Some(store_id);
         self.blocks = Some(FileStamp::of(blocks));
@@ -614,13 +667,13 @@ impl ServingLock {
 
     /// Fails once what the service serves may no longer be the store it opened (see the type
     /// documentation): a file it holds open changed in place, a publish journal appeared, or
-    /// `pheno.index` became another file of the same store id. `blocks` gives the state of
-    /// the open `pheno.blocks` descriptor now. Looks at most once per
-    /// [`STORE_CHECK_INTERVAL_MS`] and answers from the last look in between; once it has
-    /// failed it always fails.
+    /// the index became another file of the same store id. `blocks` gives the state of the
+    /// open blocks file descriptor now. Looks at most once per [`STORE_CHECK_INTERVAL_MS`]
+    /// and answers from the last look in between; once it has failed it always fails.
     ///
     /// # Errors
-    /// [`QueryError::StoreChanged`].
+    /// The files' `changed` error: [`QueryError::StoreChanged`] for the phenotype store,
+    /// [`QueryError::GenomicStoreChanged`] for the genomic store.
     pub(crate) fn check(
         &self,
         blocks: impl FnOnce() -> std::io::Result<std::fs::Metadata>,
@@ -639,70 +692,78 @@ impl ServingLock {
                         tracing::error!(
                             dir = %self.dir.display(),
                             reason,
-                            "the store changed on disk after it was opened; refusing every query until the service restarts"
+                            "the {} changed on disk after it was opened; refusing every query that reads it until the service restarts",
+                            self.files.what
                         );
                     }
                 }
             }
         }
-        Err(QueryError::StoreChanged {
-            dir: self.dir.clone(),
-        })
+        Err((self.files.changed)(self.dir.clone()))
     }
 
     /// Why the service must stop answering, or `None` while it may go on.
-    fn look(
-        &self,
-        blocks: impl FnOnce() -> std::io::Result<std::fs::Metadata>,
-    ) -> Option<&'static str> {
+    fn look(&self, blocks: impl FnOnce() -> std::io::Result<std::fs::Metadata>) -> Option<String> {
+        let (index_name, blocks_name) = (self.files.index, self.files.blocks);
         if std::fs::symlink_metadata(self.dir.join(PUBLISH_JOURNAL_FILE_NAME)).is_ok() {
-            return Some("a publish journal appeared");
+            return Some("a publish journal appeared".to_owned());
         }
         if self
             .file
             .metadata()
             .map_or(true, |meta| FileStamp::of(&meta) != self.index)
         {
-            return Some("the open pheno.index was changed in place");
+            return Some(format!("the open {index_name} was changed in place"));
         }
         if let Some(opened) = self.blocks
             && blocks().map_or(true, |meta| FileStamp::of(&meta) != opened)
         {
-            return Some("the open pheno.blocks was changed in place");
+            return Some(format!("the open {blocks_name} was changed in place"));
         }
         if self.superseded.load(Ordering::Relaxed) {
             return None;
         }
-        let mut file = match open_index(&self.dir.join(INDEX_FILE_NAME)) {
+        let mut file = match open_index(&self.dir.join(index_name)) {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Some("pheno.index is gone");
+                return Some(format!("{index_name} is gone"));
             }
             Err(_) => {
-                return Some("pheno.index is a symbolic link, not a regular file, or unreadable");
+                return Some(format!(
+                    "{index_name} is a symbolic link, not a regular file, or unreadable"
+                ));
             }
         };
         let Ok(now) = file.metadata() else {
-            return Some("pheno.index cannot be examined");
+            return Some(format!("{index_name} cannot be examined"));
         };
         if FileStamp::of(&now) == self.index {
             return None;
         }
-        match (read_store_id(&mut file), self.store_id) {
-            (None, _) => {
-                Some("pheno.index was replaced by a file whose header this format does not read")
-            }
+        match (self.read_store_id(&mut file), self.store_id) {
+            (None, _) => Some(format!(
+                "{index_name} was replaced by a file whose header this format does not read"
+            )),
             (Some(id), Some(ours)) if id != ours => {
                 self.superseded.store(true, Ordering::Relaxed);
                 tracing::warn!(
                     dir = %self.dir.display(),
                     new_store = %id,
-                    "another store was moved into the data directory; serving the store opened at startup from its open files until the service stops"
+                    "another {} was moved into the directory; serving the one opened at startup from its open files until the service stops",
+                    self.files.what
                 );
                 None
             }
-            _ => Some("pheno.index was replaced within the same store"),
+            _ => Some(format!("{index_name} was replaced within the same store")),
         }
+    }
+
+    /// The store id in the plain header of the open index `file`, or `None` when its header
+    /// cannot be read in this format (another format version, a truncated or foreign file).
+    fn read_store_id(&self, file: &mut File) -> Option<StoreId> {
+        let mut bytes = Vec::new();
+        file.take(HEADER_READ_LEN).read_to_end(&mut bytes).ok()?;
+        (self.files.header_store_id)(&bytes)
     }
 
     /// True once [`ServingLock::check`] has seen a store of another id moved into the
@@ -731,16 +792,6 @@ fn open_index(path: &Path) -> std::io::Result<File> {
         ));
     }
     Ok(file)
-}
-
-/// The store id in the plain header of the open index `file`, or `None` when its header
-/// cannot be read in this format (another format version, a truncated or foreign file).
-fn read_store_id(file: &mut File) -> Option<StoreId> {
-    let mut bytes = Vec::new();
-    file.take(HEADER_READ_LEN).read_to_end(&mut bytes).ok()?;
-    hpds_format::PhenoIndex::decode_header(&bytes)
-        .ok()
-        .map(|header| header.store_id)
 }
 
 fn open_error(dir: &Path, error: impl std::fmt::Display) -> QueryError {

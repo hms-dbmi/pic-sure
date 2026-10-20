@@ -147,13 +147,25 @@ pub enum QueryError {
         /// The data directory.
         dir: PathBuf,
     },
+
+    /// The genomic store files were replaced, or a publish into their directory began, after
+    /// the service opened them. Every query that reads the genomic store is refused until the
+    /// service restarts; phenotype-only queries are still answered.
+    #[error(
+        "the genomic store in {dir} changed on disk after this service opened it; restart the service to serve the new store"
+    )]
+    GenomicStoreChanged {
+        /// The genomic data directory.
+        dir: PathBuf,
+    },
 }
 
 impl QueryError {
     /// True when the request is at fault and retrying it unchanged cannot succeed: every
     /// variant except [`QueryError::Open`], [`QueryError::CohortOutsideSelection`],
     /// [`QueryError::Block`], [`QueryError::GenomicBlock`], [`QueryError::StoreInconsistent`],
-    /// [`QueryError::Output`], [`QueryError::Task`] and [`QueryError::StoreChanged`].
+    /// [`QueryError::Output`], [`QueryError::Task`], [`QueryError::StoreChanged`] and
+    /// [`QueryError::GenomicStoreChanged`].
     pub fn is_client_error(&self) -> bool {
         !matches!(
             self,
@@ -165,6 +177,7 @@ impl QueryError {
                 | QueryError::Output(_)
                 | QueryError::Task(_)
                 | QueryError::StoreChanged { .. }
+                | QueryError::GenomicStoreChanged { .. }
         )
     }
 }

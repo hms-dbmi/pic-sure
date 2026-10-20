@@ -888,3 +888,108 @@ fn the_fast_path_falls_back_to_masks_on_a_node_holding_the_column_as_continuous(
         Err(QueryError::GenomicFilter(_))
     ));
 }
+
+/// The genomic store lives in `<fixture>/_genomic/store`; a second store of another id is
+/// loaded beside it for the swap.
+fn genomic_dir(f: &Fixture) -> std::path::PathBuf {
+    f._genomic.path().join("store")
+}
+
+#[test]
+fn the_genomic_store_holds_a_shared_lock_on_its_index() {
+    let f = fixture(GenoMode::LocalDistributed);
+    let index = std::fs::File::open(genomic_dir(&f).join("geno.index")).unwrap();
+    assert!(
+        matches!(index.try_lock(), Err(std::fs::TryLockError::WouldBlock)),
+        "an hpds-etl command cannot take the index while the service holds it"
+    );
+    assert!(index.try_lock_shared().is_ok(), "other readers share it");
+}
+
+#[test]
+fn a_genomic_store_changed_in_place_refuses_genomic_queries_and_keeps_phenotype_ones() {
+    let f = fixture(GenoMode::LocalDistributed);
+    let genomic = genomic_query(ResultType::Count, vec![categorical(GENE, &["G1"])]);
+    assert_eq!(f.engine.count(&genomic).unwrap(), 6);
+    let blocks = genomic_dir(&f).join("geno.blocks");
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&blocks)
+        .unwrap();
+    std::io::Write::write_all(&mut file, b"x").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    for q in [
+        genomic.clone(),
+        genomic_query(ResultType::VariantCountForQuery, vec![]),
+        genomic_query(ResultType::InfoColumnListing, vec![]),
+    ] {
+        let refused = match q.expected_result_type {
+            ResultType::Count => f.engine.count(&q).map(|_| ()),
+            ResultType::InfoColumnListing => f.engine.info_column_listing().map(|_| ()),
+            _ => f.engine.variant_count(&q).map(|_| ()),
+        };
+        let error = refused.unwrap_err();
+        assert!(
+            matches!(error, QueryError::GenomicStoreChanged { .. }),
+            "{error:?}"
+        );
+        assert!(!error.is_client_error());
+    }
+    assert_eq!(
+        f.engine
+            .count(&query(ResultType::Count, Some(required(SEX))))
+            .unwrap(),
+        20,
+        "a query that reads no genomic data is still answered"
+    );
+    assert!(!f.engine.genomic().unwrap().store_superseded());
+}
+
+#[test]
+fn a_genomic_store_of_another_id_moved_in_is_superseded_and_the_open_one_still_serves() {
+    let f = fixture(GenoMode::LocalDistributed);
+    let other = fixture(GenoMode::LocalDistributed);
+    let dir = genomic_dir(&f);
+    let moved = dir.join("geno.index.new");
+    std::fs::copy(genomic_dir(&other).join("geno.index"), &moved).unwrap();
+    std::fs::rename(&moved, dir.join("geno.index")).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let q = genomic_query(ResultType::Count, vec![categorical(GENE, &["G1"])]);
+    assert_eq!(f.engine.count(&q).unwrap(), 6);
+    assert!(f.engine.genomic().unwrap().store_superseded());
+}
+
+#[test]
+fn a_genomic_index_replaced_within_the_same_store_refuses_genomic_queries() {
+    let f = fixture(GenoMode::LocalDistributed);
+    let dir = genomic_dir(&f);
+    let copy = dir.join("geno.index.copy");
+    std::fs::copy(dir.join("geno.index"), &copy).unwrap();
+    std::fs::rename(&copy, dir.join("geno.index")).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let q = genomic_query(ResultType::Count, vec![categorical(GENE, &["G1"])]);
+    assert!(matches!(
+        f.engine.count(&q),
+        Err(QueryError::GenomicStoreChanged { .. })
+    ));
+    assert!(!f.engine.genomic().unwrap().store_superseded());
+}
+
+#[test]
+fn a_directory_of_java_genomic_files_is_refused_naming_the_migration() {
+    let dir = tempfile::tempdir().unwrap();
+    let node = dir.path().join("group").join("chr1");
+    std::fs::create_dir_all(&node).unwrap();
+    std::fs::write(node.join("variantStore.javabin"), b"java").unwrap();
+    let key = dir.path().join("encryption_key");
+    std::fs::write(&key, "0123456789ABCDEF0123456789ABCDEF").unwrap();
+    let error = GenomicStore::open_with_key_file(dir.path(), &key, &GenomicOptions::default())
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("hpds-etl genomic-migrate"), "{error}");
+    let empty = tempfile::tempdir().unwrap();
+    let error = GenomicStore::open_with_key_file(empty.path(), &key, &GenomicOptions::default())
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("no geno.index"), "{error}");
+}

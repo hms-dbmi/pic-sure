@@ -18,6 +18,7 @@ use roaring::RoaringBitmap;
 
 use crate::budget::{ByteBudget, GenomicReadStats, PermitThreads};
 use crate::error::{QueryError, Result};
+use crate::store::{GENOMIC_FILES, ServingLock};
 
 /// Default capacity of the genomic block cache (`HPDS_GENOMIC_CACHE_BYTES`): 2 GiB.
 pub const DEFAULT_GENOMIC_CACHE_BYTES: u64 = 2 << 30;
@@ -89,6 +90,19 @@ pub struct GenomicCacheStats {
     pub evictions: u64,
     /// Blocks read by a scan under the read budget and dropped without being admitted.
     pub scan_reads: u64,
+}
+
+/// The size of a genomic store, for the startup log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GenomicShape {
+    /// Patient groups.
+    pub groups: usize,
+    /// Nodes, over every group.
+    pub nodes: usize,
+    /// Patients, over every group.
+    pub patients: u64,
+    /// Variants, over every node; a variant two nodes hold counts twice.
+    pub variants: u64,
 }
 
 thread_local! {
@@ -217,6 +231,7 @@ pub struct GenomicStore {
     counters: Counters,
     budget: ByteBudget,
     pool: rayon::ThreadPool,
+    serving: ServingLock,
 }
 
 impl std::fmt::Debug for GenomicStore {
@@ -265,6 +280,10 @@ impl GenomicStore {
     /// holding the journal of an interrupted publish is refused, and when `.generation` exists
     /// it must hold exactly the index's store id. The service never writes the directory.
     ///
+    /// The store holds a shared `flock` on the `geno.index` it read for as long as it lives,
+    /// and [`GenomicStore::check_unchanged`] notices files changed under it, as the phenotype
+    /// store does (see `ServingLock`).
+    ///
     /// # Errors
     /// [`QueryError::Open`] for every refusal above and for an index or blocks file that is
     /// missing, corrupt, from another store, or protected differently from `protection`.
@@ -283,11 +302,16 @@ impl GenomicStore {
                 ),
             ));
         }
-        let index =
-            GenoIndex::read_file(&index_path, &protection).map_err(|e| open_error(dir, e))?;
+        let (mut serving, index_bytes) = ServingLock::open(dir, &GENOMIC_FILES)?;
+        let index = GenoIndex::decode(&index_bytes, &protection).map_err(|e| open_error(dir, e))?;
+        drop(index_bytes);
         check_generation(dir, &index.store_id().to_string())?;
         let reader = GenoBlocksReader::open(dir.join(GENO_BLOCKS_FILE_NAME), &index)
             .map_err(|e| open_error(dir, e))?;
+        serving.bind(
+            index.store_id(),
+            &reader.file_metadata().map_err(|e| open_error(dir, e))?,
+        );
         let codec = index
             .block_codec(protection)
             .map_err(|e| open_error(dir, e))?;
@@ -327,7 +351,47 @@ impl GenomicStore {
                 PermitThreads::GenomicWorkers,
             ),
             pool,
+            serving,
         })
+    }
+
+    /// Fails once what this store serves may no longer be the store it opened: a file it
+    /// holds open changed in place, a publish into the directory began, or `geno.index` was
+    /// replaced within the same store. A whole store of another id moved in does not fail it;
+    /// it goes on serving its own open files. Every computation that reads the genomic store
+    /// checks this first.
+    ///
+    /// # Errors
+    /// [`QueryError::GenomicStoreChanged`].
+    pub fn check_unchanged(&self) -> Result<()> {
+        self.serving.check(|| self.reader.file_metadata())
+    }
+
+    /// True once another genomic store (of another id) was moved into the directory while
+    /// this one goes on serving the store it opened from its open files.
+    pub fn store_superseded(&self) -> bool {
+        self.serving.is_superseded()
+    }
+
+    /// The number of distinct INFO columns the store holds, what Java's readiness check
+    /// counts as genomic data.
+    pub fn info_column_count(&self) -> usize {
+        self.index.columns().len()
+    }
+
+    /// The groups and nodes the store holds, and its variants summed over nodes.
+    pub fn shape(&self) -> GenomicShape {
+        GenomicShape {
+            groups: self.index.groups().len(),
+            nodes: self.index.nodes().len(),
+            patients: self.groups.iter().map(|g| u64::from(g.count())).sum(),
+            variants: self
+                .index
+                .nodes()
+                .iter()
+                .map(|n| u64::from(n.variant_count))
+                .sum(),
+        }
     }
 
     /// The genomic data directory.
